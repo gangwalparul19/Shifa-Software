@@ -1,0 +1,56 @@
+.shifa-bell {
+  position: relative;
+}
+
+.shifa-bell__badge {
+  position: absolute;
+  top: -0.15rem;
+  right: -0.15rem;
+  font-size: 0.6rem;
+  padding: 0.15rem 0.3rem;
+  min-width: 1.1rem;
+  line-height: 1;
+}
+
+.shifa-bell__panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: min(24rem, 92vw);
+  z-index: 1050;
+  box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.15);
+}
+
+.shifa-bell__list {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.shifa-bell__time {
+  font-size: 0.75rem;
+}
+
+.shifa-note--unread {
+  background: var(--tblr-primary-lt, rgba(31, 93, 63, 0.06));
+}
+
+.shifa-note__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--tblr-bg-surface-secondary, #f1f3f5);
+  font-size: 1.05rem;
+  flex: 0 0 auto;
+}
+
+.shifa-note__dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--shifa-green-600, #1f5d3f);
+  flex: 0 0 auto;
+}

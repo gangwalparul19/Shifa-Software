@@ -1,0 +1,80 @@
+<section class="section container">
+  <div class="section-head" style="text-align:left; margin:0 0 28px;">
+    <h1>{{ 'cart.title' | translate }}</h1>
+  </div>
+
+  @if (cart.isEmpty()) {
+    <div class="empty">
+      <span class="empty-icon">🛒</span>
+      <h3>{{ 'cart.empty' | translate }}</h3>
+      <p>{{ 'cart.emptyHint' | translate }}</p>
+      <a class="btn btn-primary" routerLink="/shop">{{ 'common.startShopping' | translate }}</a>
+      <a class="btn btn-whatsapp" [href]="whatsappHref()" target="_blank" rel="noopener">
+        <span aria-hidden="true">✆</span> {{ 'whatsapp.enquire' | translate }}
+      </a>
+    </div>
+  } @else {
+    @if (error()) {
+      <p class="cart-error">{{ error() }}</p>
+    }
+
+    <div class="cart-layout">
+      <div class="lines">
+        @for (item of cart.items(); track item.productId) {
+          <div class="line">
+            <a class="thumb" [routerLink]="['/products', item.productId]">
+              <img [src]="item.imageUrl" [alt]="item.name" />
+            </a>
+            <div class="line-info">
+              <a class="line-name" [routerLink]="['/products', item.productId]">{{ item.name }}</a>
+              <span class="line-sku text-muted">SKU: {{ item.sku }}</span>
+              <span class="line-unit">{{ unitPrice(item) }} each</span>
+            </div>
+
+            <div class="qty" role="group" aria-label="Quantity">
+              <button type="button" (click)="step(item, -1)" [disabled]="item.quantity <= MIN" aria-label="Decrease">−</button>
+              <input
+                type="number"
+                [min]="MIN"
+                [max]="MAX"
+                [value]="item.quantity"
+                (change)="onQuantityInput(item, $any($event.target).value)"
+                aria-label="Quantity"
+              />
+              <button type="button" (click)="step(item, 1)" [disabled]="item.quantity >= MAX" aria-label="Increase">+</button>
+            </div>
+
+            <div class="line-total">{{ lineTotal(item) }}</div>
+
+            <button type="button" class="remove" (click)="remove(item.productId)" aria-label="Remove item">✕</button>
+          </div>
+        }
+      </div>
+
+      <aside class="summary">
+        <h3>{{ 'cart.orderSummary' | translate }}</h3>
+        <div class="sum-row">
+          <span>{{ 'cart.items' | translate }}</span>
+          <span>{{ cart.itemCount() }}</span>
+        </div>
+        <div class="sum-row">
+          <span>{{ 'cart.subtotal' | translate }}</span>
+          <span>{{ subtotalDisplay() }}</span>
+        </div>
+        <div class="sum-row muted">
+          <span>{{ 'cart.shipping' | translate }}</span>
+          <span>{{ 'cart.shippingAtCheckout' | translate }}</span>
+        </div>
+        <div class="sum-total">
+          <span>{{ 'cart.total' | translate }}</span>
+          <span>{{ subtotalDisplay() }}</span>
+        </div>
+        <a class="btn btn-primary btn-block" routerLink="/checkout">{{ 'cart.proceedToCheckout' | translate }}</a>
+        <a class="btn btn-whatsapp btn-block" [href]="whatsappHref()" target="_blank" rel="noopener">
+          <span aria-hidden="true">✆</span> {{ 'whatsapp.order' | translate }}
+        </a>
+        <a class="btn btn-outline btn-block continue" routerLink="/shop">{{ 'common.continueShopping' | translate }}</a>
+      </aside>
+    </div>
+  }
+</section>

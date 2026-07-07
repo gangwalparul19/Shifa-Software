@@ -1,0 +1,104 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+}
+
+.shifa-search {
+  position: relative;
+  width: 100%;
+}
+
+/* Desktop inline field width */
+@media (min-width: 768px) {
+  .shifa-search__field {
+    width: clamp(220px, 32vw, 380px);
+  }
+}
+
+/* Mobile: expanded overlay across the top bar */
+.shifa-search.is-expanded {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.75rem;
+  right: 0.75rem;
+  z-index: 1080;
+}
+.shifa-search.is-expanded .shifa-search__field {
+  width: 100%;
+}
+
+.shifa-search__close {
+  cursor: pointer;
+  pointer-events: all;
+  left: auto;
+  right: 0;
+}
+.input-icon-addon.end {
+  left: auto;
+  right: 0;
+}
+
+/* Results dropdown */
+.shifa-search__panel {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  right: 0;
+  z-index: 1085;
+  max-height: min(70vh, 460px);
+  overflow-y: auto;
+  box-shadow: 0 12px 32px rgba(15, 34, 58, 0.16);
+}
+
+.shifa-search__group + .shifa-search__group {
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid rgba(4, 32, 69, 0.08);
+}
+.shifa-search__grouphead {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7c8a82;
+  padding: 0.25rem 0.5rem;
+}
+
+.shifa-search__item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 0.45rem 0.5rem;
+  border-radius: 0.4rem;
+  color: inherit;
+  cursor: pointer;
+}
+.shifa-search__item:hover,
+.shifa-search__item.is-active {
+  background: var(--shifa-green-50, #f2f9f5);
+}
+.shifa-search__item.is-active {
+  outline: 2px solid var(--shifa-green-200, #bfe0cd);
+  outline-offset: -2px;
+}
+.shifa-search__icon {
+  flex: 0 0 auto;
+  color: var(--shifa-green-600, #1f5d3f);
+  opacity: 0.8;
+}
+.shifa-search__primary {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.shifa-search__secondary {
+  margin-left: auto;
+  color: #7c8a82;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}

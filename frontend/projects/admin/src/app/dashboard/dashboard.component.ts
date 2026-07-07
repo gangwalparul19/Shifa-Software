@@ -1,0 +1,601 @@
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
+import { AuthService, OrderStatus } from 'core';
+import {
+  ApexAxisChartSeries,
+  ApexChart,
+  ApexDataLabels,
+  ApexFill,
+  ApexGrid,
+  ApexLegend,
+  ApexMarkers,
+  ApexPlotOptions,
+  ApexResponsive,
+  ApexStroke,
+  ApexTooltip,
+  ApexXAxis,
+  ApexYAxis,
+  NgApexchartsModule,
+} from 'ng-apexcharts';
+import { AdminEventsService } from './admin-events.service';
+import { CountUpDirective } from '../shared/count-up.directive';
+import { PageHeaderComponent } from '../shared/page-header.component';
+import { DashboardService } from './dashboard.service';
+import {
+  ActivityCards,
+  DashboardMetrics,
+  LiveStats,
+  MetricsPeriod,
+  PeriodOption,
+  SalesBucket,
+} from './dashboard.model';
+
+/** A laid-out bar + comparison-point for the hand-rolled SVG sales chart. */
+interface ChartBar {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  label: string;
+  sales: number;
+  previousSales: number;
+}
+
+/** The fully resolved chart geometry consumed by the SVG template. */
+interface ChartModel {
+  width: number;
+  height: number;
+  bars: ChartBar[];
+  previousLine: string;
+  previousDots: { x: number; y: number }[];
+  gridLines: { y: number; label: string }[];
+  axisLabels: { x: number; label: string }[];
+}
+
+/** ApexCharts option bundle for the revenue-trend area chart (A1). */
+interface RevenueChartOptions {
+  series: ApexAxisChartSeries;
+  chart: ApexChart;
+  colors: string[];
+  dataLabels: ApexDataLabels;
+  stroke: ApexStroke;
+  fill: ApexFill;
+  xaxis: ApexXAxis;
+  yaxis: ApexYAxis;
+  legend: ApexLegend;
+  tooltip: ApexTooltip;
+  grid: ApexGrid;
+  markers: ApexMarkers;
+}
+
+/** ApexCharts option bundle for the orders-by-status donut (A1). */
+interface StatusChartOptions {
+  series: number[];
+  chart: ApexChart;
+  labels: string[];
+  colors: string[];
+  legend: ApexLegend;
+  dataLabels: ApexDataLabels;
+  stroke: ApexStroke;
+  plotOptions: ApexPlotOptions;
+  tooltip: ApexTooltip;
+  responsive: ApexResponsive[];
+}
+
+/** One clickable donut segment mapped to an Orders drill-down status (A2). */
+interface StatusSegment {
+  label: string;
+  value: number;
+  color: string;
+  status: OrderStatus;
+}
+
+/**
+ * The Shopify-style admin dashboard (Req 19.1&ndash;19.7, 11.2, 13.3, 17.4).
+ *
+ * <p>Presents metric cards, a time-period filter, a sales graph with a
+ * previous-period comparison line and % change, real-time live stats, activity
+ * cards, and top performers &mdash; all recalculated for the selected period
+ * (Req 19.3). It subscribes to the admin SSE stream via {@link AdminEventsService}
+ * so packed-order, status-change, claim, and failure alerts appear live in a
+ * notification feed, and the live-stats / activity numbers refresh in real time
+ * from the periodic SSE pushes (falling back to the REST snapshot until the
+ * first push arrives).
+ */
+@Component({
+  selector: 'admin-dashboard',
+  imports: [CountUpDirective, PageHeaderComponent, NgApexchartsModule],
+  templateUrl: './dashboard.component.html',
+  styleUrl: './dashboard.component.css',
+})
+export class DashboardComponent implements OnInit, OnDestroy {
+  private readonly service = inject(DashboardService);
+  private readonly router = inject(Router);
+  protected readonly events = inject(AdminEventsService);
+  protected readonly auth = inject(AuthService);
+
+  /** Expose the status enum to the template for card drill-downs. */
+  protected readonly OrderStatus = OrderStatus;
+
+  /** Honour reduced-motion by disabling chart animations. */
+  private readonly reducedMotion =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false;
+
+  /** Time-of-day greeting for the welcome hero card. */
+  protected readonly greeting = computed(() => {
+    const hr = new Date().getHours();
+    if (hr < 12) return 'Good morning';
+    if (hr < 17) return 'Good afternoon';
+    return 'Good evening';
+  });
+
+  /**
+   * A compact area-sparkline built from the current sales-graph points
+   * (real data — no fabrication). Returns the SVG geometry, or null when
+   * there aren't enough points to draw a meaningful trend.
+   */
+  protected readonly salesSpark = computed(() => {
+    const points = this.metrics()?.salesGraph.points ?? [];
+    const vals = points.map((p) => p.sales);
+    if (vals.length < 2) {
+      return null;
+    }
+    const w = 240;
+    const h = 56;
+    const pad = 3;
+    const max = Math.max(1, ...vals);
+    const min = Math.min(...vals);
+    const range = max - min || 1;
+    const n = vals.length;
+    const x = (i: number) => pad + (i / (n - 1)) * (w - 2 * pad);
+    const y = (v: number) => h - pad - ((v - min) / range) * (h - 2 * pad);
+    const line = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    const area =
+      `M ${x(0).toFixed(1)},${(h - pad).toFixed(1)} L ` +
+      vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' L ') +
+      ` L ${x(n - 1).toFixed(1)},${(h - pad).toFixed(1)} Z`;
+    return { w, h, line, area };
+  });
+
+  /** Selectable period presets (Req 19.2). */
+  protected readonly periodOptions: PeriodOption[] = [
+    { value: 'TODAY', label: 'Today' },
+    { value: 'YESTERDAY', label: 'Yesterday' },
+    { value: 'LAST_7_DAYS', label: 'Last 7 days' },
+    { value: 'LAST_30_DAYS', label: 'Last 30 days' },
+    { value: 'THIS_MONTH', label: 'This month' },
+    { value: 'LAST_MONTH', label: 'Last month' },
+    { value: 'QUARTERLY', label: 'Quarterly' },
+    { value: 'YEARLY', label: 'Yearly' },
+    { value: 'CUSTOM', label: 'Custom' },
+  ];
+
+  protected readonly buckets: { value: SalesBucket; label: string }[] = [
+    { value: 'DAY', label: 'Day' },
+    { value: 'WEEK', label: 'Week' },
+    { value: 'MONTH', label: 'Month' },
+  ];
+
+  // --- Selection state ----------------------------------------------------
+  protected readonly period = signal<MetricsPeriod>('LAST_30_DAYS');
+  protected readonly bucket = signal<SalesBucket | null>(null);
+  protected readonly customFrom = signal<string>('');
+  protected readonly customTo = signal<string>('');
+
+  // --- Data ---------------------------------------------------------------
+  protected readonly metrics = signal<DashboardMetrics | null>(null);
+  private readonly restLive = signal<LiveStats | null>(null);
+  private readonly restActivity = signal<ActivityCards | null>(null);
+
+  // --- UI state -----------------------------------------------------------
+  protected readonly loading = signal(true);
+  protected readonly loadError = signal<string | null>(null);
+
+  /** Live stats prefer the real-time SSE push, falling back to the REST snapshot. */
+  protected readonly live = computed<LiveStats | null>(
+    () => this.events.liveStats() ?? this.restLive(),
+  );
+
+  /** Activity counts prefer the real-time SSE push, falling back to the REST snapshot. */
+  protected readonly activity = computed<ActivityCards | null>(
+    () => this.events.activity() ?? this.restActivity(),
+  );
+
+  /** The resolved SVG chart geometry for the current sales graph, or null when empty. */
+  protected readonly chart = computed<ChartModel | null>(() => this.buildChart());
+
+  // --- ApexCharts (A1) ----------------------------------------------------
+
+  /**
+   * The revenue-trend area chart (current vs previous period) built from the
+   * loaded {@code salesGraph.points} — no extra backend calls. Themed with the
+   * Shifa green/gold palette; INR tooltips; animations off under reduced-motion.
+   */
+  protected readonly revenueChart = computed<RevenueChartOptions | null>(() => {
+    const g = this.metrics()?.salesGraph;
+    if (!g || g.points.length === 0) {
+      return null;
+    }
+    const categories = g.points.map((p) => this.shortLabel(p.label));
+    const showPrev = g.changeApplicable || g.points.some((p) => p.previousSales > 0);
+    const series: ApexAxisChartSeries = [
+      { name: 'Current period', data: g.points.map((p) => Math.round(p.sales)) },
+    ];
+    if (showPrev) {
+      series.push({
+        name: 'Previous period',
+        data: g.points.map((p) => Math.round(p.previousSales)),
+      });
+    }
+    return {
+      series,
+      chart: {
+        type: 'area',
+        height: 300,
+        fontFamily: 'inherit',
+        toolbar: { show: false },
+        zoom: { enabled: false },
+        parentHeightOffset: 0,
+        animations: { enabled: !this.reducedMotion },
+      },
+      colors: ['#1f5d3f', '#c9a227'],
+      dataLabels: { enabled: false },
+      stroke: {
+        curve: 'smooth',
+        width: showPrev ? [3, 2] : [3],
+        dashArray: showPrev ? [0, 5] : [0],
+      },
+      fill: {
+        type: 'gradient',
+        gradient: { shadeIntensity: 1, opacityFrom: 0.35, opacityTo: 0.05, stops: [0, 90, 100] },
+      },
+      xaxis: {
+        categories,
+        labels: { rotate: -45, hideOverlappingLabels: true, style: { colors: '#6b7c74' } },
+        axisBorder: { show: false },
+        axisTicks: { show: false },
+        tooltip: { enabled: false },
+      },
+      yaxis: {
+        labels: { formatter: (v: number) => this.compact(v), style: { colors: '#6b7c74' } },
+      },
+      legend: { position: 'top', horizontalAlign: 'right', fontFamily: 'inherit' },
+      tooltip: { theme: 'light', y: { formatter: (v: number) => this.inr(v) } },
+      grid: {
+        borderColor: 'rgba(15,51,36,0.08)',
+        strokeDashArray: 4,
+        padding: { left: 8, right: 8 },
+      },
+      markers: { size: 0, hover: { size: 4 } },
+    };
+  });
+
+  /** The non-zero order-status segments, in a consistent tone order (A1/A2). */
+  protected readonly statusSegments = computed<StatusSegment[]>(() => {
+    const c = this.metrics()?.cards;
+    if (!c) {
+      return [];
+    }
+    const all: StatusSegment[] = [
+      { label: 'Pending', value: c.pendingOrders, color: '#f59f00', status: OrderStatus.PENDING_ADMIN_APPROVAL },
+      { label: 'Packed', value: c.packedOrders, color: '#0ca678', status: OrderStatus.PACKED },
+      { label: 'Dispatched', value: c.dispatchedOrders, color: '#4263eb', status: OrderStatus.DISPATCHED },
+      { label: 'Delivered', value: c.deliveredOrders, color: '#2fb344', status: OrderStatus.DELIVERED },
+      { label: 'RTO', value: c.rtoCount, color: '#f76707', status: OrderStatus.RTO },
+      { label: 'Courier Lost', value: c.courierLostCount, color: '#d63939', status: OrderStatus.COURIER_LOST },
+    ];
+    return all.filter((s) => s.value > 0);
+  });
+
+  /**
+   * The orders-by-status donut, using the shared status-tone colours so it
+   * matches the StatusBadge language. Clicking a segment drills down into the
+   * Orders list pre-filtered by that status (A2).
+   */
+  protected readonly statusChart = computed<StatusChartOptions | null>(() => {
+    const segs = this.statusSegments();
+    if (segs.length === 0) {
+      return null;
+    }
+    const total = segs.reduce((acc, s) => acc + s.value, 0);
+    return {
+      series: segs.map((s) => s.value),
+      labels: segs.map((s) => s.label),
+      colors: segs.map((s) => s.color),
+      chart: {
+        type: 'donut',
+        height: 300,
+        fontFamily: 'inherit',
+        animations: { enabled: !this.reducedMotion },
+        events: {
+          dataPointSelection: (_e: unknown, _ctx: unknown, cfg: { dataPointIndex: number }) => {
+            const seg = this.statusSegments()[cfg.dataPointIndex];
+            if (seg) {
+              this.drillDown(seg.status);
+            }
+          },
+        },
+      },
+      legend: { position: 'bottom', fontFamily: 'inherit' },
+      dataLabels: { enabled: true, formatter: (val: number) => `${Math.round(val)}%` },
+      stroke: { width: 2, colors: ['#fff'] },
+      plotOptions: {
+        pie: {
+          donut: {
+            size: '68%',
+            labels: {
+              show: true,
+              total: { show: true, label: 'Orders', formatter: () => this.count(total) },
+            },
+          },
+        },
+      },
+      tooltip: { theme: 'light', y: { formatter: (v: number) => this.count(v) } },
+      responsive: [{ breakpoint: 480, options: { legend: { position: 'bottom' } } }],
+    };
+  });
+
+  // --- Drill-down (A2) ----------------------------------------------------
+
+  /**
+   * Navigates to the Orders list pre-filtered by an order status, carrying the
+   * current dashboard date window as {@code from}/{@code to} so the drill-down
+   * lands scoped to the same period.
+   */
+  drillDown(status: OrderStatus | string): void {
+    const m = this.metrics();
+    const queryParams: Record<string, string> = { status };
+    const from = this.dateOnly(m?.from);
+    const to = this.dateOnly(m?.to);
+    if (from) {
+      queryParams['from'] = from;
+    }
+    if (to) {
+      queryParams['to'] = to;
+    }
+    this.router.navigate(['/orders'], { queryParams });
+  }
+
+  /** Navigates to the Orders list scoped only to the current date window. */
+  drillAll(): void {
+    const m = this.metrics();
+    const queryParams: Record<string, string> = {};
+    const from = this.dateOnly(m?.from);
+    const to = this.dateOnly(m?.to);
+    if (from) {
+      queryParams['from'] = from;
+    }
+    if (to) {
+      queryParams['to'] = to;
+    }
+    this.router.navigate(['/orders'], { queryParams });
+  }
+
+  /** Extracts the yyyy-MM-dd date part from an ISO date/datetime, or null. */
+  private dateOnly(value: string | null | undefined): string | null {
+    if (!value) {
+      return null;
+    }
+    const match = /^(\d{4}-\d{2}-\d{2})/.exec(value);
+    return match ? match[1] : null;
+  }
+
+  ngOnInit(): void {
+    this.reload();
+    this.refreshLiveAndActivity();
+    // Open the real-time stream; the service is idempotent and no-ops when
+    // unauthenticated or EventSource is unavailable.
+    this.events.connect();
+  }
+
+  ngOnDestroy(): void {
+    this.events.disconnect();
+  }
+
+  // --- Period selection ---------------------------------------------------
+
+  selectPeriod(value: MetricsPeriod): void {
+    if (this.period() === value) {
+      return;
+    }
+    this.period.set(value);
+    // A custom range only reloads once both bounds are set (see applyCustom()).
+    if (value !== 'CUSTOM') {
+      this.reload();
+    }
+  }
+
+  selectBucket(value: SalesBucket | null): void {
+    this.bucket.set(value);
+    this.reload();
+  }
+
+  onCustomFrom(value: string): void {
+    this.customFrom.set(value);
+  }
+
+  onCustomTo(value: string): void {
+    this.customTo.set(value);
+  }
+
+  applyCustom(): void {
+    if (this.period() === 'CUSTOM' && this.customFrom() && this.customTo()) {
+      this.reload();
+    }
+  }
+
+  /** Whether the custom-range apply button should be enabled. */
+  protected canApplyCustom(): boolean {
+    return !!this.customFrom() && !!this.customTo() && this.customFrom() <= this.customTo();
+  }
+
+  // --- Loading ------------------------------------------------------------
+
+  reload(): void {
+    const period = this.period();
+    if (period === 'CUSTOM' && !this.canApplyCustom()) {
+      // Wait for a valid custom range before fetching.
+      this.loading.set(false);
+      return;
+    }
+    this.loading.set(true);
+    this.loadError.set(null);
+    this.service
+      .metrics(
+        period,
+        this.bucket(),
+        period === 'CUSTOM' ? this.customFrom() : null,
+        period === 'CUSTOM' ? this.customTo() : null,
+      )
+      .subscribe({
+        next: (m) => {
+          this.metrics.set(m);
+          this.loading.set(false);
+        },
+        error: () => {
+          this.loadError.set('Could not load dashboard metrics. Please try again.');
+          this.loading.set(false);
+        },
+      });
+  }
+
+  private refreshLiveAndActivity(): void {
+    this.service.liveStats().subscribe({
+      next: (s) => this.restLive.set(s),
+      error: () => {
+        /* live stats also arrive over SSE; ignore a transient REST error */
+      },
+    });
+    this.service.activity().subscribe({
+      next: (a) => this.restActivity.set(a),
+      error: () => {
+        /* activity also arrives over SSE; ignore a transient REST error */
+      },
+    });
+  }
+
+  // --- Notification feed --------------------------------------------------
+
+  clearNotifications(): void {
+    this.events.clearNotifications();
+  }
+
+  // --- Formatting helpers -------------------------------------------------
+
+  /** Formats a number as Indian Rupees with two decimals. */
+  inr(value: number | null | undefined): string {
+    const n = typeof value === 'number' ? value : 0;
+    return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  /** Formats an integer count with grouping. */
+  count(value: number | null | undefined): string {
+    const n = typeof value === 'number' ? value : 0;
+    return n.toLocaleString('en-IN');
+  }
+
+  /** Formats the previous-period % change with sign, or an em dash when N/A. */
+  changeText(): string {
+    const g = this.metrics()?.salesGraph;
+    if (!g || !g.changeApplicable || g.changePercent === null) {
+      return '—';
+    }
+    const sign = g.changePercent > 0 ? '+' : '';
+    return `${sign}${g.changePercent.toFixed(2)}%`;
+  }
+
+  /** The direction of the sales change, for colour/arrow styling. */
+  changeDirection(): 'up' | 'down' | 'flat' {
+    const g = this.metrics()?.salesGraph;
+    if (!g || !g.changeApplicable || g.changePercent === null || g.changePercent === 0) {
+      return 'flat';
+    }
+    return g.changePercent > 0 ? 'up' : 'down';
+  }
+
+  // --- SVG chart layout ---------------------------------------------------
+
+  private buildChart(): ChartModel | null {
+    const graph = this.metrics()?.salesGraph;
+    if (!graph || graph.points.length === 0) {
+      return null;
+    }
+    const points = graph.points;
+    const width = 760;
+    const height = 260;
+    const padL = 64;
+    const padR = 16;
+    const padT = 16;
+    const padB = 44;
+    const innerW = width - padL - padR;
+    const innerH = height - padT - padB;
+    const n = points.length;
+
+    const maxVal = Math.max(1, ...points.map((p) => Math.max(p.sales, p.previousSales)));
+    const slot = innerW / n;
+    const barW = Math.max(4, Math.min(40, slot * 0.55));
+    const centerX = (i: number) => padL + slot * i + slot / 2;
+    const yFor = (v: number) => padT + innerH - (v / maxVal) * innerH;
+
+    const bars: ChartBar[] = points.map((p, i) => {
+      const y = yFor(p.sales);
+      return {
+        x: centerX(i) - barW / 2,
+        y,
+        w: barW,
+        h: padT + innerH - y,
+        label: p.label,
+        sales: p.sales,
+        previousSales: p.previousSales,
+      };
+    });
+
+    const previousDots = points.map((p, i) => ({ x: centerX(i), y: yFor(p.previousSales) }));
+    const previousLine = previousDots.map((d) => `${d.x},${d.y}`).join(' ');
+
+    const gridLines = [0, 0.25, 0.5, 0.75, 1].map((f) => ({
+      y: padT + innerH - f * innerH,
+      label: this.compact(maxVal * f),
+    }));
+
+    // Thin the x-axis labels so they never overlap on long windows.
+    const stepEvery = Math.max(1, Math.ceil(n / 8));
+    const axisLabels = points
+      .map((p, i) => ({ x: centerX(i), label: p.label, i }))
+      .filter((e) => e.i % stepEvery === 0 || e.i === n - 1)
+      .map((e) => ({ x: e.x, label: this.shortLabel(e.label) }));
+
+    return { width, height, bars, previousLine, previousDots, gridLines, axisLabels };
+  }
+
+  /** Compact axis number (e.g. 12.5k) so the y-axis stays readable. */
+  private compact(value: number): string {
+    if (value >= 1_00_00_000) {
+      return `${(value / 1_00_00_000).toFixed(1)}Cr`;
+    }
+    if (value >= 1_00_000) {
+      return `${(value / 1_00_000).toFixed(1)}L`;
+    }
+    if (value >= 1_000) {
+      return `${(value / 1_000).toFixed(1)}k`;
+    }
+    return `${Math.round(value)}`;
+  }
+
+  /** Trims an ISO date / week / month bucket label to something compact. */
+  private shortLabel(label: string): string {
+    // Daily labels are ISO dates (yyyy-MM-dd) -> show MM-dd.
+    const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(label);
+    if (iso) {
+      return `${iso[2]}-${iso[3]}`;
+    }
+    // Weekly labels look like "Wk 2024-05-06" -> show the date part MM-dd.
+    const wk = /^Wk\s+(\d{4})-(\d{2})-(\d{2})$/.exec(label);
+    if (wk) {
+      return `${wk[2]}-${wk[3]}`;
+    }
+    return label;
+  }
+}

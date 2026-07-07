@@ -1,0 +1,171 @@
+<admin-page-header
+  title="Expenses"
+  subtitle="Record and review business expenses that feed the profit & loss report."
+  [breadcrumbs]="[{ label: 'Expenses' }]"
+>
+  <admin-density-toggle />
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+  <button type="button" class="btn btn-primary" (click)="openCreate()">
+    <i class="ti ti-plus me-1"></i> Add expense
+  </button>
+</admin-page-header>
+
+<!-- Filters -->
+<div class="card mb-3" [formGroup]="filters">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-lg">
+        <label class="form-label">Category</label>
+        <input type="search" class="form-control" formControlName="category" placeholder="Filter by category…" autocomplete="off" />
+      </div>
+      <div class="col-6 col-lg-auto">
+        <label class="form-label">From</label>
+        <input type="date" class="form-control" formControlName="from" />
+      </div>
+      <div class="col-6 col-lg-auto">
+        <label class="form-label">To</label>
+        <input type="date" class="form-control" formControlName="to" />
+      </div>
+      @if (hasFilters()) {
+        <div class="col-12 col-lg-auto">
+          <button type="button" class="btn btn-outline-secondary w-100" (click)="clearFilters()">
+            <i class="ti ti-x me-1"></i> Clear
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading expenses…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (expenses().length === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-cash"
+    title="No expenses found"
+    [message]="hasFilters() ? 'No expenses match your filters.' : 'Record an expense to start tracking spend.'"
+    [ctaLabel]="hasFilters() ? undefined : 'Add expense'"
+    (cta)="openCreate()"
+  />
+} @else {
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table table-hover">
+        <thead>
+          <tr>
+            <th adminSortHeader field="incurredOn" [sort]="sort()" (sortChange)="onSort($event)">Incurred on</th>
+            <th adminSortHeader field="category" [sort]="sort()" (sortChange)="onSort($event)">Category</th>
+            <th>Description</th>
+            <th class="text-end" adminSortHeader field="amount" [sort]="sort()" (sortChange)="onSort($event)">Amount</th>
+            <th adminSortHeader field="createdAt" [sort]="sort()" (sortChange)="onSort($event)">Recorded</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (e of expenses(); track e.id) {
+            <tr>
+              <td class="fw-medium">{{ e.incurredOn | date: 'dd MMM yyyy' }}</td>
+              <td><span class="badge bg-azure-lt">{{ e.category }}</span></td>
+              <td class="text-secondary">{{ e.description || '—' }}</td>
+              <td class="text-end fw-medium">{{ money(e.amount) }}</td>
+              <td class="text-secondary">{{ e.createdAt | date: 'dd MMM, HH:mm' }}</td>
+              <td class="text-end">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-danger"
+                  (click)="remove(e)"
+                  [disabled]="deletingId() !== null"
+                >
+                  <i class="ti ti-trash"></i>
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+}
+
+<!-- Add modal -->
+@if (creating()) {
+  <div class="shifa-overlay" (click)="closeCreate()"></div>
+  <div class="shifa-modal" role="dialog" aria-label="Add expense">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0">Add expense</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeCreate()" aria-label="Close"><i class="ti ti-x"></i></button>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (formError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert">
+            <i class="ti ti-alert-triangle me-2"></i>{{ err }}
+          </div>
+        }
+
+        <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+          <div class="row">
+            <div class="col-md-7 mb-3">
+              <label class="form-label required">Category</label>
+              <input type="text" class="form-control" formControlName="category" maxlength="100" autocomplete="off"
+                placeholder="e.g. Courier, Rent, Packaging"
+                [class.is-invalid]="form.controls.category.touched && form.controls.category.invalid" />
+              @if (form.controls.category.touched && form.controls.category.invalid) {
+                <div class="invalid-feedback">A category is required (max 100 characters).</div>
+              }
+            </div>
+            <div class="col-md-5 mb-3">
+              <label class="form-label required">Incurred on</label>
+              <input type="date" class="form-control" formControlName="incurredOn"
+                [class.is-invalid]="form.controls.incurredOn.touched && form.controls.incurredOn.invalid" />
+              @if (form.controls.incurredOn.touched && form.controls.incurredOn.invalid) {
+                <div class="invalid-feedback">Choose a date.</div>
+              }
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label required">Amount (₹)</label>
+            <input type="text" inputmode="decimal" class="form-control" formControlName="amount" placeholder="0.00"
+              [class.is-invalid]="form.controls.amount.touched && form.controls.amount.invalid" />
+            @if (form.controls.amount.touched && form.controls.amount.invalid) {
+              <div class="invalid-feedback">Enter a valid amount.</div>
+            }
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Description</label>
+            <textarea class="form-control" formControlName="description" rows="2" maxlength="500" placeholder="optional"></textarea>
+          </div>
+
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary" (click)="closeCreate()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="saving()">
+              @if (saving()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Saving…
+              } @else {
+                Record expense
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}

@@ -1,0 +1,14 @@
+/* Inventory page — modal size variants layered over the global .shifa-modal. */
+
+.shifa-modal.shifa-modal--sm {
+  width: min(460px, calc(100vw - 2rem));
+}
+
+.shifa-modal.shifa-modal--wide {
+  width: min(760px, calc(100vw - 2rem));
+}
+
+/* Keep the row action buttons on one line without wrapping awkwardly. */
+.btn-list.flex-nowrap {
+  gap: 0.35rem;
+}

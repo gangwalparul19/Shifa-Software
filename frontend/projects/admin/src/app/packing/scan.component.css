@@ -1,0 +1,19 @@
+:host {
+  display: block;
+}
+
+.shifa-scan-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 1rem;
+  font-size: 1.9rem;
+  color: var(--shifa-green-600, #1f5d3f);
+  background: var(--shifa-green-100, #e4f2ea);
+}
+
+.shifa-barcode {
+  font-family: var(--tblr-font-monospace, ui-monospace, monospace);
+  letter-spacing: 0.05em;
+}

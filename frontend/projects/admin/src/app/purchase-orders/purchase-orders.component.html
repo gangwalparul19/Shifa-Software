@@ -1,0 +1,403 @@
+<admin-page-header
+  title="Purchase Orders"
+  subtitle="Raise purchase orders against suppliers and receive stock as it arrives."
+  [breadcrumbs]="[{ label: 'Purchase Orders' }]"
+>
+  <admin-density-toggle />
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+  <button type="button" class="btn btn-primary" (click)="openCreate()">
+    <i class="ti ti-plus me-1"></i> New purchase order
+  </button>
+</admin-page-header>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-lg">
+        <div class="input-icon">
+          <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+          <input
+            type="search"
+            class="form-control"
+            [formControl]="search"
+            placeholder="Search by PO number…"
+            autocomplete="off"
+            aria-label="Search purchase orders"
+          />
+          @if (search.value) {
+            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
+              <i class="ti ti-x"></i>
+            </span>
+          }
+        </div>
+      </div>
+      <div class="col-6 col-lg-auto" [formGroup]="filters">
+        <label class="form-label">Status</label>
+        <select class="form-select" formControlName="status" aria-label="Filter by status">
+          <option value="">All statuses</option>
+          @for (s of statusOptions; track s) {
+            <option [value]="s">{{ statusLabel(s) }}</option>
+          }
+        </select>
+      </div>
+      <div class="col-6 col-lg-auto" [formGroup]="filters">
+        <label class="form-label">Supplier</label>
+        <select class="form-select" formControlName="supplierId" aria-label="Filter by supplier">
+          <option value="">All suppliers</option>
+          @for (s of activeSuppliers(); track s.id) {
+            <option [value]="s.id">{{ s.name }}</option>
+          }
+        </select>
+      </div>
+      @if (hasFilters()) {
+        <div class="col-12 col-lg-auto">
+          <button type="button" class="btn btn-outline-secondary w-100" (click)="clearFilters()">
+            <i class="ti ti-x me-1"></i> Clear
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading purchase orders…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (pos().length === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-clipboard-list"
+    title="No purchase orders found"
+    [message]="hasFilters() ? 'No purchase orders match your filters.' : 'Create a purchase order to restock from a supplier.'"
+  />
+} @else {
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table table-hover">
+        <thead>
+          <tr>
+            <th adminSortHeader field="poNumber" [sort]="sort()" (sortChange)="onSort($event)">PO number</th>
+            <th>Supplier</th>
+            <th adminSortHeader field="status" [sort]="sort()" (sortChange)="onSort($event)">Status</th>
+            <th class="text-end">Items</th>
+            <th class="text-end" adminSortHeader field="totalAmount" [sort]="sort()" (sortChange)="onSort($event)">Total</th>
+            <th adminSortHeader field="createdAt" [sort]="sort()" (sortChange)="onSort($event)">Created</th>
+            <th adminSortHeader field="receivedAt" [sort]="sort()" (sortChange)="onSort($event)">Received</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (po of pos(); track po.id) {
+            <tr class="clickable" (click)="openDetail(po)">
+              <td class="fw-medium">{{ po.poNumber }}</td>
+              <td>{{ supplierName(po.supplierId) }}</td>
+              <td><span class="badge" [attr.data-group]="statusTone(po.status)">{{ statusLabel(po.status) }}</span></td>
+              <td class="text-end">{{ po.itemCount }}</td>
+              <td class="text-end fw-medium">{{ money(po.totalAmount) }}</td>
+              <td class="text-secondary">{{ po.createdAt | date: 'dd MMM, HH:mm' }}</td>
+              <td class="text-secondary">{{ po.receivedAt ? (po.receivedAt | date: 'dd MMM, HH:mm') : '—' }}</td>
+              <td class="text-end">
+                <div class="btn-list justify-content-end flex-nowrap" (click)="$event.stopPropagation()">
+                  @if (isReceivable(po.status)) {
+                    <button type="button" class="btn btn-sm btn-outline-primary" (click)="startReceive(po)">
+                      <i class="ti ti-package-import me-1"></i> Receive
+                    </button>
+                  }
+                  @if (isCancellable(po.status)) {
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-outline-danger"
+                      (click)="cancel(po)"
+                      [disabled]="cancellingId() !== null"
+                    >
+                      Cancel
+                    </button>
+                  }
+                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openDetail(po)">View</button>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+}
+
+<!-- Detail drawer -->
+@if (detailLoading() || selectedPo() || detailError()) {
+  <div class="shifa-overlay" (click)="closeDetail()"></div>
+  <aside class="shifa-drawer" role="dialog" aria-label="Purchase order detail">
+    @if (detailLoading()) {
+      <div class="shifa-drawer__body">
+        <div class="skeleton skeleton-line w-60 mb-3"></div>
+        <div class="skeleton skeleton-card"></div>
+      </div>
+    } @else if (detailError()) {
+      <div class="shifa-drawer__body"><div class="alert alert-danger">{{ detailError() }}</div></div>
+    } @else if (selectedPo(); as po) {
+      <header class="shifa-drawer__head">
+        <div>
+          <h3 class="mb-1">{{ po.poNumber }}</h3>
+          <div class="text-secondary">{{ supplierName(po.supplierId) }}</div>
+        </div>
+        <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeDetail()" aria-label="Close">
+          <i class="ti ti-x"></i>
+        </button>
+      </header>
+
+      <div class="shifa-drawer__body">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+          <span class="badge" [attr.data-group]="statusTone(po.status)">{{ statusLabel(po.status) }}</span>
+          <span class="text-secondary">Created {{ po.createdAt | date: 'dd MMM yyyy, HH:mm' }}</span>
+          @if (po.receivedAt) {
+            <span class="text-secondary">· Received {{ po.receivedAt | date: 'dd MMM yyyy, HH:mm' }}</span>
+          }
+        </div>
+
+        @if (po.notes) {
+          <div class="mb-3">
+            <div class="subheader mb-1">Notes</div>
+            <p class="mb-0">{{ po.notes }}</p>
+          </div>
+        }
+
+        <div class="subheader mb-2">Line items</div>
+        <table class="table table-sm table-vcenter">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th class="text-end">Qty</th>
+              <th class="text-end">Received</th>
+              <th class="text-end">Unit cost</th>
+              <th class="text-end">Line total</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of po.items; track item.id) {
+              <tr>
+                <td>{{ productName(item.productId) }}</td>
+                <td class="text-end">{{ item.quantity }}</td>
+                <td class="text-end">{{ item.receivedQuantity }}</td>
+                <td class="text-end">{{ money(item.unitCost) }}</td>
+                <td class="text-end">{{ money(item.lineTotal) }}</td>
+              </tr>
+            }
+          </tbody>
+          <tfoot>
+            <tr>
+              <th colspan="4" class="text-end">Total</th>
+              <th class="text-end">{{ money(po.totalAmount) }}</th>
+            </tr>
+          </tfoot>
+        </table>
+
+        <div class="btn-list mt-3">
+          @if (isReceivable(po.status)) {
+            <button type="button" class="btn btn-primary" (click)="openReceive(po)">
+              <i class="ti ti-package-import me-1"></i> Receive stock
+            </button>
+          }
+          @if (isCancellable(po.status)) {
+            <button
+              type="button"
+              class="btn btn-outline-danger"
+              (click)="cancel(po)"
+              [disabled]="cancellingId() !== null"
+            >
+              <i class="ti ti-ban me-1"></i> Cancel PO
+            </button>
+          }
+        </div>
+      </div>
+    }
+  </aside>
+}
+
+<!-- Create modal -->
+@if (creating()) {
+  <div class="shifa-overlay" (click)="closeCreate()"></div>
+  <div class="shifa-modal shifa-modal--wide" role="dialog" aria-label="Create purchase order">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0">New purchase order</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeCreate()" aria-label="Close"><i class="ti ti-x"></i></button>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (createError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert">
+            <i class="ti ti-alert-triangle me-2"></i>{{ err }}
+          </div>
+        }
+
+        <form [formGroup]="createForm" (ngSubmit)="submitCreate()" novalidate>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label required">Supplier</label>
+              <select class="form-select" formControlName="supplierId"
+                [class.is-invalid]="createForm.controls.supplierId.touched && createForm.controls.supplierId.invalid">
+                <option value="">Select a supplier…</option>
+                @for (s of activeSuppliers(); track s.id) {
+                  <option [value]="s.id">{{ s.name }}</option>
+                }
+              </select>
+              @if (createForm.controls.supplierId.touched && createForm.controls.supplierId.invalid) {
+                <div class="invalid-feedback">Choose a supplier.</div>
+              }
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Notes</label>
+              <input type="text" class="form-control" formControlName="notes" maxlength="1000" autocomplete="off" placeholder="optional" />
+            </div>
+          </div>
+
+          <div class="subheader mb-2">Line items</div>
+          <div class="table-responsive">
+            <table class="table table-sm table-vcenter">
+              <thead>
+                <tr>
+                  <th style="min-width: 12rem">Product</th>
+                  <th class="text-end" style="width: 7rem">Qty</th>
+                  <th class="text-end" style="width: 9rem">Unit cost (₹)</th>
+                  <th class="text-end" style="width: 8rem">Line total</th>
+                  <th style="width: 3rem"></th>
+                </tr>
+              </thead>
+              <tbody [formArrayName]="'items'">
+                @for (group of itemsArray.controls; track group; let i = $index) {
+                  <tr [formGroupName]="i">
+                    <td>
+                      <select class="form-select" formControlName="productId"
+                        [class.is-invalid]="group.get('productId')!.touched && group.get('productId')!.invalid">
+                        <option value="">Select a product…</option>
+                        @for (p of products(); track p.id) {
+                          <option [value]="p.id">{{ p.name }}</option>
+                        }
+                      </select>
+                    </td>
+                    <td>
+                      <input type="text" inputmode="numeric" class="form-control text-end" formControlName="quantity"
+                        [class.is-invalid]="group.get('quantity')!.touched && group.get('quantity')!.invalid" />
+                    </td>
+                    <td>
+                      <input type="text" inputmode="decimal" class="form-control text-end" formControlName="unitCost" placeholder="0.00"
+                        [class.is-invalid]="group.get('unitCost')!.touched && group.get('unitCost')!.invalid" />
+                    </td>
+                    <td class="text-end align-middle">{{ money(lineTotal($any(group))) }}</td>
+                    <td class="text-end align-middle">
+                      <button type="button" class="btn btn-icon btn-sm btn-ghost-danger"
+                        (click)="removeItem(i)" [disabled]="itemsArray.length <= 1" aria-label="Remove line">
+                        <i class="ti ti-trash"></i>
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th colspan="3" class="text-end">Grand total</th>
+                  <th class="text-end">{{ money(grandTotal()) }}</th>
+                  <th></th>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <button type="button" class="btn btn-outline-secondary btn-sm mb-3" (click)="addItem()">
+            <i class="ti ti-plus me-1"></i> Add line
+          </button>
+
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary" (click)="closeCreate()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="saving()">
+              @if (saving()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Saving…
+              } @else {
+                Create purchase order
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Receive modal -->
+@if (receivePo(); as po) {
+  <div class="shifa-overlay" (click)="closeReceive()"></div>
+  <div class="shifa-modal shifa-modal--wide" role="dialog" aria-label="Receive purchase order">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0">Receive stock — {{ po.poNumber }}</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeReceive()" aria-label="Close"><i class="ti ti-x"></i></button>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (receiveError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert">
+            <i class="ti ti-alert-triangle me-2"></i>{{ err }}
+          </div>
+        }
+        <p class="text-secondary">Enter the quantity received for each line. Quantities default to the outstanding amount.</p>
+
+        <form [formGroup]="receiveForm" (ngSubmit)="submitReceive()" novalidate>
+          <div class="table-responsive">
+            <table class="table table-sm table-vcenter">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th class="text-end">Ordered</th>
+                  <th class="text-end">Already received</th>
+                  <th class="text-end">Outstanding</th>
+                  <th class="text-end" style="width: 9rem">Receive now</th>
+                </tr>
+              </thead>
+              <tbody [formArrayName]="'lines'">
+                @for (group of receiveLines.controls; track group; let i = $index) {
+                  <tr [formGroupName]="i">
+                    <td>{{ productName(receiveItem(i)!.productId) }}</td>
+                    <td class="text-end">{{ receiveItem(i)!.quantity }}</td>
+                    <td class="text-end">{{ receiveItem(i)!.receivedQuantity }}</td>
+                    <td class="text-end">{{ remaining(receiveItem(i)!) }}</td>
+                    <td>
+                      <input type="text" inputmode="numeric" class="form-control text-end" formControlName="receivedQuantity"
+                        [class.is-invalid]="group.get('receivedQuantity')!.touched && group.get('receivedQuantity')!.invalid" />
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary" (click)="closeReceive()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="receiving()">
+              @if (receiving()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Receiving…
+              } @else {
+                <i class="ti ti-package-import me-1"></i> Confirm receipt
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}

@@ -1,0 +1,28 @@
+<section class="auth-card">
+  <h1>Sign in</h1>
+  <p class="auth-sub">Welcome back. Sign in to view your orders and saved addresses.</p>
+
+  <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <label>
+      <span>Username</span>
+      <input type="text" formControlName="username" autocomplete="username" />
+    </label>
+
+    <label>
+      <span>Password</span>
+      <input type="password" formControlName="password" autocomplete="current-password" />
+    </label>
+
+    @if (error()) {
+      <p class="error" role="alert">{{ error() }}</p>
+    }
+
+    <button type="submit" [disabled]="submitting()">
+      {{ submitting() ? 'Signing in…' : 'Sign in' }}
+    </button>
+  </form>
+
+  <p class="auth-alt">
+    New to Shifa? <a routerLink="/register">Create an account</a>
+  </p>
+</section>

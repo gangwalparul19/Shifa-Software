@@ -1,0 +1,6 @@
+/* Staff user management — most styling is inherited from the shared Tabler
+   theme and the global admin stylesheet (tables, badges, modals). Keep any
+   page-specific tweaks small to stay within the component-style budget. */
+:host {
+  display: block;
+}

@@ -1,0 +1,106 @@
+<admin-page-header
+  title="Packing"
+  subtitle="Scan a label barcode to mark the order Packed."
+  [breadcrumbs]="[{ label: 'Packing' }]"
+/>
+
+<div class="row justify-content-center packing-scan">
+  <div class="col-lg-8 col-xl-7">
+    <div class="card card-hover mb-3">
+      <div class="card-body">
+        <div class="text-center mb-3">
+          <span class="shifa-scan-icon"><i class="ti ti-barcode"></i></span>
+        </div>
+        <form [formGroup]="form" (ngSubmit)="submit()">
+          <label class="form-label" for="barcode">Barcode</label>
+          <div class="input-group input-group-flat mb-2">
+            <input
+              #barcodeInput
+              id="barcode"
+              class="form-control form-control-lg shifa-barcode"
+              type="text"
+              formControlName="barcode"
+              placeholder="Scan or type the order barcode…"
+              autocomplete="off"
+              autocapitalize="characters"
+              spellcheck="false"
+              [attr.aria-invalid]="form.controls.barcode.touched && form.controls.barcode.invalid"
+            />
+            <button type="submit" class="btn btn-primary btn-lg" [disabled]="submitting()">
+              @if (submitting()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Scanning…
+              } @else {
+                <i class="ti ti-scan me-1"></i> Scan
+              }
+            </button>
+          </div>
+          <p class="text-secondary small m-0">
+            <i class="ti ti-info-circle me-1"></i>
+            Press Enter to submit — works with a handheld scanner or manual entry.
+          </p>
+        </form>
+      </div>
+    </div>
+
+    @if (banner(); as b) {
+      <div
+        class="alert d-flex align-items-center anim-pop"
+        [class.alert-success]="b.outcome === 'packed'"
+        [class.alert-warning]="b.outcome === 'not-recognized' || b.outcome === 'wrong-status'"
+        [class.alert-danger]="b.outcome === 'error'"
+        role="status"
+        aria-live="polite"
+      >
+        <i class="ti fs-2 me-3"
+          [class.ti-circle-check]="b.outcome === 'packed'"
+          [class.ti-help-circle]="b.outcome === 'not-recognized'"
+          [class.ti-alert-triangle]="b.outcome === 'wrong-status'"
+          [class.ti-circle-x]="b.outcome === 'error'"></i>
+        <div>
+          <h4 class="alert-title mb-0">{{ b.title }}</h4>
+          <div class="text-secondary">{{ b.detail }}</div>
+        </div>
+      </div>
+    }
+
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0">Recent scans</h3>
+        <div class="card-actions">
+          @if (log().length) {
+            <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="clearLog()">Clear</button>
+          }
+        </div>
+      </div>
+      @if (log().length === 0) {
+        <div class="empty py-4">
+          <div class="empty-icon"><i class="ti ti-history"></i></div>
+          <p class="empty-title">No scans yet in this session</p>
+        </div>
+      } @else {
+        <div class="list-group list-group-flush">
+          @for (entry of log(); track entry.at.getTime()) {
+            <div class="list-group-item feed-item">
+              <div class="d-flex align-items-center">
+                <span class="shifa-note-dot me-3"
+                  [class.bg-success]="entry.outcome === 'packed'"
+                  [class.bg-warning]="entry.outcome === 'not-recognized' || entry.outcome === 'wrong-status'"
+                  [class.bg-danger]="entry.outcome === 'error'"></span>
+                <div class="me-auto">
+                  <div class="fw-medium shifa-mono">{{ entry.barcode }}</div>
+                  <div class="text-secondary small d-flex align-items-center gap-1 flex-wrap">
+                    <span>{{ entry.message }}</span>
+                    @if (entry.currentStatus) {
+                      <admin-status-badge [status]="entry.currentStatus" />
+                    }
+                  </div>
+                </div>
+                <span class="text-secondary small">{{ entry.at | date: 'HH:mm:ss' }}</span>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+</div>

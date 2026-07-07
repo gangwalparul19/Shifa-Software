@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shifa Herbal Remedies — Platform Features, Roles &amp; Flows</title>
+<style>
+  :root{
+    --green:#1F7A4D; --green-dark:#14532D; --gold:#C8A24A;
+    --bg:#f4f6f4; --card:#ffffff; --text:#243b30; --muted:#6b7b72; --line:#e2e8e4;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6;font-size:15px;}
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px 80px;}
+  header.brand{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;
+    padding:36px 20px;text-align:center;}
+  header.brand .leaf{font-size:34px;}
+  header.brand h1{margin:6px 0 4px;font-size:28px;letter-spacing:.3px;}
+  header.brand p{margin:0;color:#dceee2;font-size:15px;}
+  .rule{height:4px;background:var(--gold);}
+  h2{color:var(--green-dark);border-bottom:2px solid var(--gold);padding-bottom:6px;margin-top:44px;}
+  h3{color:var(--green);margin-top:28px;}
+  h4{color:var(--green-dark);margin:18px 0 6px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 24px;margin:18px 0;
+    box-shadow:0 1px 3px rgba(20,83,45,.05);}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px;}
+  th,td{text-align:left;padding:9px 12px;border:1px solid var(--line);vertical-align:top;}
+  th{background:var(--green);color:#fff;font-weight:600;}
+  tr:nth-child(even) td{background:#eaf3ec;}
+  .pill{display:inline-block;background:#eaf3ec;color:var(--green-dark);border:1px solid var(--green);
+    border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;margin:2px 4px 2px 0;}
+  .toc{columns:2;column-gap:36px;}
+  .toc a{color:var(--green);text-decoration:none;}
+  .toc a:hover{text-decoration:underline;}
+  ul{margin:6px 0 6px 0;padding-left:22px;}
+  li{margin:3px 0;}
+  .flow{background:#f8faf8;border-left:4px solid var(--gold);padding:12px 16px;border-radius:6px;margin:12px 0;
+    font-family:"Consolas","SF Mono",monospace;font-size:13px;color:var(--green-dark);white-space:pre-wrap;}
+  .muted{color:var(--muted);font-size:13px;}
+  footer{text-align:center;color:var(--muted);font-size:13px;margin-top:50px;padding-top:16px;border-top:1px solid var(--line);}
+  footer a{color:var(--gold);text-decoration:none;}
+  @media print{body{background:#fff;font-size:12px;}.card{box-shadow:none;}header.brand{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+  @media(max-width:640px){.toc{columns:1;}}
+</style>
+</head>
+<body>
+<header class="brand">
+  <div class="leaf">🌿</div>
+  <h1>Shifa Herbal Remedies</h1>
+  <p>Online Store &amp; Order Management Platform — Features, Roles &amp; Workflows</p>
+</header>
+<div class="rule"></div>
+
+<div class="wrap">
+
+<div class="card">
+  <strong>About this document.</strong> A plain-language walkthrough of everything the Shifa
+  platform does today — the customer storefront, the staff admin panel, the people (roles) who
+  use it, and how an order moves from placement to delivery and settlement. Use it as a product
+  overview for the client, the team, or a demo script.
+  <p class="muted">Prepared by Weblithic • Version 1.0</p>
+</div>
+
+<h2 id="toc">Contents</h2>
+<div class="card toc">
+  <a href="#overview">1. Platform overview</a><br/>
+  <a href="#roles">2. Roles &amp; who does what</a><br/>
+  <a href="#store">3. Customer storefront features</a><br/>
+  <a href="#admin">4. Admin / OMS features</a><br/>
+  <a href="#store-flow">5. Customer journey (store flow)</a><br/>
+  <a href="#order-flow">6. Order lifecycle (admin flow)</a><br/>
+  <a href="#reco-flow">7. COD &amp; reconciliation flow</a><br/>
+  <a href="#returns-flow">8. Returns / RTO flow</a><br/>
+  <a href="#procure-flow">9. Procurement &amp; stock flow</a><br/>
+  <a href="#notify">10. Notifications (Email &amp; WhatsApp)</a><br/>
+  <a href="#tech">11. Technology &amp; security</a><br/>
+</div>
+
+<h2 id="overview">1. Platform overview</h2>
+<div class="card">
+  <p>Shifa is a complete direct-to-consumer commerce platform for a herbal-remedies business,
+  built as two connected applications sharing one secure backend and database:</p>
+  <ul>
+    <li><strong>Storefront</strong> — a fast, mobile-first Progressive Web App (installable, works
+      partly offline) where customers browse products, place orders, pay, and track delivery.</li>
+    <li><strong>Admin / OMS</strong> — the staff control room: order management, packing, courier
+      dispatch, money reconciliation, catalog, inventory, procurement, finance, reports and settings.</li>
+  </ul>
+  <p>Both run on a single secure server with a shared MySQL database. Everything a customer does on
+  the store appears instantly for staff on the admin panel, and vice-versa.</p>
+  <span class="pill">Bilingual (English / हिन्दी)</span>
+  <span class="pill">Mobile, tablet &amp; desktop</span>
+  <span class="pill">Light &amp; dark mode</span>
+  <span class="pill">GST-ready invoicing</span>
+  <span class="pill">Installable app (PWA)</span>
+</div>
+
+<h2 id="roles">2. Roles &amp; who does what</h2>
+<div class="card">
+<p>Access is role-based — each staff member only sees the sections relevant to their job. This keeps
+the panel simple and protects sensitive money/customer data.</p>
+<table>
+  <tr><th>Role</th><th>Who</th><th>What they can do</th></tr>
+  <tr><td><strong>Admin</strong></td><td>Owner / manager</td>
+    <td>Full access: all orders, catalog, inventory, users, settings, finance, procurement, reports, audit log.</td></tr>
+  <tr><td><strong>Salesperson</strong></td><td>Tele-sales / counter staff</td>
+    <td>Create orders on behalf of customers (with the ability to override the price per line), view their own orders and reports.</td></tr>
+  <tr><td><strong>Packing user</strong></td><td>Warehouse / packing desk</td>
+    <td>Scan &amp; pack approved orders, print shipping and internal labels + barcodes.</td></tr>
+  <tr><td><strong>Accountant</strong></td><td>Finance staff</td>
+    <td>Reconciliation (COD collection, loss claims), returns/refunds, expenses, profit &amp; loss, reports, customers.</td></tr>
+  <tr><td><strong>Customer</strong></td><td>Shoppers on the storefront</td>
+    <td>Browse, wishlist, cart, checkout, pay, track orders, review products, manage their account &amp; order history.</td></tr>
+</table>
+</div>
+
+<h2 id="store">3. Customer storefront features</h2>
+<div class="card">
+<h4>Discover &amp; browse</h4>
+<ul>
+  <li>Product catalog with categories &amp; collections, search, filters and sorting.</li>
+  <li>Rich product pages with images, description, price/offer, stock awareness and related products.</li>
+  <li>Verified customer <strong>ratings &amp; reviews</strong> (moderated by admin).</li>
+  <li>SEO-optimised: clean URLs, meta/OpenGraph tags, product structured data, sitemap — built to rank on Google.</li>
+</ul>
+<h4>Shop &amp; buy</h4>
+<ul>
+  <li><strong>Wishlist</strong> with a shareable public link, and a persistent <strong>cart</strong> that follows the customer across devices when logged in.</li>
+  <li>Checkout with <strong>pincode → city/state autofill</strong>, live inline validation, and a delivery-date estimate.</li>
+  <li>Payment options: <strong>Cash on Delivery (COD)</strong> and <strong>online payment</strong> (gateway-ready).</li>
+  <li><strong>Coupons &amp; offers</strong> with live discount preview in the cart.</li>
+  <li>Instant order confirmation by email and a WhatsApp handoff for support.</li>
+</ul>
+<h4>Track &amp; engage</h4>
+<ul>
+  <li>Order tracking by order code, with a live order-status chat/timeline.</li>
+  <li>Customer accounts with full order history &amp; re-order.</li>
+  <li>Branded transactional emails: welcome, order confirmed, shipped, delivered.</li>
+  <li>Experience polish: cart drawer, add-to-cart animations, toasts, sticky mobile buy button,
+      <strong>dark mode</strong>, <strong>English/Hindi</strong>, installable app with an offline page.</li>
+</ul>
+</div>
+
+<h2 id="admin">4. Admin / OMS features</h2>
+<div class="card">
+<h4>Command centre</h4>
+<ul>
+  <li><strong>Dashboard</strong> with live KPIs and charts (revenue trend, orders by status, top products/states) and a real-time activity feed that updates without refreshing.</li>
+  <li><strong>Global search</strong> and saved filter views.</li>
+</ul>
+<h4>Order operations</h4>
+<ul>
+  <li><strong>Orders</strong> list with server-side pagination, sorting, filtering and bulk actions (approve, mark-packed, merged label PDF).</li>
+  <li><strong>Approval queue</strong> for reviewing and approving new orders.</li>
+  <li><strong>New Order</strong> entry for salespeople/admin, with a per-line <strong>price override</strong> and a screenshot upload.</li>
+  <li><strong>Packing</strong> scan station that generates shipping + internal labels and barcodes.</li>
+  <li><strong>Returns / RTO</strong> workflow: initiate return, capture reason, restock, track refund.</li>
+</ul>
+<h4>Money &amp; catalog</h4>
+<ul>
+  <li><strong>Reconciliation</strong> of COD collections and courier loss/damage claims.</li>
+  <li><strong>Branded invoices</strong> (plain &amp; GST tax invoice) and <strong>reports</strong> (Excel / PDF / Vyapar export) in the Shifa theme.</li>
+  <li><strong>Products</strong> (with CSV bulk import), <strong>inventory</strong> with a stock-movement ledger &amp; low-stock alerts, <strong>coupons</strong> and <strong>review moderation</strong>.</li>
+</ul>
+<h4>Procurement, finance &amp; governance</h4>
+<ul>
+  <li><strong>Procurement</strong>: suppliers &amp; purchase orders; receiving goods automatically restocks inventory.</li>
+  <li><strong>Finance</strong>: expenses tracking and a Profit &amp; Loss view (revenue vs costs vs expenses).</li>
+  <li><strong>Customers / CRM</strong>: lifetime value, order history, repeat-buyer flags.</li>
+  <li><strong>Notifications centre</strong> + bell, global <strong>audit log</strong> (who changed what, when).</li>
+  <li><strong>Settings</strong>: company identity &amp; logo, GST config, invoice numbering, bank details, terms, tax slabs.</li>
+  <li><strong>User management</strong> with role assignment.</li>
+  <li><strong>Scheduled daily sales-digest email</strong> to the owner.</li>
+</ul>
+</div>
+
+<h2 id="store-flow">5. Customer journey (store flow)</h2>
+<div class="card">
+<div class="flow">Land on store  →  Browse / search / filter  →  Open product
+      →  Add to wishlist / cart  →  (optional) apply coupon
+      →  Checkout: enter details (pincode autofill) 
+      →  Choose COD or Online payment
+      →  Place order  →  Instant confirmation (email + on-screen + WhatsApp)
+      →  Track order status  →  Delivered  →  Leave a review</div>
+<p class="muted">A logged-in customer keeps their cart, wishlist and full order history across devices. A guest can still check out and track by order code.</p>
+</div>
+
+<h2 id="order-flow">6. Order lifecycle (admin flow)</h2>
+<div class="card">
+<p>Every order moves through a controlled state machine. Staff actions and courier updates advance
+the status; nothing skips a step, so the records always stay trustworthy.</p>
+<div class="flow">PLACED
+   │  (admin/approval queue reviews)
+   ▼
+APPROVED ──► PACKED ──► DISPATCHED ──► OUT FOR DELIVERY ──► DELIVERED
+   │                        │                                  
+   │                        ├──► RTO (returned to origin)
+   │                        └──► LOST IN TRANSIT (courier claim)
+   └──► REJECTED / CANCELLED</div>
+<table>
+  <tr><th>Stage</th><th>What happens</th><th>Who</th></tr>
+  <tr><td>Placed</td><td>Customer (or salesperson) creates the order; confirmation sent.</td><td>Customer / Salesperson</td></tr>
+  <tr><td>Approved</td><td>Order reviewed in the approval queue and accepted.</td><td>Admin</td></tr>
+  <tr><td>Packed</td><td>Items scanned &amp; packed; labels + barcode printed.</td><td>Packing user</td></tr>
+  <tr><td>Dispatched</td><td>Courier assigned, AWB generated, tracking + WhatsApp/email sent.</td><td>System / Admin</td></tr>
+  <tr><td>Out for delivery / Delivered</td><td>Courier webhooks update status; customer notified.</td><td>Courier → System</td></tr>
+  <tr><td>RTO / Lost</td><td>Return-to-origin or a loss claim is opened for reconciliation.</td><td>Accountant</td></tr>
+</table>
+</div>
+
+<h2 id="reco-flow">7. COD &amp; reconciliation flow</h2>
+<div class="card">
+<div class="flow">Delivered (COD)  →  Courier collects cash  →  Courier remits to business
+        →  Accountant records "received from courier"  →  Receivable settled
+Lost/Damaged     →  Loss claim raised  →  Claim tracked  →  Recovered / written-off</div>
+<p class="muted">The reconciliation ledger always shows what money is still owed by the courier (COD not yet remitted) and the status of any loss claims — this feeds the Profit &amp; Loss view.</p>
+</div>
+
+<h2 id="returns-flow">8. Returns / RTO flow</h2>
+<div class="card">
+<div class="flow">Return requested / RTO  →  Reason captured  →  Goods received back
+      →  Inventory restocked  →  Refund tracked (if prepaid)  →  Return closed</div>
+</div>
+
+<h2 id="procure-flow">9. Procurement &amp; stock flow</h2>
+<div class="card">
+<div class="flow">Create Supplier  →  Raise Purchase Order (items, qty, unit cost)
+      →  Goods arrive  →  Receive PO (full or partial)
+      →  Inventory auto-restocked  →  Stock ledger updated  →  Expense recorded</div>
+<p class="muted">Selling decrements stock automatically; receiving a PO increments it. Low-stock alerts warn before items run out.</p>
+</div>
+
+<h2 id="notify">10. Notifications (Email &amp; WhatsApp)</h2>
+<div class="card">
+<table>
+  <tr><th>Trigger</th><th>Email</th><th>WhatsApp</th></tr>
+  <tr><td>New account</td><td>Welcome email</td><td>—</td></tr>
+  <tr><td>Order placed</td><td>Order confirmation</td><td>Order confirmed</td></tr>
+  <tr><td>Dispatched</td><td>Shipped + tracking</td><td>Dispatched + tracking + COD amount</td></tr>
+  <tr><td>Out for delivery / Delivered</td><td>Delivered + review nudge</td><td>Status update</td></tr>
+  <tr><td>RTO / Lost</td><td>—</td><td>Status update</td></tr>
+  <tr><td>Daily (owner)</td><td>Sales digest</td><td>—</td></tr>
+</table>
+<p class="muted">All emails use a branded HTML template (Shifa green/gold, logo, CTA button). WhatsApp uses
+pre-approved Meta templates. Both are designed to keep customers engaged and coming back.</p>
+</div>
+
+<h2 id="tech">11. Technology &amp; security</h2>
+<div class="card">
+<ul>
+  <li><strong>Frontend:</strong> Angular (two apps: storefront + admin), installable PWA, responsive, light/dark, EN/HI.</li>
+  <li><strong>Backend:</strong> Java / Spring Boot REST API with a MySQL database and versioned schema migrations.</li>
+  <li><strong>Security:</strong> token-based (JWT) login, role-based access control, BCrypt-hashed passwords, per-role method-level authorization, audit logging.</li>
+  <li><strong>Integrations (swappable):</strong> payment gateway, courier API + webhooks, WhatsApp Business API, SMTP email — each runs in a safe "mock/sandbox" mode until real credentials are switched on.</li>
+  <li><strong>Reliability:</strong> nightly database backups, transactional outbox for guaranteed notification delivery, real-time dashboard via server-sent events.</li>
+  <li><strong>Hosting:</strong> single cloud VM with Nginx + the app + MySQL; HTTPS-ready; low running cost.</li>
+</ul>
+</div>
+
+<footer>
+  Shifa Herbal Remedies — Platform overview &nbsp;•&nbsp; Designed &amp; Developed by
+  <a href="https://www.weblithic.com/">Weblithic</a>
+</footer>
+
+</div>
+</body>
+</html>

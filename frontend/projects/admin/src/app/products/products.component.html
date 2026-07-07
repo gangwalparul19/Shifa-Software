@@ -1,0 +1,587 @@
+<admin-page-header
+  title="Products"
+  subtitle="Manage the catalog, pricing, and storefront visibility."
+  [breadcrumbs]="[{ label: 'Products' }]"
+>
+  <admin-density-toggle />
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+  <button type="button" class="btn btn-outline-secondary" (click)="openCategories()">
+    <i class="ti ti-category me-1"></i> Categories
+  </button>
+  <button type="button" class="btn btn-outline-secondary" (click)="openImport()">
+    <i class="ti ti-file-import me-1"></i> Import CSV
+  </button>
+  <button type="button" class="btn btn-primary" (click)="openCreate()">
+    <i class="ti ti-plus me-1"></i> Add product
+  </button>
+</admin-page-header>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-lg">
+        <div class="input-icon">
+          <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+          <input
+            type="search"
+            class="form-control"
+            [formControl]="search"
+            placeholder="Search by name or SKU…"
+            autocomplete="off"
+            aria-label="Search products"
+          />
+          @if (search.value) {
+            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
+              <i class="ti ti-x"></i>
+            </span>
+          }
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
+        <label class="form-label small mb-1">Category</label>
+        <select class="form-select" formControlName="category" aria-label="Filter by category">
+          <option value="">All categories</option>
+          @for (cat of categories(); track cat.id) {
+            <option [value]="cat.id">{{ cat.name }}</option>
+          }
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
+        <label class="form-label small mb-1">Visibility</label>
+        <select class="form-select" formControlName="visibility" aria-label="Filter by visibility">
+          <option value="">All</option>
+          <option [value]="Visibility.PUBLISHED">Published</option>
+          <option [value]="Visibility.HIDDEN">Hidden</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
+        <label class="form-label small mb-1">Stock</label>
+        <select class="form-select" formControlName="stockStatus" aria-label="Filter by stock status">
+          <option value="">All stock</option>
+          @for (s of stockOptions; track s) {
+            <option [value]="s">{{ humanizeStock(s) }}</option>
+          }
+        </select>
+      </div>
+      @if (hasFilters()) {
+        <div class="col-auto">
+          <button type="button" class="btn btn-link text-secondary px-1" (click)="clearFilters()">
+            <i class="ti ti-filter-off me-1"></i> Clear
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <admin-state-panel
+    variant="loading"
+    [card]="true"
+    skeleton="cards"
+    [skeletonRows]="[1, 2, 3, 4]"
+    loadingLabel="Loading products…"
+  />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (products().length === 0 && hasFilters()) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-leaf-off"
+    title="No products found"
+    message="No products match your filters."
+  />
+} @else if (products().length === 0) {
+  <admin-state-panel
+    variant="onboarding"
+    [card]="true"
+    icon="ti-leaf-off"
+    title="Add your first product"
+    message="Your catalog is empty. Create your first product to start selling on the storefront."
+    ctaLabel="Add product"
+    (cta)="openCreate()"
+  />
+} @else {
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table table-hover stagger-rows">
+        <thead>
+          <tr>
+            <th class="w-1"></th>
+            <th adminSortHeader field="name" [sort]="sort()" (sortChange)="onSort($event)">Name</th>
+            <th adminSortHeader field="sku" [sort]="sort()" (sortChange)="onSort($event)">SKU</th>
+            <th>Category</th>
+            <th class="text-end" adminSortHeader field="salePrice" [sort]="sort()" (sortChange)="onSort($event)">Sale price</th>
+            <th adminSortHeader field="stockQuantity" [sort]="sort()" (sortChange)="onSort($event)">Stock</th>
+            <th>Visibility</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (product of products(); track product.id) {
+            <tr>
+              <td>
+                @if (thumb(product); as src) {
+                  <span class="avatar avatar-md" [style.background-image]="'url(' + src + ')'"></span>
+                } @else {
+                  <span class="avatar avatar-md shifa-avatar"><i class="ti ti-leaf"></i></span>
+                }
+              </td>
+              <td>
+                <button type="button" class="btn btn-link p-0 fw-medium text-start" (click)="openEdit(product)">
+                  {{ product.name }}
+                </button>
+                @if (product.featured) {
+                  <span class="badge bg-yellow-lt ms-1" title="Featured"><i class="ti ti-star"></i></span>
+                }
+              </td>
+              <td><span class="shifa-mono text-secondary">{{ product.sku }}</span></td>
+              <td>{{ categoryName(product) }}</td>
+              <td class="text-end fw-medium">{{ money(product.salePrice) }}</td>
+              <td>
+                <span class="stock-pill" [attr.data-tone]="stockTone(product)">{{ stockLabel(product) }}</span>
+              </td>
+              <td>
+                <span class="badge" [attr.data-visibility]="product.visibility">
+                  <i class="ti me-1" [class.ti-eye]="product.visibility === Visibility.PUBLISHED" [class.ti-eye-off]="product.visibility !== Visibility.PUBLISHED"></i>
+                  {{ product.visibility }}
+                </span>
+              </td>
+              <td class="text-end">
+                <div class="btn-list justify-content-end flex-nowrap">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openEdit(product)">
+                    <i class="ti ti-edit"></i>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    (click)="toggleVisibility(product)"
+                    [disabled]="togglingId() !== null"
+                  >
+                    {{ product.visibility === Visibility.PUBLISHED ? 'Hide' : 'Publish' }}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+}
+
+<!-- Add / Edit form modal -->
+@if (formOpen()) {
+  <div class="shifa-overlay" (click)="closeForm()"></div>
+  <div class="shifa-modal" role="dialog" aria-label="Product form">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0">{{ editing() ? 'Edit product' : 'Add product' }}</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeForm()" aria-label="Close"><i class="ti ti-x"></i></button>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (formError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert">
+            <i class="ti ti-alert-triangle me-2"></i>{{ err }}
+          </div>
+        }
+
+        <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+          <div class="mb-3">
+            <label class="form-label required">Name</label>
+            <input type="text" class="form-control" formControlName="name" maxlength="200" autocomplete="off"
+              [class.is-invalid]="form.controls.name.touched && form.controls.name.invalid" />
+            @if (form.controls.name.touched && form.controls.name.invalid) {
+              <div class="invalid-feedback">Name is required (max 200 characters).</div>
+            }
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label required">SKU</label>
+            <input type="text" class="form-control" formControlName="sku" maxlength="64" autocomplete="off"
+              [class.is-invalid]="form.controls.sku.touched && form.controls.sku.invalid" />
+            @if (form.controls.sku.touched && form.controls.sku.invalid) {
+              <div class="invalid-feedback">SKU is required (max 64 characters).</div>
+            }
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Description</label>
+            <textarea class="form-control" formControlName="description" rows="3"></textarea>
+          </div>
+
+          <div class="row">
+            <div class="col-6 mb-3">
+              <label class="form-label required">MRP</label>
+              <input type="text" inputmode="decimal" class="form-control" formControlName="mrp" placeholder="0.00"
+                [class.is-invalid]="form.controls.mrp.touched && form.controls.mrp.invalid" />
+              @if (form.controls.mrp.touched && form.controls.mrp.invalid) {
+                <div class="invalid-feedback">Enter a valid amount (e.g. 199.00).</div>
+              }
+            </div>
+            <div class="col-6 mb-3">
+              <label class="form-label required">Sale price</label>
+              <input type="text" inputmode="decimal" class="form-control" formControlName="salePrice" placeholder="0.00"
+                [class.is-invalid]="form.controls.salePrice.touched && form.controls.salePrice.invalid" />
+              @if (form.controls.salePrice.touched && form.controls.salePrice.invalid) {
+                <div class="invalid-feedback">Enter a valid amount (e.g. 149.00).</div>
+              }
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-6 mb-3">
+              <label class="form-label">HSN code <span class="text-secondary">(optional)</span></label>
+              <input type="text" class="form-control" formControlName="hsnCode" maxlength="20" autocomplete="off"
+                placeholder="e.g. 3004"
+                [class.is-invalid]="form.controls.hsnCode.touched && form.controls.hsnCode.invalid" />
+              <small class="form-hint">Shown on GST tax invoices when GST is enabled.</small>
+              @if (form.controls.hsnCode.touched && form.controls.hsnCode.invalid) {
+                <div class="invalid-feedback">HSN code must be at most 20 characters.</div>
+              }
+            </div>
+            <div class="col-6 mb-3">
+              <label class="form-label">GST rate % <span class="text-secondary">(optional)</span></label>
+              <input type="text" inputmode="decimal" class="form-control" formControlName="gstRate"
+                list="gst-slabs" autocomplete="off" placeholder="Default from settings"
+                [class.is-invalid]="form.controls.gstRate.touched && form.controls.gstRate.invalid" />
+              @if (gstSlabs().length) {
+                <datalist id="gst-slabs">
+                  @for (slab of gstSlabs(); track slab) {
+                    <option [value]="slab">{{ slab }}%</option>
+                  }
+                </datalist>
+              }
+              <small class="form-hint">Leave blank to use the default GST rate from settings.</small>
+              @if (form.controls.gstRate.touched && form.controls.gstRate.invalid) {
+                <div class="invalid-feedback">Enter a valid rate (e.g. 5, 12 or 18.00).</div>
+              }
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-6 mb-3">
+              <label class="form-label">Visibility</label>
+              <select class="form-select" formControlName="visibility">
+                <option [value]="Visibility.PUBLISHED">Published</option>
+                <option [value]="Visibility.HIDDEN">Hidden</option>
+              </select>
+            </div>
+            <div class="col-6 mb-3">
+              <label class="form-label">Category</label>
+              <select class="form-select" formControlName="categoryId">
+                <option value="">Uncategorised</option>
+                @for (cat of categories(); track cat.id) {
+                  <option [value]="cat.id">{{ cat.name }}{{ cat.active ? '' : ' (inactive)' }}</option>
+                }
+              </select>
+            </div>
+          </div>
+
+          <div class="row align-items-end">
+            <div class="col-6 mb-3">
+              <label class="form-label">Stock quantity</label>
+              <input type="text" inputmode="numeric" class="form-control" formControlName="stockQuantity"
+                placeholder="0"
+                [class.is-invalid]="form.controls.stockQuantity.touched && form.controls.stockQuantity.invalid" />
+              @if (form.controls.stockQuantity.touched && form.controls.stockQuantity.invalid) {
+                <div class="invalid-feedback">Enter a whole number.</div>
+              }
+            </div>
+            <div class="col-6 mb-3">
+              <label class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" formControlName="trackInventory" />
+                <span class="form-check-label">Track inventory</span>
+              </label>
+              <small class="form-hint d-block">When off, the product always shows in stock.</small>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" formControlName="featured" />
+              <span class="form-check-label">Featured (show in the storefront featured collection)</span>
+            </label>
+          </div>
+
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary" (click)="closeForm()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="saving()">
+              @if (saving()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Saving…
+              } @else {
+                {{ editing() ? 'Save changes' : 'Create product' }}
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Categories management modal -->
+@if (categoriesOpen()) {
+  <div class="shifa-overlay" (click)="closeCategories()"></div>
+  <div class="shifa-modal shifa-modal-wide" role="dialog" aria-label="Manage categories">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0">Categories</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeCategories()" aria-label="Close"><i class="ti ti-x"></i></button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="row">
+          <!-- List -->
+          <div class="col-lg-7 mb-3">
+            @if (categories().length === 0) {
+              <p class="text-secondary">No categories yet. Add one on the right.</p>
+            } @else {
+              <div class="table-responsive">
+                <table class="table table-sm table-vcenter">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Slug</th>
+                      <th class="text-center">Order</th>
+                      <th>Status</th>
+                      <th class="text-end">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (cat of categories(); track cat.id) {
+                      <tr>
+                        <td class="fw-medium">{{ cat.name }}</td>
+                        <td><span class="shifa-mono text-secondary">{{ cat.slug }}</span></td>
+                        <td class="text-center">{{ cat.sortOrder }}</td>
+                        <td>
+                          <span class="badge" [class.bg-green-lt]="cat.active" [class.bg-secondary-lt]="!cat.active">
+                            {{ cat.active ? 'Active' : 'Inactive' }}
+                          </span>
+                        </td>
+                        <td class="text-end">
+                          <div class="btn-list justify-content-end flex-nowrap">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="editCategory(cat)">
+                              <i class="ti ti-edit"></i>
+                            </button>
+                            @if (cat.active) {
+                              <button type="button" class="btn btn-sm btn-outline-danger" (click)="deactivateCategory(cat)">
+                                Deactivate
+                              </button>
+                            }
+                          </div>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </div>
+
+          <!-- Add / edit form -->
+          <div class="col-lg-5">
+            <div class="card card-sm">
+              <div class="card-body">
+                <h4 class="mb-3">{{ editingCategory() ? 'Edit category' : 'Add category' }}</h4>
+                @if (categoryFormError(); as err) {
+                  <div class="alert alert-danger" role="alert"><i class="ti ti-alert-triangle me-2"></i>{{ err }}</div>
+                }
+                <form [formGroup]="categoryForm" (ngSubmit)="saveCategory()" novalidate>
+                  <div class="mb-2">
+                    <label class="form-label required">Name</label>
+                    <input type="text" class="form-control" formControlName="name" maxlength="120"
+                      [class.is-invalid]="categoryForm.controls.name.touched && categoryForm.controls.name.invalid" />
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label">Slug <span class="text-secondary">(optional)</span></label>
+                    <input type="text" class="form-control" formControlName="slug" maxlength="140" placeholder="auto from name" />
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control" formControlName="description" rows="2" maxlength="500"></textarea>
+                  </div>
+                  <div class="row">
+                    <div class="col-6 mb-2">
+                      <label class="form-label">Sort order</label>
+                      <input type="text" inputmode="numeric" class="form-control" formControlName="sortOrder" />
+                    </div>
+                    <div class="col-6 mb-2 d-flex align-items-end">
+                      <label class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" formControlName="active" />
+                        <span class="form-check-label">Active</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="d-flex justify-content-end gap-2 mt-2">
+                    @if (editingCategory()) {
+                      <button type="button" class="btn btn-outline-secondary" (click)="newCategory()">New</button>
+                    }
+                    <button type="submit" class="btn btn-primary" [disabled]="categorySaving()">
+                      @if (categorySaving()) {
+                        <span class="spinner-border spinner-border-sm me-2"></span> Saving…
+                      } @else {
+                        {{ editingCategory() ? 'Save' : 'Add' }}
+                      }
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===================== Import CSV modal ===================== -->
+@if (importOpen()) {
+  <div class="shifa-overlay" (click)="closeImport()"></div>
+  <div class="shifa-modal shifa-modal-wide" role="dialog" aria-label="Import products from CSV">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-file-import me-2"></i>Import products from CSV</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeImport()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (importError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert">
+            <i class="ti ti-alert-triangle me-2"></i>{{ err }}
+          </div>
+        }
+
+        <!-- Column hint + sample -->
+        <div class="alert alert-info" role="note">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <div class="flex-fill">
+              <div class="fw-medium mb-1">Expected columns</div>
+              <code class="shifa-mono d-block text-wrap">{{ importColumns }}</code>
+              <div class="small text-secondary mt-1">
+                <strong>sku</strong>, <strong>name</strong>, <strong>mrp</strong> and
+                <strong>salePrice</strong> are required.
+              </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="downloadSampleCsv()">
+              <i class="ti ti-download me-1"></i> Sample CSV
+            </button>
+          </div>
+        </div>
+
+        <!-- File picker -->
+        <div class="mb-3">
+          <label class="form-label required">CSV file</label>
+          <input
+            type="file"
+            class="form-control"
+            accept=".csv,text/csv"
+            (change)="onImportFileChange($event)"
+            aria-label="Choose a CSV file"
+          />
+        </div>
+
+        <!-- Result / preview counts -->
+        @if (importPreview() || importResult(); as res) {
+          <div class="row row-cards g-2 mb-3">
+            <div class="col"><div class="card card-sm"><div class="card-body py-2">
+              <div class="text-secondary small">Rows</div><div class="h3 mb-0">{{ res.totalRows }}</div>
+            </div></div></div>
+            <div class="col"><div class="card card-sm"><div class="card-body py-2">
+              <div class="text-secondary small">Create</div><div class="h3 mb-0 text-success">{{ res.created }}</div>
+            </div></div></div>
+            <div class="col"><div class="card card-sm"><div class="card-body py-2">
+              <div class="text-secondary small">Update</div><div class="h3 mb-0 text-primary">{{ res.updated }}</div>
+            </div></div></div>
+            <div class="col"><div class="card card-sm"><div class="card-body py-2">
+              <div class="text-secondary small">Skip</div><div class="h3 mb-0">{{ res.skipped }}</div>
+            </div></div></div>
+            <div class="col"><div class="card card-sm"><div class="card-body py-2">
+              <div class="text-secondary small">Errors</div><div class="h3 mb-0 text-danger">{{ res.errors }}</div>
+            </div></div></div>
+          </div>
+
+          @if (importResult()) {
+            <div class="alert alert-success" role="status">
+              <i class="ti ti-circle-check me-2"></i>Import complete.
+            </div>
+          } @else {
+            <div class="text-secondary small mb-2">
+              Preview only — nothing has been saved yet. Review the rows below, then confirm.
+            </div>
+          }
+
+          <div class="table-responsive shifa-import-rows">
+            <table class="table table-sm table-vcenter">
+              <thead>
+                <tr>
+                  <th class="w-1">Row</th>
+                  <th>SKU</th>
+                  <th>Action</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of res.rows; track row.rowNumber) {
+                  <tr [class.table-danger]="row.action === 'ERROR'">
+                    <td class="text-secondary">{{ row.rowNumber }}</td>
+                    <td><span class="shifa-mono">{{ row.sku || '—' }}</span></td>
+                    <td><span class="badge" [attr.data-group]="importRowTone(row.action)">{{ row.action }}</span></td>
+                    <td [class.text-danger]="row.action === 'ERROR'">{{ row.message || '—' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+
+      <div class="card-footer d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-link text-secondary" (click)="closeImport()">
+          {{ importResult() ? 'Close' : 'Cancel' }}
+        </button>
+        @if (!importResult()) {
+          @if (!importPreview()) {
+            <button type="button" class="btn btn-primary" (click)="previewImport()"
+              [disabled]="!importFile() || importBusy()">
+              @if (importBusy()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Checking…
+              } @else {
+                <i class="ti ti-eye me-1"></i> Preview
+              }
+            </button>
+          } @else {
+            <button type="button" class="btn btn-outline-secondary" (click)="previewImport()" [disabled]="importBusy()">
+              <i class="ti ti-refresh me-1"></i> Re-check
+            </button>
+            <button type="button" class="btn btn-primary" (click)="confirmImport()" [disabled]="importBusy()">
+              @if (importBusy()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Importing…
+              } @else {
+                <i class="ti ti-check me-1"></i> Confirm import
+              }
+            </button>
+          }
+        }
+      </div>
+    </div>
+  </div>
+}

@@ -1,0 +1,331 @@
+<admin-page-header
+  title="New Order"
+  subtitle="Punch a new order on behalf of a customer."
+  [breadcrumbs]="[{ label: 'Orders', link: '/orders' }, { label: 'New Order' }]"
+>
+  <button type="button" class="btn btn-outline-secondary" (click)="cancel()" [disabled]="submitting()">
+    Cancel
+  </button>
+  <button type="button" class="btn btn-primary" (click)="submit()" [disabled]="submitting()">
+    @if (submitting()) {
+      <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+    } @else {
+      <i class="ti ti-check me-1"></i>
+    }
+    Create order
+  </button>
+</admin-page-header>
+
+@if (serverErrors().length > 0) {
+  <div class="alert alert-danger" role="alert">
+    <div class="fw-medium mb-1"><i class="ti ti-alert-triangle me-1"></i> Please fix the following:</div>
+    <ul class="mb-0">
+      @for (e of serverErrors(); track $index) {
+        <li>{{ e }}</li>
+      }
+    </ul>
+  </div>
+}
+
+<form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+  <div class="row row-cards">
+    <!-- ===================== Customer & shipping ===================== -->
+    <div class="col-12 col-xl-7">
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title"><i class="ti ti-user me-2"></i>Customer &amp; shipping</h3>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-12 col-md-6">
+              <label class="form-label required" for="customerName">Customer name</label>
+              <input
+                id="customerName"
+                type="text"
+                class="form-control"
+                formControlName="customerName"
+                maxlength="100"
+                autocomplete="off"
+                [class.is-invalid]="invalid('customerName')"
+              />
+              @if (invalid('customerName')) {
+                <div class="invalid-feedback">A customer name (max 100 chars) is required.</div>
+              }
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label required" for="customerMobile">Mobile</label>
+              <input
+                id="customerMobile"
+                type="tel"
+                inputmode="numeric"
+                class="form-control"
+                formControlName="customerMobile"
+                maxlength="10"
+                placeholder="10-digit mobile"
+                autocomplete="off"
+                [class.is-invalid]="invalid('customerMobile')"
+              />
+              @if (invalid('customerMobile')) {
+                <div class="invalid-feedback">Enter exactly 10 digits.</div>
+              }
+            </div>
+            <div class="col-12">
+              <label class="form-label required" for="addressLine">Address</label>
+              <textarea
+                id="addressLine"
+                class="form-control"
+                formControlName="addressLine"
+                rows="2"
+                maxlength="250"
+                autocomplete="off"
+                [class.is-invalid]="invalid('addressLine')"
+              ></textarea>
+              @if (invalid('addressLine')) {
+                <div class="invalid-feedback">An address (max 250 chars) is required.</div>
+              }
+            </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label required" for="city">City</label>
+              <input
+                id="city"
+                type="text"
+                class="form-control"
+                formControlName="city"
+                maxlength="100"
+                autocomplete="off"
+                [class.is-invalid]="invalid('city')"
+              />
+              @if (invalid('city')) {
+                <div class="invalid-feedback">A city is required.</div>
+              }
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label required" for="state">State</label>
+              <input
+                id="state"
+                type="text"
+                class="form-control"
+                formControlName="state"
+                maxlength="100"
+                autocomplete="off"
+                [class.is-invalid]="invalid('state')"
+              />
+              @if (invalid('state')) {
+                <div class="invalid-feedback">A state is required.</div>
+              }
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label required" for="postalCode">Pincode</label>
+              <input
+                id="postalCode"
+                type="text"
+                inputmode="numeric"
+                class="form-control"
+                formControlName="postalCode"
+                maxlength="6"
+                placeholder="6 digits"
+                autocomplete="off"
+                [class.is-invalid]="invalid('postalCode')"
+              />
+              @if (invalid('postalCode')) {
+                <div class="invalid-feedback">Enter exactly 6 digits.</div>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== Payment ===================== -->
+    <div class="col-12 col-xl-5">
+      <div class="card h-100">
+        <div class="card-header">
+          <h3 class="card-title"><i class="ti ti-cash me-2"></i>Payment</h3>
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label required" for="amountReceived">Amount received</label>
+            <div class="input-group">
+              <span class="input-group-text">₹</span>
+              <input
+                id="amountReceived"
+                type="number"
+                min="0"
+                step="0.01"
+                class="form-control"
+                formControlName="amountReceived"
+                [class.is-invalid]="invalid('amountReceived')"
+              />
+            </div>
+            @if (invalid('amountReceived')) {
+              <div class="text-danger small mt-1">Enter a non-negative amount.</div>
+            }
+            <div class="form-hint">Enter 0 for a full COD order.</div>
+          </div>
+
+          <div>
+            <label class="form-label" [class.required]="screenshotRequired()">Payment screenshot</label>
+            @if (screenshotRequired()) {
+              <div class="form-hint mb-2">Required because an amount was received.</div>
+            } @else {
+              <div class="form-hint mb-2">Optional when no amount is received.</div>
+            }
+
+            <input
+              type="file"
+              class="form-control"
+              accept="image/*"
+              (change)="onScreenshotSelected($event)"
+              [disabled]="uploadState() === 'uploading'"
+              aria-label="Payment screenshot"
+            />
+
+            @if (uploadState() === 'uploading') {
+              <div class="d-flex align-items-center gap-2 mt-2 text-secondary">
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                <span>Uploading {{ screenshotName() }}…</span>
+              </div>
+            } @else if (uploadState() === 'done') {
+              <div class="d-flex align-items-center gap-2 mt-2">
+                @if (screenshotPreview(); as url) {
+                  <img [src]="url" alt="Payment screenshot" class="shifa-shot-thumb rounded border" />
+                }
+                <div class="flex-fill">
+                  <div class="text-success"><i class="ti ti-check me-1"></i>Uploaded</div>
+                  <div class="text-secondary small text-truncate">{{ screenshotName() }}</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-ghost-danger" (click)="clearScreenshot()">
+                  <i class="ti ti-x"></i>
+                </button>
+              </div>
+            } @else if (uploadState() === 'error') {
+              <div class="text-danger small mt-2">{{ uploadError() }}</div>
+            }
+
+            @if (submitAttempted() && screenshotRequired() && !screenshotKey()) {
+              <div class="text-danger small mt-1">A payment screenshot is required.</div>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== Line items ===================== -->
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header d-flex align-items-center">
+          <h3 class="card-title mb-0"><i class="ti ti-list-details me-2"></i>Line items</h3>
+          <button type="button" class="btn btn-sm btn-outline-primary ms-auto" (click)="addItem()">
+            <i class="ti ti-plus me-1"></i> Add item
+          </button>
+        </div>
+
+        @if (productsLoading()) {
+          <admin-state-panel variant="loading" loadingLabel="Loading products…" />
+        } @else if (productsError()) {
+          <admin-state-panel variant="error" [message]="productsError()!" (retry)="loadProducts()" />
+        } @else {
+          <div class="table-responsive">
+            <table class="table table-vcenter card-table">
+              <thead>
+                <tr>
+                  <th style="min-width: 14rem">Product</th>
+                  <th class="text-end" style="width: 8rem">Qty</th>
+                  <th class="text-end" style="width: 10rem">Rate (₹)</th>
+                  <th class="text-end" style="width: 10rem">Line total</th>
+                  <th class="w-1"></th>
+                </tr>
+              </thead>
+              <tbody formArrayName="items">
+                @for (row of items.controls; track row; let i = $index) {
+                  <tr [formGroupName]="i">
+                    <td>
+                      <select
+                        class="form-select"
+                        formControlName="productId"
+                        (change)="onProductChange(i)"
+                        [class.is-invalid]="itemInvalid(i, 'productId')"
+                        aria-label="Product"
+                      >
+                        <option [ngValue]="null" disabled>Select a product…</option>
+                        @for (p of products(); track p.id) {
+                          <option [ngValue]="p.id">{{ p.name }} — ₹{{ p.salePrice }} ({{ p.sku }})</option>
+                        }
+                      </select>
+                      @if (itemInvalid(i, 'productId')) {
+                        <div class="text-danger small mt-1">Choose a product.</div>
+                      }
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        class="form-control text-end"
+                        formControlName="quantity"
+                        min="1"
+                        max="999"
+                        step="1"
+                        [class.is-invalid]="itemInvalid(i, 'quantity')"
+                        aria-label="Quantity"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        class="form-control text-end"
+                        formControlName="rate"
+                        min="0"
+                        step="0.01"
+                        [class.is-invalid]="itemInvalid(i, 'rate')"
+                        aria-label="Rate"
+                      />
+                    </td>
+                    <td class="text-end fw-medium">{{ formatMoney(lineTotals()[i] || 0) }}</td>
+                    <td class="text-end">
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-icon btn-ghost-danger"
+                        (click)="removeItem(i)"
+                        [disabled]="items.length <= 1"
+                        aria-label="Remove item"
+                      >
+                        <i class="ti ti-trash"></i>
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3" class="text-end fw-medium">Order total</td>
+                  <td class="text-end fw-bold">{{ formatMoney(orderTotalPaise()) }}</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td colspan="3" class="text-end text-secondary">Remaining after amount received</td>
+                  <td class="text-end" [class.text-danger]="remainingPaise() < 0">
+                    {{ formatMoney(remainingPaise()) }}
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex justify-content-end gap-2 mt-3 mb-4">
+    <button type="button" class="btn btn-outline-secondary" (click)="cancel()" [disabled]="submitting()">
+      Cancel
+    </button>
+    <button type="submit" class="btn btn-primary" [disabled]="submitting()">
+      @if (submitting()) {
+        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+      } @else {
+        <i class="ti ti-check me-1"></i>
+      }
+      Create order
+    </button>
+  </div>
+</form>

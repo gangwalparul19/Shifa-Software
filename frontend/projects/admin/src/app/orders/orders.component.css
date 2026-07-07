@@ -1,0 +1,65 @@
+:host {
+  display: block;
+}
+
+.shifa-clear {
+  cursor: pointer;
+  pointer-events: all;
+}
+
+.input-icon-addon.end {
+  left: auto;
+  right: 0;
+}
+
+/* Bulk-actions bar: a subtly tinted card so the active selection stands out. */
+.shifa-bulkbar {
+  border-color: var(--shifa-green-200, #bfe0cd);
+  background: var(--shifa-green-50, #f2f9f5);
+}
+
+/* --- Live-activity nudge (A3) ------------------------------------------- */
+.shifa-activity-pill {
+  display: flex;
+  justify-content: center;
+}
+.shifa-activity-pill .btn {
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(15, 51, 36, 0.18);
+}
+.shifa-pulse-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7);
+  animation: shifaPulse 1.6s var(--shifa-ease) infinite;
+}
+@keyframes shifaPulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.6); }
+  70% { box-shadow: 0 0 0 0.4rem rgba(255, 255, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+}
+
+/* --- Saved views (A4) --------------------------------------------------- */
+.shifa-views {
+  row-gap: 0.5rem;
+}
+.shifa-view-chip .btn {
+  font-weight: 500;
+}
+.shifa-view-del {
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
+}
+.shifa-view-save {
+  width: auto;
+  max-width: 22rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shifa-pulse-dot {
+    animation: none;
+  }
+}

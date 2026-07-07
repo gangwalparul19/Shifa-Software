@@ -1,0 +1,40 @@
+# =============================================================================
+# Backend (Spring Boot / Maven) .gitignore
+# =============================================================================
+
+# Build output
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# Logs
+*.log
+*-log.txt
+compile-log.txt
+deploy-build-log.txt
+test-log.txt
+mvn-out.txt
+
+# Local secrets / environment (NEVER commit) — real values live in
+# /etc/shifa/shifa.env on the server, or in the git-ignored files below locally.
+*.env
+!*.env.example
+local-secrets.properties
+
+# Runtime data: generated PDFs (labels/invoices), uploaded screenshots/logos,
+# and nightly DB backups written by the LOCAL storage provider.
+storage/
+
+# Property-based testing local database
+.jqwik-database
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+.DS_Store
+Thumbs.db

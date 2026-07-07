@@ -1,0 +1,380 @@
+<admin-page-header
+  title="Inventory"
+  subtitle="Track stock levels, restock, and adjust product inventory."
+  [breadcrumbs]="[{ label: 'Inventory' }]"
+>
+  <admin-density-toggle />
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+</admin-page-header>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-center">
+      <div class="col-12 col-lg">
+        <div class="input-icon">
+          <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+          <input
+            type="search"
+            class="form-control"
+            [formControl]="search"
+            (input)="applySearch()"
+            placeholder="Search by name or SKU…"
+            autocomplete="off"
+            aria-label="Search inventory"
+          />
+          @if (search.value) {
+            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
+              <i class="ti ti-x"></i>
+            </span>
+          }
+        </div>
+      </div>
+      <div class="col-auto">
+        <label class="form-check form-switch mb-0">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            [checked]="lowStockOnly()"
+            (change)="toggleLowStock()"
+          />
+          <span class="form-check-label">Low stock only</span>
+        </label>
+      </div>
+      @if (lowStockOnly()) {
+        <div class="col-auto">
+          <label class="form-check form-check-inline mb-0">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              [checked]="includeOutOfStock()"
+              (change)="toggleIncludeOutOfStock()"
+            />
+            <span class="form-check-label small">Include out of stock</span>
+          </label>
+        </div>
+      }
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <admin-state-panel
+    variant="loading"
+    [card]="true"
+    [skeletonRows]="[1, 2, 3, 4, 5, 6]"
+    loadingLabel="Loading inventory…"
+  />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (visibleItems().length === 0 && lowStockOnly()) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-checks"
+    title="Nothing low on stock"
+    message="All tracked products currently have healthy stock levels."
+  />
+} @else if (visibleItems().length === 0 && search.value) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-search-off"
+    title="No products found"
+    message="No products match your search."
+  />
+} @else if (visibleItems().length === 0) {
+  <admin-state-panel
+    variant="onboarding"
+    [card]="true"
+    icon="ti-box-off"
+    title="No products yet"
+    message="Add products in the Products page to start tracking their stock here."
+  />
+} @else {
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table table-hover stagger-rows">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>SKU</th>
+            <th class="text-end">On hand</th>
+            <th class="text-end">Threshold</th>
+            <th>Status</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of visibleItems(); track row.id) {
+            <tr>
+              <td class="fw-medium">{{ row.name }}</td>
+              <td><span class="shifa-mono text-secondary">{{ row.sku }}</span></td>
+              <td class="text-end fw-medium">
+                {{ row.trackInventory ? row.stockQuantity : '—' }}
+              </td>
+              <td class="text-end text-secondary">
+                {{ row.trackInventory ? row.lowStockThreshold : '—' }}
+              </td>
+              <td>
+                <span class="badge" [attr.data-group]="tone(row)">{{ stockLabel(row) }}</span>
+              </td>
+              <td class="text-end">
+                <div class="btn-list justify-content-end flex-nowrap">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    (click)="openRestock(row)"
+                    [disabled]="!row.trackInventory"
+                    title="Restock"
+                  >
+                    <i class="ti ti-package-import me-1"></i> Restock
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    (click)="openAdjust(row)"
+                    [disabled]="!row.trackInventory"
+                    title="Adjust"
+                  >
+                    <i class="ti ti-adjustments me-1"></i> Adjust
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-icon btn-ghost-secondary"
+                    (click)="openHistory(row)"
+                    title="Stock history"
+                    aria-label="Stock history"
+                  >
+                    <i class="ti ti-history"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+}
+
+<!-- ===================== Restock modal ===================== -->
+@if (modal() === 'restock' && activeProduct(); as product) {
+  <div class="shifa-overlay" (click)="closeModal()"></div>
+  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Restock product">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-package-import me-2"></i>Restock</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeModal()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">
+          <strong>{{ product.name }}</strong> — current on-hand
+          <strong>{{ product.stockQuantity }}</strong>.
+        </p>
+        @if (modalError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert">
+            <i class="ti ti-alert-triangle me-2"></i>{{ err }}
+          </div>
+        }
+        <form (ngSubmit)="submitRestock()" novalidate>
+          <div class="mb-3">
+            <label class="form-label required">Quantity to add</label>
+            <input
+              type="number"
+              min="1"
+              class="form-control"
+              [formControl]="restockQty"
+              [class.is-invalid]="restockQty.touched && restockQty.invalid"
+              autocomplete="off"
+            />
+            @if (restockQty.touched && restockQty.invalid) {
+              <div class="invalid-feedback">Enter a positive quantity.</div>
+            }
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Note <span class="text-secondary">(optional)</span></label>
+            <input type="text" class="form-control" [formControl]="restockNote" maxlength="255"
+              placeholder="e.g. PO #1234 received" autocomplete="off" />
+          </div>
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-link text-secondary" (click)="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="submitting()">
+              @if (submitting()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Working…
+              } @else {
+                <i class="ti ti-package-import me-1"></i> Restock
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===================== Adjust modal ===================== -->
+@if (modal() === 'adjust' && activeProduct(); as product) {
+  <div class="shifa-overlay" (click)="closeModal()"></div>
+  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Adjust stock">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-adjustments me-2"></i>Adjust stock</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeModal()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">
+          <strong>{{ product.name }}</strong> — current on-hand
+          <strong>{{ product.stockQuantity }}</strong>.
+        </p>
+        @if (modalError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert">
+            <i class="ti ti-alert-triangle me-2"></i>{{ err }}
+          </div>
+        }
+        <form (ngSubmit)="submitAdjust()" novalidate>
+          <div class="mb-3">
+            <label class="form-label">Direction</label>
+            <div class="btn-group w-100" role="group" aria-label="Adjustment direction">
+              <button
+                type="button"
+                class="btn"
+                [class.btn-primary]="adjustDirection() === 'add'"
+                [class.btn-outline-secondary]="adjustDirection() !== 'add'"
+                (click)="setDirection('add')"
+              >
+                <i class="ti ti-plus me-1"></i> Add
+              </button>
+              <button
+                type="button"
+                class="btn"
+                [class.btn-danger]="adjustDirection() === 'remove'"
+                [class.btn-outline-secondary]="adjustDirection() !== 'remove'"
+                (click)="setDirection('remove')"
+              >
+                <i class="ti ti-minus me-1"></i> Remove
+              </button>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label required">Quantity</label>
+            <input
+              type="number"
+              min="1"
+              class="form-control"
+              [formControl]="adjustQty"
+              (input)="onAdjustQtyInput()"
+              [class.is-invalid]="adjustQty.touched && adjustQty.invalid"
+              autocomplete="off"
+            />
+            @if (adjustQty.touched && adjustQty.invalid) {
+              <div class="invalid-feedback">Enter a positive quantity.</div>
+            } @else if (adjustDelta() !== 0) {
+              <small class="form-hint">
+                New on-hand will be
+                <strong>{{ product.stockQuantity + adjustDelta() }}</strong>
+                ({{ adjustDelta() > 0 ? '+' : '' }}{{ adjustDelta() }}).
+              </small>
+            }
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Reason</label>
+            <select class="form-select" [formControl]="adjustReason">
+              @for (reason of adjustReasons; track reason) {
+                <option [value]="reason">{{ reason }}</option>
+              }
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Note <span class="text-secondary">(optional)</span></label>
+            <input type="text" class="form-control" [formControl]="adjustNote" maxlength="255"
+              placeholder="Additional detail" autocomplete="off" />
+          </div>
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-link text-secondary" (click)="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="submitting()">
+              @if (submitting()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Working…
+              } @else {
+                <i class="ti ti-adjustments me-1"></i> Apply adjustment
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===================== History modal ===================== -->
+@if (modal() === 'history' && activeProduct(); as product) {
+  <div class="shifa-overlay" (click)="closeModal()"></div>
+  <div class="shifa-modal shifa-modal--wide" role="dialog" aria-label="Stock movement history">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-history me-2"></i>Stock history — {{ product.name }}</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeModal()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (historyLoading()) {
+          <div class="skeleton skeleton-line w-75 mb-2"></div>
+          <div class="skeleton skeleton-line w-60 mb-2"></div>
+          <div class="skeleton skeleton-line w-80"></div>
+        } @else if (historyError()) {
+          <div class="alert alert-danger" role="alert">
+            <i class="ti ti-alert-triangle me-2"></i>{{ historyError() }}
+          </div>
+        } @else if (movements().length === 0) {
+          <div class="empty">
+            <div class="empty-icon"><i class="ti ti-history-off"></i></div>
+            <p class="empty-title">No movements yet</p>
+            <p class="empty-subtitle text-secondary">No stock changes have been recorded for this product.</p>
+          </div>
+        } @else {
+          <div class="table-responsive">
+            <table class="table table-sm table-vcenter">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th class="text-end">Change</th>
+                  <th class="text-end">Balance</th>
+                  <th>Reason</th>
+                  <th>By</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (m of movements(); track m.id) {
+                  <tr>
+                    <td class="text-nowrap">{{ m.createdAt | date: 'dd MMM yyyy, HH:mm' }}</td>
+                    <td><span class="badge bg-secondary-lt">{{ m.type }}</span></td>
+                    <td class="text-end fw-medium" [class.text-success]="m.delta > 0" [class.text-danger]="m.delta < 0">
+                      {{ m.delta > 0 ? '+' : '' }}{{ m.delta }}
+                    </td>
+                    <td class="text-end">{{ m.balanceAfter }}</td>
+                    <td>{{ m.reason || '—' }}</td>
+                    <td class="text-secondary">{{ actorLabel(m) }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+}

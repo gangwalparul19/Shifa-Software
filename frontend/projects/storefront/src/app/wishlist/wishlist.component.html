@@ -1,0 +1,64 @@
+<section class="section container">
+  <div class="wl-head">
+    <h1>{{ 'wishlist.title' | translate }}</h1>
+    @if (isLoggedIn() && !wishlist.isEmpty()) {
+      <div class="share-bar">
+        <button
+          type="button"
+          class="btn btn-primary"
+          [disabled]="sharing()"
+          (click)="share()"
+        >
+          {{ 'wishlist.share' | translate }}
+        </button>
+        @if (shareUrl()) {
+          <button type="button" class="btn btn-outline" (click)="shareOnWhatsApp()">
+            {{ 'wishlist.shareWhatsApp' | translate }}
+          </button>
+          <button type="button" class="btn btn-outline" (click)="revokeShare()">
+            {{ 'wishlist.revokeShare' | translate }}
+          </button>
+        }
+      </div>
+    }
+  </div>
+
+  @if (wishlist.isEmpty()) {
+    <div class="empty">
+      <span class="empty-icon">♡</span>
+      <h3>{{ 'wishlist.empty' | translate }}</h3>
+      <p>{{ 'wishlist.emptyHint' | translate }}</p>
+      <a class="btn btn-primary" routerLink="/shop">{{ 'common.startShopping' | translate }}</a>
+    </div>
+  } @else {
+    <div class="grid">
+      @for (item of wishlist.items(); track item.productId) {
+        <article class="wl-card">
+          <a class="media" [routerLink]="['/products', item.productId]">
+            <img [src]="item.imageUrl" [alt]="item.name" loading="lazy" />
+            @if (discount(item) > 0) {
+              <span class="pill pill-sale">-{{ discount(item) }}%</span>
+            }
+          </a>
+          <div class="body">
+            <a class="name" [routerLink]="['/products', item.productId]">{{ item.name }}</a>
+            <div class="prices">
+              <span class="sale">{{ price(item) }}</span>
+              @if (discount(item) > 0) {
+                <span class="strike">{{ mrp(item) }}</span>
+              }
+            </div>
+            <div class="actions">
+              <button type="button" class="btn btn-primary btn-block" (click)="moveToCart(item.productId)">
+                {{ 'wishlist.moveToCart' | translate }}
+              </button>
+              <button type="button" class="btn btn-outline btn-block" (click)="remove(item.productId)">
+                {{ 'common.remove' | translate }}
+              </button>
+            </div>
+          </div>
+        </article>
+      }
+    </div>
+  }
+</section>

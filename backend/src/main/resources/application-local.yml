@@ -1,0 +1,22 @@
+# Local development profile - self-hosted MySQL on localhost.
+spring:
+  # Optionally pull developer-only secrets (Gmail SMTP creds, digest recipient)
+  # from a git-ignored file so they never get committed. Absent in prod (env vars
+  # are used there); "optional:" means the app still boots if the file is missing.
+  config:
+    import: "optional:file:./local-secrets.properties"
+  datasource:
+    url: jdbc:mysql://localhost:3306/shifa_oms?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Kolkata&characterEncoding=UTF-8
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root@123}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+app:
+  backup:
+    # Full path to the locally installed MySQL 8.0 mysqldump binary (not on PATH).
+    mysqldump-path: "C:/Program Files/MySQL/MySQL Server 8.0/bin/mysqldump.exe"
+
+logging:
+  level:
+    com.shifa.oms: DEBUG
+    org.hibernate.SQL: INFO

@@ -1,0 +1,54 @@
+<section class="account">
+  <div class="account-head">
+    <div>
+      <h1>Profile</h1>
+      <p class="muted">Update your contact details.</p>
+    </div>
+    <a class="btn" routerLink="/account">← Account</a>
+  </div>
+
+  <nav class="account-nav">
+    <a routerLink="/account/orders">Orders</a>
+    <a routerLink="/account/addresses">Addresses</a>
+    <a routerLink="/account/profile" class="active">Profile</a>
+    <a routerLink="/wishlist">Wishlist</a>
+  </nav>
+
+  @if (saved()) {
+    <p class="notice success" role="status">Your profile has been updated.</p>
+  }
+  @if (error()) {
+    <p class="notice error" role="alert">{{ error() }}</p>
+  }
+
+  @if (loading()) {
+    <p class="empty">Loading profile…</p>
+  } @else {
+    <form class="stack" [formGroup]="form" (ngSubmit)="save()" novalidate>
+      <label>
+        <span>Username</span>
+        <input type="text" [value]="username()" disabled />
+      </label>
+      <label>
+        <span>Full name</span>
+        <input type="text" formControlName="fullName" autocomplete="name" />
+        @if (showError('fullName')) { <small class="field-error">Name is required.</small> }
+      </label>
+      <label>
+        <span>Email</span>
+        <input type="email" formControlName="email" autocomplete="email" />
+        @if (showError('email')) { <small class="field-error">Enter a valid email.</small> }
+      </label>
+      <label>
+        <span>Mobile</span>
+        <input type="tel" formControlName="mobile" inputmode="numeric" maxlength="10" />
+        @if (showError('mobile')) { <small class="field-error">Enter a 10-digit mobile.</small> }
+      </label>
+      <div class="form-actions">
+        <button type="submit" class="btn primary" [disabled]="saving()">
+          {{ saving() ? 'Saving…' : 'Save changes' }}
+        </button>
+      </div>
+    </form>
+  }
+</section>

@@ -1,0 +1,269 @@
+@if (loading()) {
+  <section class="section container">
+    <div class="detail-skeleton"></div>
+  </section>
+} @else if (unavailable()) {
+  <section class="section container unavailable">
+    <span class="empty-icon">🌿</span>
+    <h1>{{ 'product.unavailable' | translate }}</h1>
+    <p>{{ 'product.unavailableHint' | translate }}</p>
+    <a class="btn btn-primary" routerLink="/shop">{{ 'common.backToShop' | translate }}</a>
+  </section>
+} @else if (product(); as p) {
+  <div class="container detail">
+    <nav class="crumbs">
+      <a routerLink="/">Home</a> <span>/</span>
+      <a routerLink="/shop">Shop</a> <span>/</span>
+      <span class="text-muted">{{ p.name }}</span>
+    </nav>
+
+    <div class="detail-grid">
+      <div class="gallery">
+        <img #galleryImg [src]="image()" [alt]="p.name" />
+        @if (discount() > 0) {
+          <span class="pill pill-sale">-{{ discount() }}% OFF</span>
+        }
+      </div>
+
+      <div class="info">
+        @if (p.category) {
+          <a class="cat-link" [routerLink]="['/shop']" [queryParams]="{ category: p.category.slug }">
+            {{ p.category.name }}
+          </a>
+        }
+        <h1>{{ p.name }}</h1>
+        <p class="sku">SKU: {{ p.sku }}</p>
+
+        <a class="rating-inline" href="#reviews">
+          <sf-star-rating [rating]="averageRating()" [showValue]="reviewCount() > 0" />
+          @if (reviewCount() > 0) {
+            <span class="rating-count">{{ reviewCount() }} review{{ reviewCount() === 1 ? '' : 's' }}</span>
+          } @else {
+            <span class="rating-count muted">No reviews yet</span>
+          }
+        </a>
+
+        <p class="stock-line" [attr.data-tone]="stockTone()">
+          <span class="dot" aria-hidden="true"></span>{{ stockLabel() }}
+        </p>
+
+        <div class="price-block">
+          <span class="sale">{{ salePrice() }}</span>
+          @if (discount() > 0) {
+            <span class="strike">{{ mrp() }}</span>
+            <span class="save">You save {{ discount() }}%</span>
+          }
+        </div>
+
+        @if (p.description) {
+          <p class="lead">{{ p.description }}</p>
+        }
+
+        <div class="buy-row">
+          <div class="qty" role="group" aria-label="Quantity">
+            <button type="button" (click)="changeQuantity(-1)" [disabled]="quantity() <= MIN" aria-label="Decrease quantity">−</button>
+            <input
+              type="number"
+              [min]="MIN"
+              [max]="MAX"
+              [value]="quantity()"
+              (change)="setQuantity($any($event.target).value)"
+              [disabled]="!purchasable()"
+              aria-label="Quantity"
+            />
+            <button type="button" (click)="changeQuantity(1)" [disabled]="quantity() >= MAX || !purchasable()" aria-label="Increase quantity">+</button>
+          </div>
+
+          @if (purchasable()) {
+            <button type="button" class="btn btn-primary add" (click)="addToCart()">
+              {{ (added() ? 'common.addedToCart' : 'common.addToCart') | translate }}
+            </button>
+          } @else {
+            <button type="button" class="btn add" disabled aria-disabled="true">{{ 'common.outOfStock' | translate }}</button>
+          }
+
+          <button
+            type="button"
+            class="wish"
+            [class.active]="saved()"
+            [class.pop]="heartPop()"
+            (click)="toggleWishlist()"
+            [attr.aria-label]="(saved() ? 'wishlist.removeFromWishlist' : 'wishlist.addToWishlist') | translate"
+          >
+            {{ saved() ? '♥' : '♡' }}
+          </button>
+        </div>
+
+        <p class="delivery-estimate">🚚 {{ deliveryEstimate }}</p>
+
+        <a class="btn btn-whatsapp enquire-wa" [href]="whatsappHref()" target="_blank" rel="noopener">
+          <span aria-hidden="true">✆</span> {{ 'whatsapp.enquire' | translate }}
+        </a>
+
+        @if (!purchasable()) {
+          <p class="notify-note">
+            This product is currently out of stock.
+            <button type="button" class="link-btn" disabled>Notify me when available</button>
+          </p>
+        }
+
+        <ul class="assurances">
+          <li>🌱 100% natural &amp; authentic</li>
+          <li>🚚 Fast pan-India delivery</li>
+          <li>🔒 Secure checkout</li>
+        </ul>
+      </div>
+    </div>
+
+    @if (p.description) {
+      <section class="benefits">
+        <h2>{{ 'product.description' | translate }}</h2>
+        <p>{{ p.description }}</p>
+      </section>
+    }
+
+    <section class="reviews" id="reviews">
+      <div class="section-head" style="text-align:left; margin-bottom:20px;">
+        <h2>Ratings &amp; Reviews</h2>
+      </div>
+
+      <div class="reviews-grid">
+        <!-- Aggregate summary + breakdown -->
+        <aside class="reviews-summary">
+          @if (reviewCount() > 0) {
+            <div class="avg-big">{{ averageRating() }}</div>
+            <sf-star-rating [rating]="averageRating()" />
+            <p class="based-on">Based on {{ reviewCount() }} review{{ reviewCount() === 1 ? '' : 's' }}</p>
+            <ul class="breakdown">
+              @for (row of breakdownRows(); track row.star) {
+                <li>
+                  <span class="star-label">{{ row.star }}★</span>
+                  <span class="bar"><span class="fill" [style.width.%]="row.percent"></span></span>
+                  <span class="bar-count">{{ row.count }}</span>
+                </li>
+              }
+            </ul>
+          } @else {
+            <div class="avg-big muted">—</div>
+            <sf-star-rating [rating]="0" />
+            <p class="based-on muted">No reviews yet. Be the first to review this product.</p>
+          }
+        </aside>
+
+        <!-- Write a review + list -->
+        <div class="reviews-main">
+          <div class="write-review">
+            <h3>Write a review</h3>
+            @if (!isLoggedIn()) {
+              <p class="login-prompt">
+                Please <a routerLink="/login">log in</a> to share your experience with this product.
+              </p>
+            } @else if (submitted()) {
+              <p class="submit-ok">
+                ✓ Thank you! Your review has been submitted and is pending approval.
+              </p>
+            } @else {
+              <form (ngSubmit)="submitReview()" [formGroup]="reviewForm" novalidate>
+                <div class="star-picker" role="group" aria-label="Your rating">
+                  @for (s of stars; track s) {
+                    <button
+                      type="button"
+                      class="pick"
+                      [class.on]="s <= formRating()"
+                      (click)="setRating(s)"
+                      [attr.aria-label]="s + ' star' + (s === 1 ? '' : 's')"
+                      [attr.aria-pressed]="s <= formRating()"
+                    >
+                      ★
+                    </button>
+                  }
+                </div>
+                <input
+                  type="text"
+                  class="field"
+                  formControlName="title"
+                  maxlength="150"
+                  placeholder="Title (optional)"
+                />
+                <textarea
+                  class="field"
+                  formControlName="body"
+                  maxlength="2000"
+                  rows="4"
+                  placeholder="Share details of your experience (optional)"
+                ></textarea>
+                @if (submitError()) {
+                  <p class="submit-err">{{ submitError() }}</p>
+                }
+                <button type="submit" class="btn btn-primary" [disabled]="submitting()">
+                  {{ submitting() ? 'Submitting…' : 'Submit review' }}
+                </button>
+              </form>
+            }
+          </div>
+
+          <div class="review-list">
+            @if (reviews()?.reviews?.length) {
+              @for (r of reviews()!.reviews; track r.id) {
+                <article class="review-item">
+                  <div class="review-head">
+                    <sf-star-rating [rating]="r.rating" />
+                    @if (r.verified) {
+                      <span class="verified" title="Verified purchase">✓ Verified purchase</span>
+                    }
+                  </div>
+                  @if (r.title) {
+                    <h4 class="review-title">{{ r.title }}</h4>
+                  }
+                  @if (r.body) {
+                    <p class="review-body">{{ r.body }}</p>
+                  }
+                  <p class="review-meta">
+                    <span class="author">{{ r.authorName }}</span>
+                    @if (r.createdAt) {
+                      <span class="dot-sep">•</span><span class="date">{{ r.createdAt | date: 'mediumDate' }}</span>
+                    }
+                  </p>
+                </article>
+              }
+            } @else if (!reviewsLoading()) {
+              <p class="no-reviews muted">There are no reviews yet.</p>
+            }
+          </div>
+        </div>
+      </div>
+    </section>
+
+    @if (related().length > 0) {
+      <section class="related">
+        <div class="section-head" style="text-align:left; margin-bottom:24px;">
+          <h2>{{ 'product.youMayAlsoLike' | translate }}</h2>
+        </div>
+        <div class="grid">
+          @for (r of related(); track r.id) {
+            <sf-product-card [product]="r" />
+          }
+        </div>
+      </section>
+    }
+  </div>
+
+  <!-- Mobile sticky add-to-cart bar (small screens only, via CSS). -->
+  <div class="sticky-buy" [class.out]="!purchasable()">
+    <div class="sticky-price">
+      <span class="sticky-sale">{{ salePrice() }}</span>
+      @if (discount() > 0) {
+        <span class="strike sticky-mrp">{{ mrp() }}</span>
+      }
+    </div>
+    @if (purchasable()) {
+      <button type="button" class="btn btn-primary sticky-add" (click)="addToCart()">
+        {{ (added() ? 'common.addedToCart' : 'common.addToCart') | translate }}
+      </button>
+    } @else {
+      <button type="button" class="btn sticky-add" disabled aria-disabled="true">
+        {{ 'common.outOfStock' | translate }}
+      </button>
+    }
+  </div>
+}

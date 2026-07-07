@@ -1,0 +1,79 @@
+<div class="shifa-bell">
+  <button
+    type="button"
+    class="btn btn-icon btn-ghost-secondary position-relative shifa-bell__btn"
+    (click)="toggle()"
+    [attr.aria-expanded]="open()"
+    aria-haspopup="menu"
+    [attr.aria-label]="unread() > 0 ? unread() + ' unread notifications' : 'Notifications'"
+  >
+    <i class="ti ti-bell" aria-hidden="true"></i>
+    @if (unread() > 0) {
+      <span class="badge bg-red shifa-bell__badge" aria-hidden="true">
+        {{ unread() > 99 ? '99+' : unread() }}
+      </span>
+    }
+  </button>
+
+  @if (open()) {
+    <div class="shifa-backdrop-transparent" (click)="close()"></div>
+    <div class="card shifa-bell__panel anim-pop" role="menu" aria-label="Recent notifications">
+      <div class="card-header py-2 d-flex align-items-center">
+        <h3 class="card-title mb-0">Notifications</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-sm btn-link text-decoration-none" (click)="markAllRead($event)">
+            Mark all read
+          </button>
+        </div>
+      </div>
+
+      <div class="shifa-bell__list">
+        @if (loading()) {
+          <div class="p-3">
+            <div class="skeleton skeleton-line w-80 mb-2"></div>
+            <div class="skeleton skeleton-line w-60"></div>
+          </div>
+        } @else if (recent().length === 0) {
+          <div class="p-4 text-center text-secondary">
+            <i class="ti ti-bell-off d-block mb-2" style="font-size: 1.5rem"></i>
+            You are all caught up.
+          </div>
+        } @else {
+          <div class="list-group list-group-flush">
+            @for (n of recent(); track n.id) {
+              <button
+                type="button"
+                class="list-group-item list-group-item-action text-start"
+                role="menuitem"
+                [class.shifa-note--unread]="!n.read"
+                (click)="markRead(n, $event)"
+              >
+                <div class="d-flex gap-2">
+                  <span class="shifa-note__icon" [class]="severityColor(n.severity)">
+                    <i class="ti {{ severityIcon(n.severity) }}" aria-hidden="true"></i>
+                  </span>
+                  <div class="flex-fill text-truncate">
+                    <div class="d-flex align-items-center gap-2">
+                      @if (!n.read) {
+                        <span class="shifa-note__dot" aria-label="Unread"></span>
+                      }
+                      <span class="fw-medium text-truncate">{{ n.title }}</span>
+                    </div>
+                    <div class="text-secondary small text-truncate">{{ n.detail }}</div>
+                    <div class="text-secondary shifa-bell__time">{{ relativeTime(n.createdAt) }}</div>
+                  </div>
+                </div>
+              </button>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="card-footer p-2 text-center">
+        <a class="btn btn-sm btn-link text-decoration-none w-100" routerLink="/notifications" (click)="close()">
+          View all
+        </a>
+      </div>
+    </div>
+  }
+</div>

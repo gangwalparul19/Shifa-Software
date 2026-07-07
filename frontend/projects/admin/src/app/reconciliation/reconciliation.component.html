@@ -1,0 +1,296 @@
+<admin-page-header
+  title="Reconciliation"
+  subtitle="Track COD and loss-claim amounts owed by courier companies."
+  [breadcrumbs]="[{ label: 'Reconciliation' }]"
+>
+  <admin-density-toggle />
+  <button type="button" class="btn btn-outline-secondary" (click)="loadAll()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+</admin-page-header>
+
+@if (loadError()) {
+  <admin-state-panel variant="error" [message]="loadError()!" (retry)="loadAll()" />
+}
+
+<!-- Per-courier summary cards -->
+<div class="shifa-section-title">Courier receivables</div>
+<div class="row row-cards g-2 g-md-3 mb-3 stagger">
+  @if (loading()) {
+    @for (s of [1, 2, 3]; track s) {
+      <div class="col-6 col-lg-4"><div class="card"><div class="card-body"><div class="skeleton skeleton-line w-40 mb-3"></div><div class="skeleton skeleton-card"></div></div></div></div>
+    }
+  } @else if (summary().length === 0) {
+    <div class="col-12">
+      <div class="card"><div class="empty">
+        <div class="empty-icon"><i class="ti ti-cash-off"></i></div>
+        <p class="empty-title">No courier receivables yet</p>
+        <p class="empty-subtitle text-secondary">COD collections and loss claims will appear here.</p>
+      </div></div>
+    </div>
+  } @else {
+    @for (c of summary(); track c.courierCompanyId) {
+      <div class="col-6 col-lg-4">
+        <div class="card card-hover h-100 shifa-recon-card">
+          <div class="card-body">
+            <div class="d-flex align-items-center mb-2">
+              <span class="stat-icon me-2" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-truck"></i></span>
+              <h3 class="card-title m-0">{{ courierLabel(c.courierName) }}</h3>
+            </div>
+            <div class="d-flex justify-content-between py-1"><span class="text-secondary">COD receivable</span><strong>{{ money(c.codOutstanding) }}</strong></div>
+            <div class="d-flex justify-content-between py-1"><span class="text-secondary">Claim receivable</span><strong>{{ money(c.claimOutstanding) }}</strong></div>
+            <div class="d-flex justify-content-between py-1 border-top pt-2 mt-1"><span class="fw-medium">Total outstanding</span><strong class="text-primary">{{ money(c.totalOutstanding) }}</strong></div>
+          </div>
+        </div>
+      </div>
+    }
+  }
+</div>
+
+<!-- Tabs -->
+<div class="card">
+  <div class="card-header p-0">
+    <ul class="nav nav-tabs card-header-tabs px-2" role="tablist">
+      <li class="nav-item"><button type="button" class="nav-link" [class.active]="tab() === 'receivables'" (click)="setTab('receivables')">Receivables</button></li>
+      <li class="nav-item"><button type="button" class="nav-link" [class.active]="tab() === 'unsettled'" (click)="setTab('unsettled')">
+        Unsettled COD @if (unsettled().length) { <span class="badge bg-blue-lt ms-1">{{ unsettled().length }}</span> }
+      </button></li>
+      <li class="nav-item"><button type="button" class="nav-link" [class.active]="tab() === 'segregation'" (click)="setTab('segregation')">Prepaid / COD</button></li>
+      <li class="nav-item"><button type="button" class="nav-link" [class.active]="tab() === 'claims'" (click)="setTab('claims')">
+        Pending Claims @if (claims().length) { <span class="badge bg-red-lt ms-1">{{ claims().length }}</span> }
+      </button></li>
+    </ul>
+  </div>
+
+  <!-- Receivables tab -->
+  @if (tab() === 'receivables') {
+    <div class="card-body border-bottom py-2">
+      <div class="row g-2 align-items-end">
+        <div class="col-12 col-lg">
+          <label class="form-label small mb-1">Search</label>
+          <div class="input-icon">
+            <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+            <input
+              type="search"
+              class="form-control"
+              [formControl]="search"
+              placeholder="Search order code or AWB…"
+              autocomplete="off"
+              aria-label="Search receivables"
+            />
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+          <label class="form-label small mb-1">Courier</label>
+          <select class="form-select" [value]="filterCourier() ?? ''" (change)="onCourierFilter($any($event.target).value)">
+            <option value="">All couriers</option>
+            @for (c of summary(); track c.courierCompanyId) {
+              @if (c.courierCompanyId != null) { <option [value]="c.courierCompanyId">{{ courierLabel(c.courierName) }}</option> }
+            }
+          </select>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+          <label class="form-label small mb-1">Type</label>
+          <select class="form-select" [value]="filterType() ?? ''" (change)="onTypeFilter($any($event.target).value)">
+            <option value="">All types</option>
+            <option [value]="ReceivableType.COD_RECEIVABLE">COD receivable</option>
+            <option [value]="ReceivableType.CLAIM_RECEIVABLE">Claim receivable</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+          <label class="form-label small mb-1">Status</label>
+          <select class="form-select" [value]="filterSettled()" (change)="onSettledFilter($any($event.target).value)">
+            <option value="all">All</option><option value="unsettled">Unsettled</option><option value="settled">Settled</option>
+          </select>
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small mb-1">From</label>
+          <input type="date" class="form-control" [formControl]="fromDate" aria-label="From date" />
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small mb-1">To</label>
+          <input type="date" class="form-control" [formControl]="toDate" aria-label="To date" />
+        </div>
+        @if (hasReceivableFilters()) {
+          <div class="col-auto">
+            <button type="button" class="btn btn-link text-secondary px-1" (click)="clearReceivableFilters()">
+              <i class="ti ti-filter-off me-1"></i> Clear
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+
+    @if (receivables().length === 0) {
+      <div class="empty py-4"><p class="empty-title">No receivables match the current filters.</p></div>
+    } @else {
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table table-hover stagger-rows">
+          <thead><tr>
+            <th>Order</th>
+            <th adminSortHeader field="type" [sort]="recvSort()" (sortChange)="onReceivablesSort($event)">Type</th>
+            <th>Courier</th>
+            <th>AWB</th>
+            <th class="text-end" adminSortHeader field="amount" [sort]="recvSort()" (sortChange)="onReceivablesSort($event)">Amount</th>
+            <th adminSortHeader field="settled" [sort]="recvSort()" (sortChange)="onReceivablesSort($event)">Status</th>
+            <th adminSortHeader field="createdAt" [sort]="recvSort()" (sortChange)="onReceivablesSort($event)">Settled on</th>
+            <th class="text-end">Actions</th>
+          </tr></thead>
+          <tbody>
+            @for (r of receivables(); track r.id) {
+              <tr>
+                <td class="fw-medium">{{ r.orderCode ?? '—' }}</td>
+                <td><span class="badge" [attr.data-type]="r.type">{{ r.type === ReceivableType.COD_RECEIVABLE ? 'COD' : 'Claim' }}</span></td>
+                <td>{{ courierLabel(r.courierName) }}</td>
+                <td><span class="shifa-mono text-secondary">{{ r.awb ?? '—' }}</span></td>
+                <td class="text-end">{{ money(r.amount) }}</td>
+                <td>
+                  @if (r.settled) { <span class="badge settled">Settled</span> } @else { <span class="badge outstanding">Outstanding</span> }
+                </td>
+                <td class="text-secondary">{{ r.settledDate ? (r.settledDate | date: 'dd MMM yyyy') : '—' }}</td>
+                <td class="text-end">
+                  @if (!r.settled) {
+                    <button type="button" class="btn btn-sm btn-primary" (click)="openSettle(r)" [disabled]="acting()">Settle</button>
+                  } @else { <span class="text-secondary">—</span> }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <admin-pagination
+        [page]="recvPage()"
+        [totalPages]="recvTotalPages()"
+        [totalElements]="recvTotalElements()"
+        [size]="recvSize()"
+        (pageChange)="goToReceivablesPage($event)"
+        (sizeChange)="setReceivablesSize($event)"
+      />
+    }
+  }
+
+  <!-- Unsettled COD tab -->
+  @if (tab() === 'unsettled') {
+    @if (unsettled().length === 0) {
+      <div class="empty py-4"><p class="empty-title">No unsettled COD receivables</p><p class="empty-subtitle text-secondary">All collected COD is settled.</p></div>
+    } @else {
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table table-hover stagger-rows">
+          <thead><tr><th>Order</th><th>Customer</th><th>Courier</th><th>AWB</th><th class="text-end">COD amount</th><th class="text-end">Actions</th></tr></thead>
+          <tbody>
+            @for (u of unsettled(); track u.receivableId) {
+              <tr>
+                <td class="fw-medium">{{ u.orderCode ?? '—' }}</td>
+                <td>{{ u.customerName ?? '—' }}</td>
+                <td>{{ courierLabel(u.courierName) }}</td>
+                <td><span class="shifa-mono text-secondary">{{ u.awb ?? '—' }}</span></td>
+                <td class="text-end">{{ money(u.amount) }}</td>
+                <td class="text-end"><button type="button" class="btn btn-sm btn-primary" (click)="openSettle(u)" [disabled]="acting()">Settle</button></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  }
+
+  <!-- Segregation tab -->
+  @if (tab() === 'segregation') {
+    @if (segregation(); as seg) {
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-lg-6">
+            <div class="d-flex align-items-center mb-2">
+              <h3 class="m-0 me-2">Prepaid</h3><span class="badge bg-blue-lt me-auto">{{ seg.prepaid.length }}</span>
+              <strong class="text-primary">{{ money(seg.prepaidTotal) }}</strong>
+            </div>
+            @if (seg.prepaid.length === 0) { <p class="text-secondary">No prepaid orders.</p> } @else {
+              <div class="table-responsive"><table class="table table-sm table-vcenter">
+                <thead><tr><th>Order</th><th>Customer</th><th>Status</th><th class="text-end">Total</th></tr></thead>
+                <tbody>
+                  @for (o of seg.prepaid; track o.orderId) {
+                    <tr><td>{{ o.orderCode }}</td><td>{{ o.customerName }}</td><td class="text-secondary">{{ o.orderStatus }}</td><td class="text-end">{{ money(o.totalAmount) }}</td></tr>
+                  }
+                </tbody>
+              </table></div>
+            }
+          </div>
+          <div class="col-lg-6">
+            <div class="d-flex align-items-center mb-2">
+              <h3 class="m-0 me-2">COD</h3><span class="badge bg-blue-lt me-auto">{{ seg.cod.length }}</span>
+              <strong class="text-primary">{{ money(seg.codTotal) }}</strong>
+            </div>
+            @if (seg.cod.length === 0) { <p class="text-secondary">No COD orders.</p> } @else {
+              <div class="table-responsive"><table class="table table-sm table-vcenter">
+                <thead><tr><th>Order</th><th>Customer</th><th>Status</th><th class="text-end">COD</th></tr></thead>
+                <tbody>
+                  @for (o of seg.cod; track o.orderId) {
+                    <tr><td>{{ o.orderCode }}</td><td>{{ o.customerName }}</td><td class="text-secondary">{{ o.orderStatus }}</td><td class="text-end">{{ money(o.codAmount) }}</td></tr>
+                  }
+                </tbody>
+              </table></div>
+            }
+          </div>
+        </div>
+      </div>
+    } @else {
+      <div class="card-body"><div class="skeleton skeleton-line w-60 mb-3"></div><div class="skeleton skeleton-card"></div></div>
+    }
+  }
+
+  <!-- Pending claims tab -->
+  @if (tab() === 'claims') {
+    @if (claims().length === 0) {
+      <div class="empty py-4"><p class="empty-title">No claims pending</p><p class="empty-subtitle text-secondary">Loss claims will appear here to be filed.</p></div>
+    } @else {
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table table-hover stagger-rows">
+          <thead><tr><th>Order</th><th>Courier</th><th>AWB</th><th class="text-end">Claim amount</th><th>Recorded</th><th class="text-end">Actions</th></tr></thead>
+          <tbody>
+            @for (c of claims(); track c.id) {
+              <tr>
+                <td class="fw-medium">{{ c.orderCode ?? '—' }}</td>
+                <td>{{ courierLabel(c.courierName) }}</td>
+                <td><span class="shifa-mono text-secondary">{{ c.awb ?? '—' }}</span></td>
+                <td class="text-end">{{ money(c.amount) }}</td>
+                <td class="text-secondary">{{ c.createdAt ? (c.createdAt | date: 'dd MMM yyyy') : '—' }}</td>
+                <td class="text-end"><button type="button" class="btn btn-sm btn-primary" (click)="openSettle(c)" [disabled]="acting()">Mark settled</button></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  }
+</div>
+
+<!-- Settle modal -->
+@if (settleTarget(); as target) {
+  <div class="shifa-overlay" (click)="cancelSettle()"></div>
+  <div class="shifa-modal" role="dialog" aria-label="Settle receivable">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title mb-0">Settle receivable</h3></div>
+      <div class="card-body">
+        <p class="text-secondary">
+          Mark the receivable for <strong>{{ target.orderCode ?? 'this order' }}</strong> as settled.
+          Choose the settlement date (defaults to today).
+        </p>
+        <form [formGroup]="settleForm" (ngSubmit)="confirmSettle()" novalidate>
+          <label class="form-label">Settlement date</label>
+          <input type="date" class="form-control" formControlName="date" />
+          <div class="d-flex justify-content-end gap-2 mt-3">
+            <button type="button" class="btn btn-outline-secondary" (click)="cancelSettle()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="acting()">Confirm settle</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Toast -->
+@if (toast(); as t) {
+  <div class="shifa-toast" [class.is-error]="t.kind === 'error'" role="status">
+    <i class="ti me-2" [class.ti-circle-check]="t.kind === 'ok'" [class.ti-alert-triangle]="t.kind === 'error'"></i>{{ t.text }}
+  </div>
+}

@@ -1,0 +1,109 @@
+<section class="account">
+  <div class="account-head">
+    <div>
+      <h1>Addresses</h1>
+      <p class="muted">Saved delivery addresses. Your default is prefilled at checkout.</p>
+    </div>
+    <a class="btn" routerLink="/account">← Account</a>
+  </div>
+
+  <nav class="account-nav">
+    <a routerLink="/account/orders">Orders</a>
+    <a routerLink="/account/addresses" class="active">Addresses</a>
+    <a routerLink="/account/profile">Profile</a>
+    <a routerLink="/wishlist">Wishlist</a>
+  </nav>
+
+  @if (error()) {
+    <p class="notice error" role="alert">{{ error() }}</p>
+  }
+
+  @if (!showForm()) {
+    <div style="margin-bottom: 1rem">
+      <button type="button" class="btn primary" (click)="startAdd()">+ Add address</button>
+    </div>
+  }
+
+  @if (showForm()) {
+    <form class="card" [formGroup]="form" (ngSubmit)="save()" novalidate>
+      <h3 style="margin-top: 0">{{ editingId() ? 'Edit address' : 'New address' }}</h3>
+      <div class="form-grid">
+        <label>
+          <span>Label (Home / Work)</span>
+          <input type="text" formControlName="label" />
+        </label>
+        <label>
+          <span>Full name</span>
+          <input type="text" formControlName="fullName" autocomplete="name" />
+          @if (showError('fullName')) { <small class="field-error">Name is required.</small> }
+        </label>
+        <label>
+          <span>Mobile</span>
+          <input type="tel" formControlName="mobile" inputmode="numeric" maxlength="10" />
+          @if (showError('mobile')) { <small class="field-error">Enter a 10-digit mobile.</small> }
+        </label>
+        <label>
+          <span>Address line</span>
+          <input type="text" formControlName="addressLine" autocomplete="street-address" />
+          @if (showError('addressLine')) { <small class="field-error">Address is required.</small> }
+        </label>
+        <label>
+          <span>City</span>
+          <input type="text" formControlName="city" />
+          @if (showError('city')) { <small class="field-error">City is required.</small> }
+        </label>
+        <label>
+          <span>State</span>
+          <input type="text" formControlName="state" />
+          @if (showError('state')) { <small class="field-error">State is required.</small> }
+        </label>
+        <label>
+          <span>Postal code</span>
+          <input type="text" formControlName="postalCode" inputmode="numeric" maxlength="6" />
+          @if (showError('postalCode')) { <small class="field-error">Enter a 6-digit PIN.</small> }
+        </label>
+      </div>
+      <label class="checkbox-row" style="margin-top: 0.85rem">
+        <input type="checkbox" formControlName="makeDefault" />
+        <span>Set as default delivery address</span>
+      </label>
+      <div class="form-actions">
+        <button type="submit" class="btn primary" [disabled]="saving()">
+          {{ saving() ? 'Saving…' : 'Save address' }}
+        </button>
+        <button type="button" class="btn" (click)="cancel()">Cancel</button>
+      </div>
+    </form>
+  }
+
+  @if (loading()) {
+    <p class="empty">Loading addresses…</p>
+  } @else if (addresses().length === 0 && !showForm()) {
+    <div class="empty"><p>No saved addresses yet.</p></div>
+  } @else {
+    <div class="address-grid">
+      @for (address of addresses(); track address.id) {
+        <div class="address-card" [class.is-default]="address.isDefault">
+          @if (address.isDefault) {
+            <span class="default-tag">Default</span>
+          }
+          <div class="label">{{ address.label || 'Address' }}</div>
+          <address>
+            {{ address.fullName }} · {{ address.mobile }}<br />
+            {{ address.addressLine }}<br />
+            {{ address.city }}, {{ address.state }} {{ address.postalCode }}
+          </address>
+          <div class="row-actions">
+            @if (!address.isDefault) {
+              <button type="button" class="btn" (click)="setDefault(address.id)">
+                Make default
+              </button>
+            }
+            <button type="button" class="btn" (click)="startEdit(address)">Edit</button>
+            <button type="button" class="btn danger" (click)="remove(address.id)">Delete</button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</section>

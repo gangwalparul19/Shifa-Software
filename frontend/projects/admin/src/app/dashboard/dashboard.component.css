@@ -1,0 +1,245 @@
+:host {
+  display: block;
+}
+
+/* Segmented period control wraps nicely on small screens */
+.shifa-period {
+  flex-wrap: wrap;
+}
+
+/* --- Sales SVG chart ----------------------------------------------------- */
+.chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chart .grid {
+  stroke: rgba(15, 51, 36, 0.08);
+  stroke-width: 1;
+}
+
+.chart .axis-y,
+.chart .axis-x {
+  fill: #6b7c74;
+  font-size: 11px;
+}
+.chart .axis-y {
+  text-anchor: end;
+}
+.chart .axis-x {
+  text-anchor: middle;
+}
+
+.chart .bar {
+  fill: url(#shifaBarGradient);
+  fill: var(--shifa-green-600, #1f5d3f);
+  transition: fill 0.15s ease;
+}
+.chart .bar:hover {
+  fill: var(--shifa-green-500, #2b7a52);
+}
+
+.chart .prev-line {
+  fill: none;
+  stroke: #9aa7b1;
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+.chart .prev-dot {
+  fill: #9aa7b1;
+}
+
+.legend {
+  display: flex;
+  gap: 1.25rem;
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: #6b7c74;
+}
+.legend .lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.legend .sw {
+  width: 1rem;
+  height: 0.5rem;
+  border-radius: 2px;
+  display: inline-block;
+}
+.legend .bar-sw {
+  background: var(--shifa-green-600, #1f5d3f);
+}
+.legend .line-sw {
+  background: transparent;
+  height: 0;
+  border-top: 2px dashed #9aa7b1;
+}
+
+.shifa-change {
+  font-weight: 600;
+}
+
+/* --- Activity tiles ------------------------------------------------------ */
+.shifa-act {
+  padding: 0.9rem 1rem;
+  border-radius: 0.7rem;
+  background: var(--shifa-green-050, #f2f9f5);
+  border: 1px solid rgba(15, 51, 36, 0.06);
+  height: 100%;
+  transition: transform 0.18s var(--shifa-ease), box-shadow 0.18s var(--shifa-ease);
+}
+.shifa-act:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(15, 51, 36, 0.08);
+}
+.shifa-act.warn {
+  background: #fdf5e6;
+  border-color: rgba(201, 162, 39, 0.25);
+}
+
+/* --- Welcome hero card --------------------------------------------------- */
+.shifa-hero {
+  background: linear-gradient(135deg, #1f5d3f 0%, #164632 55%, #0f3324 100%);
+  color: #fff;
+  border: none;
+  overflow: hidden;
+}
+.shifa-hero .card-body {
+  position: relative;
+}
+.shifa-hero__grid {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+.shifa-hero__content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.shifa-hero__pretitle {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--shifa-gold, #e6c65c);
+  font-weight: 600;
+}
+.shifa-hero__greet {
+  margin: 0.15rem 0 0.35rem;
+  color: #fff;
+  font-size: 1.6rem;
+  line-height: 1.15;
+}
+.shifa-hero__sub {
+  color: rgba(255, 255, 255, 0.78);
+  margin: 0 0 1.1rem;
+  max-width: 42ch;
+}
+.shifa-hero__kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.75rem;
+}
+.shifa-hero__kpi-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.65);
+  margin-bottom: 0.15rem;
+}
+.shifa-hero__kpi {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #fff;
+}
+.shifa-hero__trend {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+.shifa-hero__trend.up {
+  background: rgba(47, 179, 68, 0.28);
+  color: #d7f8dd;
+}
+.shifa-hero__trend.down {
+  background: rgba(214, 57, 57, 0.3);
+  color: #ffdada;
+}
+.shifa-hero__art {
+  flex: 0 0 auto;
+  width: 120px;
+  height: 120px;
+  opacity: 0.95;
+}
+.shifa-hero__art svg {
+  width: 100%;
+  height: 100%;
+}
+@media (max-width: 575.98px) {
+  .shifa-hero__art {
+    display: none;
+  }
+  .shifa-hero__greet {
+    font-size: 1.35rem;
+  }
+}
+
+/* --- Sales sparkline ----------------------------------------------------- */
+.shifa-spark-wrap {
+  width: 100%;
+}
+.shifa-spark {
+  width: 100%;
+  height: 56px;
+  display: block;
+}
+.shifa-spark .spark-area {
+  fill: rgba(31, 93, 63, 0.12);
+}
+.shifa-spark .spark-line {
+  fill: none;
+  stroke: var(--shifa-green-600, #1f5d3f);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* --- Notification feed --------------------------------------------------- */
+.shifa-note-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+/* --- Clickable metric cards (drill-down, A2) ----------------------------- */
+.shifa-card-link {
+  cursor: pointer;
+}
+.shifa-card-link:focus-visible {
+  outline: 2px solid var(--shifa-green-500, #2b7a52);
+  outline-offset: 2px;
+}
+
+/* --- Top-performers leaderboard tiles (A1) ------------------------------- */
+.shifa-leader {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.7rem;
+  background: var(--shifa-green-050, #f2f9f5);
+  border: 1px solid rgba(15, 51, 36, 0.06);
+  height: 100%;
+}
+
+/* --- ApexCharts containers ---------------------------------------------- */
+apx-chart {
+  display: block;
+  width: 100%;
+}

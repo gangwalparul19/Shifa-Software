@@ -1,0 +1,942 @@
+/* ============================================================================
+   Shifa Herbal Remedies — Admin Dashboard
+   Global theme layer on top of the Tabler design system.
+
+   Loaded AFTER tabler.min.css + tabler-icons.min.css (see angular.json) so the
+   brand overrides below win. This file stays faithful to Tabler's clean LIGHT
+   default (white top navbar + horizontal menu, light-gray page background,
+   bordered white cards) and applies only a light brand touch:
+     1. Maps Tabler's --tblr-primary onto the Shifa herbal green.
+     2. Keeps the refined Inter typography.
+     3. Keeps a small, reusable animation system (route/card/table/toast) and
+        skeleton shimmer loaders — all disabled under prefers-reduced-motion.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Brand palette + Tabler variable overrides
+   -------------------------------------------------------------------------- */
+:root {
+  /* Shifa herbal-green brand ramp */
+  --shifa-green-900: #0f3324;
+  --shifa-green-800: #164632;
+  --shifa-green-700: #1a4f38;
+  --shifa-green-600: #1f5d3f;
+  --shifa-green-500: #2b7a52;
+  --shifa-green-400: #3f9b6a;
+  --shifa-green-300: #7ac29a;
+  --shifa-green-100: #e4f2ea;
+  --shifa-green-050: #f2f9f5;
+
+  /* Subtle gold accent (used sparingly) */
+  --shifa-gold: #c9a227;
+
+  /* Map Tabler's primary onto the brand green */
+  --tblr-primary: #1f5d3f;
+  --tblr-primary-rgb: 31, 93, 63;
+  --tblr-primary-fg: #ffffff;
+  --tblr-primary-darken: #164632;
+  --tblr-primary-lt: #e4f2ea;
+
+  /* Brand-tinted link + focus colours */
+  --tblr-link-color: #1f5d3f;
+  --tblr-link-color-rgb: 31, 93, 63;
+  --tblr-link-hover-color: #164632;
+
+  /* Tabler default light surface */
+  --tblr-body-bg: #f5f7fb;
+
+  /* Motion tokens */
+  --shifa-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --shifa-dur: 0.42s;
+}
+
+/* --------------------------------------------------------------------------
+   1b. Typography — Inter (body) + Inter Tight (headings)
+   -------------------------------------------------------------------------- */
+:root {
+  --tblr-font-sans-serif: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+  --shifa-font-display: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+}
+
+html {
+  font-size: 15px;
+}
+
+body {
+  font-family: var(--tblr-font-sans-serif);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  color: #1c2b24;
+  background: var(--tblr-body-bg);
+}
+
+/* Headings: tighter, crisper display face */
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6,
+.card-title,
+.page-title {
+  font-family: var(--shifa-font-display);
+  font-weight: 600;
+  letter-spacing: -0.014em;
+  color: #182a21;
+}
+
+h1, .h1 { font-weight: 700; }
+
+/* Numeric-heavy contexts read better with lining tabular figures */
+.table,
+.count-up,
+.h1, .h2, .h3,
+.stat-icon + *,
+.shifa-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+a {
+  text-decoration: none;
+}
+
+/* --------------------------------------------------------------------------
+   2. Brand lockup (light navbar) — leaf mark + wordmark
+   -------------------------------------------------------------------------- */
+.shifa-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: inherit;
+}
+.shifa-brand__mark {
+  display: grid;
+  place-items: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  border-radius: 0.6rem;
+  background: var(--shifa-green-600);
+  color: #eafff2;
+  font-size: 1.2rem;
+  box-shadow: 0 2px 6px rgba(31, 93, 63, 0.25);
+}
+.shifa-brand__text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+}
+.shifa-brand__title {
+  font-family: var(--shifa-font-display);
+  font-weight: 700;
+  font-size: 1.02rem;
+  color: #14231c;
+  letter-spacing: 0.01em;
+}
+.shifa-brand__subtitle {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--shifa-green-500);
+  font-weight: 600;
+}
+
+/* Brand-green avatar chip */
+.shifa-avatar {
+  background: var(--shifa-green-600);
+  color: #eafff2;
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   3. Cards, tables, headers — clean Tabler light polish
+   -------------------------------------------------------------------------- */
+.card {
+  --tblr-card-border-color: rgba(4, 32, 69, 0.08);
+  border: 1px solid rgba(4, 32, 69, 0.08);
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px rgba(15, 34, 58, 0.04);
+  transition: box-shadow 0.18s var(--shifa-ease), transform 0.18s var(--shifa-ease);
+}
+
+/* Interactive cards lift gently on hover */
+.card-hover:hover {
+  box-shadow: 0 2px 4px rgba(15, 34, 58, 0.06), 0 8px 22px rgba(15, 34, 58, 0.07);
+  transform: translateY(-2px);
+}
+
+.card-header {
+  border-bottom-color: rgba(4, 32, 69, 0.08);
+  padding: 0.85rem 1.25rem;
+  min-height: 3.25rem;
+  align-items: center;
+}
+.card-header .card-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.card-header .card-subtitle {
+  font-size: 0.8rem;
+}
+.card-body {
+  padding: 1.25rem;
+}
+.card-footer {
+  border-top-color: rgba(4, 32, 69, 0.08);
+}
+
+/* Stat card coloured accent bar */
+.stat-accent {
+  position: relative;
+  overflow: hidden;
+}
+.stat-accent::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--accent, var(--tblr-primary));
+}
+
+.stat-icon {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  border-radius: 0.5rem;
+  font-size: 1.2rem;
+  background: var(--accent-soft, var(--shifa-green-100));
+  color: var(--accent, var(--tblr-primary));
+}
+
+.row-cards .stat-accent .card-body {
+  min-height: 88px;
+}
+.stat-accent .subheader {
+  margin-bottom: 0.35rem;
+}
+.stat-accent .h1,
+.stat-accent .h2 {
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+/* Table density + header styling (Tabler card-table look) */
+.card-table thead th,
+.table thead th {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #667382;
+  background: transparent;
+  border-bottom: 1px solid rgba(4, 32, 69, 0.1);
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+  white-space: nowrap;
+}
+.card-table > :not(caption) > * > * {
+  padding-inline: 1.25rem;
+}
+.table tbody td {
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+  vertical-align: middle;
+  border-top-color: rgba(4, 32, 69, 0.06);
+}
+
+.table tbody tr {
+  transition: background-color 0.14s ease;
+}
+.table-hover tbody tr:hover {
+  background-color: rgba(31, 93, 63, 0.04);
+}
+tr.clickable {
+  cursor: pointer;
+}
+
+/* Buttons: crisp weight + Tabler radius; solid brand green (no heavy gradient) */
+.btn {
+  font-weight: 500;
+}
+.btn-primary {
+  --tblr-btn-bg: var(--shifa-green-600);
+  --tblr-btn-border-color: var(--shifa-green-600);
+  --tblr-btn-hover-bg: var(--shifa-green-700);
+  --tblr-btn-hover-border-color: var(--shifa-green-700);
+  --tblr-btn-active-bg: var(--shifa-green-800);
+  --tblr-btn-active-border-color: var(--shifa-green-800);
+  background-color: var(--shifa-green-600);
+  border-color: var(--shifa-green-600);
+}
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: var(--shifa-green-700);
+  border-color: var(--shifa-green-700);
+}
+
+/* Form controls */
+.form-label {
+  font-weight: 500;
+  color: #3a4a42;
+}
+
+/* Empty states: a touch more breathing room */
+.empty {
+  padding: 3rem 1.5rem;
+}
+
+/* --------------------------------------------------------------------------
+   4. Page header (pretitle + title + right-aligned actions)
+   -------------------------------------------------------------------------- */
+.shifa-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+.shifa-page-head .page-pretitle {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7c8a82;
+  margin-bottom: 0.15rem;
+}
+.shifa-page-head .page-title {
+  margin: 0;
+  font-size: 1.4rem;
+  line-height: 1.15;
+}
+.shifa-page-head__desc {
+  color: #64756c;
+  margin: 0.35rem 0 0;
+  font-size: 0.88rem;
+  max-width: 62ch;
+}
+.shifa-page-head__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+/* Consistent vertical rhythm for the routed body */
+.page-body {
+  margin-top: 0;
+  padding-top: 1.5rem;
+  padding-bottom: 2.5rem;
+}
+
+/* --------------------------------------------------------------------------
+   4b. Section titles — small uppercase group headers with a subtle divider.
+   Used to break a long list of stat cards into scannable groups.
+   -------------------------------------------------------------------------- */
+.shifa-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--shifa-green-600);
+  margin: 0.25rem 0 0.6rem;
+}
+/* Small brand-green marker before the label */
+.shifa-section-title::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 0.28rem;
+  background: linear-gradient(135deg, var(--shifa-green-500), var(--shifa-green-700));
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+.shifa-section-title::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: linear-gradient(90deg, var(--shifa-green-100), rgba(4, 32, 69, 0.06));
+}
+
+/* --------------------------------------------------------------------------
+   4c. Mobile-compact stat cards + tidy page headers (≤575.98px).
+   Fits ~3 count-cards per row without clipping; keeps the accent bar.
+   -------------------------------------------------------------------------- */
+@media (max-width: 575.98px) {
+  /* Page header: title on top, actions drop below and stretch full-width */
+  .shifa-page-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .shifa-page-head__actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  /* Compact stat card body: tighter padding, no fixed min-height */
+  .row-cards .stat-accent .card-body {
+    padding: 0.6rem;
+    min-height: 0;
+    gap: 0.4rem;
+  }
+
+  /* Hide the large icon on phones so number + label get the space */
+  .stat-accent .card-body .stat-icon {
+    display: none;
+  }
+
+  /* Labels: smaller, allowed to wrap to two lines instead of clipping */
+  .stat-accent .subheader {
+    font-size: 0.65rem;
+    line-height: 1.15;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    margin-bottom: 0.2rem;
+  }
+
+  /* Numbers: smaller but still tabular + count-up friendly */
+  .stat-accent .h1,
+  .stat-accent .h2 {
+    font-size: 1.1rem;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   5. Animation system
+   -------------------------------------------------------------------------- */
+@keyframes shifaFadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes shifaFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes shifaSlideInRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes shifaShimmer {
+  100% { transform: translateX(100%); }
+}
+@keyframes shifaPop {
+  0% { transform: scale(0.96); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.anim-fade-up {
+  animation: shifaFadeUp var(--shifa-dur) var(--shifa-ease) both;
+}
+.anim-pop {
+  animation: shifaPop 0.28s var(--shifa-ease) both;
+}
+
+.stagger > * {
+  animation: shifaFadeUp var(--shifa-dur) var(--shifa-ease) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger > *:nth-child(3) { animation-delay: 0.1s; }
+.stagger > *:nth-child(4) { animation-delay: 0.14s; }
+.stagger > *:nth-child(5) { animation-delay: 0.18s; }
+.stagger > *:nth-child(6) { animation-delay: 0.22s; }
+.stagger > *:nth-child(7) { animation-delay: 0.26s; }
+.stagger > *:nth-child(8) { animation-delay: 0.3s; }
+.stagger > *:nth-child(9) { animation-delay: 0.34s; }
+.stagger > *:nth-child(10) { animation-delay: 0.38s; }
+.stagger > *:nth-child(11) { animation-delay: 0.42s; }
+.stagger > *:nth-child(12) { animation-delay: 0.46s; }
+
+.stagger-rows tbody tr {
+  animation: shifaFadeUp 0.4s var(--shifa-ease) both;
+}
+.stagger-rows tbody tr:nth-child(1) { animation-delay: 0.02s; }
+.stagger-rows tbody tr:nth-child(2) { animation-delay: 0.05s; }
+.stagger-rows tbody tr:nth-child(3) { animation-delay: 0.08s; }
+.stagger-rows tbody tr:nth-child(4) { animation-delay: 0.11s; }
+.stagger-rows tbody tr:nth-child(5) { animation-delay: 0.14s; }
+.stagger-rows tbody tr:nth-child(6) { animation-delay: 0.17s; }
+.stagger-rows tbody tr:nth-child(7) { animation-delay: 0.2s; }
+.stagger-rows tbody tr:nth-child(8) { animation-delay: 0.23s; }
+.stagger-rows tbody tr:nth-child(n + 9) { animation-delay: 0.26s; }
+
+.btn:active {
+  transform: translateY(1px) scale(0.99);
+}
+.btn {
+  transition: transform 0.08s ease, background-color 0.15s ease, border-color 0.15s ease,
+    box-shadow 0.15s ease, color 0.15s ease;
+}
+.form-control,
+.form-select {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.form-control:focus,
+.form-select:focus {
+  box-shadow: 0 0 0 0.2rem rgba(31, 93, 63, 0.18);
+  border-color: var(--shifa-green-500);
+}
+
+/* --------------------------------------------------------------------------
+   6. Skeleton shimmer loaders
+   -------------------------------------------------------------------------- */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: #e9edf2;
+  border-radius: 0.5rem;
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, 0.7) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: shifaShimmer 1.4s infinite;
+}
+.skeleton-line {
+  height: 0.85rem;
+  margin-bottom: 0.6rem;
+}
+.skeleton-line.sm { height: 0.7rem; }
+.skeleton-line.w-40 { width: 40%; }
+.skeleton-line.w-60 { width: 60%; }
+.skeleton-line.w-80 { width: 80%; }
+.skeleton-card { height: 88px; }
+
+/* --------------------------------------------------------------------------
+   7. Live / SSE status indicator + notification feed
+   -------------------------------------------------------------------------- */
+.live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.26rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+.live-indicator .dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+.live-indicator.open {
+  color: #1f7a4d;
+  background: #e6f6ec;
+  border-color: #c4e6d1;
+}
+.live-indicator.open .dot {
+  animation: shifaPulse 1.6s infinite;
+}
+.live-indicator.connecting {
+  color: #9a6a00;
+  background: #fbf1d8;
+  border-color: #f0dfae;
+}
+.live-indicator.closed {
+  color: #b42318;
+  background: #fdecea;
+  border-color: #f6cfca;
+}
+
+@keyframes shifaPulse {
+  0% { box-shadow: 0 0 0 0 rgba(31, 122, 77, 0.5); }
+  70% { box-shadow: 0 0 0 6px rgba(31, 122, 77, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(31, 122, 77, 0); }
+}
+
+.feed-item {
+  animation: shifaSlideInRight 0.32s var(--shifa-ease) both;
+}
+
+/* --------------------------------------------------------------------------
+   8. Toast (presentation-only, slide-in)
+   -------------------------------------------------------------------------- */
+.shifa-toast {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 1080;
+  min-width: 240px;
+  max-width: 360px;
+  padding: 0.8rem 1rem;
+  border-radius: 0.6rem;
+  color: #fff;
+  background: var(--shifa-green-600);
+  box-shadow: 0 12px 32px rgba(15, 51, 36, 0.24);
+  animation: shifaSlideInRight 0.32s var(--shifa-ease) both;
+}
+.shifa-toast.is-error {
+  background: #b42318;
+}
+
+.count-up {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   9. Respect reduced-motion — disable non-essential animation
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   10. Auth screens (login / forbidden) — clean light Tabler sign-in
+   -------------------------------------------------------------------------- */
+.shifa-auth {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: var(--tblr-body-bg);
+}
+
+.shifa-auth__card {
+  width: 100%;
+  max-width: 24rem;
+  animation: shifaFadeUp 0.5s var(--shifa-ease) both;
+}
+
+.shifa-auth__brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  margin-bottom: 1.5rem;
+  color: #14231c;
+}
+.shifa-auth__mark {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.75rem;
+  background: var(--shifa-green-600);
+  color: #eafff2;
+  font-size: 1.55rem;
+  box-shadow: 0 4px 14px rgba(31, 93, 63, 0.28);
+}
+.shifa-auth__name {
+  font-family: var(--shifa-font-display);
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #14231c;
+}
+.shifa-auth__tag {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--shifa-green-500);
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   11. Drawers + modals (Angular-driven, presentation-only)
+   -------------------------------------------------------------------------- */
+.shifa-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1055;
+  background: rgba(15, 34, 58, 0.4);
+  animation: shifaFadeIn 0.2s ease both;
+}
+
+.shifa-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(560px, 100vw);
+  z-index: 1060;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -12px 0 40px rgba(15, 34, 58, 0.22);
+  animation: shifaDrawerIn 0.32s var(--shifa-ease) both;
+}
+@keyframes shifaDrawerIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.shifa-drawer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: #fff;
+  border-bottom: 1px solid rgba(4, 32, 69, 0.09);
+}
+.shifa-drawer__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem;
+}
+.shifa-drawer__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.9rem 1.25rem;
+  background: #fff;
+  border-top: 1px solid rgba(4, 32, 69, 0.09);
+}
+
+.shifa-modal {
+  position: fixed;
+  z-index: 1060;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(520px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 0.6rem;
+  box-shadow: 0 24px 60px rgba(15, 34, 58, 0.28);
+  /* Own keyframe: the generic shifaPop ends at `transform: scale(1)`, which would
+     override the centering translate (fill-mode both) and drop the modal to the
+     lower half of the screen. This one preserves translate(-50%, -50%). */
+  animation: shifaModalPop 0.26s var(--shifa-ease) both;
+}
+
+@keyframes shifaModalPop {
+  0% { transform: translate(-50%, -50%) scale(0.96); opacity: 0; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+/* On phones drawers + modals go full-width and stay scrollable */
+@media (max-width: 575.98px) {
+  .shifa-drawer {
+    width: 100vw;
+  }
+  .shifa-modal {
+    width: calc(100vw - 1.5rem);
+    max-height: calc(100vh - 1.5rem);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   12. Status + payment badges (data-attribute driven; clean Tabler pills)
+   -------------------------------------------------------------------------- */
+.badge[data-group],
+.badge[data-status],
+.badge[data-visibility],
+.badge[data-type],
+.badge.settled,
+.badge.outstanding {
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.01em;
+  padding: 0.32em 0.7em;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.badge[data-group='pending'] { background: #fdf1da; color: #9a6a00; }
+.badge[data-group='progress'] { background: #e7f0fb; color: #1c5fb0; }
+.badge[data-group='done'] { background: #e6f6ec; color: #1f7a34; }
+.badge[data-group='bad'] { background: #fbe7e7; color: #b42318; }
+
+.badge[data-status='FULLY_PAID'] { background: #e6f6ec; color: #1f7a34; }
+.badge[data-status='PARTIALLY_PAID'] { background: #fdf1da; color: #9a6a00; }
+.badge[data-status='COD'] { background: #e7f0fb; color: #1c5fb0; }
+
+.badge[data-visibility='PUBLISHED'] { background: #e4f2ea; color: #1f5d3f; }
+.badge[data-visibility='HIDDEN'] { background: #eceff1; color: #62707a; }
+
+.badge[data-type='COD_RECEIVABLE'] { background: #e7f0fb; color: #1c5fb0; }
+.badge[data-type='CLAIM_RECEIVABLE'] { background: #fbe7e7; color: #b42318; }
+
+.badge.settled { background: #e6f6ec; color: #1f7a34; }
+.badge.outstanding { background: #fdf1da; color: #9a6a00; }
+
+/* Monospace helper for codes/AWB */
+.shifa-mono {
+  font-family: var(--tblr-font-monospace, ui-monospace, monospace);
+  font-size: 0.85em;
+}
+
+/* --------------------------------------------------------------------------
+   13. Breadcrumbs (page header trail)
+   -------------------------------------------------------------------------- */
+.shifa-breadcrumbs {
+  margin-bottom: 0.3rem;
+}
+.shifa-breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.shifa-breadcrumbs li {
+  display: inline-flex;
+  align-items: center;
+  color: #7c8a82;
+}
+.shifa-breadcrumbs li:not(:first-child)::before {
+  content: '';
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  margin-right: 0.4rem;
+  background: currentColor;
+  opacity: 0.45;
+  -webkit-mask: no-repeat center / contain
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M9 6l6 6l-6 6'/%3E%3C/svg%3E");
+  mask: no-repeat center / contain
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M9 6l6 6l-6 6'/%3E%3C/svg%3E");
+}
+.shifa-breadcrumbs a {
+  color: var(--shifa-green-600);
+}
+.shifa-breadcrumbs a:hover {
+  color: var(--shifa-green-700);
+  text-decoration: underline;
+}
+.shifa-breadcrumbs li.is-current {
+  color: #4a5a52;
+}
+
+/* --------------------------------------------------------------------------
+   14. Table density toggle + compact mode
+   Applied globally via body.density-compact (TableDensityService).
+   -------------------------------------------------------------------------- */
+.shifa-density .btn {
+  padding-inline: 0.5rem;
+}
+.shifa-density .btn:not(.btn-primary) {
+  color: #62707a;
+}
+
+body.density-compact .table td,
+body.density-compact .table th {
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+}
+body.density-compact .card-table > :not(caption) > * > * {
+  padding-inline: 0.85rem;
+}
+body.density-compact .table {
+  font-size: 0.86rem;
+}
+body.density-compact .table .avatar-md {
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.8rem;
+}
+body.density-compact .table .btn-sm {
+  padding: 0.15rem 0.45rem;
+  font-size: 0.78rem;
+}
+
+/* --------------------------------------------------------------------------
+   15. Confirmation dialog (ConfirmService)
+   -------------------------------------------------------------------------- */
+.shifa-confirm {
+  width: min(460px, calc(100vw - 2rem));
+}
+.shifa-confirm__icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  font-size: 1.4rem;
+  background: var(--shifa-green-100);
+  color: var(--shifa-green-600);
+}
+.shifa-confirm__icon.is-danger {
+  background: #fbe7e7;
+  color: #b42318;
+}
+
+/* --------------------------------------------------------------------------
+   16. Accessibility — visible focus rings for keyboard users
+   -------------------------------------------------------------------------- */
+.btn:focus-visible,
+.nav-link:focus-visible,
+.form-control:focus-visible,
+.form-select:focus-visible,
+a:focus-visible,
+.page-link:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--shifa-green-500);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(31, 93, 63, 0.18);
+}
+
+/* --------------------------------------------------------------------------
+   17. Packing / warehouse mobile polish — large touch targets
+   -------------------------------------------------------------------------- */
+.shifa-scan-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 1rem;
+  font-size: 2.2rem;
+  background: var(--shifa-green-100);
+  color: var(--shifa-green-600);
+}
+.shifa-barcode {
+  font-family: var(--tblr-font-monospace, ui-monospace, monospace);
+  letter-spacing: 0.12em;
+  font-size: 1.15rem;
+}
+@media (max-width: 767.98px) {
+  /* Bigger, one-handed-friendly scan controls on phones/tablets */
+  .shifa-barcode {
+    font-size: 1.25rem;
+    min-height: 3.25rem;
+  }
+  .packing-scan .btn-lg {
+    min-height: 3.25rem;
+    font-size: 1.05rem;
+  }
+  /* On-the-floor action buttons in queues get a comfortable tap target */
+  .shifa-touch .btn,
+  .packing-scan .btn {
+    min-height: 44px;
+  }
+  .shifa-touch .btn-icon,
+  .shifa-touch .btn-sm.btn-icon {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

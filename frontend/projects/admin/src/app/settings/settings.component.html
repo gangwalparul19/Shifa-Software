@@ -1,0 +1,283 @@
+<admin-page-header
+  title="Settings"
+  subtitle="Company details and GST configuration for invoices."
+  [breadcrumbs]="[{ label: 'Settings' }]"
+>
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Reload
+  </button>
+</admin-page-header>
+
+@if (loading()) {
+  <div class="card">
+    <div class="card-body">
+      <div class="skeleton skeleton-line w-40 mb-3"></div>
+      <div class="skeleton skeleton-line w-75 mb-2"></div>
+      <div class="skeleton skeleton-line w-60"></div>
+    </div>
+  </div>
+} @else if (loadError()) {
+  <div class="alert alert-danger d-flex align-items-center" role="alert">
+    <i class="ti ti-alert-triangle me-2"></i>
+    <span class="me-auto">{{ loadError() }}</span>
+    <button type="button" class="btn btn-sm btn-danger" (click)="load()">Retry</button>
+  </div>
+} @else {
+  <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+    @if (formError(); as err) {
+      <div class="alert alert-danger anim-fade-up" role="alert">
+        <i class="ti ti-alert-triangle me-2"></i>{{ err }}
+      </div>
+    }
+
+    <!-- GST section -->
+    <div class="card mb-3">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-receipt-tax me-2"></i>GST</h3>
+      </div>
+      <div class="card-body">
+        <label class="form-check form-switch form-switch-lg mb-2">
+          <input class="form-check-input" type="checkbox" formControlName="gstEnabled" />
+          <span class="form-check-label fw-medium">Enable GST on invoices</span>
+        </label>
+        <p class="text-secondary small mb-3">
+          <i class="ti ti-info-circle me-1"></i>
+          When enabled, per-order invoices are issued as a GST <strong>Tax Invoice</strong>
+          (GSTIN, HSN codes, and a CGST/SGST or IGST breakdown). When disabled, the
+          standard invoice is used.
+        </p>
+
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label" [class.required]="form.controls.gstEnabled.value">GSTIN</label>
+            <input type="text" class="form-control shifa-mono" formControlName="gstin" maxlength="20"
+              autocomplete="off" placeholder="e.g. 23ABCDE1234F1Z5"
+              [class.is-invalid]="form.controls.gstin.touched && form.controls.gstin.invalid" />
+            @if (form.controls.gstin.touched && form.controls.gstin.invalid) {
+              <div class="invalid-feedback">
+                GSTIN is required and must be exactly 15 characters when GST is enabled.
+              </div>
+            }
+          </div>
+          <div class="col-md-3 mb-3">
+            <label class="form-label required">GST rate %</label>
+            <input type="text" inputmode="decimal" class="form-control" formControlName="gstRatePercent"
+              placeholder="5.00"
+              [class.is-invalid]="form.controls.gstRatePercent.touched && form.controls.gstRatePercent.invalid" />
+            @if (form.controls.gstRatePercent.touched && form.controls.gstRatePercent.invalid) {
+              <div class="invalid-feedback">Enter a valid rate (e.g. 5 or 18.00).</div>
+            }
+          </div>
+          <div class="col-md-3 mb-3 d-flex align-items-end">
+            <label class="form-check form-switch mb-2">
+              <input class="form-check-input" type="checkbox" formControlName="pricesIncludeGst" />
+              <span class="form-check-label">Prices include GST</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Invoice & Tax section -->
+    <div class="card mb-3">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-file-invoice me-2"></i>Invoice &amp; Tax</h3>
+      </div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Invoice number prefix</label>
+            <input type="text" class="form-control shifa-mono" formControlName="invoiceNumberPrefix" maxlength="40"
+              autocomplete="off" placeholder="e.g. SHR/24-25/" />
+            <small class="form-hint">Appears on invoices, before the running number.</small>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label">GST slabs</label>
+            <input type="text" class="form-control" formControlName="gstSlabs" maxlength="100"
+              autocomplete="off" placeholder="0,5,12,18,28"
+              [class.is-invalid]="form.controls.gstSlabs.touched && form.controls.gstSlabs.invalid" />
+            <small class="form-hint">Comma-separated rates (0–28). Offered when setting a product's GST rate.</small>
+            @if (form.controls.gstSlabs.touched && form.controls.gstSlabs.invalid) {
+              <div class="invalid-feedback">Enter comma-separated numbers between 0 and 28 (e.g. 0,5,12,18,28).</div>
+            }
+          </div>
+        </div>
+
+        <div class="mb-1">
+          <label class="form-label">Terms &amp; conditions</label>
+          <textarea class="form-control" formControlName="invoiceTerms" rows="4" maxlength="2000"
+            placeholder="Terms &amp; conditions printed on invoices (e.g. return/warranty policy)."></textarea>
+          <small class="form-hint">Appears on invoices.</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bank details section -->
+    <div class="card mb-3">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-building-bank me-2"></i>Bank details</h3>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">
+          <i class="ti ti-info-circle me-1"></i>
+          These bank details appear on invoices so customers can pay by bank transfer.
+        </p>
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Bank name</label>
+            <input type="text" class="form-control" formControlName="bankName" maxlength="120" autocomplete="off"
+              placeholder="e.g. HDFC Bank" />
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Account name</label>
+            <input type="text" class="form-control" formControlName="bankAccountName" maxlength="120" autocomplete="off"
+              placeholder="Account holder name" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-md-4 mb-3">
+            <label class="form-label">Account number</label>
+            <input type="text" class="form-control shifa-mono" formControlName="bankAccountNumber" maxlength="40"
+              autocomplete="off" />
+          </div>
+          <div class="col-md-4 mb-3">
+            <label class="form-label">IFSC</label>
+            <input type="text" class="form-control shifa-mono text-uppercase" formControlName="bankIfsc" maxlength="20"
+              autocomplete="off" placeholder="e.g. HDFC0001234"
+              [class.is-invalid]="form.controls.bankIfsc.touched && form.controls.bankIfsc.invalid" />
+            @if (form.controls.bankIfsc.touched && form.controls.bankIfsc.invalid) {
+              <div class="invalid-feedback">Enter a valid IFSC (e.g. HDFC0001234).</div>
+            }
+          </div>
+          <div class="col-md-4 mb-3">
+            <label class="form-label">Branch</label>
+            <input type="text" class="form-control" formControlName="bankBranch" maxlength="120" autocomplete="off" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Company logo section -->
+    <div class="card mb-3">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-photo me-2"></i>Company logo</h3>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">
+          <i class="ti ti-info-circle me-1"></i>
+          This logo appears on your <strong>invoices and shipping/packing labels</strong>.
+          Use a PNG or JPEG up to 1MB — a square or wide transparent PNG works best.
+        </p>
+
+        @if (logoError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert">
+            <i class="ti ti-alert-triangle me-2"></i>{{ err }}
+          </div>
+        }
+
+        <div class="shifa-logo-row">
+          <div class="shifa-logo-preview" [class.is-empty]="!logoUrl()">
+            @if (logoUrl(); as src) {
+              <img [src]="src" alt="Company logo preview" />
+            } @else {
+              <div class="shifa-logo-placeholder">
+                <i class="ti ti-photo"></i>
+                <span>No logo</span>
+              </div>
+            }
+          </div>
+
+          <div class="shifa-logo-actions">
+            <label class="btn btn-primary mb-0" [class.disabled]="logoBusy()">
+              @if (logoBusy()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Working…
+              } @else {
+                <i class="ti ti-upload me-1"></i> {{ hasLogo() ? 'Replace logo' : 'Upload logo' }}
+              }
+              <input
+                type="file"
+                class="visually-hidden"
+                accept="image/png,image/jpeg"
+                (change)="onLogoSelected($event)"
+                [disabled]="logoBusy()"
+              />
+            </label>
+            @if (hasLogo()) {
+              <button type="button" class="btn btn-outline-danger" (click)="removeLogo()" [disabled]="logoBusy()">
+                <i class="ti ti-trash me-1"></i> Remove
+              </button>
+            }
+            <small class="form-hint d-block">PNG or JPEG, up to 1MB.</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Company section -->
+    <div class="card mb-3">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-building-store me-2"></i>Company</h3>
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label required">Legal name</label>
+          <input type="text" class="form-control" formControlName="legalName" maxlength="200" autocomplete="off"
+            [class.is-invalid]="form.controls.legalName.touched && form.controls.legalName.invalid" />
+          @if (form.controls.legalName.touched && form.controls.legalName.invalid) {
+            <div class="invalid-feedback">Legal name is required (max 200 characters).</div>
+          }
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Address line</label>
+          <input type="text" class="form-control" formControlName="addressLine" maxlength="250" autocomplete="off" />
+        </div>
+
+        <div class="row">
+          <div class="col-md-5 mb-3">
+            <label class="form-label">City</label>
+            <input type="text" class="form-control" formControlName="city" maxlength="100" autocomplete="off" />
+          </div>
+          <div class="col-md-5 mb-3">
+            <label class="form-label">State</label>
+            <input type="text" class="form-control" formControlName="state" maxlength="100" autocomplete="off"
+              placeholder="e.g. Madhya Pradesh" />
+            <small class="form-hint">Used to decide intra-state (CGST+SGST) vs inter-state (IGST).</small>
+          </div>
+          <div class="col-md-2 mb-3">
+            <label class="form-label">State code</label>
+            <input type="text" class="form-control" formControlName="stateCode" maxlength="4" autocomplete="off"
+              placeholder="23" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Contact phone</label>
+            <input type="text" class="form-control" formControlName="contactPhone" maxlength="20" autocomplete="off" />
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Contact email</label>
+            <input type="text" class="form-control" formControlName="contactEmail" maxlength="120" autocomplete="off" />
+          </div>
+        </div>
+
+        <div class="mb-1">
+          <label class="form-label">Invoice footer note</label>
+          <textarea class="form-control" formControlName="invoiceFooterNote" rows="2" maxlength="500"
+            placeholder="Optional note printed at the bottom of invoices."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2">
+      <button type="submit" class="btn btn-primary" [disabled]="saving()">
+        @if (saving()) {
+          <span class="spinner-border spinner-border-sm me-2"></span> Saving…
+        } @else {
+          <i class="ti ti-device-floppy me-1"></i> Save settings
+        }
+      </button>
+    </div>
+  </form>
+}

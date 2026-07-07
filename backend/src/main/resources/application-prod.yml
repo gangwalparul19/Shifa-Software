@@ -1,0 +1,14 @@
+# Production profile - MySQL 8 on the OCI Always Free A1 VM (localhost).
+# All secrets and connection details are injected via environment variables.
+spring:
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:shifa_oms}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Kolkata&characterEncoding=UTF-8
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+
+logging:
+  level:
+    com.shifa.oms: INFO

@@ -1,0 +1,111 @@
+<!-- Mobile: icon that expands into a full-width overlay -->
+<button
+  type="button"
+  class="btn btn-icon btn-ghost-secondary d-md-none"
+  (click)="openMobile()"
+  aria-label="Search"
+>
+  <i class="ti ti-search"></i>
+</button>
+
+<!-- The search field: inline on desktop, overlay when expanded on mobile -->
+<div
+  class="shifa-search"
+  [class.is-expanded]="expanded()"
+  [class.d-none]="!expanded()"
+  [class.d-md-block]="true"
+  role="search"
+>
+  <div class="input-icon shifa-search__field">
+    <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+    <input
+      #searchInput
+      type="search"
+      class="form-control"
+      [formControl]="query"
+      (focus)="onFocus()"
+      placeholder="Search orders, products, customers…"
+      autocomplete="off"
+      role="combobox"
+      aria-label="Global search"
+      aria-autocomplete="list"
+      [attr.aria-expanded]="open()"
+      aria-controls="global-search-results"
+    />
+    @if (loading()) {
+      <span class="input-icon-addon end"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span></span>
+    } @else if (expanded()) {
+      <span class="input-icon-addon end shifa-search__close" role="button" (click)="close()" title="Close search">
+        <i class="ti ti-x"></i>
+      </span>
+    }
+  </div>
+
+  @if (open()) {
+    <div class="card shifa-search__panel anim-pop" id="global-search-results" role="listbox">
+      <div class="card-body p-2">
+        @if (showNoResults()) {
+          <div class="text-center text-secondary py-3">
+            <i class="ti ti-search-off d-block mb-1" style="font-size: 1.4rem"></i>
+            No matches for "{{ query.value }}"
+          </div>
+        } @else if (hasResults()) {
+          @if (orders().length) {
+            <div class="shifa-search__group">
+              <div class="shifa-search__grouphead">Orders</div>
+              @for (o of orders(); track o.id; let i = $index) {
+                <button
+                  type="button"
+                  class="shifa-search__item"
+                  role="option"
+                  [class.is-active]="activeIndex() === flatIndexOf('order', i)"
+                  (click)="selectAt(flatIndexOf('order', i))"
+                >
+                  <i class="ti ti-receipt shifa-search__icon"></i>
+                  <span class="shifa-search__primary">{{ o.orderCode }}</span>
+                  <span class="shifa-search__secondary">{{ o.customerName }}</span>
+                </button>
+              }
+            </div>
+          }
+          @if (products().length) {
+            <div class="shifa-search__group">
+              <div class="shifa-search__grouphead">Products</div>
+              @for (p of products(); track p.id; let i = $index) {
+                <button
+                  type="button"
+                  class="shifa-search__item"
+                  role="option"
+                  [class.is-active]="activeIndex() === flatIndexOf('product', i)"
+                  (click)="selectAt(flatIndexOf('product', i))"
+                >
+                  <i class="ti ti-leaf shifa-search__icon"></i>
+                  <span class="shifa-search__primary">{{ p.name }}</span>
+                  <span class="shifa-search__secondary shifa-mono">{{ p.sku }}</span>
+                </button>
+              }
+            </div>
+          }
+          @if (customers().length) {
+            <div class="shifa-search__group">
+              <div class="shifa-search__grouphead">Customers</div>
+              @for (c of customers(); track c.id; let i = $index) {
+                <button
+                  type="button"
+                  class="shifa-search__item"
+                  role="option"
+                  [class.is-active]="activeIndex() === flatIndexOf('customer', i)"
+                  (click)="selectAt(flatIndexOf('customer', i))"
+                >
+                  <i class="ti ti-user shifa-search__icon"></i>
+                  <span class="shifa-search__primary">{{ c.name }}</span>
+                  <span class="shifa-search__secondary">{{ c.mobile }}</span>
+                </button>
+              }
+            </div>
+          }
+        }
+      </div>
+    </div>
+  }
+</div>

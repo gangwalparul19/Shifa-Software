@@ -1,0 +1,143 @@
+.track-form {
+  max-width: 560px;
+  margin-bottom: 28px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field label {
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--charcoal);
+}
+
+.track-input {
+  display: flex;
+  gap: 10px;
+}
+
+.track-input input {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.track-input input:focus {
+  border-color: var(--herbal-green-2);
+  box-shadow: 0 0 0 3px rgba(46, 125, 91, 0.12);
+}
+
+.err {
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
+.track-state {
+  max-width: 560px;
+  margin: 8px 0 0;
+}
+
+.empty {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--muted);
+}
+
+.empty-icon {
+  font-size: 2.6rem;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.empty h3 {
+  margin-bottom: 6px;
+}
+
+.track-card {
+  max-width: 560px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  box-shadow: var(--shadow-sm);
+}
+
+.track-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+}
+
+.track-head .code {
+  display: block;
+  font-size: 1.25rem;
+  letter-spacing: 0.04em;
+  color: var(--herbal-green);
+}
+
+.status-pill {
+  background: var(--herbal-green-soft);
+  color: var(--herbal-green);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.track-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 0 0 20px;
+}
+
+.detail dt {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.detail dd {
+  margin: 0;
+  font-weight: 500;
+  color: var(--charcoal);
+}
+
+.track-cta {
+  width: 100%;
+}
+
+.invoice-cta {
+  margin-top: 10px;
+}
+
+.cod-note {
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+@media (max-width: 560px) {
+  .track-details {
+    grid-template-columns: 1fr;
+  }
+
+  .track-input {
+    flex-direction: column;
+  }
+}

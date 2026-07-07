@@ -1,0 +1,200 @@
+<admin-page-header
+  title="Customers"
+  subtitle="Every customer who has ordered, with lifetime value and history."
+  [breadcrumbs]="[{ label: 'Customers' }]"
+>
+  <admin-density-toggle />
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+</admin-page-header>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-lg">
+        <div class="input-icon">
+          <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+          <input
+            type="search"
+            class="form-control"
+            [formControl]="search"
+            placeholder="Search by name or mobile…"
+            autocomplete="off"
+            aria-label="Search customers"
+          />
+          @if (search.value) {
+            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
+              <i class="ti ti-x"></i>
+            </span>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading customers…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (customers().length === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-users"
+    title="No customers found"
+    [message]="search.value ? 'No customers match your search.' : 'Customers appear here once orders come in.'"
+  />
+} @else {
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table table-hover stagger-rows">
+        <thead>
+          <tr>
+            <th adminSortHeader field="mobile" [sort]="sort()" (sortChange)="onSort($event)">Customer</th>
+            <th>Mobile</th>
+            <th class="text-end" adminSortHeader field="orderCount" [sort]="sort()" (sortChange)="onSort($event)">Orders</th>
+            <th class="text-end" adminSortHeader field="totalSpent" [sort]="sort()" (sortChange)="onSort($event)">Total spent</th>
+            <th adminSortHeader field="lastOrderAt" [sort]="sort()" (sortChange)="onSort($event)">Last order</th>
+            <th>Tags</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (c of customers(); track c.mobile) {
+            <tr class="clickable" (click)="openDetail(c)">
+              <td class="fw-medium">{{ c.name || '—' }}</td>
+              <td class="text-secondary">{{ c.mobile }}</td>
+              <td class="text-end">{{ c.orderCount }}</td>
+              <td class="text-end">{{ money(c.totalSpent) }}</td>
+              <td class="text-secondary">{{ c.lastOrderAt ? (c.lastOrderAt | date: 'dd MMM, HH:mm') : '—' }}</td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  @if (c.repeatBuyer) {
+                    <span class="badge" data-group="done"><i class="ti ti-repeat me-1"></i>Repeat</span>
+                  }
+                  @if (c.registered) {
+                    <span class="badge" data-group="progress"><i class="ti ti-user-check me-1"></i>Registered</span>
+                  } @else {
+                    <span class="badge" data-group="neutral">Guest</span>
+                  }
+                </div>
+              </td>
+              <td class="text-end">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  (click)="$event.stopPropagation(); openDetail(c)"
+                >
+                  View
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+}
+
+<!-- Detail drawer -->
+@if (detailLoading() || selectedDetail() || detailError()) {
+  <div class="shifa-overlay" (click)="closeDetail()"></div>
+  <aside class="shifa-drawer" role="dialog" aria-label="Customer detail">
+    @if (detailLoading()) {
+      <div class="shifa-drawer__body">
+        <div class="skeleton skeleton-line w-60 mb-3"></div>
+        <div class="skeleton skeleton-card"></div>
+      </div>
+    } @else if (detailError()) {
+      <div class="shifa-drawer__body"><div class="alert alert-danger">{{ detailError() }}</div></div>
+    } @else if (selectedDetail(); as detail) {
+      <header class="shifa-drawer__head">
+        <div>
+          <h3 class="mb-1">{{ detail.summary.name || 'Customer' }}</h3>
+          <div class="text-secondary">{{ detail.summary.mobile }}</div>
+        </div>
+        <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeDetail()" aria-label="Close">
+          <i class="ti ti-x"></i>
+        </button>
+      </header>
+
+      <div class="shifa-drawer__body">
+        <div class="d-flex flex-wrap gap-1 mb-3">
+          @if (detail.summary.repeatBuyer) {
+            <span class="badge" data-group="done"><i class="ti ti-repeat me-1"></i>Repeat buyer</span>
+          }
+          @if (detail.summary.registered) {
+            <span class="badge" data-group="progress"><i class="ti ti-user-check me-1"></i>Registered</span>
+          } @else {
+            <span class="badge" data-group="neutral">Guest</span>
+          }
+        </div>
+
+        <div class="row row-cards mb-4">
+          <div class="col-6">
+            <div class="card card-sm"><div class="card-body">
+              <div class="text-secondary small">Orders</div>
+              <div class="h2 mb-0">{{ detail.summary.orderCount }}</div>
+            </div></div>
+          </div>
+          <div class="col-6">
+            <div class="card card-sm"><div class="card-body">
+              <div class="text-secondary small">Total spent</div>
+              <div class="h2 mb-0">{{ money(detail.summary.totalSpent) }}</div>
+            </div></div>
+          </div>
+        </div>
+
+        <div class="row g-1 mb-4">
+          <div class="col-5 text-secondary">First order</div>
+          <div class="col-7">{{ detail.summary.firstOrderAt ? (detail.summary.firstOrderAt | date: 'dd MMM yyyy') : '—' }}</div>
+          <div class="col-5 text-secondary">Last order</div>
+          <div class="col-7">{{ detail.summary.lastOrderAt ? (detail.summary.lastOrderAt | date: 'dd MMM yyyy') : '—' }}</div>
+        </div>
+
+        <div class="subheader mb-2">Order history</div>
+        @if (detail.orders.length === 0) {
+          <p class="text-secondary mb-0">No orders on record.</p>
+        } @else {
+          <table class="table table-sm table-vcenter">
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th>Date</th>
+                <th class="text-end">Total</th>
+                <th>Status</th>
+                <th>Payment</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (o of detail.orders; track o.orderCode) {
+                <tr>
+                  <td>
+                    <a class="fw-medium" [routerLink]="['/orders']" [queryParams]="{ q: o.orderCode }" (click)="closeDetail()">
+                      {{ o.orderCode }}
+                    </a>
+                  </td>
+                  <td class="text-secondary">{{ o.date ? (o.date | date: 'dd MMM, HH:mm') : '—' }}</td>
+                  <td class="text-end">{{ money(o.total) }}</td>
+                  <td><admin-status-badge [status]="o.orderStatus" /></td>
+                  <td><admin-status-badge [status]="o.paymentStatus" kind="payment" /></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      </div>
+    }
+  </aside>
+}

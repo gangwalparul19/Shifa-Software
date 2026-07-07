@@ -1,0 +1,218 @@
+<admin-page-header
+  title="Users"
+  subtitle="Manage staff accounts, roles, and access to the admin."
+  [breadcrumbs]="[{ label: 'Users' }]"
+>
+  <admin-density-toggle />
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+  <button type="button" class="btn btn-primary" (click)="openCreate()">
+    <i class="ti ti-user-plus me-1"></i> Add user
+  </button>
+</admin-page-header>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" [skeletonRows]="[1, 2, 3, 4]" loadingLabel="Loading users…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (users().length === 0) {
+  <admin-state-panel
+    variant="onboarding"
+    [card]="true"
+    icon="ti-users"
+    title="Add your first staff member"
+    message="Create staff accounts to give your team access to the admin."
+    ctaLabel="Add user"
+    (cta)="openCreate()"
+  />
+} @else {
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table table-hover">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Full name</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (user of users(); track user.id) {
+            <tr>
+              <td>
+                <button type="button" class="btn btn-link p-0 fw-medium text-start" (click)="openEdit(user)">
+                  <span class="shifa-mono">{{ user.username }}</span>
+                </button>
+                @if (isSelf(user)) {
+                  <span class="badge bg-secondary-lt ms-1">You</span>
+                }
+              </td>
+              <td>{{ user.fullName }}</td>
+              <td><span class="badge" [class]="roleBadgeClass(user.role)">{{ roleLabel(user.role) }}</span></td>
+              <td>
+                <span class="badge" [class.bg-green-lt]="user.active" [class.bg-secondary-lt]="!user.active">
+                  {{ user.active ? 'Active' : 'Inactive' }}
+                </span>
+              </td>
+              <td class="text-secondary">{{ createdLabel(user.createdAt) }}</td>
+              <td class="text-end">
+                <div class="btn-list justify-content-end flex-nowrap">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openEdit(user)" title="Edit">
+                    <i class="ti ti-edit"></i>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openReset(user)" title="Reset password">
+                    <i class="ti ti-key"></i>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm"
+                    [class.btn-outline-danger]="user.active"
+                    [class.btn-outline-success]="!user.active"
+                    (click)="toggleActive(user)"
+                    [disabled]="actioningId() !== null || (user.active && isSelf(user))"
+                    [title]="user.active && isSelf(user) ? 'You cannot deactivate your own account' : ''"
+                  >
+                    {{ user.active ? 'Deactivate' : 'Activate' }}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+}
+
+<!-- Create / edit modal -->
+@if (formOpen()) {
+  <div class="shifa-overlay" (click)="closeForm()"></div>
+  <div class="shifa-modal" role="dialog" aria-label="User form">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0">{{ editing() ? 'Edit user' : 'Add user' }}</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeForm()" aria-label="Close"><i class="ti ti-x"></i></button>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (formError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert">
+            <i class="ti ti-alert-triangle me-2"></i>{{ err }}
+          </div>
+        }
+
+        <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+          <div class="mb-3">
+            <label class="form-label required">Username</label>
+            <input type="text" class="form-control shifa-mono" formControlName="username" maxlength="60" autocomplete="off"
+              [class.is-invalid]="form.controls.username.touched && form.controls.username.invalid" />
+            @if (editing()) {
+              <small class="form-hint">Username can't be changed after creation.</small>
+            }
+            @if (form.controls.username.touched && form.controls.username.invalid) {
+              <div class="invalid-feedback">Username is required.</div>
+            }
+          </div>
+
+          @if (!editing()) {
+            <div class="mb-3">
+              <label class="form-label required">Password</label>
+              <input type="password" class="form-control" formControlName="password" maxlength="100" autocomplete="new-password"
+                [class.is-invalid]="form.controls.password.touched && form.controls.password.invalid" />
+              @if (form.controls.password.touched && form.controls.password.invalid) {
+                <div class="invalid-feedback">Password is required and must be at least 6 characters.</div>
+              }
+            </div>
+          }
+
+          <div class="mb-3">
+            <label class="form-label required">Full name</label>
+            <input type="text" class="form-control" formControlName="fullName" maxlength="120" autocomplete="off"
+              [class.is-invalid]="form.controls.fullName.touched && form.controls.fullName.invalid" />
+            @if (form.controls.fullName.touched && form.controls.fullName.invalid) {
+              <div class="invalid-feedback">Full name is required.</div>
+            }
+          </div>
+
+          <div class="row">
+            <div class="col-sm-7 mb-3">
+              <label class="form-label required">Role</label>
+              <select class="form-select" formControlName="role">
+                @for (role of staffRoles; track role) {
+                  <option [value]="role">{{ roleLabel(role) }}</option>
+                }
+              </select>
+            </div>
+            <div class="col-sm-5 mb-3 d-flex align-items-end">
+              <label class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" formControlName="active" />
+                <span class="form-check-label">Active</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary" (click)="closeForm()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="saving()">
+              @if (saving()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Saving…
+              } @else {
+                {{ editing() ? 'Save changes' : 'Create user' }}
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Reset password modal -->
+@if (resetting(); as user) {
+  <div class="shifa-overlay" (click)="closeReset()"></div>
+  <div class="shifa-modal" role="dialog" aria-label="Reset password">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0">Reset password</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeReset()" aria-label="Close"><i class="ti ti-x"></i></button>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (resetError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert">
+            <i class="ti ti-alert-triangle me-2"></i>{{ err }}
+          </div>
+        }
+        <p class="text-secondary">
+          Set a new password for <span class="fw-medium shifa-mono">{{ user.username }}</span>.
+        </p>
+        <form [formGroup]="resetForm" (ngSubmit)="submitReset()" novalidate>
+          <div class="mb-3">
+            <label class="form-label required">New password</label>
+            <input type="password" class="form-control" formControlName="newPassword" maxlength="100" autocomplete="new-password"
+              [class.is-invalid]="resetForm.controls.newPassword.touched && resetForm.controls.newPassword.invalid" />
+            @if (resetForm.controls.newPassword.touched && resetForm.controls.newPassword.invalid) {
+              <div class="invalid-feedback">Password must be at least 6 characters.</div>
+            }
+          </div>
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary" (click)="closeReset()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="resetSaving()">
+              @if (resetSaving()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Saving…
+              } @else {
+                <i class="ti ti-key me-1"></i> Reset password
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}

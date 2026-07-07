@@ -1,0 +1,343 @@
+<admin-page-header
+  title="Returns"
+  subtitle="Track return requests and refunds across the pipeline."
+  [breadcrumbs]="[{ label: 'Orders' }, { label: 'Returns' }]"
+>
+  <admin-density-toggle />
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+  @if (canManage()) {
+    <button type="button" class="btn btn-primary" (click)="openCreate()">
+      <i class="ti ti-plus me-1"></i> Create return
+    </button>
+  }
+</admin-page-header>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-lg">
+        <div class="input-icon">
+          <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+          <input
+            type="search"
+            class="form-control"
+            [formControl]="search"
+            placeholder="Search by order or reason…"
+            autocomplete="off"
+            aria-label="Search returns"
+          />
+          @if (search.value) {
+            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
+              <i class="ti ti-x"></i>
+            </span>
+          }
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
+        <label class="form-label small mb-1">Status</label>
+        <select class="form-select" formControlName="status" aria-label="Filter by status">
+          <option value="">All statuses</option>
+          @for (s of statusOptions; track s) {
+            <option [value]="s">{{ s }}</option>
+          }
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
+        <label class="form-label small mb-1">From</label>
+        <input type="date" class="form-control" formControlName="from" aria-label="From date" />
+      </div>
+      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
+        <label class="form-label small mb-1">To</label>
+        <input type="date" class="form-control" formControlName="to" aria-label="To date" />
+      </div>
+      @if (hasFilters()) {
+        <div class="col-auto">
+          <button type="button" class="btn btn-link text-secondary px-1" (click)="clearFilters()">
+            <i class="ti ti-filter-off me-1"></i> Clear
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading returns…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (returns().length === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-arrow-back-up"
+    title="No returns found"
+    [message]="hasFilters() ? 'No returns match your filters.' : 'Return requests will appear here.'"
+  />
+} @else {
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table table-hover stagger-rows">
+        <thead>
+          <tr>
+            <th>Return</th>
+            <th>Order</th>
+            <th>Reason</th>
+            <th adminSortHeader field="status" [sort]="sort()" (sortChange)="onSort($event)">Status</th>
+            <th class="text-end" adminSortHeader field="refundAmount" [sort]="sort()" (sortChange)="onSort($event)">Refund</th>
+            <th>Restocked</th>
+            <th adminSortHeader field="createdAt" [sort]="sort()" (sortChange)="onSort($event)">Created</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (r of returns(); track r.id) {
+            <tr>
+              <td class="fw-medium">#{{ r.id }}</td>
+              <td>
+                <a [routerLink]="['/orders']" [queryParams]="{ q: r.orderId }" class="text-reset">
+                  <span class="shifa-mono">#{{ r.orderId }}</span>
+                </a>
+              </td>
+              <td>
+                <div>{{ r.reason }}</div>
+                @if (r.notes) {
+                  <div class="text-secondary small">{{ r.notes }}</div>
+                }
+              </td>
+              <td><span class="badge" [attr.data-group]="statusTone(r.status)">{{ r.status }}</span></td>
+              <td class="text-end">{{ money(r.refundAmount) }}</td>
+              <td>
+                @if (r.restocked) {
+                  <span class="badge" data-group="done">Yes</span>
+                } @else {
+                  <span class="text-secondary">—</span>
+                }
+              </td>
+              <td class="text-secondary">{{ r.createdAt ? (r.createdAt | date: 'dd MMM, HH:mm') : '—' }}</td>
+              <td class="text-end">
+                <div class="btn-list justify-content-end">
+                  @if (canApproveOrReject(r)) {
+                    <button type="button" class="btn btn-sm btn-primary" (click)="openApprove(r)">
+                      <i class="ti ti-check me-1"></i> Approve
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" (click)="openReject(r)">
+                      <i class="ti ti-x me-1"></i> Reject
+                    </button>
+                  }
+                  @if (canMarkRefunded(r)) {
+                    <button type="button" class="btn btn-sm btn-outline-primary" (click)="openRefund(r)">
+                      <i class="ti ti-cash me-1"></i> Mark refunded
+                    </button>
+                  }
+                  @if (!canApproveOrReject(r) && !canMarkRefunded(r)) {
+                    <span class="text-secondary small">—</span>
+                  }
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+}
+
+<!-- ===================== Approve modal ===================== -->
+@if (modal() === 'approve' && activeReturn(); as r) {
+  <div class="shifa-overlay" (click)="closeModal()"></div>
+  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Approve return">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-check me-2"></i>Approve return #{{ r.id }}</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeModal()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">Order <span class="shifa-mono">#{{ r.orderId }}</span> — {{ r.reason }}</p>
+        @if (modalError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert"><i class="ti ti-alert-triangle me-2"></i>{{ err }}</div>
+        }
+        <form (ngSubmit)="submitApprove()" novalidate [formGroup]="approveForm">
+          <label class="form-check mb-3">
+            <input type="checkbox" class="form-check-input" formControlName="restock" />
+            <span class="form-check-label">Restock returned items</span>
+          </label>
+          <div class="mb-3">
+            <label class="form-label">Refund amount <span class="text-secondary">(optional)</span></label>
+            <div class="input-group">
+              <span class="input-group-text">₹</span>
+              <input type="text" class="form-control" formControlName="refundAmount"
+                inputmode="decimal" placeholder="0.00" autocomplete="off"
+                [class.is-invalid]="approveForm.controls.refundAmount.touched && approveForm.controls.refundAmount.invalid" />
+            </div>
+            @if (approveForm.controls.refundAmount.touched && approveForm.controls.refundAmount.invalid) {
+              <div class="text-danger small mt-1">Enter a valid amount.</div>
+            }
+          </div>
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-link text-secondary" (click)="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="submitting()">
+              @if (submitting()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Working…
+              } @else {
+                <i class="ti ti-check me-1"></i> Approve
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===================== Reject modal ===================== -->
+@if (modal() === 'reject' && activeReturn(); as r) {
+  <div class="shifa-overlay" (click)="closeModal()"></div>
+  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Reject return">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-x me-2"></i>Reject return #{{ r.id }}</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeModal()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (modalError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert"><i class="ti ti-alert-triangle me-2"></i>{{ err }}</div>
+        }
+        <form (ngSubmit)="submitReject()" novalidate>
+          <div class="mb-3">
+            <label class="form-label">Notes <span class="text-secondary">(optional)</span></label>
+            <textarea class="form-control" rows="3" [formControl]="rejectNotes" maxlength="500"
+              placeholder="Reason for rejecting this return…"></textarea>
+          </div>
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-link text-secondary" (click)="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-danger" [disabled]="submitting()">
+              @if (submitting()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Working…
+              } @else {
+                <i class="ti ti-x me-1"></i> Reject
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===================== Mark refunded modal ===================== -->
+@if (modal() === 'refund' && activeReturn(); as r) {
+  <div class="shifa-overlay" (click)="closeModal()"></div>
+  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Mark return refunded">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-cash me-2"></i>Mark refunded #{{ r.id }}</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeModal()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (modalError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert"><i class="ti ti-alert-triangle me-2"></i>{{ err }}</div>
+        }
+        <form (ngSubmit)="submitRefund()" novalidate>
+          <div class="mb-3">
+            <label class="form-label required">Refund amount</label>
+            <div class="input-group">
+              <span class="input-group-text">₹</span>
+              <input type="text" class="form-control" [formControl]="refundAmount"
+                inputmode="decimal" placeholder="0.00" autocomplete="off"
+                [class.is-invalid]="refundAmount.touched && refundAmount.invalid" />
+            </div>
+            @if (refundAmount.touched && refundAmount.invalid) {
+              <div class="text-danger small mt-1">Enter a valid refund amount.</div>
+            }
+          </div>
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-link text-secondary" (click)="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="submitting()">
+              @if (submitting()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Working…
+              } @else {
+                <i class="ti ti-cash me-1"></i> Mark refunded
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===================== Create return modal ===================== -->
+@if (modal() === 'create') {
+  <div class="shifa-overlay" (click)="closeModal()"></div>
+  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Create return">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-plus me-2"></i>Create return</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeModal()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (modalError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert"><i class="ti ti-alert-triangle me-2"></i>{{ err }}</div>
+        }
+        <form (ngSubmit)="submitCreate()" novalidate [formGroup]="createForm">
+          <div class="mb-3">
+            <label class="form-label required">Order id</label>
+            <input type="text" class="form-control" formControlName="orderId" inputmode="numeric"
+              placeholder="e.g. 1024" autocomplete="off"
+              [class.is-invalid]="createForm.controls.orderId.touched && createForm.controls.orderId.invalid" />
+            @if (createForm.controls.orderId.touched && createForm.controls.orderId.invalid) {
+              <div class="text-danger small mt-1">Enter the numeric order id.</div>
+            }
+          </div>
+          <div class="mb-3">
+            <label class="form-label required">Reason</label>
+            <input type="text" class="form-control" formControlName="reason" maxlength="255"
+              placeholder="e.g. Damaged on arrival" autocomplete="off"
+              [class.is-invalid]="createForm.controls.reason.touched && createForm.controls.reason.invalid" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Notes <span class="text-secondary">(optional)</span></label>
+            <textarea class="form-control" rows="2" formControlName="notes" maxlength="500"></textarea>
+          </div>
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-link text-secondary" (click)="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="submitting()">
+              @if (submitting()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Working…
+              } @else {
+                <i class="ti ti-plus me-1"></i> Create return
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}

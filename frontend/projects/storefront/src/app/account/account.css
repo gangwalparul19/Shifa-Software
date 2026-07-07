@@ -1,0 +1,347 @@
+:host {
+  display: block;
+}
+
+.account {
+  max-width: 60rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.account-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.account-head h1 {
+  margin: 0;
+  color: #2f4a2b;
+  font-size: 1.7rem;
+}
+
+.account-head .muted {
+  color: #6b7a63;
+  margin: 0.25rem 0 0;
+}
+
+.account-nav {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.account-nav a {
+  padding: 0.5rem 0.9rem;
+  border-radius: 2rem;
+  border: 1px solid #d5ddcd;
+  color: #3c4a38;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  background: #fff;
+}
+
+.account-nav a.active {
+  background: #5b8a4f;
+  border-color: #5b8a4f;
+  color: #fff;
+}
+
+.hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1rem;
+}
+
+.hub-card {
+  display: block;
+  padding: 1.25rem;
+  border: 1px solid #e4e7df;
+  border-radius: 0.9rem;
+  background: #fff;
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.hub-card:hover {
+  box-shadow: 0 8px 24px rgba(47, 74, 43, 0.08);
+  transform: translateY(-2px);
+}
+
+.hub-card .icon {
+  font-size: 1.6rem;
+}
+
+.hub-card h3 {
+  margin: 0.5rem 0 0.25rem;
+  color: #2f4a2b;
+}
+
+.hub-card p {
+  margin: 0;
+  color: #6b7a63;
+  font-size: 0.9rem;
+}
+
+.btn {
+  padding: 0.55rem 1rem;
+  border-radius: 0.6rem;
+  border: 1px solid #cdd6c5;
+  background: #fff;
+  color: #3c4a38;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.btn.primary {
+  background: #5b8a4f;
+  border-color: #5b8a4f;
+  color: #fff;
+}
+
+.btn.primary:hover {
+  background: #4c7642;
+}
+
+.btn.danger {
+  color: #b3261e;
+  border-color: #eecac6;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.card {
+  border: 1px solid #e4e7df;
+  border-radius: 0.9rem;
+  background: #fff;
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.order-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.order-row .code {
+  font-weight: 700;
+  color: #2f4a2b;
+}
+
+.order-row .meta {
+  color: #6b7a63;
+  font-size: 0.85rem;
+}
+
+.status-pill {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: #eef3ea;
+  color: #40663a;
+}
+
+.order-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.address-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+
+.address-card {
+  border: 1px solid #e4e7df;
+  border-radius: 0.9rem;
+  background: #fff;
+  padding: 1rem;
+  position: relative;
+}
+
+.address-card.is-default {
+  border-color: #5b8a4f;
+  box-shadow: 0 0 0 2px rgba(91, 138, 79, 0.12);
+}
+
+.address-card .default-tag {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #40663a;
+  background: #eef3ea;
+  padding: 0.15rem 0.5rem;
+  border-radius: 1rem;
+}
+
+.address-card .label {
+  font-weight: 700;
+  color: #2f4a2b;
+}
+
+.address-card address {
+  font-style: normal;
+  color: #4a574332;
+  color: #4a5743;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin: 0.35rem 0 0.75rem;
+}
+
+.address-card .row-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.85rem;
+}
+
+.form-grid label,
+.stack label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-weight: 600;
+  color: #3c4a38;
+  font-size: 0.85rem;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  max-width: 26rem;
+}
+
+.form-grid input,
+.stack input {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #cdd6c5;
+  border-radius: 0.55rem;
+  font-size: 0.95rem;
+  background: #fcfdfb;
+}
+
+.field-error {
+  color: #b3261e;
+  font-size: 0.78rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  align-items: center;
+}
+
+.checkbox-row {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.empty {
+  text-align: center;
+  padding: 2.5rem 1rem;
+  color: #6b7a63;
+}
+
+.notice {
+  padding: 0.6rem 0.85rem;
+  border-radius: 0.6rem;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.notice.error {
+  background: #fdecea;
+  border: 1px solid #f5c6c2;
+  color: #b3261e;
+}
+
+.notice.success {
+  background: #eaf6ea;
+  border: 1px solid #bfe2bd;
+  color: #2f6b2b;
+}
+
+/* =========================================================================
+   Dark theme overrides
+   This page uses its own light-green palette (distinct from the brand
+   tokens), so light mode is left byte-for-byte unchanged and the dark
+   surfaces/text/borders are supplied here instead.
+   ========================================================================= */
+:host-context(html[data-theme='dark']) .account-head h1,
+:host-context(html[data-theme='dark']) .hub-card h3,
+:host-context(html[data-theme='dark']) .order-row .code,
+:host-context(html[data-theme='dark']) .address-card .label {
+  color: var(--herbal-green);
+}
+
+:host-context(html[data-theme='dark']) .account-head .muted,
+:host-context(html[data-theme='dark']) .hub-card p,
+:host-context(html[data-theme='dark']) .order-row .meta,
+:host-context(html[data-theme='dark']) .empty {
+  color: var(--text-muted);
+}
+
+:host-context(html[data-theme='dark']) .account-nav a,
+:host-context(html[data-theme='dark']) .hub-card,
+:host-context(html[data-theme='dark']) .btn,
+:host-context(html[data-theme='dark']) .card,
+:host-context(html[data-theme='dark']) .address-card {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+:host-context(html[data-theme='dark']) .form-grid input,
+:host-context(html[data-theme='dark']) .stack input {
+  background: var(--input-bg);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+:host-context(html[data-theme='dark']) .form-grid label,
+:host-context(html[data-theme='dark']) .stack label,
+:host-context(html[data-theme='dark']) .address-card address {
+  color: var(--text);
+}
+
+:host-context(html[data-theme='dark']) .status-pill,
+:host-context(html[data-theme='dark']) .address-card .default-tag {
+  background: var(--herbal-green-soft);
+  color: var(--herbal-green);
+}
+
+:host-context(html[data-theme='dark']) .account-nav a.active,
+:host-context(html[data-theme='dark']) .btn.primary {
+  background: var(--herbal-green);
+  border-color: var(--herbal-green);
+  color: #10231a;
+}

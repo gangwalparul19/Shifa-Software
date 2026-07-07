@@ -1,0 +1,140 @@
+# =============================================================================
+# Shifa Herbal Remedies OMS - base configuration
+# Profile-specific overrides live in application-local.yml / application-prod.yml
+# Activate with: --spring.profiles.active=local (default) or prod
+# =============================================================================
+spring:
+  application:
+    name: shifa-oms
+  profiles:
+    default: local
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Schema is owned by Flyway migrations, never by Hibernate DDL.
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+  # SMTP transport for outbound email; only used when app.mail.mode=SMTP.
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+server:
+  port: 8080
+  error:
+    include-message: never
+    include-stacktrace: never
+
+# -----------------------------------------------------------------------------
+# Application-specific settings. Values are placeholders resolved per profile
+# and/or from environment variables in production.
+# -----------------------------------------------------------------------------
+app:
+  security:
+    jwt:
+      # Base64-encoded HMAC secret; MUST be overridden in prod via env var.
+      secret: ${JWT_SECRET:change-me-local-development-secret-change-me-please}
+      access-token-ttl: PT15M
+      refresh-token-ttl: P7D
+  oci:
+    object-storage:
+      region: ${OCI_REGION:ap-mumbai-1}
+      namespace: ${OCI_OS_NAMESPACE:}
+      bucket: ${OCI_OS_BUCKET:shifa-oms}
+      par-url-ttl: PT10M
+      # AUTH_MODE: INSTANCE_PRINCIPAL (on OCI VM) or CONFIG_FILE (local dev)
+      auth-mode: ${OCI_AUTH_MODE:CONFIG_FILE}
+      config-file-path: ${OCI_CONFIG_FILE:~/.oci/config}
+      config-profile: ${OCI_CONFIG_PROFILE:DEFAULT}
+  mail:
+    # MOCK (default, logs to console) or SMTP (real send via spring.mail.*)
+    mode: ${MAIL_MODE:MOCK}
+    from: ${MAIL_FROM:Shifa Herbal Remedies <no-reply@shifa.local>}
+    digest-to: ${REPORT_DIGEST_TO:}
+    # Branding + theme for the HTML email templates (app.mail.brand.*).
+    brand:
+      brand-name: ${MAIL_BRAND_NAME:Shifa Herbal Remedies}
+      tagline: ${MAIL_BRAND_TAGLINE:Pure herbal wellness, delivered.}
+      site-url: ${MAIL_SITE_URL:https://www.shifaherbals.com}
+      # Blank => a styled text wordmark is rendered instead of an <img> logo.
+      logo-url: ${MAIL_LOGO_URL:}
+      support-email: ${MAIL_SUPPORT_EMAIL:support@shifaherbals.com}
+      support-phone: ${MAIL_SUPPORT_PHONE:+91 93025 90767}
+      primary-color: ${MAIL_PRIMARY_COLOR:#1b5e20}
+      accent-color: ${MAIL_ACCENT_COLOR:#c8a44d}
+      footer-credit: ${MAIL_FOOTER_CREDIT:Designed & Developed by Weblithic}
+      footer-credit-url: ${MAIL_FOOTER_CREDIT_URL:https://www.weblithic.com/}
+  whatsapp:
+    # Client backend: MOCK (local dev, records/logs "sent" messages) or HTTP (real Meta Cloud API).
+    mode: ${WHATSAPP_MODE:MOCK}
+    base-url: ${WHATSAPP_BASE_URL:https://graph.facebook.com/v20.0}
+    phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:}
+    access-token: ${WHATSAPP_ACCESS_TOKEN:}
+    webhook-verify-token: ${WHATSAPP_WEBHOOK_VERIFY_TOKEN:}
+    webhook-hmac-secret: ${WHATSAPP_WEBHOOK_HMAC_SECRET:}
+    # Notification send retry policy for the WhatsApp outbox drainer (Req 14.4).
+    max-attempts: ${WHATSAPP_MAX_ATTEMPTS:3}
+    retry-backoff: PT30S
+    # Scheduler interval (ms) for draining pending WhatsApp notifications.
+    drain-interval-ms: ${WHATSAPP_DRAIN_INTERVAL_MS:15000}
+  courier:
+    # Client backend: MOCK (local dev, deterministic fake AWBs) or HTTP (real API).
+    mode: ${COURIER_MODE:MOCK}
+    base-url: ${COURIER_BASE_URL:https://api.example-courier.test}
+    api-key: ${COURIER_API_KEY:}
+    webhook-hmac-secret: ${COURIER_WEBHOOK_HMAC_SECRET:}
+    request-timeout: PT10S
+    # Assignment retry policy for the outbox drainer (Req 12.4).
+    max-attempts: ${COURIER_MAX_ATTEMPTS:3}
+    retry-backoff: PT30S
+    # Default courier company (seeded in local dev).
+    company-name: ${COURIER_COMPANY_NAME:Shifa Express}
+    # Scheduler intervals (ms): outbox drain and missed-webhook poll fallback.
+    drain-interval-ms: ${COURIER_DRAIN_INTERVAL_MS:15000}
+    poll-interval-ms: ${COURIER_POLL_INTERVAL_MS:300000}
+  payment:
+    # Online payment gateway (Phase E). Swappable behind the PaymentGateway
+    # interface and selected by `mode`:
+    #   SANDBOX  (default) - deterministic fake gateway; works end-to-end with
+    #                        NO real money and NO network (HMAC-signed test flow).
+    #   RAZORPAY           - documented stub reading the key-id/key-secret below;
+    #                        real Orders-API + signature verification is a TODO.
+    mode: ${PAYMENT_MODE:SANDBOX}
+    # ISO currency for gateway sessions (INR for Razorpay/PayU/Cashfree).
+    currency: ${PAYMENT_CURRENCY:INR}
+    # Master on/off switch for the online-payment endpoints.
+    enabled: ${PAYMENT_ENABLED:true}
+    sandbox:
+      # Server-only secret the sandbox gateway signs/verifies test payments with.
+      # It NEVER leaves the server; the client only echoes an opaque token.
+      secret: ${PAYMENT_SANDBOX_SECRET:shifa-sandbox-payment-secret-change-me}
+    razorpay:
+      # Real Razorpay credentials (only used when mode=RAZORPAY). Move to env/OCI
+      # Vault in production; the key-secret must never reach the browser.
+      key-id: ${RAZORPAY_KEY_ID:}
+      key-secret: ${RAZORPAY_KEY_SECRET:}
+  backup:
+    # Nightly DB dump to Object Storage (interval must be <= 24h).
+    cron: ${BACKUP_CRON:0 0 2 * * *}
+    mysqldump-path: ${MYSQLDUMP_PATH:mysqldump}
+  storage:
+    # Binary object store for payment screenshots (and later PDFs).
+    # provider: LOCAL (dev, filesystem) or OCI (cloud, Object Storage - TODO).
+    provider: ${STORAGE_PROVIDER:LOCAL}
+    local:
+      # Folder that LocalStorageService writes objects under (dev only).
+      base-path: ${STORAGE_LOCAL_PATH:storage}

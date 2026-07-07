@@ -1,0 +1,74 @@
+<div class="shifa-auth">
+  <div class="shifa-auth__card">
+    <div class="shifa-auth__brand">
+      <span class="shifa-auth__mark"><i class="ti ti-leaf"></i></span>
+      <span class="d-flex flex-column">
+        <span class="shifa-auth__name">Shifa</span>
+        <span class="shifa-auth__tag">Herbal Remedies</span>
+      </span>
+    </div>
+
+    <div class="card card-md">
+      <div class="card-body">
+        <h1 class="h2 text-center mb-1">Welcome back</h1>
+        <p class="text-secondary text-center mb-4">Sign in to the admin dashboard</p>
+
+        <form [formGroup]="form" (ngSubmit)="submit()" novalidate autocomplete="off">
+          <div class="mb-3">
+            <label class="form-label" for="username">Username</label>
+            <div class="input-icon">
+              <span class="input-icon-addon"><i class="ti ti-user"></i></span>
+              <input
+                id="username"
+                type="text"
+                class="form-control"
+                formControlName="username"
+                autocomplete="username"
+                placeholder="Enter your username"
+              />
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="password">Password</label>
+            <div class="input-icon">
+              <span class="input-icon-addon"><i class="ti ti-lock"></i></span>
+              <input
+                id="password"
+                type="password"
+                class="form-control"
+                formControlName="password"
+                autocomplete="current-password"
+                placeholder="Your password"
+              />
+            </div>
+          </div>
+
+          @if (error()) {
+            <div class="alert alert-danger anim-fade-up" role="alert">
+              <div class="d-flex align-items-center">
+                <i class="ti ti-alert-triangle me-2"></i>
+                <span>{{ error() }}</span>
+              </div>
+            </div>
+          }
+
+          <div class="form-footer">
+            <button type="submit" class="btn btn-primary w-100" [disabled]="submitting()">
+              @if (submitting()) {
+                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                Signing in…
+              } @else {
+                <i class="ti ti-login-2 me-2"></i> Sign in
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="text-center text-secondary mt-3 small">
+      © Shifa Herbal Remedies — Order Management
+    </div>
+  </div>
+</div>

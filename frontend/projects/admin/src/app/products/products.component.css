@@ -1,0 +1,38 @@
+:host {
+  display: block;
+}
+
+.avatar[style*='background-image'] {
+  background-size: cover;
+  background-position: center;
+}
+
+.stock-pill {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--tblr-green-lt, #e6f4ea);
+  color: #2f9e44;
+}
+
+.stock-pill[data-tone='low'] {
+  background: #fff3e0;
+  color: #d9820a;
+}
+
+.stock-pill[data-tone='out'] {
+  background: #fbe6e4;
+  color: #d63b2f;
+}
+
+.shifa-modal-wide {
+  max-width: 900px;
+}
+
+/* CSV import preview — cap the row list height so the modal stays usable. */
+.shifa-import-rows {
+  max-height: 40vh;
+  overflow-y: auto;
+}

@@ -1,0 +1,151 @@
+<admin-page-header
+  title="Profit & Loss"
+  subtitle="Revenue, costs and net profit for a chosen date range."
+  [breadcrumbs]="[{ label: 'Finance' }, { label: 'Profit & Loss' }]"
+/>
+
+<!-- Date range -->
+<form class="card mb-3" [formGroup]="form" (ngSubmit)="generate()">
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-6 col-md-3">
+        <label class="form-label required" for="from">From</label>
+        <input id="from" type="date" class="form-control" formControlName="from" />
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label required" for="to">To</label>
+        <input id="to" type="date" class="form-control" formControlName="to" />
+      </div>
+      <div class="col-md-auto">
+        <button type="submit" class="btn btn-primary w-100" [disabled]="loading()">
+          @if (loading()) {
+            <span class="spinner-border spinner-border-sm me-2"></span> Generating…
+          } @else {
+            <i class="ti ti-report-money me-1"></i> Generate
+          }
+        </button>
+      </div>
+    </div>
+  </div>
+</form>
+
+@if (loadError(); as err) {
+  <div class="alert alert-danger d-flex align-items-center" role="alert">
+    <i class="ti ti-alert-triangle me-2"></i>{{ err }}
+  </div>
+}
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" skeleton="cards" loadingLabel="Loading profit & loss…" />
+} @else if (report(); as r) {
+  <!-- Headline metrics -->
+  <div class="row row-cards g-2 g-md-3 mb-3">
+    <div class="col-6 col-lg-3">
+      <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div><div class="subheader">Revenue</div><div class="h2 m-0">{{ money(r.revenue) }}</div></div>
+          <span class="stat-icon"><i class="ti ti-cash"></i></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card card-hover stat-accent" style="--accent: #d63939; --accent-soft: #fbe7e7">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div><div class="subheader">Courier cost</div><div class="h2 m-0">{{ money(r.courierCost) }}</div></div>
+          <span class="stat-icon" style="--accent: #d63939; --accent-soft: #fbe7e7"><i class="ti ti-truck"></i></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card card-hover stat-accent" style="--accent: #f59f00; --accent-soft: #fff3d6">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div><div class="subheader">Total expenses</div><div class="h2 m-0">{{ money(r.totalExpenses) }}</div></div>
+          <span class="stat-icon" style="--accent: #f59f00; --accent-soft: #fff3d6"><i class="ti ti-receipt"></i></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card card-hover stat-accent"
+        [style]="r.netProfit >= 0 ? '--accent: #2fb344; --accent-soft: #e6f6e9' : '--accent: #d63939; --accent-soft: #fbe7e7'">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Net profit</div>
+            <div class="h1 m-0" [class.text-success]="r.netProfit >= 0" [class.text-danger]="r.netProfit < 0">
+              {{ money(r.netProfit) }}
+            </div>
+          </div>
+          <span class="stat-icon" [style]="r.netProfit >= 0 ? '--accent: #2fb344; --accent-soft: #e6f6e9' : '--accent: #d63939; --accent-soft: #fbe7e7'">
+            <i class="ti" [class.ti-trending-up]="r.netProfit >= 0" [class.ti-trending-down]="r.netProfit < 0"></i>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Note about courier cost derivation -->
+  <div class="alert alert-info d-flex align-items-start mb-3" role="note">
+    <i class="ti ti-info-circle me-2 mt-1"></i>
+    <div>
+      Courier cost here reflects <strong>outstanding loss/damage claims</strong> for the period (amounts owed to
+      you by couriers for lost or damaged shipments), not shipping fees paid. Recovered claims reduce this figure.
+    </div>
+  </div>
+
+  <div class="row row-cards">
+    <!-- Secondary metrics -->
+    <div class="col-lg-5 mb-3">
+      <div class="card h-100">
+        <div class="card-header"><h3 class="card-title mb-0">Claims &amp; COD</h3></div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between py-2 border-bottom">
+            <span class="text-secondary">Claims outstanding</span>
+            <strong>{{ money(r.claimsOutstanding) }}</strong>
+          </div>
+          <div class="d-flex justify-content-between py-2 border-bottom">
+            <span class="text-secondary">Claims recovered</span>
+            <strong class="text-success">{{ money(r.claimsRecovered) }}</strong>
+          </div>
+          <div class="d-flex justify-content-between py-2">
+            <span class="text-secondary">COD outstanding</span>
+            <strong>{{ money(r.codOutstanding) }}</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Expense breakdown -->
+    <div class="col-lg-7 mb-3">
+      <div class="card h-100">
+        <div class="card-header"><h3 class="card-title mb-0">Expenses by category</h3></div>
+        @if (r.expenseByCategory.length === 0) {
+          <div class="card-body text-secondary">No expenses recorded in this period.</div>
+        } @else {
+          <div class="table-responsive">
+            <table class="table table-vcenter card-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th class="text-end">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of r.expenseByCategory; track row.category) {
+                  <tr>
+                    <td>{{ row.category }}</td>
+                    <td class="text-end">{{ money(row.amount) }}</td>
+                  </tr>
+                }
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th>Total expenses</th>
+                  <th class="text-end">{{ money(r.totalExpenses) }}</th>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+}

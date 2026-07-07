@@ -1,0 +1,129 @@
+<admin-page-header
+  title="Audit Log"
+  subtitle="A trail of who did what, and when."
+  [breadcrumbs]="[{ label: 'Settings' }, { label: 'Audit Log' }]"
+>
+  <admin-density-toggle />
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+</admin-page-header>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-lg" [formGroup]="filters">
+        <label class="form-label small mb-1">Search</label>
+        <div class="input-icon">
+          <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+          <input
+            type="search"
+            class="form-control"
+            [formControl]="search"
+            placeholder="Search summary, entity, actor…"
+            autocomplete="off"
+            aria-label="Search audit log"
+          />
+          @if (search.value) {
+            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
+              <i class="ti ti-x"></i>
+            </span>
+          }
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
+        <label class="form-label small mb-1">Action</label>
+        <select class="form-select" formControlName="action" aria-label="Filter by action">
+          <option value="">All actions</option>
+          @for (a of actions(); track a) {
+            <option [value]="a">{{ humanize(a) }}</option>
+          }
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
+        <label class="form-label small mb-1">Entity</label>
+        <select class="form-select" formControlName="entityType" aria-label="Filter by entity type">
+          <option value="">All entities</option>
+          @for (e of entityTypes(); track e) {
+            <option [value]="e">{{ humanize(e) }}</option>
+          }
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
+        <label class="form-label small mb-1">From</label>
+        <input type="date" class="form-control" formControlName="from" aria-label="From date" />
+      </div>
+      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
+        <label class="form-label small mb-1">To</label>
+        <input type="date" class="form-control" formControlName="to" aria-label="To date" />
+      </div>
+      @if (hasFilters()) {
+        <div class="col-auto">
+          <button type="button" class="btn btn-link text-secondary px-1" (click)="clearFilters()">
+            <i class="ti ti-filter-off me-1"></i> Clear
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading audit log…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (entries().length === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-history"
+    title="No audit entries"
+    [message]="hasFilters() ? 'No entries match your filters.' : 'Actions will be recorded here.'"
+  />
+} @else {
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table table-hover stagger-rows">
+        <thead>
+          <tr>
+            <th adminSortHeader field="actorUsername" [sort]="sort()" (sortChange)="onSort($event)">Actor</th>
+            <th adminSortHeader field="action" [sort]="sort()" (sortChange)="onSort($event)">Action</th>
+            <th adminSortHeader field="entityType" [sort]="sort()" (sortChange)="onSort($event)">Entity</th>
+            <th>Summary</th>
+            <th adminSortHeader field="createdAt" [sort]="sort()" (sortChange)="onSort($event)">When</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (e of entries(); track e.id) {
+            <tr>
+              <td>
+                <div class="fw-medium">{{ e.actorUsername || 'System' }}</div>
+                @if (e.actorUserId != null) {
+                  <div class="text-secondary small">#{{ e.actorUserId }}</div>
+                }
+              </td>
+              <td><span class="badge bg-secondary-lt">{{ humanize(e.action) }}</span></td>
+              <td>
+                <span>{{ humanize(e.entityType) }}</span>
+                @if (e.entityId != null && e.entityId !== '') {
+                  <span class="text-secondary shifa-mono ms-1">#{{ e.entityId }}</span>
+                }
+              </td>
+              <td class="text-secondary">{{ e.summary || '—' }}</td>
+              <td class="text-secondary">{{ e.createdAt ? (e.createdAt | date: 'dd MMM yyyy, HH:mm') : '—' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+}

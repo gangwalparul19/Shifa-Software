@@ -1,0 +1,155 @@
+Software Requirement Document (SRD)   
+
+ *Shifa Herbal Remedies 
+
+Version: 1.0 | Date: 3 July 2026
+
+Purpose: Automate WhatsApp order processing, website integration, dispatch label generation, salesperson-wise sales counting, and billing workflow.
+
+Website::
+E-Commerce Portal similar to https://www.brillare.co.in/
+We have images for our client presnet at - C:\E Drive\Shifa-Software\images
+
+All ecommerce features such as -
+View products, Add to cart, Add to wishlist, checkout, whatsapp order tracking via agent and soo on in addition to detailed Admin Portal details.
+
+Our application should be mobile responsive and a PWA Created so that it can be easily used bt different users from there mobiles.
+Easy to navigate as it has many features.
+
+
+1. User Roles  
+Admin, Accountant, Salesperson, Packing Department, Customer
+
+2. Order Entry Module  
+Salesperson Workflow:
+1. Customer enquiry receive on instagram or whatsapp. Then the team share the QR for payment and collect the amount.
+2. Customer confirm the payment via screenhsot so that needs to be implemneetd and added onto the database for each record.
+
+When salesperson Punch the order the he enter below details at present:
+- Customer Details: Name, Mobile Number, Complete Shipping Address
+- Product Details: Item selection + Quantity per item  
+- Rate Flexibility: Every item rate is editable. System will show the default sale pricebut the salesperson  can change the rate
+- Payment Collection:
+    - Total Order Amount: Items + quantity auto calculate amount.
+    - Amount Received: Customer payed the amountand salesperson add that
+    - Payment Screenshot: IF payment paid (amount received) > 0 then salesperson has to upload screenshot (mandatory)
+    - Remaining Amount: System automatically calculate which is = Total Amount - Amount Received
+    - Payment Status: System auto set 
+        - Amount Received = 0 → Status: COD
+        - Amount Received < Total Amount → Status: Partially Paid + COD Amount (yet to take from client)
+        - Amount Received = Total Amount → Status: Fully Paid
+- Payment Proof: Customer payment screenshot should be added on each order when payment receive 
+
+Order Post-Submission Flow:
+1. Admin Approval Queue: Once the Order is punched status is changed to  "Pending Admin Approval"
+2. Admin Verification: Admin will check order - Payment screenshot, Items, Applied rates, Total Amount, Paid Amount, COD Amount, Payment Status
+3. Approve/Reject: Admin will approve or reject the order with reason
+4. Company Label Generation: Once order is Approved, packing label should be generated with Order ID + Barcode, Customer details, Item list, COD Amount: ₹XXX if its COD.
+5. Packing Department: Once the Label is printed, Packing Department will pack item, label will be attcahed to the parcel and a Barcode scan. Once the barcode is scanned by the packaging tean, order status should be changed to "Packed"and Admin will get real-time notification
+6. Courier Integration: Once status "Packed" is set, courier company API will be hit and the shipping label + AWB number will be generateed with remaining COD amount
+7. Customer WhatsApp Notification: Once the courier company pickup the parcel, status will be changed to "Dispatched/In Transit", customer will be notified on WhatsApp with:
+      - Order Status: "Our order with orderid-xxx is been dispatched parcel"
+      - Courier Company Name
+      - Tracking ID/AWB Number
+      - Tracking Link: Courier company official tracking website direct link
+      - COD Amount: If COD then remaining amount to be payed
+      - Estimated Delivery Date
+8. Live Order Tracking: Courier API will update delivery status in our application as - In Transit, Out for Delivery, Delivered, RTO, Lost/Damaged. 
+This all status, Admin dashboard will display on real-time. Customer will also see major status update and WhatsApp message will be send
+9. Courier COD Settlement & Loss Management: 
+      - Prepaid Orders: Once the Status is set as "Delivered", order will automatically "Closed" and the Customer outstanding will be NIL.
+      - COD Orders -  Once the Status is set as Delivered, Once the status is changed to "Delivered" from Courier Service API, our system will change then order status to "COD Collected". Customer outstanding will be set as NIL and for us, status will be changed to "Courier Company Receivable" as this amount we need to collect from Courier company.
+      - COD Orders - If the Order is Returned or Not delivered, Status will be "RTO" Once it is RTO COD amount automatically will be cancel. Customer outstanding will be set as NIL
+      - Shipment Loss/Damage by Courier: If courier company API set staus as  "Lost", "Damaged" or "Missing", our system automatically:
+          - Order status "Courier Lost"
+          - Net Order Amount will be settled by courier company so status will be set as "Claim Receivable"
+          - Admin will get notification that AWB# claim need to be filed.
+          - Customer outstanding for that order would be cleared as the liability is of courier company
+          - Whether the order is Prepaidor COD, in both case, full amount courier company will bear.
+		  
+      - COD Reconciliation Dashboard: Admin should get then COD + Loss settlement report seperately:
+          - Which order is Delivered + COD amount for that order
+          - How much amount to collect from Courier company for COD
+          - How much amount to collect from Courier company for "Lost Shipment"
+          - Which order is prepaid and which is COD
+          - Which COD order is delivered but courier company not yet transffered the amount to us.
+          - RTO orders, COD amount will automatically cancel.
+
+3. Product Management  
+Manage products, SKU, MRP, and sale prices.
+
+4. Order Status  
+New Order → Pending Admin Approval → Approved → Label Generated → Packed → Courier Assigned → Dispatched → In Transit → Out for Delivery → Delivered → COD Collected / Closed / RTO / Courier Lost / Cancelled
+
+5. Dispatch Labels  
+Single/Bulk label printing and PDF generation. Includes:
+1. Internal Company Label - For Packing Department which included, Order ID + Barcode + COD Amount
+2. Courier Shipping Label - For Courier API with AWB + COD Amount
+
+6. Admin Dashboard  
+Main Admin should have Shopify kind of graphical dashboard with:
+- Key Metrics Cards: Total Sales, Total Orders, Pending Orders, Packed Orders, Dispatched Orders, Delivered Orders, RTO Count, Courier Lost Count, Total COD Pending from Courier, Total Loss Claim Pending from Courier, Conversion Rate
+- Time Period Filters: Today, Yesterday, Last 7 Days, Last 30 Days, This Month, Last Month, Quarterly, Yearly, Custom Date Range
+- Sales Graph: Day-wise, Week-wise, Monthly view with comparison line. Previous period se % growth/decline should be shown
+- Live Stats: Real-time order count, Today's collection, Total COD Amount to Collect from Courier, Total Loss Amount to Claim from Courier
+- Activity Cards: Fulfill Orders, Capture Payments, RTO Alerts, WhatsApp Notifications Sent, COD Settlement Pending, Courier Claims Pending
+- Top Performers: Top Salesperson, Top Selling Product, Top State
+
+7. Reports  
+Daily, monthly, product-wise, and state-wise reporting with export options.
+
+Additional Sales Person Reports:
+- Custom Date Range Filter: Last 5 days, 7 days, 9 days ya or any custom date select
+- Salesperson-wise Detailed Report: Every sales person data should be shown with:
+    - Customer Name
+    - Mobile Number  
+    - Product Name + Quantity
+    - Total Amount, Paid Amount, COD Amount
+    - Payment Status: Paid/Partial/COD
+    - Order Status
+    - COD Settlement Status: Pending/Received from Courier
+    - Loss Claim Status: Pending/Received from Courier
+    - Tracking ID
+    - Order Date
+- Export to Excel/PDF with all above details
+
+8. Payment Tracking & COD + Loss Reconciliation  
+- Order Level: Paid, Partially Paid, COD, Total Amount, Paid Amount, COD Amount, Payment Screenshot: View/Download
+- Courier Level COD + Loss Report: 
+    - Delivered COD Orders List with amount
+    - Lost/Damaged Shipments List with full order amount to claim
+    - Total COD Receivable from each Courier Company
+    - Total Loss Claim Receivable from each Courier Company
+    - Settlement Date tracking: Courier ne kab paisa diya
+    - Prepaid vs COD segregation
+    - RTO Adjusted COD: RTO hone par COD amount auto minus
+    - Loss Adjusted: Lost hone par full amount courier claim me move
+
+9. Search & Duplicate Detection  
+Search by customer/mobile/order ID/AWB Number and detect repeat orders.
+
+10. Billing Export  
+CSV/Excel export compatible with Vyapar.
+
+11. Technical Stack  
+Web Application, MySQL, Laravel/Node.js, React, WhatsApp Business API Integration, Courier API Integration, Cloud Hosting, Daily Backup.
+
+12. WhatsApp Integration  
+- Once the Order is dispatched auto WhatsApp with tracking details
+- Status updates: Out for Delivery, Delivered, RTO, Courier Lost
+- For Customer query, order status check via a live agent from our webiste which can query database and give result for order.
+- Template messages will be pre-approved from Meta.
+
+Future Upgrades  
+Payment integration,
+Auto Tracking SMS, 
+GST Invoice, 
+Inventory Management, 
+Stock Alerts, 
+Customer WhatsApp Chat Support, 
+Auto COD Remittance from Courier API, 
+Auto Loss Claim Filing to Courier, 
+CRM Integration - Zoho/HubSpot/Salesforce se customer data sync, 
+lead tracking, 
+follow-up automation, 
+customer lifetime value analysis.

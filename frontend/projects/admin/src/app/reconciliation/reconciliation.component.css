@@ -1,0 +1,25 @@
+:host {
+  display: block;
+}
+
+/* Keep the per-courier summary cards readable when shown 2-per-row on phones:
+   tighter padding, smaller label/value text, and let long rows wrap instead
+   of clipping the ₹ amount. */
+@media (max-width: 575.98px) {
+  .shifa-recon-card .card-body {
+    padding: 0.7rem;
+  }
+  .shifa-recon-card .card-title {
+    font-size: 0.85rem;
+  }
+  .shifa-recon-card .d-flex.justify-content-between {
+    flex-wrap: wrap;
+    gap: 0 0.5rem;
+    font-size: 0.85rem;
+  }
+  .shifa-recon-card .stat-icon {
+    width: 2rem;
+    height: 2rem;
+    font-size: 1rem;
+  }
+}

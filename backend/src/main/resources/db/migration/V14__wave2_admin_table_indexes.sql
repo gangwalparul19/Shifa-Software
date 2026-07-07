@@ -1,0 +1,26 @@
+-- =============================================================================
+-- Shifa Herbal Remedies OMS - Wave 2 admin-table indexes (V14)
+--
+-- ROADMAP 2.1/2.2 adds server-side paged/sorted/filtered admin tables backed by
+-- Spring Data. This migration adds the ONE index clearly warranted by the new
+-- default sort that has no existing covering index; every other column the new
+-- tables filter/sort on is already indexed by earlier migrations:
+--
+--   * orders(created_at), orders(order_status), orders(customer_mobile),
+--     orders(created_by), UNIQUE orders(order_code)  -> V1
+--   * products(category_id), products(featured), UNIQUE products(sku)  -> V1/V3
+--   * receivables(order_id), receivables(courier_company_id),
+--     receivables(type)  -> V1
+--
+-- The reconciliation receivables table is listed newest-first by default
+-- (created_at DESC, id DESC) and grows monotonically over time, but had no
+-- index on created_at. A composite (created_at, id) index supports that exact
+-- ORDER BY for the paged table without a filesort.
+--
+-- Low-cardinality columns (payment_status, visibility, settled) are deliberately
+-- NOT indexed: their selectivity does not justify an index at this data scale.
+--
+-- Additive only (no drops); safe to run on existing data.
+-- =============================================================================
+
+CREATE INDEX ix_receivables_created ON receivables (created_at, id);

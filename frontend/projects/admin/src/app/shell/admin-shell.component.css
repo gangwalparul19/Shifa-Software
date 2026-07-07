@@ -1,0 +1,252 @@
+:host {
+  display: block;
+}
+
+/* --- Top header (subtle Shifa-green tint) -------------------------------- */
+.shifa-navbar {
+  position: relative;
+  /* Faint green-tinted surface instead of flat white */
+  background: linear-gradient(180deg, var(--shifa-green-050) 0%, #ffffff 100%);
+  border-bottom: 1px solid var(--shifa-green-100);
+  box-shadow: 0 1px 4px rgba(15, 51, 36, 0.05);
+  min-height: 3.75rem;
+  padding-block: 0.5rem;
+  z-index: 1030;
+}
+/* Thin green -> gold accent line across the very top of the app */
+.shifa-navbar::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--shifa-green-600) 0%, var(--shifa-green-400) 55%, var(--shifa-gold) 100%);
+}
+
+/* Make the leaf brand mark pop a little more on the tinted bar */
+.shifa-navbar .shifa-brand__mark {
+  background: linear-gradient(135deg, var(--shifa-green-500), var(--shifa-green-700));
+  box-shadow: 0 2px 8px rgba(31, 93, 63, 0.32), 0 0 0 3px rgba(201, 162, 39, 0.18);
+}
+
+/* Global search slot: fills the middle of the top bar on desktop; on mobile it
+   shrinks to just the search icon button (the input expands to an overlay). */
+.shifa-navbar__search {
+  min-width: 0;
+}
+@media (max-width: 767.98px) {
+  .shifa-navbar__search {
+    flex: 0 0 auto;
+  }
+}
+
+/* --- Horizontal menu bar (soft green tint) ------------------------------ */
+.shifa-menu {
+  background: var(--shifa-green-050);
+  border-bottom: 1px solid var(--shifa-green-100);
+  z-index: 1020;
+}
+.shifa-menu .navbar {
+  padding-block: 0;
+}
+.shifa-menu .navbar-nav {
+  gap: 0.15rem;
+}
+.shifa-menu .nav-link {
+  position: relative;
+  padding: 0.7rem 0.85rem;
+  gap: 0.45rem;
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: #3f5249;
+  border-radius: 0.5rem;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.shifa-menu .nav-link .nav-link-icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 1.1rem;
+  opacity: 0.85;
+  color: var(--shifa-green-500);
+}
+.shifa-menu .nav-link:hover {
+  color: var(--shifa-green-700);
+  background: rgba(31, 93, 63, 0.07);
+}
+.shifa-menu .nav-link:hover .nav-link-icon {
+  opacity: 1;
+}
+/* Active item: green text + green underline accent (Tabler treatment) */
+.shifa-menu .nav-item .nav-link.active {
+  color: var(--shifa-green-700);
+  font-weight: 600;
+}
+.shifa-menu .nav-item .nav-link.active .nav-link-icon {
+  opacity: 1;
+  color: var(--shifa-green-600);
+}
+.shifa-menu .nav-item .nav-link.active::after {
+  content: '';
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--shifa-green-600), var(--shifa-gold));
+  border-radius: 2px 2px 0 0;
+}
+.shifa-menu .nav-link.disabled {
+  color: #aab4ad;
+  cursor: default;
+}
+
+/* --- Desktop nav group (dropdown) --------------------------------------- */
+.shifa-navgroup {
+  position: relative;
+}
+.shifa-navgroup__toggle {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+.shifa-navgroup__caret {
+  font-size: 1rem;
+  margin-left: 0.15rem;
+  opacity: 0.7;
+  transition: transform 0.18s var(--shifa-ease);
+}
+.shifa-navgroup__toggle[aria-expanded='true'] .shifa-navgroup__caret {
+  transform: rotate(180deg);
+}
+
+/* Floating dropdown panel */
+.shifa-navgroup__panel {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0.35rem;
+  min-width: 232px;
+  z-index: 1050;
+  box-shadow: 0 12px 32px rgba(15, 51, 36, 0.18);
+  border-color: var(--shifa-green-100);
+}
+.shifa-navgroup__item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.45rem;
+  color: #3f5249;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: color 0.14s ease, background-color 0.14s ease;
+}
+.shifa-navgroup__item .nav-link-icon {
+  display: inline-flex;
+  font-size: 1.1rem;
+  color: var(--shifa-green-500);
+  opacity: 0.9;
+}
+.shifa-navgroup__item:hover {
+  background: rgba(31, 93, 63, 0.08);
+  color: var(--shifa-green-700);
+}
+.shifa-navgroup__item.active {
+  background: var(--shifa-green-100);
+  color: var(--shifa-green-700);
+  font-weight: 600;
+}
+.shifa-navgroup__item.active .nav-link-icon {
+  opacity: 1;
+  color: var(--shifa-green-600);
+}
+
+/* --- Mobile nav group (labelled section, no floating dropdown) ---------- */
+.shifa-navgroup-m__label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.6rem 0.5rem 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--shifa-green-600);
+}
+.shifa-navgroup-m__label i {
+  font-size: 1rem;
+}
+
+/* On mobile the menu items stack as full-width, comfortably tappable rows */
+@media (max-width: 767.98px) {
+  .shifa-menu .navbar {
+    padding-block: 0.5rem;
+  }
+  .shifa-menu .navbar-nav {
+    gap: 0.15rem;
+    width: 100%;
+  }
+  .shifa-menu .nav-item {
+    width: 100%;
+  }
+  .shifa-menu .nav-link {
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0.7rem 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.95rem;
+  }
+  .shifa-menu .nav-link .nav-link-icon {
+    font-size: 1.25rem;
+    margin-right: 0.25rem;
+  }
+  .shifa-menu .nav-item .nav-link.active {
+    background: var(--shifa-green-100);
+    color: var(--shifa-green-700);
+  }
+  .shifa-menu .nav-item .nav-link.active::after {
+    display: none;
+  }
+
+  /* Mobile grouped sections: full-width label + slightly indented children */
+  .shifa-navgroup-m {
+    width: 100%;
+  }
+  .shifa-navgroup-m + .shifa-navgroup-m,
+  .nav-item + .shifa-navgroup-m {
+    margin-top: 0.25rem;
+    border-top: 1px solid var(--shifa-green-100);
+    padding-top: 0.25rem;
+  }
+  .shifa-navgroup-m__item {
+    padding-left: 1.5rem;
+  }
+}
+
+/* --- User dropdown ------------------------------------------------------- */
+.shifa-usermenu {
+  position: relative;
+}
+.shifa-usermenu__btn {
+  border-radius: 0.5rem;
+}
+.shifa-usermenu__panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  min-width: 220px;
+  z-index: 1050;
+  box-shadow: 0 12px 32px rgba(15, 34, 58, 0.16);
+}
+.shifa-backdrop-transparent {
+  position: fixed;
+  inset: 0;
+  z-index: 1040;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shifa-menu .navbar-collapse {
+    transition: none;
+  }
+}

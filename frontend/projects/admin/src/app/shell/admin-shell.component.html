@@ -1,0 +1,192 @@
+<div class="page">
+  <!-- ===================== Top header (white) ===================== -->
+  <header class="navbar navbar-expand-md d-print-none sticky-top shifa-navbar">
+    <div class="container-xl">
+      <!-- Mobile hamburger toggles the horizontal menu -->
+      <button
+        class="navbar-toggler"
+        type="button"
+        (click)="toggleSidebar()"
+        [attr.aria-expanded]="sidebarOpen()"
+        aria-controls="navbar-menu"
+        aria-label="Toggle navigation"
+      >
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <!-- Brand -->
+      <div class="navbar-brand navbar-brand-autodark pe-0 pe-md-3">
+        <a routerLink="/dashboard" class="shifa-brand" aria-label="Shifa Herbal Remedies">
+          <span class="shifa-brand__mark"><i class="ti ti-leaf"></i></span>
+          <span class="shifa-brand__text">
+            <span class="shifa-brand__title">Shifa</span>
+            <span class="shifa-brand__subtitle">Herbal Remedies</span>
+          </span>
+        </a>
+      </div>
+
+      <!-- Global search (inline on desktop, expanding icon on mobile) -->
+      <div class="shifa-navbar__search flex-fill order-md-first d-flex justify-content-md-center">
+        <admin-global-search />
+      </div>
+
+      <!-- Right side: live status + user menu -->
+      <div class="navbar-nav flex-row order-md-last">
+        <div class="d-flex align-items-center gap-2 gap-md-3">
+          <!-- Live SSE indicator -->
+          <span
+            class="live-indicator d-none d-sm-inline-flex"
+            [class]="events.status()"
+            [title]="'Real-time feed: ' + liveLabel()"
+          >
+            <span class="dot"></span>
+            <span>{{ liveLabel() }}</span>
+          </span>
+
+          <!-- Notifications bell (ADMIN only) -->
+          @if (isAdmin()) {
+            <admin-notification-bell />
+          }
+
+          <!-- User dropdown (Angular-driven) -->
+          @if (auth.session(); as session) {
+            <div class="shifa-usermenu">
+              <button
+                type="button"
+                class="btn btn-ghost-secondary d-flex align-items-center gap-2 px-2 shifa-usermenu__btn"
+                (click)="toggleUserMenu()"
+                [attr.aria-expanded]="userMenuOpen()"
+                aria-haspopup="menu"
+                aria-label="Account menu"
+              >
+                <span class="avatar avatar-sm shifa-avatar" aria-hidden="true">
+                  {{ session.username.charAt(0).toUpperCase() }}
+                </span>
+                <span class="d-none d-sm-flex flex-column text-start lh-sm">
+                  <span class="fw-medium">{{ session.username }}</span>
+                  <span class="text-secondary small">{{ session.role }}</span>
+                </span>
+                <i class="ti ti-chevron-down text-secondary" aria-hidden="true"></i>
+              </button>
+
+              @if (userMenuOpen()) {
+                <div class="shifa-backdrop-transparent" (click)="closeUserMenu()"></div>
+                <div class="card shifa-usermenu__panel anim-pop">
+                  <div class="card-body p-2">
+                    <div class="px-2 py-1">
+                      <div class="fw-medium">{{ session.username }}</div>
+                      <div class="text-secondary small">{{ session.role }}</div>
+                    </div>
+                    <div class="dropdown-divider my-1"></div>
+                    <button
+                      type="button"
+                      class="btn btn-ghost-danger w-100 justify-content-start"
+                      (click)="closeUserMenu(); signOut()"
+                    >
+                      <i class="ti ti-logout me-2"></i> Logout
+                    </button>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================== Horizontal menu bar (white) ===================== -->
+  <div class="navbar-expand-md shifa-menu d-print-none">
+    <div class="collapse navbar-collapse" id="navbar-menu" [class.show]="sidebarOpen()">
+      <div class="navbar">
+        <div class="container-xl">
+          <ul class="navbar-nav">
+            @for (entry of navEntries(); track entry.label) {
+              @if (entry.kind === 'link') {
+                <!-- Standalone link (Dashboard, Reports) -->
+                <li class="nav-item">
+                  <a
+                    class="nav-link"
+                    [routerLink]="entry.path"
+                    routerLinkActive="active"
+                    (click)="closeSidebar()"
+                  >
+                    <span class="nav-link-icon"><i class="ti {{ entry.icon }}"></i></span>
+                    <span class="nav-link-title">{{ entry.label }}</span>
+                  </a>
+                </li>
+              } @else {
+                <!-- ===== Group: desktop dropdown ===== -->
+                <li class="nav-item shifa-navgroup d-none d-md-block">
+                  <button
+                    type="button"
+                    class="nav-link shifa-navgroup__toggle"
+                    [class.active]="isGroupActive(entry) || openGroup() === entry.label"
+                    (click)="toggleGroup(entry.label)"
+                    [attr.aria-expanded]="openGroup() === entry.label"
+                    aria-haspopup="menu"
+                  >
+                    <span class="nav-link-icon"><i class="ti {{ entry.icon }}"></i></span>
+                    <span class="nav-link-title">{{ entry.label }}</span>
+                    <i class="ti ti-chevron-down shifa-navgroup__caret" aria-hidden="true"></i>
+                  </button>
+
+                  @if (openGroup() === entry.label) {
+                    <div class="shifa-backdrop-transparent" (click)="closeGroups()"></div>
+                    <div class="card shifa-navgroup__panel anim-pop" role="menu">
+                      <div class="card-body p-1">
+                        @for (child of entry.children; track child.path) {
+                          <a
+                            class="shifa-navgroup__item"
+                            role="menuitem"
+                            [routerLink]="child.path"
+                            routerLinkActive="active"
+                            (click)="closeGroups(); closeSidebar()"
+                          >
+                            <span class="nav-link-icon"><i class="ti {{ child.icon }}"></i></span>
+                            <span>{{ child.label }}</span>
+                          </a>
+                        }
+                      </div>
+                    </div>
+                  }
+                </li>
+
+                <!-- ===== Group: mobile section (no floating dropdown) ===== -->
+                <li class="nav-item d-md-none shifa-navgroup-m">
+                  <div class="shifa-navgroup-m__label">
+                    <i class="ti {{ entry.icon }}" aria-hidden="true"></i>
+                    <span>{{ entry.label }}</span>
+                  </div>
+                  @for (child of entry.children; track child.path) {
+                    <a
+                      class="nav-link shifa-navgroup-m__item"
+                      [routerLink]="child.path"
+                      routerLinkActive="active"
+                      (click)="closeSidebar()"
+                    >
+                      <span class="nav-link-icon"><i class="ti {{ child.icon }}"></i></span>
+                      <span class="nav-link-title">{{ child.label }}</span>
+                    </a>
+                  }
+                </li>
+              }
+            }
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Page body ===================== -->
+  <div class="page-wrapper">
+    <main class="page-body">
+      <div class="container-xl" [@routeFade]="pageTitle()">
+        <router-outlet />
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- App-wide toast notifications (single host for the whole admin) -->
+<admin-toasts />

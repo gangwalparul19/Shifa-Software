@@ -1,0 +1,6 @@
+/* Purchase Orders — a wider modal for the create/receive line-item forms,
+   layered over the global .shifa-modal. Table, drawer and badge styling all
+   come from the shared global stylesheet. */
+.shifa-modal.shifa-modal--wide {
+  width: min(860px, calc(100vw - 2rem));
+}

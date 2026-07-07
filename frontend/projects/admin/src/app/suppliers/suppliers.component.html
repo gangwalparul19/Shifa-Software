@@ -1,0 +1,200 @@
+<admin-page-header
+  title="Suppliers"
+  subtitle="Manage the vendors you raise purchase orders against."
+  [breadcrumbs]="[{ label: 'Suppliers' }]"
+>
+  <admin-density-toggle />
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+  <button type="button" class="btn btn-primary" (click)="openCreate()">
+    <i class="ti ti-plus me-1"></i> New supplier
+  </button>
+</admin-page-header>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-center">
+      <div class="col-12 col-lg">
+        <div class="input-icon">
+          <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+          <input
+            type="search"
+            class="form-control"
+            [value]="search()"
+            (input)="onSearch($any($event.target).value)"
+            placeholder="Search by name, contact, phone or email…"
+            autocomplete="off"
+            aria-label="Search suppliers"
+          />
+          @if (search()) {
+            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
+              <i class="ti ti-x"></i>
+            </span>
+          }
+        </div>
+      </div>
+      <div class="col-12 col-lg-auto">
+        <label class="form-check form-switch mb-0">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            [checked]="activeOnly()"
+            (change)="toggleActiveOnly($any($event.target).checked)"
+          />
+          <span class="form-check-label">Active only</span>
+        </label>
+      </div>
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" [skeletonRows]="[1, 2, 3]" loadingLabel="Loading suppliers…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (suppliers().length === 0) {
+  <admin-state-panel
+    variant="onboarding"
+    [card]="true"
+    icon="ti-building-warehouse"
+    title="Add your first supplier"
+    message="Suppliers are the vendors you raise purchase orders against."
+    ctaLabel="New supplier"
+    (cta)="openCreate()"
+  />
+} @else if (filtered().length === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-building-warehouse"
+    title="No suppliers match your search"
+    message="Try a different name, contact or phone number."
+  />
+} @else {
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table table-hover">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Contact</th>
+            <th>Phone</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (s of filtered(); track s.id) {
+            <tr>
+              <td>
+                <button type="button" class="btn btn-link p-0 fw-medium text-start" (click)="openEdit(s)">
+                  {{ s.name }}
+                </button>
+                @if (s.address) {
+                  <div class="text-secondary small">{{ s.address }}</div>
+                }
+              </td>
+              <td>{{ s.contactPerson || '—' }}</td>
+              <td class="text-secondary">{{ s.phone || '—' }}</td>
+              <td class="text-secondary">{{ s.email || '—' }}</td>
+              <td>
+                <span class="badge" [class.bg-green-lt]="s.active" [class.bg-secondary-lt]="!s.active">
+                  {{ s.active ? 'Active' : 'Inactive' }}
+                </span>
+              </td>
+              <td class="text-end">
+                <div class="btn-list justify-content-end flex-nowrap">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openEdit(s)">
+                    <i class="ti ti-edit"></i>
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm"
+                    [class.btn-outline-danger]="s.active"
+                    [class.btn-outline-success]="!s.active"
+                    (click)="toggleActive(s)"
+                    [disabled]="togglingId() !== null"
+                  >
+                    {{ s.active ? 'Deactivate' : 'Activate' }}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+}
+
+<!-- Add / edit modal -->
+@if (formOpen()) {
+  <div class="shifa-overlay" (click)="closeForm()"></div>
+  <div class="shifa-modal" role="dialog" aria-label="Supplier form">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0">{{ editing() ? 'Edit supplier' : 'New supplier' }}</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeForm()" aria-label="Close"><i class="ti ti-x"></i></button>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (formError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert">
+            <i class="ti ti-alert-triangle me-2"></i>{{ err }}
+          </div>
+        }
+
+        <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+          <div class="mb-3">
+            <label class="form-label required">Name</label>
+            <input type="text" class="form-control" formControlName="name" maxlength="150" autocomplete="off"
+              [class.is-invalid]="form.controls.name.touched && form.controls.name.invalid" />
+            @if (form.controls.name.touched && form.controls.name.invalid) {
+              <div class="invalid-feedback">A name is required (max 150 characters).</div>
+            }
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Contact person</label>
+              <input type="text" class="form-control" formControlName="contactPerson" maxlength="150" autocomplete="off" />
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Phone</label>
+              <input type="text" class="form-control" formControlName="phone" maxlength="30" autocomplete="off" />
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-control" formControlName="email" maxlength="150" autocomplete="off"
+              [class.is-invalid]="form.controls.email.touched && form.controls.email.invalid" />
+            @if (form.controls.email.touched && form.controls.email.invalid) {
+              <div class="invalid-feedback">Enter a valid email address.</div>
+            }
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Address</label>
+            <textarea class="form-control" formControlName="address" rows="2" maxlength="500"></textarea>
+          </div>
+
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary" (click)="closeForm()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="saving()">
+              @if (saving()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Saving…
+              } @else {
+                {{ editing() ? 'Save changes' : 'Create supplier' }}
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}

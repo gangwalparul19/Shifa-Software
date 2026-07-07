@@ -1,0 +1,480 @@
+<admin-page-header
+  title="Orders"
+  subtitle="Search and review all orders across the pipeline."
+  [breadcrumbs]="[{ label: 'Orders' }]"
+>
+  <admin-density-toggle />
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+  @if (canCreateOrder()) {
+    <a class="btn btn-primary" routerLink="/orders/new">
+      <i class="ti ti-plus me-1"></i> New Order
+    </a>
+  }
+</admin-page-header>
+
+<!-- Live-activity nudge (A3): subtle, click-to-refresh; keeps filters/page -->
+@if (newActivity()) {
+  <div class="shifa-activity-pill anim-fade-up mb-3">
+    <button type="button" class="btn btn-sm btn-primary" (click)="refreshFromActivity()">
+      <span class="shifa-pulse-dot me-2"></span>
+      New order activity — click to refresh
+    </button>
+  </div>
+}
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-lg">
+        <div class="input-icon">
+          <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+          <input
+            type="search"
+            class="form-control"
+            [formControl]="search"
+            placeholder="Search by customer, mobile, order code, or AWB…"
+            autocomplete="off"
+            aria-label="Search orders"
+          />
+          @if (search.value) {
+            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
+              <i class="ti ti-x"></i>
+            </span>
+          }
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
+        <label class="form-label small mb-1">Status</label>
+        <select class="form-select" formControlName="status" aria-label="Filter by order status">
+          <option value="">All statuses</option>
+          @for (s of statusOptions; track s) {
+            <option [value]="s">{{ humanize(s) }}</option>
+          }
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
+        <label class="form-label small mb-1">Payment</label>
+        <select class="form-select" formControlName="paymentStatus" aria-label="Filter by payment status">
+          <option value="">All payments</option>
+          @for (p of paymentOptions; track p) {
+            <option [value]="p">{{ humanize(p) }}</option>
+          }
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
+        <label class="form-label small mb-1">From</label>
+        <input type="date" class="form-control" formControlName="from" aria-label="From date" />
+      </div>
+      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
+        <label class="form-label small mb-1">To</label>
+        <input type="date" class="form-control" formControlName="to" aria-label="To date" />
+      </div>
+      @if (hasFilters()) {
+        <div class="col-auto">
+          <button type="button" class="btn btn-link text-secondary px-1" (click)="clearFilters()">
+            <i class="ti ti-filter-off me-1"></i> Clear
+          </button>
+        </div>
+      }
+    </div>
+
+    <!-- Saved views (A4): apply / save / delete filter presets -->
+    <div class="shifa-views d-flex flex-wrap align-items-center gap-2 mt-2 pt-2 border-top">
+      <span class="text-secondary small d-inline-flex align-items-center">
+        <i class="ti ti-bookmarks me-1"></i> Views
+      </span>
+      @for (v of savedViews(); track v.id) {
+        <div class="btn-group btn-group-sm shifa-view-chip" role="group" [attr.aria-label]="v.name">
+          <button type="button" class="btn btn-outline-secondary" (click)="applyView(v)">
+            {{ v.name }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-outline-secondary shifa-view-del"
+            (click)="deleteView(v)"
+            [attr.aria-label]="'Delete view ' + v.name"
+            title="Delete view"
+          >
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      }
+      @if (savingView()) {
+        <div class="input-group input-group-sm shifa-view-save">
+          <input
+            type="text"
+            class="form-control"
+            [formControl]="newViewName"
+            placeholder="View name…"
+            aria-label="New view name"
+            (keydown.enter)="confirmSaveView()"
+            (keydown.escape)="cancelSaveView()"
+          />
+          <button type="button" class="btn btn-primary" (click)="confirmSaveView()" [disabled]="!newViewName.value.trim()">
+            Save
+          </button>
+          <button type="button" class="btn btn-outline-secondary" (click)="cancelSaveView()">
+            Cancel
+          </button>
+        </div>
+      } @else {
+        <button type="button" class="btn btn-sm btn-link text-decoration-none" (click)="beginSaveView()">
+          <i class="ti ti-bookmark-plus me-1"></i> Save current
+        </button>
+      }
+    </div>
+  </div>
+</div>
+
+<!-- Bulk actions bar -->
+@if (selectionCount() > 0) {
+  <div class="card mb-3 shifa-bulkbar anim-fade-up">
+    <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
+      <span class="fw-medium">
+        <i class="ti ti-checks me-1"></i>{{ selectionCount() }} selected
+      </span>
+      <div class="btn-list ms-auto flex-wrap">
+        <button type="button" class="btn btn-sm btn-primary" (click)="approveSelected()" [disabled]="bulkBusy()">
+          <i class="ti ti-check me-1"></i> Approve selected
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-primary" (click)="markPackedSelected()" [disabled]="bulkBusy()">
+          <i class="ti ti-package me-1"></i> Mark packed selected
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" (click)="printLabelsSelected()" [disabled]="bulkBusy()">
+          @if (bulkBusy()) {
+            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+          } @else {
+            <i class="ti ti-printer me-1"></i>
+          }
+          Print labels selected
+        </button>
+        <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="clearSelection()" [disabled]="bulkBusy()">
+          Clear
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Skipped summary from the last bulk action -->
+@if (lastSkips().length > 0) {
+  <div class="alert alert-warning mb-3" role="status">
+    <div class="d-flex align-items-center">
+      <i class="ti ti-alert-triangle me-2"></i>
+      <span>{{ lastSkips().length }} order{{ lastSkips().length === 1 ? '' : 's' }} skipped in the last bulk action.</span>
+      <button type="button" class="btn btn-sm btn-link ms-auto" (click)="toggleSkips()">
+        {{ showSkips() ? 'Hide details' : 'Show details' }}
+      </button>
+    </div>
+    @if (showSkips()) {
+      <ul class="mt-2 mb-0 small">
+        @for (skip of lastSkips(); track skip.id) {
+          <li><span class="shifa-mono">#{{ skip.id }}</span> — {{ skip.reason }}</li>
+        }
+      </ul>
+    }
+  </div>
+}
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading orders…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (orders().length === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-receipt-off"
+    title="No orders found"
+    [message]="hasFilters() ? 'No orders match your filters.' : 'Orders will appear here as they come in.'"
+  />
+} @else {
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table table-hover stagger-rows">
+        <thead>
+          <tr>
+            <th class="w-1">
+              <input
+                type="checkbox"
+                class="form-check-input m-0"
+                [checked]="allOnPageSelected()"
+                (change)="toggleAllOnPage()"
+                aria-label="Select all orders on this page"
+              />
+            </th>
+            <th adminSortHeader field="orderCode" [sort]="sort()" (sortChange)="onSort($event)">Order</th>
+            <th adminSortHeader field="customerName" [sort]="sort()" (sortChange)="onSort($event)">Customer</th>
+            <th>Mobile</th>
+            <th class="text-end" adminSortHeader field="totalAmount" [sort]="sort()" (sortChange)="onSort($event)">Total</th>
+            <th class="text-end">COD</th>
+            <th adminSortHeader field="paymentStatus" [sort]="sort()" (sortChange)="onSort($event)">Payment</th>
+            <th adminSortHeader field="orderStatus" [sort]="sort()" (sortChange)="onSort($event)">Status</th>
+            <th adminSortHeader field="createdAt" [sort]="sort()" (sortChange)="onSort($event)">Date</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (order of orders(); track order.id) {
+            <tr class="clickable" [class.table-active]="isSelected(order.id)" (click)="openDetail(order)">
+              <td (click)="$event.stopPropagation()">
+                <input
+                  type="checkbox"
+                  class="form-check-input m-0"
+                  [checked]="isSelected(order.id)"
+                  (change)="toggleRow(order.id)"
+                  [attr.aria-label]="'Select order ' + order.orderCode"
+                />
+              </td>
+              <td>
+                <button type="button" class="btn btn-link p-0 fw-medium" (click)="$event.stopPropagation(); openDetail(order)">
+                  {{ order.orderCode }}
+                </button>
+              </td>
+              <td>{{ order.customerName }}</td>
+              <td class="text-secondary">{{ order.customerMobile }}</td>
+              <td class="text-end">{{ money(order.totalAmount) }}</td>
+              <td class="text-end">{{ money(order.codAmount) }}</td>
+              <td><admin-status-badge [status]="order.paymentStatus" kind="payment" /></td>
+              <td><admin-status-badge [status]="order.orderStatus" /></td>
+              <td class="text-secondary">{{ order.createdAt ? (order.createdAt | date: 'dd MMM, HH:mm') : '—' }}</td>
+              <td class="text-end">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary"
+                  (click)="$event.stopPropagation(); openDetail(order)"
+                >
+                  View
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+}
+
+<!-- Detail drawer -->
+@if (detailLoading() || selectedDetail() || detailError()) {
+  <div class="shifa-overlay" (click)="closeDetail()"></div>
+  <aside class="shifa-drawer" role="dialog" aria-label="Order detail">
+    @if (detailLoading()) {
+      <div class="shifa-drawer__body"><div class="skeleton skeleton-line w-60 mb-3"></div><div class="skeleton skeleton-card"></div></div>
+    } @else if (detailError()) {
+      <div class="shifa-drawer__body"><div class="alert alert-danger">{{ detailError() }}</div></div>
+    } @else if (selectedDetail(); as order) {
+      <header class="shifa-drawer__head">
+        <div>
+          <h3 class="mb-1">{{ order.orderCode }}</h3>
+          <admin-status-badge [status]="order.orderStatus" />
+        </div>
+        <div class="d-flex align-items-center gap-1">
+          @if (canCreateReturn() && isReturnEligible(order)) {
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-secondary"
+              (click)="openCreateReturn()"
+              title="Create a return for this order"
+            >
+              <i class="ti ti-arrow-back-up me-1"></i> Create return
+            </button>
+          }
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-primary"
+            (click)="downloadInvoice(order)"
+            [disabled]="invoiceLoading()"
+            title="Download invoice"
+          >
+            @if (invoiceLoading()) {
+              <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            } @else {
+              <i class="ti ti-file-invoice me-1"></i>
+            }
+            Download invoice
+          </button>
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeDetail()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </header>
+
+      <div class="shifa-drawer__body">
+        @if (invoiceError()) {
+          <div class="alert alert-danger py-2" role="alert">{{ invoiceError() }}</div>
+        }
+        <div class="mb-4">
+          <div class="subheader mb-2">Customer</div>
+          <div class="fw-medium">{{ order.customerName }}</div>
+          <div class="text-secondary">{{ order.customerMobile }}</div>
+          <div class="text-secondary mt-1">
+            {{ order.addressLine }}, {{ order.city }}, {{ order.state }} — {{ order.postalCode }}
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <div class="subheader mb-2">Line items</div>
+          <table class="table table-sm table-vcenter">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>HSN</th>
+                <th class="text-end">GST %</th>
+                <th class="text-end">Qty</th>
+                <th class="text-end">Rate</th>
+                <th class="text-end">Line total</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (li of order.items; track $index) {
+                <tr>
+                  <td>{{ li.productName }}</td>
+                  <td><span class="shifa-mono">{{ li.hsnCode || '—' }}</span></td>
+                  <td class="text-end">{{ li.gstRate != null ? li.gstRate + '%' : '—' }}</td>
+                  <td class="text-end">{{ li.quantity }}</td>
+                  <td class="text-end">{{ money(li.rate) }}</td>
+                  <td class="text-end">{{ money(li.lineTotal) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card card-sm mb-4">
+          <div class="card-body">
+            <div class="d-flex justify-content-between py-1"><span class="text-secondary">Total</span><strong>{{ money(order.totalAmount) }}</strong></div>
+            <div class="d-flex justify-content-between py-1"><span class="text-secondary">Amount received</span><strong>{{ money(order.amountReceived) }}</strong></div>
+            <div class="d-flex justify-content-between py-1"><span class="text-secondary">Remaining</span><strong>{{ money(order.remainingAmount) }}</strong></div>
+            <div class="d-flex justify-content-between py-1"><span class="text-secondary">COD amount</span><strong>{{ money(order.codAmount) }}</strong></div>
+            <div class="d-flex justify-content-between py-1 align-items-center">
+              <span class="text-secondary">Payment status</span>
+              <admin-status-badge [status]="order.paymentStatus" kind="payment" />
+            </div>
+          </div>
+        </div>
+
+        @if (order.awb) {
+          <div class="mb-4">
+            <div class="subheader mb-2">Shipment</div>
+            <div class="row g-1">
+              <div class="col-4 text-secondary">AWB</div><div class="col-8"><span class="shifa-mono">{{ order.awb }}</span></div>
+              @if (order.courierName) {
+                <div class="col-4 text-secondary">Courier</div><div class="col-8">{{ order.courierName }}</div>
+              }
+              @if (order.estimatedDelivery) {
+                <div class="col-4 text-secondary">Est. delivery</div><div class="col-8">{{ order.estimatedDelivery | date: 'dd MMM yyyy' }}</div>
+              }
+            </div>
+            @if (order.trackingUrl) {
+              <a class="btn btn-sm btn-outline-primary mt-2" [href]="order.trackingUrl" target="_blank" rel="noopener">
+                <i class="ti ti-external-link me-1"></i> Track shipment
+              </a>
+            }
+          </div>
+        }
+
+        <!-- Online payments (Phase E) -->
+        <div class="mb-4">
+          <div class="subheader mb-2">Online payments</div>
+          @if (paymentsLoading()) {
+            <div class="skeleton skeleton-line w-80 mb-2"></div>
+          } @else if (payments().length === 0) {
+            <p class="text-secondary mb-0">No online payment attempts for this order.</p>
+          } @else {
+            <table class="table table-sm table-vcenter">
+              <thead>
+                <tr><th>Gateway</th><th>Status</th><th class="text-end">Amount</th><th>Date</th></tr>
+              </thead>
+              <tbody>
+                @for (txn of payments(); track txn.id) {
+                  <tr>
+                    <td>{{ txn.gateway }}</td>
+                    <td><span class="badge" [attr.data-group]="paymentStatusGroup(txn.status)">{{ txn.status }}</span></td>
+                    <td class="text-end">{{ money(txn.amount) }}</td>
+                    <td class="text-secondary">{{ txn.createdAt ? (txn.createdAt | date: 'dd MMM, HH:mm') : '—' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+        </div>
+
+        <div>
+          <div class="subheader mb-2">Payment screenshot</div>
+          @if (screenshotLoading()) {
+            <div class="skeleton" style="height: 180px"></div>
+          } @else if (screenshotUrl(); as url) {
+            <a [href]="url" target="_blank" rel="noopener">
+              <img class="img-fluid rounded border" [src]="url" alt="Payment screenshot" />
+            </a>
+          } @else {
+            <p class="text-secondary">No payment screenshot for this order.</p>
+          }
+        </div>
+      </div>
+    }
+  </aside>
+}
+
+<!-- ===================== Create return modal ===================== -->
+@if (createReturnOpen() && selectedDetail(); as order) {
+  <div class="shifa-overlay" (click)="closeCreateReturn()"></div>
+  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Create return">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-arrow-back-up me-2"></i>Create return</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeCreateReturn()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">
+          Order <span class="shifa-mono">{{ order.orderCode }}</span> —
+          <admin-status-badge [status]="order.orderStatus" />
+        </p>
+        @if (createReturnError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert"><i class="ti ti-alert-triangle me-2"></i>{{ err }}</div>
+        }
+        <form (ngSubmit)="submitCreateReturn()" novalidate [formGroup]="returnForm">
+          <div class="mb-3">
+            <label class="form-label required">Reason</label>
+            <input type="text" class="form-control" formControlName="reason" maxlength="255"
+              placeholder="e.g. Damaged on arrival" autocomplete="off"
+              [class.is-invalid]="returnForm.controls.reason.touched && returnForm.controls.reason.invalid" />
+            @if (returnForm.controls.reason.touched && returnForm.controls.reason.invalid) {
+              <div class="text-danger small mt-1">A reason is required.</div>
+            }
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Notes <span class="text-secondary">(optional)</span></label>
+            <textarea class="form-control" rows="3" formControlName="notes" maxlength="500"></textarea>
+          </div>
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-link text-secondary" (click)="closeCreateReturn()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="createReturnBusy()">
+              @if (createReturnBusy()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Working…
+              } @else {
+                <i class="ti ti-arrow-back-up me-1"></i> Create return
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}

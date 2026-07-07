@@ -1,0 +1,100 @@
+<admin-page-header
+  title="Notifications"
+  subtitle="Everything that needs your attention, in one place."
+  [breadcrumbs]="[{ label: 'Notifications' }]"
+>
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+  <button type="button" class="btn btn-primary" (click)="markAllRead()" [disabled]="busy()">
+    <i class="ti ti-checks me-1"></i> Mark all read
+  </button>
+</admin-page-header>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end" [formGroup]="filters">
+      <div class="col-6 col-md-4 col-lg-3">
+        <label class="form-label small mb-1">Type</label>
+        <select class="form-select" formControlName="type" aria-label="Filter by type">
+          <option value="">All types</option>
+          @for (t of types(); track t) {
+            <option [value]="t">{{ humanizeType(t) }}</option>
+          }
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-check mt-4">
+          <input type="checkbox" class="form-check-input" formControlName="unreadOnly" />
+          <span class="form-check-label">Unread only</span>
+        </label>
+      </div>
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading notifications…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (items().length === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-bell-off"
+    title="No notifications"
+    [message]="hasFilters() ? 'No notifications match your filters.' : 'You are all caught up.'"
+  />
+} @else {
+  <div class="card">
+    <div class="list-group list-group-flush">
+      @for (n of items(); track n.id) {
+        <div class="list-group-item" [class.shifa-note--unread]="!n.read">
+          <div class="row align-items-center">
+            <div class="col-auto">
+              <span class="shifa-note__icon" [class]="severityColor(n.severity)">
+                <i class="ti {{ severityIcon(n.severity) }}" aria-hidden="true"></i>
+              </span>
+            </div>
+            <div class="col text-truncate">
+              <div class="d-flex align-items-center gap-2">
+                @if (!n.read) {
+                  <span class="shifa-note__dot" aria-label="Unread"></span>
+                }
+                <span class="fw-medium">{{ n.title }}</span>
+                <span class="badge bg-secondary-lt">{{ humanizeType(n.type) }}</span>
+              </div>
+              <div class="text-secondary text-truncate">{{ n.detail }}</div>
+              <div class="text-secondary small mt-1">
+                {{ relativeTime(n.createdAt) }}
+                @if (n.orderCode) {
+                  · <a [routerLink]="['/orders']" [queryParams]="{ q: n.orderCode }">Order {{ n.orderCode }}</a>
+                }
+              </div>
+            </div>
+            <div class="col-auto">
+              @if (!n.read) {
+                <button type="button" class="btn btn-sm btn-outline-primary" (click)="markRead(n)">
+                  <i class="ti ti-check me-1"></i> Mark read
+                </button>
+              } @else {
+                <span class="text-secondary small">
+                  <i class="ti ti-check me-1"></i>Read
+                </span>
+              }
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+}

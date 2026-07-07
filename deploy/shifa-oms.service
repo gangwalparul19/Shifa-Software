@@ -1,0 +1,27 @@
+# systemd unit for the Shifa OMS backend (Spring Boot fat JAR).
+# Install to: /etc/systemd/system/shifa-oms.service
+# Then: sudo systemctl daemon-reload && sudo systemctl enable --now shifa-oms
+
+[Unit]
+Description=Shifa Herbal Remedies OMS (Spring Boot)
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=shifa
+Group=shifa
+# All secrets/config come from this file (see shifa.env.example)
+EnvironmentFile=/etc/shifa/shifa.env
+WorkingDirectory=/opt/shifa
+# ${JAVA_OPTS} lets you tune heap from the env file
+ExecStart=/bin/sh -c '/usr/bin/java $JAVA_OPTS -jar /opt/shifa/shifa-oms.jar'
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+# Basic hardening
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

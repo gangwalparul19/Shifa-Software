@@ -1,0 +1,56 @@
+<section class="section container">
+  <div class="section-head" style="text-align:left; margin:0 0 28px;">
+    <h1>{{ 'wishlist.sharedTitle' | translate }}</h1>
+    <p class="muted">{{ 'wishlist.sharedSubtitle' | translate }}</p>
+  </div>
+
+  @if (loading()) {
+    <div class="empty">
+      <h3>{{ 'common.loading' | translate }}</h3>
+    </div>
+  } @else if (invalid()) {
+    <div class="empty">
+      <span class="empty-icon">♡</span>
+      <h3>{{ 'wishlist.sharedInvalid' | translate }}</h3>
+      <p>{{ 'wishlist.sharedInvalidHint' | translate }}</p>
+      <a class="btn btn-primary" routerLink="/shop">{{ 'common.startShopping' | translate }}</a>
+    </div>
+  } @else if (items().length === 0) {
+    <div class="empty">
+      <span class="empty-icon">♡</span>
+      <h3>{{ 'wishlist.sharedEmpty' | translate }}</h3>
+      <a class="btn btn-primary" routerLink="/shop">{{ 'common.startShopping' | translate }}</a>
+    </div>
+  } @else {
+    <div class="grid">
+      @for (item of items(); track item.productId) {
+        <article class="wl-card">
+          <a class="media" [routerLink]="['/products', item.productId]">
+            <img [src]="imageUrl(item)" [alt]="item.name" loading="lazy" />
+            @if (discount(item) > 0) {
+              <span class="pill pill-sale">-{{ discount(item) }}%</span>
+            }
+          </a>
+          <div class="body">
+            <a class="name" [routerLink]="['/products', item.productId]">{{ item.name }}</a>
+            <div class="prices">
+              <span class="sale">{{ price(item) }}</span>
+              @if (discount(item) > 0) {
+                <span class="strike">{{ mrp(item) }}</span>
+              }
+            </div>
+            <div class="actions">
+              <button type="button" class="btn btn-primary btn-block" (click)="addToCart(item)">
+                @if (addedId() === item.productId) {
+                  {{ 'common.addedToCart' | translate }}
+                } @else {
+                  {{ 'common.addToCart' | translate }}
+                }
+              </button>
+            </div>
+          </div>
+        </article>
+      }
+    </div>
+  }
+</section>
