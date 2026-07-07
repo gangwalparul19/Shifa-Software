@@ -1,7 +1,0 @@
-# Shifa Herbal Remedies storefront — robots policy
-# Served at the web root (/robots.txt) by nginx from the built app.
-User-agent: *
-Allow: /
-
-# Update the host below to your production domain.
-Sitemap: https://www.shifaherbal.in/sitemap.xml

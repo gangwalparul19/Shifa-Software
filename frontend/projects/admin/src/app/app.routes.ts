@@ -12,8 +12,6 @@ import { InventoryComponent } from './inventory/inventory.component';
 import { ScanComponent } from './packing/scan.component';
 import { ReconciliationComponent } from './reconciliation/reconciliation.component';
 import { ReportsComponent } from './reports/reports.component';
-import { ReviewsComponent } from './reviews/reviews.component';
-import { CouponsComponent } from './coupons/coupons.component';
 import { SettingsComponent } from './settings/settings.component';
 import { UsersComponent } from './users/users.component';
 import { CustomersComponent } from './customers/customers.component';
@@ -129,18 +127,6 @@ export const routes: Routes = [
         // endpoints are guarded with hasRole('ADMIN'), Wave 3 Feature 1).
         path: 'inventory',
         component: InventoryComponent,
-        canActivate: [adminOnlyGuard],
-      },
-      {
-        // Review moderation queue (ADMIN only, Phase C).
-        path: 'reviews',
-        component: ReviewsComponent,
-        canActivate: [adminOnlyGuard],
-      },
-      {
-        // Coupons / discount codes (ADMIN only, Phase D).
-        path: 'coupons',
-        component: CouponsComponent,
         canActivate: [adminOnlyGuard],
       },
       {

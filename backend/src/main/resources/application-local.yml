@@ -6,7 +6,7 @@ spring:
   config:
     import: "optional:file:./local-secrets.properties"
   datasource:
-    url: jdbc:mysql://localhost:3306/shifa_oms?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Kolkata&characterEncoding=UTF-8
+    url: jdbc:mysql://localhost:3306/shifa_dashboard?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Kolkata&characterEncoding=UTF-8
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:root@123}
     driver-class-name: com.mysql.cj.jdbc.Driver

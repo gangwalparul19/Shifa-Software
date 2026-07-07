@@ -88,25 +88,8 @@ public class SecurityConfig {
                         // Public authentication endpoints (Req 5.2): login, refresh,
                         // and customer self-registration (Phase B: /api/auth/register).
                         .requestMatchers("/api/auth/**").permitAll()
-                        // Customer account area: authenticated; method security
-                        // restricts each endpoint to the CUSTOMER role (Phase B).
-                        .requestMatchers("/api/account/**").authenticated()
-                        // Public catalog / product / search (Req 1.1, 1.3).
-                        .requestMatchers(HttpMethod.GET, "/api/catalog/**").permitAll()
                         // Public customer order tracking by order code (Req 13.4).
                         .requestMatchers(HttpMethod.GET, "/api/track/**").permitAll()
-                        // Public, read-only shared wishlist view by unguessable token.
-                        // Exposes product summaries only (never customer PII).
-                        .requestMatchers(HttpMethod.GET, "/api/wishlist/shared/**").permitAll()
-                        // Public, non-sensitive storefront display config (WhatsApp/support).
-                        .requestMatchers(HttpMethod.GET, "/api/storefront/config").permitAll()
-                        // Public storefront checkout (Req 3.6): customers place orders anonymously.
-                        .requestMatchers(HttpMethod.POST, "/api/checkout").permitAll()
-                        // Public coupon validation (Phase D): preview a discount from the cart.
-                        .requestMatchers(HttpMethod.POST, "/api/checkout/validate-coupon").permitAll()
-                        // Public online-payment endpoints (Phase E): a guest can pay for the
-                        // order they just placed. Verification is server-side (HMAC).
-                        .requestMatchers(HttpMethod.POST, "/api/payments/**").permitAll()
                         // Inbound webhooks are unauthenticated to the browser but
                         // HMAC-validated inside their handlers (courier/WhatsApp).
                         .requestMatchers("/api/webhooks/**").permitAll()

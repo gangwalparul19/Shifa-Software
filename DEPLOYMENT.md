@@ -162,9 +162,9 @@ sudo mysql_secure_installation
 
 # Create the database + a dedicated app user
 sudo mysql <<'SQL'
-CREATE DATABASE IF NOT EXISTS shifa_oms CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS shifa_dashboard CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS 'shifa'@'localhost' IDENTIFIED BY 'CHANGE_ME_STRONG_DB_PASSWORD';
-GRANT ALL PRIVILEGES ON shifa_oms.* TO 'shifa'@'localhost';
+GRANT ALL PRIVILEGES ON shifa_dashboard.* TO 'shifa'@'localhost';
 FLUSH PRIVILEGES;
 SQL
 ```
@@ -343,7 +343,7 @@ sudo systemctl reload nginx
 cd ~/shifa && git pull && sudo bash deploy/build-and-deploy.sh
 
 # Manual DB backup (the app also runs a nightly backup job at 02:00)
-mysqldump -u shifa -p shifa_oms > ~/shifa_backup_$(date +%F).sql
+mysqldump -u shifa -p shifa_dashboard > ~/shifa_backup_$(date +%F).sql
 ```
 
 ---

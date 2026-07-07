@@ -1,21 +1,15 @@
 package com.shifa.oms.order;
 
 import com.shifa.oms.auth.AuthPrincipal;
-import com.shifa.oms.auth.Role;
 import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.common.ValidationException;
-import com.shifa.oms.coupon.CouponApplication;
-import com.shifa.oms.coupon.CouponService;
 import com.shifa.oms.courier.TrackingService;
 import com.shifa.oms.inventory.StockService;
-import com.shifa.oms.notification.OrderConfirmationNotifier;
 import com.shifa.oms.order.domain.LineItem;
 import com.shifa.oms.order.domain.Money;
 import com.shifa.oms.order.domain.PaymentCalculation;
 import com.shifa.oms.order.domain.PaymentCalculator;
-import com.shifa.oms.order.domain.PaymentStatus;
-import com.shifa.oms.order.dto.CheckoutRequest;
 import com.shifa.oms.order.dto.CreateOrderRequest;
 import com.shifa.oms.order.dto.DuplicateCheckResponse;
 import com.shifa.oms.order.dto.LineItemRequest;
@@ -54,7 +48,6 @@ import java.util.Optional;
 public class OrderService {
 
     private static final String SOURCE_SALESPERSON = "SALESPERSON";
-    private static final String SOURCE_STOREFRONT = "STOREFRONT";
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
@@ -62,8 +55,6 @@ public class OrderService {
     private final StorageService storageService;
     private final SalespersonScopeResolver scopeResolver;
     private final TrackingService trackingService;
-    private final CouponService couponService;
-    private final OrderConfirmationNotifier orderConfirmationNotifier;
     private final StockService stockService;
 
     public OrderService(OrderRepository orderRepository,
@@ -72,8 +63,6 @@ public class OrderService {
                         StorageService storageService,
                         SalespersonScopeResolver scopeResolver,
                         TrackingService trackingService,
-                        CouponService couponService,
-                        OrderConfirmationNotifier orderConfirmationNotifier,
                         StockService stockService) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
@@ -81,8 +70,6 @@ public class OrderService {
         this.storageService = storageService;
         this.scopeResolver = scopeResolver;
         this.trackingService = trackingService;
-        this.couponService = couponService;
-        this.orderConfirmationNotifier = orderConfirmationNotifier;
         this.stockService = stockService;
     }
 
@@ -127,120 +114,6 @@ public class OrderService {
         reserveStock(priced, actor.userId(), order.getOrderCode());
 
         return OrderResponse.from(orderRepository.save(order));
-    }
-
-    // --- Creation: public storefront checkout (Req 3) -----------------------
-
-    /**
-     * Creates a storefront order from a customer cart. Each line is priced from
-     * the product's current sale price (customers cannot set prices); the order
-     * is COD/unpaid at placement ({@code amountReceived = 0}), source
-     * {@code STOREFRONT}, {@code createdBy = null}, and starts in
-     * {@code Pending_Admin_Approval} (Req 3.6). Returns the created aggregate so
-     * the confirmation can show the order code (Req 3.7).
-     */
-    @Transactional
-    public OrderEntity createStorefrontOrder(CheckoutRequest request) {
-        return createStorefrontOrder(request, null);
-    }
-
-    /**
-     * Creates a storefront order, optionally associating it to a logged-in
-     * customer (Phase B). When {@code customerUserId} is non-null the order is
-     * stamped with it so it appears in that customer's order history; guest
-     * checkout passes {@code null} and continues to work unchanged. Pricing, COD
-     * classification, and the initial status are identical for both.
-     */
-    @Transactional
-    public OrderEntity createStorefrontOrder(CheckoutRequest request, Long customerUserId) {
-        List<PricedLine> priced = priceCheckoutLines(request.items());
-        Money subtotal = totalOf(priced);
-        requirePositiveTotal(subtotal);
-
-        // Phase D: apply a coupon when one is supplied. The coupon is re-validated
-        // server-side (authoritative) and its discount reduces the net payable, so
-        // the derived COD / remaining amounts already reflect the discount.
-        Money discount = Money.ZERO;
-        String appliedCoupon = null;
-        String rawCoupon = request.couponCode();
-        if (rawCoupon != null && !rawCoupon.isBlank()) {
-            CouponApplication application =
-                    couponService.applyToCheckout(rawCoupon, subtotal, request.customerMobile());
-            discount = application.discountAmount();
-            appliedCoupon = application.couponCode();
-        }
-        Money netTotal = subtotal.subtract(discount);
-
-        // Storefront orders are unpaid at placement → COD for the (net) total.
-        PaymentCalculation calc = PaymentCalculator.classify(netTotal, Money.ZERO);
-
-        OrderEntity order = new OrderEntity(
-                orderCodeGenerator.generate(orderRepository::existsByOrderCode),
-                OrderSource.STOREFRONT,
-                null,
-                request.customerName(),
-                request.customerMobile(),
-                request.addressLine(),
-                request.city(),
-                request.state(),
-                request.postalCode());
-        order.setCustomerUserId(customerUserId);
-        order.applyDiscount(appliedCoupon, discount.toBigDecimal());
-
-        populateAggregate(order, priced, calc, null, "CUSTOMER", SOURCE_STOREFRONT);
-
-        // Reserve stock for tracked products within the checkout transaction
-        // (Feature 1): decrements on_hand + records a SALE movement, and guards
-        // server-side against ordering more than is in stock.
-        reserveStock(priced, customerUserId, order.getOrderCode());
-
-        OrderEntity saved = orderRepository.save(order);
-        // Acknowledge the placed order to the customer via WhatsApp, enqueued once
-        // on the transactional outbox so it is sent async + retryable by the
-        // drainer — never inline on the checkout request path (ROADMAP 1.2). The
-        // event row commits atomically with the order.
-        orderConfirmationNotifier.notifyOrderPlaced(saved);
-        return saved;
-    }
-
-    // --- Online payment: mark an order paid (Phase E) -----------------------
-
-    /**
-     * Marks an order fully paid after a verified online payment (Phase E). Sets
-     * {@code amount_received = total_amount}, {@code remaining_amount = 0},
-     * {@code cod_amount = 0}, {@code customer_outstanding = 0} and
-     * {@code payment_status = FULLY_PAID}, reusing {@link PaymentCalculator} for
-     * the money math. The lifecycle {@code order_status} is deliberately left
-     * unchanged so the order stays in the normal approval pipeline; because it is
-     * now {@code FULLY_PAID}, settlement treats it as prepaid and closes it on
-     * delivery (see {@code com.shifa.oms.reconciliation}).
-     *
-     * <p><strong>Idempotent</strong>: if the order is already {@code FULLY_PAID}
-     * the fields are not re-applied and the current order is returned unchanged,
-     * so a duplicate confirm cannot double-apply.
-     *
-     * @param orderId the order to mark paid
-     * @return the (managed) order after the operation
-     * @throws ResourceNotFoundException if no order has the given id
-     */
-    @Transactional
-    public OrderEntity markPaidOnline(Long orderId) {
-        OrderEntity order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Order " + orderId + " does not exist."));
-        if (order.getPaymentStatus() == PaymentStatus.FULLY_PAID) {
-            return order;
-        }
-        Money total = Money.of(order.getTotalAmount());
-        // Received == total → FULLY_PAID, remaining 0, cod 0 (Req 7.9 semantics).
-        PaymentCalculation calc = PaymentCalculator.classify(total, total);
-        order.applyAmounts(
-                calc.totalAmount().toBigDecimal(),
-                calc.amountReceived().toBigDecimal(),
-                calc.remainingAmount().toBigDecimal(),
-                calc.codAmount().toBigDecimal(),
-                calc.paymentStatus());
-        order.setCustomerOutstanding(calc.codAmount().toBigDecimal());
-        return orderRepository.save(order);
     }
 
     // --- Payment screenshot upload (two-step) -------------------------------
@@ -359,17 +232,6 @@ public class OrderService {
             Product product = requireProduct(item.productId());
             BigDecimal rate = item.rate() != null ? item.rate() : product.getSalePrice();
             priced.add(new PricedLine(product, product.getName(), item.quantity(), Money.of(rate)));
-        }
-        return priced;
-    }
-
-    /** Prices storefront lines strictly from the product sale price (customers cannot set prices). */
-    private List<PricedLine> priceCheckoutLines(List<CheckoutRequest.CheckoutItemRequest> items) {
-        List<PricedLine> priced = new ArrayList<>(items.size());
-        for (CheckoutRequest.CheckoutItemRequest item : items) {
-            Product product = requireProduct(item.productId());
-            priced.add(new PricedLine(product, product.getName(), item.quantity(),
-                    Money.of(product.getSalePrice())));
         }
         return priced;
     }

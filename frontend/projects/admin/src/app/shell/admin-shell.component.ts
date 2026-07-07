@@ -134,8 +134,6 @@ export class AdminShellComponent {
       children: [
         { kind: 'link', label: 'Products', path: '/products', icon: 'ti-leaf' },
         { kind: 'link', label: 'Inventory', path: '/inventory', icon: 'ti-packages', adminOnly: true },
-        { kind: 'link', label: 'Coupons', path: '/coupons', icon: 'ti-discount', adminOnly: true },
-        { kind: 'link', label: 'Reviews', path: '/reviews', icon: 'ti-star', adminOnly: true },
       ],
     },
     {

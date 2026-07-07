@@ -10,6 +10,8 @@ import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.order.dto.ScreenshotUploadResponse;
 import com.shifa.oms.platform.storage.StorageService;
+import com.shifa.oms.product.ProductService;
+import com.shifa.oms.product.dto.ProductResponse;
 import jakarta.validation.Valid;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
@@ -45,12 +47,28 @@ public class OrderController {
     private final OrderService orderService;
     private final CurrentUserService currentUserService;
     private final InvoiceService invoiceService;
+    private final ProductService productService;
 
     public OrderController(OrderService orderService, CurrentUserService currentUserService,
-                           InvoiceService invoiceService) {
+                           InvoiceService invoiceService, ProductService productService) {
         this.orderService = orderService;
         this.currentUserService = currentUserService;
         this.invoiceService = invoiceService;
+        this.productService = productService;
+    }
+
+    /**
+     * Published products for the order-entry product picker, optionally filtered
+     * by a name/SKU substring {@code q} (Req 7.1, 7.2). Scoped to the order-entry
+     * roles (SALESPERSON/ADMIN) — this replaces the retired public catalog
+     * endpoint the picker previously used, now that the storefront is gone. Only
+     * published products are offered, which is exactly what a salesperson should
+     * be able to punch.
+     */
+    @GetMapping("/products")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN')")
+    public List<ProductResponse> products(@RequestParam(name = "q", required = false) String q) {
+        return productService.search(q);
     }
 
     /** Punch a new salesperson order (Req 7.1-7.11). */

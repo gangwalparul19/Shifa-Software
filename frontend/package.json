@@ -3,11 +3,9 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
-    "start": "ng serve storefront",
-    "start:storefront": "ng serve storefront",
+    "start": "ng serve admin",
     "start:admin": "ng serve admin",
     "build": "ng build",
-    "build:storefront": "ng build storefront",
     "build:admin": "ng build admin",
     "build:core": "ng build core",
     "build:ui": "ng build ui",

@@ -1,8 +1,0 @@
-:host {
-  display: block;
-}
-
-.shifa-mono {
-  font-family: var(--tblr-font-monospace, ui-monospace, monospace);
-  letter-spacing: 0.02em;
-}

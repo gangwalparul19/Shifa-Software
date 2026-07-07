@@ -4,22 +4,12 @@ import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.Role;
 import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.common.ValidationException;
-import com.shifa.oms.coupon.Coupon;
-import com.shifa.oms.coupon.CouponRepository;
-import com.shifa.oms.coupon.CouponService;
-import com.shifa.oms.coupon.domain.CouponType;
 import com.shifa.oms.courier.CourierCompany;
 import com.shifa.oms.courier.CourierCompanyRepository;
 import com.shifa.oms.courier.CourierRecord;
 import com.shifa.oms.courier.CourierRecordRepository;
 import com.shifa.oms.courier.TrackingService;
-import com.shifa.oms.notification.OrderConfirmationNotifier;
-import com.shifa.oms.notification.WhatsAppMessageFactory;
-import com.shifa.oms.notification.WhatsAppNotificationPublisher;
-import com.shifa.oms.notification.WhatsAppTemplateRegistry;
 import com.shifa.oms.order.domain.PaymentStatus;
-import com.shifa.oms.order.dto.CheckoutRequest;
-import com.shifa.oms.order.dto.CheckoutRequest.CheckoutItemRequest;
 import com.shifa.oms.order.dto.CreateOrderRequest;
 import com.shifa.oms.order.dto.DuplicateCheckResponse;
 import com.shifa.oms.order.dto.LineItemRequest;
@@ -44,7 +34,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -53,16 +42,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
  * Example-based unit tests for {@link OrderService} covering the financially and
- * behaviourally critical edge cases: the zero-total guard, the
- * {@code amountReceived > total} rejection (Req 7.10), the mandatory-screenshot
- * rule (Req 7.6), correct payment classification/status on creation (Req 7.7-7.9,
- * 8.2), storefront checkout pricing/COD (Req 3.6), and duplicate detection
- * (Req 22.2). Repositories and storage are mocked so these run without a DB.
+ * behaviourally critical edge cases of the salesperson order-entry path: the
+ * zero-total guard, the {@code amountReceived > total} rejection (Req 7.10), the
+ * mandatory-screenshot rule (Req 7.6), correct payment classification/status on
+ * creation (Req 7.7-7.9, 8.2), and duplicate detection (Req 22.2). Repositories
+ * and storage are mocked so these run without a DB.
  */
 @ExtendWith(MockitoExtension.class)
 class OrderServiceTest {
@@ -78,8 +66,6 @@ class OrderServiceTest {
     @Mock
     private CourierCompanyRepository courierCompanyRepository;
     @Mock
-    private CouponRepository couponRepository;
-    @Mock
     private OutboxEventRepository outboxEventRepository;
     @Mock
     private AppSettingsRepository appSettingsRepository;
@@ -87,8 +73,6 @@ class OrderServiceTest {
     private com.shifa.oms.inventory.StockMovementRepository stockMovementRepository;
 
     private OrderService service;
-    /** Captures every outbox row written during a test, for confirmation assertions. */
-    private List<OutboxEvent> savedOutboxEvents;
 
     private final AuthPrincipal salesperson = new AuthPrincipal(5L, "sales1", Role.SALESPERSON);
     private final AuthPrincipal admin = new AuthPrincipal(1L, "admin", Role.ADMIN);
@@ -97,31 +81,14 @@ class OrderServiceTest {
     void setUp() {
         TrackingService trackingService = new TrackingService(
                 orderRepository, courierRecordRepository, courierCompanyRepository);
-        // CouponService is a concrete class (not mockable on this JVM); use a real
-        // instance over mocked repositories so the coupon path is genuinely exercised.
-        CouponService couponService = new CouponService(
-                couponRepository, orderRepository, new CheckoutPricing(productRepository));
-        lenient().when(couponRepository.save(any(Coupon.class))).thenAnswer(inv -> inv.getArgument(0));
-        // Order-confirmation notifier: real collaborators over mocked interface
-        // repositories (concrete classes are not mockable on this JVM). Captures the
-        // WHATSAPP_NOTIFY outbox rows the notifier writes so tests can assert on them.
-        savedOutboxEvents = new ArrayList<>();
-        lenient().when(outboxEventRepository.save(any(OutboxEvent.class))).thenAnswer(inv -> {
-            OutboxEvent event = inv.getArgument(0);
-            savedOutboxEvents.add(event);
-            return event;
-        });
+        lenient().when(outboxEventRepository.save(any(OutboxEvent.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
         AppSettings settings = new AppSettings();
         settings.setLegalName("Shifa Herbal Pvt Ltd");
         lenient().when(appSettingsRepository.findById(AppSettings.SINGLETON_ID))
                 .thenReturn(Optional.of(settings));
         com.shifa.oms.settings.SettingsService settingsService =
                 new com.shifa.oms.settings.SettingsService(appSettingsRepository);
-        OrderConfirmationNotifier confirmationNotifier = new OrderConfirmationNotifier(
-                new WhatsAppNotificationPublisher(
-                        new WhatsAppMessageFactory(new WhatsAppTemplateRegistry()),
-                        new OutboxEventPublisher(outboxEventRepository)),
-                settingsService);
         // StockService: real instance over mocked interface repositories and the
         // real OutboxEventPublisher/SettingsService (concrete classes are not
         // mockable on this JVM). Products in these tests default to trackInventory
@@ -138,8 +105,6 @@ class OrderServiceTest {
                 storageService,
                 new SalespersonScopeResolver(),
                 trackingService,
-                couponService,
-                confirmationNotifier,
                 stockService);
         // Order code generation asks the repo whether a candidate is taken.
         lenient().when(orderRepository.existsByOrderCode(anyString())).thenReturn(false);
@@ -168,17 +133,6 @@ class OrderServiceTest {
                 List.of(new LineItemRequest(1L, 2, null)), BigDecimal.ZERO, null);
 
         assertThatThrownBy(() -> service.createSalespersonOrder(request, salesperson))
-                .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("positive Total_Amount");
-    }
-
-    @Test
-    void storefrontOrderRejectsZeroTotal() {
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "0.00")));
-        CheckoutRequest request = new CheckoutRequest("Asha", "9812345678", "12 MG Road",
-                "Pune", "Maharashtra", "411001", List.of(new CheckoutItemRequest(1L, 1)));
-
-        assertThatThrownBy(() -> service.createStorefrontOrder(request))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("positive Total_Amount");
     }
@@ -246,122 +200,6 @@ class OrderServiceTest {
         assertThat(response.paymentScreenshotAvailable()).isTrue();
     }
 
-    @Test
-    void storefrontOrderIsCodPendingApprovalWithNoCreator() {
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "150.00")));
-        CheckoutRequest request = new CheckoutRequest("Ravi", "9800011122", "5 Park St",
-                "Kolkata", "West Bengal", "700016", List.of(new CheckoutItemRequest(1L, 2)));
-
-        OrderEntity order = service.createStorefrontOrder(request);
-
-        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PENDING_ADMIN_APPROVAL);
-        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.COD);
-        assertThat(order.getSource()).isEqualTo(OrderSource.STOREFRONT);
-        assertThat(order.getCreatedBy()).isNull();
-        assertThat(order.getTotalAmount()).isEqualByComparingTo("300.00");
-        assertThat(order.getCodAmount()).isEqualByComparingTo("300.00");
-        assertThat(order.getAmountReceived()).isEqualByComparingTo("0.00");
-        assertThat(order.getStatusHistory()).hasSize(1);
-        assertThat(order.getStatusHistory().get(0).getToStatus())
-                .isEqualTo(OrderStatus.PENDING_ADMIN_APPROVAL);
-        assertThat(order.getStatusHistory().get(0).getFromStatus()).isNull();
-    }
-
-    // --- Order-confirmation notification on checkout (ROADMAP 1.2) ----------
-
-    @Test
-    void storefrontOrderEnqueuesExactlyOneOrderConfirmationEvent() {
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "150.00")));
-        CheckoutRequest request = new CheckoutRequest("Ravi", "9800011122", "5 Park St",
-                "Kolkata", "West Bengal", "700016", List.of(new CheckoutItemRequest(1L, 2)));
-
-        service.createStorefrontOrder(request);
-
-        // Exactly one WHATSAPP_NOTIFY outbox row is enqueued, and it is the
-        // customer-facing ORDER_CONFIRMED confirmation addressed to the buyer's
-        // mobile — flowing through the existing outbox (never sent inline).
-        List<OutboxEvent> confirmations = savedOutboxEvents.stream()
-                .filter(e -> OutboxEvent.EVENT_WHATSAPP_NOTIFY.equals(e.getEventType()))
-                .filter(e -> "ORDER_CONFIRMED".equals(String.valueOf(e.getPayload().get("event"))))
-                .toList();
-        assertThat(confirmations).hasSize(1);
-        OutboxEvent confirmation = confirmations.get(0);
-        assertThat(confirmation.getStatus()).isEqualTo(OutboxEvent.STATUS_PENDING);
-        assertThat(confirmation.getPayload().get("templateName")).isEqualTo("order_confirmed");
-        assertThat(confirmation.getPayload().get("recipientMobile")).isEqualTo("9800011122");
-    }
-
-    // --- Coupon applied at storefront checkout (Phase D) --------------------
-
-    @Test
-    void storefrontOrderAppliesCouponAndReducesTotalAndCod() {
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "150.00")));
-        // Subtotal = 2 x 150 = 300; a flat 50-off coupon reduces the net payable to 250.
-        Coupon coupon = new Coupon("SAVE50", "flat 50", CouponType.FLAT, new java.math.BigDecimal("50.00"),
-                null, null, true, null, null, null, null);
-        when(couponRepository.findByCode("SAVE50")).thenReturn(Optional.of(coupon));
-        when(orderRepository.countByCouponCodeAndCustomerMobile("SAVE50", "9800011122")).thenReturn(0L);
-
-        CheckoutRequest request = new CheckoutRequest("Ravi", "9800011122", "5 Park St",
-                "Kolkata", "West Bengal", "700016",
-                List.of(new CheckoutItemRequest(1L, 2)), "SAVE50");
-
-        OrderEntity order = service.createStorefrontOrder(request);
-
-        assertThat(order.getCouponCode()).isEqualTo("SAVE50");
-        assertThat(order.getDiscountAmount()).isEqualByComparingTo("50.00");
-        // Net total (300 - 50) drives COD.
-        assertThat(order.getTotalAmount()).isEqualByComparingTo("250.00");
-        assertThat(order.getCodAmount()).isEqualByComparingTo("250.00");
-        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.COD);
-    }
-
-    // --- Auto-decrement of tracked stock on order creation (Feature 1) ------
-
-    @Test
-    void storefrontOrderDecrementsTrackedStockAndRecordsSaleMovement() {
-        Product tracked = product(1L, "150.00");
-        tracked.setTrackInventory(true);
-        tracked.setStockQuantity(10);
-        when(productRepository.findById(1L)).thenReturn(Optional.of(tracked));
-        CheckoutRequest request = new CheckoutRequest("Ravi", "9800011122", "5 Park St",
-                "Kolkata", "West Bengal", "700016", List.of(new CheckoutItemRequest(1L, 2)));
-
-        service.createStorefrontOrder(request);
-
-        assertThat(tracked.getStockQuantity()).isEqualTo(8);
-        verify(stockMovementRepository).save(any(com.shifa.oms.inventory.StockMovement.class));
-    }
-
-    @Test
-    void storefrontOrderRejectsInsufficientTrackedStock() {
-        Product tracked = product(1L, "150.00");
-        tracked.setTrackInventory(true);
-        tracked.setStockQuantity(1);
-        when(productRepository.findById(1L)).thenReturn(Optional.of(tracked));
-        CheckoutRequest request = new CheckoutRequest("Ravi", "9800011122", "5 Park St",
-                "Kolkata", "West Bengal", "700016", List.of(new CheckoutItemRequest(1L, 3)));
-
-        assertThatThrownBy(() -> service.createStorefrontOrder(request))
-                .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("Insufficient stock");
-        assertThat(tracked.getStockQuantity()).isEqualTo(1);
-    }
-
-    @Test
-    void storefrontOrderDoesNotDecrementUntrackedProduct() {
-        Product untracked = product(1L, "150.00");
-        // trackInventory defaults to false.
-        untracked.setStockQuantity(3);
-        when(productRepository.findById(1L)).thenReturn(Optional.of(untracked));
-        CheckoutRequest request = new CheckoutRequest("Ravi", "9800011122", "5 Park St",
-                "Kolkata", "West Bengal", "700016", List.of(new CheckoutItemRequest(1L, 2)));
-
-        service.createStorefrontOrder(request);
-
-        assertThat(untracked.getStockQuantity()).isEqualTo(3);
-    }
-
     // --- Per-line HSN + GST rate snapshot on creation (Feature 2) -----------
 
     @Test
@@ -379,22 +217,6 @@ class OrderServiceTest {
         OrderResponse.LineItemResponse line = response.items().get(0);
         assertThat(line.hsnCode()).isEqualTo("3004");
         assertThat(line.gstRate()).isEqualByComparingTo("12.00");
-    }
-
-    @Test
-    void storefrontOrderLineSnapshotsProductHsnAndGstRate() {
-        Product product = product(1L, "150.00");
-        product.setHsnCode("3003");
-        product.setGstRate(new BigDecimal("5.00"));
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        CheckoutRequest request = new CheckoutRequest("Ravi", "9800011122", "5 Park St",
-                "Kolkata", "West Bengal", "700016", List.of(new CheckoutItemRequest(1L, 1)));
-
-        OrderEntity order = service.createStorefrontOrder(request);
-
-        assertThat(order.getLineItems()).hasSize(1);
-        assertThat(order.getLineItems().get(0).getHsnCode()).isEqualTo("3003");
-        assertThat(order.getLineItems().get(0).getGstRate()).isEqualByComparingTo("5.00");
     }
 
     @Test
