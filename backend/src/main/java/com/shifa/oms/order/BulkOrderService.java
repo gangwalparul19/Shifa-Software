@@ -103,7 +103,7 @@ public class BulkOrderService {
                 continue;
             }
             try {
-                packingService.scan(order.getOrderCode(), actor.username());
+                packingService.scan(order.getOrderCode(), actor);
                 result.succeeded(id);
             } catch (RuntimeException ex) {
                 log.debug("Bulk mark-packed skipped order {}: {}", id, ex.getMessage());

@@ -1,6 +1,8 @@
 package com.shifa.oms.reporting.domain;
 
+import com.shifa.oms.reporting.domain.ReportRows.CountRow;
 import com.shifa.oms.reporting.domain.ReportRows.DailyRow;
+import com.shifa.oms.reporting.domain.ReportRows.DeliveryOutcome;
 import com.shifa.oms.reporting.domain.ReportRows.MonthlyRow;
 import com.shifa.oms.reporting.domain.ReportRows.ProductRow;
 import com.shifa.oms.reporting.domain.ReportRows.StateRow;
@@ -59,6 +61,13 @@ public class ReportTableBuilder {
             case PRODUCT -> product(orders, window);
             case STATE -> state(orders, window);
             case SALESPERSON -> salesperson(orders, window);
+            case ORDERS_BY_LEAD_SOURCE -> countTable(
+                    "Lead Source", aggregator.ordersByLeadSource(orders, window));
+            case ORDERS_BY_STATUS -> countTable(
+                    "Status", aggregator.ordersByStatus(orders, window));
+            case ORDERS_BY_SALESPERSON -> countTable(
+                    "Salesperson", aggregator.ordersBySalesperson(orders, window));
+            case DELIVERY_OUTCOME -> deliveryOutcome(orders, window);
         };
     }
 
@@ -104,6 +113,32 @@ public class ReportTableBuilder {
             rows.add(salespersonRow(o));
         }
         return new TabularData(SALESPERSON_HEADERS, rows);
+    }
+
+    /** A generic two-column grouped-count table ({@code keyLabel}, "Orders"). */
+    private TabularData countTable(String keyLabel, List<CountRow> rows) {
+        List<String> headers = List.of(keyLabel, "Orders");
+        List<List<String>> cells = new ArrayList<>();
+        for (CountRow r : rows) {
+            cells.add(List.of(r.key(), Long.toString(r.orderCount())));
+        }
+        return new TabularData(headers, cells);
+    }
+
+    /**
+     * The delivery-outcome table (Req 16.4): one row per outcome count plus a
+     * final delivery success-rate row (percentage).
+     */
+    private TabularData deliveryOutcome(List<OrderReportRecord> orders, DateRange window) {
+        DeliveryOutcome outcome = aggregator.deliveryOutcome(orders, window);
+        List<String> headers = List.of("Metric", "Value");
+        List<List<String>> rows = new ArrayList<>();
+        rows.add(List.of("Delivered", Long.toString(outcome.delivered())));
+        rows.add(List.of("Customer Rejected", Long.toString(outcome.customerRejected())));
+        rows.add(List.of("Delivery Failed", Long.toString(outcome.deliveryFailed())));
+        rows.add(List.of("Cancelled", Long.toString(outcome.cancelled())));
+        rows.add(List.of("Delivery Success Rate (%)", money(outcome.successRate())));
+        return new TabularData(headers, rows);
     }
 
     /** The cells of a single salesperson-wise row, aligned with {@link #SALESPERSON_HEADERS}. */

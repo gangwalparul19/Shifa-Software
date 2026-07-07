@@ -1,6 +1,6 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
-import { AuthService, OrderStatus } from 'core';
+import { Router, RouterLink } from '@angular/router';
+import { AuthService, OrderStatus, Role } from 'core';
 import {
   ApexAxisChartSeries,
   ApexChart,
@@ -27,8 +27,16 @@ import {
   LiveStats,
   MetricsPeriod,
   PeriodOption,
+  RoleDashboardSummary,
   SalesBucket,
 } from './dashboard.model';
+
+/** A single labelled count derived from a role-summary status map. */
+interface StatusCount {
+  key: string;
+  label: string;
+  value: number;
+}
 
 /** A laid-out bar + comparison-point for the hand-rolled SVG sales chart. */
 interface ChartBar {
@@ -104,7 +112,7 @@ interface StatusSegment {
  */
 @Component({
   selector: 'admin-dashboard',
-  imports: [CountUpDirective, PageHeaderComponent, NgApexchartsModule],
+  imports: [CountUpDirective, PageHeaderComponent, NgApexchartsModule, RouterLink],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.css',
 })
@@ -116,6 +124,32 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   /** Expose the status enum to the template for card drill-downs. */
   protected readonly OrderStatus = OrderStatus;
+
+  /** The signed-in user's role, driving which card set the dashboard renders (Req 3.1). */
+  protected readonly role = computed<Role | null>(() => this.auth.session()?.role ?? null);
+
+  /** Whether the current user is an ADMIN (gates the rich metrics dashboard + SSE). */
+  protected readonly isAdmin = computed(() => this.role() === Role.ADMIN);
+
+  // --- Role-shaped summary (all roles, Req 3.1–3.6) -----------------------
+  protected readonly summary = signal<RoleDashboardSummary | null>(null);
+  protected readonly summaryLoading = signal(true);
+  protected readonly summaryError = signal<string | null>(null);
+
+  /** A salesperson's own orders grouped by status, as sorted labelled counts. */
+  protected readonly salespersonStatuses = computed<StatusCount[]>(() =>
+    this.toStatusCounts(this.summary()?.salesperson?.ordersByStatus),
+  );
+
+  /** The admin per-active-stage counts, as labelled counts. */
+  protected readonly adminActiveStages = computed<StatusCount[]>(() =>
+    this.toStatusCounts(this.summary()?.admin?.perActiveStage),
+  );
+
+  /** The admin exception-state counts, as labelled counts. */
+  protected readonly adminExceptions = computed<StatusCount[]>(() =>
+    this.toStatusCounts(this.summary()?.admin?.exceptionStates),
+  );
 
   /** Honour reduced-motion by disabling chart animations. */
   private readonly reducedMotion =
@@ -383,15 +417,58 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    this.reload();
-    this.refreshLiveAndActivity();
-    // Open the real-time stream; the service is idempotent and no-ops when
-    // unauthenticated or EventSource is unavailable.
-    this.events.connect();
+    // The role-shaped summary is available to every operational role (Req 3.1).
+    this.loadSummary();
+    // The rich metrics dashboard + live SSE feed are ADMIN-only endpoints, so
+    // only an admin fetches them; other roles render their summary card set
+    // and never call the admin-only surface (avoiding 403s).
+    if (this.isAdmin()) {
+      this.reload();
+      this.refreshLiveAndActivity();
+      // Open the real-time stream; the service is idempotent and no-ops when
+      // unauthenticated or EventSource is unavailable.
+      this.events.connect();
+    }
   }
 
   ngOnDestroy(): void {
     this.events.disconnect();
+  }
+
+  /** Loads the role-shaped dashboard summary for the current user (Req 3.1–3.6). */
+  loadSummary(): void {
+    this.summaryLoading.set(true);
+    this.summaryError.set(null);
+    this.service.roleSummary().subscribe({
+      next: (s) => {
+        this.summary.set(s);
+        this.summaryLoading.set(false);
+      },
+      error: () => {
+        this.summaryError.set('Could not load your dashboard. Please try again.');
+        this.summaryLoading.set(false);
+      },
+    });
+  }
+
+  /** Turns a status→count map (keyed by backend status name) into sorted, labelled counts. */
+  private toStatusCounts(map: Record<string, number> | null | undefined): StatusCount[] {
+    if (!map) {
+      return [];
+    }
+    return Object.entries(map)
+      .map(([key, value]) => ({ key, label: this.humanizeStatus(key), value: value ?? 0 }))
+      .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+  }
+
+  /** Humanises a backend status name ("HANDED_TO_DELIVERY" → "Handed To Delivery"). */
+  humanizeStatus(status: string): string {
+    return status
+      .toLowerCase()
+      .replaceAll('_', ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .replace(/\bRto\b/i, 'RTO')
+      .replace(/\bCod\b/i, 'COD');
   }
 
   // --- Period selection ---------------------------------------------------

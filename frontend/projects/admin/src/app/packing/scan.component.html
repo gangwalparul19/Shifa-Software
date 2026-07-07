@@ -1,10 +1,29 @@
 <admin-page-header
   title="Packing"
-  subtitle="Scan a label barcode to mark the order Packed."
+  subtitle="Scan a label barcode to mark the order Packed, then hand over and dispatch."
   [breadcrumbs]="[{ label: 'Packing' }]"
 />
 
-<div class="row justify-content-center packing-scan">
+<!-- Awaiting-handover / awaiting-dispatch context (Req 9.4, 10.1) -->
+@if (queues().length > 0) {
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
+    @for (q of queues(); track q.label) {
+      <div class="col-6 col-md-3">
+        <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
+          <div class="card-body d-flex align-items-center justify-content-between">
+            <div>
+              <div class="subheader">{{ q.label }}</div>
+              <div class="h1 m-0">{{ q.value }}</div>
+            </div>
+            <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti {{ q.icon }}"></i></span>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+}
+
+<div class="row justify-content-center packing-scan shifa-touch">
   <div class="col-lg-8 col-xl-7">
     <div class="card card-hover mb-3">
       <div class="card-body">
@@ -59,6 +78,65 @@
         <div>
           <h4 class="alert-title mb-0">{{ b.title }}</h4>
           <div class="text-secondary">{{ b.detail }}</div>
+        </div>
+      </div>
+    }
+
+    <!-- Handover / Dispatch actions for the orders just moved (Req 9.2–9.4, 10.1) -->
+    @if (workItems().length > 0) {
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title mb-0">Ready to move</h3>
+        </div>
+        <div class="list-group list-group-flush">
+          @for (item of workItems(); track item.id) {
+            <div class="list-group-item">
+              <div class="d-flex align-items-center flex-wrap gap-2">
+                <div class="me-auto">
+                  <div class="fw-medium shifa-mono">{{ item.orderCode }}</div>
+                  <div class="text-secondary small d-flex align-items-center gap-2 flex-wrap">
+                    <span>{{ item.customerName }}</span>
+                    <admin-status-badge [status]="item.status" />
+                  </div>
+                  @if (item.error) {
+                    <div class="text-danger small mt-1"><i class="ti ti-alert-triangle me-1"></i>{{ item.error }}</div>
+                  }
+                </div>
+
+                @switch (item.phase) {
+                  @case ('packed') {
+                    <button type="button" class="btn btn-primary" (click)="handover(item)" [disabled]="item.busy">
+                      @if (item.busy) {
+                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                      } @else {
+                        <i class="ti ti-truck-loading me-1"></i>
+                      }
+                      Handover
+                    </button>
+                  }
+                  @case ('handed_over') {
+                    <button type="button" class="btn btn-primary" (click)="dispatch(item)" [disabled]="item.busy">
+                      @if (item.busy) {
+                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                      } @else {
+                        <i class="ti ti-truck-delivery me-1"></i>
+                      }
+                      Dispatch
+                    </button>
+                  }
+                  @case ('dispatched') {
+                    <span class="badge bg-success-lt"><i class="ti ti-check me-1"></i>Dispatched</span>
+                  }
+                  @default {
+                    <span class="badge bg-secondary-lt">Done</span>
+                  }
+                }
+                <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="dismissItem(item.id)" aria-label="Dismiss">
+                  <i class="ti ti-x"></i>
+                </button>
+              </div>
+            </div>
+          }
         </div>
       </div>
     }

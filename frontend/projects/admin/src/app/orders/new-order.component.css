@@ -5,3 +5,59 @@
   object-fit: cover;
   flex: 0 0 auto;
 }
+
+/* --------------------------------------------------------------------------
+   Mobile-first line items (Req 17.1–17.3): below 768px each line-item row
+   collapses into a stacked card so the editable fields stay a single column
+   with no horizontal scroll, and touch targets stay comfortable.
+   -------------------------------------------------------------------------- */
+@media (max-width: 767.98px) {
+  .shifa-lineitems {
+    overflow-x: visible;
+  }
+  .shifa-lineitems table,
+  .shifa-lineitems tbody,
+  .shifa-lineitems tr,
+  .shifa-lineitems td {
+    display: block;
+    width: 100%;
+  }
+  .shifa-lineitems thead {
+    display: none;
+  }
+  .shifa-lineitems th {
+    min-width: 0 !important;
+    width: auto !important;
+  }
+  .shifa-lineitems tr {
+    border: 1px solid var(--tblr-border-color, #e6e7e9);
+    border-radius: 0.7rem;
+    padding: 0.5rem 0.85rem;
+    margin-bottom: 0.75rem;
+  }
+  .shifa-lineitems td {
+    padding: 0.35rem 0 !important;
+    border: 0 !important;
+    text-align: left !important;
+  }
+  .shifa-lineitems td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--shifa-green-700, #164632);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.2rem;
+  }
+  .shifa-lineitems td .form-control,
+  .shifa-lineitems td .form-select {
+    text-align: left !important;
+    min-height: 44px;
+  }
+  /* The remove button gets its own full-width, comfortable tap target. */
+  .shifa-lineitems__remove {
+    width: 100%;
+    min-height: 44px;
+  }
+}

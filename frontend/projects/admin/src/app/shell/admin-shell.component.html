@@ -43,8 +43,8 @@
             <span>{{ liveLabel() }}</span>
           </span>
 
-          <!-- Notifications bell (ADMIN only) -->
-          @if (isAdmin()) {
+          <!-- Per-user notifications bell (all staff roles, Req 13.4) -->
+          @if (auth.session()) {
             <admin-notification-bell />
           }
 

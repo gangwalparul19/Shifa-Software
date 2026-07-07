@@ -17,6 +17,8 @@ public final class AuditActions {
 
     public static final String ORDER_APPROVED = "ORDER_APPROVED";
     public static final String ORDER_REJECTED = "ORDER_REJECTED";
+    /** Generic per-transition audit written by the central OrderWorkflowService (Req 15.1, 15.5). */
+    public static final String ORDER_STATUS_CHANGED = "ORDER_STATUS_CHANGED";
 
     public static final String USER_CREATED = "USER_CREATED";
     public static final String USER_UPDATED = "USER_UPDATED";

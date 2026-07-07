@@ -12,14 +12,42 @@ export interface CreateOrderLineItem {
 }
 
 /**
+ * The lead's origin channel captured at order entry (mirrors the backend
+ * {@code LeadSource} enum, Req 4.1). Distinct from {@link OrderSource}
+ * provenance — this records how the customer reached the salesperson.
+ */
+export type LeadSource =
+  | 'WHATSAPP'
+  | 'INSTAGRAM'
+  | 'FACEBOOK'
+  | 'GOOGLE'
+  | 'OFFLINE'
+  | 'OTHER';
+
+/** The selectable lead-source options for the New Order picker (Req 4.1). */
+export const LEAD_SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
+  { value: 'WHATSAPP', label: 'WhatsApp' },
+  { value: 'INSTAGRAM', label: 'Instagram' },
+  { value: 'FACEBOOK', label: 'Facebook' },
+  { value: 'GOOGLE', label: 'Google' },
+  { value: 'OFFLINE', label: 'Offline' },
+  { value: 'OTHER', label: 'Other' },
+];
+
+/**
  * Salesperson order-entry payload posted to {@code POST /api/orders} (mirrors
  * the backend {@code CreateOrderRequest}). {@code paymentScreenshotKey} is the
  * storage key returned by the two-step screenshot upload and is required by the
  * server when {@code amountReceived > 0}.
+ *
+ * <p>Order entry also captures the lead's origin (Req 4.1–4.5): a required
+ * {@code leadSource}, an optional {@code leadSourceNote} (≤200 chars, only for
+ * {@code OTHER}), and an optional {@code customerEmail} for milestone emails.
  */
 export interface CreateOrderRequest {
   customerName: string;
   customerMobile: string;
+  customerEmail?: string;
   addressLine: string;
   city: string;
   state: string;
@@ -27,6 +55,8 @@ export interface CreateOrderRequest {
   items: CreateOrderLineItem[];
   amountReceived: number;
   paymentScreenshotKey?: string;
+  leadSource: LeadSource;
+  leadSourceNote?: string;
 }
 
 /**

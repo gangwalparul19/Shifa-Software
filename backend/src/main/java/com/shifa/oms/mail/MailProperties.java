@@ -2,20 +2,28 @@ package com.shifa.oms.mail;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.time.Duration;
+
 /**
  * Configuration for outbound email, bound from {@code app.mail.*} (Feature E3),
  * mirroring {@link com.shifa.oms.notification.WhatsAppProperties}.
  *
- * @param mode     backend selector: {@code MOCK} (local dev, default, logs only)
- *                 or {@code SMTP} (real send via {@code spring.mail.*})
- * @param from     the From address applied to every outbound message
- * @param digestTo recipient(s) for the daily sales digest; blank disables the
- *                 digest email (Feature C4)
- * @param brand    branding + theme used by the HTML email templates
- *                 ({@code app.mail.brand.*})
+ * @param mode         backend selector: {@code MOCK} (local dev, default, logs only)
+ *                     or {@code SMTP} (real send via {@code spring.mail.*})
+ * @param from         the From address applied to every outbound message
+ * @param digestTo     recipient(s) for the daily sales digest; blank disables the
+ *                     digest email (Feature C4)
+ * @param brand        branding + theme used by the HTML email templates
+ *                     ({@code app.mail.brand.*})
+ * @param maxAttempts  maximum send attempts before the {@code EMAIL_NOTIFY} outbox
+ *                     event is marked FAILED and an ADMIN alert raised (Req 14.5);
+ *                     mirrors {@code app.whatsapp.max-attempts}
+ * @param retryBackoff delay before the next email send attempt after a failure;
+ *                     mirrors {@code app.whatsapp.retry-backoff}
  */
 @ConfigurationProperties(prefix = "app.mail")
-public record MailProperties(String mode, String from, String digestTo, Brand brand) {
+public record MailProperties(String mode, String from, String digestTo, Brand brand,
+                             Integer maxAttempts, Duration retryBackoff) {
 
     public MailProperties {
         if (mode == null || mode.isBlank()) {
@@ -29,6 +37,12 @@ public record MailProperties(String mode, String from, String digestTo, Brand br
         }
         if (brand == null) {
             brand = new Brand(null, null, null, null, null, null, null);
+        }
+        if (maxAttempts == null || maxAttempts < 1) {
+            maxAttempts = 3;
+        }
+        if (retryBackoff == null) {
+            retryBackoff = Duration.ofSeconds(30);
         }
     }
 

@@ -59,6 +59,28 @@ public class OrderEntity {
     @Column(name = "source", nullable = false, length = 20)
     private OrderSource source;
 
+    /**
+     * The origin channel of the lead (Req 4.1-4.4), distinct from {@link #source}.
+     * Nullable at the column level so seeded/pre-existing rows stay valid and
+     * report as {@code UNSPECIFIED}; required at the service/DTO layer for new
+     * salesperson orders. Mapped to {@code orders.lead_source} (V23).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "lead_source", length = 20)
+    private LeadSource leadSource;
+
+    /** Optional free-text note, meaningful only when {@link #leadSource} is {@code OTHER} (Req 4.5). */
+    @Column(name = "lead_source_note", length = 200)
+    private String leadSourceNote;
+
+    /**
+     * Customer email for milestone emails (Req 7.2, 10.7, 11.4). When absent the
+     * email channel is skipped and the skip recorded. Mapped to
+     * {@code orders.customer_email} (V23).
+     */
+    @Column(name = "customer_email", length = 150)
+    private String customerEmail;
+
     @Column(name = "created_by")
     private Long createdBy;
 
@@ -243,6 +265,31 @@ public class OrderEntity {
 
     public OrderSource getSource() {
         return source;
+    }
+
+    public LeadSource getLeadSource() {
+        return leadSource;
+    }
+
+    /** Records the lead's origin channel and, for {@code OTHER}, an optional note (Req 4.1, 4.5). */
+    public void setLeadSource(LeadSource leadSource) {
+        this.leadSource = leadSource;
+    }
+
+    public String getLeadSourceNote() {
+        return leadSourceNote;
+    }
+
+    public void setLeadSourceNote(String leadSourceNote) {
+        this.leadSourceNote = leadSourceNote;
+    }
+
+    public String getCustomerEmail() {
+        return customerEmail;
+    }
+
+    public void setCustomerEmail(String customerEmail) {
+        this.customerEmail = customerEmail;
     }
 
     public Long getCreatedBy() {

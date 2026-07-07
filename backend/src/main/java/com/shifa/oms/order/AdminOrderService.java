@@ -9,9 +9,6 @@ import com.shifa.oms.order.dto.ApprovalQueueItemResponse;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.statemachine.OrderStatus;
-import com.shifa.oms.statemachine.OrderStatusLifecycle;
-import com.shifa.oms.statemachine.OrderStatusStateMachine;
-import com.shifa.oms.statemachine.StatusHistoryEntry;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -27,10 +24,11 @@ import java.util.List;
  * <p>Builds the approval queue of {@code Pending_Admin_Approval} orders with the
  * review details the admin needs on screen (Req 9.1, 9.2), and performs the
  * approve (Req 9.3) and reject (Req 9.4) actions. Every status change is routed
- * through the {@link OrderStatusStateMachine} so only legal transitions are
- * applied: approving/rejecting an order that is not pending is rejected with a
- * {@code 409} and the order's status is retained (Req 8.3). Each accepted
- * transition appends exactly one {@link OrderStatusHistory} row (Req 8.4).
+ * through the central {@link OrderWorkflowService} so authorization, legality,
+ * history, and audit live in one place: approving/rejecting an order that is not
+ * pending is rejected with a {@code 409} and the order's status is retained
+ * (Req 8.3). Each accepted transition appends exactly one
+ * {@link OrderStatusHistory} row (Req 8.4).
  *
  * <p>Rejection requires a non-blank reason; the reason is validated at the DTO
  * boundary (400 when missing/blank) and is stored on the order (Req 9.4).
@@ -42,12 +40,13 @@ public class AdminOrderService {
 
     private final OrderRepository orderRepository;
     private final LabelService labelService;
-    private final OrderStatusStateMachine stateMachine;
+    private final OrderWorkflowService orderWorkflowService;
 
-    public AdminOrderService(OrderRepository orderRepository, LabelService labelService) {
+    public AdminOrderService(OrderRepository orderRepository, LabelService labelService,
+                             OrderWorkflowService orderWorkflowService) {
         this.orderRepository = orderRepository;
         this.labelService = labelService;
-        this.stateMachine = new OrderStatusStateMachine();
+        this.orderWorkflowService = orderWorkflowService;
     }
 
     /**
@@ -98,7 +97,8 @@ public class AdminOrderService {
     @Transactional
     public OrderResponse approve(Long id, AuthPrincipal admin) {
         OrderEntity order = requireOrder(id);
-        applyTransition(order, OrderStatus.APPROVED, admin.username());
+        orderWorkflowService.applyTransition(
+                order, OrderStatus.APPROVED, Actor.user(admin, SOURCE_ADMIN));
         // Req 10.1-10.3: generate the internal label and move to Label_Generated.
         labelService.generateInternalLabelOnApproval(order, admin.username());
         return OrderResponse.from(orderRepository.save(order));
@@ -116,7 +116,8 @@ public class AdminOrderService {
             throw new ValidationException("A rejection reason is required.");
         }
         OrderEntity order = requireOrder(id);
-        applyTransition(order, OrderStatus.REJECTED, admin.username());
+        orderWorkflowService.applyTransition(
+                order, OrderStatus.REJECTED, Actor.user(admin, SOURCE_ADMIN));
         order.setRejectionReason(reason.trim());
         return OrderResponse.from(orderRepository.save(order));
     }
@@ -126,19 +127,5 @@ public class AdminOrderService {
     private OrderEntity requireOrder(Long id) {
         return orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Order " + id + " does not exist."));
-    }
-
-    /**
-     * Validates and applies a transition using the shared state machine, then
-     * mirrors the result onto the persisted aggregate: the new status and a
-     * single status-history row (Req 8.3, 8.4). Illegal transitions throw
-     * {@code IllegalStatusTransitionException} (409) and leave the order intact.
-     */
-    private void applyTransition(OrderEntity order, OrderStatus target, String actor) {
-        OrderStatusLifecycle lifecycle = new OrderStatusLifecycle(order.getOrderStatus());
-        StatusHistoryEntry entry = stateMachine.transition(lifecycle, target, actor, SOURCE_ADMIN);
-        order.setOrderStatus(entry.toStatus());
-        order.addStatusHistory(new OrderStatusHistory(
-                entry.fromStatus(), entry.toStatus(), entry.actor(), entry.source()));
     }
 }

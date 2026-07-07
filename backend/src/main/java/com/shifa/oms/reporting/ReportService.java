@@ -141,7 +141,8 @@ public class ReportService {
                 o.getOrderStatus(),
                 codStatus,
                 claimStatus,
-                awb);
+                awb,
+                o.getLeadSource());
     }
 
     /**

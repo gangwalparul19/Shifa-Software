@@ -21,6 +21,8 @@ export function orderStatusTone(status: OrderStatus | string): StatusTone {
     case OrderStatus.CANCELLED:
     case OrderStatus.RTO:
     case OrderStatus.COURIER_LOST:
+    case OrderStatus.CUSTOMER_REJECTED:
+    case OrderStatus.DELIVERY_FAILED:
       return 'bad';
     case OrderStatus.DELIVERED:
     case OrderStatus.COD_COLLECTED:

@@ -85,6 +85,8 @@ public class WhatsAppMessageFactory {
     /** Human-readable status label reflecting the new state (Req 14.2). */
     private String statusLabel(NotificationEvent event) {
         return switch (event) {
+            case APPROVED -> "Approved";
+            case PACKED -> "Packed";
             case OUT_FOR_DELIVERY -> "Out for delivery";
             case DELIVERED -> "Delivered";
             case RTO -> "Returned to origin";

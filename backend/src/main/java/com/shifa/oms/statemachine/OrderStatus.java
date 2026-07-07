@@ -7,19 +7,26 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The order lifecycle status (Requirement 8.1). An order is in exactly one of
- * these 15 states at any time.
+ * The order lifecycle status (Requirement 8.1; design &sect;2.1, &sect;4.1). An
+ * order is in exactly one of these states at any time.
  *
  * <p>The allowed source&nbsp;&rarr;&nbsp;target transitions are encoded as an
  * explicit table (design: "Order Status State Machine"). A transition that is
  * not present in the table is illegal and must be rejected, leaving the current
- * status unchanged (Requirement 8.3). The single initial status for every new
- * order is {@link #PENDING_ADMIN_APPROVAL} (Requirement 8.2, 3.6, 7.11).
+ * status unchanged (Requirement 8.3, 12.3, 12.4). The single initial status for
+ * every new order is {@link #PENDING_ADMIN_APPROVAL} (Requirement 8.2, 3.6, 7.11).
  *
- * <p>This enum only encodes transition <em>legality</em>. Settlement and
- * receivable side effects that accompany certain transitions
- * ({@code Delivered}, {@code RTO}, {@code Courier_Lost}) are implemented
- * separately in task&nbsp;5.
+ * <p>The role-based-order-workflow feature adds three states:
+ * {@link #HANDED_TO_DELIVERY} (a handover step between {@link #PACKED} and
+ * {@link #COURIER_ASSIGNED}) and two distinct downstream delivery outcomes,
+ * {@link #CUSTOMER_REJECTED} and {@link #DELIVERY_FAILED}. Courier assignment now
+ * runs from {@link #HANDED_TO_DELIVERY} (on dispatch), not directly from
+ * {@link #PACKED} (design &sect;4.1).
+ *
+ * <p>This enum only encodes transition <em>legality</em>. Per-transition role
+ * authorization lives in {@link TransitionAuthority}; settlement and receivable
+ * side effects that accompany certain transitions ({@code Delivered},
+ * {@code RTO}, {@code Courier_Lost}) are implemented separately.
  */
 public enum OrderStatus {
 
@@ -28,11 +35,14 @@ public enum OrderStatus {
     REJECTED,
     LABEL_GENERATED,
     PACKED,
+    HANDED_TO_DELIVERY,
     COURIER_ASSIGNED,
     DISPATCHED,
     IN_TRANSIT,
     OUT_FOR_DELIVERY,
     DELIVERED,
+    CUSTOMER_REJECTED,
+    DELIVERY_FAILED,
     COD_COLLECTED,
     CLOSED,
     RTO,
@@ -55,24 +65,32 @@ public enum OrderStatus {
         table.put(PENDING_ADMIN_APPROVAL, EnumSet.of(APPROVED, REJECTED, CANCELLED));
         // Label service generates the internal label (Req 10.3).
         table.put(APPROVED, EnumSet.of(LABEL_GENERATED));
-        // Packing barcode scan (Req 11.1).
+        // Packing barcode scan (Req 8.2).
         table.put(LABEL_GENERATED, EnumSet.of(PACKED));
-        // Courier assignment succeeds, or errors and retains Packed (Req 12.2, 12.4).
-        table.put(PACKED, EnumSet.of(COURIER_ASSIGNED, PACKED));
-        // Pickup (Req 13.1).
+        // Handover to the delivery courier (Req 9.2, 9.3). Courier assignment no
+        // longer runs directly from Packed — it moves to the handover step.
+        table.put(PACKED, EnumSet.of(HANDED_TO_DELIVERY));
+        // Dispatch enqueues courier assignment (Req 9.5, 10.1); a failed/retried
+        // assignment self-retains Handed_To_Delivery (Req 10.4).
+        table.put(HANDED_TO_DELIVERY, EnumSet.of(COURIER_ASSIGNED, HANDED_TO_DELIVERY));
+        // Pickup (Req 10.2).
         table.put(COURIER_ASSIGNED, EnumSet.of(DISPATCHED));
-        // Courier webhook progressions (Req 13.2, 17.1).
+        // Courier webhook progressions (Req 10.3).
         table.put(DISPATCHED, EnumSet.of(IN_TRANSIT, OUT_FOR_DELIVERY, RTO, COURIER_LOST));
         table.put(IN_TRANSIT, EnumSet.of(OUT_FOR_DELIVERY, DELIVERED, RTO, COURIER_LOST));
-        table.put(OUT_FOR_DELIVERY, EnumSet.of(DELIVERED, RTO, COURIER_LOST));
+        // New delivery outcomes Customer_Rejected / Delivery_Failed (Req 11.1, 11.2).
+        table.put(OUT_FOR_DELIVERY,
+                EnumSet.of(DELIVERED, CUSTOMER_REJECTED, DELIVERY_FAILED, RTO, COURIER_LOST));
         // Settlement outcomes (Req 16.1, 16.2).
         table.put(DELIVERED, EnumSet.of(CLOSED, COD_COLLECTED));
 
-        // Terminal states — no outgoing transitions.
+        // Terminal states — no outgoing transitions (Req 12.7).
         table.put(COD_COLLECTED, EnumSet.noneOf(OrderStatus.class));
         table.put(CLOSED, EnumSet.noneOf(OrderStatus.class));
         table.put(REJECTED, EnumSet.noneOf(OrderStatus.class));
         table.put(CANCELLED, EnumSet.noneOf(OrderStatus.class));
+        table.put(CUSTOMER_REJECTED, EnumSet.noneOf(OrderStatus.class));
+        table.put(DELIVERY_FAILED, EnumSet.noneOf(OrderStatus.class));
         table.put(RTO, EnumSet.noneOf(OrderStatus.class));
         table.put(COURIER_LOST, EnumSet.noneOf(OrderStatus.class));
 

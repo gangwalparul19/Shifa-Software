@@ -84,6 +84,24 @@ public class OutboxEvent {
     public static final String EVENT_WHATSAPP_FAILED = "WHATSAPP_FAILED";
 
     /**
+     * Event type emitted when an order reaches a customer milestone
+     * (Approved / Dispatched / Delivered) that warrants a customer email
+     * (Req 7.2, 10.7, 11.4, 13.5, 13.6). Its payload carries the resolved
+     * recipient, subject, and plain-text body, so the {@code EmailOutboxDrainer}
+     * sends without re-loading the order aggregate. Mirrors
+     * {@link #EVENT_WHATSAPP_NOTIFY}.
+     */
+    public static final String EVENT_EMAIL_NOTIFY = "EMAIL_NOTIFY";
+
+    /**
+     * Event type emitted when a customer email send fails after its retries are
+     * exhausted, so the admin is notified and the order flagged for review
+     * (Req 14.5). Consumed by the admin notifications center, mirroring
+     * {@link #EVENT_WHATSAPP_FAILED}.
+     */
+    public static final String EVENT_EMAIL_FAILED = "EMAIL_FAILED";
+
+    /**
      * Aggregate type discriminator for platform/system-scoped events that are not
      * tied to an order (e.g. a scheduled backup run).
      */

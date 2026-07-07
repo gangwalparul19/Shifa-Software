@@ -120,8 +120,11 @@ class OrderServiceTest {
 
     private CreateOrderRequest orderRequest(List<LineItemRequest> items,
                                             BigDecimal amountReceived, String screenshotKey) {
+        // Lead source is now a required order-entry field (Req 4.1); these existing
+        // payment/creation edge-case tests use WHATSAPP with no note/email.
         return new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
-                "Pune", "Maharashtra", "411001", items, amountReceived, screenshotKey);
+                "Pune", "Maharashtra", "411001", items, amountReceived, screenshotKey,
+                LeadSource.WHATSAPP, null, null);
     }
 
     // --- Zero-total guard ---------------------------------------------------

@@ -57,9 +57,16 @@ class BulkOrderServiceTest {
     @BeforeEach
     void setUp() {
         LabelService labelService = new LabelService(orderRepository, inMemoryStorage());
-        AdminOrderService adminOrderService = new AdminOrderService(orderRepository, labelService);
-        PackingService packingService =
-                new PackingService(orderRepository, new OutboxEventPublisher(outboxEventRepository));
+        // Real central workflow service; audit is best-effort against a mock repo
+        // (no Mockito mock of a concrete class — Java 25).
+        com.shifa.oms.audit.AuditService auditService = new com.shifa.oms.audit.AuditService(
+                org.mockito.Mockito.mock(com.shifa.oms.audit.AuditEventRepository.class),
+                new com.shifa.oms.auth.CurrentUserService());
+        OrderWorkflowService workflowService = new OrderWorkflowService(auditService);
+        AdminOrderService adminOrderService =
+                new AdminOrderService(orderRepository, labelService, workflowService);
+        PackingService packingService = new PackingService(
+                orderRepository, new OutboxEventPublisher(outboxEventRepository), workflowService);
         service = new BulkOrderService(adminOrderService, packingService, orderRepository);
 
         lenient().when(orderRepository.save(any(OrderEntity.class)))

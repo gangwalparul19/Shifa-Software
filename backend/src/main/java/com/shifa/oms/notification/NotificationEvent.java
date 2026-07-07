@@ -23,10 +23,17 @@ import java.util.Optional;
  * <p>{@link #ORDER_CONFIRMED} is not courier-driven: it fires once, right when a
  * storefront order is placed, to acknowledge the order to the customer (ROADMAP
  * 1.2). It is therefore never returned by {@link #fromOrderStatus(OrderStatus)}.
+ *
+ * <p>The role-based-order-workflow feature adds two earlier customer-facing
+ * milestones that the {@code NotificationMatrix} routes over WhatsApp:
+ * {@link #APPROVED} (Req 7.1) and {@link #PACKED} (Req 8.4); both are now
+ * returned by {@link #fromOrderStatus(OrderStatus)} for the matching statuses.
  */
 public enum NotificationEvent {
 
     ORDER_CONFIRMED,
+    APPROVED,
+    PACKED,
     DISPATCHED,
     OUT_FOR_DELIVERY,
     DELIVERED,
@@ -45,6 +52,8 @@ public enum NotificationEvent {
             return Optional.empty();
         }
         return switch (status) {
+            case APPROVED -> Optional.of(APPROVED);
+            case PACKED -> Optional.of(PACKED);
             case DISPATCHED -> Optional.of(DISPATCHED);
             case OUT_FOR_DELIVERY -> Optional.of(OUT_FOR_DELIVERY);
             case DELIVERED -> Optional.of(DELIVERED);

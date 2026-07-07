@@ -91,6 +91,53 @@ export interface ActivityCards {
   courierClaimsPending: number;
 }
 
+/**
+ * The role-shaped payload of {@code GET /api/dashboard/summary} (design §6.7,
+ * §7.1, Req 3.1–3.6). Exactly one of the per-role sections is populated (the one
+ * matching {@link role}); the rest are {@code null}. A {@code SALESPERSON} sees
+ * only their own orders (scoped server-side).
+ */
+export interface RoleDashboardSummary {
+  role: string;
+  salesperson: SalespersonSummary | null;
+  admin: AdminSummary | null;
+  packing: PackingSummary | null;
+  accountant: AccountantSummary | null;
+}
+
+/** A salesperson's own orders grouped by status + count awaiting approval (Req 3.2). */
+export interface SalespersonSummary {
+  /** Map keyed by the backend {@code OrderStatus} name (e.g. "PENDING_ADMIN_APPROVAL"). */
+  ordersByStatus: Record<string, number>;
+  awaitingApproval: number;
+}
+
+/** The admin operational overview (Req 3.3). */
+export interface AdminSummary {
+  pendingApproval: number;
+  /** Counts per active fulfilment stage, keyed by the backend status name. */
+  perActiveStage: Record<string, number>;
+  /** Counts per exception/terminal state, keyed by the backend status name. */
+  exceptionStates: Record<string, number>;
+  packedAwaitingHandover: number;
+  handedOverAwaitingDispatch: number;
+}
+
+/** The packer's work queues (Req 3.4). */
+export interface PackingSummary {
+  approvedAwaitingPacking: number;
+  packedToday: number;
+  awaitingHandover: number;
+  awaitingDispatch: number;
+}
+
+/** The accountant's money overview (Req 3.5); amounts are decimal rupee values. */
+export interface AccountantSummary {
+  codPending: number;
+  settled: number;
+  outstandingReceivables: number;
+}
+
 /** The SSE event types the dashboard reacts to (Req 11.2, 13.3, 17.4, 12.4, 14.4). */
 export type AdminEventType =
   | 'ORDER_PACKED'

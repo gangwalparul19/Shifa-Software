@@ -1,5 +1,6 @@
 package com.shifa.oms.reporting.domain;
 
+import com.shifa.oms.order.LeadSource;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.statemachine.OrderStatus;
 
@@ -18,8 +19,8 @@ import java.util.Objects;
  * <p>Carries exactly the fields the salesperson-wise report needs (Req 20.3):
  * customer name/mobile, the product lines (name + quantity), the money fields,
  * payment/order status, COD settlement status, loss claim status, AWB, and the
- * order date, plus the salesperson id and destination state used by the grouped
- * reports.
+ * order date, plus the salesperson id ({@code createdBy}), destination state,
+ * and {@link LeadSource} used by the grouped reports (Req 16.1, 16.3).
  */
 public record OrderReportRecord(
         Long orderId,
@@ -37,13 +38,41 @@ public record OrderReportRecord(
         OrderStatus orderStatus,
         String codSettlementStatus,
         String claimStatus,
-        String awb) {
+        String awb,
+        LeadSource leadSource) {
 
     public OrderReportRecord {
         products = products == null ? List.of() : List.copyOf(products);
         totalAmount = nz(totalAmount);
         amountReceived = nz(amountReceived);
         codAmount = nz(codAmount);
+    }
+
+    /**
+     * Backwards-compatible constructor for callers that do not track the lead
+     * source (the {@link LeadSource} defaults to {@code null}, reported as
+     * {@code UNSPECIFIED} by the grouped reports).
+     */
+    public OrderReportRecord(
+            Long orderId,
+            String orderCode,
+            LocalDate orderDate,
+            Long salespersonId,
+            String customerName,
+            String customerMobile,
+            String state,
+            List<ProductLine> products,
+            BigDecimal totalAmount,
+            BigDecimal amountReceived,
+            BigDecimal codAmount,
+            PaymentStatus paymentStatus,
+            OrderStatus orderStatus,
+            String codSettlementStatus,
+            String claimStatus,
+            String awb) {
+        this(orderId, orderCode, orderDate, salespersonId, customerName, customerMobile, state,
+                products, totalAmount, amountReceived, codAmount, paymentStatus, orderStatus,
+                codSettlementStatus, claimStatus, awb, null);
     }
 
     private static BigDecimal nz(BigDecimal v) {

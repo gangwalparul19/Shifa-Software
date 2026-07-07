@@ -65,6 +65,11 @@ app:
     mode: ${MAIL_MODE:MOCK}
     from: ${MAIL_FROM:Shifa Herbal Remedies <no-reply@shifa.local>}
     digest-to: ${REPORT_DIGEST_TO:}
+    # Milestone-email send retry policy for the email outbox drainer (Req 14.5).
+    max-attempts: ${MAIL_MAX_ATTEMPTS:3}
+    retry-backoff: PT30S
+    # Scheduler interval (ms) for draining pending milestone emails.
+    drain-interval-ms: ${MAIL_DRAIN_INTERVAL_MS:15000}
     # Branding + theme for the HTML email templates (app.mail.brand.*).
     brand:
       brand-name: ${MAIL_BRAND_NAME:Shifa Herbal Remedies}

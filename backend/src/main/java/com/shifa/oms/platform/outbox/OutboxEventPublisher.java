@@ -198,6 +198,20 @@ public class OutboxEventPublisher {
     public OutboxEvent publishWhatsAppNotify(Long orderId, String orderCode, String event,
                                              String recipientMobile, String templateName,
                                              List<Map<String, String>> parameters) {
+        return publishWhatsAppNotify(orderId, orderCode, event, recipientMobile,
+                templateName, parameters, null);
+    }
+
+    /**
+     * Overload carrying the creating salesperson's user id on the payload
+     * ({@code salespersonUserId}, from {@code OrderEntity.createdBy}), so
+     * order-scoped notifications can be traced/addressed to the salesperson who
+     * created the order (Req 7.3, design §5.2). A {@code null} id is omitted.
+     */
+    public OutboxEvent publishWhatsAppNotify(Long orderId, String orderCode, String event,
+                                             String recipientMobile, String templateName,
+                                             List<Map<String, String>> parameters,
+                                             Long salespersonUserId) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("orderId", orderId);
         payload.put("orderCode", orderCode);
@@ -205,8 +219,69 @@ public class OutboxEventPublisher {
         payload.put("recipientMobile", recipientMobile);
         payload.put("templateName", templateName);
         payload.put("parameters", new ArrayList<Map<String, String>>(parameters));
+        if (salespersonUserId != null) {
+            payload.put("salespersonUserId", salespersonUserId);
+        }
         return publish(OutboxEvent.AGGREGATE_ORDER, orderId,
                 OutboxEvent.EVENT_WHATSAPP_NOTIFY, payload);
+    }
+
+    /**
+     * Enqueues an {@code EMAIL_NOTIFY} event carrying a fully-resolved customer
+     * milestone email (Req 7.2, 10.7, 11.4, 14.1), mirroring
+     * {@link #publishWhatsAppNotify}. The {@code EmailOutboxDrainer} consumes
+     * {@code PENDING} rows of this type and sends via the {@code MailService} with
+     * bounded retries; because the resolved recipient/subject/body are stored on
+     * the payload, the drainer never re-loads the order aggregate. The event row
+     * commits atomically with the status change.
+     *
+     * @param orderId           the order the email concerns
+     * @param orderCode         the order code, for display/traceability
+     * @param event             the lifecycle event name (e.g. {@code DISPATCHED})
+     * @param recipientEmail    the customer email the message is addressed to
+     * @param subject           the resolved subject line
+     * @param body              the resolved plain-text body
+     * @param salespersonUserId the creating salesperson's user id (nullable)
+     * @return the persisted event row
+     */
+    public OutboxEvent publishEmailNotify(Long orderId, String orderCode, String event,
+                                          String recipientEmail, String subject, String body,
+                                          Long salespersonUserId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("orderId", orderId);
+        payload.put("orderCode", orderCode);
+        payload.put("event", event);
+        payload.put("recipientEmail", recipientEmail);
+        payload.put("subject", subject);
+        payload.put("body", body);
+        if (salespersonUserId != null) {
+            payload.put("salespersonUserId", salespersonUserId);
+        }
+        return publish(OutboxEvent.AGGREGATE_ORDER, orderId,
+                OutboxEvent.EVENT_EMAIL_NOTIFY, payload);
+    }
+
+    /**
+     * Enqueues an {@code EMAIL_FAILED} admin notification when a customer email
+     * send fails after exhausting its retries, flagging the order for admin
+     * review (Req 14.5). Consumed by the admin notifications center, mirroring
+     * {@link #publishWhatsAppFailed}.
+     *
+     * @param orderId   the order whose email failed
+     * @param orderCode the order code, for display
+     * @param subject   the subject that failed to send
+     * @param error     the failure detail
+     * @return the persisted event row
+     */
+    public OutboxEvent publishEmailFailed(Long orderId, String orderCode,
+                                          String subject, String error) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("orderId", orderId);
+        payload.put("orderCode", orderCode);
+        payload.put("subject", subject);
+        payload.put("error", error);
+        return publish(OutboxEvent.AGGREGATE_ORDER, orderId,
+                OutboxEvent.EVENT_EMAIL_FAILED, payload);
     }
 
     /**

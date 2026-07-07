@@ -1,6 +1,9 @@
 package com.shifa.oms.order;
 
+import com.shifa.oms.audit.AuditEventRepository;
+import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.auth.AuthPrincipal;
+import com.shifa.oms.auth.CurrentUserService;
 import com.shifa.oms.auth.Role;
 import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.label.LabelService;
@@ -23,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -53,7 +57,12 @@ class AdminOrderServiceTest {
         // Real LabelService with an in-memory storage backend so approval can
         // auto-generate the internal label (Req 10.1-10.3) without touching disk.
         LabelService labelService = new LabelService(orderRepository, inMemoryStorage());
-        service = new AdminOrderService(orderRepository, labelService);
+        // Real central workflow service; audit is best-effort against a mock repo
+        // (no Mockito mock of a concrete class — Java 25).
+        AuditService auditService = new AuditService(
+                mock(AuditEventRepository.class), new CurrentUserService());
+        OrderWorkflowService workflowService = new OrderWorkflowService(auditService);
+        service = new AdminOrderService(orderRepository, labelService, workflowService);
         lenient().when(orderRepository.save(any(OrderEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
     }

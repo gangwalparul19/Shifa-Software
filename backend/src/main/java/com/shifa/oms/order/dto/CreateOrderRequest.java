@@ -1,8 +1,10 @@
 package com.shifa.oms.order.dto;
 
+import com.shifa.oms.order.LeadSource;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -21,6 +23,13 @@ import java.util.List;
  * screenshot (two-step upload via {@code POST /api/orders/payment-screenshots})
  * and is mandatory when {@code amountReceived > 0} (Req 7.6) — that rule is
  * enforced in the service so the specific message can be returned.
+ *
+ * <p>Order entry also captures the lead's origin channel (Req 4.1-4.5, design
+ * §3.1, §6.1): a required {@code leadSource} drawn from the {@link LeadSource}
+ * set, an optional {@code leadSourceNote} (≤200 chars, only meaningful for
+ * {@link LeadSource#OTHER}), and an optional {@code customerEmail} used for
+ * milestone emails. These persist distinctly from the order-record provenance
+ * (Order_Source); membership/presence/note-length are re-checked in the service.
  */
 public record CreateOrderRequest(
         @NotBlank(message = "customerName is required")
@@ -56,6 +65,16 @@ public record CreateOrderRequest(
         @Digits(integer = 10, fraction = 2, message = "amountReceived must be a DECIMAL(12,2) value")
         BigDecimal amountReceived,
 
-        String paymentScreenshotKey
+        String paymentScreenshotKey,
+
+        @NotNull(message = "leadSource is required")
+        LeadSource leadSource,
+
+        @Size(max = 200, message = "leadSourceNote must be at most 200 characters")
+        String leadSourceNote,
+
+        @Email(message = "customerEmail must be a valid email address")
+        @Size(max = 150, message = "customerEmail must be at most 150 characters")
+        String customerEmail
 ) {
 }

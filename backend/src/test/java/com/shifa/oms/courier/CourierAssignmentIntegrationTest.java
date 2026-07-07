@@ -75,14 +75,21 @@ class CourierAssignmentIntegrationTest {
                 "MOCK", null, null, null, Duration.ofSeconds(10), 3,
                 Duration.ofSeconds(30), "Shifa Express");
 
+        // Real central workflow service; audit is best-effort against a mock repo
+        // (no Mockito mock of a concrete class — Java 25).
+        com.shifa.oms.order.OrderWorkflowService workflowService =
+                new com.shifa.oms.order.OrderWorkflowService(new com.shifa.oms.audit.AuditService(
+                        mock(com.shifa.oms.audit.AuditEventRepository.class),
+                        new com.shifa.oms.auth.CurrentUserService()));
+
         assignmentService = new CourierAssignmentService(
                 orderRepository, courierRecordRepository, courierCompanyRepository,
-                client, shippingLabelService, storage, properties);
+                client, shippingLabelService, storage, properties, workflowService);
     }
 
     @Test
     void assignmentRequestsAwbStoresLabelAndMovesToCourierAssigned() {
-        OrderEntity order = packedCodOrder();
+        OrderEntity order = handedOverCodOrder();
         when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
 
         assignmentService.assignForOrder(10L);
@@ -104,8 +111,8 @@ class CourierAssignmentIntegrationTest {
     }
 
     @Test
-    void assignmentIsIdempotentWhenOrderNotPacked() {
-        OrderEntity order = packedCodOrder();
+    void assignmentIsIdempotentWhenOrderNotHandedOver() {
+        OrderEntity order = handedOverCodOrder();
         order.setOrderStatus(OrderStatus.COURIER_ASSIGNED);
         when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
 
@@ -116,7 +123,7 @@ class CourierAssignmentIntegrationTest {
         assertThat(savedRecord).isNull();
     }
 
-    private OrderEntity packedCodOrder() {
+    private OrderEntity handedOverCodOrder() {
         OrderEntity order = new OrderEntity(
                 "SHR-000777", OrderSource.STOREFRONT, null,
                 "Asha", "9812345678", "12 MG Road", "Pune", "Maharashtra", "411001");
@@ -124,7 +131,8 @@ class CourierAssignmentIntegrationTest {
                 new BigDecimal("120.00"), new BigDecimal("240.00")));
         order.applyAmounts(new BigDecimal("240.00"), BigDecimal.ZERO.setScale(2),
                 new BigDecimal("240.00"), new BigDecimal("240.00"), PaymentStatus.COD);
-        order.setOrderStatus(OrderStatus.PACKED);
+        // Courier assignment now runs from Handed_To_Delivery (design §4.1).
+        order.setOrderStatus(OrderStatus.HANDED_TO_DELIVERY);
         return order;
     }
 

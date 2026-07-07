@@ -319,7 +319,7 @@ public class DashboardMetricsService {
                 o.getId(), o.getOrderCode(), orderDate, o.getCreatedBy(),
                 o.getCustomerName(), o.getCustomerMobile(), o.getState(), products,
                 o.getTotalAmount(), o.getAmountReceived(), o.getCodAmount(),
-                o.getPaymentStatus(), o.getOrderStatus(), null, null, null);
+                o.getPaymentStatus(), o.getOrderStatus(), null, null, null, o.getLeadSource());
     }
 
     private BigDecimal unsettledTotal(ReceivableType type) {

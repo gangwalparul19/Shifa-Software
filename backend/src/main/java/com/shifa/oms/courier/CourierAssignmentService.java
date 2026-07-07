@@ -1,14 +1,12 @@
 package com.shifa.oms.courier;
 
 import com.shifa.oms.common.ResourceNotFoundException;
+import com.shifa.oms.order.Actor;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
-import com.shifa.oms.order.OrderStatusHistory;
+import com.shifa.oms.order.OrderWorkflowService;
 import com.shifa.oms.platform.storage.StorageService;
 import com.shifa.oms.statemachine.OrderStatus;
-import com.shifa.oms.statemachine.OrderStatusLifecycle;
-import com.shifa.oms.statemachine.OrderStatusStateMachine;
-import com.shifa.oms.statemachine.StatusHistoryEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -35,6 +33,7 @@ public class CourierAssignmentService {
 
     private static final Logger log = LoggerFactory.getLogger(CourierAssignmentService.class);
     private static final String SOURCE_SYSTEM = "SYSTEM";
+    private static final String ACTOR_COURIER_API = "COURIER_API";
     private static final String STORAGE_PREFIX = "labels/shipping";
 
     private final OrderRepository orderRepository;
@@ -44,7 +43,7 @@ public class CourierAssignmentService {
     private final ShippingLabelService shippingLabelService;
     private final StorageService storageService;
     private final CourierProperties properties;
-    private final OrderStatusStateMachine stateMachine = new OrderStatusStateMachine();
+    private final OrderWorkflowService orderWorkflowService;
 
     public CourierAssignmentService(OrderRepository orderRepository,
                                     CourierRecordRepository courierRecordRepository,
@@ -52,7 +51,8 @@ public class CourierAssignmentService {
                                     CourierClient courierClient,
                                     ShippingLabelService shippingLabelService,
                                     StorageService storageService,
-                                    CourierProperties properties) {
+                                    CourierProperties properties,
+                                    OrderWorkflowService orderWorkflowService) {
         this.orderRepository = orderRepository;
         this.courierRecordRepository = courierRecordRepository;
         this.courierCompanyRepository = courierCompanyRepository;
@@ -60,6 +60,7 @@ public class CourierAssignmentService {
         this.shippingLabelService = shippingLabelService;
         this.storageService = storageService;
         this.properties = properties;
+        this.orderWorkflowService = orderWorkflowService;
     }
 
     /**
@@ -73,8 +74,10 @@ public class CourierAssignmentService {
         OrderEntity order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order " + orderId + " does not exist."));
 
-        if (order.getOrderStatus() != OrderStatus.PACKED) {
-            // Idempotent no-op: order already advanced (or not yet packed).
+        if (order.getOrderStatus() != OrderStatus.HANDED_TO_DELIVERY) {
+            // Idempotent no-op: order already advanced (or not yet handed over).
+            // Courier assignment now runs from Handed_To_Delivery (dispatch), not
+            // directly from Packed (design §4.1).
             log.debug("Skipping courier assignment for order {} in status {}",
                     order.getOrderCode(), order.getOrderStatus());
             return;
@@ -112,8 +115,12 @@ public class CourierAssignmentService {
         record.assign(company.getId(), result.awb(), ref.key(), result.estimatedDelivery());
         courierRecordRepository.save(record);
 
-        // Advance Packed → Courier_Assigned (Req 12.2), recording one history row (Req 8.4).
-        applyTransition(order, OrderStatus.COURIER_ASSIGNED);
+        // Advance Handed_To_Delivery → Courier_Assigned (Req 10.1), recording one
+        // history row (Req 12.6) through the central workflow service as the
+        // automatic SYSTEM actor. On a courier error above, the transaction rolls
+        // back and the order retains Handed_To_Delivery for retry (Req 10.4).
+        orderWorkflowService.applyTransition(order, OrderStatus.COURIER_ASSIGNED,
+                Actor.system(ACTOR_COURIER_API, SOURCE_SYSTEM));
         orderRepository.save(order);
 
         log.debug("Assigned AWB {} to order {} (courier {})",
@@ -126,13 +133,5 @@ public class CourierAssignmentService {
         return courierCompanyRepository.findFirstByName(name)
                 .orElseGet(() -> courierCompanyRepository.save(
                         new CourierCompany(name, "https://track.example.com/{awb}")));
-    }
-
-    private void applyTransition(OrderEntity order, OrderStatus target) {
-        OrderStatusLifecycle lifecycle = new OrderStatusLifecycle(order.getOrderStatus());
-        StatusHistoryEntry entry = stateMachine.transition(lifecycle, target, "COURIER_API", SOURCE_SYSTEM);
-        order.setOrderStatus(entry.toStatus());
-        order.addStatusHistory(new OrderStatusHistory(
-                entry.fromStatus(), entry.toStatus(), entry.actor(), entry.source()));
     }
 }

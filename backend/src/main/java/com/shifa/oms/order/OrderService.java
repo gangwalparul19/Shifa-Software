@@ -85,6 +85,12 @@ public class OrderService {
      */
     @Transactional
     public OrderResponse createSalespersonOrder(CreateOrderRequest request, AuthPrincipal actor) {
+        // Lead-source capture (Req 4.1, 4.2, 4.5): presence + membership + note length,
+        // rejected as HTTP 400 before anything is priced or persisted. Persisted
+        // distinctly from Order_Source (the order-record provenance).
+        OrderCreationValidator.requireLeadSource(request.leadSource());
+        OrderCreationValidator.validateLeadSourceNote(request.leadSourceNote());
+
         List<PricedLine> priced = priceLines(request.items());
         Money total = totalOf(priced);
         requirePositiveTotal(total);
@@ -105,6 +111,11 @@ public class OrderService {
                 request.city(),
                 request.state(),
                 request.postalCode());
+
+        // Lead-source fields persist on the order aggregate, distinct from Order_Source.
+        order.setLeadSource(request.leadSource());
+        order.setLeadSourceNote(request.leadSourceNote());
+        order.setCustomerEmail(request.customerEmail());
 
         populateAggregate(order, priced, calc, request.paymentScreenshotKey(),
                 actor.username(), SOURCE_SALESPERSON);

@@ -15,8 +15,14 @@ export enum PaymentStatus {
 }
 
 /**
- * The 15 order lifecycle states defined by the state machine (backend Req 8.1).
+ * The order lifecycle states defined by the state machine (backend Req 8.1).
  * New orders start in {@link OrderStatus.PENDING_ADMIN_APPROVAL} (Req 8.2).
+ *
+ * <p>The role-based-order-workflow feature adds three states:
+ * {@link OrderStatus.HANDED_TO_DELIVERY} (a handover step between
+ * {@link OrderStatus.PACKED} and {@link OrderStatus.COURIER_ASSIGNED}) and two
+ * distinct downstream delivery outcomes, {@link OrderStatus.CUSTOMER_REJECTED}
+ * and {@link OrderStatus.DELIVERY_FAILED}.
  */
 export enum OrderStatus {
   PENDING_ADMIN_APPROVAL = 'Pending_Admin_Approval',
@@ -25,11 +31,14 @@ export enum OrderStatus {
   CANCELLED = 'Cancelled',
   LABEL_GENERATED = 'Label_Generated',
   PACKED = 'Packed',
+  HANDED_TO_DELIVERY = 'Handed_To_Delivery',
   COURIER_ASSIGNED = 'Courier_Assigned',
   DISPATCHED = 'Dispatched',
   IN_TRANSIT = 'In_Transit',
   OUT_FOR_DELIVERY = 'Out_For_Delivery',
   DELIVERED = 'Delivered',
+  CUSTOMER_REJECTED = 'Customer_Rejected',
+  DELIVERY_FAILED = 'Delivery_Failed',
   RTO = 'RTO',
   COURIER_LOST = 'Courier_Lost',
   COD_COLLECTED = 'COD_Collected',

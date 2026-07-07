@@ -25,6 +25,8 @@ import java.util.Optional;
  *   <li>{@code delivered} &rarr; {@code DELIVERED}</li>
  *   <li>{@code return}, {@code returned}, {@code rto} &rarr; {@code RTO}</li>
  *   <li>{@code lost}, {@code damaged}, {@code missing} &rarr; {@code COURIER_LOST} (Req 17.1)</li>
+ *   <li>{@code customer_rejected}, {@code refused}, {@code rejected} &rarr; {@code CUSTOMER_REJECTED} (Req 11.1)</li>
+ *   <li>{@code delivery_failed}, {@code failed}, {@code undelivered}, {@code attempt_failed} &rarr; {@code DELIVERY_FAILED} (Req 11.2)</li>
  * </ul>
  */
 public final class CourierStatusMapper {
@@ -41,7 +43,16 @@ public final class CourierStatusMapper {
             Map.entry("rto", OrderStatus.RTO),
             Map.entry("lost", OrderStatus.COURIER_LOST),
             Map.entry("damaged", OrderStatus.COURIER_LOST),
-            Map.entry("missing", OrderStatus.COURIER_LOST));
+            Map.entry("missing", OrderStatus.COURIER_LOST),
+            // Customer refused at the door (Req 11.1).
+            Map.entry("customer_rejected", OrderStatus.CUSTOMER_REJECTED),
+            Map.entry("refused", OrderStatus.CUSTOMER_REJECTED),
+            Map.entry("rejected", OrderStatus.CUSTOMER_REJECTED),
+            // Failed delivery attempt (Req 11.2).
+            Map.entry("delivery_failed", OrderStatus.DELIVERY_FAILED),
+            Map.entry("failed", OrderStatus.DELIVERY_FAILED),
+            Map.entry("undelivered", OrderStatus.DELIVERY_FAILED),
+            Map.entry("attempt_failed", OrderStatus.DELIVERY_FAILED));
 
     private CourierStatusMapper() {
     }

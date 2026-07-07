@@ -1,9 +1,12 @@
 package com.shifa.oms.reporting.domain;
 
+import com.shifa.oms.order.LeadSource;
 import com.shifa.oms.reporting.domain.ReportRows.DailyRow;
+import com.shifa.oms.reporting.domain.ReportRows.DeliveryOutcome;
 import com.shifa.oms.reporting.domain.ReportRows.MonthlyRow;
 import com.shifa.oms.reporting.domain.ReportRows.ProductRow;
 import com.shifa.oms.reporting.domain.ReportRows.StateRow;
+import com.shifa.oms.statemachine.OrderStatus;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -135,6 +138,100 @@ public class ReportAggregator {
         rows.sort(Comparator.comparing(OrderReportRecord::orderDate,
                         Comparator.nullsLast(Comparator.naturalOrder())).reversed()
                 .thenComparing(o -> o.orderId() == null ? 0L : o.orderId()));
+        return rows;
+    }
+
+    // --- Grouped-count reports (Req 16.1, 16.2, 16.3, 16.4) -----------------
+
+    /** The label a {@code null} lead source is reported under (Req 16.1). */
+    public static final String UNSPECIFIED_LEAD_SOURCE = "UNSPECIFIED";
+
+    /** The label a {@code null} salesperson ({@code createdBy}) is reported under. */
+    public static final String UNSPECIFIED_SALESPERSON = "UNSPECIFIED";
+
+    /**
+     * Orders grouped by {@link LeadSource} over the window, keyed by the source
+     * name with a {@code null} lead source bucketed as {@code UNSPECIFIED}
+     * (Req 16.1). Keys are ordered by descending count then key name.
+     */
+    public List<ReportRows.CountRow> ordersByLeadSource(List<OrderReportRecord> orders, DateRange window) {
+        Map<String, long[]> counts = new LinkedHashMap<>();
+        for (OrderReportRecord o : within(orders, window)) {
+            String key = o.leadSource() == null ? UNSPECIFIED_LEAD_SOURCE : o.leadSource().name();
+            counts.computeIfAbsent(key, k -> new long[1])[0]++;
+        }
+        return toSortedCountRows(counts);
+    }
+
+    /**
+     * Orders grouped by {@link OrderStatus} over the window (Req 16.2). Keys are
+     * ordered by descending count then status name.
+     */
+    public List<ReportRows.CountRow> ordersByStatus(List<OrderReportRecord> orders, DateRange window) {
+        Map<String, long[]> counts = new LinkedHashMap<>();
+        for (OrderReportRecord o : within(orders, window)) {
+            String key = o.orderStatus() == null ? "" : o.orderStatus().name();
+            counts.computeIfAbsent(key, k -> new long[1])[0]++;
+        }
+        return toSortedCountRows(counts);
+    }
+
+    /**
+     * Orders grouped by salesperson ({@code createdBy}) over the window
+     * (Req 16.3), keyed by the salesperson id as a string with a {@code null}
+     * creator bucketed as {@code UNSPECIFIED}. Ordered by descending count then key.
+     */
+    public List<ReportRows.CountRow> ordersBySalesperson(List<OrderReportRecord> orders, DateRange window) {
+        Map<String, long[]> counts = new LinkedHashMap<>();
+        for (OrderReportRecord o : within(orders, window)) {
+            String key = o.salespersonId() == null
+                    ? UNSPECIFIED_SALESPERSON : Long.toString(o.salespersonId());
+            counts.computeIfAbsent(key, k -> new long[1])[0]++;
+        }
+        return toSortedCountRows(counts);
+    }
+
+    /**
+     * The delivery-outcome summary over the window (Req 16.4): the counts of
+     * {@code DELIVERED}, {@code CUSTOMER_REJECTED}, {@code DELIVERY_FAILED}, and
+     * {@code CANCELLED} (kept separate), plus the delivery success rate as a
+     * percentage {@code DELIVERED / (DELIVERED + CUSTOMER_REJECTED +
+     * DELIVERY_FAILED + CANCELLED) * 100}, or {@code 0} when the denominator is 0.
+     */
+    public DeliveryOutcome deliveryOutcome(List<OrderReportRecord> orders, DateRange window) {
+        long delivered = 0;
+        long customerRejected = 0;
+        long deliveryFailed = 0;
+        long cancelled = 0;
+        for (OrderReportRecord o : within(orders, window)) {
+            OrderStatus s = o.orderStatus();
+            if (s == OrderStatus.DELIVERED) {
+                delivered++;
+            } else if (s == OrderStatus.CUSTOMER_REJECTED) {
+                customerRejected++;
+            } else if (s == OrderStatus.DELIVERY_FAILED) {
+                deliveryFailed++;
+            } else if (s == OrderStatus.CANCELLED) {
+                cancelled++;
+            }
+        }
+        long denominator = delivered + customerRejected + deliveryFailed + cancelled;
+        BigDecimal successRate = denominator == 0
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.valueOf(delivered)
+                        .multiply(BigDecimal.valueOf(100))
+                        .divide(BigDecimal.valueOf(denominator), 2, RoundingMode.HALF_UP);
+        return new DeliveryOutcome(delivered, customerRejected, deliveryFailed, cancelled, successRate);
+    }
+
+    /** Orders a group-count map by descending count then key name into {@code CountRow}s. */
+    private static List<ReportRows.CountRow> toSortedCountRows(Map<String, long[]> counts) {
+        List<ReportRows.CountRow> rows = new ArrayList<>();
+        for (Map.Entry<String, long[]> e : counts.entrySet()) {
+            rows.add(new ReportRows.CountRow(e.getKey(), e.getValue()[0]));
+        }
+        rows.sort(Comparator.comparingLong(ReportRows.CountRow::orderCount).reversed()
+                .thenComparing(ReportRows.CountRow::key));
         return rows;
     }
 

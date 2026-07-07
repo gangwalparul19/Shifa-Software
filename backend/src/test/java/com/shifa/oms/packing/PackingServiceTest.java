@@ -1,8 +1,14 @@
 package com.shifa.oms.packing;
 
+import com.shifa.oms.audit.AuditEventRepository;
+import com.shifa.oms.audit.AuditService;
+import com.shifa.oms.auth.AuthPrincipal;
+import com.shifa.oms.auth.CurrentUserService;
+import com.shifa.oms.auth.Role;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderSource;
+import com.shifa.oms.order.OrderWorkflowService;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.packing.dto.PackingScanResponse;
 import com.shifa.oms.platform.outbox.OutboxEvent;
@@ -24,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -55,12 +62,18 @@ class PackingServiceTest {
 
     private PackingService service;
 
-    private static final String PACKER = "packer";
+    private static final AuthPrincipal PACKER =
+            new AuthPrincipal(5L, "packer", Role.PACKING_USER);
 
     @BeforeEach
     void setUp() {
         OutboxEventPublisher publisher = new OutboxEventPublisher(outboxEventRepository);
-        service = new PackingService(orderRepository, publisher);
+        // Real central workflow service; audit is best-effort against a mock repo
+        // (no Mockito mock of a concrete class — Java 25).
+        AuditService auditService = new AuditService(
+                mock(AuditEventRepository.class), new CurrentUserService());
+        OrderWorkflowService workflowService = new OrderWorkflowService(auditService);
+        service = new PackingService(orderRepository, publisher, workflowService);
         lenient().when(orderRepository.save(any(OrderEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
         lenient().when(outboxEventRepository.save(any(OutboxEvent.class)))
@@ -143,14 +156,15 @@ class PackingServiceTest {
         assertThat(order.getStatusHistory().get(0).getFromStatus())
                 .isEqualTo(OrderStatus.LABEL_GENERATED);
         assertThat(order.getStatusHistory().get(0).getToStatus()).isEqualTo(OrderStatus.PACKED);
-        assertThat(order.getStatusHistory().get(0).getActor()).isEqualTo(PACKER);
+        assertThat(order.getStatusHistory().get(0).getActor()).isEqualTo(PACKER.username());
         assertThat(order.getStatusHistory().get(0).getSource()).isEqualTo("PACKING");
 
         verify(orderRepository).save(order);
-        // Two events persisted in the same transaction: the packed notification
-        // (Req 11.2) and the courier-assign event that the drainer picks up (Req 12.1).
+        // Exactly one event persisted in the same transaction: the packed
+        // notification (Req 11.2). Courier assignment is no longer enqueued on
+        // pack — it moves to the dispatch action (design §4, §6.3).
         ArgumentCaptor<OutboxEvent> eventCaptor = ArgumentCaptor.forClass(OutboxEvent.class);
-        verify(outboxEventRepository, times(2)).save(eventCaptor.capture());
+        verify(outboxEventRepository, times(1)).save(eventCaptor.capture());
         List<OutboxEvent> events = eventCaptor.getAllValues();
 
         OutboxEvent packed = events.stream()
@@ -159,13 +173,9 @@ class PackingServiceTest {
         assertThat(packed.getAggregateType()).isEqualTo(OutboxEvent.AGGREGATE_ORDER);
         assertThat(packed.getStatus()).isEqualTo(OutboxEvent.STATUS_PENDING);
         assertThat(packed.getPayload()).containsEntry("orderCode", "SHR-000123");
-        assertThat(packed.getPayload()).containsEntry("packedBy", PACKER);
+        assertThat(packed.getPayload()).containsEntry("packedBy", PACKER.username());
 
-        OutboxEvent courierAssign = events.stream()
-                .filter(e -> OutboxEvent.EVENT_COURIER_ASSIGN.equals(e.getEventType()))
-                .findFirst().orElseThrow();
-        assertThat(courierAssign.getAggregateType()).isEqualTo(OutboxEvent.AGGREGATE_ORDER);
-        assertThat(courierAssign.getStatus()).isEqualTo(OutboxEvent.STATUS_PENDING);
-        assertThat(courierAssign.getPayload()).containsEntry("orderCode", "SHR-000123");
+        // No COURIER_ASSIGN event is enqueued by the scan anymore.
+        assertThat(events).noneMatch(e -> OutboxEvent.EVENT_COURIER_ASSIGN.equals(e.getEventType()));
     }
 }

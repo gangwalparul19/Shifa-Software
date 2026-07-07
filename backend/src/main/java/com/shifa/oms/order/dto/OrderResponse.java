@@ -1,5 +1,6 @@
 package com.shifa.oms.order.dto;
 
+import com.shifa.oms.order.LeadSource;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderSource;
@@ -26,6 +27,9 @@ public record OrderResponse(
         Long id,
         String orderCode,
         OrderSource source,
+        LeadSource leadSource,
+        String leadSourceNote,
+        String customerEmail,
         OrderStatus orderStatus,
         PaymentStatus paymentStatus,
         String customerName,
@@ -80,6 +84,9 @@ public record OrderResponse(
                 order.getId(),
                 order.getOrderCode(),
                 order.getSource(),
+                order.getLeadSource(),
+                order.getLeadSourceNote(),
+                order.getCustomerEmail(),
                 order.getOrderStatus(),
                 order.getPaymentStatus(),
                 order.getCustomerName(),
@@ -114,6 +121,9 @@ public record OrderResponse(
                 id,
                 orderCode,
                 source,
+                leadSource,
+                leadSourceNote,
+                customerEmail,
                 orderStatus,
                 paymentStatus,
                 customerName,

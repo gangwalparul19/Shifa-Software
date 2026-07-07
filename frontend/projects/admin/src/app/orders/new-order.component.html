@@ -69,6 +69,25 @@
                 <div class="invalid-feedback">Enter exactly 10 digits.</div>
               }
             </div>
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="customerEmail">Email <span class="text-secondary">(optional)</span></label>
+              <input
+                id="customerEmail"
+                type="email"
+                class="form-control"
+                formControlName="customerEmail"
+                maxlength="150"
+                inputmode="email"
+                autocomplete="off"
+                placeholder="name@example.com"
+                [class.is-invalid]="invalid('customerEmail')"
+              />
+              @if (invalid('customerEmail')) {
+                <div class="invalid-feedback">Enter a valid email address (max 150 chars).</div>
+              } @else {
+                <div class="form-hint">Used for order milestone emails.</div>
+              }
+            </div>
             <div class="col-12">
               <label class="form-label required" for="addressLine">Address</label>
               <textarea
@@ -131,6 +150,45 @@
                 <div class="invalid-feedback">Enter exactly 6 digits.</div>
               }
             </div>
+
+            <!-- Lead source (origin channel, Req 4.1, 4.5) -->
+            <div class="col-12 col-md-6">
+              <label class="form-label required" for="leadSource">Lead source</label>
+              <select
+                id="leadSource"
+                class="form-select"
+                formControlName="leadSource"
+                [class.is-invalid]="invalid('leadSource')"
+              >
+                <option value="" disabled>How did the customer reach us?</option>
+                @for (opt of leadSourceOptions; track opt.value) {
+                  <option [value]="opt.value">{{ opt.label }}</option>
+                }
+              </select>
+              @if (invalid('leadSource')) {
+                <div class="invalid-feedback">Choose a lead source.</div>
+              }
+            </div>
+            @if (showLeadSourceNote()) {
+              <div class="col-12">
+                <label class="form-label" for="leadSourceNote">Lead source note</label>
+                <input
+                  id="leadSourceNote"
+                  type="text"
+                  class="form-control"
+                  formControlName="leadSourceNote"
+                  maxlength="200"
+                  autocomplete="off"
+                  placeholder="Where did this lead come from?"
+                  [class.is-invalid]="invalid('leadSourceNote')"
+                />
+                @if (invalid('leadSourceNote')) {
+                  <div class="invalid-feedback">The note must be at most 200 characters.</div>
+                } @else {
+                  <div class="form-hint">Optional detail for an “Other” source (max 200 chars).</div>
+                }
+              </div>
+            }
           </div>
         </div>
       </div>
@@ -225,7 +283,7 @@
         } @else if (productsError()) {
           <admin-state-panel variant="error" [message]="productsError()!" (retry)="loadProducts()" />
         } @else {
-          <div class="table-responsive">
+          <div class="table-responsive shifa-lineitems">
             <table class="table table-vcenter card-table">
               <thead>
                 <tr>
@@ -239,7 +297,7 @@
               <tbody formArrayName="items">
                 @for (row of items.controls; track row; let i = $index) {
                   <tr [formGroupName]="i">
-                    <td>
+                    <td data-label="Product">
                       <select
                         class="form-select"
                         formControlName="productId"
@@ -256,7 +314,7 @@
                         <div class="text-danger small mt-1">Choose a product.</div>
                       }
                     </td>
-                    <td>
+                    <td data-label="Qty">
                       <input
                         type="number"
                         class="form-control text-end"
@@ -268,7 +326,7 @@
                         aria-label="Quantity"
                       />
                     </td>
-                    <td>
+                    <td data-label="Rate (₹)">
                       <input
                         type="number"
                         class="form-control text-end"
@@ -279,11 +337,11 @@
                         aria-label="Rate"
                       />
                     </td>
-                    <td class="text-end fw-medium">{{ formatMoney(lineTotals()[i] || 0) }}</td>
+                    <td class="text-end fw-medium" data-label="Line total">{{ formatMoney(lineTotals()[i] || 0) }}</td>
                     <td class="text-end">
                       <button
                         type="button"
-                        class="btn btn-sm btn-icon btn-ghost-danger"
+                        class="btn btn-sm btn-icon btn-ghost-danger shifa-lineitems__remove"
                         (click)="removeItem(i)"
                         [disabled]="items.length <= 1"
                         aria-label="Remove item"

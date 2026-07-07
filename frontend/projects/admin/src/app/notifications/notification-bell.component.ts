@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AdminEventsService } from '../dashboard/admin-events.service';
-import { NotificationsService } from './notifications.service';
+import { StaffNotificationsService } from './staff-notifications.service';
 import { AdminNotificationItem } from './notifications.model';
 import { relativeTime, severityColor, severityIcon } from './notifications.util';
 
@@ -27,8 +27,10 @@ const DROPDOWN_LIMIT = 8;
  * "Mark all read" clears the count and "View all" links to the full page. The
  * dropdown closes on Escape or an outside click and carries appropriate ARIA.
  *
- * <p>Rendered only for ADMIN users (the shell gates it); the backend endpoints
- * are ADMIN-only too.
+ * <p>Rendered for every authenticated staff role. It reads the staff-facing
+ * {@code /api/notifications} endpoint, so it shows the notifications addressed
+ * to the current user's role or user id (plus legacy admin broadcasts for
+ * admins) rather than only admin broadcasts (Req 13.4).
  */
 @Component({
   selector: 'admin-notification-bell',
@@ -38,7 +40,7 @@ const DROPDOWN_LIMIT = 8;
   styleUrl: './notification-bell.component.css',
 })
 export class NotificationBellComponent implements OnInit, OnDestroy {
-  private readonly service = inject(NotificationsService);
+  private readonly service = inject(StaffNotificationsService);
   private readonly events = inject(AdminEventsService);
 
   protected readonly relativeTime = relativeTime;
@@ -130,10 +132,15 @@ export class NotificationBellComponent implements OnInit, OnDestroy {
 
   markAllRead(event: Event): void {
     event.stopPropagation();
-    this.service.markAllRead().subscribe({
+    // The staff endpoint has no bulk read-all, so mark each visible unread
+    // notification read individually.
+    const unreadIds = this.recent().filter((n) => !n.read).map((n) => n.id);
+    this.service.markManyRead(unreadIds).subscribe({
       next: () => {
         this.recent.update((list) => list.map((n) => ({ ...n, read: true })));
         this.unread.set(0);
+        // Reconcile with the server (there may be more unread beyond the dropdown).
+        this.refreshCount();
       },
     });
   }

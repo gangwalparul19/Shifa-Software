@@ -40,8 +40,8 @@ import static org.mockito.Mockito.when;
  *
  * **Validates: Requirements 12.4, 14.4**
  *
- * <p>For any packed order, when the courier client fails (error or timeout), the
- * outbox drainer must (a) leave the order in {@code Packed} and (b) persist a
+ * <p>For any handed-over order, when the courier client fails (error or timeout),
+ * the outbox drainer must (a) leave the order in {@code Handed_To_Delivery} and (b) persist a
  * {@code COURIER_ASSIGN_FAILED} admin notification with the error recorded. The
  * assignment call fails before any order mutation, so the order is never lost.
  * Each property runs the jqwik default of 1000 tries (≥ 100).
@@ -56,7 +56,7 @@ class CourierIntegrationFailurePropertyTest {
             @ForAll @IntRange(min = 0, max = 5000) int codRupees,
             @ForAll("timeouts") boolean timeout) {
 
-        OrderEntity order = packedOrder(orderCode, codRupees);
+        OrderEntity order = handedOverOrder(orderCode, codRupees);
         long orderId = 42L;
 
         OrderRepository orderRepository = mock(OrderRepository.class);
@@ -93,6 +93,11 @@ class CourierIntegrationFailurePropertyTest {
         ShippingLabelService shippingLabelService = new ShippingLabelService(
                 orderRepository, courierRecordRepository, courierCompanyRepository);
 
+        com.shifa.oms.order.OrderWorkflowService workflowService =
+                new com.shifa.oms.order.OrderWorkflowService(new com.shifa.oms.audit.AuditService(
+                        mock(com.shifa.oms.audit.AuditEventRepository.class),
+                        new com.shifa.oms.auth.CurrentUserService()));
+
         CourierAssignmentService assignmentService = new CourierAssignmentService(
                 orderRepository,
                 courierRecordRepository,
@@ -100,7 +105,8 @@ class CourierIntegrationFailurePropertyTest {
                 failingClient,
                 shippingLabelService,
                 mock(com.shifa.oms.platform.storage.StorageService.class),
-                properties);
+                properties,
+                workflowService);
 
         OutboxCourierDrainer drainer = new OutboxCourierDrainer(
                 outboxRepository, publisher, assignmentService, properties);
@@ -111,8 +117,9 @@ class CourierIntegrationFailurePropertyTest {
 
         drainer.drainCourierAssignments();
 
-        // (a) The order is not lost: it retains Packed (Req 12.4).
-        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PACKED);
+        // (a) The order is not lost: it retains Handed_To_Delivery (Req 10.4),
+        // the status courier assignment now runs from (design §4.1).
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.HANDED_TO_DELIVERY);
 
         // The assign event is marked FAILED with the error recorded on the row.
         assertThat(assignEvent.getStatus()).isEqualTo(OutboxEvent.STATUS_FAILED);
@@ -130,13 +137,14 @@ class CourierIntegrationFailurePropertyTest {
         assertThat(failedNotice.getPayload()).containsKey("error");
     }
 
-    private OrderEntity packedOrder(String orderCode, int codRupees) {
+    private OrderEntity handedOverOrder(String orderCode, int codRupees) {
         OrderEntity order = new OrderEntity(
                 orderCode, OrderSource.STOREFRONT, null,
                 "Asha", "9812345678", "12 MG Road", "Pune", "Maharashtra", "411001");
         BigDecimal cod = new BigDecimal(codRupees).setScale(2);
         order.applyAmounts(cod, BigDecimal.ZERO.setScale(2), cod, cod, PaymentStatus.COD);
-        order.setOrderStatus(OrderStatus.PACKED);
+        // Courier assignment now runs from Handed_To_Delivery (design §4.1).
+        order.setOrderStatus(OrderStatus.HANDED_TO_DELIVERY);
         return order;
     }
 

@@ -78,6 +78,15 @@ public class WhatsAppTemplateRegistry {
                 List.of(PARAM_ORDER_ID, PARAM_COURIER_COMPANY, PARAM_AWB,
                         PARAM_TRACKING_LINK, PARAM_ESTIMATED_DELIVERY, PARAM_COD_AMOUNT)));
 
+        // Earlier milestone updates carried over WhatsApp by the matrix
+        // (Req 7.1 Approved, Req 8.4 Packed): order id + the new status label.
+        map.put(NotificationEvent.APPROVED, new WhatsAppTemplate(
+                NotificationEvent.APPROVED, "order_approved",
+                List.of(PARAM_ORDER_ID, PARAM_ORDER_STATUS)));
+        map.put(NotificationEvent.PACKED, new WhatsAppTemplate(
+                NotificationEvent.PACKED, "order_packed",
+                List.of(PARAM_ORDER_ID, PARAM_ORDER_STATUS)));
+
         // Status updates: order id + the new status label (Req 14.2).
         map.put(NotificationEvent.OUT_FOR_DELIVERY, new WhatsAppTemplate(
                 NotificationEvent.OUT_FOR_DELIVERY, "order_out_for_delivery",

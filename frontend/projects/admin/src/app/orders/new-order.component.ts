@@ -15,7 +15,12 @@ import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { CatalogService } from './catalog.service';
 import { OrdersService } from './orders.service';
-import { CreateOrderLineItem, CreateOrderRequest } from './orders.model';
+import {
+  CreateOrderLineItem,
+  CreateOrderRequest,
+  LEAD_SOURCE_OPTIONS,
+  LeadSource,
+} from './orders.model';
 
 /** The three phases the payment-screenshot upload can be in. */
 type UploadState = 'idle' | 'uploading' | 'done' | 'error';
@@ -71,18 +76,28 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private readonly model = signal<ReturnType<NewOrderComponent['snapshot']>>({
     items: [],
     amountReceived: 0,
+    leadSource: '',
   });
+
+  /** Selectable lead-source options for the origin picker (Req 4.1). */
+  protected readonly leadSourceOptions = LEAD_SOURCE_OPTIONS;
 
   protected readonly form = this.fb.nonNullable.group({
     customerName: ['', [Validators.required, Validators.maxLength(100)]],
     customerMobile: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
+    customerEmail: ['', [Validators.email, Validators.maxLength(150)]],
     addressLine: ['', [Validators.required, Validators.maxLength(250)]],
     city: ['', [Validators.required, Validators.maxLength(100)]],
     state: ['', [Validators.required, Validators.maxLength(100)]],
     postalCode: ['', [Validators.required, Validators.pattern(/^\d{6}$/)]],
+    leadSource: ['' as '' | LeadSource, [Validators.required]],
+    leadSourceNote: ['', [Validators.maxLength(200)]],
     items: this.fb.array([this.newItem()]),
     amountReceived: [0, [Validators.required, Validators.min(0)]],
   });
+
+  /** Whether the free-text lead-source note is shown (only for {@code OTHER}, Req 4.5). */
+  protected readonly showLeadSourceNote = computed(() => this.model().leadSource === 'OTHER');
 
   /** Whether a payment screenshot is mandatory (mirrors the backend rule). */
   protected readonly screenshotRequired = computed(() => this.model().amountReceived > 0);
@@ -248,9 +263,13 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const email = this.form.controls.customerEmail.value.trim();
+    const note = this.form.controls.leadSourceNote.value.trim();
+    const isOther = raw.leadSource === 'OTHER';
     const payload: CreateOrderRequest = {
       customerName: this.form.controls.customerName.value.trim(),
       customerMobile: this.form.controls.customerMobile.value.trim(),
+      ...(email ? { customerEmail: email } : {}),
       addressLine: this.form.controls.addressLine.value.trim(),
       city: this.form.controls.city.value.trim(),
       state: this.form.controls.state.value.trim(),
@@ -262,6 +281,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       })),
       amountReceived: raw.amountReceived,
       ...(this.screenshotKey() ? { paymentScreenshotKey: this.screenshotKey()! } : {}),
+      leadSource: raw.leadSource as LeadSource,
+      // Only send the note when OTHER is chosen (it's meaningless otherwise, Req 4.5).
+      ...(isOther && note ? { leadSourceNote: note } : {}),
     };
 
     this.submitting.set(true);
@@ -312,6 +334,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private snapshot(): {
     items: { productId: number | null; quantity: number; rate: number | null }[];
     amountReceived: number;
+    leadSource: '' | LeadSource;
   } {
     const raw = this.form.getRawValue();
     return {
@@ -321,6 +344,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
         rate: it['rate'] === null || it['rate'] === undefined ? null : Number(it['rate']),
       })),
       amountReceived: Number(raw.amountReceived) || 0,
+      leadSource: raw.leadSource,
     };
   }
 }

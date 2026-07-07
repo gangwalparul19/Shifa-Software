@@ -1,6 +1,8 @@
 package com.shifa.oms.adminnotification;
 
 import com.shifa.oms.adminnotification.dto.AdminNotificationResponse;
+import com.shifa.oms.auth.AuthPrincipal;
+import com.shifa.oms.auth.Role;
 import com.shifa.oms.common.PageResponse;
 import com.shifa.oms.common.ResourceNotFoundException;
 import org.springframework.data.domain.Page;
@@ -71,6 +73,35 @@ public class AdminNotificationService {
     @Transactional(readOnly = true)
     public long unreadCount() {
         return repository.countByReadFalse();
+    }
+
+    /**
+     * Filtered, paged, newest-first notifications <em>visible to a specific staff
+     * user</em> (Req 13.4): addressed to their user id, to their role, or (for
+     * admins) the legacy admin broadcasts. Backs the staff-facing
+     * {@code GET /api/notifications}.
+     *
+     * @param principal the authenticated staff user
+     * @param unreadOnly when true, return only unread notifications
+     * @param type       exact type filter (nullable)
+     * @param pageable   page / size / sort
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<AdminNotificationResponse> listForUser(AuthPrincipal principal,
+                                                               boolean unreadOnly, String type,
+                                                               Pageable pageable) {
+        boolean legacyVisible = principal.role() == Role.ADMIN;
+        Page<AdminNotification> page = repository.searchForUser(
+                principal.userId(), principal.role(), legacyVisible,
+                unreadOnly, blankToNull(type), pageable);
+        return PageResponse.of(page, AdminNotificationResponse::from);
+    }
+
+    /** The number of unread notifications visible to a specific staff user (per-user badge). */
+    @Transactional(readOnly = true)
+    public long unreadCountForUser(AuthPrincipal principal) {
+        boolean legacyVisible = principal.role() == Role.ADMIN;
+        return repository.countUnreadForUser(principal.userId(), principal.role(), legacyVisible);
     }
 
     /**

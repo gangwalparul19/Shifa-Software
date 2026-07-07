@@ -1,8 +1,5 @@
 package com.shifa.oms.courier;
 
-import com.shifa.oms.notification.WhatsAppMessageFactory;
-import com.shifa.oms.notification.WhatsAppNotificationPublisher;
-import com.shifa.oms.notification.WhatsAppTemplateRegistry;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderSource;
@@ -66,12 +63,19 @@ class CourierWebhookIntegrationTest {
         OutboxEventPublisher publisher = new OutboxEventPublisher(outboxRepository);
 
         CourierCompanyRepository courierCompanyRepository = mock(CourierCompanyRepository.class);
-        WhatsAppNotificationPublisher whatsAppNotificationPublisher = new WhatsAppNotificationPublisher(
-                new WhatsAppMessageFactory(new WhatsAppTemplateRegistry()), publisher);
+
+        // Real central workflow service; audit is best-effort against a mock repo
+        // (no Mockito mock of a concrete class — Java 25). No NotificationDispatcher
+        // is wired here, so the matrix fan-out is a no-op — this test asserts the
+        // courier status/settlement side effects, not notifications.
+        com.shifa.oms.order.OrderWorkflowService workflowService =
+                new com.shifa.oms.order.OrderWorkflowService(new com.shifa.oms.audit.AuditService(
+                        mock(com.shifa.oms.audit.AuditEventRepository.class),
+                        new com.shifa.oms.auth.CurrentUserService()));
 
         applier = new CourierStatusApplier(
                 orderRepository, courierRecordRepository, courierCompanyRepository,
-                receivableRepository, publisher, whatsAppNotificationPublisher);
+                receivableRepository, publisher, workflowService);
     }
 
     @Test

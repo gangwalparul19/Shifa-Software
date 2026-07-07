@@ -193,11 +193,11 @@
   />
 } @else {
   <div class="card">
-    <div class="table-responsive">
+    <div class="table-responsive shifa-cards-sm">
       <table class="table table-vcenter card-table table-hover stagger-rows">
         <thead>
           <tr>
-            <th class="w-1">
+            <th class="w-1 d-none d-md-table-cell">
               <input
                 type="checkbox"
                 class="form-check-input m-0"
@@ -208,19 +208,19 @@
             </th>
             <th adminSortHeader field="orderCode" [sort]="sort()" (sortChange)="onSort($event)">Order</th>
             <th adminSortHeader field="customerName" [sort]="sort()" (sortChange)="onSort($event)">Customer</th>
-            <th>Mobile</th>
+            <th class="d-none d-md-table-cell">Mobile</th>
             <th class="text-end" adminSortHeader field="totalAmount" [sort]="sort()" (sortChange)="onSort($event)">Total</th>
-            <th class="text-end">COD</th>
-            <th adminSortHeader field="paymentStatus" [sort]="sort()" (sortChange)="onSort($event)">Payment</th>
+            <th class="text-end d-none d-md-table-cell">COD</th>
+            <th class="d-none d-md-table-cell" adminSortHeader field="paymentStatus" [sort]="sort()" (sortChange)="onSort($event)">Payment</th>
             <th adminSortHeader field="orderStatus" [sort]="sort()" (sortChange)="onSort($event)">Status</th>
-            <th adminSortHeader field="createdAt" [sort]="sort()" (sortChange)="onSort($event)">Date</th>
-            <th class="text-end">Actions</th>
+            <th class="d-none d-md-table-cell" adminSortHeader field="createdAt" [sort]="sort()" (sortChange)="onSort($event)">Date</th>
+            <th class="text-end d-none d-md-table-cell">Actions</th>
           </tr>
         </thead>
         <tbody>
           @for (order of orders(); track order.id) {
             <tr class="clickable" [class.table-active]="isSelected(order.id)" (click)="openDetail(order)">
-              <td (click)="$event.stopPropagation()">
+              <td class="d-none d-md-table-cell" (click)="$event.stopPropagation()">
                 <input
                   type="checkbox"
                   class="form-check-input m-0"
@@ -229,19 +229,19 @@
                   [attr.aria-label]="'Select order ' + order.orderCode"
                 />
               </td>
-              <td>
+              <td data-label="Order">
                 <button type="button" class="btn btn-link p-0 fw-medium" (click)="$event.stopPropagation(); openDetail(order)">
                   {{ order.orderCode }}
                 </button>
               </td>
-              <td>{{ order.customerName }}</td>
-              <td class="text-secondary">{{ order.customerMobile }}</td>
-              <td class="text-end">{{ money(order.totalAmount) }}</td>
-              <td class="text-end">{{ money(order.codAmount) }}</td>
-              <td><admin-status-badge [status]="order.paymentStatus" kind="payment" /></td>
-              <td><admin-status-badge [status]="order.orderStatus" /></td>
-              <td class="text-secondary">{{ order.createdAt ? (order.createdAt | date: 'dd MMM, HH:mm') : '—' }}</td>
-              <td class="text-end">
+              <td data-label="Customer">{{ order.customerName }}</td>
+              <td class="text-secondary d-none d-md-table-cell">{{ order.customerMobile }}</td>
+              <td class="text-end" data-label="Total">{{ money(order.totalAmount) }}</td>
+              <td class="text-end d-none d-md-table-cell">{{ money(order.codAmount) }}</td>
+              <td class="d-none d-md-table-cell"><admin-status-badge [status]="order.paymentStatus" kind="payment" /></td>
+              <td data-label="Status"><admin-status-badge [status]="order.orderStatus" /></td>
+              <td class="text-secondary d-none d-md-table-cell">{{ order.createdAt ? (order.createdAt | date: 'dd MMM, HH:mm') : '—' }}</td>
+              <td class="text-end d-none d-md-table-cell">
                 <button
                   type="button"
                   class="btn btn-sm btn-outline-primary"

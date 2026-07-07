@@ -940,3 +940,71 @@ a:focus-visible,
     min-height: 44px;
   }
 }
+
+/* --------------------------------------------------------------------------
+   18. Mobile-first workflow pass (Req 17) — cards over tables, no h-scroll,
+   comfortable touch targets. Opt-in per screen via .shifa-cards-sm so other
+   admin tables keep their existing behaviour.
+   -------------------------------------------------------------------------- */
+@media (max-width: 767.98px) {
+  /* A table tagged .shifa-cards-sm collapses into stacked cards (Req 17.3):
+     the header is hidden and each row becomes a bordered card whose cells are
+     label/value pairs driven by the cell's data-label. Only the role-relevant
+     fields are kept in the markup; secondary fields live behind the detail
+     view (Req 17.5). */
+  .shifa-cards-sm thead {
+    display: none;
+  }
+  .shifa-cards-sm,
+  .shifa-cards-sm tbody,
+  .shifa-cards-sm tr,
+  .shifa-cards-sm td {
+    display: block;
+    width: 100%;
+  }
+  .shifa-cards-sm tr {
+    border: 1px solid var(--tblr-border-color, #e6e7e9);
+    border-radius: 0.7rem;
+    margin-bottom: 0.6rem;
+    padding: 0.35rem 0.85rem;
+    background: #fff;
+  }
+  .shifa-cards-sm tr.table-active {
+    border-color: var(--shifa-green-300, #7fb79a);
+    background: var(--shifa-green-050, #f2f9f5);
+  }
+  .shifa-cards-sm td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    text-align: right;
+    border: 0 !important;
+    padding: 0.4rem 0 !important;
+    min-height: 44px;
+  }
+  .shifa-cards-sm td::before {
+    content: attr(data-label);
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--shifa-green-700, #164632);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    text-align: left;
+    flex: 0 0 auto;
+  }
+
+  /* Prevent horizontal scroll at 360px: let wrapped tables shed their min-width
+     and keep the page to a single column. */
+  .shifa-cards-sm.table-responsive,
+  .shifa-cards-sm {
+    overflow-x: visible;
+  }
+
+  /* Comfortable single-column form controls on the workflow screens. */
+  .shifa-touch .form-control,
+  .shifa-touch .form-select,
+  .shifa-touch .btn {
+    min-height: 44px;
+  }
+}

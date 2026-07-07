@@ -7,6 +7,7 @@ import {
   DashboardMetrics,
   LiveStats,
   MetricsPeriod,
+  RoleDashboardSummary,
   SalesBucket,
 } from './dashboard.model';
 
@@ -53,5 +54,15 @@ export class DashboardService {
   /** Activity-card counts (Req 19.6). */
   activity(): Observable<ActivityCards> {
     return this.api.get<ActivityCards>('/api/admin/metrics/activity');
+  }
+
+  /**
+   * The role-shaped dashboard summary for the current user (design §6.7, §7.1,
+   * Req 3.1–3.6). Available to all four operational roles; the backend shapes
+   * the payload to the caller's role and scopes a salesperson to their own
+   * orders.
+   */
+  roleSummary(): Observable<RoleDashboardSummary> {
+    return this.api.get<RoleDashboardSummary>('/api/dashboard/summary');
   }
 }

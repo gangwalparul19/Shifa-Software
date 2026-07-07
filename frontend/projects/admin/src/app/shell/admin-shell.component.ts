@@ -77,9 +77,6 @@ export class AdminShellComponent {
   private readonly router = inject(Router);
   private readonly confirm = inject(ConfirmService);
 
-  /** Whether the current user is an ADMIN (gates the notifications bell). */
-  protected readonly isAdmin = computed(() => this.auth.session()?.role === Role.ADMIN);
-
   /** Whether the off-canvas sidebar is open (mobile only). */
   protected readonly sidebarOpen = signal(false);
   /** Whether the top-bar user dropdown is open. */

@@ -1,18 +1,44 @@
 import { DatePipe } from '@angular/common';
-import { AfterViewInit, Component, ElementRef, ViewChild, inject, signal } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ApiError } from 'core';
+import { DashboardService } from '../dashboard/dashboard.service';
 import { PackingService } from './packing.service';
 import { PackingScanResponse, ScanLogEntry, ScanOutcome } from './packing.model';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
+import { ToastService } from '../shared/toast.service';
 
 /** The current banner shown above the input after a scan. */
 interface ScanBanner {
   outcome: ScanOutcome;
   title: string;
   detail: string;
+}
+
+/** A count card describing an awaiting-* queue for the packer/admin (Req 9.4, 10.1). */
+interface QueueCard {
+  label: string;
+  value: number;
+  icon: string;
+}
+
+/** The workflow phase of an order the packer is actively moving through. */
+type WorkPhase = 'packed' | 'handed_over' | 'dispatched' | 'other';
+
+/**
+ * An order the packer has just acted on, tracked in-session so Handover /
+ * Dispatch can be driven inline off the scan flow (Req 9.2–9.4, 10.1).
+ */
+interface PackWorkItem {
+  id: number;
+  orderCode: string;
+  customerName: string;
+  status: string;
+  phase: WorkPhase;
+  busy: boolean;
+  error: string | null;
 }
 
 /**
@@ -37,8 +63,10 @@ interface ScanBanner {
   templateUrl: './scan.component.html',
   styleUrl: './scan.component.css',
 })
-export class ScanComponent implements AfterViewInit {
+export class ScanComponent implements OnInit, AfterViewInit {
   private readonly service = inject(PackingService);
+  private readonly dashboard = inject(DashboardService);
+  private readonly toasts = inject(ToastService);
   private readonly fb = inject(FormBuilder);
 
   @ViewChild('barcodeInput') private barcodeInput?: ElementRef<HTMLInputElement>;
@@ -51,8 +79,119 @@ export class ScanComponent implements AfterViewInit {
   protected readonly banner = signal<ScanBanner | null>(null);
   protected readonly log = signal<ScanLogEntry[]>([]);
 
+  /** Orders the packer is actively moving through handover / dispatch this session. */
+  protected readonly workItems = signal<PackWorkItem[]>([]);
+
+  // --- Awaiting-handover / awaiting-dispatch context (Req 9.4, 10.1) ------
+  private readonly queueSummary = signal<QueueCard[]>([]);
+
+  /** The awaiting-* queue cards surfaced above the scan area. */
+  protected readonly queues = computed<QueueCard[]>(() => this.queueSummary());
+
+  ngOnInit(): void {
+    this.loadQueues();
+  }
+
   ngAfterViewInit(): void {
     this.focusInput();
+  }
+
+  /** Loads the awaiting-handover / awaiting-dispatch queue counts (Req 9.4, 10.1). */
+  loadQueues(): void {
+    this.dashboard.roleSummary().subscribe({
+      next: (s) => {
+        if (s.packing) {
+          this.queueSummary.set([
+            { label: 'Awaiting packing', value: s.packing.approvedAwaitingPacking, icon: 'ti-box' },
+            { label: 'Packed today', value: s.packing.packedToday, icon: 'ti-circle-check' },
+            { label: 'Awaiting handover', value: s.packing.awaitingHandover, icon: 'ti-package' },
+            { label: 'Awaiting dispatch', value: s.packing.awaitingDispatch, icon: 'ti-truck-delivery' },
+          ]);
+        } else if (s.admin) {
+          this.queueSummary.set([
+            { label: 'Awaiting handover', value: s.admin.packedAwaitingHandover, icon: 'ti-package' },
+            { label: 'Awaiting dispatch', value: s.admin.handedOverAwaitingDispatch, icon: 'ti-truck-delivery' },
+          ]);
+        } else {
+          this.queueSummary.set([]);
+        }
+      },
+      error: () => {
+        /* Non-fatal: the scan flow still works without the queue context. */
+      },
+    });
+  }
+
+  // --- Handover / Dispatch (Req 9.2–9.4, 10.1) ----------------------------
+
+  /** Normalises a raw status string to a workflow phase, format-agnostic. */
+  private phaseOf(status: string | undefined): WorkPhase {
+    switch ((status ?? '').toUpperCase()) {
+      case 'PACKED':
+        return 'packed';
+      case 'HANDED_TO_DELIVERY':
+        return 'handed_over';
+      default:
+        return 'other';
+    }
+  }
+
+  /** Hand a packed order over to the delivery courier (PACKED → HANDED_TO_DELIVERY). */
+  handover(item: PackWorkItem): void {
+    if (item.busy) {
+      return;
+    }
+    this.patchItem(item.id, { busy: true, error: null });
+    this.service.handover(item.id).subscribe({
+      next: (order) => {
+        this.patchItem(item.id, {
+          busy: false,
+          status: order.orderStatus,
+          phase: this.phaseOf(order.orderStatus),
+        });
+        this.toasts.success(`Order ${item.orderCode} handed over to delivery`);
+        this.loadQueues();
+      },
+      error: (err: HttpErrorResponse) => this.onActionError(item.id, err, 'Handover'),
+    });
+  }
+
+  /** Dispatch a handed-over order — enqueues courier assignment (Req 10.1). */
+  dispatch(item: PackWorkItem): void {
+    if (item.busy) {
+      return;
+    }
+    this.patchItem(item.id, { busy: true, error: null });
+    this.service.dispatch(item.id).subscribe({
+      next: () => {
+        // Dispatch enqueues courier assignment; the order stays HANDED_TO_DELIVERY
+        // until the async assignment advances it, so we mark the local phase done.
+        this.patchItem(item.id, { busy: false, phase: 'dispatched' });
+        this.toasts.success(`Order ${item.orderCode} dispatched for courier assignment`);
+        this.loadQueues();
+      },
+      error: (err: HttpErrorResponse) => this.onActionError(item.id, err, 'Dispatch'),
+    });
+  }
+
+  private onActionError(id: number, err: HttpErrorResponse, action: string): void {
+    const apiError = err.error as ApiError | undefined;
+    const message = apiError?.message ?? `${action} failed. Please try again.`;
+    this.patchItem(id, { busy: false, error: message });
+    this.toasts.error(message);
+    this.loadQueues();
+  }
+
+  /** Immutably patches a tracked work item by id. */
+  private patchItem(id: number, patch: Partial<PackWorkItem>): void {
+    this.workItems.update((items) =>
+      items.map((it) => (it.id === id ? { ...it, ...patch } : it)),
+    );
+  }
+
+  /** Removes a completed/tracked work item from the session list. */
+  dismissItem(id: number): void {
+    this.workItems.update((items) => items.filter((it) => it.id !== id));
   }
 
   /** Submit the scanned/typed barcode (Enter or the Scan button). */
@@ -99,7 +238,25 @@ export class ScanComponent implements AfterViewInit {
       message: response.message,
       at: new Date(),
     });
+    // Surface the just-packed order for an inline Handover action (Req 9.2–9.4).
+    if (response.order) {
+      this.trackWorkItem({
+        id: response.order.id,
+        orderCode: response.order.orderCode,
+        customerName: response.order.customerName,
+        status: String(response.order.orderStatus),
+        phase: this.phaseOf(String(response.order.orderStatus)),
+        busy: false,
+        error: null,
+      });
+      this.loadQueues();
+    }
     this.finish();
+  }
+
+  /** Adds (or refreshes) a tracked work item, newest first, de-duped by id. */
+  private trackWorkItem(item: PackWorkItem): void {
+    this.workItems.update((items) => [item, ...items.filter((it) => it.id !== item.id)].slice(0, 20));
   }
 
   private onError(barcode: string, err: HttpErrorResponse): void {

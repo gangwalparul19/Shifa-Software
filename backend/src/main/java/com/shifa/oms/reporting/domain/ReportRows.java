@@ -29,4 +29,18 @@ public final class ReportRows {
     /** One row of the state-wise report: destination state, order count, total sales (Req 20.1). */
     public record StateRow(String state, long orderCount, BigDecimal totalSales) {
     }
+
+    /** One row of a grouped-count report: a group key label and its order count (Req 16.1&ndash;16.3). */
+    public record CountRow(String key, long orderCount) {
+    }
+
+    /**
+     * The delivery-outcome summary over a range (Req 16.4): the counts of the
+     * four terminal outcomes (kept separate) plus the delivery success rate,
+     * expressed as a percentage {@code DELIVERED / (DELIVERED + CUSTOMER_REJECTED
+     * + DELIVERY_FAILED + CANCELLED) * 100} (0 when the denominator is 0).
+     */
+    public record DeliveryOutcome(long delivered, long customerRejected, long deliveryFailed,
+                                  long cancelled, BigDecimal successRate) {
+    }
 }
