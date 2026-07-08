@@ -362,4 +362,28 @@ public class OutboxEventPublisher {
         return publish(OutboxEvent.AGGREGATE_PRODUCT, productId,
                 OutboxEvent.EVENT_LOW_STOCK, payload);
     }
+
+    /**
+     * Enqueues a {@code LEAD_FOLLOW_UP_DUE} event for a lead whose follow-up date
+     * is due, so an in-app reminder is delivered to the lead owner (design
+     * &sect;Follow-up Reminders). Lead-scoped ({@link OutboxEvent#AGGREGATE_LEAD})
+     * with the lead id as the aggregate id; the returned event's id is used as the
+     * de-dup {@code sourceEventId} of the staff notification it drives.
+     *
+     * @param leadId       the due lead's id
+     * @param customerName the lead's customer name, for display
+     * @param ownerUserId  the lead owner the reminder is addressed to
+     * @param followUpDate the due follow-up date (ISO string), for display
+     * @return the persisted event row
+     */
+    public OutboxEvent publishLeadFollowUpDue(Long leadId, String customerName,
+                                              Long ownerUserId, String followUpDate) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("leadId", leadId);
+        payload.put("customerName", customerName);
+        payload.put("ownerUserId", ownerUserId);
+        payload.put("followUpDate", followUpDate);
+        return publish(OutboxEvent.AGGREGATE_LEAD, leadId,
+                OutboxEvent.EVENT_LEAD_FOLLOW_UP_DUE, payload);
+    }
 }

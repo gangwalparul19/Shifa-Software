@@ -1,0 +1,444 @@
+<admin-page-header
+  title="Leads"
+  subtitle="Capture enquiries and work them through your sales pipeline."
+  [breadcrumbs]="[{ label: 'Leads' }]"
+>
+  <button type="button" class="btn btn-outline-secondary" (click)="load(); loadPipeline()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+  <a class="btn btn-outline-primary" routerLink="/leads/follow-ups">
+    <i class="ti ti-calendar-event me-1"></i> Due follow-ups
+  </a>
+  @if (canManage()) {
+    <button type="button" class="btn btn-primary" (click)="openCapture()">
+      <i class="ti ti-plus me-1"></i> Add lead
+    </button>
+  }
+</admin-page-header>
+
+<!-- Search + source filter -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-lg">
+        <div class="input-icon">
+          <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+          <input
+            type="search"
+            class="form-control"
+            [formControl]="search"
+            placeholder="Search by name or mobile…"
+            autocomplete="off"
+            aria-label="Search leads"
+          />
+          @if (search.value) {
+            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
+              <i class="ti ti-x"></i>
+            </span>
+          }
+        </div>
+      </div>
+      <div class="col-12 col-lg-3">
+        <label class="form-label small mb-1">Source</label>
+        <select class="form-select" [formControl]="sourceFilter" aria-label="Filter by source">
+          <option value="">All sources</option>
+          @for (opt of leadSourceOptions; track opt.value) {
+            <option [value]="opt.value">{{ opt.label }}</option>
+          }
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Status filter tabs with per-stage counts (Req 3.3, 3.4) -->
+<div class="shifa-status-tabs mb-3" role="tablist" aria-label="Filter leads by stage">
+  @for (tab of statusTabs; track tab.key) {
+    <button
+      type="button"
+      role="tab"
+      class="shifa-status-tab"
+      [class.active]="statusLens() === tab.key"
+      [attr.aria-selected]="statusLens() === tab.key"
+      (click)="setLens(tab.key)"
+    >
+      {{ tab.label }}
+      <span class="shifa-tab-count">{{ stageCounts()[tab.key] }}</span>
+    </button>
+  }
+</div>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" skeleton="cards" loadingLabel="Loading leads…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (visibleLeads().length === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-user-search"
+    title="No leads found"
+    [message]="
+      statusLens() !== 'ALL'
+        ? 'No leads in this stage.'
+        : hasFilters()
+          ? 'No leads match your filters.'
+          : 'Capture your first lead to start building your pipeline.'
+    "
+    [ctaLabel]="canManage() && statusLens() === 'ALL' && !hasFilters() ? 'Add lead' : undefined"
+    ctaIcon="ti-plus"
+    (cta)="openCapture()"
+  />
+} @else {
+  <div class="shifa-lead-cards">
+    @for (lead of visibleLeads(); track lead.id) {
+      <button type="button" class="shifa-lc" (click)="openDetail(lead)">
+        <div class="shifa-lc__r1">
+          <span class="shifa-lc__name">{{ lead.customerName }}</span>
+          <span class="shifa-lc__pill" [class]="pillClass(lead.status)">{{ statusLabels[lead.status] }}</span>
+        </div>
+        <div class="shifa-lc__r2">
+          <span class="shifa-lc__meta">
+            <i class="ti ti-broadcast me-1"></i>{{ sourceLabel(lead.leadSource) }}
+            @if (lead.customerMobile) {
+              · {{ lead.customerMobile }}
+            }
+          </span>
+          @if (lead.followUpDate) {
+            <span class="shifa-lc__followup">
+              <i class="ti ti-calendar-event me-1"></i>{{ lead.followUpDate | date: 'dd MMM' }}
+            </span>
+          }
+        </div>
+      </button>
+    }
+  </div>
+}
+
+<!-- Floating action button to capture a lead (mobile) -->
+@if (canManage()) {
+  <button type="button" class="shifa-fab" (click)="openCapture()" aria-label="Add lead" title="Add lead">
+    <i class="ti ti-plus"></i>
+  </button>
+}
+
+<!-- ===================== Capture / edit form drawer ===================== -->
+@if (formOpen()) {
+  <div class="shifa-overlay" (click)="closeForm()"></div>
+  <aside class="shifa-drawer" role="dialog" aria-label="Capture lead">
+    <header class="shifa-drawer__head shifa-lead-head">
+      <button type="button" class="shifa-lead-headbtn" (click)="closeForm()" aria-label="Close">
+        <i class="ti ti-x"></i>
+      </button>
+      <h3 class="shifa-lead-title">{{ editingId() ? 'Edit lead' : 'Add lead' }}</h3>
+      <span class="shifa-lead-headspacer"></span>
+    </header>
+    <div class="shifa-drawer__body">
+      @if (formError(); as err) {
+        <div class="alert alert-danger anim-fade-up" role="alert"><i class="ti ti-alert-triangle me-2"></i>{{ err }}</div>
+      }
+      <form (ngSubmit)="submitForm()" novalidate [formGroup]="leadForm">
+        <div class="mb-3">
+          <label class="form-label required">Customer name</label>
+          <input
+            type="text"
+            class="form-control"
+            formControlName="customerName"
+            maxlength="120"
+            autocomplete="off"
+            [class.is-invalid]="leadForm.controls.customerName.touched && leadForm.controls.customerName.invalid"
+          />
+          @if (leadForm.controls.customerName.touched && leadForm.controls.customerName.invalid) {
+            <div class="text-danger small mt-1">A customer name is required.</div>
+          }
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label required">Source</label>
+          <select
+            class="form-select"
+            formControlName="leadSource"
+            [class.is-invalid]="leadForm.controls.leadSource.touched && leadForm.controls.leadSource.invalid"
+          >
+            <option value="">Select a source…</option>
+            @for (opt of leadSourceOptions; track opt.value) {
+              <option [value]="opt.value">{{ opt.label }}</option>
+            }
+          </select>
+          @if (leadForm.controls.leadSource.touched && leadForm.controls.leadSource.invalid) {
+            <div class="text-danger small mt-1">Please choose a source.</div>
+          }
+        </div>
+
+        @if (showSourceNote()) {
+          <div class="mb-3">
+            <label class="form-label">Source note <span class="text-secondary">(optional)</span></label>
+            <input type="text" class="form-control" formControlName="leadSourceNote" maxlength="200"
+              placeholder="Describe the “Other” source" autocomplete="off" />
+          </div>
+        }
+
+        <div class="mb-3">
+          <label class="form-label">Mobile <span class="text-secondary">(optional)</span></label>
+          <input
+            type="tel"
+            class="form-control"
+            formControlName="customerMobile"
+            maxlength="10"
+            inputmode="numeric"
+            placeholder="10-digit mobile"
+            autocomplete="off"
+            [class.is-invalid]="leadForm.controls.customerMobile.touched && leadForm.controls.customerMobile.invalid"
+          />
+          @if (leadForm.controls.customerMobile.touched && leadForm.controls.customerMobile.invalid) {
+            <div class="text-danger small mt-1">Mobile must be exactly 10 digits.</div>
+          }
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Email <span class="text-secondary">(optional)</span></label>
+          <input
+            type="email"
+            class="form-control"
+            formControlName="customerEmail"
+            maxlength="150"
+            autocomplete="off"
+            [class.is-invalid]="leadForm.controls.customerEmail.touched && leadForm.controls.customerEmail.invalid"
+          />
+          @if (leadForm.controls.customerEmail.touched && leadForm.controls.customerEmail.invalid) {
+            <div class="text-danger small mt-1">Please enter a valid email address.</div>
+          }
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Note <span class="text-secondary">(optional)</span></label>
+          <textarea class="form-control" rows="3" formControlName="note" maxlength="1000"
+            placeholder="What does the customer want?"></textarea>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Follow-up date <span class="text-secondary">(optional)</span></label>
+          <input type="date" class="form-control" formControlName="followUpDate" />
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 pt-1">
+          <button type="button" class="btn btn-link text-secondary" (click)="closeForm()">Cancel</button>
+          <button type="submit" class="btn btn-primary" [disabled]="formBusy()">
+            @if (formBusy()) {
+              <span class="spinner-border spinner-border-sm me-2"></span> Saving…
+            } @else {
+              <i class="ti ti-check me-1"></i> {{ editingId() ? 'Save changes' : 'Capture lead' }}
+            }
+          </button>
+        </div>
+      </form>
+    </div>
+  </aside>
+}
+
+<!-- ===================== Lead-detail drawer ===================== -->
+@if (detailLoading() || selectedDetail() || detailError()) {
+  <div class="shifa-overlay" (click)="closeDetail()"></div>
+  <aside class="shifa-drawer shifa-ld" role="dialog" aria-label="Lead details">
+    @if (detailLoading()) {
+      <div class="shifa-drawer__body"><div class="skeleton skeleton-line w-60 mb-3"></div><div class="skeleton skeleton-card"></div></div>
+    } @else if (detailError()) {
+      <div class="shifa-drawer__body"><div class="alert alert-danger">{{ detailError() }}</div></div>
+    } @else if (selectedDetail(); as lead) {
+      <!-- Green header strip -->
+      <header class="shifa-drawer__head shifa-ld__head">
+        <button type="button" class="shifa-ld__headbtn" (click)="closeDetail()" aria-label="Back">
+          <i class="ti ti-arrow-left"></i>
+        </button>
+        <h3 class="shifa-ld__title">Lead Details</h3>
+        @if (canManage() && isActive(lead)) {
+          <button type="button" class="shifa-ld__headbtn" (click)="openEdit(lead)" aria-label="Edit lead" title="Edit lead">
+            <i class="ti ti-pencil"></i>
+          </button>
+        } @else {
+          <span class="shifa-ld__headbtn shifa-ld__headspacer"></span>
+        }
+      </header>
+
+      <div class="shifa-drawer__body shifa-ld__body">
+        <!-- Status pill + created date -->
+        <div class="shifa-ld__toprow">
+          <span class="shifa-ld__pill" [class]="pillClass(lead.status)">{{ statusLabels[lead.status] }}</span>
+          <span class="shifa-ld__code">{{ lead.createdAt ? (lead.createdAt | date: 'dd MMM yyyy') : '—' }}</span>
+        </div>
+
+        <!-- Customer -->
+        <div class="shifa-ld__card shifa-ld__contact">
+          <div class="shifa-ld__avatar" aria-hidden="true">{{ customerInitials(lead.customerName) }}</div>
+          <div class="shifa-ld__contact-main">
+            <div class="shifa-ld__name">{{ lead.customerName }}</div>
+            <div class="shifa-ld__muted">
+              <i class="ti ti-broadcast me-1"></i>{{ sourceLabel(lead.leadSource) }}
+              @if (lead.leadSourceNote) { · {{ lead.leadSourceNote }} }
+            </div>
+            @if (lead.customerEmail) {
+              <div class="shifa-ld__muted">{{ lead.customerEmail }}</div>
+            }
+          </div>
+          @if (lead.customerMobile) {
+            <a class="shifa-ld__round" [href]="'tel:' + lead.customerMobile" [attr.aria-label]="'Call ' + lead.customerName" title="Call">
+              <i class="ti ti-phone"></i>
+            </a>
+          }
+        </div>
+
+        @if (lead.note) {
+          <div class="shifa-ld__section">
+            <div class="shifa-ld__label mb-1">Note</div>
+            <div class="shifa-ld__card"><div class="shifa-ld__muted">{{ lead.note }}</div></div>
+          </div>
+        }
+
+        @if (lead.status === 'LOST' && lead.lostReason) {
+          <div class="shifa-ld__section">
+            <div class="shifa-ld__label mb-1">Lost reason</div>
+            <div class="shifa-ld__card">
+              <div class="shifa-ld__value">{{ lostReasonLabel(lead.lostReason) }}</div>
+              @if (lead.lostReasonNote) {
+                <div class="shifa-ld__muted mt-1">{{ lead.lostReasonNote }}</div>
+              }
+            </div>
+          </div>
+        }
+
+        @if (lead.status === 'WON' && lead.convertedOrderId) {
+          <div class="shifa-ld__section">
+            <div class="shifa-ld__card shifa-ld__won">
+              <i class="ti ti-circle-check me-2"></i>
+              Converted to order <span class="shifa-mono ms-1">#{{ lead.convertedOrderId }}</span>
+            </div>
+          </div>
+        }
+
+        <!-- Follow-up (set/clear inline; Req 5.1) -->
+        @if (canManage() && isActive(lead)) {
+          <div class="shifa-ld__section">
+            <div class="shifa-ld__label mb-1">Follow-up date</div>
+            <div class="shifa-ld__card">
+              <div class="d-flex gap-2 align-items-center flex-wrap">
+                <input type="date" class="form-control shifa-ld__date" [formControl]="followUpControl" />
+                <button type="button" class="btn btn-primary" (click)="saveFollowUp()" [disabled]="detailBusy()">
+                  <i class="ti ti-check me-1"></i> Save
+                </button>
+                @if (lead.followUpDate) {
+                  <button type="button" class="btn btn-link text-secondary px-1" (click)="clearFollowUp()" [disabled]="detailBusy()">
+                    Clear
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+        } @else if (lead.followUpDate) {
+          <div class="shifa-ld__section">
+            <div class="shifa-ld__label mb-1">Follow-up date</div>
+            <div class="shifa-ld__card"><div class="shifa-ld__value">{{ lead.followUpDate | date: 'dd MMM yyyy' }}</div></div>
+          </div>
+        }
+
+        <!-- Status history (Req 3.5) -->
+        <div class="shifa-ld__section">
+          <div class="shifa-ld__label mb-2">Status history</div>
+          <div class="shifa-ld__card">
+            @for (h of lead.statusHistory; track $index) {
+              <div class="shifa-ld__hist">
+                <span class="shifa-ld__histdot" [class]="pillClass(h.toStatus)"></span>
+                <div class="shifa-ld__hist-main">
+                  <div class="shifa-ld__hist-line">
+                    @if (h.fromStatus) {
+                      {{ statusLabels[h.fromStatus] }} <i class="ti ti-arrow-right mx-1"></i>
+                    } @else {
+                      Captured as
+                    }
+                    <strong>{{ statusLabels[h.toStatus] }}</strong>
+                  </div>
+                  <div class="shifa-ld__muted">
+                    {{ h.actor }} · {{ h.changedAt ? (h.changedAt | date: 'dd MMM yyyy · hh:mm a') : '' }}
+                  </div>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+
+        <!-- Actions -->
+        @if (canManage() && isActive(lead)) {
+          @if (nextStage(lead.status); as target) {
+            <button type="button" class="btn btn-primary w-100 shifa-ld__primary" (click)="advance(lead)" [disabled]="detailBusy()">
+              @if (detailBusy()) {
+                <span class="spinner-border spinner-border-sm me-2"></span>
+              } @else {
+                <i class="ti ti-arrow-right me-1"></i>
+              }
+              Move to {{ statusLabels[target] }}
+            </button>
+          }
+
+          <button type="button" class="btn btn-success w-100 shifa-ld__convert" (click)="convert(lead)" [disabled]="detailBusy()">
+            <i class="ti ti-shopping-cart-plus me-1"></i> Convert to order
+          </button>
+
+          <button type="button" class="btn w-100 shifa-ld__lost" (click)="openMarkLost()" [disabled]="detailBusy()">
+            <i class="ti ti-circle-x me-1"></i> Mark lost
+          </button>
+        }
+      </div>
+    }
+  </aside>
+}
+
+<!-- ===================== Mark-lost modal ===================== -->
+@if (lostOpen() && selectedDetail(); as lead) {
+  <div class="shifa-overlay" (click)="closeMarkLost()"></div>
+  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Mark lead lost">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-circle-x me-2"></i>Mark lead lost</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeMarkLost()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">{{ lead.customerName }} — choose why this lead didn’t convert.</p>
+        <form (ngSubmit)="submitMarkLost()" novalidate [formGroup]="lostForm">
+          <div class="mb-3">
+            <label class="form-label required">Reason</label>
+            <select
+              class="form-select"
+              formControlName="lostReason"
+              [class.is-invalid]="lostForm.controls.lostReason.touched && lostForm.controls.lostReason.invalid"
+            >
+              <option value="">Select a reason…</option>
+              @for (opt of lostReasonOptions; track opt.value) {
+                <option [value]="opt.value">{{ opt.label }}</option>
+              }
+            </select>
+            @if (lostForm.controls.lostReason.touched && lostForm.controls.lostReason.invalid) {
+              <div class="text-danger small mt-1">A reason is required.</div>
+            }
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Note <span class="text-secondary">(optional)</span></label>
+            <input type="text" class="form-control" formControlName="lostReasonNote" maxlength="200" autocomplete="off" />
+          </div>
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-link text-secondary" (click)="closeMarkLost()">Cancel</button>
+            <button type="submit" class="btn btn-danger" [disabled]="detailBusy()">
+              @if (detailBusy()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Working…
+              } @else {
+                <i class="ti ti-circle-x me-1"></i> Mark lost
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}

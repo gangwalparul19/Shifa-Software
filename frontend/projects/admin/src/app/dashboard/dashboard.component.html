@@ -806,6 +806,46 @@
       }
     </div>
   }
+
+  <!-- My leads: pipeline-by-stage counts + due-follow-up badge (Req 6.6) -->
+  <div class="shifa-section-title d-flex align-items-center justify-content-between">
+    <span>My leads</span>
+    <a class="btn btn-sm btn-outline-primary shifa-touch" routerLink="/leads/follow-ups">
+      <i class="ti ti-calendar-event me-1"></i> Due follow-ups
+      @if (dueFollowUps() > 0) {
+        <span class="badge bg-red text-white ms-1">{{ dueFollowUps() }}</span>
+      }
+    </a>
+  </div>
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
+    <div class="col-6 col-md-4 col-xl-3">
+      <div class="card card-hover stat-accent" style="--accent: #f59f00; --accent-soft: #fdf1da">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Due follow-ups</div>
+            <div class="h1 m-0 count-up" [shifaCountUp]="dueFollowUps()" countFormat="int"></div>
+          </div>
+          <span class="stat-icon" style="--accent: #f59f00; --accent-soft: #fdf1da"><i class="ti ti-calendar-event"></i></span>
+        </div>
+      </div>
+    </div>
+    @for (s of salespersonLeadStages(); track s.key) {
+      <div class="col-6 col-md-4 col-xl-3">
+        <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
+          <div class="card-body d-flex align-items-center justify-content-between">
+            <div>
+              <div class="subheader">{{ s.label }} leads</div>
+              <div class="h1 m-0 count-up" [shifaCountUp]="s.value" countFormat="int"></div>
+            </div>
+            <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-user-plus"></i></span>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+  <div class="mb-3">
+    <a class="btn btn-primary shifa-touch" routerLink="/leads"><i class="ti ti-user-plus me-1"></i> Open pipeline</a>
+  </div>
 }
 
 <!-- Packer (Req 3.4) -->

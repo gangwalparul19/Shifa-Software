@@ -5,6 +5,13 @@ import com.shifa.oms.auth.Role;
 import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.dashboard.domain.DashboardQueue;
 import com.shifa.oms.dashboard.dto.RoleDashboardSummary;
+import com.shifa.oms.lead.LeadReportAggregator;
+import com.shifa.oms.lead.LeadService;
+import com.shifa.oms.lead.LeadStatus;
+import com.shifa.oms.lead.dto.LeadReports.ConversionReport;
+import com.shifa.oms.lead.dto.LeadReports.ConversionRow;
+import com.shifa.oms.lead.dto.LeadReports.PipelineCount;
+import com.shifa.oms.lead.dto.LeadReports.PipelineReport;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.reconciliation.ReceivableEntity;
@@ -53,23 +60,28 @@ public class RoleDashboardService {
     private final OrderRepository orderRepository;
     private final ReceivableRepository receivableRepository;
     private final SalespersonScopeResolver scopeResolver;
+    private final LeadService leadService;
     private final Clock clock;
 
     @org.springframework.beans.factory.annotation.Autowired
     public RoleDashboardService(OrderRepository orderRepository,
                                 ReceivableRepository receivableRepository,
-                                SalespersonScopeResolver scopeResolver) {
-        this(orderRepository, receivableRepository, scopeResolver, Clock.systemDefaultZone());
+                                SalespersonScopeResolver scopeResolver,
+                                LeadService leadService) {
+        this(orderRepository, receivableRepository, scopeResolver, leadService,
+                Clock.systemDefaultZone());
     }
 
     /** Package-visible constructor allowing a fixed clock in tests. */
     RoleDashboardService(OrderRepository orderRepository,
                          ReceivableRepository receivableRepository,
                          SalespersonScopeResolver scopeResolver,
+                         LeadService leadService,
                          Clock clock) {
         this.orderRepository = orderRepository;
         this.receivableRepository = receivableRepository;
         this.scopeResolver = scopeResolver;
+        this.leadService = leadService;
         this.clock = clock;
     }
 
@@ -81,7 +93,7 @@ public class RoleDashboardService {
             case SALESPERSON -> new RoleDashboardSummary(
                     role.name(), salesperson(principal), null, null, null);
             case ADMIN -> new RoleDashboardSummary(
-                    role.name(), null, admin(), null, null);
+                    role.name(), null, admin(principal), null, null);
             case PACKING_USER -> new RoleDashboardSummary(
                     role.name(), null, null, packing(), null);
             case ACCOUNTANT -> new RoleDashboardSummary(
@@ -104,10 +116,18 @@ public class RoleDashboardService {
             byStatus.merge(key, 1L, Long::sum);
         }
         long awaitingApproval = DashboardQueue.APPROVAL.count(orders, OrderEntity::getOrderStatus);
-        return new RoleDashboardSummary.Salesperson(byStatus, awaitingApproval);
+
+        // Lead pipeline-by-stage counts + due-follow-up count for the caller (Req 6.6).
+        Map<String, Long> leadPipeline = new LinkedHashMap<>();
+        for (Map.Entry<LeadStatus, Long> e : leadService.pipelineCounts(principal).entrySet()) {
+            leadPipeline.put(e.getKey().name(), e.getValue());
+        }
+        long dueFollowUps = leadService.dueFollowUps(principal).size();
+        return new RoleDashboardSummary.Salesperson(
+                byStatus, awaitingApproval, leadPipeline, dueFollowUps);
     }
 
-    private RoleDashboardSummary.Admin admin() {
+    private RoleDashboardSummary.Admin admin(AuthPrincipal principal) {
         List<OrderEntity> orders = orderRepository.findAll();
 
         long pendingApproval = DashboardQueue.APPROVAL.count(orders, OrderEntity::getOrderStatus);
@@ -130,7 +150,31 @@ public class RoleDashboardService {
         long awaitingHandover = DashboardQueue.AWAITING_HANDOVER.count(orders, OrderEntity::getOrderStatus);
         long awaitingDispatch = DashboardQueue.AWAITING_DISPATCH.count(orders, OrderEntity::getOrderStatus);
         return new RoleDashboardSummary.Admin(
-                pendingApproval, perActiveStage, exceptionStates, awaitingHandover, awaitingDispatch);
+                pendingApproval, perActiveStage, exceptionStates, awaitingHandover, awaitingDispatch,
+                adminLeads(principal));
+    }
+
+    /**
+     * The admin leads/conversion overview (Req 6.6): overall total/won/rate
+     * (summed from the unscoped conversion report) plus the current
+     * pipeline-by-stage counts. Reuses the pure {@link LeadReportAggregator}
+     * groupings via {@link LeadService} so the dashboard and the reports agree.
+     */
+    private RoleDashboardSummary.Leads adminLeads(AuthPrincipal principal) {
+        ConversionReport conversion = leadService.reportConversion(null, null, principal);
+        long totalLeads = 0;
+        long won = 0;
+        for (ConversionRow row : conversion.bySource()) {
+            totalLeads += row.leads();
+            won += row.won();
+        }
+        PipelineReport pipeline = leadService.reportPipeline(principal);
+        Map<String, Long> pipelineByStage = new LinkedHashMap<>();
+        for (PipelineCount row : pipeline.rows()) {
+            pipelineByStage.put(row.status().name(), row.count());
+        }
+        return new RoleDashboardSummary.Leads(
+                totalLeads, won, LeadReportAggregator.conversionRate(won, totalLeads), pipelineByStage);
     }
 
     private RoleDashboardSummary.Packing packing() {

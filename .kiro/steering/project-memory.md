@@ -47,11 +47,36 @@ Admin app redesigned to a client wireframe (`docs/wireframe.jpeg`), mobile-first
 ## Backend modules kept (`com.shifa.oms.*`)
 auth, order (+`GET /api/orders/products` picker), statemachine, product, inventory, packing, courier,
 label, invoice, reconciliation, reporting, finance, procurement, returns, crm, dashboard,
-adminnotification, audit, settings, search, agent, notification, mail, platform, common.
+adminnotification, audit, settings, search, agent, notification, mail, platform, common,
+lead (Lead Management — Tasks 1–7 done, backend complete: `LeadStatus`/`LostReason` enums, `LeadEntity`/
+`LeadStatusHistory`, `LeadRepository`/`LeadStatusHistoryRepository`, `LeadService` capture/edit/transition/
+setFollowUp/convert/list/detail/pipelineCounts/dueFollowUps/reports; `LeadController` `/api/leads`
+(`@PreAuthorize hasAnyRole('SALESPERSON','ADMIN')`, capture/list/pipeline/detail/status/follow-up/edit/
+due/convert + `/reports/{by-source,conversion,pipeline,lost-reasons}`); `LeadConvertRequest`/`LeadReports`
+DTOs; pure `LeadReportAggregator` (+`LeadReportRecord`); `FollowUpReminderJob` (@Scheduled `app.lead.reminder.cron`
+default daily 09:00 → outbox `LEAD_FOLLOW_UP_DUE` + `StaffNotificationDispatcher.dispatchToUser`, idempotent via
+`reminded_on`); dashboard summary extended (SALESPERSON leadPipeline+dueFollowUps, ADMIN leads/conversion).
+Convert calls `OrderService.createSalespersonOrder` in same tx (rollback = no-op). Reuses `order.LeadSource`,
+`SalespersonScopeResolver`, `AuditService`, `OutboxEventPublisher`; 409 via `common.IllegalLeadTransitionException`.
+Frontend Task 8 **DONE** (Tasks 1–9 complete): Angular `leads/` feature — `LeadsService` (all `/api/leads`
+endpoints incl. reports), `leads.model.ts` (Lead/LeadSummary/LeadStatus/LostReason/Create/Convert DTOs, pill
+helpers), `LeadsComponent` (mobile-first status filter-tabs w/ counts + colored pills, tappable cards, capture
+form w/ OTHER note + validation, FAB, detail drawer mirroring order-detail w/ status history + advance
+NEW→CONTACTED→QUOTED + Mark Lost picker + set/clear follow-up + Convert), `DueFollowUpsComponent`
+(`/leads/follow-ups`, overdue flagged). Convert flow = **New-Order prefill**: Convert navigates to
+`/orders/new?leadId=N`; `NewOrderComponent` loads the lead, prefills+locks customer/source, and on save POSTs
+`/api/leads/{id}/convert` (creates order + marks lead WON) instead of `/api/orders`. Routes `/leads` +
+`/leads/follow-ups` guarded by `salespersonGuard` (ADMIN+SALESPERSON); shell hamburger gains a "Leads" group
+(both roles); bottom 4 tabs unchanged. Salesperson dashboard gains a "My leads" widget (pipeline-by-stage
+counts + due-follow-up badge) from the extended `dashboard.model.ts` (`SalespersonSummary.leadPipeline`/
+`dueFollowUps`, `AdminSummary.leads`). Optional 8.5 spec `leads.component.spec.ts` (360px checks) type-compiles;
+the vitest runner in this workspace can't bootstrap in isolation (pre-existing — existing specs fail identically).
+Admin `build:admin` completes clean.
 **Removed in pivot:** account, review, payment, coupon, and public checkout/catalog/storefront-config controllers.
 
 ## Admin pages
-dashboard, approval-queue, orders(+/new), products, inventory, customers, returns, notifications,
+dashboard, approval-queue, orders(+/new, +convert-from-lead via `?leadId=`), leads(+/follow-ups),
+products, inventory, customers, returns, notifications,
 audit, suppliers, purchase-orders, expenses, finance/pnl, packing, reconciliation, reports, settings, users.
 Routes: `frontend/projects/admin/src/app/app.routes.ts`; nav: `shell/admin-shell.component.ts`.
 
@@ -59,6 +84,7 @@ Routes: `frontend/projects/admin/src/app/app.routes.ts`; nav: `shell/admin-shell
 - Flyway dir: `backend/src/main/resources/db/migration`. **Never edit an applied migration; add a new versioned one.**
 - `V21` drops storefront tables; `V22` seeds a self-contained demo dataset (all profiles).
 - `V23` adds `orders.lead_source`/`lead_source_note`/`customer_email` (+`ix_orders_lead_source`); `V24` adds `admin_notifications.recipient_role`/`recipient_user_id` (+`ix_admin_notifications_recipient`). Both additive/nullable (role-based-order-workflow).
+- `V25` (lead-management) adds `leads` + `lead_status_history` tables (+ indexes `ix_leads_owner_status`/`_status`/`_follow_up`/`_source`/`_mobile`, `ix_lead_history_lead`); FKs → `users(id)`/`orders(id)`; `leads.reminded_on` DATE for follow-up de-dup. Additive, safe on seeded V22. Backend now **468 tests** pass (was 456; lead convert/API/reminders/reports/dashboard added).
 - Start against an **empty** `shifa_dashboard` (V22 uses explicit IDs). If half-migrated, drop & recreate the DB first.
 - Storefront-added columns on orders/products/users are intentionally kept (still mapped by entities).
 

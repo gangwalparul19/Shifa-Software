@@ -110,6 +110,17 @@ public class OutboxEvent {
     /** Aggregate type discriminator for product-scoped events (e.g. low stock). */
     public static final String AGGREGATE_PRODUCT = "PRODUCT";
 
+    /** Aggregate type discriminator for lead-scoped events (e.g. follow-up due). */
+    public static final String AGGREGATE_LEAD = "LEAD";
+
+    /**
+     * Event type emitted by the {@code FollowUpReminderJob} when a non-terminal
+     * lead's follow-up date is due, so an in-app reminder is delivered to the
+     * lead owner (design &sect;Follow-up Reminders). Its aggregate is
+     * {@link #AGGREGATE_LEAD} with the lead id.
+     */
+    public static final String EVENT_LEAD_FOLLOW_UP_DUE = "LEAD_FOLLOW_UP_DUE";
+
     /**
      * Event type emitted when a stock decrement drives a tracked product into the
      * low-stock (or out-of-stock) band, so the admin is notified to restock.

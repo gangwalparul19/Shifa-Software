@@ -22,6 +22,8 @@ import { SuppliersComponent } from './suppliers/suppliers.component';
 import { PurchaseOrdersComponent } from './purchase-orders/purchase-orders.component';
 import { ExpensesComponent } from './expenses/expenses.component';
 import { ProfitLossComponent } from './finance/profit-loss.component';
+import { LeadsComponent } from './leads/leads.component';
+import { DueFollowUpsComponent } from './leads/due-follow-ups.component';
 
 const LOGIN_PATH = '/login';
 const FORBIDDEN_PATH = '/forbidden';
@@ -104,6 +106,21 @@ export const routes: Routes = [
         path: 'orders',
         component: OrdersComponent,
         canActivate: [staffGuard],
+      },
+      {
+        // Due follow-ups view (SALESPERSON + ADMIN, Req 5.2). Registered before
+        // the pipeline list so the more specific path wins. The backend scopes a
+        // salesperson to their own leads.
+        path: 'leads/follow-ups',
+        component: DueFollowUpsComponent,
+        canActivate: [salespersonGuard],
+      },
+      {
+        // Leads pipeline / capture (SALESPERSON + ADMIN, Req 8). The backend
+        // scopes a salesperson to their own leads; admins see all.
+        path: 'leads',
+        component: LeadsComponent,
+        canActivate: [salespersonGuard],
       },
       {
         // Customers / CRM (ADMIN + ACCOUNTANT + SALESPERSON). The backend scopes

@@ -26,6 +26,8 @@ function salespersonSummary(): RoleDashboardSummary {
     salesperson: {
       ordersByStatus: { PENDING_ADMIN_APPROVAL: 2, PACKED: 1, DELIVERED: 3 },
       awaitingApproval: 2,
+      leadPipeline: { NEW: 3, CONTACTED: 1, QUOTED: 2 },
+      dueFollowUps: 4,
     },
     admin: null,
     packing: null,

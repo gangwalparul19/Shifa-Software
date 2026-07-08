@@ -136,6 +136,11 @@ app:
     # Nightly DB dump to Object Storage (interval must be <= 24h).
     cron: ${BACKUP_CRON:0 0 2 * * *}
     mysqldump-path: ${MYSQLDUMP_PATH:mysqldump}
+  lead:
+    reminder:
+      # Follow-up reminder job schedule (design §Follow-up Reminders). Default
+      # daily at 09:00; each due lead is reminded at most once per due day.
+      cron: ${LEAD_REMINDER_CRON:0 0 9 * * *}
   storage:
     # Binary object store for payment screenshots (and later PDFs).
     # provider: LOCAL (dev, filesystem) or OCI (cloud, Object Storage - TODO).

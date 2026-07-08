@@ -140,6 +140,29 @@ export class AdminShellComponent {
       ],
     },
     {
+      // Lead Management / sales pipeline (SALESPERSON + ADMIN, lead-management
+      // Task 8). Kept out of the 4 bottom tabs; reachable here for both roles.
+      kind: 'group',
+      label: 'Leads',
+      icon: 'ti-user-plus',
+      children: [
+        {
+          kind: 'link',
+          label: 'Leads',
+          path: '/leads',
+          icon: 'ti-user-plus',
+          roles: [Role.SALESPERSON, Role.ADMIN],
+        },
+        {
+          kind: 'link',
+          label: 'Due follow-ups',
+          path: '/leads/follow-ups',
+          icon: 'ti-calendar-event',
+          roles: [Role.SALESPERSON, Role.ADMIN],
+        },
+      ],
+    },
+    {
       kind: 'link',
       label: 'Customers',
       path: '/customers',

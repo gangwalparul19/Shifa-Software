@@ -18,10 +18,15 @@ public record RoleDashboardSummary(
         Accountant accountant) {
 
     /**
-     * A salesperson's own leads/orders grouped by status plus the count of their
-     * orders awaiting admin approval (Req 3.2).
+     * A salesperson's own orders grouped by status, the count of their orders
+     * awaiting admin approval (Req 3.2), plus their lead pipeline-by-stage counts
+     * and the number of leads with a due follow-up (Req 6.6, lead-management).
      */
-    public record Salesperson(Map<String, Long> ordersByStatus, long awaitingApproval) {
+    public record Salesperson(
+            Map<String, Long> ordersByStatus,
+            long awaitingApproval,
+            Map<String, Long> leadPipeline,
+            long dueFollowUps) {
     }
 
     /**
@@ -34,7 +39,21 @@ public record RoleDashboardSummary(
             Map<String, Long> perActiveStage,
             Map<String, Long> exceptionStates,
             long packedAwaitingHandover,
-            long handedOverAwaitingDispatch) {
+            long handedOverAwaitingDispatch,
+            Leads leads) {
+    }
+
+    /**
+     * The admin leads/conversion overview (Req 6.6, lead-management): total leads
+     * captured, the number won, the overall conversion rate ({@code won / leads},
+     * a fraction; 0 when there are no leads), and the current pipeline-by-stage
+     * counts.
+     */
+    public record Leads(
+            long totalLeads,
+            long won,
+            BigDecimal conversionRate,
+            Map<String, Long> pipelineByStage) {
     }
 
     /**

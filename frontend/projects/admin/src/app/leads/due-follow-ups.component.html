@@ -1,0 +1,55 @@
+<admin-page-header
+  title="Due follow-ups"
+  subtitle="Leads that need a nudge today or are already overdue."
+  [breadcrumbs]="[{ label: 'Leads', link: '/leads' }, { label: 'Due follow-ups' }]"
+>
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+  <a class="btn btn-primary" routerLink="/leads">
+    <i class="ti ti-list me-1"></i> All leads
+  </a>
+</admin-page-header>
+
+@if (!loading() && !loadError() && overdueCount() > 0) {
+  <div class="alert alert-warning mb-3" role="status">
+    <i class="ti ti-alert-triangle me-2"></i>
+    {{ overdueCount() }} overdue follow-up{{ overdueCount() === 1 ? '' : 's' }} need attention.
+  </div>
+}
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" skeleton="cards" loadingLabel="Loading follow-ups…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (leads().length === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-calendar-check"
+    title="You're all caught up"
+    message="No leads are due for a follow-up right now."
+  />
+} @else {
+  <div class="shifa-due-cards">
+    @for (lead of leads(); track lead.id) {
+      <a class="shifa-due" routerLink="/leads">
+        <div class="shifa-due__r1">
+          <span class="shifa-due__name">{{ lead.customerName }}</span>
+          <span class="shifa-due__pill" [class]="pillClass(lead.status)">{{ statusOf(lead.status) }}</span>
+        </div>
+        <div class="shifa-due__r2">
+          <span class="shifa-due__meta">
+            <i class="ti ti-broadcast me-1"></i>{{ sourceLabel(lead.leadSource) }}
+            @if (lead.customerMobile) { · {{ lead.customerMobile }} }
+          </span>
+          <span class="shifa-due__date" [class.is-overdue]="isOverdue(lead)">
+            <i class="ti ti-calendar-event me-1"></i>
+            {{ lead.followUpDate ? (lead.followUpDate | date: 'dd MMM yyyy') : '—' }}
+            @if (isOverdue(lead)) { · Overdue }
+          </span>
+        </div>
+      </a>
+    }
+  </div>
+}

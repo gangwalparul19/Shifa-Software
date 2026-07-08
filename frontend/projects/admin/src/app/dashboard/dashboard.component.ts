@@ -151,6 +151,39 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.toStatusCounts(this.summary()?.admin?.exceptionStates),
   );
 
+  /**
+   * The salesperson's lead pipeline-by-stage counts (NEW/CONTACTED/QUOTED) as
+   * ordered, labelled counts for the "My leads" widget (Req 6.6, lead-management).
+   */
+  protected readonly salespersonLeadStages = computed<StatusCount[]>(() => {
+    const map = this.summary()?.salesperson?.leadPipeline;
+    if (!map) {
+      return [];
+    }
+    const order = ['NEW', 'CONTACTED', 'QUOTED'];
+    return order
+      .filter((k) => k in map)
+      .map((key) => ({ key, label: this.humanizeStatus(key), value: map[key] ?? 0 }));
+  });
+
+  /** The admin leads/conversion overview, when present (Req 6.6, lead-management). */
+  protected readonly adminLeads = computed(() => this.summary()?.admin?.leads ?? null);
+
+  /** The admin lead pipeline-by-stage counts as ordered, labelled counts. */
+  protected readonly adminLeadStages = computed<StatusCount[]>(() => {
+    const map = this.adminLeads()?.pipelineByStage;
+    if (!map) {
+      return [];
+    }
+    const order = ['NEW', 'CONTACTED', 'QUOTED'];
+    return order
+      .filter((k) => k in map)
+      .map((key) => ({ key, label: this.humanizeStatus(key), value: map[key] ?? 0 }));
+  });
+
+  /** The salesperson's due-follow-up count for the widget badge. */
+  protected readonly dueFollowUps = computed(() => this.summary()?.salesperson?.dueFollowUps ?? 0);
+
   /** Honour reduced-motion by disabling chart animations. */
   private readonly reducedMotion =
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'

@@ -1,8 +1,21 @@
-<admin-page-header
-  title="Add New Order"
-  subtitle="Punch a new order on behalf of a customer."
-  [breadcrumbs]="[{ label: 'Orders', link: '/orders' }, { label: 'New Order' }]"
-/>
+@if (convertMode()) {
+  <admin-page-header
+    title="Convert Lead"
+    subtitle="Create an order from this lead. It will be marked Won on save."
+    [breadcrumbs]="[{ label: 'Leads', link: '/leads' }, { label: 'Convert' }]"
+  />
+  <div class="alert alert-success anim-fade-up" role="status">
+    <i class="ti ti-shopping-cart-plus me-2"></i>
+    Converting <strong>{{ convertLeadName() }}</strong> — the customer details and source are carried
+    over from the lead and locked. Add the shipping address, items, and payment below.
+  </div>
+} @else {
+  <admin-page-header
+    title="Add New Order"
+    subtitle="Punch a new order on behalf of a customer."
+    [breadcrumbs]="[{ label: 'Orders', link: '/orders' }, { label: 'New Order' }]"
+  />
+}
 
 @if (serverErrors().length > 0) {
   <div class="alert alert-danger" role="alert">
@@ -375,6 +388,6 @@
     } @else {
       <i class="ti ti-check me-1"></i>
     }
-    Save Order
+    {{ convertMode() ? 'Convert Lead' : 'Save Order' }}
   </button>
 </div>

@@ -110,6 +110,25 @@ export interface SalespersonSummary {
   /** Map keyed by the backend {@code OrderStatus} name (e.g. "PENDING_ADMIN_APPROVAL"). */
   ordersByStatus: Record<string, number>;
   awaitingApproval: number;
+  /**
+   * Lead pipeline-by-stage counts keyed by the backend {@code LeadStatus} name
+   * (NEW/CONTACTED/QUOTED), for the salesperson's own leads (Req 6.6, lead-management).
+   */
+  leadPipeline: Record<string, number>;
+  /** Number of the salesperson's leads with a due follow-up (Req 6.6, lead-management). */
+  dueFollowUps: number;
+}
+
+/**
+ * The admin leads/conversion overview (Req 6.6, lead-management): total leads
+ * captured, the number won, the overall conversion rate ({@code won / leads} as
+ * a fraction; 0 when there are no leads), and the current pipeline-by-stage counts.
+ */
+export interface LeadsSummary {
+  totalLeads: number;
+  won: number;
+  conversionRate: number;
+  pipelineByStage: Record<string, number>;
 }
 
 /** The admin operational overview (Req 3.3). */
@@ -121,6 +140,8 @@ export interface AdminSummary {
   exceptionStates: Record<string, number>;
   packedAwaitingHandover: number;
   handedOverAwaitingDispatch: number;
+  /** The leads/conversion overview (Req 6.6, lead-management). */
+  leads: LeadsSummary | null;
 }
 
 /** The packer's work queues (Req 3.4). */

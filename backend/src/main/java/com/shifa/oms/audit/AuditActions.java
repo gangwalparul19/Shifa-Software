@@ -54,6 +54,12 @@ public final class AuditActions {
     public static final String EXPENSE_ADDED = "EXPENSE_ADDED";
     public static final String EXPENSE_DELETED = "EXPENSE_DELETED";
 
+    // Lead management & sales pipeline (Lead Management feature).
+    public static final String LEAD_CAPTURED = "LEAD_CAPTURED";
+    public static final String LEAD_STATUS_CHANGED = "LEAD_STATUS_CHANGED";
+    public static final String LEAD_FOLLOW_UP_SET = "LEAD_FOLLOW_UP_SET";
+    public static final String LEAD_CONVERTED = "LEAD_CONVERTED";
+
     // --- Entity types -------------------------------------------------------
 
     public static final String ENTITY_ORDER = "ORDER";
@@ -65,4 +71,5 @@ public final class AuditActions {
     public static final String ENTITY_SUPPLIER = "SUPPLIER";
     public static final String ENTITY_PURCHASE_ORDER = "PURCHASE_ORDER";
     public static final String ENTITY_EXPENSE = "EXPENSE";
+    public static final String ENTITY_LEAD = "LEAD";
 }

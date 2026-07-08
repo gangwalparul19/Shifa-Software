@@ -7,7 +7,7 @@ import {
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { ApiError, Product, paiseToMoney, toPaise } from 'core';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
@@ -15,6 +15,8 @@ import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { CatalogService } from './catalog.service';
 import { OrdersService } from './orders.service';
+import { LeadsService } from '../leads/leads.service';
+import { LeadConvertRequest } from '../leads/leads.model';
 import {
   CreateOrderLineItem,
   CreateOrderRequest,
@@ -51,9 +53,22 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private readonly fb = inject(FormBuilder);
   private readonly orders = inject(OrdersService);
   private readonly catalog = inject(CatalogService);
+  private readonly leads = inject(LeadsService);
   private readonly confirm = inject(ConfirmService);
   private readonly toasts = inject(ToastService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+
+  // --- Convert-from-lead mode (design §Convert Flow, Req 4) --------------
+  /**
+   * When the form is opened as {@code /orders/new?leadId=N} it runs in convert
+   * mode: the customer identity + lead source are seeded from the lead and the
+   * customer/source fields are locked (the server forces them from the lead), and
+   * on save it posts {@code POST /api/leads/{id}/convert} instead of the plain
+   * order-create endpoint — creating the order and marking the lead WON.
+   */
+  protected readonly convertLeadId = signal<number | null>(null);
+  protected readonly convertLeadName = signal<string>('');
 
   // --- Product catalog (picker source) ------------------------------------
   protected readonly products = signal<Product[]>([]);
@@ -96,6 +111,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     amountReceived: [0, [Validators.required, Validators.min(0)]],
   });
 
+  /** Whether the form is converting a lead (drives titles, locked fields, submit path). */
+  protected readonly convertMode = computed(() => this.convertLeadId() !== null);
+
   /** Whether the free-text lead-source note is shown (only for {@code OTHER}, Req 4.5). */
   protected readonly showLeadSourceNote = computed(() => this.model().leadSource === 'OTHER');
 
@@ -122,6 +140,50 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     // Keep the totals snapshot in sync with the reactive form.
     this.model.set(this.snapshot());
     this.form.valueChanges.subscribe(() => this.model.set(this.snapshot()));
+
+    // Convert-from-lead mode: seed customer + source from the lead and lock them.
+    const leadIdParam = this.route.snapshot.queryParamMap.get('leadId');
+    const leadId = leadIdParam ? Number(leadIdParam) : NaN;
+    if (Number.isFinite(leadId) && leadId > 0) {
+      this.initConvertMode(leadId);
+    }
+  }
+
+  /**
+   * Loads the lead being converted and pre-fills the customer identity + lead
+   * source (Req 4, design §Convert Flow step 1). Those fields are then locked
+   * because the convert endpoint forces them from the lead server-side.
+   */
+  private initConvertMode(leadId: number): void {
+    this.convertLeadId.set(leadId);
+    this.leads.detail(leadId).subscribe({
+      next: (lead) => {
+        if (lead.status === 'WON' || lead.status === 'LOST') {
+          this.toasts.error('This lead is already closed and cannot be converted.');
+          void this.router.navigate(['/leads']);
+          return;
+        }
+        this.convertLeadName.set(lead.customerName);
+        this.form.patchValue({
+          customerName: lead.customerName,
+          customerMobile: lead.customerMobile ?? '',
+          customerEmail: lead.customerEmail ?? '',
+          leadSource: lead.leadSource,
+          leadSourceNote: lead.leadSourceNote ?? '',
+        });
+        // The customer identity + source are forced from the lead on the server;
+        // lock them so they can't be re-pointed at a different customer.
+        this.form.controls.customerName.disable();
+        this.form.controls.customerMobile.disable();
+        this.form.controls.customerEmail.disable();
+        this.form.controls.leadSource.disable();
+        this.form.controls.leadSourceNote.disable();
+      },
+      error: () => {
+        this.toasts.error('Could not load the lead to convert.');
+        void this.router.navigate(['/leads']);
+      },
+    });
   }
 
   ngOnDestroy(): void {
@@ -269,13 +331,21 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     }
 
     const raw = this.snapshot();
+    const converting = this.convertMode();
     const confirmed = await this.confirm.confirm({
-      title: 'Create order',
-      message: `Create this order for ${this.form.controls.customerName.value} with a total of ${this.formatMoney(this.orderTotalPaise())}?`,
-      confirmLabel: 'Create order',
-      icon: 'ti-receipt',
+      title: converting ? 'Convert lead to order' : 'Create order',
+      message: converting
+        ? `Convert ${this.convertLeadName()} into an order with a total of ${this.formatMoney(this.orderTotalPaise())}? The lead will be marked Won.`
+        : `Create this order for ${this.form.controls.customerName.value} with a total of ${this.formatMoney(this.orderTotalPaise())}?`,
+      confirmLabel: converting ? 'Convert' : 'Create order',
+      icon: converting ? 'ti-shopping-cart-plus' : 'ti-receipt',
     });
     if (!confirmed) {
+      return;
+    }
+
+    if (converting) {
+      this.submitConvert(raw);
       return;
     }
 
@@ -319,8 +389,52 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * Convert-mode save (Req 4, design §Convert Flow steps 2-4): posts the
+   * order-shaped payload (address + items + payment only) to
+   * {@code POST /api/leads/{id}/convert}. The server seeds the customer + lead
+   * source from the lead, creates the order via the shared order-creation path,
+   * and marks the lead WON with the linked order id. On failure the lead stays
+   * unchanged (server-side rollback).
+   */
+  private submitConvert(raw: ReturnType<NewOrderComponent['snapshot']>): void {
+    const leadId = this.convertLeadId();
+    if (leadId === null) {
+      return;
+    }
+    const payload: LeadConvertRequest = {
+      addressLine: this.form.controls.addressLine.value.trim(),
+      city: this.form.controls.city.value.trim(),
+      state: this.form.controls.state.value.trim(),
+      postalCode: this.form.controls.postalCode.value.trim(),
+      items: raw.items.map<CreateOrderLineItem>((it) => ({
+        productId: it.productId as number,
+        quantity: it.quantity,
+        ...(it.rate != null ? { rate: it.rate } : {}),
+      })),
+      amountReceived: raw.amountReceived,
+      ...(this.screenshotKey() ? { paymentScreenshotKey: this.screenshotKey()! } : {}),
+    };
+
+    this.submitting.set(true);
+    this.leads.convert(leadId, payload).subscribe({
+      next: (lead) => {
+        this.submitting.set(false);
+        this.toasts.success(`${lead.customerName} converted — order created.`);
+        void this.router.navigate(['/orders']);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.submitting.set(false);
+        const body = err.error as ApiError | undefined;
+        const details = body?.details ?? [];
+        this.serverErrors.set(details.length ? details : []);
+        this.toasts.error(this.messageOf(err) ?? 'Could not convert the lead. Please try again.');
+      },
+    });
+  }
+
   cancel(): void {
-    void this.router.navigate(['/orders']);
+    void this.router.navigate([this.convertMode() ? '/leads' : '/orders']);
   }
 
   // --- Helpers ------------------------------------------------------------
