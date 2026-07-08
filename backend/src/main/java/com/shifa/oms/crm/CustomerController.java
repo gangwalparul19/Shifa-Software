@@ -19,14 +19,16 @@ import java.util.Map;
  * Customer CRM read endpoints ({@code /api/admin/customers}, "operations depth"
  * Feature 1).
  *
- * <p>Restricted to {@code ADMIN} and {@code ACCOUNTANT} via method security;
- * unauthenticated callers get 401 and other roles 403 (standard error envelope).
- * A customer is keyed by mobile and aggregated across the orders table — no new
- * table is introduced.
+ * <p>Restricted to {@code ADMIN}, {@code ACCOUNTANT} and {@code SALESPERSON} via
+ * method security; unauthenticated callers get 401 and other roles 403 (standard
+ * error envelope). A customer is keyed by mobile and aggregated across the orders
+ * table — no new table is introduced. A {@code SALESPERSON} is scoped by
+ * {@link CustomerService} to only the customers derived from orders they created
+ * (ADMIN/ACCOUNTANT remain unscoped, Req 5.4, 5.5).
  */
 @RestController
 @RequestMapping("/api/admin/customers")
-@PreAuthorize("hasAnyRole('ADMIN', 'ACCOUNTANT')")
+@PreAuthorize("hasAnyRole('ADMIN', 'ACCOUNTANT', 'SALESPERSON')")
 public class CustomerController {
 
     /** Whitelist of API sort fields → native SELECT aliases for the customers table. */

@@ -1,6 +1,7 @@
 package com.shifa.oms.auth;
 
 import com.shifa.oms.audit.AuditService;
+import com.shifa.oms.common.PageResponse;
 import com.shifa.oms.dashboard.RoleDashboardController;
 import com.shifa.oms.dashboard.RoleDashboardService;
 import com.shifa.oms.dashboard.dto.RoleDashboardSummary;
@@ -12,10 +13,20 @@ import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderSource;
 import com.shifa.oms.order.dto.OrderResponse;
+import com.shifa.oms.crm.CustomerController;
+import com.shifa.oms.crm.CustomerService;
+import com.shifa.oms.crm.dto.CustomerDetailResponse;
+import com.shifa.oms.crm.dto.CustomerSummaryResponse;
 import com.shifa.oms.packing.PackingController;
 import com.shifa.oms.packing.PackingService;
 import com.shifa.oms.packing.dto.PackingScanResponse;
 import com.shifa.oms.platform.storage.StorageService;
+import com.shifa.oms.product.AdminProductController;
+import com.shifa.oms.product.ProductService;
+import com.shifa.oms.product.ProductVisibility;
+import com.shifa.oms.product.StockStatus;
+import com.shifa.oms.product.dto.ProductRequest;
+import com.shifa.oms.product.dto.ProductResponse;
 import com.shifa.oms.reporting.CsvReportExporter;
 import com.shifa.oms.reporting.ExcelReportExporter;
 import com.shifa.oms.reporting.PdfReportExporter;
@@ -31,6 +42,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -47,6 +60,7 @@ import java.util.List;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -72,7 +86,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         AdminOrderController.class,
         PackingController.class,
         RoleDashboardController.class,
-        ReportController.class},
+        ReportController.class,
+        AdminProductController.class,
+        CustomerController.class},
         // The production JWT filter (a Filter @Component pulled into the web slice) needs
         // JwtService, which is irrelevant here — callers are authenticated directly via the
         // security-test post-processor. Exclude it so the slice does not wire its dependency chain.
@@ -140,6 +156,64 @@ class EndpointRoleGuardIntegrationTest {
     @Test
     void reportIsAdminAccountantOrSalesperson() throws Exception {
         assertRoleMatrix(get("/api/reports/daily"),
+                List.of(Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON));
+    }
+
+    // --- Products: reads ADMIN + SALESPERSON, writes ADMIN-only (this feature) ---------
+
+    /** A minimal valid product payload so bean-validation passes and the ONLY
+     * decision under test on writes is the {@code @PreAuthorize} guard. */
+    private static final String VALID_PRODUCT_JSON = """
+            {"sku":"SHR-GUARD","name":"Guard Test","mrp":"100.00","salePrice":"90.00","visibility":"PUBLISHED"}
+            """;
+
+    @Test
+    void productListReadIsAdminOrSalesperson() throws Exception {
+        assertRoleMatrix(get("/api/admin/products"),
+                List.of(Role.ADMIN, Role.SALESPERSON));
+    }
+
+    @Test
+    void productPageReadIsAdminOrSalesperson() throws Exception {
+        assertRoleMatrix(get("/api/admin/products/page"),
+                List.of(Role.ADMIN, Role.SALESPERSON));
+    }
+
+    @Test
+    void productDetailReadIsAdminOrSalesperson() throws Exception {
+        assertRoleMatrix(get("/api/admin/products/5"),
+                List.of(Role.ADMIN, Role.SALESPERSON));
+    }
+
+    @Test
+    void productCreateIsAdminOnly() throws Exception {
+        assertRoleMatrix(
+                post("/api/admin/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_PRODUCT_JSON),
+                List.of(Role.ADMIN));
+    }
+
+    @Test
+    void productUpdateIsAdminOnly() throws Exception {
+        assertRoleMatrix(
+                put("/api/admin/products/5")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_PRODUCT_JSON),
+                List.of(Role.ADMIN));
+    }
+
+    // --- Customers: reads ADMIN + ACCOUNTANT + SALESPERSON (salesperson scoped) --------
+
+    @Test
+    void customerListReadIsAdminAccountantOrSalesperson() throws Exception {
+        assertRoleMatrix(get("/api/admin/customers"),
+                List.of(Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON));
+    }
+
+    @Test
+    void customerDetailReadIsAdminAccountantOrSalesperson() throws Exception {
+        assertRoleMatrix(get("/api/admin/customers/9812345678"),
                 List.of(Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON));
     }
 
@@ -238,6 +312,16 @@ class EndpointRoleGuardIntegrationTest {
         }
 
         @Bean
+        ProductService productService() {
+            return new StubProductService();
+        }
+
+        @Bean
+        CustomerService customerService() {
+            return new StubCustomerService();
+        }
+
+        @Bean
         ExcelReportExporter excelReportExporter() {
             return new ExcelReportExporter();
         }
@@ -309,6 +393,57 @@ class EndpointRoleGuardIntegrationTest {
 
         @Override
         public ReportResponse generate(ReportType type, LocalDate from, LocalDate to) {
+            return null;
+        }
+    }
+
+    /** Canned product reads/writes so a permitted call passes the guard and yields 2xx. */
+    static class StubProductService extends ProductService {
+        StubProductService() {
+            super(null, null, null);
+        }
+
+        @Override
+        public List<ProductResponse> adminList() {
+            return List.of();
+        }
+
+        @Override
+        public Page<ProductResponse> adminList(String q, String category,
+                                               ProductVisibility visibility,
+                                               StockStatus stockStatus, Pageable pageable) {
+            return Page.empty(pageable);
+        }
+
+        @Override
+        public ProductResponse adminDetail(Long id) {
+            return null;
+        }
+
+        @Override
+        public ProductResponse create(ProductRequest request) {
+            return null;
+        }
+
+        @Override
+        public ProductResponse update(Long id, ProductRequest request) {
+            return null;
+        }
+    }
+
+    /** Canned customer reads so a permitted call passes the guard and yields 2xx. */
+    static class StubCustomerService extends CustomerService {
+        StubCustomerService() {
+            super(null, null, null, null, null);
+        }
+
+        @Override
+        public PageResponse<CustomerSummaryResponse> list(String q, Pageable pageable) {
+            return null;
+        }
+
+        @Override
+        public CustomerDetailResponse get(String mobile) {
             return null;
         }
     }

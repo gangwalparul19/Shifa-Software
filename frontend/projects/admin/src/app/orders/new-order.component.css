@@ -6,58 +6,218 @@
   flex: 0 0 auto;
 }
 
-/* --------------------------------------------------------------------------
-   Mobile-first line items (Req 17.1–17.3): below 768px each line-item row
-   collapses into a stacked card so the editable fields stay a single column
-   with no horizontal scroll, and touch targets stay comfortable.
-   -------------------------------------------------------------------------- */
-@media (max-width: 767.98px) {
-  .shifa-lineitems {
-    overflow-x: visible;
+/* ==========================================================================
+   Add New Order — sectioned mobile-first form (Req 10), mockup-faithful.
+   Three labeled sections (Customer / Order / Payment) on a soft canvas, each
+   in a rounded white card, with a sticky bottom action bar. Scoped here.
+   ========================================================================== */
+.shifa-no {
+  /* Leave room so the last section clears the sticky footer + bottom nav. */
+  padding-bottom: 7rem;
+}
+.shifa-no__section {
+  margin-bottom: 1.25rem;
+}
+.shifa-no__title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1c2b24;
+  margin-bottom: 0.6rem;
+}
+.shifa-no__titlerow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+.shifa-no__titlerow .shifa-no__title {
+  margin-bottom: 0;
+}
+
+/* Rounded white section cards with a soft shadow (~12px radius). */
+.shifa-no__card {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+
+/* Bold labels + red asterisk on required fields (mockup style). */
+.shifa-no .form-label {
+  font-weight: 600;
+  color: #2b3a32;
+}
+.shifa-no .form-label.required::after {
+  content: ' *';
+  color: #d63939;
+  font-weight: 700;
+}
+/* Rounded, comfortable inputs. */
+.shifa-no .form-control,
+.shifa-no .form-select {
+  border-radius: 10px;
+  min-height: 44px;
+}
+
+/* --- Order line cards --------------------------------------------------- */
+.shifa-no__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.shifa-line {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+.shifa-line__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+.shifa-line__idx {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--shifa-green-700, #164632);
+}
+.shifa-line__remove {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #c0392b;
+  font-size: 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.shifa-line__remove:hover:not(:disabled) {
+  background: #fde4e2;
+}
+.shifa-line__remove:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.shifa-line__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+.shifa-line__total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.7rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(15, 51, 36, 0.08);
+  color: #45524b;
+}
+
+/* --- Quantity stepper (− value +), ≥44px targets ------------------------ */
+.shifa-stepper {
+  display: flex;
+  align-items: stretch;
+}
+.shifa-stepper__btn {
+  flex: 0 0 auto;
+  width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--tblr-border-color, #dbe0dd);
+  background: var(--shifa-green-050, #f2f9f5);
+  color: var(--shifa-green-700, #164632);
+  font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.shifa-stepper__btn:first-child {
+  border-radius: 10px 0 0 10px;
+}
+.shifa-stepper__btn:last-child {
+  border-radius: 0 10px 10px 0;
+}
+.shifa-stepper__btn:hover {
+  background: var(--shifa-green-100, #e4f2ea);
+}
+.shifa-stepper__val.form-control {
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  text-align: center;
+  min-height: 44px;
+  /* Hide the native number spinners so the ± buttons are the control. */
+  -moz-appearance: textfield;
+}
+.shifa-stepper__val.form-control::-webkit-outer-spin-button,
+.shifa-stepper__val.form-control::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* --- Running totals ----------------------------------------------------- */
+.shifa-no__totals {
+  padding: 0.85rem 1rem;
+}
+.shifa-no__totline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+  color: #45524b;
+}
+
+/* --- Sticky bottom action bar ------------------------------------------- */
+.shifa-no__footer {
+  position: sticky;
+  /* Clear the fixed bottom tab bar (~56px) + iOS safe-area inset. */
+  bottom: calc(3.75rem + env(safe-area-inset-bottom, 0px));
+  z-index: 20;
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem 0.25rem;
+}
+.shifa-no__footer .btn {
+  min-height: 48px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.shifa-no__cancel {
+  flex: 0 0 40%;
+}
+.shifa-no__save {
+  flex: 1 1 auto;
+}
+
+/* On wider screens the bottom bar sits flush at the bottom of the content. */
+@media (min-width: 768px) {
+  .shifa-no__footer {
+    bottom: 0;
+    background: linear-gradient(to top, #fff 70%, rgba(255, 255, 255, 0));
+    padding: 1rem 0.25rem;
   }
-  .shifa-lineitems table,
-  .shifa-lineitems tbody,
-  .shifa-lineitems tr,
-  .shifa-lineitems td {
-    display: block;
-    width: 100%;
+  .shifa-no__cancel {
+    flex: 0 0 auto;
+    min-width: 8rem;
   }
-  .shifa-lineitems thead {
-    display: none;
+  .shifa-no__save {
+    flex: 0 0 auto;
+    min-width: 12rem;
   }
-  .shifa-lineitems th {
-    min-width: 0 !important;
-    width: auto !important;
-  }
-  .shifa-lineitems tr {
-    border: 1px solid var(--tblr-border-color, #e6e7e9);
-    border-radius: 0.7rem;
-    padding: 0.5rem 0.85rem;
-    margin-bottom: 0.75rem;
-  }
-  .shifa-lineitems td {
-    padding: 0.35rem 0 !important;
-    border: 0 !important;
-    text-align: left !important;
-  }
-  .shifa-lineitems td::before {
-    content: attr(data-label);
-    display: block;
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: var(--shifa-green-700, #164632);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-bottom: 0.2rem;
-  }
-  .shifa-lineitems td .form-control,
-  .shifa-lineitems td .form-select {
-    text-align: left !important;
-    min-height: 44px;
-  }
-  /* The remove button gets its own full-width, comfortable tap target. */
-  .shifa-lineitems__remove {
-    width: 100%;
-    min-height: 44px;
+  .shifa-no__footer {
+    justify-content: flex-end;
   }
 }

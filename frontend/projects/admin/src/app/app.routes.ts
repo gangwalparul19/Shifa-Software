@@ -55,6 +55,19 @@ export const accountantGuard = createRoleGuard(
   Role.ACCOUNTANT,
 );
 
+/**
+ * Customers / CRM is open to Admin, Accountant and Salesperson. A salesperson is
+ * scoped by the backend to only the customers derived from their own orders
+ * (Req 5.4, 5.5); admin/accountant see every customer.
+ */
+export const customersGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.ACCOUNTANT,
+  Role.SALESPERSON,
+);
+
 /** Packing (barcode scan) is limited to Packing_User and Admin (Req 11). */
 export const packingGuard = createRoleGuard(
   LOGIN_PATH,
@@ -93,10 +106,12 @@ export const routes: Routes = [
         canActivate: [staffGuard],
       },
       {
-        // Customers / CRM (ADMIN + ACCOUNTANT, Set B — Feature 1).
+        // Customers / CRM (ADMIN + ACCOUNTANT + SALESPERSON). The backend scopes
+        // a salesperson to only the customers derived from orders they created
+        // (Req 5.4, 5.5); admin/accountant see every customer.
         path: 'customers',
         component: CustomersComponent,
-        canActivate: [accountantGuard],
+        canActivate: [customersGuard],
       },
       {
         // Returns / Refunds (ADMIN + ACCOUNTANT view; mutations gated in the
@@ -118,9 +133,12 @@ export const routes: Routes = [
         canActivate: [adminOnlyGuard],
       },
       {
+        // Products (ADMIN + SALESPERSON). A salesperson gets read-only access —
+        // the list + product detail — with all mutation affordances hidden in the
+        // UI and enforced ADMIN-only on the backend.
         path: 'products',
         component: ProductsComponent,
-        canActivate: [adminOnlyGuard],
+        canActivate: [salespersonGuard],
       },
       {
         // Inventory / stock management (ADMIN only — the backend inventory

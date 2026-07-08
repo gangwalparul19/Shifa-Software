@@ -139,6 +139,21 @@ export class CustomersComponent implements OnInit, OnDestroy {
     return `₹${value}`;
   }
 
+  /**
+   * Two-letter initials for the customer avatar chip (we have no customer
+   * photos, so the mobile list uses an initials chip like the order drawer).
+   */
+  customerInitials(name: string | null | undefined): string {
+    const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) {
+      return '?';
+    }
+    if (parts.length === 1) {
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+
   // --- Detail drawer ------------------------------------------------------
 
   openDetail(customer: CustomerSummary): void {

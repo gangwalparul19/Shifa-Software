@@ -1,13 +1,16 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Router } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import {
   ApiError,
+  AuthService,
   Category,
   Money,
   Product,
   ProductVisibility,
+  Role,
   SortState,
   StockStatus,
   stockBadgeLabel,
@@ -24,6 +27,7 @@ import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { toggleSort, sortParam } from '../shared/sort.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
+import { imageErrorFallback, productImageUrl, resolveImageUrl } from '../shared/product-image.util';
 
 /** Sort fields the backend accepts for the admin products listing. */
 const SORT_FIELDS = new Set(['name', 'sku', 'salePrice', 'mrp', 'stockQuantity', 'createdAt']);
@@ -58,6 +62,16 @@ export class ProductsComponent implements OnInit, OnDestroy {
   private readonly fb = inject(FormBuilder);
   private readonly confirmService = inject(ConfirmService);
   private readonly toasts = inject(ToastService);
+  private readonly router = inject(Router);
+  private readonly auth = inject(AuthService);
+
+  /**
+   * Whether the signed-in user may mutate the catalog. Only ADMIN can
+   * create/edit/import products or manage categories; a SALESPERSON gets a
+   * read-only view (list + product detail), so every mutation affordance is
+   * hidden for non-admins. The backend enforces the same rule.
+   */
+  protected readonly canManage = computed(() => this.auth.hasAnyRole(Role.ADMIN));
 
   protected readonly Visibility = ProductVisibility;
   protected readonly Stock = StockStatus;
@@ -92,6 +106,12 @@ export class ProductsComponent implements OnInit, OnDestroy {
   });
 
   private readonly destroy$ = new Subject<void>();
+
+  /** The product shown in the mobile-first detail drawer (Req 9); null when closed. */
+  protected readonly selectedProduct = signal<Product | null>(null);
+
+  /** The active image index for the product-detail carousel (Req 9.1). */
+  protected readonly heroIndex = signal(0);
 
   /** The product being edited (form open); null when the form is closed. */
   protected readonly editing = signal<Product | null>(null);
@@ -226,6 +246,103 @@ export class ProductsComponent implements OnInit, OnDestroy {
     return !!(this.search.value || f.category || f.visibility || f.stockStatus);
   }
 
+  // --- Quick filter tabs (Req 8.2) ---------------------------------------
+  // Map the segmented tabs onto the existing server-side visibility/stock
+  // filters so paging + totals stay correct. The category dropdown is left
+  // untouched; switching a tab clears any active stock/visibility pairing.
+
+  /** Whether the given quick-filter tab reflects the current filter state. */
+  isTab(tab: 'ALL' | 'ACTIVE' | 'INACTIVE' | 'LOW'): boolean {
+    const f = this.filters.getRawValue();
+    switch (tab) {
+      case 'ACTIVE':
+        return f.visibility === ProductVisibility.PUBLISHED && !f.stockStatus;
+      case 'INACTIVE':
+        return f.visibility === ProductVisibility.HIDDEN && !f.stockStatus;
+      case 'LOW':
+        return f.stockStatus === StockStatus.LOW_STOCK && !f.visibility;
+      default:
+        return !f.visibility && !f.stockStatus;
+    }
+  }
+
+  /** Applies a quick-filter tab by driving the existing server-side filters. */
+  setTab(tab: 'ALL' | 'ACTIVE' | 'INACTIVE' | 'LOW'): void {
+    switch (tab) {
+      case 'ACTIVE':
+        this.filters.patchValue({ visibility: ProductVisibility.PUBLISHED, stockStatus: '' });
+        break;
+      case 'INACTIVE':
+        this.filters.patchValue({ visibility: ProductVisibility.HIDDEN, stockStatus: '' });
+        break;
+      case 'LOW':
+        this.filters.patchValue({ visibility: '', stockStatus: StockStatus.LOW_STOCK });
+        break;
+      default:
+        this.filters.patchValue({ visibility: '', stockStatus: '' });
+    }
+  }
+
+  // --- Product detail drawer (Req 9) -------------------------------------
+
+  /** Opens the mobile-first product detail drawer for a product (Req 8.4, 9). */
+  openDetail(product: Product): void {
+    this.heroIndex.set(0);
+    this.selectedProduct.set(product);
+  }
+
+  /**
+   * The resolved image URLs for a product's detail carousel. Falls back to the
+   * single resolved primary image (placeholder-aware) when the product carries
+   * no image list, so there's always at least one slide.
+   */
+  detailImages(product: Product): string[] {
+    const imgs = (product.images ?? [])
+      .map((i) => resolveImageUrl(i.objectKey))
+      .filter((u) => !!u);
+    return imgs.length > 0 ? imgs : [this.thumb(product)];
+  }
+
+  /** The currently displayed carousel image URL for the open product. */
+  heroImage(product: Product): string {
+    const imgs = this.detailImages(product);
+    const idx = Math.min(this.heroIndex(), imgs.length - 1);
+    return imgs[idx] ?? this.thumb(product);
+  }
+
+  /** Selects a carousel slide by index (carousel dots). */
+  selectHero(index: number): void {
+    this.heroIndex.set(index);
+  }
+
+  /** Navigates to the reports screen from the product detail drawer (Req 9.2). */
+  viewSalesReport(): void {
+    // TODO: point at a product-scoped sales report once the backend exposes one;
+    // for now the general Reports screen (Products tab) is the closest target.
+    this.closeDetail();
+    this.router.navigate(['/reports']);
+  }
+
+  /** Closes the product detail drawer. */
+  closeDetail(): void {
+    this.selectedProduct.set(null);
+  }
+
+  /** Opens the edit form for the product currently shown in the detail drawer. */
+  editFromDetail(): void {
+    const product = this.selectedProduct();
+    if (!product) {
+      return;
+    }
+    this.closeDetail();
+    this.openEdit(product);
+  }
+
+  /** Star rating helper: whole/half/empty stars for a 0–5 average. */
+  hasRating(product: Product): boolean {
+    return product.averageRating != null && (product.reviewCount ?? 0) > 0;
+  }
+
   humanizeStock(status: string): string {
     return status
       .replaceAll('_', ' ')
@@ -280,10 +397,18 @@ export class ProductsComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** First image URL when it is a resolvable http(s) URL, else null (placeholder). */
-  thumb(product: Product): string | null {
-    const key = product.images?.[0]?.objectKey;
-    return key && /^https?:\/\//i.test(key) ? key : null;
+  /**
+   * Resolves the product's primary image to a browser URL, falling back to the
+   * shared placeholder when the product has no image. Handles relative keys
+   * (e.g. `products/shifa-01.jpg`) as well as absolute URLs.
+   */
+  thumb(product: Product): string {
+    return productImageUrl(product);
+  }
+
+  /** `<img (error)>` handler: swap a broken product image for the placeholder. */
+  onImgError(event: Event): void {
+    imageErrorFallback(event);
   }
 
   // --- Add / Edit product form -------------------------------------------

@@ -4,18 +4,36 @@
   [breadcrumbs]="[{ label: 'Reports' }]"
 />
 
-<!-- Controls -->
+<!-- Presentation tabs (Req 12.1): Overview / Sales / Products / Customers -->
+<div class="shifa-status-tabs mb-3" role="tablist" aria-label="Report views">
+  @for (t of tabs; track t.key) {
+    <button type="button" role="tab" class="shifa-status-tab"
+      [class.active]="activeTab() === t.key"
+      [attr.aria-selected]="activeTab() === t.key"
+      (click)="selectTab(t.key)">
+      <i class="ti {{ t.icon }} me-1"></i>{{ t.label }}
+    </button>
+  }
+</div>
+
+<!-- Controls: date-range chip + report type + custom range + exports -->
 <form class="card mb-3" [formGroup]="form" (ngSubmit)="generate()">
   <div class="card-body">
+    <!-- Active date-range chip -->
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+      <span class="shifa-range-chip"><i class="ti ti-calendar-event me-1"></i>{{ rangeLabel() }}</span>
+      <span class="text-secondary small">Tap a preset to change the range</span>
+    </div>
+
     <div class="row g-3 align-items-end">
-      <div class="col-md-3">
+      <div class="col-12 col-md-3">
         <label class="form-label" for="type">Report type</label>
-        <select id="type" class="form-select" formControlName="type">
+        <select id="type" class="form-select" formControlName="type" (change)="generate()">
           @for (opt of reportTypes; track opt.value) { <option [value]="opt.value">{{ opt.label }}</option> }
         </select>
       </div>
 
-      <div class="col-md-auto">
+      <div class="col-12 col-md-auto">
         <label class="form-label d-block">Date range</label>
         <div class="btn-group shifa-period flex-wrap" role="group">
           @for (p of presets; track p.key) {
@@ -27,17 +45,17 @@
         </div>
       </div>
 
-      <div class="col-md-2">
+      <div class="col-6 col-md-2">
         <label class="form-label" for="from">From</label>
         <input id="from" type="date" class="form-control" formControlName="from" [readonly]="!isCustom()" />
       </div>
-      <div class="col-md-2">
+      <div class="col-6 col-md-2">
         <label class="form-label" for="to">To</label>
         <input id="to" type="date" class="form-control" formControlName="to" [readonly]="!isCustom()" />
       </div>
 
-      <div class="col-md-auto">
-        <button type="submit" class="btn btn-primary w-100" [disabled]="loading()">
+      <div class="col-12 col-md-auto">
+        <button type="submit" class="btn btn-primary w-100 shifa-touch" [disabled]="loading()">
           @if (loading()) { <span class="spinner-border spinner-border-sm me-2"></span> Generating… }
           @else { <i class="ti ti-report-analytics me-1"></i> Generate }
         </button>
@@ -66,56 +84,158 @@
   <div class="alert alert-danger d-flex align-items-center" role="alert"><i class="ti ti-alert-triangle me-2"></i>{{ err }}</div>
 }
 
-<!-- Summary metrics -->
-@if (report(); as r) {
-  <div class="shifa-section-title">Summary</div>
-  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
-    <div class="col-6 col-md-4 col-lg-3">
-      <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div><div class="subheader">Total Sales</div><div class="h2 m-0">₹{{ r.summary.totalSales }}</div></div>
-          <span class="stat-icon"><i class="ti ti-currency-rupee"></i></span>
+<!-- Customers tab has no backing report yet — graceful "coming soon" (Req 12.1) -->
+@if (isComingSoon()) {
+  <div class="card">
+    <div class="empty">
+      <div class="empty-icon"><i class="ti ti-users"></i></div>
+      <p class="empty-title">Customer reports are coming soon</p>
+      <p class="empty-subtitle text-secondary">
+        Customer-level analytics aren't available yet. Use Overview, Sales or Products for now, or
+        the State- and Salesperson-wise report types above.
+      </p>
+    </div>
+  </div>
+} @else if (report(); as r) {
+
+  <!-- Total Revenue headline card: big ₹ value + delta + sparkline -->
+  <div class="card shifa-revenue-card mb-3">
+    <div class="card-body">
+      <div class="d-flex align-items-start justify-content-between">
+        <div>
+          <div class="shifa-revenue-card__label">Total Revenue</div>
+          <div class="shifa-revenue-card__value">{{ inr(totalSalesValue()) }}</div>
+          <div class="mt-1">
+            <span class="shifa-delta"
+              [class.up]="changeDirection() === 'up'"
+              [class.down]="changeDirection() === 'down'">
+              @switch (changeDirection()) {
+                @case ('up') { <i class="ti ti-trending-up"></i> }
+                @case ('down') { <i class="ti ti-trending-down"></i> }
+                @default { <i class="ti ti-minus"></i> }
+              }
+              {{ changeText() }}
+            </span>
+            <span class="text-white-50 small ms-1">vs previous period</span>
+          </div>
         </div>
+        <span class="shifa-revenue-card__chip"><i class="ti ti-coin"></i></span>
+      </div>
+      <div class="shifa-revenue-card__spark mt-2">
+        @if (revenueSpark(); as sp) {
+          <apx-chart
+            [series]="sp.series"
+            [chart]="sp.chart"
+            [colors]="sp.colors"
+            [stroke]="sp.stroke"
+            [fill]="sp.fill"
+            [tooltip]="sp.tooltip"
+          ></apx-chart>
+        }
       </div>
     </div>
-    <div class="col-6 col-md-4 col-lg-3">
+  </div>
+
+  <!-- KPI tiles: Orders / Avg Order Value / vs Previous -->
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
+    <div class="col-4 col-md-4">
       <div class="card card-hover stat-accent" style="--accent: #206bc4; --accent-soft: #e7f0fb">
         <div class="card-body d-flex align-items-center justify-content-between">
-          <div><div class="subheader">Orders</div><div class="h2 m-0">{{ r.summary.orderCount }}</div></div>
+          <div>
+            <div class="subheader">Orders</div>
+            <div class="h1 m-0">{{ count(r.summary.orderCount) }}</div>
+          </div>
           <span class="stat-icon" style="--accent: #206bc4; --accent-soft: #e7f0fb"><i class="ti ti-shopping-cart"></i></span>
         </div>
       </div>
     </div>
-    <div class="col-6 col-md-4 col-lg-3">
+    <div class="col-4 col-md-4">
+      <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Avg Order Value</div>
+            <div class="h2 m-0">{{ inr(avgOrderValue()) }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-receipt"></i></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-4 col-md-4">
       <div class="card card-hover stat-accent" style="--accent: #ae3ec9; --accent-soft: #f6e6fa">
         <div class="card-body d-flex align-items-center justify-content-between">
           <div>
-            <div class="subheader">Sales vs Previous</div>
-            @if (r.summary.salesChangeApplicable && r.summary.salesChangePercent !== null) {
-              <div class="h2 m-0" [class.text-success]="+r.summary.salesChangePercent >= 0" [class.text-danger]="+r.summary.salesChangePercent < 0">
-                <i class="ti" [class.ti-trending-up]="+r.summary.salesChangePercent >= 0" [class.ti-trending-down]="+r.summary.salesChangePercent < 0"></i>
-                {{ r.summary.salesChangePercent }}%
-              </div>
-            } @else { <div class="h2 m-0 text-secondary">N/A</div> }
+            <div class="subheader">vs Previous</div>
+            <div class="h2 m-0"
+              [class.text-success]="changeDirection() === 'up'"
+              [class.text-danger]="changeDirection() === 'down'">{{ changeText() }}</div>
           </div>
           <span class="stat-icon" style="--accent: #ae3ec9; --accent-soft: #f6e6fa"><i class="ti ti-chart-arrows"></i></span>
         </div>
       </div>
     </div>
-    <div class="col-6 col-md-6 col-lg-3">
-      <div class="card card-hover">
-        <div class="card-body">
-          <div class="subheader mb-2">Top Performers</div>
-          <div class="d-flex justify-content-between py-1"><span class="text-secondary">Salesperson</span><strong>{{ r.summary.topSalespersonId ?? '—' }}</strong></div>
-          <div class="d-flex justify-content-between py-1"><span class="text-secondary">Product</span><strong>{{ r.summary.topProduct ?? '—' }}</strong></div>
-          <div class="d-flex justify-content-between py-1"><span class="text-secondary">State</span><strong>{{ r.summary.topState ?? '—' }}</strong></div>
+  </div>
+
+  <!-- Revenue Trend bar chart with a period (granularity) dropdown -->
+  <div class="card mb-3">
+    <div class="card-header">
+      <h3 class="card-title mb-0">Revenue Trend</h3>
+      <div class="card-actions">
+        <select class="form-select form-select-sm shifa-trend-select"
+          [value]="trendGranularity()"
+          (change)="setTrendGranularity($any($event.target).value)"
+          aria-label="Trend granularity">
+          <option value="daily">Daily</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </div>
+    </div>
+    <div class="card-body">
+      @if (revenueBarChart(); as bc) {
+        <apx-chart
+          [series]="bc.series"
+          [chart]="bc.chart"
+          [colors]="bc.colors"
+          [dataLabels]="bc.dataLabels"
+          [plotOptions]="bc.plotOptions"
+          [xaxis]="bc.xaxis"
+          [yaxis]="bc.yaxis"
+          [fill]="bc.fill"
+          [grid]="bc.grid"
+          [tooltip]="bc.tooltip"
+        ></apx-chart>
+      } @else {
+        <div class="empty">
+          <div class="empty-icon"><i class="ti ti-chart-bar-off"></i></div>
+          <p class="empty-title">No revenue data in the selected range</p>
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- Top performers (kept from the report summary) -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="subheader mb-2">Top Performers</div>
+      <div class="row g-2">
+        <div class="col-4">
+          <div class="text-secondary small">Salesperson</div>
+          <strong>{{ r.summary.topSalespersonId ?? '—' }}</strong>
+        </div>
+        <div class="col-4">
+          <div class="text-secondary small">Product</div>
+          <strong>{{ r.summary.topProduct ?? '—' }}</strong>
+        </div>
+        <div class="col-4">
+          <div class="text-secondary small">State</div>
+          <strong>{{ r.summary.topState ?? '—' }}</strong>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Results table -->
+  <!-- Results table (kept: exact rows the exports reproduce) -->
   <div class="card">
+    <div class="card-header"><h3 class="card-title mb-0">Report details</h3></div>
     <div class="table-responsive">
       <table class="table table-vcenter card-table table-hover stagger-rows">
         <thead><tr>@for (h of r.headers; track h) { <th>{{ h }}</th> }</tr></thead>

@@ -1,20 +1,8 @@
 <admin-page-header
-  title="New Order"
+  title="Add New Order"
   subtitle="Punch a new order on behalf of a customer."
   [breadcrumbs]="[{ label: 'Orders', link: '/orders' }, { label: 'New Order' }]"
->
-  <button type="button" class="btn btn-outline-secondary" (click)="cancel()" [disabled]="submitting()">
-    Cancel
-  </button>
-  <button type="button" class="btn btn-primary" (click)="submit()" [disabled]="submitting()">
-    @if (submitting()) {
-      <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-    } @else {
-      <i class="ti ti-check me-1"></i>
-    }
-    Create order
-  </button>
-</admin-page-header>
+/>
 
 @if (serverErrors().length > 0) {
   <div class="alert alert-danger" role="alert">
@@ -27,363 +15,366 @@
   </div>
 }
 
-<form [formGroup]="form" (ngSubmit)="submit()" novalidate>
-  <div class="row row-cards">
-    <!-- ===================== Customer & shipping ===================== -->
-    <div class="col-12 col-xl-7">
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title"><i class="ti ti-user me-2"></i>Customer &amp; shipping</h3>
+<form [formGroup]="form" (ngSubmit)="submit()" novalidate class="shifa-no">
+  <!-- ===================== Customer Details ===================== -->
+  <section class="shifa-no__section">
+    <h2 class="shifa-no__title">Customer Details</h2>
+    <div class="shifa-no__card">
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="form-label required" for="customerName">Customer name</label>
+          <input
+            id="customerName"
+            type="text"
+            class="form-control"
+            formControlName="customerName"
+            maxlength="100"
+            autocomplete="off"
+            [class.is-invalid]="invalid('customerName')"
+          />
+          @if (invalid('customerName')) {
+            <div class="invalid-feedback">A customer name (max 100 chars) is required.</div>
+          }
         </div>
-        <div class="card-body">
-          <div class="row g-3">
-            <div class="col-12 col-md-6">
-              <label class="form-label required" for="customerName">Customer name</label>
-              <input
-                id="customerName"
-                type="text"
-                class="form-control"
-                formControlName="customerName"
-                maxlength="100"
-                autocomplete="off"
-                [class.is-invalid]="invalid('customerName')"
-              />
-              @if (invalid('customerName')) {
-                <div class="invalid-feedback">A customer name (max 100 chars) is required.</div>
-              }
-            </div>
-            <div class="col-12 col-md-6">
-              <label class="form-label required" for="customerMobile">Mobile</label>
-              <input
-                id="customerMobile"
-                type="tel"
-                inputmode="numeric"
-                class="form-control"
-                formControlName="customerMobile"
-                maxlength="10"
-                placeholder="10-digit mobile"
-                autocomplete="off"
-                [class.is-invalid]="invalid('customerMobile')"
-              />
-              @if (invalid('customerMobile')) {
-                <div class="invalid-feedback">Enter exactly 10 digits.</div>
-              }
-            </div>
-            <div class="col-12 col-md-6">
-              <label class="form-label" for="customerEmail">Email <span class="text-secondary">(optional)</span></label>
-              <input
-                id="customerEmail"
-                type="email"
-                class="form-control"
-                formControlName="customerEmail"
-                maxlength="150"
-                inputmode="email"
-                autocomplete="off"
-                placeholder="name@example.com"
-                [class.is-invalid]="invalid('customerEmail')"
-              />
-              @if (invalid('customerEmail')) {
-                <div class="invalid-feedback">Enter a valid email address (max 150 chars).</div>
-              } @else {
-                <div class="form-hint">Used for order milestone emails.</div>
-              }
-            </div>
-            <div class="col-12">
-              <label class="form-label required" for="addressLine">Address</label>
-              <textarea
-                id="addressLine"
-                class="form-control"
-                formControlName="addressLine"
-                rows="2"
-                maxlength="250"
-                autocomplete="off"
-                [class.is-invalid]="invalid('addressLine')"
-              ></textarea>
-              @if (invalid('addressLine')) {
-                <div class="invalid-feedback">An address (max 250 chars) is required.</div>
-              }
-            </div>
-            <div class="col-12 col-md-6">
-              <label class="form-label required" for="city">City</label>
-              <input
-                id="city"
-                type="text"
-                class="form-control"
-                formControlName="city"
-                maxlength="100"
-                autocomplete="off"
-                [class.is-invalid]="invalid('city')"
-              />
-              @if (invalid('city')) {
-                <div class="invalid-feedback">A city is required.</div>
-              }
-            </div>
-            <div class="col-6 col-md-3">
-              <label class="form-label required" for="state">State</label>
-              <input
-                id="state"
-                type="text"
-                class="form-control"
-                formControlName="state"
-                maxlength="100"
-                autocomplete="off"
-                [class.is-invalid]="invalid('state')"
-              />
-              @if (invalid('state')) {
-                <div class="invalid-feedback">A state is required.</div>
-              }
-            </div>
-            <div class="col-6 col-md-3">
-              <label class="form-label required" for="postalCode">Pincode</label>
-              <input
-                id="postalCode"
-                type="text"
-                inputmode="numeric"
-                class="form-control"
-                formControlName="postalCode"
-                maxlength="6"
-                placeholder="6 digits"
-                autocomplete="off"
-                [class.is-invalid]="invalid('postalCode')"
-              />
-              @if (invalid('postalCode')) {
-                <div class="invalid-feedback">Enter exactly 6 digits.</div>
-              }
+        <div class="col-12 col-md-6">
+          <label class="form-label required" for="customerMobile">Phone number</label>
+          <input
+            id="customerMobile"
+            type="tel"
+            inputmode="numeric"
+            class="form-control"
+            formControlName="customerMobile"
+            maxlength="10"
+            placeholder="10-digit mobile"
+            autocomplete="off"
+            [class.is-invalid]="invalid('customerMobile')"
+          />
+          @if (invalid('customerMobile')) {
+            <div class="invalid-feedback">Enter exactly 10 digits.</div>
+          }
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label" for="customerEmail">Email <span class="text-secondary">(optional)</span></label>
+          <input
+            id="customerEmail"
+            type="email"
+            class="form-control"
+            formControlName="customerEmail"
+            maxlength="150"
+            inputmode="email"
+            autocomplete="off"
+            placeholder="name@example.com"
+            [class.is-invalid]="invalid('customerEmail')"
+          />
+          @if (invalid('customerEmail')) {
+            <div class="invalid-feedback">Enter a valid email address (max 150 chars).</div>
+          } @else {
+            <div class="form-hint">Used for order milestone emails.</div>
+          }
+        </div>
+
+        <!-- Lead source (origin channel, Req 4.1, 4.5) — required by order entry -->
+        <div class="col-12 col-md-6">
+          <label class="form-label required" for="leadSource">Lead source</label>
+          <select
+            id="leadSource"
+            class="form-select"
+            formControlName="leadSource"
+            [class.is-invalid]="invalid('leadSource')"
+          >
+            <option value="" disabled>How did the customer reach us?</option>
+            @for (opt of leadSourceOptions; track opt.value) {
+              <option [value]="opt.value">{{ opt.label }}</option>
+            }
+          </select>
+          @if (invalid('leadSource')) {
+            <div class="invalid-feedback">Choose a lead source.</div>
+          }
+        </div>
+        @if (showLeadSourceNote()) {
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="leadSourceNote">Lead source note</label>
+            <input
+              id="leadSourceNote"
+              type="text"
+              class="form-control"
+              formControlName="leadSourceNote"
+              maxlength="200"
+              autocomplete="off"
+              placeholder="Where did this lead come from?"
+              [class.is-invalid]="invalid('leadSourceNote')"
+            />
+            @if (invalid('leadSourceNote')) {
+              <div class="invalid-feedback">The note must be at most 200 characters.</div>
+            } @else {
+              <div class="form-hint">Optional detail for an “Other” source (max 200 chars).</div>
+            }
+          </div>
+        }
+
+        <!-- Delivery address (required by the create-order API) -->
+        <div class="col-12">
+          <label class="form-label required" for="addressLine">Delivery address</label>
+          <textarea
+            id="addressLine"
+            class="form-control"
+            formControlName="addressLine"
+            rows="2"
+            maxlength="250"
+            autocomplete="off"
+            [class.is-invalid]="invalid('addressLine')"
+          ></textarea>
+          @if (invalid('addressLine')) {
+            <div class="invalid-feedback">An address (max 250 chars) is required.</div>
+          }
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label required" for="city">City</label>
+          <input
+            id="city"
+            type="text"
+            class="form-control"
+            formControlName="city"
+            maxlength="100"
+            autocomplete="off"
+            [class.is-invalid]="invalid('city')"
+          />
+          @if (invalid('city')) {
+            <div class="invalid-feedback">A city is required.</div>
+          }
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label required" for="state">State</label>
+          <input
+            id="state"
+            type="text"
+            class="form-control"
+            formControlName="state"
+            maxlength="100"
+            autocomplete="off"
+            [class.is-invalid]="invalid('state')"
+          />
+          @if (invalid('state')) {
+            <div class="invalid-feedback">A state is required.</div>
+          }
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label required" for="postalCode">Pincode</label>
+          <input
+            id="postalCode"
+            type="text"
+            inputmode="numeric"
+            class="form-control"
+            formControlName="postalCode"
+            maxlength="6"
+            placeholder="6 digits"
+            autocomplete="off"
+            [class.is-invalid]="invalid('postalCode')"
+          />
+          @if (invalid('postalCode')) {
+            <div class="invalid-feedback">Enter exactly 6 digits.</div>
+          }
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== Order Details ===================== -->
+  <section class="shifa-no__section">
+    <div class="shifa-no__titlerow">
+      <h2 class="shifa-no__title mb-0">Order Details</h2>
+      <button type="button" class="btn btn-sm btn-outline-primary" (click)="addItem()">
+        <i class="ti ti-plus me-1"></i> Add item
+      </button>
+    </div>
+
+    @if (productsLoading()) {
+      <div class="shifa-no__card">
+        <admin-state-panel variant="loading" loadingLabel="Loading products…" />
+      </div>
+    } @else if (productsError()) {
+      <div class="shifa-no__card">
+        <admin-state-panel variant="error" [message]="productsError()!" (retry)="loadProducts()" />
+      </div>
+    } @else {
+      <div class="shifa-no__lines" formArrayName="items">
+        @for (row of items.controls; track row; let i = $index) {
+          <div class="shifa-line" [formGroupName]="i">
+            <div class="shifa-line__head">
+              <span class="shifa-line__idx">Item {{ i + 1 }}</span>
+              <button
+                type="button"
+                class="shifa-line__remove"
+                (click)="removeItem(i)"
+                [disabled]="items.length <= 1"
+                aria-label="Remove item"
+                title="Remove item"
+              >
+                <i class="ti ti-trash"></i>
+              </button>
             </div>
 
-            <!-- Lead source (origin channel, Req 4.1, 4.5) -->
-            <div class="col-12 col-md-6">
-              <label class="form-label required" for="leadSource">Lead source</label>
+            <div class="mb-2">
+              <label class="form-label" [for]="'product-' + i">Product</label>
               <select
-                id="leadSource"
+                [id]="'product-' + i"
                 class="form-select"
-                formControlName="leadSource"
-                [class.is-invalid]="invalid('leadSource')"
+                formControlName="productId"
+                (change)="onProductChange(i)"
+                [class.is-invalid]="itemInvalid(i, 'productId')"
+                aria-label="Product"
               >
-                <option value="" disabled>How did the customer reach us?</option>
-                @for (opt of leadSourceOptions; track opt.value) {
-                  <option [value]="opt.value">{{ opt.label }}</option>
+                <option [ngValue]="null" disabled>Select a product…</option>
+                @for (p of products(); track p.id) {
+                  <option [ngValue]="p.id">{{ p.name }} — ₹{{ p.salePrice }} ({{ p.sku }})</option>
                 }
               </select>
-              @if (invalid('leadSource')) {
-                <div class="invalid-feedback">Choose a lead source.</div>
+              @if (itemInvalid(i, 'productId')) {
+                <div class="text-danger small mt-1">Choose a product.</div>
               }
             </div>
-            @if (showLeadSourceNote()) {
-              <div class="col-12">
-                <label class="form-label" for="leadSourceNote">Lead source note</label>
-                <input
-                  id="leadSourceNote"
-                  type="text"
-                  class="form-control"
-                  formControlName="leadSourceNote"
-                  maxlength="200"
-                  autocomplete="off"
-                  placeholder="Where did this lead come from?"
-                  [class.is-invalid]="invalid('leadSourceNote')"
-                />
-                @if (invalid('leadSourceNote')) {
-                  <div class="invalid-feedback">The note must be at most 200 characters.</div>
-                } @else {
-                  <div class="form-hint">Optional detail for an “Other” source (max 200 chars).</div>
-                }
-              </div>
-            }
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <!-- ===================== Payment ===================== -->
-    <div class="col-12 col-xl-5">
-      <div class="card h-100">
-        <div class="card-header">
-          <h3 class="card-title"><i class="ti ti-cash me-2"></i>Payment</h3>
-        </div>
-        <div class="card-body">
-          <div class="mb-3">
-            <label class="form-label required" for="amountReceived">Amount received</label>
-            <div class="input-group">
-              <span class="input-group-text">₹</span>
-              <input
-                id="amountReceived"
-                type="number"
-                min="0"
-                step="0.01"
-                class="form-control"
-                formControlName="amountReceived"
-                [class.is-invalid]="invalid('amountReceived')"
-              />
-            </div>
-            @if (invalid('amountReceived')) {
-              <div class="text-danger small mt-1">Enter a non-negative amount.</div>
-            }
-            <div class="form-hint">Enter 0 for a full COD order.</div>
-          </div>
-
-          <div>
-            <label class="form-label" [class.required]="screenshotRequired()">Payment screenshot</label>
-            @if (screenshotRequired()) {
-              <div class="form-hint mb-2">Required because an amount was received.</div>
-            } @else {
-              <div class="form-hint mb-2">Optional when no amount is received.</div>
-            }
-
-            <input
-              type="file"
-              class="form-control"
-              accept="image/*"
-              (change)="onScreenshotSelected($event)"
-              [disabled]="uploadState() === 'uploading'"
-              aria-label="Payment screenshot"
-            />
-
-            @if (uploadState() === 'uploading') {
-              <div class="d-flex align-items-center gap-2 mt-2 text-secondary">
-                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                <span>Uploading {{ screenshotName() }}…</span>
-              </div>
-            } @else if (uploadState() === 'done') {
-              <div class="d-flex align-items-center gap-2 mt-2">
-                @if (screenshotPreview(); as url) {
-                  <img [src]="url" alt="Payment screenshot" class="shifa-shot-thumb rounded border" />
-                }
-                <div class="flex-fill">
-                  <div class="text-success"><i class="ti ti-check me-1"></i>Uploaded</div>
-                  <div class="text-secondary small text-truncate">{{ screenshotName() }}</div>
+            <div class="shifa-line__grid">
+              <div>
+                <label class="form-label">Quantity</label>
+                <div class="shifa-stepper">
+                  <button type="button" class="shifa-stepper__btn" (click)="decQty(i)" aria-label="Decrease quantity">
+                    <i class="ti ti-minus"></i>
+                  </button>
+                  <input
+                    type="number"
+                    class="form-control shifa-stepper__val"
+                    formControlName="quantity"
+                    min="1"
+                    max="999"
+                    step="1"
+                    [class.is-invalid]="itemInvalid(i, 'quantity')"
+                    aria-label="Quantity"
+                  />
+                  <button type="button" class="shifa-stepper__btn" (click)="incQty(i)" aria-label="Increase quantity">
+                    <i class="ti ti-plus"></i>
+                  </button>
                 </div>
-                <button type="button" class="btn btn-sm btn-ghost-danger" (click)="clearScreenshot()">
-                  <i class="ti ti-x"></i>
-                </button>
               </div>
-            } @else if (uploadState() === 'error') {
-              <div class="text-danger small mt-2">{{ uploadError() }}</div>
-            }
+              <div>
+                <label class="form-label" [for]="'rate-' + i">Price (₹)</label>
+                <input
+                  [id]="'rate-' + i"
+                  type="number"
+                  class="form-control text-end"
+                  formControlName="rate"
+                  min="0"
+                  step="0.01"
+                  [class.is-invalid]="itemInvalid(i, 'rate')"
+                  aria-label="Price"
+                />
+              </div>
+            </div>
 
-            @if (submitAttempted() && screenshotRequired() && !screenshotKey()) {
-              <div class="text-danger small mt-1">A payment screenshot is required.</div>
-            }
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===================== Line items ===================== -->
-    <div class="col-12">
-      <div class="card">
-        <div class="card-header d-flex align-items-center">
-          <h3 class="card-title mb-0"><i class="ti ti-list-details me-2"></i>Line items</h3>
-          <button type="button" class="btn btn-sm btn-outline-primary ms-auto" (click)="addItem()">
-            <i class="ti ti-plus me-1"></i> Add item
-          </button>
-        </div>
-
-        @if (productsLoading()) {
-          <admin-state-panel variant="loading" loadingLabel="Loading products…" />
-        } @else if (productsError()) {
-          <admin-state-panel variant="error" [message]="productsError()!" (retry)="loadProducts()" />
-        } @else {
-          <div class="table-responsive shifa-lineitems">
-            <table class="table table-vcenter card-table">
-              <thead>
-                <tr>
-                  <th style="min-width: 14rem">Product</th>
-                  <th class="text-end" style="width: 8rem">Qty</th>
-                  <th class="text-end" style="width: 10rem">Rate (₹)</th>
-                  <th class="text-end" style="width: 10rem">Line total</th>
-                  <th class="w-1"></th>
-                </tr>
-              </thead>
-              <tbody formArrayName="items">
-                @for (row of items.controls; track row; let i = $index) {
-                  <tr [formGroupName]="i">
-                    <td data-label="Product">
-                      <select
-                        class="form-select"
-                        formControlName="productId"
-                        (change)="onProductChange(i)"
-                        [class.is-invalid]="itemInvalid(i, 'productId')"
-                        aria-label="Product"
-                      >
-                        <option [ngValue]="null" disabled>Select a product…</option>
-                        @for (p of products(); track p.id) {
-                          <option [ngValue]="p.id">{{ p.name }} — ₹{{ p.salePrice }} ({{ p.sku }})</option>
-                        }
-                      </select>
-                      @if (itemInvalid(i, 'productId')) {
-                        <div class="text-danger small mt-1">Choose a product.</div>
-                      }
-                    </td>
-                    <td data-label="Qty">
-                      <input
-                        type="number"
-                        class="form-control text-end"
-                        formControlName="quantity"
-                        min="1"
-                        max="999"
-                        step="1"
-                        [class.is-invalid]="itemInvalid(i, 'quantity')"
-                        aria-label="Quantity"
-                      />
-                    </td>
-                    <td data-label="Rate (₹)">
-                      <input
-                        type="number"
-                        class="form-control text-end"
-                        formControlName="rate"
-                        min="0"
-                        step="0.01"
-                        [class.is-invalid]="itemInvalid(i, 'rate')"
-                        aria-label="Rate"
-                      />
-                    </td>
-                    <td class="text-end fw-medium" data-label="Line total">{{ formatMoney(lineTotals()[i] || 0) }}</td>
-                    <td class="text-end">
-                      <button
-                        type="button"
-                        class="btn btn-sm btn-icon btn-ghost-danger shifa-lineitems__remove"
-                        (click)="removeItem(i)"
-                        [disabled]="items.length <= 1"
-                        aria-label="Remove item"
-                      >
-                        <i class="ti ti-trash"></i>
-                      </button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colspan="3" class="text-end fw-medium">Order total</td>
-                  <td class="text-end fw-bold">{{ formatMoney(orderTotalPaise()) }}</td>
-                  <td></td>
-                </tr>
-                <tr>
-                  <td colspan="3" class="text-end text-secondary">Remaining after amount received</td>
-                  <td class="text-end" [class.text-danger]="remainingPaise() < 0">
-                    {{ formatMoney(remainingPaise()) }}
-                  </td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
+            <div class="shifa-line__total">
+              <span>Line total</span>
+              <span class="fw-bold">{{ formatMoney(lineTotals()[i] || 0) }}</span>
+            </div>
           </div>
         }
       </div>
-    </div>
-  </div>
 
-  <div class="d-flex justify-content-end gap-2 mt-3 mb-4">
-    <button type="button" class="btn btn-outline-secondary" (click)="cancel()" [disabled]="submitting()">
-      Cancel
-    </button>
-    <button type="submit" class="btn btn-primary" [disabled]="submitting()">
-      @if (submitting()) {
-        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-      } @else {
-        <i class="ti ti-check me-1"></i>
-      }
-      Create order
-    </button>
-  </div>
+      <!-- Running totals -->
+      <div class="shifa-no__card shifa-no__totals">
+        <div class="shifa-no__totline">
+          <span>Order total</span>
+          <span class="fw-bold">{{ formatMoney(orderTotalPaise()) }}</span>
+        </div>
+        <div class="shifa-no__totline">
+          <span class="text-secondary">Remaining after amount received</span>
+          <span [class.text-danger]="remainingPaise() < 0">{{ formatMoney(remainingPaise()) }}</span>
+        </div>
+      </div>
+    }
+  </section>
+
+  <!-- ===================== Payment Details ===================== -->
+  <section class="shifa-no__section">
+    <h2 class="shifa-no__title">Payment Details</h2>
+    <div class="shifa-no__card">
+      <div class="mb-3">
+        <label class="form-label required" for="amountReceived">Amount received</label>
+        <div class="input-group">
+          <span class="input-group-text">₹</span>
+          <input
+            id="amountReceived"
+            type="number"
+            min="0"
+            step="0.01"
+            class="form-control"
+            formControlName="amountReceived"
+            [class.is-invalid]="invalid('amountReceived')"
+          />
+        </div>
+        @if (invalid('amountReceived')) {
+          <div class="text-danger small mt-1">Enter a non-negative amount.</div>
+        }
+        <div class="form-hint">Enter 0 for a full COD order.</div>
+      </div>
+
+      <div>
+        <label class="form-label" [class.required]="screenshotRequired()">Payment screenshot</label>
+        @if (screenshotRequired()) {
+          <div class="form-hint mb-2">Required because an amount was received.</div>
+        } @else {
+          <div class="form-hint mb-2">Optional when no amount is received.</div>
+        }
+
+        <input
+          type="file"
+          class="form-control"
+          accept="image/*"
+          (change)="onScreenshotSelected($event)"
+          [disabled]="uploadState() === 'uploading'"
+          aria-label="Payment screenshot"
+        />
+
+        @if (uploadState() === 'uploading') {
+          <div class="d-flex align-items-center gap-2 mt-2 text-secondary">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            <span>Uploading {{ screenshotName() }}…</span>
+          </div>
+        } @else if (uploadState() === 'done') {
+          <div class="d-flex align-items-center gap-2 mt-2">
+            @if (screenshotPreview(); as url) {
+              <img [src]="url" alt="Payment screenshot" class="shifa-shot-thumb rounded border" />
+            }
+            <div class="flex-fill">
+              <div class="text-success"><i class="ti ti-check me-1"></i>Uploaded</div>
+              <div class="text-secondary small text-truncate">{{ screenshotName() }}</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-ghost-danger" (click)="clearScreenshot()">
+              <i class="ti ti-x"></i>
+            </button>
+          </div>
+        } @else if (uploadState() === 'error') {
+          <div class="text-danger small mt-2">{{ uploadError() }}</div>
+        }
+
+        @if (submitAttempted() && screenshotRequired() && !screenshotKey()) {
+          <div class="text-danger small mt-1">A payment screenshot is required.</div>
+        }
+      </div>
+    </div>
+  </section>
 </form>
+
+<!-- Sticky bottom action bar (Req 10.4) -->
+<div class="shifa-no__footer">
+  <button type="button" class="btn btn-outline-secondary shifa-no__cancel" (click)="cancel()" [disabled]="submitting()">
+    Cancel
+  </button>
+  <button type="button" class="btn btn-primary shifa-no__save" (click)="submit()" [disabled]="submitting()">
+    @if (submitting()) {
+      <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+    } @else {
+      <i class="ti ti-check me-1"></i>
+    }
+    Save Order
+  </button>
+</div>

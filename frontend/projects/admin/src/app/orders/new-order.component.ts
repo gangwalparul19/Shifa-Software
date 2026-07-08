@@ -169,6 +169,22 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** Quantity stepper (−) for a line, clamped to the backend's 1..999 range. */
+  decQty(index: number): void {
+    const control = this.items.at(index).controls['quantity'];
+    const next = Math.max(1, (Number(control.value) || 1) - 1);
+    control.setValue(next);
+    control.markAsTouched();
+  }
+
+  /** Quantity stepper (+) for a line, clamped to the backend's 1..999 range. */
+  incQty(index: number): void {
+    const control = this.items.at(index).controls['quantity'];
+    const next = Math.min(999, (Number(control.value) || 0) + 1);
+    control.setValue(next);
+    control.markAsTouched();
+  }
+
   /** When a product is chosen, pre-fill the rate with its sale price (Req 7.2). */
   onProductChange(index: number): void {
     const group = this.items.at(index);

@@ -1,3 +1,129 @@
 :host {
   display: block;
 }
+
+/* --- Presentation tabs (Overview / Sales / Products / Customers) -------- */
+.shifa-status-tabs {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 0.15rem;
+}
+.shifa-status-tabs::-webkit-scrollbar {
+  display: none;
+}
+.shifa-status-tab {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  background: #fff;
+  color: #4a5a52;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.shifa-status-tab:hover {
+  border-color: var(--shifa-green-300, #7fb79a);
+}
+.shifa-status-tab.active {
+  background: var(--shifa-green-600, #1f5d3f);
+  border-color: var(--shifa-green-600, #1f5d3f);
+  color: #eafff2;
+}
+
+/* --- Active date-range chip -------------------------------------------- */
+.shifa-range-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  background: var(--shifa-green-050, #f2f9f5);
+  border: 1px solid rgba(31, 93, 63, 0.18);
+  color: var(--shifa-green-700, #164632);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+/* --- Total Revenue green banner card ----------------------------------- */
+.shifa-revenue-card {
+  background: linear-gradient(135deg, #1f5d3f 0%, #164632 55%, #0f3324 100%);
+  color: #fff;
+  border: none;
+  overflow: hidden;
+}
+.shifa-revenue-card__label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 600;
+}
+.shifa-revenue-card__value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.shifa-revenue-card__chip {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  border-radius: 0.85rem;
+  font-size: 1.3rem;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+.shifa-revenue-card__spark {
+  margin: 0 -0.5rem -0.5rem;
+}
+
+/* Delta pill on the dark banner */
+.shifa-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+.shifa-delta.up {
+  background: rgba(47, 179, 68, 0.3);
+  color: #d7f8dd;
+}
+.shifa-delta.down {
+  background: rgba(214, 57, 57, 0.32);
+  color: #ffdada;
+}
+
+/* --- Revenue-trend granularity dropdown -------------------------------- */
+.shifa-trend-select {
+  min-width: 7rem;
+}
+
+/* --- Charts ------------------------------------------------------------ */
+apx-chart {
+  display: block;
+  width: 100%;
+}
+
+/* --- KPI tiles: exactly three per row on mobile (compact operational KPIs) */
+@media (max-width: 575.98px) {
+  .shifa-kpi-row > [class*='col-'] {
+    flex: 0 0 33.3333%;
+    max-width: 33.3333%;
+    width: 33.3333%;
+  }
+  .shifa-revenue-card__value {
+    font-size: 1.7rem;
+  }
+}

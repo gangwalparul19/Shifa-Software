@@ -34,8 +34,8 @@ interface NavLink {
   roles?: Role[];
 }
 
-/** A collapsible group of related links rendered as a dropdown (desktop) or a
- *  labelled section (mobile). Group visibility follows its children's roles. */
+/** A collapsible group of related links rendered as a labelled section in the
+ *  hamburger drawer. Group visibility follows its children's roles. */
 interface NavGroup {
   kind: 'group';
   label: string;
@@ -46,16 +46,34 @@ interface NavGroup {
 /** A top-level navigation entry: either a standalone link or a group. */
 type NavEntry = NavLink | NavGroup;
 
+/** One destination on the persistent bottom tab bar (Req 2). */
+interface BottomTab {
+  label: string;
+  path: string;
+  icon: string;
+}
+
 /**
- * Authenticated admin chrome, rebuilt on the Tabler design system: a branded
- * vertical sidebar (Shifa leaf mark + grouped navigation with Tabler icons), a
- * sticky top navbar showing the current page title/breadcrumb, a live SSE
- * status pill, and a user dropdown (name, role, logout). The sidebar collapses
- * to an Angular-driven off-canvas drawer on small screens with a smooth slide +
- * backdrop fade. The routed view animates in via {@link routeFade}.
+ * Authenticated admin chrome, rebuilt mobile-first on the Tabler design system.
+ * The shell is three pieces (Req 1):
+ *
+ * <ul>
+ *   <li><b>Top app bar</b> — a hamburger trigger (left), the current screen
+ *       title, and the account/notification cluster (global search, live SSE
+ *       pill, per-user notification bell, user dropdown + sign out) on the
+ *       right.</li>
+ *   <li><b>Bottom tab bar</b> — a persistent, role-aware bar carrying exactly
+ *       four most-used destinations for the signed-in user's role (Req 2).</li>
+ *   <li><b>Hamburger menu</b> — an Angular-driven off-canvas drawer (overlay +
+ *       Escape-close) listing the full navigation the role can access, grouped,
+ *       including the Detailed Dashboard and lower-frequency admin pages
+ *       (Req 3).</li>
+ * </ul>
  *
  * <p>All behaviour is signal/Angular-driven (no Bootstrap JS dependency) to stay
- * robust and CSP-friendly. Data wiring (auth session, SSE feed) is unchanged.
+ * robust and CSP-friendly. Data wiring (auth session, SSE feed) is unchanged and
+ * every existing destination remains reachable via the bottom bar or the drawer
+ * (Req 13).
  */
 @Component({
   selector: 'admin-shell',
@@ -77,21 +95,25 @@ export class AdminShellComponent {
   private readonly router = inject(Router);
   private readonly confirm = inject(ConfirmService);
 
-  /** Whether the off-canvas sidebar is open (mobile only). */
-  protected readonly sidebarOpen = signal(false);
+  /** Whether the off-canvas hamburger navigation drawer is open. */
+  protected readonly menuOpen = signal(false);
   /** Whether the top-bar user dropdown is open. */
   protected readonly userMenuOpen = signal(false);
-  /** Label of the currently open desktop nav group, or null when none is open. */
-  protected readonly openGroup = signal<string | null>(null);
 
   /**
-   * Top-level navigation model. Twelve flat items are grouped into five
-   * top-level entries (Dashboard, Orders, Catalog, Reports, Settings). Each
-   * child keeps its own {@link NavLink.adminOnly} flag so role gating is
-   * evaluated per-child (Req 5.4).
+   * Full navigation model used by the hamburger drawer (Req 3). Standalone
+   * links plus grouped sections; each child keeps its own {@link NavLink.adminOnly}
+   * / {@link NavLink.roles} gating so role visibility is evaluated per-child.
+   * This is the same grouped structure the drawer renders, so every authorised
+   * destination — including the ones duplicated on the bottom bar and the
+   * lower-frequency admin pages — stays reachable (Req 13.1).
    */
   private readonly allNav: NavEntry[] = [
-    { kind: 'link', label: 'Dashboard', path: '/dashboard', icon: 'ti-layout-dashboard' },
+    // Req 4/5 split: /dashboard is the DETAILED, role-aware dashboard reached
+    // from the hamburger. The lighter Home summary is a later pass.
+    // TODO(mobile-ui-redesign Req 4): add a lightweight Home summary landing
+    // view and (optionally) redirect post-login there instead of /dashboard.
+    { kind: 'link', label: 'Detailed Dashboard', path: '/dashboard', icon: 'ti-layout-dashboard' },
     {
       kind: 'group',
       label: 'Orders',
@@ -122,7 +144,9 @@ export class AdminShellComponent {
       label: 'Customers',
       path: '/customers',
       icon: 'ti-users',
-      roles: [Role.ADMIN, Role.ACCOUNTANT],
+      // Salesperson sees Customers too, scoped by the backend to their own
+      // orders' customers (Req 5.4, 5.5); admin/accountant see everyone.
+      roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON],
     },
     {
       kind: 'group',
@@ -159,15 +183,65 @@ export class AdminShellComponent {
       children: [
         { kind: 'link', label: 'Users', path: '/users', icon: 'ti-users', adminOnly: true },
         { kind: 'link', label: 'Settings', path: '/settings', icon: 'ti-settings', adminOnly: true },
+        { kind: 'link', label: 'Notifications', path: '/notifications', icon: 'ti-bell', adminOnly: true },
         { kind: 'link', label: 'Audit Log', path: '/audit', icon: 'ti-history', adminOnly: true },
       ],
     },
   ];
 
   /**
-   * Navigation entries visible to the current user. Group children are filtered
-   * by role first; a group with no visible children is dropped entirely, while a
-   * standalone admin-only link is hidden for non-admins.
+   * Exactly-four most-used destinations per role for the bottom tab bar (Req 2).
+   * These are the role's authorised primary tasks; the full navigation (and any
+   * destination not listed here) remains reachable from the hamburger drawer.
+   */
+  private readonly bottomTabsByRole: Record<Role, BottomTab[]> = {
+    // Req 2.2
+    [Role.SALESPERSON]: [
+      { label: 'New Order', path: '/orders/new', icon: 'ti-plus' },
+      { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
+      { label: 'Customers', path: '/customers', icon: 'ti-users' },
+      { label: 'Products', path: '/products', icon: 'ti-leaf' },
+    ],
+    // Req 2.3 — Handover & Dispatch have no dedicated route yet; both are
+    // actions performed inside the packing area (POST /api/packing/{id}/handover
+    // & /dispatch), so they point at /packing as sensible placeholders.
+    // TODO(mobile-ui-redesign): point Handover/Dispatch at dedicated routes
+    // once they exist.
+    [Role.PACKING_USER]: [
+      { label: 'Packing', path: '/packing', icon: 'ti-barcode' },
+      { label: 'Handover', path: '/packing', icon: 'ti-transfer' },
+      { label: 'Dispatch', path: '/packing', icon: 'ti-truck-delivery' },
+      { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
+    ],
+    // Req 2.4
+    [Role.ACCOUNTANT]: [
+      { label: 'Reconcile', path: '/reconciliation', icon: 'ti-cash-register' },
+      { label: 'Reports', path: '/reports', icon: 'ti-chart-histogram' },
+      { label: 'Expenses', path: '/expenses', icon: 'ti-cash' },
+      { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
+    ],
+    // Req 2.5
+    [Role.ADMIN]: [
+      { label: 'Approvals', path: '/approval-queue', icon: 'ti-checklist' },
+      { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
+      { label: 'Products', path: '/products', icon: 'ti-leaf' },
+      { label: 'Reports', path: '/reports', icon: 'ti-chart-histogram' },
+    ],
+    // Customers never reach the staff shell; no bottom bar.
+    [Role.CUSTOMER]: [],
+  };
+
+  /** The four bottom-bar destinations for the signed-in user's role (Req 2.1). */
+  protected readonly bottomTabs = computed<BottomTab[]>(() => {
+    const role = this.auth.session()?.role ?? null;
+    return role ? (this.bottomTabsByRole[role] ?? []) : [];
+  });
+
+  /**
+   * Navigation entries visible to the current user for the hamburger drawer.
+   * Group children are filtered by role first; a group with no visible children
+   * is dropped entirely, while a standalone admin-only link is hidden for
+   * non-admins.
    */
   protected readonly navEntries = computed<NavEntry[]>(() => {
     const role = this.auth.session()?.role ?? null;
@@ -196,7 +270,7 @@ export class AdminShellComponent {
     return result;
   });
 
-  /** Current router URL (without query string), tracked for active-group state. */
+  /** Current router URL (without query string), tracked for active-tab state. */
   private readonly currentUrl = toSignal(
     this.router.events.pipe(
       filter((e): e is NavigationEnd => e instanceof NavigationEnd),
@@ -208,6 +282,24 @@ export class AdminShellComponent {
 
   /** The current page title, derived from the active route for the top bar. */
   protected readonly pageTitle = computed(() => this.titleForUrl(this.currentUrl()));
+
+  /**
+   * The path of the bottom tab that best matches the current URL. The longest
+   * matching prefix wins so that, for a SALESPERSON, visiting /orders/new
+   * highlights "New Order" rather than the broader "Orders" tab (Req 2.6).
+   */
+  protected readonly activeTabPath = computed<string | null>(() => {
+    const url = this.currentUrl().split('?')[0];
+    let best: string | null = null;
+    for (const tab of this.bottomTabs()) {
+      if (url === tab.path || url.startsWith(`${tab.path}/`)) {
+        if (best === null || tab.path.length > best.length) {
+          best = tab.path;
+        }
+      }
+    }
+    return best;
+  });
 
   /** Live connection state label for the top-bar SSE indicator. */
   protected readonly liveLabel = computed(() => {
@@ -234,46 +326,18 @@ export class AdminShellComponent {
     return links;
   }
 
-  /**
-   * Titles for routes reachable without a nav link (e.g. Notifications, opened
-   * from the top-bar bell). Keeps {@link titleForUrl} resolving them for the
-   * breadcrumb/top-bar even though they are absent from {@link allNav}.
-   */
-  private readonly extraTitles: Record<string, string> = {
-    '/notifications': 'Notifications',
-  };
-
   private titleForUrl(url: string): string {
     const path = url.split('?')[0].replace(/^\//, '');
     const match = this.allLinks().find((i) => i.path === `/${path}`);
-    return match?.label ?? this.extraTitles[`/${path}`] ?? 'Dashboard';
+    return match?.label ?? 'Dashboard';
   }
 
-  /** True when any of the group's child routes is the active route. */
-  isGroupActive(group: NavGroup): boolean {
-    const url = this.currentUrl().split('?')[0];
-    return group.children.some(
-      (child) => url === child.path || url.startsWith(`${child.path}/`),
-    );
+  toggleMenu(): void {
+    this.menuOpen.update((open) => !open);
   }
 
-  /** Toggles a desktop dropdown group; only one group is open at a time. */
-  toggleGroup(label: string): void {
-    this.openGroup.update((open) => (open === label ? null : label));
-  }
-
-  /** Closes any open desktop dropdown group. */
-  closeGroups(): void {
-    this.openGroup.set(null);
-  }
-
-  toggleSidebar(): void {
-    this.sidebarOpen.update((open) => !open);
-  }
-
-  closeSidebar(): void {
-    this.sidebarOpen.set(false);
-    this.closeGroups();
+  closeMenu(): void {
+    this.menuOpen.set(false);
   }
 
   toggleUserMenu(): void {
@@ -284,17 +348,14 @@ export class AdminShellComponent {
     this.userMenuOpen.set(false);
   }
 
-  /** Escape closes any open dropdown / user menu / mobile nav for keyboard users. */
+  /** Escape closes the user menu or the hamburger drawer for keyboard users. */
   @HostListener('document:keydown.escape')
   onEscape(): void {
-    if (this.openGroup()) {
-      this.closeGroups();
-    }
     if (this.userMenuOpen()) {
       this.closeUserMenu();
     }
-    if (this.sidebarOpen()) {
-      this.closeSidebar();
+    if (this.menuOpen()) {
+      this.closeMenu();
     }
   }
 

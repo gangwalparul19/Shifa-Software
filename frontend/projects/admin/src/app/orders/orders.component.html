@@ -129,6 +129,22 @@
   </div>
 </div>
 
+<!-- Status filter tabs (Req 6.3): quick lifecycle-group lens -->
+<div class="shifa-status-tabs mb-3" role="tablist" aria-label="Filter orders by status group">
+  @for (tab of statusTabs; track tab.key) {
+    <button
+      type="button"
+      role="tab"
+      class="shifa-status-tab"
+      [class.active]="statusGroup() === tab.key"
+      [attr.aria-selected]="statusGroup() === tab.key"
+      (click)="setStatusGroup(tab.key)"
+    >
+      {{ tab.label }}
+    </button>
+  }
+</div>
+
 <!-- Bulk actions bar -->
 @if (selectionCount() > 0) {
   <div class="card mb-3 shifa-bulkbar anim-fade-up">
@@ -183,16 +199,51 @@
   <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading orders…" />
 } @else if (loadError()) {
   <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
-} @else if (orders().length === 0) {
+} @else if (visibleOrders().length === 0) {
   <admin-state-panel
     variant="empty"
     [card]="true"
     icon="ti-receipt-off"
     title="No orders found"
-    [message]="hasFilters() ? 'No orders match your filters.' : 'Orders will appear here as they come in.'"
+    [message]="
+      statusGroup() !== 'ALL'
+        ? 'No orders in this status group on this page.'
+        : hasFilters()
+          ? 'No orders match your filters.'
+          : 'Orders will appear here as they come in.'
+    "
   />
 } @else {
-  <div class="card">
+  <!-- Mobile: clean tappable order cards (Req 6.1, mockup-faithful) -->
+  <div class="shifa-order-cards d-md-none">
+    @for (order of visibleOrders(); track order.id) {
+      <button type="button" class="shifa-oc" (click)="openDetail(order)">
+        <div class="shifa-oc__r1">
+          <span class="shifa-oc__code">{{ order.orderCode }}</span>
+          <span class="shifa-oc__amount">{{ money(order.totalAmount) }}</span>
+        </div>
+        <div class="shifa-oc__r2">
+          <span class="shifa-oc__meta">
+            {{ order.createdAt ? (order.createdAt | date: 'dd MMM yyyy') : '—' }} · {{ order.customerName }}
+          </span>
+          <span class="shifa-oc__pill" [class]="statusPillClass(order.orderStatus)">
+            {{ humanize(order.orderStatus) }}
+          </span>
+        </div>
+      </button>
+    }
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+
+  <!-- Desktop (≥768px): the existing bulk-capable orders table -->
+  <div class="card d-none d-md-block">
     <div class="table-responsive shifa-cards-sm">
       <table class="table table-vcenter card-table table-hover stagger-rows">
         <thead>
@@ -218,7 +269,7 @@
           </tr>
         </thead>
         <tbody>
-          @for (order of orders(); track order.id) {
+          @for (order of visibleOrders(); track order.id) {
             <tr class="clickable" [class.table-active]="isSelected(order.id)" (click)="openDetail(order)">
               <td class="d-none d-md-table-cell" (click)="$event.stopPropagation()">
                 <input
@@ -266,163 +317,212 @@
   </div>
 }
 
-<!-- Detail drawer -->
+<!-- Order-detail drawer (mobile-first redesign — mockup-faithful) -->
 @if (detailLoading() || selectedDetail() || detailError()) {
   <div class="shifa-overlay" (click)="closeDetail()"></div>
-  <aside class="shifa-drawer" role="dialog" aria-label="Order detail">
+  <aside class="shifa-drawer shifa-od" role="dialog" aria-label="Order details">
     @if (detailLoading()) {
       <div class="shifa-drawer__body"><div class="skeleton skeleton-line w-60 mb-3"></div><div class="skeleton skeleton-card"></div></div>
     } @else if (detailError()) {
       <div class="shifa-drawer__body"><div class="alert alert-danger">{{ detailError() }}</div></div>
     } @else if (selectedDetail(); as order) {
-      <header class="shifa-drawer__head">
-        <div>
-          <h3 class="mb-1">{{ order.orderCode }}</h3>
-          <admin-status-badge [status]="order.orderStatus" />
-        </div>
-        <div class="d-flex align-items-center gap-1">
-          @if (canCreateReturn() && isReturnEligible(order)) {
-            <button
-              type="button"
-              class="btn btn-sm btn-outline-secondary"
-              (click)="openCreateReturn()"
-              title="Create a return for this order"
-            >
-              <i class="ti ti-arrow-back-up me-1"></i> Create return
-            </button>
+      <!-- (1) Green header strip: back · title · print/invoice -->
+      <header class="shifa-drawer__head shifa-od__head">
+        <button type="button" class="shifa-od__headbtn" (click)="closeDetail()" aria-label="Back">
+          <i class="ti ti-arrow-left"></i>
+        </button>
+        <h3 class="shifa-od__title">Order Details</h3>
+        <button
+          type="button"
+          class="shifa-od__headbtn"
+          (click)="downloadInvoice(order)"
+          [disabled]="invoiceLoading()"
+          aria-label="Print invoice"
+          title="Print / download invoice"
+        >
+          @if (invoiceLoading()) {
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+          } @else {
+            <i class="ti ti-printer"></i>
           }
-          <button
-            type="button"
-            class="btn btn-sm btn-outline-primary"
-            (click)="downloadInvoice(order)"
-            [disabled]="invoiceLoading()"
-            title="Download invoice"
-          >
-            @if (invoiceLoading()) {
-              <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-            } @else {
-              <i class="ti ti-file-invoice me-1"></i>
-            }
-            Download invoice
-          </button>
-          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeDetail()" aria-label="Close">
-            <i class="ti ti-x"></i>
-          </button>
-        </div>
+        </button>
       </header>
 
-      <div class="shifa-drawer__body">
+      <div class="shifa-drawer__body shifa-od__body">
         @if (invoiceError()) {
           <div class="alert alert-danger py-2" role="alert">{{ invoiceError() }}</div>
         }
-        <div class="mb-4">
-          <div class="subheader mb-2">Customer</div>
-          <div class="fw-medium">{{ order.customerName }}</div>
-          <div class="text-secondary">{{ order.customerMobile }}</div>
-          <div class="text-secondary mt-1">
-            {{ order.addressLine }}, {{ order.city }}, {{ order.state }} — {{ order.postalCode }}
+
+        <!-- (2) Status pill + order code -->
+        <div class="shifa-od__toprow">
+          <span class="shifa-od__pill" [class]="statusPillClass(order.orderStatus)">
+            {{ humanize(order.orderStatus) }}
+          </span>
+          <span class="shifa-od__code">{{ order.orderCode }}</span>
+        </div>
+
+        <!-- (3) Order date -->
+        <div class="shifa-od__section">
+          <div class="shifa-od__label">Order Date</div>
+          <div class="shifa-od__value">
+            {{ order.createdAt ? (order.createdAt | date: 'dd MMM yyyy · hh:mm a') : '—' }}
           </div>
         </div>
 
-        <div class="mb-4">
-          <div class="subheader mb-2">Line items</div>
-          <table class="table table-sm table-vcenter">
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>HSN</th>
-                <th class="text-end">GST %</th>
-                <th class="text-end">Qty</th>
-                <th class="text-end">Rate</th>
-                <th class="text-end">Line total</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (li of order.items; track $index) {
-                <tr>
-                  <td>{{ li.productName }}</td>
-                  <td><span class="shifa-mono">{{ li.hsnCode || '—' }}</span></td>
-                  <td class="text-end">{{ li.gstRate != null ? li.gstRate + '%' : '—' }}</td>
-                  <td class="text-end">{{ li.quantity }}</td>
-                  <td class="text-end">{{ money(li.rate) }}</td>
-                  <td class="text-end">{{ money(li.lineTotal) }}</td>
-                </tr>
-              }
-            </tbody>
-          </table>
+        <!-- (4) Customer -->
+        <div class="shifa-od__card shifa-od__contact">
+          <div class="shifa-od__avatar" aria-hidden="true">{{ customerInitials(order.customerName) }}</div>
+          <div class="shifa-od__contact-main">
+            <div class="shifa-od__name">{{ order.customerName }}</div>
+            @if (order.customerMobile) {
+              <div class="shifa-od__muted">{{ order.customerMobile }}</div>
+            }
+          </div>
+          @if (order.customerMobile) {
+            <a
+              class="shifa-od__round"
+              [href]="'tel:' + order.customerMobile"
+              [attr.aria-label]="'Call ' + order.customerName"
+              title="Call customer"
+            >
+              <i class="ti ti-phone"></i>
+            </a>
+          }
         </div>
 
-        <div class="card card-sm mb-4">
-          <div class="card-body">
-            <div class="d-flex justify-content-between py-1"><span class="text-secondary">Total</span><strong>{{ money(order.totalAmount) }}</strong></div>
-            <div class="d-flex justify-content-between py-1"><span class="text-secondary">Amount received</span><strong>{{ money(order.amountReceived) }}</strong></div>
-            <div class="d-flex justify-content-between py-1"><span class="text-secondary">Remaining</span><strong>{{ money(order.remainingAmount) }}</strong></div>
-            <div class="d-flex justify-content-between py-1"><span class="text-secondary">COD amount</span><strong>{{ money(order.codAmount) }}</strong></div>
-            <div class="d-flex justify-content-between py-1 align-items-center">
-              <span class="text-secondary">Payment status</span>
+        <!-- (5) Delivery address -->
+        <div class="shifa-od__card shifa-od__contact">
+          <div class="shifa-od__contact-main">
+            <div class="shifa-od__label">Delivery Address</div>
+            <div class="shifa-od__muted mt-1">
+              {{ order.addressLine }}, {{ order.city }}, {{ order.state }} — {{ order.postalCode }}
+            </div>
+          </div>
+          <a
+            class="shifa-od__round"
+            [href]="mapsUrl(order)"
+            target="_blank"
+            rel="noopener"
+            aria-label="Open address in Google Maps"
+            title="Open in Google Maps"
+          >
+            <i class="ti ti-map-pin"></i>
+          </a>
+        </div>
+
+        <!-- (6) Order items -->
+        <div class="shifa-od__section">
+          <div class="shifa-od__label mb-2">Order Items</div>
+          <div class="shifa-od__card">
+            @for (li of order.items; track $index) {
+              <div class="shifa-od__item">
+                <!-- TODO: line-item DTO carries no product image key yet; show
+                     the shared placeholder until OrderResponse includes it. -->
+                <img
+                  class="shifa-od__thumb"
+                  [src]="lineItemThumb()"
+                  (error)="onImageError($event)"
+                  alt=""
+                  aria-hidden="true"
+                />
+                <div class="shifa-od__item-main">
+                  <div class="shifa-od__item-name">{{ li.productName }}</div>
+                  <div class="shifa-od__muted">Qty: {{ li.quantity }}</div>
+                </div>
+                <div class="shifa-od__item-total">{{ money(li.lineTotal) }}</div>
+              </div>
+            }
+          </div>
+        </div>
+
+        <!-- (7) Totals -->
+        <div class="shifa-od__card shifa-od__totals">
+          <div class="shifa-od__totline">
+            <span>Subtotal</span><span>{{ subtotal(order) }}</span>
+          </div>
+          <div class="shifa-od__totline shifa-od__grand">
+            <span>Total Amount</span><span>{{ money(order.totalAmount) }}</span>
+          </div>
+        </div>
+
+        <!-- (8) Payment (operational detail folded in) -->
+        <div class="shifa-od__section">
+          <div class="shifa-od__label mb-2">Payment</div>
+          <div class="shifa-od__card shifa-od__totals">
+            <div class="shifa-od__totline align-items-center">
+              <span>Payment status</span>
               <admin-status-badge [status]="order.paymentStatus" kind="payment" />
             </div>
+            <div class="shifa-od__totline"><span>Amount received</span><span>{{ money(order.amountReceived) }}</span></div>
+            <div class="shifa-od__totline"><span>Remaining</span><span>{{ money(order.remainingAmount) }}</span></div>
+            <div class="shifa-od__totline"><span>COD amount</span><span>{{ money(order.codAmount) }}</span></div>
           </div>
         </div>
 
+        <!-- Shipment (kept when a courier has been assigned) -->
         @if (order.awb) {
-          <div class="mb-4">
-            <div class="subheader mb-2">Shipment</div>
-            <div class="row g-1">
-              <div class="col-4 text-secondary">AWB</div><div class="col-8"><span class="shifa-mono">{{ order.awb }}</span></div>
+          <div class="shifa-od__section">
+            <div class="shifa-od__label mb-2">Shipment</div>
+            <div class="shifa-od__card">
+              <div class="shifa-od__totline"><span>AWB</span><span class="shifa-mono">{{ order.awb }}</span></div>
               @if (order.courierName) {
-                <div class="col-4 text-secondary">Courier</div><div class="col-8">{{ order.courierName }}</div>
+                <div class="shifa-od__totline"><span>Courier</span><span>{{ order.courierName }}</span></div>
               }
               @if (order.estimatedDelivery) {
-                <div class="col-4 text-secondary">Est. delivery</div><div class="col-8">{{ order.estimatedDelivery | date: 'dd MMM yyyy' }}</div>
+                <div class="shifa-od__totline"><span>Est. delivery</span><span>{{ order.estimatedDelivery | date: 'dd MMM yyyy' }}</span></div>
+              }
+              @if (order.trackingUrl) {
+                <a class="btn btn-sm btn-outline-primary mt-2" [href]="order.trackingUrl" target="_blank" rel="noopener">
+                  <i class="ti ti-external-link me-1"></i> Track shipment
+                </a>
               }
             </div>
-            @if (order.trackingUrl) {
-              <a class="btn btn-sm btn-outline-primary mt-2" [href]="order.trackingUrl" target="_blank" rel="noopener">
-                <i class="ti ti-external-link me-1"></i> Track shipment
-              </a>
-            }
           </div>
         }
 
-        <!-- Online payments (Phase E) -->
-        <div class="mb-4">
-          <div class="subheader mb-2">Online payments</div>
-          @if (paymentsLoading()) {
-            <div class="skeleton skeleton-line w-80 mb-2"></div>
-          } @else if (payments().length === 0) {
-            <p class="text-secondary mb-0">No online payment attempts for this order.</p>
-          } @else {
-            <table class="table table-sm table-vcenter">
-              <thead>
-                <tr><th>Gateway</th><th>Status</th><th class="text-end">Amount</th><th>Date</th></tr>
-              </thead>
-              <tbody>
-                @for (txn of payments(); track txn.id) {
-                  <tr>
-                    <td>{{ txn.gateway }}</td>
-                    <td><span class="badge" [attr.data-group]="paymentStatusGroup(txn.status)">{{ txn.status }}</span></td>
-                    <td class="text-end">{{ money(txn.amount) }}</td>
-                    <td class="text-secondary">{{ txn.createdAt ? (txn.createdAt | date: 'dd MMM, HH:mm') : '—' }}</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          }
-        </div>
+        <!-- (10) Primary lifecycle action for pending orders -->
+        @if (canApprove(order)) {
+          <button
+            type="button"
+            class="btn btn-primary w-100 shifa-od__primary"
+            (click)="approveOne(order)"
+            [disabled]="detailBusy()"
+            title="Approve this order"
+          >
+            @if (detailBusy()) {
+              <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            } @else {
+              <i class="ti ti-check me-1"></i>
+            }
+            Approve order
+          </button>
+        }
 
-        <div>
-          <div class="subheader mb-2">Payment screenshot</div>
-          @if (screenshotLoading()) {
-            <div class="skeleton" style="height: 180px"></div>
-          } @else if (screenshotUrl(); as url) {
-            <a [href]="url" target="_blank" rel="noopener">
-              <img class="img-fluid rounded border" [src]="url" alt="Payment screenshot" />
-            </a>
+        @if (canCreateReturn() && isReturnEligible(order)) {
+          <button
+            type="button"
+            class="btn btn-outline-secondary w-100 shifa-od__secondary"
+            (click)="openCreateReturn()"
+            title="Create a return for this order"
+          >
+            <i class="ti ti-arrow-back-up me-1"></i> Create return
+          </button>
+        }
+
+        <!-- (9) Full-width outlined green Download Invoice -->
+        <button
+          type="button"
+          class="btn w-100 shifa-od__invoice"
+          (click)="downloadInvoice(order)"
+          [disabled]="invoiceLoading()"
+        >
+          @if (invoiceLoading()) {
+            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
           } @else {
-            <p class="text-secondary">No payment screenshot for this order.</p>
+            <i class="ti ti-file-invoice me-1"></i>
           }
-        </div>
+          Download Invoice
+        </button>
       </div>
     }
   </aside>

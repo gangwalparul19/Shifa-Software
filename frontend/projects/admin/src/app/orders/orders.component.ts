@@ -6,8 +6,12 @@ import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { RouterLink } from '@angular/router';
 import { AuthService, Money, OrderStatus, PaymentStatus, Role, SortDir, SortState } from 'core';
 import { OrdersService } from './orders.service';
-import { OrderDetail, OrderSummary, PaymentTransaction } from './orders.model';
+import { OrderDetail, OrderSummary } from './orders.model';
 import { ReturnsService } from '../returns/returns.service';
+import {
+  PLACEHOLDER_PRODUCT_IMAGE,
+  imageErrorFallback,
+} from '../shared/product-image.util';
 import { AdminEventsService } from '../dashboard/admin-events.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatusBadgeComponent, humanizeStatus } from '../shared/status-badge.component';
@@ -39,14 +43,55 @@ const SORT_FIELDS = new Set([
 const TABLE_KEY = 'orders';
 
 /**
+ * Coarse lifecycle groups backing the mobile status filter tabs (Req 6.3).
+ * These are a presentation-only lens applied client-side over the loaded page;
+ * the precise per-status dropdown remains the server-side filter. Pending
+ * orders are intentionally triaged on the Approvals screen, so they surface
+ * only under "All" here.
+ */
+export type OrderStatusGroup = 'ALL' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
+
+/** The order statuses that make up each coarse lifecycle group. */
+const STATUS_GROUP_MEMBERS: Record<Exclude<OrderStatusGroup, 'ALL'>, OrderStatus[]> = {
+  PROCESSING: [
+    OrderStatus.APPROVED,
+    OrderStatus.LABEL_GENERATED,
+    OrderStatus.PACKED,
+    OrderStatus.HANDED_TO_DELIVERY,
+    OrderStatus.COURIER_ASSIGNED,
+    OrderStatus.DISPATCHED,
+    OrderStatus.IN_TRANSIT,
+    OrderStatus.OUT_FOR_DELIVERY,
+  ],
+  COMPLETED: [OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED, OrderStatus.CLOSED],
+  CANCELLED: [
+    OrderStatus.REJECTED,
+    OrderStatus.CANCELLED,
+    OrderStatus.CUSTOMER_REJECTED,
+    OrderStatus.DELIVERY_FAILED,
+    OrderStatus.RTO,
+    OrderStatus.COURIER_LOST,
+  ],
+};
+
+/** The tabs shown on the orders list, in display order. */
+export const ORDER_STATUS_TABS: { key: OrderStatusGroup; label: string }[] = [
+  { key: 'ALL', label: 'All' },
+  { key: 'PROCESSING', label: 'Processing' },
+  { key: 'COMPLETED', label: 'Completed' },
+  { key: 'CANCELLED', label: 'Cancelled' },
+];
+
+/**
  * Admin all-orders view (Req 21, 22) — Wave 2 server-side edition.
  *
  * <p>Now backed by the paginated {@code GET /api/admin/orders} endpoint with
  * server-side filtering (search, status, payment status, date range), column
  * sorting, and paging. Adds bulk operations: select rows (or all on the page)
  * and approve / mark-packed / print-labels the selection, reporting partial
- * results. A row still opens the detail drawer with full line items, amounts,
- * shipment info, online payments, and the payment screenshot.
+ * results. A row opens a mobile-first detail drawer with full line items,
+ * totals, payment summary, and shipment info. (Online-payment and payment-
+ * screenshot sections were dropped with the dashboard-only pivot.)
  */
 @Component({
   selector: 'admin-orders',
@@ -100,6 +145,21 @@ export class OrdersComponent implements OnInit, OnDestroy {
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
 
+  // --- Mobile status filter tabs (Req 6.3) --------------------------------
+  protected readonly statusTabs = ORDER_STATUS_TABS;
+  /** The active coarse lifecycle group; a client-side lens over loaded rows. */
+  protected readonly statusGroup = signal<OrderStatusGroup>('ALL');
+  /** The loaded orders filtered by the active status group (Req 6.1, 6.3). */
+  protected readonly visibleOrders = computed<OrderSummary[]>(() => {
+    const group = this.statusGroup();
+    const rows = this.orders();
+    if (group === 'ALL') {
+      return rows;
+    }
+    const members = new Set<string>(STATUS_GROUP_MEMBERS[group]);
+    return rows.filter((o) => members.has(o.orderStatus));
+  });
+
   // --- Paging + sort ------------------------------------------------------
   protected readonly page = signal(0);
   protected readonly size = signal(readPageSize(TABLE_KEY, 20));
@@ -136,13 +196,10 @@ export class OrdersComponent implements OnInit, OnDestroy {
   protected readonly selectedDetail = signal<OrderDetail | null>(null);
   protected readonly detailLoading = signal(false);
   protected readonly detailError = signal<string | null>(null);
-  protected readonly screenshotUrl = signal<string | null>(null);
-  protected readonly screenshotLoading = signal(false);
-  protected readonly screenshotMissing = signal(false);
-  protected readonly payments = signal<PaymentTransaction[]>([]);
-  protected readonly paymentsLoading = signal(false);
   protected readonly invoiceLoading = signal(false);
   protected readonly invoiceError = signal<string | null>(null);
+  /** Busy flag for single-order lifecycle actions in the detail drawer. */
+  protected readonly detailBusy = signal(false);
 
   // --- Create return (Set B — Feature 2) ---------------------------------
   /** Whether the create-return modal is open for the current detail order. */
@@ -230,7 +287,6 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.revokeScreenshot();
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -274,6 +330,11 @@ export class OrdersComponent implements OnInit, OnDestroy {
   private resetAndLoad(): void {
     this.page.set(0);
     this.load();
+  }
+
+  /** Switches the mobile status-group lens (Req 6.3). */
+  setStatusGroup(group: OrderStatusGroup): void {
+    this.statusGroup.set(group);
   }
 
   goToPage(page: number): void {
@@ -560,14 +621,10 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.detailLoading.set(true);
     this.detailError.set(null);
     this.selectedDetail.set(null);
-    this.revokeScreenshot();
-    this.screenshotMissing.set(false);
     this.service.detail(order.id).subscribe({
       next: (detail) => {
         this.selectedDetail.set(detail);
         this.detailLoading.set(false);
-        this.loadScreenshot(detail);
-        this.loadPayments(detail.id);
       },
       error: () => {
         this.detailError.set('Could not load this order.');
@@ -579,59 +636,68 @@ export class OrdersComponent implements OnInit, OnDestroy {
   closeDetail(): void {
     this.selectedDetail.set(null);
     this.detailError.set(null);
-    this.revokeScreenshot();
-    this.screenshotMissing.set(false);
-    this.payments.set([]);
   }
 
-  private loadPayments(id: number): void {
-    this.payments.set([]);
-    this.paymentsLoading.set(true);
-    this.service.payments(id).subscribe({
-      next: (rows) => {
-        this.payments.set(rows);
-        this.paymentsLoading.set(false);
-      },
-      error: () => this.paymentsLoading.set(false),
-    });
-  }
+  // --- Order-detail presentation helpers (mobile redesign) ---------------
 
-  paymentStatusGroup(status: PaymentTransaction['status']): string {
-    switch (status) {
-      case 'PAID':
-        return 'done';
-      case 'FAILED':
-        return 'bad';
-      default:
-        return 'progress';
+  /** `<img (error)>` fallback for line-item thumbnails → shared placeholder. */
+  protected readonly onImageError = imageErrorFallback;
+
+  /**
+   * Two-letter initials for the customer avatar chip (we have no customer
+   * photos, so the detail view uses an initials chip in Shifa green).
+   */
+  customerInitials(name: string | null | undefined): string {
+    const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) {
+      return '?';
     }
+    if (parts.length === 1) {
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }
 
-  private loadScreenshot(detail: OrderDetail): void {
-    this.revokeScreenshot();
-    this.screenshotMissing.set(false);
-    if (!detail.paymentScreenshotAvailable) {
-      return;
+  /**
+   * Coarse colour group for the status pill: green = completed/delivered,
+   * red = cancelled/rejected/failed, amber = everything still in flight
+   * (processing steps + pending approval).
+   */
+  statusPillClass(status: OrderStatus): string {
+    if (STATUS_GROUP_MEMBERS.COMPLETED.includes(status)) {
+      return 'is-green';
     }
-    this.screenshotLoading.set(true);
-    this.service.paymentScreenshot(detail.id).subscribe({
-      next: (blob) => {
-        this.screenshotUrl.set(URL.createObjectURL(blob));
-        this.screenshotLoading.set(false);
-      },
-      error: () => {
-        this.screenshotMissing.set(true);
-        this.screenshotLoading.set(false);
-      },
-    });
+    if (STATUS_GROUP_MEMBERS.CANCELLED.includes(status)) {
+      return 'is-red';
+    }
+    return 'is-amber';
   }
 
-  private revokeScreenshot(): void {
-    const url = this.screenshotUrl();
-    if (url) {
-      URL.revokeObjectURL(url);
-    }
-    this.screenshotUrl.set(null);
+  /** Subtotal = sum of line totals (Money is a decimal string). */
+  subtotal(order: OrderDetail): string {
+    const sum = (order.items ?? []).reduce((acc, li) => acc + Number(li.lineTotal ?? 0), 0);
+    return `₹${sum.toFixed(2)}`;
+  }
+
+  /**
+   * Thumbnail for an order line item. The line-item DTO ({@link OrderDetail}'s
+   * items) carries no product image key today, so every row renders the shared
+   * placeholder tile.
+   *
+   * TODO: to show real per-line thumbnails, add the product's image key to the
+   * backend {@code OrderResponse} line item and resolve it here with
+   * {@code resolveImageUrl(li.imageKey)} — no new endpoint required.
+   */
+  lineItemThumb(): string {
+    return PLACEHOLDER_PRODUCT_IMAGE;
+  }
+
+  /** Google Maps search deep link for the order's delivery address. */
+  mapsUrl(order: OrderDetail): string {
+    const query = [order.addressLine, order.city, order.state, order.postalCode]
+      .filter(Boolean)
+      .join(', ');
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   }
 
   downloadInvoice(order: OrderDetail): void {
@@ -653,6 +719,56 @@ export class OrdersComponent implements OnInit, OnDestroy {
       error: () => {
         this.invoiceError.set('Could not generate the invoice. Please try again.');
         this.invoiceLoading.set(false);
+      },
+    });
+  }
+
+  // --- Single-order lifecycle action (Req 7.5) ---------------------------
+
+  /**
+   * Whether the acting role may approve this order from the detail view. Admin
+   * only, and only while the order is awaiting approval. Reuses the existing
+   * bulk-approve wiring for a single id — no new backend endpoint (Req 7.5).
+   */
+  canApprove(order: OrderDetail | null): boolean {
+    return (
+      !!order &&
+      order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL &&
+      this.auth.hasAnyRole(Role.ADMIN)
+    );
+  }
+
+  /** Approves the open order (admin, pending only) via the bulk-approve API. */
+  async approveOne(order: OrderDetail): Promise<void> {
+    if (!this.canApprove(order) || this.detailBusy()) {
+      return;
+    }
+    const confirmed = await this.confirm.confirm({
+      title: 'Approve order',
+      message: `Approve order ${order.orderCode}?`,
+      confirmLabel: 'Approve',
+      icon: 'ti-check',
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.detailBusy.set(true);
+    this.service.bulkApprove([order.id]).subscribe({
+      next: (res) => {
+        this.detailBusy.set(false);
+        if (res.succeeded?.includes(order.id)) {
+          this.toasts.success(`Order ${order.orderCode} approved.`);
+          // Refresh the drawer + list so the new status is reflected.
+          this.service.detail(order.id).subscribe((d) => this.selectedDetail.set(d));
+          this.load();
+        } else {
+          const reason = res.skipped?.find((s) => s.id === order.id)?.reason;
+          this.toasts.info(reason ? `Skipped: ${reason}` : 'Order could not be approved.');
+        }
+      },
+      error: () => {
+        this.detailBusy.set(false);
+        this.toasts.error('Could not approve the order. Please try again.');
       },
     });
   }

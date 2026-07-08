@@ -2,226 +2,98 @@
   display: block;
 }
 
-/* --- Top header (subtle Shifa-green tint) -------------------------------- */
+/* --- Top app bar (solid dark-green banner, matches client mockup) ------- */
 .shifa-navbar {
   position: relative;
-  /* Faint green-tinted surface instead of flat white */
-  background: linear-gradient(180deg, var(--shifa-green-050) 0%, #ffffff 100%);
-  border-bottom: 1px solid var(--shifa-green-100);
-  box-shadow: 0 1px 4px rgba(15, 51, 36, 0.05);
-  min-height: 3.75rem;
-  padding-block: 0.5rem;
+  /* Solid brand-green banner with white content (mockup app bar). */
+  background: var(--shifa-green-600);
+  border-bottom: 1px solid var(--shifa-green-800);
+  box-shadow: 0 2px 10px rgba(15, 51, 36, 0.18);
+  min-height: 3.5rem;
+  padding-block: 0.4rem;
   z-index: 1030;
 }
-/* Thin green -> gold accent line across the very top of the app */
+/* Thin gold accent line across the very top for a crisp brand edge */
 .shifa-navbar::before {
   content: '';
   position: absolute;
   inset: 0 0 auto 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--shifa-green-600) 0%, var(--shifa-green-400) 55%, var(--shifa-gold) 100%);
-}
-
-/* Make the leaf brand mark pop a little more on the tinted bar */
-.shifa-navbar .shifa-brand__mark {
-  background: linear-gradient(135deg, var(--shifa-green-500), var(--shifa-green-700));
-  box-shadow: 0 2px 8px rgba(31, 93, 63, 0.32), 0 0 0 3px rgba(201, 162, 39, 0.18);
-}
-
-/* Global search slot: fills the middle of the top bar on desktop; on mobile it
-   shrinks to just the search icon button (the input expands to an overlay). */
-.shifa-navbar__search {
-  min-width: 0;
-}
-@media (max-width: 767.98px) {
-  .shifa-navbar__search {
-    flex: 0 0 auto;
-  }
-}
-
-/* --- Horizontal menu bar (soft green tint) ------------------------------ */
-.shifa-menu {
-  background: var(--shifa-green-050);
-  border-bottom: 1px solid var(--shifa-green-100);
-  z-index: 1020;
-}
-.shifa-menu .navbar {
-  padding-block: 0;
-}
-.shifa-menu .navbar-nav {
-  gap: 0.15rem;
-}
-.shifa-menu .nav-link {
-  position: relative;
-  padding: 0.7rem 0.85rem;
-  gap: 0.45rem;
-  font-weight: 500;
-  font-size: 0.9rem;
-  color: #3f5249;
-  border-radius: 0.5rem;
-  transition: color 0.15s ease, background-color 0.15s ease;
-}
-.shifa-menu .nav-link .nav-link-icon {
-  display: inline-flex;
-  align-items: center;
-  font-size: 1.1rem;
-  opacity: 0.85;
-  color: var(--shifa-green-500);
-}
-.shifa-menu .nav-link:hover {
-  color: var(--shifa-green-700);
-  background: rgba(31, 93, 63, 0.07);
-}
-.shifa-menu .nav-link:hover .nav-link-icon {
-  opacity: 1;
-}
-/* Active item: green text + green underline accent (Tabler treatment) */
-.shifa-menu .nav-item .nav-link.active {
-  color: var(--shifa-green-700);
-  font-weight: 600;
-}
-.shifa-menu .nav-item .nav-link.active .nav-link-icon {
-  opacity: 1;
-  color: var(--shifa-green-600);
-}
-.shifa-menu .nav-item .nav-link.active::after {
-  content: '';
-  position: absolute;
-  left: 0.5rem;
-  right: 0.5rem;
-  bottom: -1px;
   height: 2px;
-  background: linear-gradient(90deg, var(--shifa-green-600), var(--shifa-gold));
-  border-radius: 2px 2px 0 0;
-}
-.shifa-menu .nav-link.disabled {
-  color: #aab4ad;
-  cursor: default;
+  background: linear-gradient(90deg, var(--shifa-gold) 0%, rgba(201, 162, 39, 0) 100%);
 }
 
-/* --- Desktop nav group (dropdown) --------------------------------------- */
-.shifa-navgroup {
-  position: relative;
-}
-.shifa-navgroup__toggle {
-  display: inline-flex;
+.shifa-appbar__inner {
+  display: flex;
   align-items: center;
-  background: transparent;
+  gap: 0.5rem;
+}
+
+/* Left cluster: hamburger + page title */
+.shifa-appbar__lead {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.shifa-appbar__burger {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
   border: 0;
-  cursor: pointer;
-  font-family: inherit;
+  background: transparent;
+  color: #ffffff;
+  font-size: 1.4rem;
 }
-.shifa-navgroup__caret {
-  font-size: 1rem;
-  margin-left: 0.15rem;
-  opacity: 0.7;
-  transition: transform 0.18s var(--shifa-ease);
+.shifa-appbar__burger:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
 }
-.shifa-navgroup__toggle[aria-expanded='true'] .shifa-navgroup__caret {
-  transform: rotate(180deg);
+.shifa-appbar__title {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--shifa-font-display, inherit);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Floating dropdown panel */
-.shifa-navgroup__panel {
-  position: absolute;
-  top: calc(100% + 0.35rem);
-  left: 0.35rem;
-  min-width: 232px;
-  z-index: 1050;
-  box-shadow: 0 12px 32px rgba(15, 51, 36, 0.18);
-  border-color: var(--shifa-green-100);
+/* --- Dark-bar account controls (white text/icons for contrast) ---------- */
+.shifa-usermenu__btn {
+  color: #eafff2;
 }
-.shifa-navgroup__item {
+.shifa-usermenu__btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+.shifa-usermenu__btn .fw-medium {
+  color: #ffffff;
+}
+.shifa-usermenu__btn .text-secondary {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+.shifa-usermenu__btn .ti {
+  color: rgba(255, 255, 255, 0.8);
+}
+/* Avatar chip reads as a translucent white tile on the green banner. */
+.shifa-navbar .shifa-avatar {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+/* Right cluster: search + live pill + bell + user */
+.shifa-appbar__actions {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.55rem 0.7rem;
-  border-radius: 0.45rem;
-  color: #3f5249;
-  font-size: 0.9rem;
-  font-weight: 500;
-  transition: color 0.14s ease, background-color 0.14s ease;
+  gap: 0.4rem;
+  flex: 0 0 auto;
 }
-.shifa-navgroup__item .nav-link-icon {
-  display: inline-flex;
-  font-size: 1.1rem;
-  color: var(--shifa-green-500);
-  opacity: 0.9;
-}
-.shifa-navgroup__item:hover {
-  background: rgba(31, 93, 63, 0.08);
-  color: var(--shifa-green-700);
-}
-.shifa-navgroup__item.active {
-  background: var(--shifa-green-100);
-  color: var(--shifa-green-700);
-  font-weight: 600;
-}
-.shifa-navgroup__item.active .nav-link-icon {
-  opacity: 1;
-  color: var(--shifa-green-600);
-}
-
-/* --- Mobile nav group (labelled section, no floating dropdown) ---------- */
-.shifa-navgroup-m__label {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.6rem 0.5rem 0.3rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--shifa-green-600);
-}
-.shifa-navgroup-m__label i {
-  font-size: 1rem;
-}
-
-/* On mobile the menu items stack as full-width, comfortably tappable rows */
-@media (max-width: 767.98px) {
-  .shifa-menu .navbar {
-    padding-block: 0.5rem;
-  }
-  .shifa-menu .navbar-nav {
-    gap: 0.15rem;
-    width: 100%;
-  }
-  .shifa-menu .nav-item {
-    width: 100%;
-  }
-  .shifa-menu .nav-link {
-    width: 100%;
-    min-height: 2.75rem;
-    padding: 0.7rem 0.75rem;
-    border-radius: 0.5rem;
-    font-size: 0.95rem;
-  }
-  .shifa-menu .nav-link .nav-link-icon {
-    font-size: 1.25rem;
-    margin-right: 0.25rem;
-  }
-  .shifa-menu .nav-item .nav-link.active {
-    background: var(--shifa-green-100);
-    color: var(--shifa-green-700);
-  }
-  .shifa-menu .nav-item .nav-link.active::after {
-    display: none;
-  }
-
-  /* Mobile grouped sections: full-width label + slightly indented children */
-  .shifa-navgroup-m {
-    width: 100%;
-  }
-  .shifa-navgroup-m + .shifa-navgroup-m,
-  .nav-item + .shifa-navgroup-m {
-    margin-top: 0.25rem;
-    border-top: 1px solid var(--shifa-green-100);
-    padding-top: 0.25rem;
-  }
-  .shifa-navgroup-m__item {
-    padding-left: 1.5rem;
-  }
+.shifa-appbar__search {
+  min-width: 0;
 }
 
 /* --- User dropdown ------------------------------------------------------- */
@@ -230,6 +102,7 @@
 }
 .shifa-usermenu__btn {
   border-radius: 0.5rem;
+  min-height: 44px;
 }
 .shifa-usermenu__panel {
   position: absolute;
@@ -245,8 +118,201 @@
   z-index: 1040;
 }
 
+/* --- Page body: leave room for the fixed bottom tab bar ----------------- */
+.shifa-appshell__body {
+  /* 56px bar + comfortable gap + iOS safe-area inset */
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* --- Bottom tab bar (Req 2, Req 14.4) ----------------------------------- */
+.shifa-bottomnav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1035;
+  display: flex;
+  align-items: stretch;
+  background: #ffffff;
+  border-top: 1px solid var(--shifa-green-100);
+  box-shadow: 0 -2px 12px rgba(15, 51, 36, 0.08);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.shifa-bottomnav__tab {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  /* >= 44px touch target (Req 14.2) */
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 4px;
+  color: #5b6b62;
+  text-decoration: none;
+  font-size: 0.68rem;
+  font-weight: 500;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.shifa-bottomnav__icon {
+  font-size: 1.4rem;
+  line-height: 1;
+  opacity: 0.9;
+}
+.shifa-bottomnav__label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shifa-bottomnav__tab:hover {
+  color: var(--shifa-green-700);
+  background: rgba(31, 93, 63, 0.05);
+}
+/* Active tab: green text/icon + top accent bar */
+.shifa-bottomnav__tab.active {
+  color: var(--shifa-green-700);
+  font-weight: 600;
+}
+.shifa-bottomnav__tab.active .shifa-bottomnav__icon {
+  opacity: 1;
+  color: var(--shifa-green-600);
+}
+.shifa-bottomnav__tab.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 18%;
+  right: 18%;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: linear-gradient(90deg, var(--shifa-green-600), var(--shifa-gold));
+}
+
+/* On wider viewports keep the same bottom bar + hamburger model (simplest,
+   consistent). Constrain the tab row so it doesn't stretch uncomfortably wide
+   and center it. */
+@media (min-width: 768px) {
+  .shifa-bottomnav {
+    justify-content: center;
+    gap: 0.5rem;
+    padding-inline: 1rem;
+  }
+  .shifa-bottomnav__tab {
+    flex: 0 1 160px;
+    flex-direction: row;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+  }
+  .shifa-bottomnav__icon {
+    font-size: 1.2rem;
+  }
+}
+
+/* --- Hamburger off-canvas navigation drawer (Req 3) --------------------- */
+/* Reuses the global .shifa-overlay backdrop + .shifa-drawer chrome, re-anchored
+   to slide in from the LEFT (the hamburger lives on the left of the app bar). */
+.shifa-navdrawer {
+  right: auto;
+  left: 0;
+  width: min(320px, 88vw);
+  box-shadow: 12px 0 40px rgba(15, 34, 58, 0.22);
+  animation: shifaNavDrawerIn 0.28s var(--shifa-ease) both;
+}
+@keyframes shifaNavDrawerIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@media (max-width: 575.98px) {
+  .shifa-navdrawer {
+    width: min(320px, 88vw);
+  }
+}
+
+.shifa-navdrawer__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.shifa-navdrawer__group + .shifa-navdrawer__group,
+.shifa-navdrawer__item + .shifa-navdrawer__group {
+  margin-top: 0.35rem;
+  border-top: 1px solid var(--shifa-green-100);
+  padding-top: 0.35rem;
+}
+.shifa-navdrawer__label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.5rem 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--shifa-green-600);
+}
+.shifa-navdrawer__label i {
+  font-size: 1rem;
+}
+.shifa-navdrawer__item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 44px;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.5rem;
+  color: #3f5249;
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.14s ease, background-color 0.14s ease;
+}
+.shifa-navdrawer__item--child {
+  padding-left: 1.35rem;
+}
+.shifa-navdrawer__item .nav-link-icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 1.2rem;
+  color: var(--shifa-green-500);
+  opacity: 0.9;
+}
+.shifa-navdrawer__item:hover {
+  background: rgba(31, 93, 63, 0.08);
+  color: var(--shifa-green-700);
+}
+.shifa-navdrawer__item.active {
+  background: var(--shifa-green-100);
+  color: var(--shifa-green-700);
+  font-weight: 600;
+}
+.shifa-navdrawer__item.active .nav-link-icon {
+  opacity: 1;
+  color: var(--shifa-green-600);
+}
+.shifa-navdrawer__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Drawer footer: signed-in user + logout */
+.shifa-navdrawer__foot {
+  align-items: center;
+  justify-content: space-between;
+}
+.shifa-navdrawer__user {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .shifa-menu .navbar-collapse {
-    transition: none;
+  .shifa-navdrawer {
+    animation: none;
   }
 }

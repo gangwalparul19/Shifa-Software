@@ -7,15 +7,17 @@
   <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
     <i class="ti ti-refresh me-1"></i> Refresh
   </button>
-  <button type="button" class="btn btn-outline-secondary" (click)="openCategories()">
-    <i class="ti ti-category me-1"></i> Categories
-  </button>
-  <button type="button" class="btn btn-outline-secondary" (click)="openImport()">
-    <i class="ti ti-file-import me-1"></i> Import CSV
-  </button>
-  <button type="button" class="btn btn-primary" (click)="openCreate()">
-    <i class="ti ti-plus me-1"></i> Add product
-  </button>
+  @if (canManage()) {
+    <button type="button" class="btn btn-outline-secondary" (click)="openCategories()">
+      <i class="ti ti-category me-1"></i> Categories
+    </button>
+    <button type="button" class="btn btn-outline-secondary" (click)="openImport()">
+      <i class="ti ti-file-import me-1"></i> Import CSV
+    </button>
+    <button type="button" class="btn btn-primary" (click)="openCreate()">
+      <i class="ti ti-plus me-1"></i> Add product
+    </button>
+  }
 </admin-page-header>
 
 <!-- Filters -->
@@ -77,6 +79,18 @@
   </div>
 </div>
 
+<!-- Quick filter tabs (Req 8.2): drive the server-side visibility/stock filters -->
+<div class="shifa-status-tabs mb-3" role="tablist" aria-label="Filter products">
+  <button type="button" role="tab" class="shifa-status-tab" [class.active]="isTab('ALL')"
+    [attr.aria-selected]="isTab('ALL')" (click)="setTab('ALL')">All</button>
+  <button type="button" role="tab" class="shifa-status-tab" [class.active]="isTab('ACTIVE')"
+    [attr.aria-selected]="isTab('ACTIVE')" (click)="setTab('ACTIVE')">Active</button>
+  <button type="button" role="tab" class="shifa-status-tab" [class.active]="isTab('INACTIVE')"
+    [attr.aria-selected]="isTab('INACTIVE')" (click)="setTab('INACTIVE')">Inactive</button>
+  <button type="button" role="tab" class="shifa-status-tab" [class.active]="isTab('LOW')"
+    [attr.aria-selected]="isTab('LOW')" (click)="setTab('LOW')">Low stock</button>
+</div>
+
 @if (loading()) {
   <admin-state-panel
     variant="loading"
@@ -95,7 +109,7 @@
     title="No products found"
     message="No products match your filters."
   />
-} @else if (products().length === 0) {
+} @else if (products().length === 0 && canManage()) {
   <admin-state-panel
     variant="onboarding"
     [card]="true"
@@ -105,8 +119,63 @@
     ctaLabel="Add product"
     (cta)="openCreate()"
   />
+} @else if (products().length === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-leaf-off"
+    title="No products yet"
+    message="The catalog is empty."
+  />
 } @else {
-  <div class="card">
+  <!-- Mobile card list (<768px): image, name, category, stock, price (Req 8.1) -->
+  <div class="shifa-product-cards d-md-none">
+    @for (product of products(); track product.id) {
+      <div class="shifa-product-card" (click)="openDetail(product)" role="button"
+        [attr.aria-label]="'View ' + product.name">
+        <img
+          class="shifa-product-thumb"
+          [src]="thumb(product)"
+          [alt]="product.name"
+          (error)="onImgError($event)"
+          width="52"
+          height="52"
+          loading="lazy"
+        />
+        <div class="shifa-product-card__body">
+          <div class="shifa-product-card__name">
+            {{ product.name }}
+            @if (product.featured) {
+              <i class="ti ti-star-filled text-yellow ms-1" title="Featured"></i>
+            }
+          </div>
+          <div class="shifa-product-card__meta">
+            <span>{{ categoryName(product) }}</span>
+            <span class="stock-pill" [attr.data-tone]="stockTone(product)">{{ stockLabel(product) }}</span>
+          </div>
+          <div class="shifa-product-card__foot">
+            <span class="fw-medium">{{ money(product.salePrice) }}</span>
+            <span class="badge" [attr.data-visibility]="product.visibility">
+              <i class="ti me-1" [class.ti-eye]="product.visibility === Visibility.PUBLISHED" [class.ti-eye-off]="product.visibility !== Visibility.PUBLISHED"></i>
+              {{ product.visibility }}
+            </span>
+          </div>
+        </div>
+        <i class="ti ti-chevron-right shifa-product-card__chev"></i>
+      </div>
+    }
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+
+  <!-- Desktop table (≥768px) -->
+  <div class="card d-none d-md-block">
     <div class="table-responsive">
       <table class="table table-vcenter card-table table-hover stagger-rows">
         <thead>
@@ -118,21 +187,25 @@
             <th class="text-end" adminSortHeader field="salePrice" [sort]="sort()" (sortChange)="onSort($event)">Sale price</th>
             <th adminSortHeader field="stockQuantity" [sort]="sort()" (sortChange)="onSort($event)">Stock</th>
             <th>Visibility</th>
-            <th class="text-end">Actions</th>
+            @if (canManage()) {
+              <th class="text-end">Actions</th>
+            }
           </tr>
         </thead>
         <tbody>
           @for (product of products(); track product.id) {
             <tr>
               <td>
-                @if (thumb(product); as src) {
-                  <span class="avatar avatar-md" [style.background-image]="'url(' + src + ')'"></span>
-                } @else {
-                  <span class="avatar avatar-md shifa-avatar"><i class="ti ti-leaf"></i></span>
-                }
+                <img
+                  class="avatar avatar-md shifa-thumb-img"
+                  [src]="thumb(product)"
+                  [alt]="product.name"
+                  (error)="onImgError($event)"
+                  loading="lazy"
+                />
               </td>
               <td>
-                <button type="button" class="btn btn-link p-0 fw-medium text-start" (click)="openEdit(product)">
+                <button type="button" class="btn btn-link p-0 fw-medium text-start" (click)="openDetail(product)">
                   {{ product.name }}
                 </button>
                 @if (product.featured) {
@@ -151,21 +224,23 @@
                   {{ product.visibility }}
                 </span>
               </td>
-              <td class="text-end">
-                <div class="btn-list justify-content-end flex-nowrap">
-                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openEdit(product)">
-                    <i class="ti ti-edit"></i>
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-outline-primary"
-                    (click)="toggleVisibility(product)"
-                    [disabled]="togglingId() !== null"
-                  >
-                    {{ product.visibility === Visibility.PUBLISHED ? 'Hide' : 'Publish' }}
-                  </button>
-                </div>
-              </td>
+              @if (canManage()) {
+                <td class="text-end">
+                  <div class="btn-list justify-content-end flex-nowrap">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openEdit(product)">
+                      <i class="ti ti-edit"></i>
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-outline-primary"
+                      (click)="toggleVisibility(product)"
+                      [disabled]="togglingId() !== null"
+                    >
+                      {{ product.visibility === Visibility.PUBLISHED ? 'Hide' : 'Publish' }}
+                    </button>
+                  </div>
+                </td>
+              }
             </tr>
           }
         </tbody>
@@ -584,4 +659,160 @@
       </div>
     </div>
   </div>
+}
+
+<!-- Floating action button (Req 8.3): mobile primary create action (ADMIN only) -->
+@if (canManage()) {
+  <button
+    type="button"
+    class="shifa-fab d-md-none"
+    (click)="openCreate()"
+    aria-label="Add product"
+    title="Add product"
+  >
+    <i class="ti ti-plus"></i>
+  </button>
+}
+
+<!-- ===================== Product detail drawer (Req 9) ===================== -->
+@if (selectedProduct(); as product) {
+  <div class="shifa-overlay" (click)="closeDetail()"></div>
+  <aside class="shifa-drawer" role="dialog" aria-label="Product detail">
+    <!-- Green header strip: back + title + edit pencil + close (Req 9.3) -->
+    <header class="shifa-pd-head">
+      <button type="button" class="shifa-pd-head__btn" (click)="closeDetail()" aria-label="Back">
+        <i class="ti ti-arrow-left"></i>
+      </button>
+      <h3 class="shifa-pd-head__title">Product Details</h3>
+      <div class="d-flex align-items-center gap-1">
+        @if (canManage()) {
+          <button type="button" class="shifa-pd-head__btn" (click)="editFromDetail()" aria-label="Edit product" title="Edit">
+            <i class="ti ti-pencil"></i>
+          </button>
+        }
+        <button type="button" class="shifa-pd-head__btn" (click)="closeDetail()" aria-label="Close">
+          <i class="ti ti-x"></i>
+        </button>
+      </div>
+    </header>
+
+    <div class="shifa-drawer__body">
+      <!-- Hero image + carousel dots when multiple images (Req 9.1) -->
+      <div class="shifa-product-hero mb-2">
+        <img [src]="heroImage(product)" [alt]="product.name" (error)="onImgError($event)" />
+      </div>
+      @if (detailImages(product).length > 1) {
+        <div class="shifa-carousel-dots mb-3">
+          @for (img of detailImages(product); track $index) {
+            <button type="button" class="shifa-carousel-dot" [class.active]="heroIndex() === $index"
+              (click)="selectHero($index)" [attr.aria-label]="'View image ' + ($index + 1)"></button>
+          }
+        </div>
+      }
+
+      <!-- Name + Active/Inactive (visibility) badge to the right (Req 9.1) -->
+      <div class="d-flex align-items-start justify-content-between gap-2 mb-1">
+        <div class="d-flex align-items-center gap-2">
+          <h2 class="mb-0 shifa-pd-name">{{ product.name }}</h2>
+          @if (product.featured) {
+            <i class="ti ti-star-filled text-yellow" title="Featured"></i>
+          }
+        </div>
+        <span class="badge shifa-pd-badge" [class.is-active]="product.visibility === Visibility.PUBLISHED">
+          <i class="ti me-1" [class.ti-eye]="product.visibility === Visibility.PUBLISHED" [class.ti-eye-off]="product.visibility !== Visibility.PUBLISHED"></i>
+          {{ product.visibility === Visibility.PUBLISHED ? 'Active' : 'Inactive' }}
+        </span>
+      </div>
+
+      <!-- SKU line -->
+      <div class="text-secondary mb-2"><span class="shifa-mono">SKU: {{ product.sku }}</span></div>
+
+      <!-- Price (₹ bold + struck MRP when present) -->
+      <div class="d-flex align-items-baseline gap-2 mb-3">
+        <span class="h1 mb-0 fw-bold">{{ money(product.salePrice) }}</span>
+        @if (product.mrp && product.mrp !== product.salePrice) {
+          <span class="text-secondary text-decoration-line-through">{{ money(product.mrp) }}</span>
+        }
+      </div>
+
+      <!-- Two-column row: Stock | Category (Req 9.1) -->
+      <div class="row g-2 mb-3">
+        <div class="col-6">
+          <div class="shifa-pd-fact">
+            <div class="shifa-pd-fact__label"><i class="ti ti-box me-1"></i>Stock</div>
+            <div class="shifa-pd-fact__value">
+              {{ product.trackInventory ? (product.stockQuantity ?? 0) + ' Units' : 'Not tracked' }}
+            </div>
+            <span class="stock-pill mt-1" [attr.data-tone]="stockTone(product)">{{ stockLabel(product) }}</span>
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="shifa-pd-fact">
+            <div class="shifa-pd-fact__label"><i class="ti ti-category me-1"></i>Category</div>
+            <div class="shifa-pd-fact__value">{{ categoryName(product) }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tax facts (kept from prior detail) -->
+      @if (product.hsnCode || product.gstRate) {
+        <div class="card card-sm mb-3">
+          <div class="card-body py-2">
+            @if (product.hsnCode) {
+              <div class="d-flex justify-content-between py-1">
+                <span class="text-secondary">HSN</span><span class="shifa-mono">{{ product.hsnCode }}</span>
+              </div>
+            }
+            @if (product.gstRate) {
+              <div class="d-flex justify-content-between py-1">
+                <span class="text-secondary">GST rate</span><span>{{ product.gstRate }}%</span>
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Description -->
+      <div class="mb-3">
+        <div class="subheader mb-2">Description</div>
+        @if (product.description) {
+          <p class="text-secondary mb-0">{{ product.description }}</p>
+        } @else {
+          <p class="text-secondary mb-0">No description provided.</p>
+        }
+      </div>
+
+      <!-- Sales Overview (Req 9.2): per-product sales/orders aren't exposed by the
+           catalog API, so we surface the operational stats we DO have (stock on
+           hand, reviews) and a graceful "no sales data yet" note. -->
+      <div class="card card-sm mb-3">
+        <div class="card-body">
+          <div class="subheader mb-2">Sales Overview</div>
+          <div class="row g-2">
+            <div class="col-6">
+              <div class="text-secondary small">On-hand stock</div>
+              <div class="h3 mb-0">{{ product.trackInventory ? (product.stockQuantity ?? 0) : '—' }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-secondary small">Reviews</div>
+              @if (hasRating(product)) {
+                <div class="h3 mb-0"><i class="ti ti-star-filled text-yellow me-1"></i>{{ product.averageRating }}
+                  <span class="text-secondary fs-5">({{ product.reviewCount }})</span></div>
+              } @else {
+                <div class="h3 mb-0 text-secondary">—</div>
+              }
+            </div>
+          </div>
+          <p class="text-secondary small mb-0 mt-2">
+            <i class="ti ti-info-circle me-1"></i>Per-product sales figures aren't available yet.
+          </p>
+        </div>
+      </div>
+
+      <!-- Full-width solid-green View Sales Report button (Req 9.2) -->
+      <button type="button" class="btn btn-primary w-100 shifa-touch" (click)="viewSalesReport()">
+        <i class="ti ti-chart-bar me-1"></i> View Sales Report
+      </button>
+    </div>
+  </aside>
 }

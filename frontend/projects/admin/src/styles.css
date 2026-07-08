@@ -150,19 +150,69 @@ a {
 }
 
 /* --------------------------------------------------------------------------
+   2b. Dark-green app bar — restyle the controls that live inside child
+   components (global search, notification bell, live indicator) so they read
+   as WHITE on the solid green banner. These are separate Angular components,
+   so the shell's scoped CSS can't reach them; global selectors below can.
+   -------------------------------------------------------------------------- */
+/* Ghost icon buttons (mobile search toggle, bell) → white */
+.shifa-navbar .btn-ghost-secondary,
+.shifa-navbar .shifa-bell__btn {
+  color: #eafff2;
+}
+.shifa-navbar .btn-ghost-secondary:hover,
+.shifa-navbar .shifa-bell__btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+/* Global search field → translucent white input on the green bar */
+.shifa-navbar .shifa-search .form-control {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+}
+.shifa-navbar .shifa-search .form-control::placeholder {
+  color: rgba(255, 255, 255, 0.72);
+}
+.shifa-navbar .shifa-search .form-control:focus {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+.shifa-navbar .shifa-search .input-icon-addon {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+/* Notification bell unread badge keeps its red pop; nudge the ring to white */
+.shifa-navbar .shifa-bell__badge {
+  box-shadow: 0 0 0 2px var(--shifa-green-600);
+}
+
+/* Popover panels (search results, bell, user menu) drop back onto white so
+   their own dark-on-light text stays legible. */
+.shifa-navbar .shifa-search__panel,
+.shifa-navbar .shifa-bell__panel,
+.shifa-usermenu__panel {
+  color: #1c2b24;
+}
+
+/* --------------------------------------------------------------------------
    3. Cards, tables, headers — clean Tabler light polish
    -------------------------------------------------------------------------- */
 .card {
-  --tblr-card-border-color: rgba(4, 32, 69, 0.08);
-  border: 1px solid rgba(4, 32, 69, 0.08);
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 2px rgba(15, 34, 58, 0.04);
+  --tblr-card-border-color: rgba(4, 32, 69, 0.06);
+  border: 1px solid rgba(4, 32, 69, 0.06);
+  /* Rounded ~12px cards with a soft shadow to match the mockup tiles. */
+  border-radius: 0.85rem;
+  box-shadow: 0 1px 2px rgba(15, 34, 58, 0.04), 0 6px 16px rgba(15, 34, 58, 0.05);
   transition: box-shadow 0.18s var(--shifa-ease), transform 0.18s var(--shifa-ease);
 }
 
 /* Interactive cards lift gently on hover */
 .card-hover:hover {
-  box-shadow: 0 2px 4px rgba(15, 34, 58, 0.06), 0 8px 22px rgba(15, 34, 58, 0.07);
+  box-shadow: 0 2px 4px rgba(15, 34, 58, 0.06), 0 10px 26px rgba(15, 34, 58, 0.1);
   transform: translateY(-2px);
 }
 
@@ -202,11 +252,12 @@ a {
 .stat-icon {
   display: grid;
   place-items: center;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.75rem;
+  height: 2.75rem;
   flex: 0 0 auto;
-  border-radius: 0.5rem;
-  font-size: 1.2rem;
+  /* Rounded colour chip like the mockup KPI tiles. */
+  border-radius: 0.85rem;
+  font-size: 1.3rem;
   background: var(--accent-soft, var(--shifa-green-100));
   color: var(--accent, var(--tblr-primary));
 }
@@ -384,14 +435,17 @@ tr.clickable {
 
   /* Compact stat card body: tighter padding, no fixed min-height */
   .row-cards .stat-accent .card-body {
-    padding: 0.6rem;
+    padding: 0.75rem;
     min-height: 0;
-    gap: 0.4rem;
+    gap: 0.5rem;
   }
 
-  /* Hide the large icon on phones so number + label get the space */
+  /* Keep the colour chip on phones (mockup shows it) but make it compact. */
   .stat-accent .card-body .stat-icon {
-    display: none;
+    width: 2.25rem;
+    height: 2.25rem;
+    font-size: 1.05rem;
+    border-radius: 0.7rem;
   }
 
   /* Labels: smaller, allowed to wrap to two lines instead of clipping */
@@ -407,7 +461,7 @@ tr.clickable {
   /* Numbers: smaller but still tabular + count-up friendly */
   .stat-accent .h1,
   .stat-accent .h2 {
-    font-size: 1.1rem;
+    font-size: 1.25rem;
   }
 }
 

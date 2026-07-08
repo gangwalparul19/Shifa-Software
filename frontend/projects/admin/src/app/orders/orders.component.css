@@ -58,8 +58,391 @@
   max-width: 22rem;
 }
 
+/* --- Status filter tabs (Req 6.3) --------------------------------------- */
+.shifa-status-tabs {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 0.15rem;
+}
+.shifa-status-tabs::-webkit-scrollbar {
+  display: none;
+}
+.shifa-status-tab {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  background: #fff;
+  color: #4a5a52;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.shifa-status-tab:hover {
+  border-color: var(--shifa-green-300, #7fb79a);
+}
+.shifa-status-tab.active {
+  background: var(--shifa-green-600, #1f5d3f);
+  border-color: var(--shifa-green-600, #1f5d3f);
+  color: #eafff2;
+}
+
+/* One-tap call action keeps a comfortable touch target (Req 7.2, 14.2). */
+.shifa-call-btn {
+  min-height: 36px;
+}
+
+@media (max-width: 767.98px) {
+  .shifa-call-btn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shifa-pulse-dot {
     animation: none;
   }
+}
+
+/* ==========================================================================
+   Order-detail drawer — mobile-first redesign (mockup-faithful)
+   Scoped to this component. The drawer shell (.shifa-drawer/__head/__body)
+   lives in global styles; these rules restyle the CONTENT to match the
+   client mockup: green banner, status pill, contact/address cards, item
+   rows with thumbnails, totals, payment, and the bottom action buttons.
+   ========================================================================== */
+
+/* (1) Green header strip — solid Shifa green, white content. */
+.shifa-od__head {
+  background: var(--shifa-green-600, #1f5d3f);
+  border-bottom: none;
+  color: #fff;
+  padding: 0.6rem 0.6rem;
+  gap: 0.5rem;
+}
+.shifa-od__title {
+  flex: 1 1 auto;
+  margin: 0;
+  text-align: center;
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.shifa-od__headbtn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 0.65rem;
+  background: transparent;
+  color: #fff;
+  font-size: 1.35rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.shifa-od__headbtn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.shifa-od__headbtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Body: soft off-white canvas so the white cards read as raised. */
+.shifa-od__body {
+  background: #f5f8f6;
+  padding: 1rem;
+}
+.shifa-od__section {
+  margin-bottom: 1rem;
+}
+.shifa-od__label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #5f6f67;
+}
+.shifa-od__value {
+  margin-top: 0.15rem;
+  font-weight: 600;
+  color: #1c2b24;
+}
+.shifa-od__muted {
+  color: #64726b;
+  font-size: 0.9rem;
+  word-break: break-word;
+}
+
+/* (2) Status pill (left) + order code (right). */
+.shifa-od__toprow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.shifa-od__pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.38rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.shifa-od__pill.is-green {
+  background: var(--shifa-green-100, #e4f2ea);
+  color: var(--shifa-green-700, #1a4f38);
+}
+.shifa-od__pill.is-amber {
+  background: #fdf0d5;
+  color: #96650a;
+}
+.shifa-od__pill.is-red {
+  background: #fde4e2;
+  color: #b42318;
+}
+.shifa-od__code {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #1c2b24;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* Rounded cards with a soft shadow (~12px radius). */
+.shifa-od__card {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+  margin-bottom: 1rem;
+}
+.shifa-od__section .shifa-od__card {
+  margin-bottom: 0;
+}
+
+/* (4)/(5) Contact + address rows: avatar/text + circular action. */
+.shifa-od__contact {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+.shifa-od__contact-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.shifa-od__name {
+  font-weight: 600;
+  color: #1c2b24;
+}
+.shifa-od__avatar {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--shifa-green-600, #1f5d3f);
+  color: #eafff2;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+/* Circular green action button (call / map-pin), ≥44px touch target. */
+.shifa-od__round {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--shifa-green-600, #1f5d3f);
+  color: #fff;
+  font-size: 1.2rem;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+.shifa-od__round:hover {
+  background: var(--shifa-green-700, #164632);
+  color: #fff;
+}
+
+/* (6) Order items: thumbnail · name/qty · line total. */
+.shifa-od__item {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid rgba(15, 51, 36, 0.06);
+}
+.shifa-od__item:first-child {
+  padding-top: 0;
+}
+.shifa-od__item:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.shifa-od__thumb {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--shifa-green-050, #f2f9f5);
+}
+.shifa-od__item-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.shifa-od__item-name {
+  font-weight: 600;
+  color: #1c2b24;
+}
+.shifa-od__item-total {
+  font-weight: 700;
+  color: #1c2b24;
+  white-space: nowrap;
+}
+
+/* (7)/(8) Totals + payment breakdown lines. */
+.shifa-od__totline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.3rem 0;
+  color: #45524b;
+}
+.shifa-od__grand {
+  margin-top: 0.4rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(15, 51, 36, 0.1);
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+.shifa-od__grand span:last-child {
+  color: var(--shifa-green-600, #1f5d3f);
+}
+
+/* Bottom action buttons — comfortable touch targets. */
+.shifa-od__primary,
+.shifa-od__secondary,
+.shifa-od__invoice {
+  min-height: 48px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.shifa-od__primary,
+.shifa-od__secondary {
+  margin-bottom: 0.6rem;
+}
+/* (9) Full-width OUTLINED green invoice button. */
+.shifa-od__invoice {
+  color: var(--shifa-green-600, #1f5d3f);
+  background: #fff;
+  border: 1.5px solid var(--shifa-green-600, #1f5d3f);
+}
+.shifa-od__invoice:hover:not(:disabled) {
+  background: var(--shifa-green-050, #f2f9f5);
+  color: var(--shifa-green-700, #164632);
+}
+
+/* ==========================================================================
+   Orders list — mobile card list (Req 6.1, 14.3), mockup-faithful.
+   Shown only <768px; the bulk-capable table takes over at ≥768px.
+   ========================================================================== */
+.shifa-order-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.shifa-oc {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.05s ease;
+}
+.shifa-oc:hover {
+  box-shadow: 0 4px 14px rgba(15, 51, 36, 0.12);
+}
+.shifa-oc:active {
+  transform: scale(0.995);
+}
+.shifa-oc__r1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.shifa-oc__code {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #1c2b24;
+  letter-spacing: 0.02em;
+}
+.shifa-oc__amount {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #1c2b24;
+  white-space: nowrap;
+}
+.shifa-oc__r2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.4rem;
+}
+.shifa-oc__meta {
+  color: #64726b;
+  font-size: 0.85rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shifa-oc__pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.shifa-oc__pill.is-green {
+  background: var(--shifa-green-100, #e4f2ea);
+  color: var(--shifa-green-700, #1a4f38);
+}
+.shifa-oc__pill.is-amber {
+  background: #fdf0d5;
+  color: #96650a;
+}
+.shifa-oc__pill.is-red {
+  background: #fde4e2;
+  color: #b42318;
 }

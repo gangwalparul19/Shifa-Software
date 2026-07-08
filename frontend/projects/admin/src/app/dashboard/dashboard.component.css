@@ -243,3 +243,69 @@ apx-chart {
   display: block;
   width: 100%;
 }
+
+/* --- KPI tiles: exactly two per row on mobile (mockup layout) ------------ */
+/* Forces the count/money stat cards in a tagged row to 50% width on phones,
+   overriding their bootstrap col-4/col-6 basis so they read two-up like the
+   client mockup. Wider breakpoints keep the responsive bootstrap columns. */
+@media (max-width: 575.98px) {
+  .shifa-kpi-row > [class*='col-'] {
+    flex: 0 0 50%;
+    max-width: 50%;
+    width: 50%;
+  }
+}
+
+/* --- KPI Overview header + View All link -------------------------------- */
+.shifa-kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.25rem 0 0.6rem;
+}
+.shifa-kpi-head__label {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--shifa-green-700, #164632);
+}
+.shifa-view-all {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--shifa-green-600, #1f5d3f);
+  text-decoration: none;
+}
+.shifa-view-all:hover {
+  text-decoration: underline;
+}
+
+/* --- Per-tile delta line ------------------------------------------------ */
+.shifa-tile-delta {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #6b7c74;
+}
+.shifa-tile-delta.up {
+  color: #2f9e44;
+}
+.shifa-tile-delta.down {
+  color: #d63939;
+}
+
+/* --- Sales Overview: period totals row ---------------------------------- */
+.shifa-period-totals {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(15, 51, 36, 0.08);
+}
+.shifa-period-totals__item {
+  min-width: 0;
+}

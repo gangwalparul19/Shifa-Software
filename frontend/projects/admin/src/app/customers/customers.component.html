@@ -48,7 +48,39 @@
     [message]="search.value ? 'No customers match your search.' : 'Customers appear here once orders come in.'"
   />
 } @else {
-  <div class="card">
+  <!-- Mobile: avatar rows with a kebab that opens the existing detail (Req 11.1) -->
+  <div class="shifa-cust-list d-md-none">
+    @for (c of customers(); track c.mobile) {
+      <div class="shifa-cust" (click)="openDetail(c)">
+        <div class="shifa-cust__avatar" aria-hidden="true">{{ customerInitials(c.name) }}</div>
+        <div class="shifa-cust__main">
+          <div class="shifa-cust__name">{{ c.name || '—' }}</div>
+          <div class="shifa-cust__phone">{{ c.mobile }}</div>
+          <div class="shifa-cust__meta">{{ c.orderCount }} Orders · {{ money(c.totalSpent) }}</div>
+        </div>
+        <button
+          type="button"
+          class="shifa-cust__kebab"
+          (click)="$event.stopPropagation(); openDetail(c)"
+          [attr.aria-label]="'Actions for ' + (c.name || c.mobile)"
+          title="View customer"
+        >
+          <i class="ti ti-dots-vertical"></i>
+        </button>
+      </div>
+    }
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+
+  <!-- Desktop (≥768px): the existing rich customers table -->
+  <div class="card d-none d-md-block">
     <div class="table-responsive">
       <table class="table table-vcenter card-table table-hover stagger-rows">
         <thead>

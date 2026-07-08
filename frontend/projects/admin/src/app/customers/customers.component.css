@@ -1,2 +1,82 @@
-/* Customers / CRM view — layout relies on shared global table, drawer and
-   badge styles; nothing feature-specific is required here. */
+/* Customers / CRM view — the desktop table relies on shared global table,
+   drawer and badge styles. The mobile avatar list below is scoped here and
+   mirrors the client mockup (Req 11.1, 14.2, 14.3). */
+
+.shifa-cust-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Avatar row: initials chip · name/phone/meta · kebab. ≥44px touch target. */
+.shifa-cust {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 44px;
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.8rem 0.85rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+.shifa-cust:hover {
+  box-shadow: 0 4px 14px rgba(15, 51, 36, 0.12);
+}
+
+/* Gray circular avatar with initials (mockup uses neutral gray). */
+.shifa-cust__avatar {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #e7ece9;
+  color: #3f5147;
+  font-weight: 700;
+  font-size: 1rem;
+}
+.shifa-cust__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.shifa-cust__name {
+  font-weight: 700;
+  color: #1c2b24;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shifa-cust__phone {
+  color: #45524b;
+  font-size: 0.9rem;
+}
+.shifa-cust__meta {
+  color: #64726b;
+  font-size: 0.82rem;
+  margin-top: 0.1rem;
+}
+
+/* Overflow (kebab) menu → opens the existing customer detail/actions. */
+.shifa-cust__kebab {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: #6b7a72;
+  font-size: 1.3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.shifa-cust__kebab:hover {
+  background: var(--shifa-green-050, #f2f9f5);
+  color: var(--shifa-green-700, #164632);
+}

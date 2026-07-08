@@ -20,10 +20,12 @@ import java.util.List;
 /**
  * Admin category management (Catalog &amp; Discovery).
  *
- * <p>Restricted to the {@code ADMIN} role via method security; unauthenticated
- * callers get 401 and non-admins 403. Supports create/update/list and a
- * soft-deactivate (DELETE marks the category inactive rather than removing it,
- * so products keep their {@code category_id}).
+ * <p>Mutations (create/update/deactivate) are restricted to the {@code ADMIN}
+ * role via the class-level {@code @PreAuthorize}; unauthenticated callers get
+ * 401 and non-admins 403. The read-only list additionally allows the
+ * {@code SALESPERSON} role via method-level {@code @PreAuthorize} so the
+ * salesperson Products page can populate its category filter (products read
+ * access is ADMIN + SALESPERSON); mutations stay ADMIN-only.
  */
 @RestController
 @RequestMapping("/api/admin/categories")
@@ -38,6 +40,7 @@ public class AdminCategoryController {
 
     /** Lists ALL categories — active and inactive — for the management grid. */
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN','SALESPERSON')")
     public List<CategoryResponse> list() {
         return categoryService.adminList();
     }

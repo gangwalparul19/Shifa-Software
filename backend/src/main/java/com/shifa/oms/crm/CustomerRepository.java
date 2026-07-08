@@ -34,7 +34,13 @@ public interface CustomerRepository extends Repository<OrderEntity, Long> {
      * alias, not a real column. The customer set is small, so in-memory paging is
      * fine.
      *
-     * @param q case-insensitive substring over customer name or mobile (nullable → all)
+     * <p>A non-null {@code createdBy} scopes the aggregation to orders created by
+     * that user — the salesperson scoping rule (Req 5.5): a salesperson only sees
+     * customers derived from their own orders. A {@code null} {@code createdBy}
+     * disables scoping (ADMIN / ACCOUNTANT see every customer, Req 5.4).
+     *
+     * @param q         case-insensitive substring over customer name or mobile (nullable → all)
+     * @param createdBy the {@code created_by} constraint, or null for no scoping
      */
     @Query(value = """
             SELECT o.customer_mobile AS mobile,
@@ -46,11 +52,12 @@ public interface CustomerRepository extends Repository<OrderEntity, Long> {
                    MAX(o.created_at) AS lastOrderAt,
                    MIN(o.created_at) AS firstOrderAt
             FROM orders o
-            WHERE (:q IS NULL
+            WHERE (:createdBy IS NULL OR o.created_by = :createdBy)
+              AND (:q IS NULL
                    OR LOWER(o.customer_name) LIKE CONCAT('%', LOWER(:q), '%')
                    OR o.customer_mobile LIKE CONCAT('%', :q, '%'))
             GROUP BY o.customer_mobile
             """,
             nativeQuery = true)
-    List<CustomerSummaryProjection> aggregateAll(@Param("q") String q);
+    List<CustomerSummaryProjection> aggregateAll(@Param("q") String q, @Param("createdBy") Long createdBy);
 }

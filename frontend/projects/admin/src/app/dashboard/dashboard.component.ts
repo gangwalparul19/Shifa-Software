@@ -193,6 +193,31 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return { w, h, line, area };
   });
 
+  /**
+   * Current- vs previous-period sales totals derived from the loaded sales
+   * graph (no extra backend call). Powers the Sales Overview "This period vs
+   * Previous period" summary; {@code showPrev} is false when there's no
+   * comparable previous window.
+   */
+  protected readonly periodTotals = computed<{
+    current: number;
+    previous: number;
+    showPrev: boolean;
+  } | null>(() => {
+    const g = this.metrics()?.salesGraph;
+    if (!g || g.points.length === 0) {
+      return null;
+    }
+    const current = g.points.reduce((acc, p) => acc + p.sales, 0);
+    const previous = g.points.reduce((acc, p) => acc + p.previousSales, 0);
+    return { current, previous, showPrev: g.changeApplicable || previous > 0 };
+  });
+
+  /** The display label for the currently selected metrics period. */
+  protected periodLabel(): string {
+    return this.periodOptions.find((o) => o.value === this.period())?.label ?? '';
+  }
+
   /** Selectable period presets (Req 19.2). */
   protected readonly periodOptions: PeriodOption[] = [
     { value: 'TODAY', label: 'Today' },

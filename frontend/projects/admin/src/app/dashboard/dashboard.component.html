@@ -106,7 +106,18 @@
           <div>
             <div class="subheader">Total sales</div>
             <div class="h1 m-0 count-up" [shifaCountUp]="metrics()?.cards?.totalSales ?? 0" countFormat="inr"></div>
-            <div class="text-secondary small mt-1">Selected period</div>
+            <div class="text-secondary small mt-1">{{ periodLabel() }}</div>
+            @if (metrics() && changeDirection() !== 'flat') {
+              <div class="shifa-tile-delta mt-1"
+                [class.up]="changeDirection() === 'up'"
+                [class.down]="changeDirection() === 'down'">
+                @switch (changeDirection()) {
+                  @case ('up') { <i class="ti ti-trending-up me-1"></i> }
+                  @case ('down') { <i class="ti ti-trending-down me-1"></i> }
+                }
+                {{ changeText() }} vs prev
+              </div>
+            }
           </div>
           <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-chart-line"></i></span>
         </div>
@@ -135,7 +146,7 @@
      handover / dispatch stages surfaced from the role summary. -->
 @if (summary()?.admin; as adm) {
   <div class="shifa-section-title">Fulfilment queues</div>
-  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
     <div class="col-4 col-md-4 col-xl-3">
       <div class="card card-hover stat-accent shifa-card-link" style="--accent: #f59f00; --accent-soft: #fdf1da"
         role="button" tabindex="0" title="View pending-approval orders"
@@ -203,7 +214,7 @@
 <!-- Live stats strip (Req 19.5) -->
 @if (live(); as ls) {
   <div class="shifa-section-title">Today (live)</div>
-  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
     <div class="col-4 col-md-3 col-xl-2">
       <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
         <div class="card-body d-flex align-items-center justify-content-between">
@@ -254,9 +265,15 @@
 @if (metrics(); as m) {
   <!-- Metric cards (Req 19.1) — grouped into scannable sections -->
 
+  <!-- KPI Overview header with a View All link to the reports screen -->
+  <div class="shifa-kpi-head">
+    <span class="shifa-kpi-head__label">KPI Overview</span>
+    <a routerLink="/reports" class="shifa-view-all">View All <i class="ti ti-chevron-right ms-1"></i></a>
+  </div>
+
   <!-- Orders group (count metrics → 3 per row on mobile) -->
   <div class="shifa-section-title">Orders</div>
-  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
     <div class="col-4 col-md-3 col-xl-2">
       <div
         class="card card-hover stat-accent shifa-card-link"
@@ -361,7 +378,7 @@
 
   <!-- Exceptions group (count metrics → 3 per row on mobile) -->
   <div class="shifa-section-title">Exceptions</div>
-  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
     <div class="col-4 col-md-3 col-xl-2">
       <div
         class="card card-hover stat-accent shifa-card-link"
@@ -406,7 +423,7 @@
 
   <!-- Finance group (money → 2 per row on mobile; conversion count → 3) -->
   <div class="shifa-section-title">Finance</div>
-  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
     <div class="col-6 col-md-4 col-lg-3">
       <div class="card card-hover stat-accent" style="--accent: #17a2b8; --accent-soft: #e2f4f7">
         <div class="card-body d-flex align-items-center justify-content-between">
@@ -448,8 +465,8 @@
       <div class="card h-100">
         <div class="card-header">
           <div>
-            <h3 class="card-title mb-0">Sales</h3>
-            <p class="card-subtitle text-secondary m-0">Current period vs previous period</p>
+            <h3 class="card-title mb-0">Sales Overview</h3>
+            <p class="card-subtitle text-secondary m-0">{{ periodLabel() }} · current vs previous period</p>
           </div>
           <div class="card-actions d-flex align-items-center gap-2">
             <span
@@ -500,6 +517,33 @@
             <div class="empty">
               <div class="empty-icon"><i class="ti ti-chart-bar-off"></i></div>
               <p class="empty-title">No sales in the selected period</p>
+            </div>
+          }
+
+          <!-- This period vs Last period totals + delta chip -->
+          @if (periodTotals(); as pt) {
+            <div class="shifa-period-totals">
+              <div class="shifa-period-totals__item">
+                <div class="text-secondary small">This period</div>
+                <div class="h3 mb-0">{{ inr(pt.current) }}</div>
+              </div>
+              @if (pt.showPrev) {
+                <div class="shifa-period-totals__item">
+                  <div class="text-secondary small">Previous period</div>
+                  <div class="h3 mb-0 text-secondary">{{ inr(pt.previous) }}</div>
+                </div>
+              }
+              <span class="badge shifa-change ms-auto"
+                [class.bg-success-lt]="changeDirection() === 'up'"
+                [class.bg-danger-lt]="changeDirection() === 'down'"
+                [class.bg-secondary-lt]="changeDirection() === 'flat'">
+                @switch (changeDirection()) {
+                  @case ('up') { <i class="ti ti-trending-up me-1"></i> }
+                  @case ('down') { <i class="ti ti-trending-down me-1"></i> }
+                  @default { <i class="ti ti-minus me-1"></i> }
+                }
+                {{ changeText() }}
+              </span>
             </div>
           }
         </div>
@@ -747,7 +791,7 @@
       <a class="btn btn-primary mt-2 shifa-touch" routerLink="/orders/new"><i class="ti ti-plus me-1"></i> New order</a>
     </div>
   } @else {
-    <div class="row row-cards g-2 g-md-3 mb-3 stagger">
+    <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
       @for (s of salespersonStatuses(); track s.key) {
         <div class="col-4 col-md-3 col-xl-2">
           <div class="card card-hover stat-accent" style="--accent: #206bc4; --accent-soft: #e7f0fb">
