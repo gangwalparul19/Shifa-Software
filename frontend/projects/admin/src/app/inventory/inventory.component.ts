@@ -91,6 +91,20 @@ export class InventoryComponent implements OnInit {
     () => this.items().filter((r) => r.stockStatus !== StockStatus.IN_STOCK && r.trackInventory).length,
   );
 
+  // --- Stock summary KPIs (derived from the loaded rows) ------------------
+  /** Tracked products currently in stock. */
+  protected readonly inStockCount = computed(
+    () => this.items().filter((r) => r.trackInventory && r.stockStatus === StockStatus.IN_STOCK).length,
+  );
+  /** Tracked products at or below their low-stock threshold. */
+  protected readonly lowCount = computed(
+    () => this.items().filter((r) => r.trackInventory && r.stockStatus === StockStatus.LOW_STOCK).length,
+  );
+  /** Tracked products with no stock on hand. */
+  protected readonly outCount = computed(
+    () => this.items().filter((r) => r.trackInventory && r.stockStatus === StockStatus.OUT_OF_STOCK).length,
+  );
+
   // --- Modal state --------------------------------------------------------
   protected readonly modal = signal<ActiveModal>(null);
   protected readonly activeProduct = signal<InventoryProduct | null>(null);

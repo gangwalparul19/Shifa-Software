@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, FormControl, ReactiveFormsModule } from '@angular/forms';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { Money, ReceivableType, SortState } from 'core';
@@ -63,6 +63,22 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
   // --- Data ---------------------------------------------------------------
   protected readonly summary = signal<CourierSummary[]>([]);
   protected readonly receivables = signal<ReceivableRow[]>([]);
+
+  /**
+   * Aggregate outstanding KPI tiles across all couriers, summed from the
+   * per-courier summary already loaded (no new data). COD receivable = COD
+   * still to collect, claim receivable = loss claims owed, and the combined
+   * total outstanding.
+   */
+  protected readonly totalCodOutstanding = computed(() =>
+    this.sumMoney(this.summary().map((c) => c.codOutstanding)),
+  );
+  protected readonly totalClaimOutstanding = computed(() =>
+    this.sumMoney(this.summary().map((c) => c.claimOutstanding)),
+  );
+  protected readonly totalOutstanding = computed(() =>
+    this.sumMoney(this.summary().map((c) => c.totalOutstanding)),
+  );
   protected readonly unsettled = signal<UnsettledCod[]>([]);
   protected readonly segregation = signal<Segregation | null>(null);
   protected readonly claims = signal<ReceivableRow[]>([]);
@@ -324,6 +340,12 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
       return '₹0.00';
     }
     return `₹${value}`;
+  }
+
+  /** Sums a list of Money (decimal-string) values into a formatted ₹ total. */
+  private sumMoney(values: (Money | undefined | null)[]): string {
+    const total = values.reduce<number>((acc, v) => acc + Number(v ?? 0), 0);
+    return `₹${total.toFixed(2)}`;
   }
 
   courierLabel(name: string | null): string {

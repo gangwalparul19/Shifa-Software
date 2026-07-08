@@ -81,6 +81,20 @@ export class PurchaseOrdersComponent implements OnInit, OnDestroy {
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
 
+  // --- Summary KPIs (derived from the loaded page of purchase orders) -----
+  /** Open POs awaiting any receipt. */
+  protected readonly orderedCount = computed(
+    () => this.pos().filter((p) => p.status === 'ORDERED').length,
+  );
+  /** POs partly received (some stock still outstanding). */
+  protected readonly partialCount = computed(
+    () => this.pos().filter((p) => p.status === 'PARTIALLY_RECEIVED').length,
+  );
+  /** Fully received POs on this page. */
+  protected readonly receivedCount = computed(
+    () => this.pos().filter((p) => p.status === 'RECEIVED').length,
+  );
+
   // --- Reference data -----------------------------------------------------
   protected readonly suppliers = signal<SupplierResponse[]>([]);
   protected readonly products = signal<Product[]>([]);

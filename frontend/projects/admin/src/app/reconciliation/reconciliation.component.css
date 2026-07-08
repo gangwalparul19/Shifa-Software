@@ -23,3 +23,106 @@
     font-size: 1rem;
   }
 }
+
+/* Aggregate KPI tiles: keep three per row on phones (compact operational KPIs). */
+@media (max-width: 575.98px) {
+  .shifa-recon-kpis .h2 {
+    font-size: 1rem;
+  }
+  .shifa-recon-kpis .stat-icon {
+    width: 2rem;
+    height: 2rem;
+    font-size: 1rem;
+  }
+}
+
+/* ==========================================================================
+   Reconciliation — mobile card lists (<768px) for receivables / unsettled /
+   claims. Rounded white cards with a soft shadow, a coloured status pill, and
+   a full-width Settle action (≥44px touch target). Desktop tables at ≥768px.
+   ========================================================================== */
+.shifa-recon-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.85rem;
+}
+.shifa-rc {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.85rem 0.9rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+.shifa-rc__r1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.shifa-rc__code {
+  font-weight: 700;
+  color: #1c2b24;
+  letter-spacing: 0.02em;
+}
+.shifa-rc__amount {
+  font-weight: 700;
+  color: #1c2b24;
+  white-space: nowrap;
+}
+.shifa-rc__r2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+}
+.shifa-rc__meta {
+  color: #64726b;
+  font-size: 0.85rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shifa-rc__awb {
+  margin-top: 0.4rem;
+  color: #64726b;
+  font-size: 0.82rem;
+}
+.shifa-rc__pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.shifa-rc__pill.is-green {
+  background: var(--shifa-green-100, #e4f2ea);
+  color: var(--shifa-green-700, #1a4f38);
+}
+.shifa-rc__pill.is-amber {
+  background: #fdf0d5;
+  color: #96650a;
+}
+.shifa-rc__pill.is-red {
+  background: #fde4e2;
+  color: #b42318;
+}
+.shifa-rc__btn {
+  margin-top: 0.75rem;
+  min-height: 44px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.shifa-rc__settled {
+  margin-top: 0.5rem;
+  color: #64726b;
+  font-size: 0.82rem;
+}

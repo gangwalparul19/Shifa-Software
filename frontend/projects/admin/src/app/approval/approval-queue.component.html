@@ -32,7 +32,43 @@
     message="New punched orders will appear here for review."
   />
 } @else {
-  <div class="card shifa-touch">
+  <!-- Mobile (<768px): tappable approval cards — code + amount, customer + date,
+       payment pill, and clear Approve / Reject actions (mockup-faithful). -->
+  <div class="shifa-appr-cards d-md-none">
+    @for (item of queue(); track item.id) {
+      <div class="shifa-appr">
+        <div class="shifa-appr__r1" (click)="openDetail(item)">
+          <span class="shifa-appr__code">{{ item.orderCode }}</span>
+          <span class="shifa-appr__amount">{{ money(item.totalAmount) }}</span>
+        </div>
+        <div class="shifa-appr__r2" (click)="openDetail(item)">
+          <span class="shifa-appr__meta">
+            {{ item.customerName }} · {{ item.createdAt ? (item.createdAt | date: 'dd MMM, HH:mm') : '—' }}
+          </span>
+          <admin-status-badge [status]="item.paymentStatus" kind="payment" />
+        </div>
+        @if (itemsSummary(item) !== '—') {
+          <div class="shifa-appr__items" (click)="openDetail(item)">
+            <i class="ti ti-package me-1"></i>{{ itemsSummary(item) }}
+          </div>
+        }
+        <div class="shifa-appr__actions">
+          <button type="button" class="btn btn-outline-secondary" (click)="openDetail(item)">
+            <i class="ti ti-eye me-1"></i> Review
+          </button>
+          <button type="button" class="btn btn-outline-danger" (click)="openReject(item)" [disabled]="acting()">
+            <i class="ti ti-x me-1"></i> Reject
+          </button>
+          <button type="button" class="btn btn-success" (click)="approve(item)" [disabled]="acting()">
+            <i class="ti ti-check me-1"></i> Approve
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Desktop (≥768px): the existing rich approval table. -->
+  <div class="card shifa-touch d-none d-md-block">
     <div class="table-responsive">
       <table class="table table-vcenter card-table table-hover stagger-rows">
         <thead>

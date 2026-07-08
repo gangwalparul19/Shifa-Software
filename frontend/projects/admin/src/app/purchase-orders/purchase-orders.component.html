@@ -76,7 +76,95 @@
     [message]="hasFilters() ? 'No purchase orders match your filters.' : 'Create a purchase order to restock from a supplier.'"
   />
 } @else {
-  <div class="card">
+  <!-- Summary KPI tiles for the purchase orders on screen: green icon chip +
+       big value + label, three per row on phones (mirrors the order screens). -->
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-po-kpis">
+    <div class="col-4">
+      <div class="card card-hover stat-accent" style="--accent: #d6820a; --accent-soft: #fdf0d5">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Ordered</div>
+            <div class="h1 m-0">{{ orderedCount() }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #d6820a; --accent-soft: #fdf0d5"><i class="ti ti-clipboard-list"></i></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-4">
+      <div class="card card-hover stat-accent" style="--accent: #206bc4; --accent-soft: #e7f0fb">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Partial</div>
+            <div class="h1 m-0">{{ partialCount() }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #206bc4; --accent-soft: #e7f0fb"><i class="ti ti-package"></i></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-4">
+      <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Received</div>
+            <div class="h1 m-0">{{ receivedCount() }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-package-import"></i></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile (<768px): purchase-order cards — PO number, supplier, status pill,
+       total and date, with the Receive / Cancel / View actions preserved. -->
+  <div class="shifa-po-cards d-md-none">
+    @for (po of pos(); track po.id) {
+      <div class="shifa-po" (click)="openDetail(po)" role="button" [attr.aria-label]="'View ' + po.poNumber">
+        <div class="shifa-po__r1">
+          <span class="shifa-po__num">{{ po.poNumber }}</span>
+          <span class="badge" [attr.data-group]="statusTone(po.status)">{{ statusLabel(po.status) }}</span>
+        </div>
+        <div class="shifa-po__supplier">{{ supplierName(po.supplierId) }}</div>
+        <div class="shifa-po__r2">
+          <span class="shifa-po__meta"><i class="ti ti-calendar me-1"></i>{{ po.createdAt | date: 'dd MMM yyyy' }}</span>
+          <span class="shifa-po__meta"><i class="ti ti-box me-1"></i>{{ po.itemCount }} item{{ po.itemCount === 1 ? '' : 's' }}</span>
+          <span class="shifa-po__total">{{ money(po.totalAmount) }}</span>
+        </div>
+        @if (isReceivable(po.status) || isCancellable(po.status)) {
+          <div class="shifa-po__actions" (click)="$event.stopPropagation()">
+            @if (isReceivable(po.status)) {
+              <button type="button" class="btn btn-outline-primary" (click)="startReceive(po)">
+                <i class="ti ti-package-import me-1"></i> Receive
+              </button>
+            }
+            @if (isCancellable(po.status)) {
+              <button
+                type="button"
+                class="btn btn-outline-danger"
+                (click)="cancel(po)"
+                [disabled]="cancellingId() !== null"
+              >
+                <i class="ti ti-ban me-1"></i> Cancel
+              </button>
+            }
+            <button type="button" class="btn btn-outline-secondary" (click)="openDetail(po)">
+              <i class="ti ti-eye me-1"></i> View
+            </button>
+          </div>
+        }
+      </div>
+    }
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+
+  <!-- Desktop table (≥768px) -->
+  <div class="card d-none d-md-block">
     <div class="table-responsive">
       <table class="table table-vcenter card-table table-hover">
         <thead>

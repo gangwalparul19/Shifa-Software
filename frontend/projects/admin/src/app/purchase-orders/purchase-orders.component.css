@@ -4,3 +4,79 @@
 .shifa-modal.shifa-modal--wide {
   width: min(860px, calc(100vw - 2rem));
 }
+
+/* --- Summary KPI tiles: keep three per row and compact on phones -------- */
+@media (max-width: 575.98px) {
+  .shifa-po-kpis .h1 {
+    font-size: 1.35rem;
+  }
+  .shifa-po-kpis .stat-icon {
+    width: 2rem;
+    height: 2rem;
+    font-size: 1rem;
+  }
+}
+
+/* --- Mobile purchase-order cards (<768px) ------------------------------ */
+.shifa-po-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.shifa-po {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+  cursor: pointer;
+}
+.shifa-po:active {
+  background: var(--shifa-green-050, #f2f9f5);
+}
+.shifa-po__r1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.shifa-po__num {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #1c2b24;
+}
+.shifa-po__supplier {
+  margin-top: 0.35rem;
+  color: #1c2b24;
+  font-weight: 500;
+}
+.shifa-po__r2 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.85rem;
+  margin-top: 0.5rem;
+}
+.shifa-po__meta {
+  color: #64726b;
+  font-size: 0.85rem;
+}
+.shifa-po__total {
+  margin-left: auto;
+  font-weight: 700;
+  color: #1c2b24;
+}
+.shifa-po__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+.shifa-po__actions .btn {
+  flex: 1 1 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}

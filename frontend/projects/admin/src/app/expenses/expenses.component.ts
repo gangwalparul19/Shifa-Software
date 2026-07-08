@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
 import { ApiError, SortState } from 'core';
@@ -51,6 +51,11 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
   protected readonly deletingId = signal<number | null>(null);
+
+  /** Sum of the amounts on the current page (summary tile). */
+  protected readonly pageTotal = computed(() =>
+    this.expenses().reduce((sum, e) => sum + (Number.isFinite(e.amount) ? e.amount : 0), 0),
+  );
 
   // --- Paging + sort ------------------------------------------------------
   protected readonly page = signal(0);

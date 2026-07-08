@@ -94,7 +94,99 @@
     message="Add products in the Products page to start tracking their stock here."
   />
 } @else {
-  <div class="card">
+  <!-- Stock summary KPI tiles: green icon chip + big value + label. Three per
+       row on phones (compact operational KPIs), mirroring the order screens. -->
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-inv-kpis">
+    <div class="col-4">
+      <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">In stock</div>
+            <div class="h1 m-0">{{ inStockCount() }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-checks"></i></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-4">
+      <div class="card card-hover stat-accent" style="--accent: #d6820a; --accent-soft: #fdf0d5">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Low stock</div>
+            <div class="h1 m-0">{{ lowCount() }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #d6820a; --accent-soft: #fdf0d5"><i class="ti ti-alert-triangle"></i></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-4">
+      <div class="card card-hover stat-accent" style="--accent: #d63b2f; --accent-soft: #fbe6e4">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Out of stock</div>
+            <div class="h1 m-0">{{ outCount() }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #d63b2f; --accent-soft: #fbe6e4"><i class="ti ti-box-off"></i></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile (<768px): stock cards — product name, on-hand, status pill and the
+       Restock / Adjust / History actions preserved from the desktop table. -->
+  <div class="shifa-inv-cards d-md-none">
+    @for (row of visibleItems(); track row.id) {
+      <div class="shifa-inv">
+        <div class="shifa-inv__r1">
+          <div class="shifa-inv__id">
+            <div class="shifa-inv__name">{{ row.name }}</div>
+            <div class="shifa-inv__sku shifa-mono">{{ row.sku }}</div>
+          </div>
+          <span class="badge" [attr.data-group]="tone(row)">{{ stockLabel(row) }}</span>
+        </div>
+        <div class="shifa-inv__r2">
+          <div class="shifa-inv__stat">
+            <span class="shifa-inv__stat-label">On hand</span>
+            <span class="shifa-inv__stat-value">{{ row.trackInventory ? row.stockQuantity : '—' }}</span>
+          </div>
+          <div class="shifa-inv__stat">
+            <span class="shifa-inv__stat-label">Threshold</span>
+            <span class="shifa-inv__stat-value text-secondary">{{ row.trackInventory ? row.lowStockThreshold : '—' }}</span>
+          </div>
+        </div>
+        <div class="shifa-inv__actions">
+          <button
+            type="button"
+            class="btn btn-outline-primary"
+            (click)="openRestock(row)"
+            [disabled]="!row.trackInventory"
+          >
+            <i class="ti ti-package-import me-1"></i> Restock
+          </button>
+          <button
+            type="button"
+            class="btn btn-outline-secondary"
+            (click)="openAdjust(row)"
+            [disabled]="!row.trackInventory"
+          >
+            <i class="ti ti-adjustments me-1"></i> Adjust
+          </button>
+          <button
+            type="button"
+            class="btn btn-icon btn-ghost-secondary"
+            (click)="openHistory(row)"
+            title="Stock history"
+            aria-label="Stock history"
+          >
+            <i class="ti ti-history"></i>
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Desktop table (≥768px) -->
+  <div class="card d-none d-md-block">
     <div class="table-responsive">
       <table class="table table-vcenter card-table table-hover stagger-rows">
         <thead>

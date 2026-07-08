@@ -23,7 +23,7 @@
     <button type="button" class="btn btn-sm btn-danger" (click)="load()">Retry</button>
   </div>
 } @else {
-  <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+  <form [formGroup]="form" (ngSubmit)="save()" novalidate class="shifa-settings">
     @if (formError(); as err) {
       <div class="alert alert-danger anim-fade-up" role="alert">
         <i class="ti ti-alert-triangle me-2"></i>{{ err }}
@@ -270,8 +270,8 @@
       </div>
     </div>
 
-    <div class="d-flex justify-content-end gap-2">
-      <button type="submit" class="btn btn-primary" [disabled]="saving()">
+    <div class="shifa-set-savebar">
+      <button type="submit" class="btn btn-primary shifa-set-save" [disabled]="saving()">
         @if (saving()) {
           <span class="spinner-border spinner-border-sm me-2"></span> Saving…
         } @else {

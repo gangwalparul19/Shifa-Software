@@ -13,6 +13,45 @@
   <admin-state-panel variant="error" [message]="loadError()!" (retry)="loadAll()" />
 }
 
+<!-- Aggregate KPI tiles: COD to collect / claims owed / total outstanding.
+     Rounded green icon chip + big value + label, summed from the per-courier
+     summary already loaded (Req 18.1, 18.6). -->
+<div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-recon-kpis">
+  <div class="col-4">
+    <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
+      <div class="card-body d-flex align-items-center justify-content-between">
+        <div>
+          <div class="subheader">COD to collect</div>
+          <div class="h2 m-0">{{ totalCodOutstanding() }}</div>
+        </div>
+        <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-cash"></i></span>
+      </div>
+    </div>
+  </div>
+  <div class="col-4">
+    <div class="card card-hover stat-accent" style="--accent: #d6820a; --accent-soft: #fdf0d5">
+      <div class="card-body d-flex align-items-center justify-content-between">
+        <div>
+          <div class="subheader">Claims owed</div>
+          <div class="h2 m-0">{{ totalClaimOutstanding() }}</div>
+        </div>
+        <span class="stat-icon" style="--accent: #d6820a; --accent-soft: #fdf0d5"><i class="ti ti-file-alert"></i></span>
+      </div>
+    </div>
+  </div>
+  <div class="col-4">
+    <div class="card card-hover stat-accent" style="--accent: #206bc4; --accent-soft: #e7f0fb">
+      <div class="card-body d-flex align-items-center justify-content-between">
+        <div>
+          <div class="subheader">Total outstanding</div>
+          <div class="h2 m-0">{{ totalOutstanding() }}</div>
+        </div>
+        <span class="stat-icon" style="--accent: #206bc4; --accent-soft: #e7f0fb"><i class="ti ti-report-money"></i></span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Per-courier summary cards -->
 <div class="shifa-section-title">Courier receivables</div>
 <div class="row row-cards g-2 g-md-3 mb-3 stagger">
@@ -124,7 +163,39 @@
     @if (receivables().length === 0) {
       <div class="empty py-4"><p class="empty-title">No receivables match the current filters.</p></div>
     } @else {
-      <div class="table-responsive">
+      <!-- Mobile (<768px): receivable cards with a status pill + Settle action. -->
+      <div class="shifa-recon-cards d-md-none">
+        @for (r of receivables(); track r.id) {
+          <div class="shifa-rc">
+            <div class="shifa-rc__r1">
+              <span class="shifa-rc__code">{{ r.orderCode ?? '—' }}</span>
+              <span class="shifa-rc__amount">{{ money(r.amount) }}</span>
+            </div>
+            <div class="shifa-rc__r2">
+              <span class="shifa-rc__meta">
+                {{ r.type === ReceivableType.COD_RECEIVABLE ? 'COD' : 'Claim' }} · {{ courierLabel(r.courierName) }}
+              </span>
+              @if (r.settled) {
+                <span class="shifa-rc__pill is-green">Settled</span>
+              } @else {
+                <span class="shifa-rc__pill is-amber">Outstanding</span>
+              }
+            </div>
+            @if (r.awb) {
+              <div class="shifa-rc__awb"><i class="ti ti-barcode me-1"></i><span class="shifa-mono">{{ r.awb }}</span></div>
+            }
+            @if (!r.settled) {
+              <button type="button" class="btn btn-primary w-100 shifa-rc__btn" (click)="openSettle(r)" [disabled]="acting()">
+                <i class="ti ti-check me-1"></i> Settle
+              </button>
+            } @else if (r.settledDate) {
+              <div class="shifa-rc__settled">Settled on {{ r.settledDate | date: 'dd MMM yyyy' }}</div>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="table-responsive d-none d-md-block">
         <table class="table table-vcenter card-table table-hover stagger-rows">
           <thead><tr>
             <th>Order</th>
@@ -174,7 +245,29 @@
     @if (unsettled().length === 0) {
       <div class="empty py-4"><p class="empty-title">No unsettled COD receivables</p><p class="empty-subtitle text-secondary">All collected COD is settled.</p></div>
     } @else {
-      <div class="table-responsive">
+      <!-- Mobile (<768px): unsettled-COD cards with a Settle action. -->
+      <div class="shifa-recon-cards d-md-none">
+        @for (u of unsettled(); track u.receivableId) {
+          <div class="shifa-rc">
+            <div class="shifa-rc__r1">
+              <span class="shifa-rc__code">{{ u.orderCode ?? '—' }}</span>
+              <span class="shifa-rc__amount">{{ money(u.amount) }}</span>
+            </div>
+            <div class="shifa-rc__r2">
+              <span class="shifa-rc__meta">{{ u.customerName ?? '—' }} · {{ courierLabel(u.courierName) }}</span>
+              <span class="shifa-rc__pill is-amber">Unsettled</span>
+            </div>
+            @if (u.awb) {
+              <div class="shifa-rc__awb"><i class="ti ti-barcode me-1"></i><span class="shifa-mono">{{ u.awb }}</span></div>
+            }
+            <button type="button" class="btn btn-primary w-100 shifa-rc__btn" (click)="openSettle(u)" [disabled]="acting()">
+              <i class="ti ti-check me-1"></i> Settle
+            </button>
+          </div>
+        }
+      </div>
+
+      <div class="table-responsive d-none d-md-block">
         <table class="table table-vcenter card-table table-hover stagger-rows">
           <thead><tr><th>Order</th><th>Customer</th><th>Courier</th><th>AWB</th><th class="text-end">COD amount</th><th class="text-end">Actions</th></tr></thead>
           <tbody>
@@ -243,7 +336,31 @@
     @if (claims().length === 0) {
       <div class="empty py-4"><p class="empty-title">No claims pending</p><p class="empty-subtitle text-secondary">Loss claims will appear here to be filed.</p></div>
     } @else {
-      <div class="table-responsive">
+      <!-- Mobile (<768px): pending-claim cards with a Mark settled action. -->
+      <div class="shifa-recon-cards d-md-none">
+        @for (c of claims(); track c.id) {
+          <div class="shifa-rc">
+            <div class="shifa-rc__r1">
+              <span class="shifa-rc__code">{{ c.orderCode ?? '—' }}</span>
+              <span class="shifa-rc__amount">{{ money(c.amount) }}</span>
+            </div>
+            <div class="shifa-rc__r2">
+              <span class="shifa-rc__meta">
+                {{ courierLabel(c.courierName) }} · {{ c.createdAt ? (c.createdAt | date: 'dd MMM yyyy') : '—' }}
+              </span>
+              <span class="shifa-rc__pill is-red">Claim</span>
+            </div>
+            @if (c.awb) {
+              <div class="shifa-rc__awb"><i class="ti ti-barcode me-1"></i><span class="shifa-mono">{{ c.awb }}</span></div>
+            }
+            <button type="button" class="btn btn-primary w-100 shifa-rc__btn" (click)="openSettle(c)" [disabled]="acting()">
+              <i class="ti ti-check me-1"></i> Mark settled
+            </button>
+          </div>
+        }
+      </div>
+
+      <div class="table-responsive d-none d-md-block">
         <table class="table table-vcenter card-table table-hover stagger-rows">
           <thead><tr><th>Order</th><th>Courier</th><th>AWB</th><th class="text-end">Claim amount</th><th>Recorded</th><th class="text-end">Actions</th></tr></thead>
           <tbody>

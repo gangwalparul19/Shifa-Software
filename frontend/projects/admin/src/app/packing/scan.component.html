@@ -88,24 +88,28 @@
         <div class="card-header">
           <h3 class="card-title mb-0">Ready to move</h3>
         </div>
-        <div class="list-group list-group-flush">
+        <div class="card-body shifa-work-list">
           @for (item of workItems(); track item.id) {
-            <div class="list-group-item">
-              <div class="d-flex align-items-center flex-wrap gap-2">
-                <div class="me-auto">
-                  <div class="fw-medium shifa-mono">{{ item.orderCode }}</div>
-                  <div class="text-secondary small d-flex align-items-center gap-2 flex-wrap">
-                    <span>{{ item.customerName }}</span>
-                    <admin-status-badge [status]="item.status" />
-                  </div>
-                  @if (item.error) {
-                    <div class="text-danger small mt-1"><i class="ti ti-alert-triangle me-1"></i>{{ item.error }}</div>
-                  }
+            <div class="shifa-work">
+              <div class="shifa-work__head">
+                <div class="shifa-work__main">
+                  <div class="shifa-work__code shifa-mono">{{ item.orderCode }}</div>
+                  <div class="shifa-work__meta">{{ item.customerName }}</div>
                 </div>
+                <admin-status-badge [status]="item.status" />
+                <button type="button" class="shifa-work__dismiss" (click)="dismissItem(item.id)" aria-label="Dismiss">
+                  <i class="ti ti-x"></i>
+                </button>
+              </div>
 
+              @if (item.error) {
+                <div class="text-danger small mt-1"><i class="ti ti-alert-triangle me-1"></i>{{ item.error }}</div>
+              }
+
+              <div class="shifa-work__action">
                 @switch (item.phase) {
                   @case ('packed') {
-                    <button type="button" class="btn btn-primary" (click)="handover(item)" [disabled]="item.busy">
+                    <button type="button" class="btn btn-primary w-100" (click)="handover(item)" [disabled]="item.busy">
                       @if (item.busy) {
                         <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
                       } @else {
@@ -115,7 +119,7 @@
                     </button>
                   }
                   @case ('handed_over') {
-                    <button type="button" class="btn btn-primary" (click)="dispatch(item)" [disabled]="item.busy">
+                    <button type="button" class="btn btn-primary w-100" (click)="dispatch(item)" [disabled]="item.busy">
                       @if (item.busy) {
                         <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
                       } @else {
@@ -125,15 +129,12 @@
                     </button>
                   }
                   @case ('dispatched') {
-                    <span class="badge bg-success-lt"><i class="ti ti-check me-1"></i>Dispatched</span>
+                    <span class="badge bg-success-lt w-100 py-2"><i class="ti ti-check me-1"></i>Dispatched</span>
                   }
                   @default {
-                    <span class="badge bg-secondary-lt">Done</span>
+                    <span class="badge bg-secondary-lt w-100 py-2">Done</span>
                   }
                 }
-                <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="dismissItem(item.id)" aria-label="Dismiss">
-                  <i class="ti ti-x"></i>
-                </button>
               </div>
             </div>
           }

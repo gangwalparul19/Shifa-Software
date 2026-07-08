@@ -30,3 +30,81 @@
     animation: none;
   }
 }
+
+/* ==========================================================================
+   Approval queue — mobile card list (<768px), mockup-faithful.
+   Rounded white cards with a soft shadow: order code + amount on top,
+   customer + date and a payment status pill below, an items summary line,
+   then full-width Approve / Reject / Review actions (≥44px touch targets).
+   The rich approval table takes over at ≥768px.
+   ========================================================================== */
+.shifa-appr-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.shifa-appr {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+  transition: box-shadow 0.15s ease;
+}
+.shifa-appr:hover {
+  box-shadow: 0 4px 14px rgba(15, 51, 36, 0.12);
+}
+.shifa-appr__r1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  cursor: pointer;
+}
+.shifa-appr__code {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #1c2b24;
+  letter-spacing: 0.02em;
+}
+.shifa-appr__amount {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #1c2b24;
+  white-space: nowrap;
+}
+.shifa-appr__r2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.4rem;
+  cursor: pointer;
+}
+.shifa-appr__meta {
+  color: #64726b;
+  font-size: 0.85rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shifa-appr__items {
+  margin-top: 0.5rem;
+  color: #45524b;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.shifa-appr__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+.shifa-appr__actions .btn {
+  flex: 1 1 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}

@@ -1,6 +1,141 @@
-/* Staff user management — most styling is inherited from the shared Tabler
-   theme and the global admin stylesheet (tables, badges, modals). Keep any
-   page-specific tweaks small to stay within the component-style budget. */
+/* Staff user management — desktop table (≥768px) inherits the shared Tabler
+   theme; the mobile card list below is scoped here and mirrors the mockup
+   design language shipped across the app (rounded white cards, soft shadow,
+   Shifa green accents, ≥44px touch targets, single-column at 360px). */
 :host {
   display: block;
+}
+
+/* --- Mobile staff cards (<768px) --------------------------------------- */
+.shifa-user-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.shifa-uc {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+
+.shifa-uc__top {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.shifa-uc__avatar {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--shifa-green-600, #1f5d3f);
+  color: #eafff2;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.shifa-uc__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.shifa-uc__name {
+  font-weight: 700;
+  color: #1c2b24;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shifa-uc__username {
+  color: #64726b;
+  font-size: 0.85rem;
+  margin-top: 0.1rem;
+}
+
+/* Active / inactive status pill with a leading dot. */
+.shifa-uc__status {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.shifa-uc__status.is-active {
+  background: var(--shifa-green-100, #e4f2ea);
+  color: var(--shifa-green-700, #1a4f38);
+}
+.shifa-uc__status.is-inactive {
+  background: #eef0f2;
+  color: #64726b;
+}
+.shifa-uc__statusdot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.shifa-uc__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+.shifa-uc__created {
+  color: #64726b;
+  font-size: 0.82rem;
+}
+
+.shifa-uc__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+.shifa-uc__actions .btn {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  padding-inline: 0.4rem;
+}
+
+/* --- Floating action button (mobile create) ---------------------------- */
+.shifa-fab {
+  position: fixed;
+  right: 1.1rem;
+  bottom: 1.1rem;
+  z-index: 1030;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background: var(--shifa-green-600, #1f5d3f);
+  color: #fff;
+  font-size: 1.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 18px rgba(15, 51, 36, 0.28);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.05s ease;
+}
+.shifa-fab:hover {
+  background: var(--shifa-green-700, #164632);
+  color: #fff;
+}
+.shifa-fab:active {
+  transform: scale(0.96);
 }

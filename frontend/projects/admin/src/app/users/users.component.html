@@ -27,7 +27,59 @@
     (cta)="openCreate()"
   />
 } @else {
-  <div class="card">
+  <!-- Mobile (<768px): staff user cards -->
+  <div class="shifa-user-cards d-md-none">
+    @for (user of users(); track user.id) {
+      <div class="shifa-uc">
+        <div class="shifa-uc__top">
+          <div class="shifa-uc__avatar" aria-hidden="true">{{ userInitials(user.fullName || user.username) }}</div>
+          <div class="shifa-uc__main">
+            <div class="shifa-uc__name">
+              {{ user.fullName }}
+              @if (isSelf(user)) {
+                <span class="badge bg-secondary-lt ms-1">You</span>
+              }
+            </div>
+            <div class="shifa-uc__username shifa-mono">{{ user.username }}</div>
+          </div>
+          <span
+            class="shifa-uc__status"
+            [class.is-active]="user.active"
+            [class.is-inactive]="!user.active"
+          >
+            <span class="shifa-uc__statusdot"></span>
+            {{ user.active ? 'Active' : 'Inactive' }}
+          </span>
+        </div>
+        <div class="shifa-uc__meta">
+          <span class="badge" [class]="roleBadgeClass(user.role)">{{ roleLabel(user.role) }}</span>
+          <span class="shifa-uc__created">Added {{ createdLabel(user.createdAt) }}</span>
+        </div>
+        <div class="shifa-uc__actions">
+          <button type="button" class="btn btn-outline-secondary flex-fill" (click)="openEdit(user)">
+            <i class="ti ti-edit me-1"></i> Edit
+          </button>
+          <button type="button" class="btn btn-outline-secondary flex-fill" (click)="openReset(user)">
+            <i class="ti ti-key me-1"></i> Password
+          </button>
+          <button
+            type="button"
+            class="btn flex-fill"
+            [class.btn-outline-danger]="user.active"
+            [class.btn-outline-success]="!user.active"
+            (click)="toggleActive(user)"
+            [disabled]="actioningId() !== null || (user.active && isSelf(user))"
+            [title]="user.active && isSelf(user) ? 'You cannot deactivate your own account' : ''"
+          >
+            {{ user.active ? 'Deactivate' : 'Activate' }}
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Desktop (≥768px): the existing staff users table -->
+  <div class="card d-none d-md-block">
     <div class="table-responsive">
       <table class="table table-vcenter card-table table-hover">
         <thead>
@@ -87,6 +139,11 @@
     </div>
   </div>
 }
+
+<!-- Mobile create FAB -->
+<button type="button" class="shifa-fab d-md-none" (click)="openCreate()" aria-label="Add user">
+  <i class="ti ti-user-plus"></i>
+</button>
 
 <!-- Create / edit modal -->
 @if (formOpen()) {

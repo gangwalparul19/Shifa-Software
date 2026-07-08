@@ -12,3 +12,94 @@
 .btn-list.flex-nowrap {
   gap: 0.35rem;
 }
+
+/* --- Stock summary KPI tiles: keep three per row and compact on phones --- */
+@media (max-width: 575.98px) {
+  .shifa-inv-kpis .h1 {
+    font-size: 1.35rem;
+  }
+  .shifa-inv-kpis .stat-icon {
+    width: 2rem;
+    height: 2rem;
+    font-size: 1rem;
+  }
+}
+
+/* --- Mobile stock cards (<768px) --------------------------------------- */
+.shifa-inv-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.shifa-inv {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+.shifa-inv__r1 {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.shifa-inv__id {
+  min-width: 0;
+}
+.shifa-inv__name {
+  font-weight: 600;
+  color: #1c2b24;
+  line-height: 1.25;
+}
+.shifa-inv__sku {
+  color: #64726b;
+  font-size: 0.8rem;
+  margin-top: 0.1rem;
+}
+.shifa-inv__r2 {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.shifa-inv__stat {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.6rem;
+  background: var(--shifa-green-050, #f2f9f5);
+  border: 1px solid rgba(15, 51, 36, 0.06);
+}
+.shifa-inv__stat-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7c74;
+  font-weight: 600;
+}
+.shifa-inv__stat-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #1c2b24;
+}
+.shifa-inv__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+.shifa-inv__actions .btn {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}
+/* Restock / Adjust stretch; the icon-only history button stays compact. */
+.shifa-inv__actions .btn:not(.btn-icon) {
+  flex: 1 1 0;
+}
+.shifa-inv__actions .btn-icon {
+  flex: 0 0 44px;
+  width: 44px;
+}

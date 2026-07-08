@@ -82,7 +82,42 @@
     [message]="hasFilters() ? 'No entries match your filters.' : 'Actions will be recorded here.'"
   />
 } @else {
-  <div class="card">
+  <!-- Mobile (<768px): audit trail cards -->
+  <div class="shifa-audit-cards d-md-none">
+    @for (e of entries(); track e.id) {
+      <div class="shifa-ac">
+        <div class="shifa-ac__top">
+          <span class="shifa-ac__actor">
+            <i class="ti ti-user me-1"></i>{{ e.actorUsername || 'System' }}
+          </span>
+          <span class="shifa-ac__action">{{ humanize(e.action) }}</span>
+        </div>
+        <div class="shifa-ac__entity">
+          <i class="ti ti-box me-1"></i>{{ humanize(e.entityType) }}
+          @if (e.entityId != null && e.entityId !== '') {
+            <span class="shifa-mono shifa-ac__id">#{{ e.entityId }}</span>
+          }
+        </div>
+        @if (e.summary) {
+          <div class="shifa-ac__summary">{{ e.summary }}</div>
+        }
+        <div class="shifa-ac__time">
+          <i class="ti ti-clock me-1"></i>{{ e.createdAt ? (e.createdAt | date: 'dd MMM yyyy, HH:mm') : '—' }}
+        </div>
+      </div>
+    }
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+
+  <!-- Desktop (≥768px): the existing audit table -->
+  <div class="card d-none d-md-block">
     <div class="table-responsive">
       <table class="table table-vcenter card-table table-hover stagger-rows">
         <thead>

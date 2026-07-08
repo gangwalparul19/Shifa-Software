@@ -61,6 +61,21 @@ export class ReturnsComponent implements OnInit, OnDestroy {
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
 
+  /**
+   * Summary tiles for the returns currently on screen, grouped by status
+   * (pending review / approved / refunded). Derived from the loaded page — no
+   * new endpoint — to give an at-a-glance sense of the visible pipeline.
+   */
+  protected readonly requestedCount = computed(
+    () => this.returns().filter((r) => r.status === 'REQUESTED').length,
+  );
+  protected readonly approvedCount = computed(
+    () => this.returns().filter((r) => r.status === 'APPROVED').length,
+  );
+  protected readonly refundedCount = computed(
+    () => this.returns().filter((r) => r.status === 'REFUNDED').length,
+  );
+
   // --- Paging + sort ------------------------------------------------------
   protected readonly page = signal(0);
   protected readonly size = signal(readPageSize(TABLE_KEY, 20));

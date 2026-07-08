@@ -1,2 +1,61 @@
-/* Profit & Loss view — relies on shared global card/stat-accent styles used by
-   the dashboard and reports; nothing feature-specific is required here. */
+/* Profit & Loss view — the headline KPI tiles and the two secondary cards
+   reuse the shared global card/stat-accent styles used by the dashboard and
+   reports. The stacked P&L summary card below is scoped here. */
+
+/* Keep the four headline KPI tiles two-per-row and compact on phones. */
+@media (max-width: 575.98px) {
+  .row-cards .stat-accent .h1,
+  .row-cards .stat-accent .h2 {
+    font-size: 1.3rem;
+  }
+  .row-cards .stat-accent .stat-icon {
+    width: 2rem;
+    height: 2rem;
+    font-size: 1rem;
+  }
+}
+
+/* --- Stacked P&L summary card ------------------------------------------ */
+.shifa-pnl-summary {
+  border-radius: 12px;
+}
+.shifa-pnl-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid rgba(15, 51, 36, 0.08);
+}
+.shifa-pnl-row:last-child {
+  border-bottom: none;
+}
+.shifa-pnl-label {
+  color: #45524b;
+  font-weight: 500;
+}
+.shifa-pnl-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #1c2b24;
+  white-space: nowrap;
+}
+.shifa-pnl-row--sub .shifa-pnl-label {
+  padding-left: 0.5rem;
+  color: #64726b;
+  font-weight: 400;
+}
+.shifa-pnl-row--total {
+  margin-top: 0.35rem;
+  padding-top: 0.9rem;
+  border-top: 2px solid rgba(15, 51, 36, 0.12);
+}
+.shifa-pnl-row--total .shifa-pnl-label {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1c2b24;
+}
+.shifa-pnl-row--total .shifa-pnl-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+}

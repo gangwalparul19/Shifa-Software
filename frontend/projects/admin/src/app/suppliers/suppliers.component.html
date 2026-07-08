@@ -73,7 +73,50 @@
     message="Try a different name, contact or phone number."
   />
 } @else {
-  <div class="card">
+  <!-- Mobile (<768px): supplier cards — name, contact, phone/email, active
+       badge and the Edit / Activate-Deactivate actions preserved. -->
+  <div class="shifa-sup-cards d-md-none">
+    @for (s of filtered(); track s.id) {
+      <div class="shifa-sup">
+        <div class="shifa-sup__r1">
+          <button type="button" class="shifa-sup__name" (click)="openEdit(s)">{{ s.name }}</button>
+          <span class="badge" [class.bg-green-lt]="s.active" [class.bg-secondary-lt]="!s.active">
+            {{ s.active ? 'Active' : 'Inactive' }}
+          </span>
+        </div>
+        @if (s.contactPerson) {
+          <div class="shifa-sup__contact"><i class="ti ti-user me-1"></i>{{ s.contactPerson }}</div>
+        }
+        @if (s.phone) {
+          <a class="shifa-sup__line" [href]="'tel:' + s.phone"><i class="ti ti-phone me-1"></i>{{ s.phone }}</a>
+        }
+        @if (s.email) {
+          <a class="shifa-sup__line" [href]="'mailto:' + s.email"><i class="ti ti-mail me-1"></i>{{ s.email }}</a>
+        }
+        @if (s.address) {
+          <div class="shifa-sup__addr"><i class="ti ti-map-pin me-1"></i>{{ s.address }}</div>
+        }
+        <div class="shifa-sup__actions">
+          <button type="button" class="btn btn-outline-secondary" (click)="openEdit(s)">
+            <i class="ti ti-edit me-1"></i> Edit
+          </button>
+          <button
+            type="button"
+            class="btn"
+            [class.btn-outline-danger]="s.active"
+            [class.btn-outline-success]="!s.active"
+            (click)="toggleActive(s)"
+            [disabled]="togglingId() !== null"
+          >
+            {{ s.active ? 'Deactivate' : 'Activate' }}
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Desktop table (≥768px) -->
+  <div class="card d-none d-md-block">
     <div class="table-responsive">
       <table class="table table-vcenter card-table table-hover">
         <thead>
@@ -129,6 +172,17 @@
     </div>
   </div>
 }
+
+<!-- Floating action button: mobile primary create action (mirrors Products). -->
+<button
+  type="button"
+  class="shifa-fab d-md-none"
+  (click)="openCreate()"
+  aria-label="New supplier"
+  title="New supplier"
+>
+  <i class="ti ti-plus"></i>
+</button>
 
 <!-- Add / edit modal -->
 @if (formOpen()) {

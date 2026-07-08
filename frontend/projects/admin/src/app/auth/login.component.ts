@@ -12,6 +12,7 @@ import { AuthService } from 'core';
   selector: 'admin-login',
   imports: [ReactiveFormsModule],
   templateUrl: './login.component.html',
+  styleUrl: './login.component.css',
 })
 export class LoginComponent {
   private readonly fb = inject(FormBuilder);

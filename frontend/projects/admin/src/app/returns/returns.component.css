@@ -1,2 +1,88 @@
-/* Returns / Refunds view — relies on shared global table, modal and badge
-   styles; nothing feature-specific is required here. */
+/* Returns / Refunds view — the desktop table, modals and badges reuse the
+   shared global styles. The summary tiles and the mobile card list below are
+   scoped here and mirror the client mockup (cards over wide tables <768px). */
+
+/* Summary tiles: keep three per row on phones (compact operational KPIs). */
+@media (max-width: 575.98px) {
+  .shifa-ret-kpis .h1 {
+    font-size: 1.35rem;
+  }
+  .shifa-ret-kpis .stat-icon {
+    width: 2rem;
+    height: 2rem;
+    font-size: 1rem;
+  }
+}
+
+/* --- Mobile return cards (<768px) -------------------------------------- */
+.shifa-ret-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.shifa-ret {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+.shifa-ret__r1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.shifa-ret__code {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  text-decoration: none;
+}
+.shifa-ret__code .shifa-mono {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #1c2b24;
+}
+.shifa-ret__return {
+  color: #64726b;
+  font-size: 0.78rem;
+}
+.shifa-ret__reason {
+  margin-top: 0.5rem;
+  color: #1c2b24;
+  font-weight: 500;
+}
+.shifa-ret__notes {
+  margin-top: 0.15rem;
+  color: #64726b;
+  font-size: 0.85rem;
+}
+.shifa-ret__r3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.shifa-ret__refund {
+  color: #45524b;
+  font-size: 0.9rem;
+}
+.shifa-ret__refund strong {
+  color: #1c2b24;
+}
+.shifa-ret__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+.shifa-ret__actions .btn {
+  flex: 1 1 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}

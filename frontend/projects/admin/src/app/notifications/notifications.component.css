@@ -1,23 +1,126 @@
-.shifa-note--unread {
-  background: var(--tblr-primary-lt, rgba(31, 93, 63, 0.06));
+/* Notifications center — mobile-first card list matching the shipped mockup
+   design language (rounded white cards, soft shadow, severity-coloured icon,
+   unread accent, ≥44px touch targets, single-column at 360px). */
+
+.shifa-note-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
 }
 
-.shifa-note__icon {
+/* One notification card: icon · title/detail/time · action. */
+.shifa-nc {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+
+/* Unread: subtle green wash + a green left rail. */
+.shifa-nc.is-unread {
+  background: var(--shifa-green-050, #f2f9f5);
+  border-left: 3px solid var(--shifa-green-600, #1f5d3f);
+}
+
+/* Severity-coloured circular icon. */
+.shifa-nc__icon {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  width: 2.4rem;
+  height: 2.4rem;
   border-radius: 50%;
-  background: var(--tblr-bg-surface-secondary, #f1f3f5);
-  font-size: 1.1rem;
+  font-size: 1.15rem;
+  background: #eef2f0;
+  color: #4a5a52;
+}
+.shifa-nc__icon[data-sev='success'] {
+  background: #e4f2ea;
+  color: #1a7f47;
+}
+.shifa-nc__icon[data-sev='warning'] {
+  background: #fdf0d5;
+  color: #96650a;
+}
+.shifa-nc__icon[data-sev='danger'] {
+  background: #fde4e2;
+  color: #b42318;
+}
+.shifa-nc__icon[data-sev='info'] {
+  background: #e5f0fb;
+  color: #1c6cb4;
 }
 
-.shifa-note__dot {
-  display: inline-block;
+.shifa-nc__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.shifa-nc__titlerow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.shifa-nc__dot {
+  flex: 0 0 auto;
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;
   background: var(--shifa-green-600, #1f5d3f);
+}
+.shifa-nc__title {
+  font-weight: 700;
+  color: #1c2b24;
+}
+.shifa-nc__type {
+  font-size: 0.68rem;
+}
+
+.shifa-nc__detail {
+  color: #45524b;
+  font-size: 0.9rem;
+  margin-top: 0.15rem;
+}
+.shifa-nc__time {
+  color: #64726b;
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}
+
+.shifa-nc__action {
   flex: 0 0 auto;
+}
+.shifa-nc__read {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 600;
+}
+.shifa-nc__done {
+  display: inline-flex;
+  align-items: center;
+  color: #64726b;
+  font-size: 0.82rem;
+  min-height: 44px;
+}
+
+/* Stack the action under the content on narrow phones. */
+@media (max-width: 480px) {
+  .shifa-nc {
+    flex-wrap: wrap;
+  }
+  .shifa-nc__action {
+    width: 100%;
+    padding-left: 3.25rem;
+  }
+  .shifa-nc__read {
+    width: 100%;
+    justify-content: center;
+  }
 }

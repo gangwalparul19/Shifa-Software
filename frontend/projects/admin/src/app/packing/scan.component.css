@@ -17,3 +17,78 @@
   font-family: var(--tblr-font-monospace, ui-monospace, monospace);
   letter-spacing: 0.05em;
 }
+
+/* ==========================================================================
+   Ready-to-move work items — rounded white cards with a soft shadow, each
+   carrying the order code + customer, a status pill, and a clear full-width
+   Handover / Dispatch action (≥44px touch target). Mockup-faithful.
+   ========================================================================== */
+.shifa-work-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.shifa-work {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.85rem 0.9rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+.shifa-work__head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.shifa-work__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.shifa-work__code {
+  font-weight: 700;
+  color: #1c2b24;
+}
+.shifa-work__meta {
+  color: #64726b;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shifa-work__dismiss {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: #6b7a72;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.shifa-work__dismiss:hover {
+  background: var(--shifa-green-050, #f2f9f5);
+  color: var(--shifa-green-700, #164632);
+}
+.shifa-work__action {
+  margin-top: 0.75rem;
+}
+.shifa-work__action .btn {
+  min-height: 44px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Slightly larger, rounder scan chip on small screens for a cleaner focal point. */
+@media (max-width: 575.98px) {
+  .shifa-scan-icon {
+    width: 4rem;
+    height: 4rem;
+    font-size: 2.2rem;
+  }
+}

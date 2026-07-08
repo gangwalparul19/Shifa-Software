@@ -1,7 +1,76 @@
-/* Settings page: relies on the global Tabler + Shifa theme (styles.css). */
+/* Settings page: relies on the global Tabler + Shifa theme (styles.css) and
+   layers the shipped mobile-first mockup design language on top — grouped
+   rounded setting cards with soft shadow, bold green section titles, rounded
+   inputs, ≥44px touch targets, single-column at 360px, solid-green Save. */
 .form-switch-lg .form-check-input {
   height: 1.35rem;
   width: 2.5rem;
+}
+
+/* --- Grouped setting cards --------------------------------------------- */
+.shifa-settings .card {
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+
+.shifa-settings .card-header {
+  border-bottom: 1px solid rgba(15, 51, 36, 0.07);
+  padding: 0.85rem 1rem;
+  background: transparent;
+}
+
+/* Bold section titles with a green accent icon. */
+.shifa-settings .card-title {
+  font-weight: 700;
+  color: #1c2b24;
+  font-size: 1.02rem;
+  display: inline-flex;
+  align-items: center;
+}
+.shifa-settings .card-title i {
+  color: var(--shifa-green-600, #1f5d3f);
+}
+
+.shifa-settings .card-body {
+  padding: 1rem;
+}
+
+/* Rounded inputs with a comfortable touch height. */
+.shifa-settings .form-control,
+.shifa-settings .form-select {
+  border-radius: 10px;
+  min-height: 44px;
+}
+.shifa-settings textarea.form-control {
+  min-height: 88px;
+}
+
+.shifa-settings .form-label {
+  font-weight: 600;
+  color: #45524b;
+}
+
+/* --- Save bar: solid green, full-width on mobile ----------------------- */
+.shifa-set-savebar {
+  display: flex;
+  justify-content: flex-end;
+  position: sticky;
+  bottom: 0;
+  padding: 0.75rem 0;
+  background: linear-gradient(to top, var(--tblr-body-bg, #f7f9f8) 65%, transparent);
+  z-index: 5;
+}
+.shifa-set-save {
+  min-height: 48px;
+  font-weight: 600;
+  padding-inline: 1.5rem;
+}
+
+@media (max-width: 575.98px) {
+  .shifa-set-save {
+    width: 100%;
+  }
 }
 
 /* Company logo section */

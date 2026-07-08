@@ -82,6 +82,32 @@
     </div>
   </div>
 
+  <!-- Clean P&L summary card: Revenue, less costs, resulting net profit —
+       a stacked, mobile-first breakdown using the figures already computed. -->
+  <div class="card mb-3 shifa-pnl-summary">
+    <div class="card-header"><h3 class="card-title mb-0">Profit &amp; loss summary</h3></div>
+    <div class="card-body">
+      <div class="shifa-pnl-row">
+        <span class="shifa-pnl-label"><i class="ti ti-cash me-2 text-success"></i>Revenue</span>
+        <span class="shifa-pnl-value">{{ money(r.revenue) }}</span>
+      </div>
+      <div class="shifa-pnl-row shifa-pnl-row--sub">
+        <span class="shifa-pnl-label"><i class="ti ti-truck me-2 text-danger"></i>Less courier cost</span>
+        <span class="shifa-pnl-value text-danger">− {{ money(r.courierCost) }}</span>
+      </div>
+      <div class="shifa-pnl-row shifa-pnl-row--sub">
+        <span class="shifa-pnl-label"><i class="ti ti-receipt me-2 text-danger"></i>Less total expenses</span>
+        <span class="shifa-pnl-value text-danger">− {{ money(r.totalExpenses) }}</span>
+      </div>
+      <div class="shifa-pnl-row shifa-pnl-row--total">
+        <span class="shifa-pnl-label">Net profit</span>
+        <span class="shifa-pnl-value" [class.text-success]="r.netProfit >= 0" [class.text-danger]="r.netProfit < 0">
+          {{ money(r.netProfit) }}
+        </span>
+      </div>
+    </div>
+  </div>
+
   <!-- Note about courier cost derivation -->
   <div class="alert alert-info d-flex align-items-start mb-3" role="note">
     <i class="ti ti-info-circle me-2 mt-1"></i>
