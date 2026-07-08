@@ -316,3 +316,54 @@
     animation: none;
   }
 }
+
+/* --- Desktop "app frame" (mobile-first app, contained on wide screens) ---
+   The chrome is designed mobile-first. On a wide desktop the full-bleed green
+   banner and the fixed bottom bar stretch edge-to-edge and read as empty /
+   stretched. From the tablet breakpoint up we therefore center the whole shell
+   to a comfortable content width and frame it (side borders + soft shadow) over
+   a tinted "desk" background, so the top bar, page body, and bottom nav all
+   align to the same width the content actually uses. */
+@media (min-width: 768px) {
+  :host {
+    /* The area outside the framed app reads as a subtle green-tinted desk. */
+    background: #e7efea;
+  }
+
+  .shifa-appshell {
+    max-width: var(--shifa-shell-max, 900px);
+    margin-inline: auto;
+    min-height: 100vh;
+    background: var(--tblr-body-bg, #ffffff);
+    border-inline: 1px solid var(--shifa-green-100);
+    box-shadow: 0 0 42px rgba(15, 51, 36, 0.12);
+  }
+
+  /* The top banner is inside the framed shell, so it already spans exactly the
+     frame; keep its inner container flush to the frame edges (no double gutter). */
+  .shifa-appbar__inner {
+    max-width: none;
+  }
+
+  /* The bottom bar is position:fixed (viewport-anchored). Rather than a full-bleed
+     strip, present it as a floating, contained pill centered under the content —
+     clearly "not full width" and hugging the content it serves. */
+  .shifa-bottomnav {
+    left: 50%;
+    right: auto;
+    bottom: 0.85rem;
+    transform: translateX(-50%);
+    width: calc(100% - 2rem);
+    max-width: var(--shifa-bottomnav-max, 560px);
+    border: 1px solid var(--shifa-green-100);
+    border-radius: 999px;
+    box-shadow: 0 8px 28px rgba(15, 51, 36, 0.16);
+    padding-inline: 0.5rem;
+    overflow: hidden;
+  }
+  /* Soften the active-tab accent so it fits the rounded pill. */
+  .shifa-bottomnav__tab.active::before {
+    left: 26%;
+    right: 26%;
+  }
+}
