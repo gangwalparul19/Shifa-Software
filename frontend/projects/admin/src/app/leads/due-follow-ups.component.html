@@ -32,7 +32,7 @@
   />
 } @else {
   <div class="shifa-due-cards">
-    @for (lead of leads(); track lead.id) {
+    @for (lead of pageItems(); track lead.id) {
       <a class="shifa-due" routerLink="/leads">
         <div class="shifa-due__r1">
           <span class="shifa-due__name">{{ lead.customerName }}</span>
@@ -52,4 +52,12 @@
       </a>
     }
   </div>
+  <admin-pagination
+    [page]="page()"
+    [totalPages]="totalPages()"
+    [totalElements]="totalElements()"
+    [size]="size()"
+    (pageChange)="goToPage($event)"
+    (sizeChange)="setSize($event)"
+  />
 }

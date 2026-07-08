@@ -11,6 +11,8 @@ import {
   UsersService,
 } from './users.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { ConfirmService } from '../shared/confirm.service';
@@ -28,7 +30,13 @@ import { ToastService } from '../shared/toast.service';
  */
 @Component({
   selector: 'admin-users',
-  imports: [ReactiveFormsModule, PageHeaderComponent, StatePanelComponent, DensityToggleComponent],
+  imports: [
+    ReactiveFormsModule,
+    PageHeaderComponent,
+    PaginationComponent,
+    StatePanelComponent,
+    DensityToggleComponent,
+  ],
   templateUrl: './users.component.html',
   styleUrl: './users.component.css',
 })
@@ -46,6 +54,18 @@ export class UsersComponent implements OnInit {
   protected readonly loadError = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly actioningId = signal<number | null>(null);
+
+  // --- Client-side paging -------------------------------------------------
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('users', 10));
+  protected readonly totalElements = computed(() => this.users().length);
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil(this.totalElements() / this.size())),
+  );
+  protected readonly pageItems = computed<AdminUser[]>(() => {
+    const s = this.page() * this.size();
+    return this.users().slice(s, s + this.size());
+  });
 
   /** The user being edited (form open); null when creating or closed. */
   protected readonly editing = signal<AdminUser | null>(null);
@@ -83,6 +103,7 @@ export class UsersComponent implements OnInit {
     this.service.list().subscribe({
       next: (items) => {
         this.users.set(items);
+        this.page.set(0);
         this.loading.set(false);
       },
       error: () => {
@@ -90,6 +111,17 @@ export class UsersComponent implements OnInit {
         this.loading.set(false);
       },
     });
+  }
+
+  // --- Paging handlers ----------------------------------------------------
+  goToPage(p: number): void {
+    this.page.set(p);
+  }
+
+  setSize(s: number): void {
+    this.size.set(s);
+    writePageSize('users', s);
+    this.page.set(0);
   }
 
   roleLabel(role: Role | string): string {

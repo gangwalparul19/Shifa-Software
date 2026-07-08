@@ -3,6 +3,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ApiError } from 'core';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
 import { InsightsService } from './insights.service';
@@ -48,7 +50,7 @@ interface SeverityGroup {
  */
 @Component({
   selector: 'admin-insights',
-  imports: [DatePipe, PageHeaderComponent, StatePanelComponent],
+  imports: [DatePipe, PageHeaderComponent, PaginationComponent, StatePanelComponent],
   templateUrl: './insights.component.html',
   styleUrl: './insights.component.css',
 })
@@ -88,13 +90,26 @@ export class InsightsComponent implements OnInit {
     return rows.filter((i) => i.severity === lens);
   });
 
+  // --- Client-side paging (over the post-filter flat list) ----------------
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('insights', 10));
+  protected readonly totalElements = computed(() => this.visibleInsights().length);
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil(this.totalElements() / this.size())),
+  );
+  /** The current page slice of the flat filtered list (before grouping). */
+  protected readonly pageItems = computed<Insight[]>(() => {
+    const s = this.page() * this.size();
+    return this.visibleInsights().slice(s, s + this.size());
+  });
+
   /**
-   * The visible insights bundled into severity groups in DANGER → WARNING →
-   * INFO order, dropping empty groups. Drives the grouped, colour-accented card
-   * list.
+   * The current page's insights bundled into severity groups in DANGER →
+   * WARNING → INFO order, dropping empty groups. Drives the grouped,
+   * colour-accented card list.
    */
   protected readonly groups = computed<SeverityGroup[]>(() => {
-    const rows = this.visibleInsights();
+    const rows = this.pageItems();
     return SEVERITY_ORDER.map((severity) => ({
       severity,
       label: SEVERITY_LABELS[severity],
@@ -124,6 +139,7 @@ export class InsightsComponent implements OnInit {
     this.service.list().subscribe({
       next: (rows) => {
         this.insights.set(rows);
+        this.page.set(0);
         this.loading.set(false);
       },
       error: () => {
@@ -135,6 +151,18 @@ export class InsightsComponent implements OnInit {
 
   setLens(lens: SeverityLens): void {
     this.severityLens.set(lens);
+    this.page.set(0);
+  }
+
+  // --- Paging handlers ----------------------------------------------------
+  goToPage(p: number): void {
+    this.page.set(p);
+  }
+
+  setSize(s: number): void {
+    this.size.set(s);
+    writePageSize('insights', s);
+    this.page.set(0);
   }
 
   // --- Recompute ----------------------------------------------------------
@@ -169,6 +197,11 @@ export class InsightsComponent implements OnInit {
     this.service.dismiss(insight.id).subscribe({
       next: () => {
         this.insights.update((rows) => rows.filter((i) => i.id !== insight.id));
+        // Avoid being stranded on a now-empty trailing page.
+        const maxPage = Math.max(0, this.totalPages() - 1);
+        if (this.page() > maxPage) {
+          this.page.set(maxPage);
+        }
         this.toasts.info('Insight dismissed.');
       },
       error: (err: HttpErrorResponse) => {

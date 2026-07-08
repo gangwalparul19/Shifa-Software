@@ -135,7 +135,7 @@
   <!-- Mobile (<768px): stock cards — product name, on-hand, status pill and the
        Restock / Adjust / History actions preserved from the desktop table. -->
   <div class="shifa-inv-cards d-md-none">
-    @for (row of visibleItems(); track row.id) {
+    @for (row of pageItems(); track row.id) {
       <div class="shifa-inv">
         <div class="shifa-inv__r1">
           <div class="shifa-inv__id">
@@ -200,7 +200,7 @@
           </tr>
         </thead>
         <tbody>
-          @for (row of visibleItems(); track row.id) {
+          @for (row of pageItems(); track row.id) {
             <tr>
               <td class="fw-medium">{{ row.name }}</td>
               <td><span class="shifa-mono text-secondary">{{ row.sku }}</span></td>
@@ -250,6 +250,15 @@
       </table>
     </div>
   </div>
+
+  <admin-pagination
+    [page]="page()"
+    [totalPages]="totalPages()"
+    [totalElements]="totalElements()"
+    [size]="size()"
+    (pageChange)="goToPage($event)"
+    (sizeChange)="setSize($event)"
+  />
 }
 
 <!-- ===================== Restock modal ===================== -->

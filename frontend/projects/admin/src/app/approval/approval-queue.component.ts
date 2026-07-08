@@ -1,11 +1,13 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnDestroy, OnInit, effect, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Money } from 'core';
 import { ApprovalService } from './approval.service';
 import { ApprovalQueueItem } from './approval.model';
 import { AdminEventsService } from '../dashboard/admin-events.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
@@ -32,6 +34,7 @@ interface Toast {
     ReactiveFormsModule,
     DatePipe,
     PageHeaderComponent,
+    PaginationComponent,
     StatusBadgeComponent,
     StatePanelComponent,
     DensityToggleComponent,
@@ -50,6 +53,18 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
   protected readonly loadError = signal<string | null>(null);
   protected readonly toast = signal<Toast | null>(null);
   protected readonly acting = signal(false);
+
+  // --- Client-side paging -------------------------------------------------
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('approvalQueue', 10));
+  protected readonly totalElements = computed(() => this.queue().length);
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil(this.totalElements() / this.size())),
+  );
+  protected readonly pageItems = computed<ApprovalQueueItem[]>(() => {
+    const s = this.page() * this.size();
+    return this.queue().slice(s, s + this.size());
+  });
 
   /** True when a live status change may have altered the pending queue (A3). */
   protected readonly newActivity = signal(false);
@@ -116,6 +131,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     this.service.queue().subscribe({
       next: (items) => {
         this.queue.set(items);
+        this.page.set(0);
         this.loading.set(false);
         // Now in sync with the live feed: hide the activity pill.
         const relevant = this.events
@@ -293,6 +309,22 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
 
   private removeRow(id: number): void {
     this.queue.update((items) => items.filter((i) => i.id !== id));
+    // Avoid being stranded on a now-empty trailing page.
+    const maxPage = Math.max(0, this.totalPages() - 1);
+    if (this.page() > maxPage) {
+      this.page.set(maxPage);
+    }
+  }
+
+  // --- Paging handlers ----------------------------------------------------
+  goToPage(p: number): void {
+    this.page.set(p);
+  }
+
+  setSize(s: number): void {
+    this.size.set(s);
+    writePageSize('approvalQueue', s);
+    this.page.set(0);
   }
 
   private showToast(kind: Toast['kind'], text: string): void {

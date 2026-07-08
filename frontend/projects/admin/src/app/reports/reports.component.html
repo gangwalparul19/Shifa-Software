@@ -245,13 +245,21 @@
               No orders found for the selected report and date range.
             </td></tr>
           } @else {
-            @for (row of r.rows; track $index) {
+            @for (row of pageItems(); track $index) {
               <tr>@for (cell of row; track $index) { <td>{{ cell }}</td> }</tr>
             }
           }
         </tbody>
       </table>
     </div>
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
   </div>
 }
 

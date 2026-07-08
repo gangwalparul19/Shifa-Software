@@ -15,6 +15,8 @@ import {
 } from 'ng-apexcharts';
 import { DownloadResult, ReportsService } from './reports.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import {
   DatePreset,
   ExportFormat,
@@ -71,7 +73,7 @@ interface SparkOptions {
  */
 @Component({
   selector: 'admin-reports',
-  imports: [ReactiveFormsModule, PageHeaderComponent, NgApexchartsModule],
+  imports: [ReactiveFormsModule, PageHeaderComponent, NgApexchartsModule, PaginationComponent],
   templateUrl: './reports.component.html',
   styleUrl: './reports.component.css',
 })
@@ -120,6 +122,20 @@ export class ReportsComponent implements OnInit {
   });
 
   protected readonly report = signal<ReportResponse | null>(null);
+
+  // --- Client-side paging for the "Report details" table ------------------
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('reports', 10));
+  protected readonly totalElements = computed(() => this.report()?.rows.length ?? 0);
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil(this.totalElements() / this.size())),
+  );
+  protected readonly pageItems = computed(() => {
+    const rows = this.report()?.rows ?? [];
+    const s = this.page() * this.size();
+    return rows.slice(s, s + this.size());
+  });
+
   protected readonly loading = signal(false);
   protected readonly exporting = signal(false);
   protected readonly loadError = signal<string | null>(null);
@@ -250,6 +266,7 @@ export class ReportsComponent implements OnInit {
     this.service.report(type, from, to).subscribe({
       next: (r) => {
         this.report.set(r);
+        this.page.set(0);
         this.loading.set(false);
       },
       error: () => {
@@ -385,6 +402,17 @@ export class ReportsComponent implements OnInit {
       tooltip: { theme: 'light', y: { formatter: (v: number) => this.inr(v) } },
     };
   });
+
+  // --- Paging handlers ----------------------------------------------------
+  goToPage(p: number): void {
+    this.page.set(p);
+  }
+
+  setSize(s: number): void {
+    this.size.set(s);
+    writePageSize('reports', s);
+    this.page.set(0);
+  }
 
   exportFile(format: ExportFormat): void {
     const type = this.form.controls.type.value;

@@ -29,7 +29,7 @@
 } @else {
   <!-- Mobile (<768px): staff user cards -->
   <div class="shifa-user-cards d-md-none">
-    @for (user of users(); track user.id) {
+    @for (user of pageItems(); track user.id) {
       <div class="shifa-uc">
         <div class="shifa-uc__top">
           <div class="shifa-uc__avatar" aria-hidden="true">{{ userInitials(user.fullName || user.username) }}</div>
@@ -93,7 +93,7 @@
           </tr>
         </thead>
         <tbody>
-          @for (user of users(); track user.id) {
+          @for (user of pageItems(); track user.id) {
             <tr>
               <td>
                 <button type="button" class="btn btn-link p-0 fw-medium text-start" (click)="openEdit(user)">
@@ -138,6 +138,15 @@
       </table>
     </div>
   </div>
+
+  <admin-pagination
+    [page]="page()"
+    [totalPages]="totalPages()"
+    [totalElements]="totalElements()"
+    [size]="size()"
+    (pageChange)="goToPage($event)"
+    (sizeChange)="setSize($event)"
+  />
 }
 
 <!-- Mobile create FAB -->

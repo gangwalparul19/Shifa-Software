@@ -100,7 +100,7 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
 
   // --- Receivables paging + sort ------------------------------------------
   protected readonly recvPage = signal(0);
-  protected readonly recvSize = signal(readPageSize(TABLE_KEY, 20));
+  protected readonly recvSize = signal(readPageSize(TABLE_KEY, 10));
   protected readonly recvTotalPages = signal(0);
   protected readonly recvTotalElements = signal(0);
   protected readonly recvSort = signal<SortState>({ field: 'createdAt', dir: 'desc' });

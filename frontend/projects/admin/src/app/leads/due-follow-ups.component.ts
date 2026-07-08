@@ -2,6 +2,8 @@ import { DatePipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { LeadsService } from './leads.service';
 import {
@@ -21,7 +23,7 @@ import { LEAD_SOURCE_OPTIONS, LeadSource } from '../orders/orders.model';
  */
 @Component({
   selector: 'admin-due-follow-ups',
-  imports: [RouterLink, DatePipe, PageHeaderComponent, StatePanelComponent],
+  imports: [RouterLink, DatePipe, PageHeaderComponent, PaginationComponent, StatePanelComponent],
   templateUrl: './due-follow-ups.component.html',
   styleUrl: './due-follow-ups.component.css',
 })
@@ -42,8 +44,30 @@ export class DueFollowUpsComponent implements OnInit {
     () => this.leads().filter((l) => this.isOverdue(l)).length,
   );
 
+  // --- Client-side paging -------------------------------------------------
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('dueFollowUps', 10));
+  protected readonly totalElements = computed(() => this.leads().length);
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil(this.totalElements() / this.size())),
+  );
+  protected readonly pageItems = computed(() => {
+    const s = this.page() * this.size();
+    return this.leads().slice(s, s + this.size());
+  });
+
   ngOnInit(): void {
     this.load();
+  }
+
+  goToPage(p: number): void {
+    this.page.set(p);
+  }
+
+  setSize(s: number): void {
+    this.size.set(s);
+    writePageSize('dueFollowUps', s);
+    this.page.set(0);
   }
 
   load(): void {
@@ -52,6 +76,7 @@ export class DueFollowUpsComponent implements OnInit {
     this.service.dueFollowUps().subscribe({
       next: (rows) => {
         this.leads.set(rows);
+        this.page.set(0);
         this.loading.set(false);
       },
       error: () => {

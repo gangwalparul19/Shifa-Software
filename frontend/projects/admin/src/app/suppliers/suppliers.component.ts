@@ -5,6 +5,8 @@ import { ApiError } from 'core';
 import { SupplierRequest, SupplierResponse } from './suppliers.model';
 import { SuppliersService } from './suppliers.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { ConfirmService } from '../shared/confirm.service';
@@ -20,7 +22,13 @@ import { ToastService } from '../shared/toast.service';
  */
 @Component({
   selector: 'admin-suppliers',
-  imports: [ReactiveFormsModule, PageHeaderComponent, StatePanelComponent, DensityToggleComponent],
+  imports: [
+    ReactiveFormsModule,
+    PageHeaderComponent,
+    PaginationComponent,
+    StatePanelComponent,
+    DensityToggleComponent,
+  ],
   templateUrl: './suppliers.component.html',
   styleUrl: './suppliers.component.css',
 })
@@ -53,6 +61,18 @@ export class SuppliersComponent implements OnInit {
     );
   });
 
+  // --- Client-side paging (over the filtered list) ------------------------
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('suppliers', 10));
+  protected readonly totalElements = computed(() => this.filtered().length);
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil(this.totalElements() / this.size())),
+  );
+  protected readonly pageItems = computed<SupplierResponse[]>(() => {
+    const s = this.page() * this.size();
+    return this.filtered().slice(s, s + this.size());
+  });
+
   // --- Add / edit form ---------------------------------------------------
   protected readonly editing = signal<SupplierResponse | null>(null);
   protected readonly creating = signal(false);
@@ -77,6 +97,7 @@ export class SuppliersComponent implements OnInit {
     this.service.list(this.activeOnly()).subscribe({
       next: (items) => {
         this.suppliers.set(items);
+        this.page.set(0);
         this.loading.set(false);
       },
       error: () => {
@@ -88,10 +109,23 @@ export class SuppliersComponent implements OnInit {
 
   onSearch(value: string): void {
     this.search.set(value);
+    this.page.set(0);
   }
 
   clearSearch(): void {
     this.search.set('');
+    this.page.set(0);
+  }
+
+  // --- Paging handlers ----------------------------------------------------
+  goToPage(p: number): void {
+    this.page.set(p);
+  }
+
+  setSize(s: number): void {
+    this.size.set(s);
+    writePageSize('suppliers', s);
+    this.page.set(0);
   }
 
   toggleActiveOnly(value: boolean): void {

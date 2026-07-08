@@ -119,7 +119,7 @@ export class PaginationComponent {
   /** Total number of rows across all pages. */
   @Input() totalElements = 0;
   /** Current page size (rows per page). */
-  @Input() size = 20;
+  @Input() size = 10;
 
   /** Whether to show the rows-per-page selector. */
   @Input() showSize = true;

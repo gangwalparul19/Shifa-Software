@@ -11,6 +11,8 @@ import {
   StockMovement,
 } from './inventory.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { ConfirmService } from '../shared/confirm.service';
@@ -48,6 +50,7 @@ const ADJUST_REASONS = [
     ReactiveFormsModule,
     DatePipe,
     PageHeaderComponent,
+    PaginationComponent,
     StatePanelComponent,
     DensityToggleComponent,
   ],
@@ -90,6 +93,18 @@ export class InventoryComponent implements OnInit {
   protected readonly lowStockCount = computed(
     () => this.items().filter((r) => r.stockStatus !== StockStatus.IN_STOCK && r.trackInventory).length,
   );
+
+  // --- Client-side paging (over the filtered list) ------------------------
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('inventory', 10));
+  protected readonly totalElements = computed(() => this.visibleItems().length);
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil(this.totalElements() / this.size())),
+  );
+  protected readonly pageItems = computed<InventoryProduct[]>(() => {
+    const s = this.page() * this.size();
+    return this.visibleItems().slice(s, s + this.size());
+  });
 
   // --- Stock summary KPIs (derived from the loaded rows) ------------------
   /** Tracked products currently in stock. */
@@ -145,6 +160,7 @@ export class InventoryComponent implements OnInit {
     source$.subscribe({
       next: (rows) => {
         this.items.set(rows);
+        this.page.set(0);
         this.loading.set(false);
       },
       error: () => {
@@ -156,11 +172,24 @@ export class InventoryComponent implements OnInit {
 
   applySearch(): void {
     this.searchTerm.set(this.search.value);
+    this.page.set(0);
   }
 
   clearSearch(): void {
     this.search.setValue('');
     this.searchTerm.set('');
+    this.page.set(0);
+  }
+
+  // --- Paging handlers ----------------------------------------------------
+  goToPage(p: number): void {
+    this.page.set(p);
+  }
+
+  setSize(s: number): void {
+    this.size.set(s);
+    writePageSize('inventory', s);
+    this.page.set(0);
   }
 
   toggleLowStock(): void {

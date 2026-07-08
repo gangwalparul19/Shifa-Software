@@ -91,7 +91,7 @@
   />
 } @else {
   <div class="shifa-lead-cards">
-    @for (lead of visibleLeads(); track lead.id) {
+    @for (lead of pageItems(); track lead.id) {
       <button type="button" class="shifa-lc" (click)="openDetail(lead)">
         <div class="shifa-lc__r1">
           <span class="shifa-lc__name">{{ lead.customerName }}</span>
@@ -113,6 +113,14 @@
       </button>
     }
   </div>
+  <admin-pagination
+    [page]="page()"
+    [totalPages]="totalPages()"
+    [totalElements]="totalElements()"
+    [size]="size()"
+    (pageChange)="goToPage($event)"
+    (sizeChange)="setSize($event)"
+  />
 }
 
 <!-- Floating action button to capture a lead (mobile) -->

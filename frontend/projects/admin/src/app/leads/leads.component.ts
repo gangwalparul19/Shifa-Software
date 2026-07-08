@@ -11,6 +11,8 @@ import { Router, RouterLink } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { ApiError, AuthService, Role } from 'core';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
@@ -56,6 +58,7 @@ type StatusLens = LeadStatus | 'ALL';
     RouterLink,
     DatePipe,
     PageHeaderComponent,
+    PaginationComponent,
     StatePanelComponent,
   ],
   templateUrl: './leads.component.html',
@@ -107,6 +110,18 @@ export class LeadsComponent implements OnInit, OnDestroy {
       return rows;
     }
     return rows.filter((l) => l.status === lens);
+  });
+
+  // --- Client-side paging (over the post-filter flat list) ----------------
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('leads', 10));
+  protected readonly totalElements = computed(() => this.visibleLeads().length);
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil(this.totalElements() / this.size())),
+  );
+  protected readonly pageItems = computed(() => {
+    const s = this.page() * this.size();
+    return this.visibleLeads().slice(s, s + this.size());
   });
 
   /** Per-stage counts derived from the loaded leads (drives the tab badges). */
@@ -232,6 +247,7 @@ export class LeadsComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (rows) => {
           this.leads.set(rows);
+          this.page.set(0);
           this.loading.set(false);
         },
         error: () => {
@@ -252,10 +268,22 @@ export class LeadsComponent implements OnInit, OnDestroy {
 
   setLens(lens: StatusLens): void {
     this.statusLens.set(lens);
+    this.page.set(0);
   }
 
   clearSearch(): void {
     this.search.setValue('');
+  }
+
+  // --- Paging handlers ----------------------------------------------------
+  goToPage(p: number): void {
+    this.page.set(p);
+  }
+
+  setSize(s: number): void {
+    this.size.set(s);
+    writePageSize('leads', s);
+    this.page.set(0);
   }
 
   // --- Capture / edit -----------------------------------------------------

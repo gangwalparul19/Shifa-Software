@@ -35,7 +35,7 @@
   <!-- Mobile (<768px): tappable approval cards — code + amount, customer + date,
        payment pill, and clear Approve / Reject actions (mockup-faithful). -->
   <div class="shifa-appr-cards d-md-none">
-    @for (item of queue(); track item.id) {
+    @for (item of pageItems(); track item.id) {
       <div class="shifa-appr">
         <div class="shifa-appr__r1" (click)="openDetail(item)">
           <span class="shifa-appr__code">{{ item.orderCode }}</span>
@@ -79,7 +79,7 @@
           </tr>
         </thead>
         <tbody>
-          @for (item of queue(); track item.id) {
+          @for (item of pageItems(); track item.id) {
             <tr>
               <td>
                 <button type="button" class="btn btn-link p-0 fw-medium" (click)="openDetail(item)">{{ item.orderCode }}</button>
@@ -110,6 +110,15 @@
       </table>
     </div>
   </div>
+
+  <admin-pagination
+    [page]="page()"
+    [totalPages]="totalPages()"
+    [totalElements]="totalElements()"
+    [size]="size()"
+    (pageChange)="goToPage($event)"
+    (sizeChange)="setSize($event)"
+  />
 }
 
 <!-- Detail drawer -->

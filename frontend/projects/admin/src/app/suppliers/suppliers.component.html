@@ -76,7 +76,7 @@
   <!-- Mobile (<768px): supplier cards — name, contact, phone/email, active
        badge and the Edit / Activate-Deactivate actions preserved. -->
   <div class="shifa-sup-cards d-md-none">
-    @for (s of filtered(); track s.id) {
+    @for (s of pageItems(); track s.id) {
       <div class="shifa-sup">
         <div class="shifa-sup__r1">
           <button type="button" class="shifa-sup__name" (click)="openEdit(s)">{{ s.name }}</button>
@@ -130,7 +130,7 @@
           </tr>
         </thead>
         <tbody>
-          @for (s of filtered(); track s.id) {
+          @for (s of pageItems(); track s.id) {
             <tr>
               <td>
                 <button type="button" class="btn btn-link p-0 fw-medium text-start" (click)="openEdit(s)">
@@ -171,6 +171,15 @@
       </table>
     </div>
   </div>
+
+  <admin-pagination
+    [page]="page()"
+    [totalPages]="totalPages()"
+    [totalElements]="totalElements()"
+    [size]="size()"
+    (pageChange)="goToPage($event)"
+    (sizeChange)="setSize($event)"
+  />
 }
 
 <!-- Floating action button: mobile primary create action (mirrors Products). -->
