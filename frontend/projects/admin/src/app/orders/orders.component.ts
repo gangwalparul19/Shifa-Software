@@ -6,11 +6,12 @@ import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { RouterLink } from '@angular/router';
 import { AuthService, Money, OrderStatus, PaymentStatus, Role, SortDir, SortState } from 'core';
 import { OrdersService } from './orders.service';
-import { OrderDetail, OrderSummary } from './orders.model';
+import { OrderDetail, OrderDetailLine, OrderSummary } from './orders.model';
 import { ReturnsService } from '../returns/returns.service';
 import {
   PLACEHOLDER_PRODUCT_IMAGE,
   imageErrorFallback,
+  resolveImageUrl,
 } from '../shared/product-image.util';
 import { AdminEventsService } from '../dashboard/admin-events.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
@@ -680,16 +681,24 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Thumbnail for an order line item. The line-item DTO ({@link OrderDetail}'s
-   * items) carries no product image key today, so every row renders the shared
-   * placeholder tile.
-   *
-   * TODO: to show real per-line thumbnails, add the product's image key to the
-   * backend {@code OrderResponse} line item and resolve it here with
-   * {@code resolveImageUrl(li.imageKey)} — no new endpoint required.
+   * Thumbnail for an order line item. Resolves the line product's primary image
+   * key (supplied by the backend order-detail response) to a URL via
+   * {@link resolveImageUrl}; falls back to the shared placeholder when the line
+   * has no image key. A broken image swaps to the placeholder via the
+   * {@code (error)} handler.
    */
-  lineItemThumb(): string {
-    return PLACEHOLDER_PRODUCT_IMAGE;
+  lineItemThumb(line: OrderDetailLine): string {
+    return resolveImageUrl(line.imageKey, PLACEHOLDER_PRODUCT_IMAGE);
+  }
+
+  /** Whether the order carries a positive discount (drives the discount totals line). */
+  hasDiscount(order: OrderDetail): boolean {
+    return Number(order.discountAmount ?? 0) > 0;
+  }
+
+  /** The discount formatted as a "- ₹X" reduction for the totals breakdown. */
+  discountDisplay(order: OrderDetail): string {
+    return `- ₹${Number(order.discountAmount ?? 0).toFixed(2)}`;
   }
 
   /** Google Maps search deep link for the order's delivery address. */

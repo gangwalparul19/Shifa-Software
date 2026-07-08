@@ -71,6 +71,7 @@ final class OrderCreationTestSupport {
                 storageService,
                 new SalespersonScopeResolver(),
                 trackingService,
-                stockService);
+                stockService,
+                mock(com.shifa.oms.product.ProductImageRepository.class));
     }
 }

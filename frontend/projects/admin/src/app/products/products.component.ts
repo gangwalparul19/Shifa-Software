@@ -15,7 +15,7 @@ import {
   StockStatus,
   stockBadgeLabel,
 } from 'core';
-import { ImportResult, ProductRequest, ProductsService } from './products.service';
+import { ImportResult, ProductRequest, ProductSalesStats, ProductsService } from './products.service';
 import { CategoriesService, CategoryRequest } from './categories.service';
 import { SettingsService } from '../settings/settings.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
@@ -112,6 +112,14 @@ export class ProductsComponent implements OnInit, OnDestroy {
 
   /** The active image index for the product-detail carousel (Req 9.1). */
   protected readonly heroIndex = signal(0);
+
+  // --- Product-detail "Sales Overview" stats (Req 9.2) -------------------
+  /** Current-month sales stats for the open product; null until loaded/when closed. */
+  protected readonly salesStats = signal<ProductSalesStats | null>(null);
+  /** True while the sales stats request is in flight. */
+  protected readonly statsLoading = signal(false);
+  /** True when the sales stats request failed (drawer still usable). */
+  protected readonly statsError = signal(false);
 
   /** The product being edited (form open); null when the form is closed. */
   protected readonly editing = signal<Product | null>(null);
@@ -289,6 +297,28 @@ export class ProductsComponent implements OnInit, OnDestroy {
   openDetail(product: Product): void {
     this.heroIndex.set(0);
     this.selectedProduct.set(product);
+    this.loadSalesStats(product.id);
+  }
+
+  /**
+   * Fetches the product's current-month sales stats for the "Sales Overview"
+   * card (Req 9.2). Failure is non-blocking: the drawer stays usable and the
+   * card shows a graceful zero/empty state.
+   */
+  private loadSalesStats(productId: number): void {
+    this.salesStats.set(null);
+    this.statsError.set(false);
+    this.statsLoading.set(true);
+    this.service.stats(productId).subscribe({
+      next: (stats) => {
+        this.salesStats.set(stats);
+        this.statsLoading.set(false);
+      },
+      error: () => {
+        this.statsError.set(true);
+        this.statsLoading.set(false);
+      },
+    });
   }
 
   /**
@@ -326,6 +356,9 @@ export class ProductsComponent implements OnInit, OnDestroy {
   /** Closes the product detail drawer. */
   closeDetail(): void {
     this.selectedProduct.set(null);
+    this.salesStats.set(null);
+    this.statsError.set(false);
+    this.statsLoading.set(false);
   }
 
   /** Opens the edit form for the product currently shown in the detail drawer. */

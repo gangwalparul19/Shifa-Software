@@ -782,13 +782,32 @@
         }
       </div>
 
-      <!-- Sales Overview (Req 9.2): per-product sales/orders aren't exposed by the
-           catalog API, so we surface the operational stats we DO have (stock on
-           hand, reviews) and a graceful "no sales data yet" note. -->
+      <!-- Sales Overview (Req 9.2): per-product current-month revenue + order
+           count from GET /api/admin/products/{id}/stats, alongside the
+           operational stats we always have (stock on hand, reviews). A failed
+           or pending fetch degrades gracefully to a zero/empty state. -->
       <div class="card card-sm mb-3">
         <div class="card-body">
           <div class="subheader mb-2">Sales Overview</div>
           <div class="row g-2">
+            <div class="col-6">
+              <div class="text-secondary small">This Month</div>
+              @if (statsLoading()) {
+                <div class="h3 mb-0 text-secondary placeholder-glow"><span class="placeholder col-6"></span></div>
+              } @else {
+                <div class="h3 mb-0">{{ money(salesStats()?.salesThisMonth ?? '0.00') }}</div>
+              }
+            </div>
+            <div class="col-6">
+              <div class="text-secondary small">Orders</div>
+              @if (statsLoading()) {
+                <div class="h3 mb-0 text-secondary placeholder-glow"><span class="placeholder col-4"></span></div>
+              } @else {
+                <div class="h3 mb-0">{{ salesStats()?.ordersThisMonth ?? 0 }}</div>
+              }
+            </div>
+          </div>
+          <div class="row g-2 mt-1">
             <div class="col-6">
               <div class="text-secondary small">On-hand stock</div>
               <div class="h3 mb-0">{{ product.trackInventory ? (product.stockQuantity ?? 0) : '—' }}</div>
@@ -803,9 +822,11 @@
               }
             </div>
           </div>
-          <p class="text-secondary small mb-0 mt-2">
-            <i class="ti ti-info-circle me-1"></i>Per-product sales figures aren't available yet.
-          </p>
+          @if (statsError()) {
+            <p class="text-secondary small mb-0 mt-2">
+              <i class="ti ti-info-circle me-1"></i>Sales figures are unavailable right now.
+            </p>
+          }
         </div>
       </div>
 

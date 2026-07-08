@@ -4,6 +4,7 @@ import com.shifa.oms.common.DuplicateResourceException;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.product.dto.ProductRequest;
 import com.shifa.oms.product.dto.ProductResponse;
+import com.shifa.oms.product.dto.ProductSalesStatsResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -41,12 +42,23 @@ public class ProductService {
     @Nullable
     private final ProductRatingLookup ratingLookup;
 
+    /**
+     * Optional lookup of a product's current-month sales stats (revenue + order
+     * count), supplied by the order module. Injected by Spring when present; may
+     * be {@code null} so the product module works in isolation and unit tests
+     * need not provide it (stats then read as zero).
+     */
+    @Nullable
+    private final ProductSalesLookup salesLookup;
+
     public ProductService(ProductRepository productRepository,
                           CategoryRepository categoryRepository,
-                          @Nullable ProductRatingLookup ratingLookup) {
+                          @Nullable ProductRatingLookup ratingLookup,
+                          @Nullable ProductSalesLookup salesLookup) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
         this.ratingLookup = ratingLookup;
+        this.salesLookup = salesLookup;
     }
 
     /**
@@ -199,6 +211,24 @@ public class ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Product " + id + " does not exist."));
         return ProductResponse.from(product);
+    }
+
+    /**
+     * Read-only per-product sales stats for the product-detail "Sales Overview":
+     * revenue and distinct order count for the CURRENT calendar month, excluding
+     * non-revenue (REJECTED/CANCELLED) orders. The product must exist (else a
+     * 404). When the sales lookup is absent (product module in isolation) the
+     * stats read as zero rather than failing.
+     */
+    @Transactional(readOnly = true)
+    public ProductSalesStatsResponse salesStats(Long id) {
+        if (!productRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Product " + id + " does not exist.");
+        }
+        if (salesLookup == null) {
+            return ProductSalesStatsResponse.ZERO;
+        }
+        return salesLookup.statsFor(id);
     }
 
     /** The published catalog (Req 1.1, 1.6 — empty when no products published). */

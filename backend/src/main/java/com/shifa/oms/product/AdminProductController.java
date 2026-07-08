@@ -4,6 +4,7 @@ import com.shifa.oms.common.PageRequests;
 import com.shifa.oms.common.PageResponse;
 import com.shifa.oms.product.dto.ProductRequest;
 import com.shifa.oms.product.dto.ProductResponse;
+import com.shifa.oms.product.dto.ProductSalesStatsResponse;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -101,6 +102,19 @@ public class AdminProductController {
     @PreAuthorize("hasAnyRole('ADMIN','SALESPERSON')")
     public ProductResponse get(@PathVariable Long id) {
         return productService.adminDetail(id);
+    }
+
+    /**
+     * Read-only per-product sales stats for the product-detail "Sales Overview"
+     * card: revenue and distinct order count for the CURRENT calendar month,
+     * excluding non-revenue (REJECTED/CANCELLED) orders. Read access consistent
+     * with the other product read endpoints ({@code hasAnyRole('ADMIN',
+     * 'SALESPERSON')}); an unknown product id yields 404.
+     */
+    @GetMapping("/{id}/stats")
+    @PreAuthorize("hasAnyRole('ADMIN','SALESPERSON')")
+    public ProductSalesStatsResponse stats(@PathVariable Long id) {
+        return productService.salesStats(id);
     }
 
     /** Creates a product (Req 6.1, 6.2). ADMIN-only. */

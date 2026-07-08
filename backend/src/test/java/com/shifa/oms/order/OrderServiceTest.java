@@ -19,6 +19,7 @@ import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
 import com.shifa.oms.platform.storage.StorageService;
 import com.shifa.oms.product.Product;
+import com.shifa.oms.product.ProductImage;
 import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.product.ProductVisibility;
 import com.shifa.oms.settings.AppSettings;
@@ -40,6 +41,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
@@ -71,6 +73,8 @@ class OrderServiceTest {
     private AppSettingsRepository appSettingsRepository;
     @Mock
     private com.shifa.oms.inventory.StockMovementRepository stockMovementRepository;
+    @Mock
+    private com.shifa.oms.product.ProductImageRepository productImageRepository;
 
     private OrderService service;
 
@@ -105,7 +109,8 @@ class OrderServiceTest {
                 storageService,
                 new SalespersonScopeResolver(),
                 trackingService,
-                stockService);
+                stockService,
+                productImageRepository);
         // Order code generation asks the repo whether a candidate is taken.
         lenient().when(orderRepository.existsByOrderCode(anyString())).thenReturn(false);
         lenient().when(orderRepository.save(any(OrderEntity.class)))
@@ -301,5 +306,66 @@ class OrderServiceTest {
         assertThat(response.courierName()).isNull();
         assertThat(response.trackingUrl()).isNull();
         assertThat(response.estimatedDelivery()).isNull();
+    }
+
+    // --- Order-detail line-item image key (item 1) --------------------------
+
+    @Test
+    void orderDetailPopulatesLineItemImageKeyFromPrimaryPublishedImage() {
+        OrderEntity order = persistedOrder(9L);
+        order.addLineItem(new OrderLineItem(
+                42L, "Ashwagandha", 2, new BigDecimal("120.00"), new BigDecimal("240.00")));
+        when(orderRepository.findById(9L)).thenReturn(Optional.of(order));
+        when(courierRecordRepository.findByOrderId(9L)).thenReturn(Optional.empty());
+        // Repo returns published images ordered by (productId, sortOrder); the
+        // first per product is its primary image.
+        when(productImageRepository.findPublishedByProductIds(anyCollection()))
+                .thenReturn(List.of(new ProductImage(42L, "products/ashwagandha.jpg", true, 0)));
+
+        OrderResponse response = service.getOrder(9L, admin);
+
+        assertThat(response.items()).hasSize(1);
+        assertThat(response.items().get(0).imageKey()).isEqualTo("products/ashwagandha.jpg");
+    }
+
+    @Test
+    void orderDetailLineItemImageKeyIsNullWhenProductHasNoPublishedImage() {
+        OrderEntity order = persistedOrder(10L);
+        order.addLineItem(new OrderLineItem(
+                43L, "Neem", 1, new BigDecimal("50.00"), new BigDecimal("50.00")));
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        when(courierRecordRepository.findByOrderId(10L)).thenReturn(Optional.empty());
+        when(productImageRepository.findPublishedByProductIds(anyCollection()))
+                .thenReturn(List.of());
+
+        OrderResponse response = service.getOrder(10L, admin);
+
+        assertThat(response.items()).hasSize(1);
+        assertThat(response.items().get(0).imageKey()).isNull();
+    }
+
+    // --- Order-detail discount amount (item 2) ------------------------------
+
+    @Test
+    void orderDetailExposesDiscountAmountWhenApplied() {
+        OrderEntity order = persistedOrder(11L);
+        order.applyDiscount("SAVE40", new BigDecimal("40.00"));
+        when(orderRepository.findById(11L)).thenReturn(Optional.of(order));
+        when(courierRecordRepository.findByOrderId(11L)).thenReturn(Optional.empty());
+
+        OrderResponse response = service.getOrder(11L, admin);
+
+        assertThat(response.discountAmount()).isEqualByComparingTo("40.00");
+    }
+
+    @Test
+    void orderDetailDiscountAmountDefaultsToZero() {
+        OrderEntity order = persistedOrder(12L);
+        when(orderRepository.findById(12L)).thenReturn(Optional.of(order));
+        when(courierRecordRepository.findByOrderId(12L)).thenReturn(Optional.empty());
+
+        OrderResponse response = service.getOrder(12L, admin);
+
+        assertThat(response.discountAmount()).isEqualByComparingTo("0.00");
     }
 }

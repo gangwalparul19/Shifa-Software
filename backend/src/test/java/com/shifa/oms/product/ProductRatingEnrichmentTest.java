@@ -39,7 +39,7 @@ class ProductRatingEnrichmentTest {
 
     @BeforeEach
     void setUp() {
-        service = new ProductService(productRepository, categoryRepository, ratingLookup);
+        service = new ProductService(productRepository, categoryRepository, ratingLookup, null);
     }
 
     private Product publishedProduct(long id) {

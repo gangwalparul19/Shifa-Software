@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Full order projection returned by {@code POST /api/orders},
@@ -54,7 +55,15 @@ public record OrderResponse(
         LocalDate estimatedDelivery
 ) {
 
-    /** A single order line in the response. */
+    /**
+     * A single order line in the response.
+     *
+     * <p>{@code imageKey} is the storage key of the line product's primary
+     * (first PUBLISHED) image, or {@code null} when the product has no published
+     * image / is unknown. It is populated only on the order-detail response
+     * (built with an image map); other build paths leave it {@code null} and the
+     * UI falls back to a placeholder (order module, item 1).
+     */
     public record LineItemResponse(
             Long productId,
             String productName,
@@ -62,9 +71,14 @@ public record OrderResponse(
             BigDecimal gstRate,
             int quantity,
             BigDecimal rate,
-            BigDecimal lineTotal
+            BigDecimal lineTotal,
+            String imageKey
     ) {
         static LineItemResponse from(OrderLineItem item) {
+            return from(item, null);
+        }
+
+        static LineItemResponse from(OrderLineItem item, String imageKey) {
             return new LineItemResponse(
                     item.getProductId(),
                     item.getProductName(),
@@ -72,13 +86,28 @@ public record OrderResponse(
                     item.getGstRate(),
                     item.getQuantity(),
                     item.getRate(),
-                    item.getLineTotal());
+                    item.getLineTotal(),
+                    imageKey);
         }
     }
 
     public static OrderResponse from(OrderEntity order) {
+        return from(order, Map.of());
+    }
+
+    /**
+     * Full projection whose line items carry each product's primary image key,
+     * resolved from the given {@code imageKeysByProductId} map (order module,
+     * item 1). Products absent from the map (or with a {@code null} product id)
+     * yield a {@code null} image key. Used by the order-detail read path, which
+     * batch-loads images for the line products to avoid an N+1.
+     */
+    public static OrderResponse from(OrderEntity order, Map<Long, String> imageKeysByProductId) {
+        Map<Long, String> imageKeys = imageKeysByProductId != null ? imageKeysByProductId : Map.of();
         List<LineItemResponse> items = order.getLineItems().stream()
-                .map(LineItemResponse::from)
+                .map(item -> LineItemResponse.from(
+                        item,
+                        item.getProductId() != null ? imageKeys.get(item.getProductId()) : null))
                 .toList();
         return new OrderResponse(
                 order.getId(),

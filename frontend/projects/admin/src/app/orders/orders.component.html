@@ -416,11 +416,9 @@
           <div class="shifa-od__card">
             @for (li of order.items; track $index) {
               <div class="shifa-od__item">
-                <!-- TODO: line-item DTO carries no product image key yet; show
-                     the shared placeholder until OrderResponse includes it. -->
                 <img
                   class="shifa-od__thumb"
-                  [src]="lineItemThumb()"
+                  [src]="lineItemThumb(li)"
                   (error)="onImageError($event)"
                   alt=""
                   aria-hidden="true"
@@ -440,6 +438,11 @@
           <div class="shifa-od__totline">
             <span>Subtotal</span><span>{{ subtotal(order) }}</span>
           </div>
+          @if (hasDiscount(order)) {
+            <div class="shifa-od__totline">
+              <span>Discount</span><span>{{ discountDisplay(order) }}</span>
+            </div>
+          }
           <div class="shifa-od__totline shifa-od__grand">
             <span>Total Amount</span><span>{{ money(order.totalAmount) }}</span>
           </div>

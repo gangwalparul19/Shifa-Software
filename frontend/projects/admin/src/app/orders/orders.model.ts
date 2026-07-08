@@ -119,6 +119,13 @@ export interface OrderDetailLine {
   quantity: number;
   rate: Money;
   lineTotal: Money;
+  /**
+   * Storage key of the line product's primary (first published) image, or
+   * null/absent when the product has no published image. Populated only on the
+   * order-detail response; resolved to a URL via `resolveImageUrl` with a
+   * placeholder fallback.
+   */
+  imageKey?: string | null;
 }
 
 /**
@@ -143,6 +150,11 @@ export interface OrderDetail {
   remainingAmount: Money;
   codAmount: Money;
   customerOutstanding?: Money;
+  /**
+   * Order-level discount applied (Money decimal string; defaults to "0.00").
+   * The order-detail totals show a "- ₹X" discount line only when this is > 0.
+   */
+  discountAmount?: Money;
   paymentScreenshotAvailable: boolean;
   items: OrderDetailLine[];
   createdAt?: string;

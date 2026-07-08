@@ -17,6 +17,8 @@ import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.platform.storage.StorageService;
 import com.shifa.oms.product.Product;
+import com.shifa.oms.product.ProductImage;
+import com.shifa.oms.product.ProductImageRepository;
 import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.springframework.stereotype.Service;
@@ -24,7 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -56,6 +60,7 @@ public class OrderService {
     private final SalespersonScopeResolver scopeResolver;
     private final TrackingService trackingService;
     private final StockService stockService;
+    private final ProductImageRepository productImageRepository;
 
     public OrderService(OrderRepository orderRepository,
                         ProductRepository productRepository,
@@ -63,7 +68,8 @@ public class OrderService {
                         StorageService storageService,
                         SalespersonScopeResolver scopeResolver,
                         TrackingService trackingService,
-                        StockService stockService) {
+                        StockService stockService,
+                        ProductImageRepository productImageRepository) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.orderCodeGenerator = orderCodeGenerator;
@@ -71,6 +77,7 @@ public class OrderService {
         this.scopeResolver = scopeResolver;
         this.trackingService = trackingService;
         this.stockService = stockService;
+        this.productImageRepository = productImageRepository;
     }
 
     // --- Creation: salesperson order entry (Req 7) --------------------------
@@ -181,11 +188,38 @@ public class OrderService {
     @Transactional(readOnly = true)
     public OrderResponse getOrder(Long id, AuthPrincipal actor) {
         OrderEntity order = loadScoped(id, actor);
-        OrderResponse response = OrderResponse.from(order);
+        // Item 1: resolve each line product's primary image in a single batch
+        // query (avoids an N+1 across the order's lines) so the detail view can
+        // render a per-item thumbnail.
+        OrderResponse response = OrderResponse.from(order, primaryImageKeys(order));
         return trackingService.shipmentFor(order.getId())
                 .map(s -> response.withShipment(
                         s.awb(), s.courierName(), s.trackingUrl(), s.estimatedDelivery()))
                 .orElse(response);
+    }
+
+    /**
+     * Maps each line product's id to its primary (first PUBLISHED, lowest
+     * sort-order) image key, batch-loading all line products' images in one
+     * query (item 1). Returns an empty map when the order has no product-backed
+     * lines. Products without a published image are simply absent from the map.
+     */
+    private Map<Long, String> primaryImageKeys(OrderEntity order) {
+        List<Long> productIds = order.getLineItems().stream()
+                .map(OrderLineItem::getProductId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, String> byProduct = new LinkedHashMap<>();
+        // Ordered by (productId, sortOrder): the first row seen per product is
+        // its primary image, so keep only the first.
+        for (ProductImage image : productImageRepository.findPublishedByProductIds(productIds)) {
+            byProduct.putIfAbsent(image.getProductId(), image.getObjectKey());
+        }
+        return byProduct;
     }
 
     /**

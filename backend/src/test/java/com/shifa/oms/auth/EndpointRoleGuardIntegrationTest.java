@@ -27,6 +27,7 @@ import com.shifa.oms.product.ProductVisibility;
 import com.shifa.oms.product.StockStatus;
 import com.shifa.oms.product.dto.ProductRequest;
 import com.shifa.oms.product.dto.ProductResponse;
+import com.shifa.oms.product.dto.ProductSalesStatsResponse;
 import com.shifa.oms.reporting.CsvReportExporter;
 import com.shifa.oms.reporting.ExcelReportExporter;
 import com.shifa.oms.reporting.PdfReportExporter;
@@ -182,6 +183,12 @@ class EndpointRoleGuardIntegrationTest {
     @Test
     void productDetailReadIsAdminOrSalesperson() throws Exception {
         assertRoleMatrix(get("/api/admin/products/5"),
+                List.of(Role.ADMIN, Role.SALESPERSON));
+    }
+
+    @Test
+    void productStatsReadIsAdminOrSalesperson() throws Exception {
+        assertRoleMatrix(get("/api/admin/products/5/stats"),
                 List.of(Role.ADMIN, Role.SALESPERSON));
     }
 
@@ -400,12 +407,17 @@ class EndpointRoleGuardIntegrationTest {
     /** Canned product reads/writes so a permitted call passes the guard and yields 2xx. */
     static class StubProductService extends ProductService {
         StubProductService() {
-            super(null, null, null);
+            super(null, null, null, null);
         }
 
         @Override
         public List<ProductResponse> adminList() {
             return List.of();
+        }
+
+        @Override
+        public ProductSalesStatsResponse salesStats(Long id) {
+            return ProductSalesStatsResponse.ZERO;
         }
 
         @Override

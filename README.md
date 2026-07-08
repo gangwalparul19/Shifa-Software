@@ -105,7 +105,7 @@ Modular monolith — one package per bounded context. Kept modules after the das
 | `auth`            | JWT login/refresh, users, RBAC, `SecurityConfig`, seeders. `/api/auth`, `/api/admin/users` |
 | `order`           | Salesperson order entry + search + detail + invoice; order-entry product picker. `/api/orders` (incl. `GET /api/orders/products`) |
 | `statemachine`    | `OrderStatus` lifecycle + legal transitions (INITIAL/PENDING_ADMIN_APPROVAL → … → DELIVERED/COD_COLLECTED/RTO/etc.) |
-| `product`         | Admin product CRUD + categories + CSV import. `/api/admin/products`, `/api/admin/categories` |
+| `product`         | Admin product CRUD + categories + CSV import; per-product monthly sales stats. `/api/admin/products` (+ `GET /{id}/stats`), `/api/admin/categories` |
 | `inventory`       | Stock levels + movements (RESTOCK/SALE/RETURN/ADJUSTMENT). `/api/admin/inventory` |
 | `packing`         | Barcode scan / packing confirmation. `/api/packing` |
 | `courier`         | Courier assignment (mock), tracking, webhooks, shipping labels. `/api/track`, `/api/webhooks/courier`, `/api/admin/labels/shipping` |
@@ -150,17 +150,29 @@ Routing in `app.routes.ts`, shell/nav in `shell/admin-shell.component.ts`. Guard
 | `/dashboard` | KPIs, sparklines, welcome hero | all staff |
 | `/approval-queue` | Approve/reject pending orders | ADMIN |
 | `/orders`, `/orders/new` | Orders list / new order entry | staff / SALESPERSON+ADMIN |
-| `/products`, `/inventory` | Catalog + stock | ADMIN |
-| `/customers` | CRM | ADMIN+ACCOUNTANT |
+| `/products` | Catalog (manage: ADMIN) | ADMIN + SALESPERSON (read-only) |
+| `/inventory` | Stock | ADMIN |
+| `/customers` | CRM (SALESPERSON sees only their own customers) | ADMIN + ACCOUNTANT + SALESPERSON |
 | `/returns` | Returns/refunds | ADMIN+ACCOUNTANT |
 | `/notifications`, `/audit` | Alerts / audit log | ADMIN |
 | `/suppliers`, `/purchase-orders` | Procurement | ADMIN |
 | `/expenses`, `/finance/pnl` | Finance | ADMIN+ACCOUNTANT |
-| `/packing` | Barcode scan | PACKING_USER+ADMIN |
+| `/packing` | Barcode scan + handover/dispatch | PACKING_USER+ADMIN |
 | `/reconciliation`, `/reports` | Settlement + exports | ADMIN+ACCOUNTANT |
 | `/settings`, `/users` | Config + staff users | ADMIN |
 
-Mobile density: count cards render 3-per-row, money cards 2-per-row, grouped under section headers.
+### Mobile-first UI redesign (spec `mobile-ui-redesign`)
+The admin app was redesigned mobile-first to a client wireframe (`docs/wireframe.jpeg`), reusing the
+Tabler theme + Shifa green + ApexCharts. The shell is a **solid dark-green banner top bar + a
+top-bar hamburger (full role-filtered menu, incl. the detailed dashboard) + a persistent role-aware
+bottom tab bar** carrying the four most-used destinations per role (Salesperson: New Order/Orders/
+Customers/Products; Packer: Packing/Handover/Dispatch/Orders; Accountant: Reconcile/Reports/Expenses/
+Orders; Admin: Approvals/Orders/Products/Reports). Every screen is single-column at 360px, uses
+cards over wide tables below 768px, KPI tiles (green icon chip + value + delta), colored status
+pills, ≥44px touch targets, real product images (served from `admin/public/products/`), and the
+order/product detail + all operational/config/auth pages follow the same language. Presentation-only
+— it reuses existing endpoints (plus the additive `GET /api/admin/products/{id}/stats` and the order
+line `imageKey` / `discountAmount` fields).
 
 ---
 

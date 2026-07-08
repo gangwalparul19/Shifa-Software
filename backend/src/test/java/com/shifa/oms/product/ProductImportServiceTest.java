@@ -189,7 +189,7 @@ class ProductImportServiceTest {
         int updates = 0;
 
         RecordingProductService() {
-            super(null, null, null);
+            super(null, null, null, null);
         }
 
         @Override

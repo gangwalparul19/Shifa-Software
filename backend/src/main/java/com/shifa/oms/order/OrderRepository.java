@@ -147,4 +147,41 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     long countCustomerPurchasesOfProduct(@Param("userId") Long userId,
                                          @Param("mobile") String mobile,
                                          @Param("productId") Long productId);
+
+    /**
+     * Per-product current-month sales aggregate for the product-detail "Sales
+     * Overview" (product stats endpoint): the sum of the product's line totals
+     * and the count of distinct orders containing the product, over orders
+     * created within {@code [startInclusive, endExclusive)} and NOT in the
+     * excluded (non-revenue) statuses. {@code order_status} is persisted as its
+     * enum name, so {@code excludedStatuses} carries the status names to exclude
+     * (e.g. {@code REJECTED}, {@code CANCELLED} — matching the P&amp;L revenue
+     * definition). {@code SUM} is coalesced to 0 so a product with no qualifying
+     * sales still returns a row.
+     */
+    @Query(value = """
+            SELECT COALESCE(SUM(li.line_total), 0) AS revenue,
+                   COUNT(DISTINCT o.id)            AS orderCount
+            FROM line_items li
+            JOIN orders o ON o.id = li.order_id
+            WHERE li.product_id = :productId
+              AND o.created_at >= :startInclusive
+              AND o.created_at <  :endExclusive
+              AND o.order_status NOT IN (:excludedStatuses)
+            """, nativeQuery = true)
+    ProductSalesAggregate productSalesStats(@Param("productId") Long productId,
+                                            @Param("startInclusive") java.time.LocalDateTime startInclusive,
+                                            @Param("endExclusive") java.time.LocalDateTime endExclusive,
+                                            @Param("excludedStatuses") java.util.Collection<String> excludedStatuses);
+
+    /**
+     * Projection over {@link #productSalesStats}: {@code revenue} is the summed
+     * line total (never null — coalesced to 0) and {@code orderCount} the number
+     * of distinct qualifying orders.
+     */
+    interface ProductSalesAggregate {
+        java.math.BigDecimal getRevenue();
+
+        long getOrderCount();
+    }
 }
