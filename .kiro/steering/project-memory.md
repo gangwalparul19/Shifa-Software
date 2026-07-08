@@ -72,6 +72,36 @@ counts + due-follow-up badge) from the extended `dashboard.model.ts` (`Salespers
 `dueFollowUps`, `AdminSummary.leads`). Optional 8.5 spec `leads.component.spec.ts` (360px checks) type-compiles;
 the vitest runner in this workspace can't bootstrap in isolation (pre-existing — existing specs fail identically).
 Admin `build:admin` completes clean.
+insights (Statistical Insights Engine — spec `statistical-insights-engine`; **backend Pass A+B DONE**). Pure
+`insights/domain/*`: `InsightEngine` (7 families: SALES_ANOMALY/LOW_STOCK_REORDER/RTO_RISK/COURIER_SCORECARD/
+RETURN_RATE_ANOMALY/COD_OUTSTANDING_BUILDUP/LEAD_SOURCE_CONVERSION) + enums (`InsightType/Scope/Severity`) +
+`Insight`(natural key type/scope/scopeRefId/computedDate, GLOBAL uses `scopeRefId=0` sentinel) + `InsightThresholds`
++ projection records (`SalesWindow/ProductConsumption/CourierOutcome/OpenOrderRisk/ReturnStats/CodOutstanding/
+LeadSourceConversion`) + `InsightInputs`; 8 jqwik property tests. `InsightEntity`+`InsightRepository` (V26 `insights`
+table). Pass B: `InsightComputationService` (@Service dual-ctor Clock, binds `app.insights.*` via @Value →
+`InsightThresholds`; `@Transactional computeForToday()` gathers read-only from order/stock/courier/returns/
+receivable/lead repos into projections, runs engine, `deleteByComputedDate`+`saveAll` idempotent per date, notifies
+WARNING/DANGER via outbox `INSIGHT_ALERT` + `StaffNotificationDispatcher.dispatchToRole(ADMIN)` de-duped by capturing
+pre-existing notifiable natural keys before delete, audits `INSIGHTS_COMPUTED`; per-family gather in try/catch so one
+failure is skipped). `InsightNightlyJob` (@Scheduled `app.insights.nightly.cron` default 02:00, best-effort).
+`InsightService` read side + `InsightController` `/api/insights` (class `@PreAuthorize hasAnyRole('ADMIN','SALESPERSON')`:
+`GET ""` list latest-date role-scoped w/ type/scope/severity/includeDismissed; `POST /{id}/dismiss` + `POST /recompute`
+ADMIN-only) + DTOs `InsightResponse`/`RecomputeResponse`. SALESPERSON sees only own SALESPERSON-scope + own-order
+RTO_RISK insights. Dashboard `RoleDashboardSummary.Admin` gains `Insights(countsBySeverity, List<InsightHeadline>)`
+populated from latest computed date's non-dismissed insights (RoleDashboardService now injects `InsightRepository` in
+BOTH ctors). Added finders `StockMovementRepository.findByMovementTypeAndCreatedAtBetween`/
+`findTopByProductIdOrderByCreatedAtDescIdDesc`; `OutboxEvent.EVENT_INSIGHT_ALERT`; `AuditActions.INSIGHTS_COMPUTED`/
+`ENTITY_INSIGHT`; `app.insights.*` in `application.yml`. Backend **487 tests** pass (was 482). **Frontend Pass C
+DONE** (tasks 6–7): Angular `insights/` feature — `InsightsService` (`/api/insights` list/dismiss/recompute),
+`insights.model.ts` (Insight/Severity/InsightType/InsightScope DTOs + `severityPillClass` Tabler badge mapping
+INFO→bg-blue-lt/WARNING→bg-yellow-lt/DANGER→bg-red-lt, `severityGroupClass`, `insightTypeLabel`), `InsightsComponent`
+(mobile-first severity filter-tabs w/ counts, cards grouped/colour-accented DANGER→WARNING→INFO w/ severity pill +
+type label + title + detail + metric + computedDate + per-card Dismiss, prominent Recompute button w/ spinner/disabled,
+empty state "No insights yet — run Recompute"). Route `/insights` guarded `adminOnlyGuard`; shell hamburger gains a
+standalone ADMIN-only "Insights" link (icon ti-bulb) near Reports; bottom 4 tabs unchanged. Admin dashboard gains an
+"Insights" KPI tile in the Fulfilment-queues row (counts by severity "N danger · M warning", routerLinks `/insights`)
+from the extended `dashboard.model.ts` (`AdminSummary.insights: InsightsSummary{countsBySeverity, top: InsightHeadline[]}`).
+Optional `insights.component.spec.ts` (360px checks) type-compiles. Admin `build:admin` completes clean.
 **Removed in pivot:** account, review, payment, coupon, and public checkout/catalog/storefront-config controllers.
 
 ## Admin pages

@@ -131,6 +131,24 @@ export interface LeadsSummary {
   pipelineByStage: Record<string, number>;
 }
 
+/** A single insight headline shown on the admin dashboard tile. */
+export interface InsightHeadline {
+  type: string;
+  severity: string;
+  title: string;
+}
+
+/**
+ * The admin statistical-insights overview (statistical-insights-engine, Req
+ * 11.1, 11.2): counts of the latest computed date's non-dismissed insights by
+ * severity (INFO/WARNING/DANGER) and the top few headlines. Both are empty when
+ * no insights have been computed yet.
+ */
+export interface InsightsSummary {
+  countsBySeverity: Record<string, number>;
+  top: InsightHeadline[];
+}
+
 /** The admin operational overview (Req 3.3). */
 export interface AdminSummary {
   pendingApproval: number;
@@ -142,6 +160,8 @@ export interface AdminSummary {
   handedOverAwaitingDispatch: number;
   /** The leads/conversion overview (Req 6.6, lead-management). */
   leads: LeadsSummary | null;
+  /** The statistical-insights overview (Req 11.1, 11.2, statistical-insights-engine). */
+  insights: InsightsSummary | null;
 }
 
 /** The packer's work queues (Req 3.4). */

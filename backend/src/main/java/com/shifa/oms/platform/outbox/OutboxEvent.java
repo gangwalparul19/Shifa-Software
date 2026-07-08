@@ -139,6 +139,16 @@ public class OutboxEvent {
      */
     public static final String EVENT_BACKUP_FAILED = "BACKUP_FAILED";
 
+    /**
+     * Event type emitted for each notifiable (WARNING/DANGER) statistical insight
+     * produced by a computation run, so the admin is alerted
+     * (statistical-insights-engine, design §Reuse). Its aggregate is
+     * {@link #AGGREGATE_SYSTEM} (with the persisted insight id as the aggregate
+     * id) because an insight is not order-scoped; the returned event's id is used
+     * as the de-dup {@code sourceEventId} of the staff notification it drives.
+     */
+    public static final String EVENT_INSIGHT_ALERT = "INSIGHT_ALERT";
+
     /** Delivery status for a freshly written, not-yet-consumed event. */
     public static final String STATUS_PENDING = "PENDING";
 

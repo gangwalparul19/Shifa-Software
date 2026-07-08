@@ -384,7 +384,7 @@ class EndpointRoleGuardIntegrationTest {
 
     static class StubRoleDashboardService extends RoleDashboardService {
         StubRoleDashboardService() {
-            super(null, null, null, null);
+            super(null, null, null, null, null);
         }
 
         @Override

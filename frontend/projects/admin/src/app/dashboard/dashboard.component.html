@@ -192,6 +192,28 @@
         </div>
       </div>
     </div>
+
+    <!-- Statistical insights tile (statistical-insights-engine, Req 11.1, 11.2) —
+         counts by severity from the latest computed date; links to /insights. -->
+    <div class="col-4 col-md-4 col-xl-3">
+      <a
+        class="card card-hover stat-accent shifa-card-link text-reset text-decoration-none d-block"
+        style="--accent: #d9a406; --accent-soft: #fdf4d7"
+        routerLink="/insights"
+        title="View statistical insights"
+      >
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Insights</div>
+            <div class="h1 m-0 count-up" [shifaCountUp]="insightTotal()" countFormat="int"></div>
+            <div class="text-secondary small mt-1">
+              {{ insightDanger() }} danger · {{ insightWarning() }} warning
+            </div>
+          </div>
+          <span class="stat-icon" style="--accent: #d9a406; --accent-soft: #fdf4d7"><i class="ti ti-bulb"></i></span>
+        </div>
+      </a>
+    </div>
   </div>
 }
 

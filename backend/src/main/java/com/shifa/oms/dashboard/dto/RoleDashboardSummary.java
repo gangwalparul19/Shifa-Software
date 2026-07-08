@@ -1,6 +1,7 @@
 package com.shifa.oms.dashboard.dto;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -40,7 +41,23 @@ public record RoleDashboardSummary(
             Map<String, Long> exceptionStates,
             long packedAwaitingHandover,
             long handedOverAwaitingDispatch,
-            Leads leads) {
+            Leads leads,
+            Insights insights) {
+    }
+
+    /**
+     * The admin statistical-insights overview (statistical-insights-engine, Req
+     * 11.1, 11.2): counts of the latest computed date's non-dismissed insights by
+     * severity ({@code INFO}/{@code WARNING}/{@code DANGER}) and the top few
+     * headlines (DANGER→WARNING→INFO). Both are empty when no insights exist yet.
+     */
+    public record Insights(
+            Map<String, Long> countsBySeverity,
+            List<InsightHeadline> top) {
+    }
+
+    /** A single insight headline shown on the admin dashboard tile. */
+    public record InsightHeadline(String type, String severity, String title) {
     }
 
     /**

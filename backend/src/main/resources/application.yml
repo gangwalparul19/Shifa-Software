@@ -141,6 +141,28 @@ app:
       # Follow-up reminder job schedule (design §Follow-up Reminders). Default
       # daily at 09:00; each due lead is reminded at most once per due day.
       cron: ${LEAD_REMINDER_CRON:0 0 9 * * *}
+  insights:
+    # Statistical insights engine (statistical-insights-engine, design §Config).
+    # Nightly computation schedule (default daily 02:00) + the tunable thresholds
+    # bound into a domain InsightThresholds by the computation service.
+    nightly:
+      cron: ${INSIGHTS_NIGHTLY_CRON:0 0 2 * * *}
+    # Trailing window (days) the current-vs-previous sales comparison uses.
+    window-days: ${INSIGHTS_WINDOW_DAYS:7}
+    # Sales deviation (percent) that flags a SALES_ANOMALY.
+    sales-anomaly-pct: ${INSIGHTS_SALES_ANOMALY_PCT:30}
+    # Consumption lookback window (days) for reorder suggestions.
+    reorder-lookback-days: ${INSIGHTS_REORDER_LOOKBACK_DAYS:30}
+    # Days-of-cover threshold below which a reorder is flagged.
+    reorder-cover-days: ${INSIGHTS_REORDER_COVER_DAYS:14}
+    # RTO risk score (0-100) at or above which an open order is flagged.
+    rto-risk-threshold: ${INSIGHTS_RTO_RISK_THRESHOLD:60}
+    # Courier RTO percent above which a scorecard is WARNING.
+    courier-rto-warn-pct: ${INSIGHTS_COURIER_RTO_WARN_PCT:15}
+    # Return-rate percent above which a RETURN_RATE_ANOMALY fires.
+    return-rate-warn-pct: ${INSIGHTS_RETURN_RATE_WARN_PCT:10}
+    # Unsettled-COD amount above which a COD build-up fires.
+    cod-outstanding-warn: ${INSIGHTS_COD_OUTSTANDING_WARN:50000}
   storage:
     # Binary object store for payment screenshots (and later PDFs).
     # provider: LOCAL (dev, filesystem) or OCI (cloud, Object Storage - TODO).

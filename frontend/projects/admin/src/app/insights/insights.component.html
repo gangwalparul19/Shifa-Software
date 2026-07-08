@@ -1,0 +1,106 @@
+<admin-page-header
+  title="Insights"
+  subtitle="Statistical signals across sales, stock, couriers, returns and leads."
+  [breadcrumbs]="[{ label: 'Insights' }]"
+>
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+  <button type="button" class="btn btn-primary" (click)="recompute()" [disabled]="recomputing()">
+    @if (recomputing()) {
+      <span class="spinner-border spinner-border-sm me-2"></span> Recomputing…
+    } @else {
+      <i class="ti ti-bolt me-1"></i> Recompute
+    }
+  </button>
+</admin-page-header>
+
+<!-- Severity filter tabs with per-severity counts -->
+<div class="shifa-status-tabs mb-3" role="tablist" aria-label="Filter insights by severity">
+  @for (tab of severityTabs; track tab.key) {
+    <button
+      type="button"
+      role="tab"
+      class="shifa-status-tab"
+      [class.active]="severityLens() === tab.key"
+      [attr.aria-selected]="severityLens() === tab.key"
+      (click)="setLens(tab.key)"
+    >
+      {{ tab.label }}
+      <span class="shifa-tab-count">{{ severityCounts()[tab.key] }}</span>
+    </button>
+  }
+</div>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" skeleton="cards" loadingLabel="Loading insights…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (visibleInsights().length === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-bulb"
+    title="No insights yet"
+    [message]="
+      severityLens() !== 'ALL'
+        ? 'No insights at this severity.'
+        : 'No insights yet — run Recompute to generate today’s signals.'
+    "
+    [ctaLabel]="severityLens() === 'ALL' ? 'Recompute' : undefined"
+    ctaIcon="ti-bolt"
+    (cta)="recompute()"
+  />
+} @else {
+  @for (group of groups(); track group.severity) {
+    <div class="shifa-ins-group">
+      <div class="shifa-ins-grouphead">
+        <span class="shifa-ins-pill" [class]="pillClass(group.severity)">{{ group.label }}</span>
+        <span class="shifa-ins-groupcount">{{ group.insights.length }}</span>
+      </div>
+
+      <div class="shifa-ins-cards">
+        @for (insight of group.insights; track insight.id) {
+          <article class="shifa-ic" [class]="groupClass(insight.severity)">
+            <div class="shifa-ic__r1">
+              <span class="shifa-ic__type">{{ typeLabel(insight.type) }}</span>
+              <span class="shifa-ic__pill" [class]="pillClass(insight.severity)">
+                {{ severityLabels[insight.severity] }}
+              </span>
+            </div>
+
+            <h3 class="shifa-ic__title">{{ insight.title }}</h3>
+
+            @if (insight.detail) {
+              <p class="shifa-ic__detail">{{ insight.detail }}</p>
+            }
+
+            @if (insight.scopeLabel) {
+              <div class="shifa-ic__scope">
+                <i class="ti ti-tag me-1"></i>{{ insight.scopeLabel }}
+              </div>
+            }
+
+            <div class="shifa-ic__r2">
+              <span class="shifa-ic__meta">
+                @if (metricOf(insight.metricValue); as metric) {
+                  <span class="shifa-ic__metric">{{ metric }}</span>
+                }
+                <span class="shifa-ic__date">
+                  <i class="ti ti-calendar me-1"></i>{{ insight.computedDate | date: 'dd MMM yyyy' }}
+                </span>
+              </span>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-secondary shifa-ic__dismiss"
+                (click)="dismiss(insight)"
+              >
+                <i class="ti ti-check me-1"></i> Dismiss
+              </button>
+            </div>
+          </article>
+        }
+      </div>
+    </div>
+  }
+}

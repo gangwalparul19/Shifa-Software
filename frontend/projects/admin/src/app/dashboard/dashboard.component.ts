@@ -184,6 +184,29 @@ export class DashboardComponent implements OnInit, OnDestroy {
   /** The salesperson's due-follow-up count for the widget badge. */
   protected readonly dueFollowUps = computed(() => this.summary()?.salesperson?.dueFollowUps ?? 0);
 
+  /** The admin statistical-insights overview, when present (Req 11.1, 11.2). */
+  protected readonly adminInsights = computed(() => this.summary()?.admin?.insights ?? null);
+
+  /** The DANGER count from the latest computed insights (drives the tile accent/badge). */
+  protected readonly insightDanger = computed(
+    () => this.adminInsights()?.countsBySeverity?.['DANGER'] ?? 0,
+  );
+
+  /** The WARNING count from the latest computed insights. */
+  protected readonly insightWarning = computed(
+    () => this.adminInsights()?.countsBySeverity?.['WARNING'] ?? 0,
+  );
+
+  /** The INFO count from the latest computed insights. */
+  protected readonly insightInfo = computed(
+    () => this.adminInsights()?.countsBySeverity?.['INFO'] ?? 0,
+  );
+
+  /** The total number of insights across all severities (drives the headline number). */
+  protected readonly insightTotal = computed(
+    () => this.insightDanger() + this.insightWarning() + this.insightInfo(),
+  );
+
   /** Honour reduced-motion by disabling chart animations. */
   private readonly reducedMotion =
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'

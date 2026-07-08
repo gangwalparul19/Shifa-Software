@@ -60,6 +60,9 @@ public final class AuditActions {
     public static final String LEAD_FOLLOW_UP_SET = "LEAD_FOLLOW_UP_SET";
     public static final String LEAD_CONVERTED = "LEAD_CONVERTED";
 
+    /** A nightly/on-demand statistical-insights computation run (statistical-insights-engine). */
+    public static final String INSIGHTS_COMPUTED = "INSIGHTS_COMPUTED";
+
     // --- Entity types -------------------------------------------------------
 
     public static final String ENTITY_ORDER = "ORDER";
@@ -72,4 +75,5 @@ public final class AuditActions {
     public static final String ENTITY_PURCHASE_ORDER = "PURCHASE_ORDER";
     public static final String ENTITY_EXPENSE = "EXPENSE";
     public static final String ENTITY_LEAD = "LEAD";
+    public static final String ENTITY_INSIGHT = "INSIGHT";
 }

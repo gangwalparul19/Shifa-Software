@@ -5,6 +5,7 @@ import com.shifa.oms.auth.Role;
 import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.dashboard.domain.DashboardQueue;
 import com.shifa.oms.dashboard.dto.RoleDashboardSummary;
+import com.shifa.oms.insights.InsightRepository;
 import com.shifa.oms.lead.LeadReportAggregator;
 import com.shifa.oms.lead.LeadService;
 import com.shifa.oms.lead.LeadStatus;
@@ -61,14 +62,16 @@ public class RoleDashboardService {
     private final ReceivableRepository receivableRepository;
     private final SalespersonScopeResolver scopeResolver;
     private final LeadService leadService;
+    private final InsightRepository insightRepository;
     private final Clock clock;
 
     @org.springframework.beans.factory.annotation.Autowired
     public RoleDashboardService(OrderRepository orderRepository,
                                 ReceivableRepository receivableRepository,
                                 SalespersonScopeResolver scopeResolver,
-                                LeadService leadService) {
-        this(orderRepository, receivableRepository, scopeResolver, leadService,
+                                LeadService leadService,
+                                InsightRepository insightRepository) {
+        this(orderRepository, receivableRepository, scopeResolver, leadService, insightRepository,
                 Clock.systemDefaultZone());
     }
 
@@ -77,11 +80,13 @@ public class RoleDashboardService {
                          ReceivableRepository receivableRepository,
                          SalespersonScopeResolver scopeResolver,
                          LeadService leadService,
+                         InsightRepository insightRepository,
                          Clock clock) {
         this.orderRepository = orderRepository;
         this.receivableRepository = receivableRepository;
         this.scopeResolver = scopeResolver;
         this.leadService = leadService;
+        this.insightRepository = insightRepository;
         this.clock = clock;
     }
 
@@ -151,7 +156,60 @@ public class RoleDashboardService {
         long awaitingDispatch = DashboardQueue.AWAITING_DISPATCH.count(orders, OrderEntity::getOrderStatus);
         return new RoleDashboardSummary.Admin(
                 pendingApproval, perActiveStage, exceptionStates, awaitingHandover, awaitingDispatch,
-                adminLeads(principal));
+                adminLeads(principal), adminInsights());
+    }
+
+    /**
+     * The admin statistical-insights overview (statistical-insights-engine, Req
+     * 11.1, 11.2): counts the latest computed date's non-dismissed insights by
+     * severity and lists the top few headlines (DANGER→WARNING→INFO, newest id
+     * first within a severity). Empty counts + list when nothing has been
+     * computed yet.
+     */
+    private RoleDashboardSummary.Insights adminInsights() {
+        java.util.Optional<LocalDate> latest = insightRepository.findMaxComputedDate();
+        Map<String, Long> counts = new LinkedHashMap<>();
+        counts.put("INFO", 0L);
+        counts.put("WARNING", 0L);
+        counts.put("DANGER", 0L);
+        if (latest.isEmpty()) {
+            return new RoleDashboardSummary.Insights(counts, List.of());
+        }
+        List<com.shifa.oms.insights.InsightEntity> rows =
+                insightRepository.findByComputedDateAndDismissedFalse(latest.get());
+        for (com.shifa.oms.insights.InsightEntity e : rows) {
+            if (e.getSeverity() != null) {
+                counts.merge(e.getSeverity().name(), 1L, Long::sum);
+            }
+        }
+        List<com.shifa.oms.insights.InsightEntity> sorted = new java.util.ArrayList<>(rows);
+        sorted.sort(java.util.Comparator
+                .comparingInt((com.shifa.oms.insights.InsightEntity e) -> severityRank(e.getSeverity()))
+                .thenComparing(com.shifa.oms.insights.InsightEntity::getId,
+                        java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
+        List<RoleDashboardSummary.InsightHeadline> top = new java.util.ArrayList<>();
+        for (com.shifa.oms.insights.InsightEntity e : sorted) {
+            if (top.size() >= 5) {
+                break;
+            }
+            top.add(new RoleDashboardSummary.InsightHeadline(
+                    e.getInsightType() == null ? null : e.getInsightType().name(),
+                    e.getSeverity() == null ? null : e.getSeverity().name(),
+                    e.getTitle()));
+        }
+        return new RoleDashboardSummary.Insights(counts, top);
+    }
+
+    /** Orders severities DANGER(0) → WARNING(1) → INFO(2) for the top-headlines list. */
+    private static int severityRank(com.shifa.oms.insights.domain.InsightSeverity severity) {
+        if (severity == null) {
+            return 3;
+        }
+        return switch (severity) {
+            case DANGER -> 0;
+            case WARNING -> 1;
+            case INFO -> 2;
+        };
     }
 
     /**

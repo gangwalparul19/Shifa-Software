@@ -191,6 +191,15 @@ export class AdminShellComponent {
     },
     { kind: 'link', label: 'Reports', path: '/reports', icon: 'ti-chart-histogram' },
     {
+      // Statistical Insights (ADMIN only, statistical-insights-engine Req 13).
+      // Kept out of the 4 bottom tabs; reachable here for admins.
+      kind: 'link',
+      label: 'Insights',
+      path: '/insights',
+      icon: 'ti-bulb',
+      adminOnly: true,
+    },
+    {
       kind: 'group',
       label: 'Finance',
       icon: 'ti-report-money',

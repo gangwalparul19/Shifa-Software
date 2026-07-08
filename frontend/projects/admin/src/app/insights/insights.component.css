@@ -1,0 +1,174 @@
+:host {
+  display: block;
+}
+
+/* --- Severity filter tabs (with per-severity count badges) -------------- */
+.shifa-status-tabs {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 0.15rem;
+}
+.shifa-status-tabs::-webkit-scrollbar {
+  display: none;
+}
+.shifa-status-tab {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  background: #fff;
+  color: #4a5a52;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.shifa-status-tab:hover {
+  border-color: var(--shifa-green-300, #7fb79a);
+}
+.shifa-status-tab.active {
+  background: var(--shifa-green-600, #1f5d3f);
+  border-color: var(--shifa-green-600, #1f5d3f);
+  color: #eafff2;
+}
+.shifa-tab-count {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(15, 51, 36, 0.08);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.shifa-status-tab.active .shifa-tab-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+/* --- Severity groups ---------------------------------------------------- */
+.shifa-ins-group {
+  margin-bottom: 1.25rem;
+}
+.shifa-ins-grouphead {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+.shifa-ins-groupcount {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #64726b;
+}
+
+/* --- Insight cards (mobile-first list) ---------------------------------- */
+.shifa-ins-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.shifa-ic {
+  position: relative;
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-left: 4px solid rgba(15, 51, 36, 0.15);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+.shifa-ic.is-red {
+  border-left-color: #b42318;
+}
+.shifa-ic.is-amber {
+  border-left-color: #d9a406;
+}
+.shifa-ic.is-blue {
+  border-left-color: #1c4e8a;
+}
+.shifa-ic__r1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.shifa-ic__type {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #64726b;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shifa-ic__pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+/* Severity pill count on the group header uses the same pill chrome. */
+.shifa-ins-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.32rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.shifa-ic__title {
+  margin: 0.5rem 0 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1c2b24;
+  line-height: 1.35;
+}
+.shifa-ic__detail {
+  margin: 0.35rem 0 0;
+  color: #4a5a52;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+.shifa-ic__scope {
+  margin-top: 0.4rem;
+  color: #64726b;
+  font-size: 0.82rem;
+}
+.shifa-ic__r2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.shifa-ic__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  color: #64726b;
+  font-size: 0.82rem;
+}
+.shifa-ic__metric {
+  font-weight: 700;
+  color: #1c2b24;
+}
+.shifa-ic__date {
+  white-space: nowrap;
+}
+.shifa-ic__dismiss {
+  flex: 0 0 auto;
+  min-height: 40px;
+}

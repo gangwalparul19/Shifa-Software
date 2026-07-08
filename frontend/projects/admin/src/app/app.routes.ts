@@ -24,6 +24,7 @@ import { ExpensesComponent } from './expenses/expenses.component';
 import { ProfitLossComponent } from './finance/profit-loss.component';
 import { LeadsComponent } from './leads/leads.component';
 import { DueFollowUpsComponent } from './leads/due-follow-ups.component';
+import { InsightsComponent } from './insights/insights.component';
 
 const LOGIN_PATH = '/login';
 const FORBIDDEN_PATH = '/forbidden';
@@ -121,6 +122,15 @@ export const routes: Routes = [
         path: 'leads',
         component: LeadsComponent,
         canActivate: [salespersonGuard],
+      },
+      {
+        // Statistical Insights (ADMIN only, statistical-insights-engine Req 13).
+        // The backend GET is open to SALESPERSON too, but the admin-only
+        // recompute/dismiss actions live on this screen, so the route is gated
+        // to ADMIN (mirrors the other admin-only management sections).
+        path: 'insights',
+        component: InsightsComponent,
+        canActivate: [adminOnlyGuard],
       },
       {
         // Customers / CRM (ADMIN + ACCOUNTANT + SALESPERSON). The backend scopes
