@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shifa OMS — Test / Demo Data Guide (V27)</title>
+<style>
+  :root{
+    --green:#1F5D3F; --green-dark:#164630; --green-lt:#e8f1ec;
+    --gold:#C9A24B; --gold-lt:#f6efdd;
+    --ink:#22272e; --muted:#5b6670; --line:#e2e6e3; --bg:#f4f6f4; --card:#ffffff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       color:var(--ink);background:var(--bg);line-height:1.55}
+  a{color:var(--green)}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px 64px}
+
+  /* header band */
+  header.band{background:linear-gradient(135deg,var(--green) 0%,var(--green-dark) 100%);color:#fff;
+              padding:40px 0 46px;border-bottom:4px solid var(--gold)}
+  header.band .wrap{padding-bottom:0}
+  .eyebrow{letter-spacing:.16em;text-transform:uppercase;font-size:12px;color:var(--gold-lt);font-weight:700;margin:0 0 8px}
+  header.band h1{margin:0;font-size:32px;line-height:1.15;font-weight:800}
+  header.band p.lede{margin:14px 0 0;max-width:760px;color:#dbe7e0;font-size:16px}
+  .pillrow{margin-top:20px;display:flex;flex-wrap:wrap;gap:8px}
+  .pill{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;
+        padding:5px 12px;border-radius:999px;font-size:13px;font-weight:600}
+
+  /* stat cards */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:-28px 0 8px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;
+        box-shadow:0 6px 18px rgba(31,93,63,.06)}
+  .stat .num{font-size:26px;font-weight:800;color:var(--green)}
+  .stat .lbl{font-size:13px;color:var(--muted);margin-top:2px}
+
+  section{margin-top:40px}
+  h2{font-size:22px;color:var(--green-dark);margin:0 0 6px;padding-bottom:8px;border-bottom:2px solid var(--green-lt)}
+  h2 .accent{color:var(--gold)}
+  h3{font-size:16px;color:var(--green-dark);margin:26px 0 8px}
+  p.note{color:var(--muted);margin:6px 0 16px}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 0;overflow:hidden;
+        box-shadow:0 4px 14px rgba(0,0,0,.03)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+  thead th{background:var(--green);color:#fff;font-weight:600;font-size:13px;letter-spacing:.02em}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:nth-child(even){background:#fafbfa}
+  code{background:var(--gold-lt);color:#7a5b12;padding:2px 7px;border-radius:6px;font-size:13px;
+       font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace}
+  .rolehdr td{background:var(--green-lt);color:var(--green-dark);font-weight:700;text-transform:uppercase;
+              letter-spacing:.05em;font-size:12px}
+
+  .cred{background:var(--gold-lt);border:1px solid #ecdcae;border-radius:12px;padding:14px 18px;margin:0 0 14px;
+        display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .cred b{color:#7a5b12}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .rolecard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;
+            box-shadow:0 4px 14px rgba(0,0,0,.03)}
+  .rolecard h3{margin-top:0;display:flex;align-items:center;gap:8px}
+  .badge{display:inline-block;background:var(--green);color:#fff;border-radius:999px;font-size:11px;
+         font-weight:700;padding:3px 10px;letter-spacing:.04em}
+  .rolecard ul{margin:8px 0 0;padding-left:18px}
+  .rolecard li{margin:5px 0}
+
+  .callout{border-left:4px solid var(--gold);background:#fffdf6;border-radius:0 10px 10px 0;padding:14px 18px;margin:14px 0}
+  .callout.green{border-left-color:var(--green);background:var(--green-lt)}
+  footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+
+<header class="band">
+  <div class="wrap">
+    <p class="eyebrow">Shifa Herbal Remedies · Order Management System</p>
+    <h1>Test / Demo Data Guide</h1>
+    <p class="lede">Migration <b>V27</b> seeds a large, realistic dataset spanning the last ~6 months so every
+      dashboard, report, insight, sales pipeline and finance view is full of meaningful signal. It layers on top of
+      the existing V22 demo data without disturbing it, and applies automatically on startup / deploy.</p>
+    <div class="pillrow">
+      <span class="pill">NOW()-relative dates</span>
+      <span class="pill">Additive &amp; non-colliding</span>
+      <span class="pill">Auto-applies via Flyway</span>
+      <span class="pill">All passwords: admin123</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="stats">
+    <div class="stat"><div class="num">23</div><div class="lbl">new logins (20 sales + 3 staff)</div></div>
+    <div class="stat"><div class="num">120</div><div class="lbl">orders over ~6 months</div></div>
+    <div class="stat"><div class="num">~56</div><div class="lbl">customers (some repeat)</div></div>
+    <div class="stat"><div class="num">50</div><div class="lbl">leads across the pipeline</div></div>
+    <div class="stat"><div class="num">240</div><div class="lbl">order line items</div></div>
+    <div class="stat"><div class="num">142</div><div class="lbl">stock movements</div></div>
+    <div class="stat"><div class="num">5</div><div class="lbl">purchase orders</div></div>
+    <div class="stat"><div class="num">21</div><div class="lbl">expenses (monthly)</div></div>
+  </div>
+
+  <section>
+    <h2>What&rsquo;s in <span class="accent">V27</span></h2>
+    <p class="note">All rows use IDs that cannot collide with V22 or with runtime-generated data
+      (users 101&ndash;123, orders 1000&ndash;1119 with codes <code>SHR-5001</code>&ndash;<code>SHR-5120</code>,
+      courier companies 2&ndash;4, suppliers 10&ndash;14, purchase orders 10&ndash;14). Every timestamp is relative to
+      <code>NOW()</code>, so the data always looks like &ldquo;the last six months&rdquo; whenever it is applied.</p>
+    <div class="card">
+      <table>
+        <thead><tr><th>Area</th><th>Seeded</th><th>Why it matters</th></tr></thead>
+        <tbody>
+          <tr><td><b>Users</b></td><td>20 salespersons + accountant2, packer2, admin2</td><td>Every role well-covered; salesperson scorecards have many performers</td></tr>
+          <tr><td><b>Orders</b></td><td>120 across full lifecycle</td><td>Delivered/closed/COD-collected majority, in-flight queue, pending approvals, plus RTO / rejected / lost exceptions</td></tr>
+          <tr><td><b>Couriers</b></td><td>BlueDart, Delhivery, India Post (+ Shifa Express)</td><td>Courier scorecards &amp; insights compare multiple carriers</td></tr>
+          <tr><td><b>Payments &amp; receivables</b></td><td>Prepaid, partial &amp; COD; COD outstanding + a lost-shipment claim</td><td>Reconciliation and accountant dashboards have real balances</td></tr>
+          <tr><td><b>Stock movements</b></td><td>Restocks + sales (many in the last 30 days) + adjustments/returns</td><td>Insights reorder/consumption engine has fresh signal</td></tr>
+          <tr><td><b>Leads</b></td><td>50 across NEW &rarr; WON/LOST, with due &amp; overdue follow-ups</td><td>Pipeline, due-follow-ups view and reminder job all light up</td></tr>
+          <tr><td><b>Finance</b></td><td>21 expenses spread monthly; POs across statuses</td><td>P&amp;L has cost signal every month</td></tr>
+          <tr><td><b>Notifications &amp; audit</b></td><td>13 notifications (role- &amp; user-addressed) + 18 audit events</td><td>Notification bell and audit trail are populated</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Login <span class="accent">credentials</span></h2>
+    <div class="cred">
+      <span>🔑</span>
+      <div><b>Every</b> account below signs in with the password <code>admin123</code>.
+        Open the admin app at <a href="http://localhost:4300">http://localhost:4300</a>.</div>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Username</th><th>Full name</th><th>Role</th><th>Password</th></tr></thead>
+        <tbody>
+          <tr class="rolehdr"><td colspan="4">Admin</td></tr>
+          <tr><td><code>admin</code></td><td>Platform Administrator</td><td>ADMIN</td><td><code>admin123</code></td></tr>
+          <tr><td><code>admin2</code></td><td>Vivek Nair</td><td>ADMIN</td><td><code>admin123</code></td></tr>
+
+          <tr class="rolehdr"><td colspan="4">Accountant</td></tr>
+          <tr><td><code>accountant</code></td><td>Anjali Deshmukh</td><td>ACCOUNTANT</td><td><code>admin123</code></td></tr>
+          <tr><td><code>accountant2</code></td><td>Meena Krishnan</td><td>ACCOUNTANT</td><td><code>admin123</code></td></tr>
+
+          <tr class="rolehdr"><td colspan="4">Packing</td></tr>
+          <tr><td><code>packer</code></td><td>Packing Department</td><td>PACKING_USER</td><td><code>admin123</code> <span style="color:var(--muted)">(V27 note below)</span></td></tr>
+          <tr><td><code>packer2</code></td><td>Suresh Patil</td><td>PACKING_USER</td><td><code>admin123</code></td></tr>
+
+          <tr class="rolehdr"><td colspan="4">Salespersons</td></tr>
+          <tr><td><code>sales1</code></td><td>Ravi Teja</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales2</code></td><td>Pooja Bhatt</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales01</code></td><td>Aarav Sharma</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales02</code></td><td>Vivaan Reddy</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales03</code></td><td>Aditya Nair</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales04</code></td><td>Ishaan Iyer</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales05</code></td><td>Kabir Menon</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales06</code></td><td>Arjun Rao</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales07</code></td><td>Rohan Deshpande</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales08</code></td><td>Karthik Pillai</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales09</code></td><td>Siddharth Bose</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales10</code></td><td>Aryan Kulkarni</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales11</code></td><td>Neha Chauhan</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales12</code></td><td>Ananya Verma</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales13</code></td><td>Diya Kapoor</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales14</code></td><td>Isha Malhotra</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales15</code></td><td>Priya Chettri</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales16</code></td><td>Sneha Joshi</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales17</code></td><td>Riya Bansal</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales18</code></td><td>Kavya Menon</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales19</code></td><td>Meera Pillai</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+          <tr><td><code>sales20</code></td><td>Tara Ghosh</td><td>SALESPERSON</td><td><code>admin123</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <b>Note on <code>packer</code>:</b> the original V22 <code>packer</code> account was seeded with the password
+      <code>packer123</code>. All <em>V27</em> accounts (including <code>packer2</code>) use <code>admin123</code>.
+      If <code>packer</code> / <code>admin123</code> doesn&rsquo;t sign in on an older database, use <code>packer2</code> instead.
+    </div>
+  </section>
+
+  <section>
+    <h2>Navigation <span class="accent">guide</span> by role</h2>
+    <p class="note">The admin app is mobile-first: a persistent <b>bottom tab bar</b> gives each role its 4 most-used
+      screens, while the <b>hamburger menu</b> (top-left) opens the full role menu, including the detailed dashboard.</p>
+
+    <div class="grid2">
+      <div class="rolecard">
+        <h3><span class="badge">Admin</span> full oversight</h3>
+        <ul>
+          <li><b>Detailed Dashboard</b> — KPI tiles, fulfilment queues, insights summary.</li>
+          <li><b>Approval Queue</b> — 8 orders sit in <code>PENDING_ADMIN_APPROVAL</code>; approve/reject them.</li>
+          <li><b>Insights</b> — click <b>Recompute</b> to generate insights (low-stock, RTO risk, courier scorecard, COD build-up, lead-source conversion), then review by severity.</li>
+          <li><b>Reports</b> — orders by lead source / status / salesperson, delivery outcomes.</li>
+          <li><b>Finance / P&amp;L</b> — monthly revenue vs. expenses (cost signal every month).</li>
+          <li><b>Suppliers / Purchase Orders</b> — POs across DRAFT &rarr; RECEIVED &rarr; CANCELLED.</li>
+        </ul>
+      </div>
+
+      <div class="rolecard">
+        <h3><span class="badge">Salesperson</span> sell &amp; follow up</h3>
+        <ul>
+          <li><b>New Order</b> — capture a customer order (pick lead source).</li>
+          <li><b>Orders</b> — your orders across every lifecycle stage.</li>
+          <li><b>Leads</b> — pipeline filter tabs (NEW/CONTACTED/QUOTED/WON/LOST); capture, advance, mark lost, convert.</li>
+          <li><b>Due follow-ups</b> — leads due today and overdue are flagged (reminder job feeds the bell).</li>
+          <li><b>My dashboard widgets</b> — lead pipeline counts + due-follow-up badge.</li>
+        </ul>
+      </div>
+
+      <div class="rolecard">
+        <h3><span class="badge">Packing user</span> fulfilment</h3>
+        <ul>
+          <li><b>Packing</b> — orders at <code>LABEL_GENERATED</code> ready to pack.</li>
+          <li><b>Handover</b> — move <code>PACKED</code> &rarr; <code>HANDED_TO_DELIVERY</code>.</li>
+          <li><b>Dispatch</b> — hand parcels to couriers; watch them flow to <code>COURIER_ASSIGNED</code> / <code>DISPATCHED</code>.</li>
+        </ul>
+      </div>
+
+      <div class="rolecard">
+        <h3><span class="badge">Accountant</span> money in</h3>
+        <ul>
+          <li><b>Reconciliation</b> — COD receivables; some settled, some still outstanding for signal.</li>
+          <li><b>Reports</b> — revenue &amp; delivery-outcome breakdowns.</li>
+          <li><b>Expenses</b> — 21 expenses spread monthly across RENT / SALARIES / MARKETING / PACKAGING / UTILITIES / LOGISTICS.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>How to <span class="accent">apply</span></h2>
+    <div class="callout green">
+      <b>Locally:</b> just <b>restart the backend</b> — Flyway runs on startup and applies <code>V27</code> automatically.
+      <br><b>On the server:</b> it auto-applies on the next deploy (Flyway runs before the app serves traffic).
+    </div>
+    <p class="note">V27 is <b>additive</b> and uses non-colliding IDs, so it will not disturb existing data (including the
+      V22 demo dataset) and it is safe to ship. It seeds no schema changes — data only. Because all dates are
+      <code>NOW()</code>-relative, the dataset never &ldquo;ages out&rdquo;; it always represents the most recent ~6 months.</p>
+  </section>
+
+  <footer>
+    Shifa OMS · V27 test/demo seed · generated migration
+    <code>backend/src/main/resources/db/migration/V27__seed_test_data.sql</code>.
+    All demo passwords are <code>admin123</code>. Do not load this seed into a database that holds real customer data.
+  </footer>
+
+</div>
+</body>
+</html>

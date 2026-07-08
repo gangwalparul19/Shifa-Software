@@ -38,7 +38,7 @@ Shifa-Software/
 │  │  ├─ application.yml              # base config
 │  │  ├─ application-local.yml        # local profile (MySQL localhost, shifa_dashboard)
 │  │  ├─ application-prod.yml         # prod profile (env-driven)
-│  │  └─ db/migration/                # Flyway V1..V22 (see §6)
+│  │  └─ db/migration/                # Flyway V1..V27 (see §6)
 │  └─ pom.xml
 ├─ frontend/                    # Angular 21 workspace
 │  ├─ angular.json                    # projects: admin, core, ui
@@ -70,8 +70,8 @@ CREATE DATABASE shifa_dashboard CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
 mvn -f "backend/pom.xml" -DskipTests spring-boot:run
 ```
 - Default profile is `local` (MySQL `root`/`root@123`, DB `shifa_dashboard`).
-- On startup Flyway applies V1..V22 and local `@Profile("local")` seeders top up demo data
-  (they no-op because V22 already seeds it).
+- On startup Flyway applies V1..V27 and local `@Profile("local")` seeders top up demo data
+  (they no-op because V22 already seeds it). V27 adds a large NOW()-relative test dataset on top.
 
 ### Admin UI (port 4300)
 ```
@@ -87,6 +87,10 @@ Then open http://localhost:4300/.
 | `sales1`     | `admin123`  | SALESPERSON   |
 | `sales2`     | `admin123`  | SALESPERSON   |
 | `packer`     | `packer123` | PACKING_USER  |
+
+**V27 test data (large seed):** 20 more salespersons `sales01`..`sales20`, plus `accountant2`,
+`packer2`, `admin2` — **all with password `admin123`**. See `docs/test-data-guide.html` for the full
+login list and a per-role navigation tour.
 
 ### Useful npm scripts (`frontend/`)
 - `start:admin` — serve the admin app (dev, watch)
@@ -194,6 +198,17 @@ Migration history:
   images, 5 staff users, 5 suppliers, 5 POs, 15 orders across the full lifecycle with line items /
   status history / payments, courier records, receivables, stock movements, returns, expenses,
   notifications, audit events, and GST settings.
+- `V23` — `orders.lead_source`/`lead_source_note`/`customer_email` (+ index). `V24` —
+  `admin_notifications.recipient_role`/`recipient_user_id` (+ index). `V25` — `leads` +
+  `lead_status_history` tables. `V26` — `insights` table. All additive/nullable, safe on V22.
+- `V27__seed_test_data.sql` — **large NOW()-relative TEST/DEMO seed** layered on top of V22 (runs in
+  ALL profiles, auto-applies on deploy). Non-colliding IDs (users 101–123, orders 1000–1119 as
+  `SHR-5001`..`SHR-5120`, couriers 2–4, suppliers 10–14, POs 10–14). Seeds 23 more users (20
+  salespersons + accountant2/packer2/admin2, **all password `admin123`**), 120 orders across the full
+  lifecycle (~56 customers, some repeat), 240 line items, ~1k status-history rows, payments,
+  receivables (COD outstanding + a lost claim), 142 stock movements (many in the last 30 days), 50
+  leads with due/overdue follow-ups, 5 suppliers, 5 POs, 21 monthly expenses, notifications and audit
+  events. Additive and safe — won't disturb existing data. See `docs/test-data-guide.html`.
 
 > Fresh DB required: because V22 seeds with explicit IDs, start against an **empty**
 > `shifa_dashboard`. If a half-migrated DB exists, drop & recreate it before starting.
