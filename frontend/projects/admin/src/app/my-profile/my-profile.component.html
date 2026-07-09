@@ -1,0 +1,198 @@
+<admin-page-header
+  title="My Profile"
+  subtitle="View your details and request changes"
+  [breadcrumbs]="[{ label: 'My Profile' }]"
+></admin-page-header>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" skeleton="cards" [card]="true" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (data(); as data) {
+  <div class="row g-3">
+    <!-- Identity card -->
+    <div class="col-12 col-lg-5">
+      <div class="card mp-idcard">
+        <div class="mp-hero">
+          @switch (data.profile.verificationStatus) {
+            @case ('VERIFIED') {
+              <span class="mp-hero__badge mp-hero__badge--verified">
+                <i class="ti ti-shield-check me-1"></i>
+                Verified
+              </span>
+            }
+            @case ('REJECTED') {
+              <span class="mp-hero__badge mp-hero__badge--rejected">
+                <i class="ti ti-shield-x me-1"></i>
+                Rejected
+              </span>
+            }
+            @default {
+              <span class="mp-hero__badge mp-hero__badge--pending">
+                <i class="ti ti-shield-half me-1"></i>
+                Pending
+              </span>
+            }
+          }
+
+          <div class="mp-avatar">
+            @if (photoUrl(); as src) {
+              <img [src]="src" alt="My profile photo" />
+            } @else {
+              <span class="mp-avatar__placeholder">{{ initials(data.profile.fullName) }}</span>
+            }
+          </div>
+
+          <div class="mp-hero__name">{{ data.profile.fullName }}</div>
+          <div class="mp-hero__username">&#64;{{ data.profile.username }}</div>
+          <span class="mp-hero__role">{{ roleLabel(data.profile.role) }}</span>
+        </div>
+
+        <div class="mp-details">
+          <div class="mp-row">
+            <span class="mp-row__ic"><i class="ti ti-phone"></i></span>
+            <span class="mp-row__label">Mobile</span>
+            <span class="mp-row__value">{{ data.profile.mobile || '—' }}</span>
+          </div>
+          <div class="mp-row">
+            <span class="mp-row__ic"><i class="ti ti-mail"></i></span>
+            <span class="mp-row__label">Email</span>
+            <span class="mp-row__value">{{ data.profile.email || '—' }}</span>
+          </div>
+          <div class="mp-row">
+            <span class="mp-row__ic"><i class="ti ti-cake"></i></span>
+            <span class="mp-row__label">Date of birth</span>
+            <span class="mp-row__value">{{ dateLabel(data.profile.dateOfBirth) }}</span>
+          </div>
+          <div class="mp-row">
+            <span class="mp-row__ic"><i class="ti ti-calendar-event"></i></span>
+            <span class="mp-row__label">Joined on</span>
+            <span class="mp-row__value">{{ dateLabel(data.profile.joinedOn) }}</span>
+          </div>
+          <div class="mp-row mp-row--stacked">
+            <span class="mp-row__ic"><i class="ti ti-map-pin"></i></span>
+            <span class="mp-row__label">Address</span>
+            <span class="mp-row__value">{{ data.profile.address || '—' }}</span>
+          </div>
+          <div class="mp-row">
+            <span class="mp-row__ic"><i class="ti ti-id"></i></span>
+            <span class="mp-row__label">ID proof</span>
+            <span class="mp-row__value">
+              {{ idProofLabel(data.profile.idProofType) }}{{ data.profile.idProofNumber ? ' · ' + data.profile.idProofNumber : '' }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pending banner + change request form -->
+    <div class="col-12 col-lg-7">
+      @if (data.pending; as pending) {
+        <div class="card mp-pending mb-3">
+          <div class="mp-pending__head">
+            <i class="ti ti-clock-hour-4"></i>
+            <div>
+              <strong>Changes awaiting admin approval</strong>
+              <div class="mp-pending__sub">
+                Submitted {{ dateLabel(pending.requestedAt) }} · your profile updates once approved
+              </div>
+            </div>
+          </div>
+          @if (changedFields(pending).length) {
+            <div class="mp-diff">
+              @for (row of changedFields(pending); track row.label) {
+                <div class="mp-diff__row">
+                  <div class="mp-diff__label">{{ row.label }}</div>
+                  <div class="mp-diff__change">
+                    <span class="mp-diff__from">{{ row.from }}</span>
+                    <i class="ti ti-arrow-right mx-1"></i>
+                    <span class="mp-diff__to">{{ row.to }}</span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">
+            <i class="ti ti-edit me-2"></i>{{ data.pending ? 'Update your request' : 'Request a change' }}
+          </h3>
+        </div>
+        <div class="card-body">
+          <div class="mp-hint mb-3">
+            <i class="ti ti-info-circle me-2"></i>
+            An admin reviews your request — nothing changes on your account until it's approved.
+          </div>
+          <form [formGroup]="form" (ngSubmit)="submit()">
+            @if (formError()) {
+              <div class="alert alert-danger py-2">{{ formError() }}</div>
+            }
+            <div class="mb-3">
+              <label class="form-label required">Full name</label>
+              <div class="input-icon">
+                <span class="input-icon-addon"><i class="ti ti-user"></i></span>
+                <input type="text" class="form-control" formControlName="fullName" />
+              </div>
+            </div>
+            <div class="row g-2">
+              <div class="col-sm-6 mb-2">
+                <label class="form-label">Mobile</label>
+                <div class="input-icon">
+                  <span class="input-icon-addon"><i class="ti ti-phone"></i></span>
+                  <input type="tel" class="form-control" formControlName="mobile" placeholder="10-digit" />
+                </div>
+              </div>
+              <div class="col-sm-6 mb-2">
+                <label class="form-label">Email</label>
+                <div class="input-icon">
+                  <span class="input-icon-addon"><i class="ti ti-mail"></i></span>
+                  <input type="email" class="form-control" formControlName="email" />
+                </div>
+              </div>
+            </div>
+            <div class="row g-2">
+              <div class="col-sm-6 mb-2">
+                <label class="form-label">Date of birth</label>
+                <input type="date" class="form-control" formControlName="dateOfBirth" />
+              </div>
+              <div class="col-sm-6 mb-2">
+                <label class="form-label">ID proof type</label>
+                <select class="form-select" formControlName="idProofType">
+                  <option value="">Select…</option>
+                  @for (t of idProofTypes; track t) {
+                    <option [value]="t">{{ idProofLabel(t) }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">ID proof number</label>
+              <input type="text" class="form-control" formControlName="idProofNumber" />
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Address</label>
+              <textarea class="form-control" rows="2" formControlName="address"></textarea>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Note to admin (optional)</label>
+              <textarea class="form-control" rows="2" formControlName="requestNote"
+                        placeholder="Why are you requesting this change?"></textarea>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <button type="submit" class="btn btn-primary" [disabled]="saving()">
+                <i class="ti ti-send me-1" aria-hidden="true"></i>
+                {{ saving() ? 'Submitting…' : data.pending ? 'Update request' : 'Submit for approval' }}
+              </button>
+              <span class="text-secondary small">
+                <i class="ti ti-photo me-1"></i>Photo &amp; ID document changes: contact an admin.
+              </span>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+}

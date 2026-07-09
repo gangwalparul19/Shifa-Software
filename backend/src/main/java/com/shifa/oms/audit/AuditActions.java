@@ -26,6 +26,16 @@ public final class AuditActions {
     public static final String USER_ACTIVATED = "USER_ACTIVATED";
     public static final String USER_DEACTIVATED = "USER_DEACTIVATED";
 
+    // Staff onboarding profiles + ID verification.
+    public static final String STAFF_PROFILE_UPDATED = "STAFF_PROFILE_UPDATED";
+    public static final String STAFF_ID_PROOF_UPLOADED = "STAFF_ID_PROOF_UPLOADED";
+    public static final String STAFF_PROFILE_IMAGE_UPLOADED = "STAFF_PROFILE_IMAGE_UPLOADED";
+    public static final String STAFF_PROFILE_CHANGE_REQUESTED = "STAFF_PROFILE_CHANGE_REQUESTED";
+    public static final String STAFF_PROFILE_CHANGE_APPROVED = "STAFF_PROFILE_CHANGE_APPROVED";
+    public static final String STAFF_PROFILE_CHANGE_REJECTED = "STAFF_PROFILE_CHANGE_REJECTED";
+    public static final String STAFF_VERIFIED = "STAFF_VERIFIED";
+    public static final String STAFF_VERIFICATION_REJECTED = "STAFF_VERIFICATION_REJECTED";
+
     public static final String SETTINGS_UPDATED = "SETTINGS_UPDATED";
 
     public static final String STOCK_RESTOCKED = "STOCK_RESTOCKED";

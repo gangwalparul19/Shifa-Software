@@ -309,6 +309,26 @@
   align-items: center;
   gap: 0.6rem;
   min-width: 0;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 0.5rem;
+  padding: 0.25rem 0.4rem;
+  transition: background 0.15s ease;
+}
+.shifa-navdrawer__user:hover {
+  background: rgba(31, 93, 63, 0.08);
+}
+
+/* Clickable name/role block in the top-bar account dropdown. */
+.shifa-usermenu__id {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 0.5rem;
+  transition: background 0.15s ease;
+}
+.shifa-usermenu__id:hover {
+  background: rgba(31, 93, 63, 0.08);
 }
 
 @media (prefers-reduced-motion: reduce) {

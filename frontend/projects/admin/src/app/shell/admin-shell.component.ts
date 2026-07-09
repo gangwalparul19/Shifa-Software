@@ -114,6 +114,7 @@ export class AdminShellComponent {
     // TODO(mobile-ui-redesign Req 4): add a lightweight Home summary landing
     // view and (optionally) redirect post-login there instead of /dashboard.
     { kind: 'link', label: 'Shifa Dashboard', path: '/dashboard', icon: 'ti-layout-dashboard' },
+    { kind: 'link', label: 'My Profile', path: '/my-profile', icon: 'ti-user-circle' },
     {
       kind: 'group',
       label: 'Orders',
@@ -214,6 +215,8 @@ export class AdminShellComponent {
       icon: 'ti-settings',
       children: [
         { kind: 'link', label: 'Users', path: '/users', icon: 'ti-users', adminOnly: true },
+        { kind: 'link', label: 'Salespeople', path: '/salespeople', icon: 'ti-id-badge-2', adminOnly: true },
+        { kind: 'link', label: 'Profile approvals', path: '/profile-approvals', icon: 'ti-user-check', adminOnly: true },
         { kind: 'link', label: 'Settings', path: '/settings', icon: 'ti-settings', adminOnly: true },
         { kind: 'link', label: 'Notifications', path: '/notifications', icon: 'ti-bell', adminOnly: true },
         { kind: 'link', label: 'Audit Log', path: '/audit', icon: 'ti-history', adminOnly: true },

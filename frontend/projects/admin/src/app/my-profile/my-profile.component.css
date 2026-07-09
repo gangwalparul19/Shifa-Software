@@ -1,0 +1,205 @@
+/* ==========================================================================
+   My Profile — compact hero banner with all identity on green background
+   ========================================================================== */
+
+.mp-idcard {
+  overflow: hidden;
+}
+
+/* Green hero banner with all identity elements. */
+.mp-hero {
+  position: relative;
+  background: linear-gradient(135deg, var(--shifa-green-600, #1f5d3f), var(--shifa-green-700, #164632));
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.mp-hero__badge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 700;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+}
+
+.mp-hero__badge--verified {
+  color: #155724;
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+}
+.mp-hero__badge--pending {
+  color: #856404;
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+}
+.mp-hero__badge--rejected {
+  color: #721c24;
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+}
+
+/* Avatar on the banner. */
+.mp-avatar {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.15);
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  display: grid;
+  place-items: center;
+}
+.mp-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.mp-avatar__placeholder {
+  font-weight: 800;
+  font-size: 1.8rem;
+  color: #fff;
+}
+
+.mp-hero__name {
+  font-weight: 700;
+  font-size: 1.4rem;
+  color: #fff;
+  text-align: center;
+  margin: 0;
+}
+
+.mp-hero__username {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.95rem;
+  text-align: center;
+  margin-top: -0.25rem;
+}
+
+.mp-hero__role {
+  display: inline-block;
+  padding: 0.35rem 0.85rem;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Detail rows. */
+.mp-details {
+  border-top: 1px solid rgba(4, 32, 69, 0.08);
+}
+.mp-row {
+  display: grid;
+  grid-template-columns: 2rem auto 1fr;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 1.15rem;
+  border-bottom: 1px solid rgba(4, 32, 69, 0.06);
+}
+.mp-row:last-child {
+  border-bottom: none;
+}
+.mp-row__ic {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  display: inline-grid;
+  place-items: center;
+  background: var(--shifa-green-100, #e6f4ec);
+  color: var(--shifa-green-700, #164632);
+  font-size: 1rem;
+}
+.mp-row__label {
+  color: #6b7b72;
+  font-size: 0.9rem;
+}
+.mp-row__value {
+  text-align: right;
+  font-weight: 600;
+  color: #182433;
+  word-break: break-word;
+}
+/* Address wraps to its own line under the label. */
+.mp-row--stacked {
+  grid-template-columns: 2rem 1fr;
+  align-items: start;
+}
+.mp-row--stacked .mp-row__value {
+  grid-column: 1 / -1;
+  text-align: left;
+  font-weight: 500;
+}
+
+/* Pending change banner + diff. */
+.mp-pending {
+  border-left: 4px solid var(--shifa-gold, #c8a24a);
+  background: #fff8e8;
+}
+.mp-pending__head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.9rem 1.15rem;
+}
+.mp-pending__head i {
+  font-size: 1.6rem;
+  color: #8a6a12;
+}
+.mp-pending__sub {
+  color: #8a6a12;
+  font-size: 0.82rem;
+}
+.mp-diff {
+  padding: 0 1.15rem 0.9rem;
+}
+.mp-diff__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-top: 1px dashed rgba(138, 106, 18, 0.25);
+  font-size: 0.9rem;
+}
+.mp-diff__label {
+  color: #6b7b72;
+  flex: 0 0 auto;
+}
+.mp-diff__change {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 0;
+  text-align: right;
+}
+.mp-diff__from {
+  color: #98918a;
+  text-decoration: line-through;
+}
+.mp-diff__to {
+  font-weight: 700;
+  color: var(--shifa-green-700, #164632);
+}
+
+.mp-hint {
+  background: #f2f8f4;
+  border: 1px solid rgba(31, 93, 63, 0.15);
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  color: var(--shifa-green-700, #164632);
+  font-size: 0.88rem;
+}

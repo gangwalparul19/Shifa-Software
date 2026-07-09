@@ -168,6 +168,7 @@ Routing in `app.routes.ts`, shell/nav in `shell/admin-shell.component.ts`. Guard
 | `/packing` | Barcode scan + handover/dispatch | PACKING_USER+ADMIN |
 | `/reconciliation`, `/reports` | Settlement + exports | ADMIN+ACCOUNTANT |
 | `/settings`, `/users` | Config + staff users | ADMIN |
+| `/salespeople` | Salesperson onboarding profiles + ID verification directory | ADMIN |
 
 ### Mobile-first UI redesign (spec `mobile-ui-redesign`)
 The admin app was redesigned mobile-first to a client wireframe (`docs/wireframe.jpeg`), reusing the
@@ -218,6 +219,14 @@ Migration history:
   (name UNIQUE, active, sort_order), seeded once with 28 states + 8 UTs. Powers the New Order state
   typeahead (`GET /api/states`) and the admin Settings "Delivery states" manager (`/api/admin/states`).
   Additive/nullable, safe on V22.
+- `V30` — removes seeded admin notifications.
+- `V31__staff_profiles_verification.sql` — **staff onboarding & salesperson ID verification**: adds
+  profile + verification columns to `users` (`date_of_birth`, `address`, `joined_on`, `id_proof_type`,
+  `id_proof_number`, `id_proof_key`, `verification_status` NOT NULL DEFAULT 'PENDING',
+  `verification_note`, `verified_at`, `verified_by`) + index `ix_users_role_verification`. Backfills
+  all existing rows to `VERIFIED` so current logins aren't flagged. Additive/nullable, safe on V22/V27.
+  Powers `/api/admin/staff` and the admin **Salespeople** directory. The uploaded ID document lives in
+  the pluggable `StorageService` (only `id_proof_key` is persisted).
 
 > Fresh DB required: because V22 seeds with explicit IDs, start against an **empty**
 > `shifa_dashboard`. If a half-migrated DB exists, drop & recreate it before starting.

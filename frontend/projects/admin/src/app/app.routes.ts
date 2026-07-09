@@ -14,6 +14,9 @@ import { ReconciliationComponent } from './reconciliation/reconciliation.compone
 import { ReportsComponent } from './reports/reports.component';
 import { SettingsComponent } from './settings/settings.component';
 import { UsersComponent } from './users/users.component';
+import { SalespeopleComponent } from './salespeople/salespeople.component';
+import { MyProfileComponent } from './my-profile/my-profile.component';
+import { ProfileApprovalsComponent } from './profile-approvals/profile-approvals.component';
 import { CustomersComponent } from './customers/customers.component';
 import { ReturnsComponent } from './returns/returns.component';
 import { NotificationsComponent } from './notifications/notifications.component';
@@ -226,6 +229,25 @@ export const routes: Routes = [
         // Staff user management (ADMIN only, Req 5.4).
         path: 'users',
         component: UsersComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Salespeople directory: onboarding profiles + ID verification (ADMIN only).
+        path: 'salespeople',
+        component: SalespeopleComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Self-service "My Profile" — any authenticated staff member. Changes are
+        // submitted for admin approval (not applied directly).
+        path: 'my-profile',
+        component: MyProfileComponent,
+        canActivate: [staffGuard],
+      },
+      {
+        // Admin approval queue for staff profile change requests (ADMIN only).
+        path: 'profile-approvals',
+        component: ProfileApprovalsComponent,
         canActivate: [adminOnlyGuard],
       },
       {

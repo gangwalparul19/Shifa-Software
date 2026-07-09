@@ -1,0 +1,273 @@
+<admin-page-header
+  title="Salespeople"
+  subtitle="Onboard, record and verify your sales team"
+  [breadcrumbs]="[{ label: 'Salespeople' }]"
+>
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1" aria-hidden="true"></i> Refresh
+  </button>
+</admin-page-header>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" skeleton="cards" [card]="true" />
+} @else if (loadError()) {
+  <admin-state-panel
+    variant="error"
+    [card]="true"
+    [message]="loadError()!"
+    (retry)="load()"
+  />
+} @else {
+  <!-- Verification filter tabs -->
+  <div class="btn-list mb-3 salespeople-filters">
+    @for (tab of filterTabs; track tab) {
+      <button
+        type="button"
+        class="btn btn-sm"
+        [class.btn-primary]="filter() === tab"
+        [class.btn-outline-secondary]="filter() !== tab"
+        (click)="setFilter(tab)"
+      >
+        {{ tabLabel(tab) }}
+        <span class="badge bg-secondary-lt ms-1">{{ countFor(tab) }}</span>
+      </button>
+    }
+  </div>
+
+  @if (filtered().length === 0) {
+    <admin-state-panel
+      variant="empty"
+      [card]="true"
+      icon="ti-users"
+      title="No salespeople here"
+      [message]="
+        filter() === 'ALL'
+          ? 'Create salesperson accounts under Users, then onboard them here.'
+          : 'No salespeople in this verification state.'
+      "
+    />
+  } @else {
+    <div class="row row-cards">
+      @for (member of filtered(); track member.id) {
+        <div class="col-sm-6 col-lg-4">
+          <div class="card card-sm salesperson-card" (click)="open(member)" tabindex="0"
+               (keydown.enter)="open(member)">
+            <div class="card-body">
+              <div class="d-flex align-items-center">
+                <span class="avatar avatar-rounded me-3">{{ initials(member.fullName) }}</span>
+                <div class="flex-fill overflow-hidden">
+                  <div class="fw-bold text-truncate">{{ member.fullName }}</div>
+                  <div class="text-secondary small text-truncate">&#64;{{ member.username }}</div>
+                </div>
+                <span class="badge {{ statusBadgeClass(member.verificationStatus) }} ms-2">
+                  {{ statusLabel(member.verificationStatus) }}
+                </span>
+              </div>
+              <div class="mt-3 small text-secondary d-flex flex-column gap-1">
+                <span><i class="ti ti-phone me-1" aria-hidden="true"></i>{{ member.mobile || '—' }}</span>
+                <span class="d-flex align-items-center">
+                  <i class="ti ti-id me-1" aria-hidden="true"></i>
+                  @if (member.hasIdProof) {
+                    {{ idProofLabel(member.idProofType) }} on file
+                  } @else {
+                    <span class="text-danger">No govt ID</span>
+                  }
+                </span>
+                <span class="d-flex align-items-center">
+                  <i class="ti ti-camera me-1" aria-hidden="true"></i>
+                  @if (member.hasProfileImage) {
+                    Photo on file
+                  } @else {
+                    <span class="text-secondary">No photo</span>
+                  }
+                </span>
+              </div>
+              @if (!member.active) {
+                <div class="mt-2">
+                  <span class="badge bg-secondary-lt">Inactive</span>
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  }
+}
+
+<!-- Detail / onboarding drawer -->
+@if (selected(); as member) {
+  <div class="shifa-overlay" (click)="close()"></div>
+  <aside class="shifa-drawer sp-dr" role="dialog" aria-label="Salesperson profile">
+    <header class="shifa-drawer__head sp-dr__head">
+      <span class="sp-dr__avatar">{{ initials(member.fullName) }}</span>
+      <div class="sp-dr__headmain">
+        <div class="sp-dr__name">{{ member.fullName }}</div>
+        <div class="sp-dr__sub">&#64;{{ member.username }}</div>
+      </div>
+      <span class="sp-dr__pill sp-pill--{{ member.verificationStatus.toLowerCase() }}">
+        {{ statusLabel(member.verificationStatus) }}
+      </span>
+      <button type="button" class="sp-dr__close" aria-label="Close" (click)="close()">
+        <i class="ti ti-x" aria-hidden="true"></i>
+      </button>
+    </header>
+
+    <div class="shifa-drawer__body sp-dr__body">
+      @if (member.verifiedAt || member.verificationNote) {
+        <div class="sp-verify-meta">
+          @if (member.verifiedAt) {
+            <span><i class="ti ti-clock me-1"></i>Decision on {{ dateLabel(member.verifiedAt) }}</span>
+          }
+          @if (member.verificationNote) {
+            <div class="mt-1"><i class="ti ti-note me-1"></i>{{ member.verificationNote }}</div>
+          }
+        </div>
+      }
+
+      <!-- Profile photo -->
+      <section class="sp-section">
+        <h3 class="sp-section__title"><i class="ti ti-camera me-1"></i>Profile photo</h3>
+        <div class="sp-photo">
+          <div class="sp-photo__frame">
+            @if (profilePreview(); as src) {
+              <img [src]="src" alt="Profile photo of {{ member.fullName }}" />
+            } @else {
+              <span class="sp-photo__placeholder">{{ initials(member.fullName) }}</span>
+            }
+          </div>
+          <div class="sp-photo__actions">
+            <label class="btn btn-outline-secondary btn-sm">
+              <i class="ti ti-upload me-1" aria-hidden="true"></i>
+              {{ uploadingPhoto() ? 'Uploading…' : member.hasProfileImage ? 'Replace photo' : 'Upload photo' }}
+              <input
+                type="file"
+                class="d-none"
+                accept="image/*"
+                (change)="onProfileImageSelected($event)"
+                [disabled]="uploadingPhoto()"
+              />
+            </label>
+            <div class="form-hint">JPG or PNG. Compressed automatically before storage.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Profile form -->
+      <section class="sp-section">
+        <h3 class="sp-section__title"><i class="ti ti-user me-1"></i>Profile</h3>
+      <form [formGroup]="form" (ngSubmit)="saveProfile()">
+        @if (formError()) {
+          <div class="alert alert-danger py-2">{{ formError() }}</div>
+        }
+        <div class="mb-2">
+          <label class="form-label required">Full name</label>
+          <input type="text" class="form-control" formControlName="fullName" />
+        </div>
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label">Mobile</label>
+            <input type="tel" class="form-control" formControlName="mobile" placeholder="10-digit" />
+          </div>
+          <div class="col-6">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-control" formControlName="email" />
+          </div>
+        </div>
+        <div class="row g-2 mt-0">
+          <div class="col-6">
+            <label class="form-label">Date of birth</label>
+            <input type="date" class="form-control" formControlName="dateOfBirth" />
+          </div>
+          <div class="col-6">
+            <label class="form-label">Joined on</label>
+            <input type="date" class="form-control" formControlName="joinedOn" />
+          </div>
+        </div>
+        <div class="mb-2 mt-2">
+          <label class="form-label">Address</label>
+          <textarea class="form-control" rows="2" formControlName="address"></textarea>
+        </div>
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label">ID proof type</label>
+            <select class="form-select" formControlName="idProofType">
+              <option value="">Select…</option>
+              @for (t of idProofTypes; track t) {
+                <option [value]="t">{{ idProofLabel(t) }}</option>
+              }
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label">ID proof number</label>
+            <input type="text" class="form-control" formControlName="idProofNumber" />
+          </div>
+        </div>
+        <div class="mt-3">
+          <button type="submit" class="btn btn-primary" [disabled]="saving()">
+            <i class="ti ti-device-floppy me-1" aria-hidden="true"></i>
+            {{ saving() ? 'Saving…' : 'Save profile' }}
+          </button>
+        </div>
+      </form>
+      </section>
+
+      <!-- Government ID document -->
+      <section class="sp-section">
+        <h3 class="sp-section__title"><i class="ti ti-id me-1"></i>Government ID document</h3>
+        <div class="d-flex align-items-center gap-2 mb-2">
+          @if (member.hasIdProof) {
+            <span class="badge bg-green-lt"><i class="ti ti-check me-1"></i>Document on file</span>
+            <button type="button" class="btn btn-sm btn-outline-primary" (click)="viewIdProof()">
+              <i class="ti ti-eye me-1" aria-hidden="true"></i> View
+            </button>
+          } @else {
+            <span class="badge bg-red-lt"><i class="ti ti-alert-triangle me-1"></i>Not uploaded</span>
+          }
+        </div>
+        <label class="btn btn-outline-secondary btn-sm">
+          <i class="ti ti-upload me-1" aria-hidden="true"></i>
+          {{ uploading() ? 'Uploading…' : member.hasIdProof ? 'Replace document' : 'Upload document' }}
+          <input
+            type="file"
+            class="d-none"
+            accept="image/*,application/pdf"
+            (change)="onIdProofSelected($event)"
+            [disabled]="uploading()"
+          />
+        </label>
+        <div class="form-hint">Image or PDF (Aadhaar, PAN, licence, etc.). Uploading a new file resets verification.</div>
+      </section>
+
+      <!-- Verification decision -->
+      <section class="sp-section">
+        <h3 class="sp-section__title"><i class="ti ti-shield-check me-1"></i>Verification</h3>
+      <div class="mb-2">
+        <label class="form-label">Note (optional — e.g. reason for rejection)</label>
+        <textarea class="form-control" rows="2" [formControl]="verifyNote"></textarea>
+      </div>
+      <div class="btn-list">
+        <button
+          type="button"
+          class="btn btn-success"
+          [disabled]="verifying() || !member.hasIdProof || member.verificationStatus === 'VERIFIED'"
+          (click)="decide('VERIFIED')"
+        >
+          <i class="ti ti-shield-check me-1" aria-hidden="true"></i> Verify
+        </button>
+        <button
+          type="button"
+          class="btn btn-outline-danger"
+          [disabled]="verifying() || member.verificationStatus === 'REJECTED'"
+          (click)="decide('REJECTED')"
+        >
+          <i class="ti ti-shield-x me-1" aria-hidden="true"></i> Reject
+        </button>
+      </div>
+      @if (!member.hasIdProof) {
+        <div class="form-hint mt-1 text-danger">Upload an ID proof document before verifying.</div>
+      }
+      </section>
+    </div>
+  </aside>
+}

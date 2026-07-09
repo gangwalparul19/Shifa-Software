@@ -22,6 +22,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findAllByOrderByCreatedAtDescIdDesc();
 
     /**
+     * All users holding a given role, newest first — backs the admin
+     * "All salespeople" directory (staff onboarding &amp; ID verification).
+     */
+    List<User> findByRoleOrderByCreatedAtDescIdDesc(Role role);
+
+    /**
      * Count of active users holding a given role — used to protect the last
      * remaining active {@link Role#ADMIN} from deactivation/demotion.
      */

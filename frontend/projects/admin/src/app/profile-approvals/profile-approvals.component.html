@@ -1,0 +1,92 @@
+<admin-page-header
+  title="Profile approvals"
+  subtitle="Review staff self-service profile change requests"
+  [breadcrumbs]="[{ label: 'Profile approvals' }]"
+>
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1" aria-hidden="true"></i> Refresh
+  </button>
+</admin-page-header>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" skeleton="cards" [card]="true" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (requests().length === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-checks"
+    title="Nothing to review"
+    message="There are no staff profile change requests awaiting approval."
+  />
+} @else {
+  <div class="row row-cards">
+    @for (req of requests(); track req.id) {
+      <div class="col-12 col-lg-6">
+        <div class="card pa-card">
+          <div class="card-header">
+            <span class="avatar avatar-rounded me-2">{{ initials(req.fullNameOfUser) }}</span>
+            <div class="flex-fill">
+              <div class="fw-bold">{{ req.fullNameOfUser }}</div>
+              <div class="text-secondary small">&#64;{{ req.username }} · requested {{ dateLabel(req.requestedAt) }}</div>
+            </div>
+            <span class="badge bg-yellow-lt">Pending</span>
+          </div>
+          <div class="card-body">
+            @if (req.requestNote) {
+              <div class="mb-2 text-secondary"><i class="ti ti-message me-1"></i>{{ req.requestNote }}</div>
+            }
+            @if (changedFields(req).length) {
+              <div class="table-responsive">
+                <table class="table table-sm pa-diff mb-0">
+                  <thead><tr><th>Field</th><th>Current</th><th>Requested</th></tr></thead>
+                  <tbody>
+                    @for (row of changedFields(req); track row.label) {
+                      <tr>
+                        <td class="text-secondary">{{ row.label }}</td>
+                        <td>{{ row.from }}</td>
+                        <td class="fw-bold text-green">{{ row.to }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            } @else {
+              <div class="text-secondary">No effective field changes.</div>
+            }
+
+            <div class="mt-3">
+              <label class="form-label">Review note (optional)</label>
+              <textarea
+                class="form-control"
+                rows="2"
+                [value]="noteFor(req.id)"
+                (input)="onNoteInput(req.id, $event)"
+                placeholder="Reason (shown to the employee)"
+              ></textarea>
+            </div>
+          </div>
+          <div class="card-footer d-flex gap-2 justify-content-end">
+            <button
+              type="button"
+              class="btn btn-outline-danger"
+              [disabled]="actioningId() !== null"
+              (click)="decide(req, 'REJECTED')"
+            >
+              <i class="ti ti-x me-1" aria-hidden="true"></i> Reject
+            </button>
+            <button
+              type="button"
+              class="btn btn-success"
+              [disabled]="actioningId() !== null"
+              (click)="decide(req, 'APPROVED')"
+            >
+              <i class="ti ti-check me-1" aria-hidden="true"></i> Approve &amp; apply
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+}

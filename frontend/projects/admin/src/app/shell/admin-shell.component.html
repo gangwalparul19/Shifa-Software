@@ -64,11 +64,23 @@
               <div class="shifa-backdrop-transparent" (click)="closeUserMenu()"></div>
               <div class="card shifa-usermenu__panel anim-pop">
                 <div class="card-body p-2">
-                  <div class="px-2 py-1">
+                  <a
+                    routerLink="/my-profile"
+                    class="shifa-usermenu__id px-2 py-1"
+                    (click)="closeUserMenu()"
+                    title="View my profile"
+                  >
                     <div class="fw-medium">{{ session.username }}</div>
                     <div class="text-secondary small">{{ session.role }}</div>
-                  </div>
+                  </a>
                   <div class="dropdown-divider my-1"></div>
+                  <a
+                    routerLink="/my-profile"
+                    class="btn btn-ghost-secondary w-100 justify-content-start"
+                    (click)="closeUserMenu()"
+                  >
+                    <i class="ti ti-user-circle me-2"></i> My Profile
+                  </a>
                   <button
                     type="button"
                     class="btn btn-ghost-danger w-100 justify-content-start"
@@ -173,7 +185,7 @@
 
     @if (auth.session(); as session) {
       <div class="shifa-drawer__foot shifa-navdrawer__foot">
-        <div class="shifa-navdrawer__user">
+        <a class="shifa-navdrawer__user" routerLink="/my-profile" (click)="closeMenu()" title="View my profile">
           <span class="avatar avatar-sm shifa-avatar" aria-hidden="true">
             {{ session.username.charAt(0).toUpperCase() }}
           </span>
@@ -181,7 +193,7 @@
             <span class="fw-medium">{{ session.username }}</span>
             <span class="text-secondary small">{{ session.role }}</span>
           </span>
-        </div>
+        </a>
         <button
           type="button"
           class="btn btn-ghost-danger"

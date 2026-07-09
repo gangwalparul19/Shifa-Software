@@ -191,3 +191,79 @@ Routes: `frontend/projects/admin/src/app/app.routes.ts`; nav: `shell/admin-shell
 
 ## Branch
 Current working branch: `dashboard-only` (pivot committed; not pushed unless stated). Prior: `feature/shifa-backend`.
+
+## Staff onboarding & salesperson ID verification (V31) — implemented
+Previously only a salesperson's username + full name were stored. Added a full staff profile + ID-verification
+workflow and an admin **Salespeople** directory, WITHOUT touching the tested `AdminUserService`/`AdminUserController`
+(credential mgmt) — a separate service/controller owns profiles.
+- **Migration V31** (`V31__staff_profiles_verification.sql`): adds to `users` → `date_of_birth`, `address`,
+  `joined_on`, `id_proof_type`, `id_proof_number`, `id_proof_key`, `verification_status` NOT NULL DEFAULT 'PENDING',
+  `verification_note`, `verified_at`, `verified_by`, + index `ix_users_role_verification`. Backfills ALL existing rows
+  to `VERIFIED` (so seeded logins aren't flagged). Additive/nullable.
+- Backend (`com.shifa.oms.auth`): enums `IdProofType` (AADHAAR/PAN/DRIVING_LICENSE/VOTER_ID/PASSPORT/OTHER) +
+  `VerificationStatus` (PENDING/VERIFIED/REJECTED); `User` entity extended with the new fields (+getters/setters);
+  `UserRepository.findByRoleOrderByCreatedAtDescIdDesc(Role)`; DTOs `StaffProfileResponse` (rich, `hasIdProof` boolean,
+  never the doc bytes), `UpdateStaffProfileRequest` (fullName required; email/mobile/dob/address/joinedOn/idProofType/
+  idProofNumber optional, validated), `VerifyStaffRequest` (status VERIFIED|REJECTED + optional note).
+  `StaffProfileService` (deps UserRepository + **StorageService** + CurrentUserService): listSalespeople (role
+  SALESPERSON), get, updateProfile, storeIdProof (stores under prefix `staff/id-proofs`, sets key, resets status→PENDING),
+  loadIdProof, setVerification (blocks PENDING; verify requires an uploaded doc; sets verifiedAt/verifiedBy). `StaffController`
+  `/api/admin/staff` (`@PreAuthorize hasRole('ADMIN')`): GET list, GET `/{id}`, PUT `/{id}`, POST `/{id}/id-proof` (multipart),
+  GET `/{id}/id-proof` (inline blob like payment screenshot), POST `/{id}/verify`. Audits via new `AuditActions`
+  STAFF_PROFILE_UPDATED/STAFF_ID_PROOF_UPLOADED/STAFF_VERIFIED/STAFF_VERIFICATION_REJECTED (ENTITY_USER).
+- Frontend: `salespeople/` feature — `SalespeopleService` (all `/api/admin/staff` endpoints + blob id-proof),
+  `SalespeopleComponent` (mobile-first cards, verification filter tabs w/ counts, right-side self-contained drawer:
+  profile form + ID-proof upload/view/replace + Verify/Reject with note). Route `/salespeople` (`adminOnlyGuard`); shell
+  Settings group gains a **Salespeople** link (icon ti-id-badge-2, adminOnly). Reuses PageHeaderComponent/StatePanelComponent/
+  ToastService/ApiClient patterns.
+- NOTE: no hard login/activation gate was added (keeps additive & test-safe — create()/activate() unchanged). Verification is
+  an explicit, prominent, audited admin workflow (Verify disabled until a doc is uploaded). A hard "can't activate a
+  salesperson until VERIFIED" gate is a possible follow-up (needs a small change to create/activate + test updates).
+- Verified: `mvn clean test -Dtest=AdminUserServiceTest` green (9); full clean compile of 445 sources OK; admin `build:admin`
+  bundle complete. Client-facing docs already list this as module #12 in `docs/Shifa-Pricing-Interactive.html` (₹5,000) and a
+  feature in `docs/Shifa-Client-Presentation.html`.
+
+## Staff two images (profile photo + govt ID) with server-side compression (V32) — implemented
+Extended the staff feature to capture TWO images per salesperson and compress images before storage (S3/DB cost).
+- **Migration V32** (`V32__staff_profile_image.sql`): adds `users.profile_image_key VARCHAR(255) NULL` (the govt-ID key
+  `id_proof_key` already existed from V31). Additive.
+- **`platform/storage/ImageCompressor`** (@Component, built-in `javax.imageio`, no new dep): `compress(filename,
+  contentType, bytes, maxDimension, quality)` → scales longest edge to max, flattens alpha on white, re-encodes JPEG
+  (quality 0.75), returns compressed Result ONLY if smaller; passes through non-images (PDF) and undecodable/failed cases.
+- `StaffProfileService` now injects `ImageCompressor`: `storeIdProof` compresses image proofs (max 1600px; PDF pass-through);
+  new `storeProfileImage` (max 600px) + `loadProfileImage`. Profile-image endpoints reject non-image content types.
+- `StaffController`: `POST /{id}/profile-image` (multipart, image-only) + `GET /{id}/profile-image` (inline blob); refactored
+  a shared `streamObject(...)` helper for id-proof + profile-image responses. New `AuditActions.STAFF_PROFILE_IMAGE_UPLOADED`.
+  `StaffProfileResponse` gains `hasProfileImage`.
+- Frontend `salespeople`: service `uploadProfileImage`/`profileImage`; component shows a **Profile photo** section (circular
+  preview via authenticated blob→objectURL, upload/replace, image-only guard) above the Profile form, the Government ID
+  section (upload/view/replace, unchanged), and list cards now show both a "govt ID" and a "photo" on-file indicator.
+- Verified: backend `-DskipTests compile` BUILD SUCCESS (446 sources); admin `build:admin` bundle complete. Highest migration is now **V32**.
+
+## Self-service "My Profile" with admin approval (V33) — implemented
+Any signed-in staff member can view their profile and submit detail changes, but NOTHING on their `users` row changes
+until an ADMIN approves — the edit is queued as a moderated request.
+- **Migration V33** (`V33__staff_profile_change_requests.sql`): new `staff_profile_change_requests` table (proposed
+  full_name/email/mobile/date_of_birth/address/id_proof_type/id_proof_number, request_note, status DEFAULT 'PENDING',
+  review_note, requested_at, reviewed_at, reviewed_by; FK→users; indexes on (user_id,status) and status). At most one
+  PENDING per user (a new submission replaces it).
+- Backend (`com.shifa.oms.auth`): enum `ChangeRequestStatus` (PENDING/APPROVED/REJECTED); entity `ProfileChangeRequest`
+  + `ProfileChangeRequestRepository` (findFirstByUserIdAndStatus / findByStatusOrderByRequestedAtAsc / countByStatus);
+  `ProfileChangeRequestService` (getMyProfile, submitMyChangeRequest [upsert PENDING, does NOT touch user], listPending,
+  pendingCount, review→on APPROVED applies proposed values to the User, on REJECTED leaves it unchanged; ReviewResult record).
+  DTOs: `ProfileFields` (ofUser/ofRequest), `ProfileChangeRequestResponse` (current+proposed+meta), `MyProfileResponse`
+  (profile+pending), `SubmitProfileChangeRequest`, `ReviewProfileChangeRequest`. New `MyProfileController` `/api/me/profile`
+  (`hasAnyRole ADMIN/ACCOUNTANT/SALESPERSON/PACKING_USER`): GET (profile+pending), POST `/change-request`, GET `/photo`
+  (own photo via StaffProfileService.loadProfileImage). Admin endpoints added to `StaffController`: GET
+  `/api/admin/staff/change-requests`, POST `/api/admin/staff/change-requests/{id}/review`. New AuditActions
+  STAFF_PROFILE_CHANGE_REQUESTED/APPROVED/REJECTED. StaffController ctor gained ProfileChangeRequestService (no test builds it).
+- Frontend: `my-profile/` (MyProfileService `/api/me/profile`; `MyProfileComponent` route `/my-profile` guarded `staffGuard`
+  — all roles; shows profile card + photo + pending "awaiting approval" diff banner + change-request form; photo/ID changes
+  stay admin-only by design). `profile-approvals/` (`ProfileApprovalsComponent` route `/profile-approvals` `adminOnlyGuard`;
+  lists pending requests with current→requested diff + Approve/Reject + note; uses SalespeopleService.changeRequests()/
+  reviewChangeRequest()). Shared change-request TS types live in `salespeople.service.ts` (re-exported by my-profile.service
+  to avoid circular defs). Shell nav: top-level **My Profile** link (all roles, icon ti-user-circle) + **Profile approvals**
+  under Settings (adminOnly, icon ti-user-check).
+- Admin still edits staff directly in the Salespeople directory (unmoderated); the approval flow is only for employee
+  self-service. Verified: backend compile BUILD SUCCESS (456 sources), `AdminUserServiceTest` 9/9 green, admin `build:admin`
+  bundle complete. Highest migration is now **V33**.
