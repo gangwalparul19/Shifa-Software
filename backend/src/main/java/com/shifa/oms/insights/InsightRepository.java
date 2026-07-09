@@ -3,6 +3,7 @@ package com.shifa.oms.insights;
 import com.shifa.oms.insights.domain.InsightScope;
 import com.shifa.oms.insights.domain.InsightType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,8 +27,19 @@ public interface InsightRepository extends JpaRepository<InsightEntity, Long> {
     @Query("select max(i.computedDate) from InsightEntity i")
     Optional<LocalDate> findMaxComputedDate();
 
-    /** Removes all insights computed for {@code d} (idempotent recompute, Req 1.2). */
+    /**
+     * Removes all insights computed for {@code d} (idempotent recompute, Req 1.2).
+     *
+     * <p>Implemented as a bulk {@code @Modifying} JPQL delete so the {@code DELETE}
+     * runs immediately against the database. A derived {@code deleteBy...} would
+     * defer the removal to flush time, where Hibernate's action queue executes the
+     * fresh {@code saveAll} inserts <em>before</em> the deletes — colliding with the
+     * existing rows on the {@code ux_insights_natural} unique index. Flushing the
+     * delete up-front avoids that duplicate-key failure on a same-day re-run.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Transactional
+    @Query("delete from InsightEntity i where i.computedDate = :d")
     void deleteByComputedDate(LocalDate d);
 
     /** All insights for a date, ordered by severity then newest id first. */

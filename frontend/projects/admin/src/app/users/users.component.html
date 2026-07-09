@@ -4,10 +4,17 @@
   [breadcrumbs]="[{ label: 'Users' }]"
 >
   <admin-density-toggle />
-  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
-    <i class="ti ti-refresh me-1"></i> Refresh
+  <button
+    type="button"
+    class="btn btn-icon btn-outline-secondary"
+    (click)="load()"
+    [disabled]="loading()"
+    title="Refresh"
+    aria-label="Refresh"
+  >
+    <i class="ti ti-refresh"></i>
   </button>
-  <button type="button" class="btn btn-primary" (click)="openCreate()">
+  <button type="button" class="btn btn-primary text-nowrap" (click)="openCreate()">
     <i class="ti ti-user-plus me-1"></i> Add user
   </button>
 </admin-page-header>
@@ -40,7 +47,10 @@
                 <span class="badge bg-secondary-lt ms-1">You</span>
               }
             </div>
-            <div class="shifa-uc__username shifa-mono">{{ user.username }}</div>
+            <div class="shifa-uc__submeta">
+              <span class="shifa-uc__username shifa-mono">{{ user.username }}</span>
+              <span class="badge" [class]="roleBadgeClass(user.role)">{{ roleLabel(user.role) }}</span>
+            </div>
           </div>
           <span
             class="shifa-uc__status"
@@ -51,28 +61,28 @@
             {{ user.active ? 'Active' : 'Inactive' }}
           </span>
         </div>
-        <div class="shifa-uc__meta">
-          <span class="badge" [class]="roleBadgeClass(user.role)">{{ roleLabel(user.role) }}</span>
-          <span class="shifa-uc__created">Added {{ createdLabel(user.createdAt) }}</span>
-        </div>
-        <div class="shifa-uc__actions">
-          <button type="button" class="btn btn-outline-secondary flex-fill" (click)="openEdit(user)">
-            <i class="ti ti-edit me-1"></i> Edit
-          </button>
-          <button type="button" class="btn btn-outline-secondary flex-fill" (click)="openReset(user)">
-            <i class="ti ti-key me-1"></i> Password
-          </button>
-          <button
-            type="button"
-            class="btn flex-fill"
-            [class.btn-outline-danger]="user.active"
-            [class.btn-outline-success]="!user.active"
-            (click)="toggleActive(user)"
-            [disabled]="actioningId() !== null || (user.active && isSelf(user))"
-            [title]="user.active && isSelf(user) ? 'You cannot deactivate your own account' : ''"
-          >
-            {{ user.active ? 'Deactivate' : 'Activate' }}
-          </button>
+        <div class="shifa-uc__foot">
+          <span class="shifa-uc__created"><i class="ti ti-calendar-event me-1"></i>{{ createdLabel(user.createdAt) }}</span>
+          <div class="shifa-uc__actions">
+            <button type="button" class="btn btn-sm btn-icon btn-outline-secondary" (click)="openEdit(user)" title="Edit" aria-label="Edit">
+              <i class="ti ti-edit"></i>
+            </button>
+            <button type="button" class="btn btn-sm btn-icon btn-outline-secondary" (click)="openReset(user)" title="Reset password" aria-label="Reset password">
+              <i class="ti ti-key"></i>
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm btn-icon"
+              [class.btn-outline-danger]="user.active"
+              [class.btn-outline-success]="!user.active"
+              (click)="toggleActive(user)"
+              [disabled]="actioningId() !== null || (user.active && isSelf(user))"
+              [title]="user.active ? (isSelf(user) ? 'You cannot deactivate your own account' : 'Deactivate') : 'Activate'"
+              [attr.aria-label]="user.active ? 'Deactivate' : 'Activate'"
+            >
+              <i class="ti" [class.ti-user-off]="user.active" [class.ti-user-check]="!user.active"></i>
+            </button>
+          </div>
         </div>
       </div>
     }

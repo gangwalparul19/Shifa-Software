@@ -35,9 +35,26 @@ public final class OrderListSpecifications {
     public static Specification<OrderEntity> build(String q, OrderStatus status,
                                                    PaymentStatus paymentStatus,
                                                    LocalDate from, LocalDate to) {
+        return build(q, status, paymentStatus, from, to, null);
+    }
+
+    /**
+     * As {@link #build(String, OrderStatus, PaymentStatus, LocalDate, LocalDate)}
+     * but additionally scopes the result to a single creator when {@code createdBy}
+     * is non-null. This lets a salesperson browse the same paged/filtered orders
+     * table restricted to the orders they punched (any status), while admins pass
+     * {@code null} to see every order.
+     */
+    public static Specification<OrderEntity> build(String q, OrderStatus status,
+                                                   PaymentStatus paymentStatus,
+                                                   LocalDate from, LocalDate to,
+                                                   Long createdBy) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
+            if (createdBy != null) {
+                predicates.add(cb.equal(root.get("createdBy"), createdBy));
+            }
             if (q != null && !q.isBlank()) {
                 String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
                 predicates.add(cb.or(

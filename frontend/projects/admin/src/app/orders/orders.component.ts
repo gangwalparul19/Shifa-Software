@@ -213,6 +213,22 @@ export class OrdersComponent implements OnInit, OnDestroy {
   /** Busy flag for single-order lifecycle actions in the detail drawer. */
   protected readonly detailBusy = signal(false);
 
+  // --- Payment screenshot (admin/accountant review) -----------------------
+  /** Object URL of the fetched payment screenshot for the open order, if any. */
+  protected readonly screenshotUrl = signal<string | null>(null);
+  protected readonly screenshotLoading = signal(false);
+  /** True when a screenshot was expected but could not be fetched. */
+  protected readonly screenshotMissing = signal(false);
+
+  /**
+   * Whether the acting role may view an order's payment screenshot. The backend
+   * gates {@code GET /api/orders/{id}/payment-screenshot} to ACCOUNTANT/ADMIN, so
+   * we only fetch/show it for those roles (a salesperson would get a 403).
+   */
+  protected readonly canViewScreenshot = computed(() =>
+    this.auth.hasAnyRole(Role.ADMIN, Role.ACCOUNTANT),
+  );
+
   // --- Create return (Set B — Feature 2) ---------------------------------
   /** Whether the create-return modal is open for the current detail order. */
   protected readonly createReturnOpen = signal(false);
@@ -645,10 +661,13 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.detailLoading.set(true);
     this.detailError.set(null);
     this.selectedDetail.set(null);
+    this.revokeScreenshot();
+    this.screenshotMissing.set(false);
     this.service.detail(order.id).subscribe({
       next: (detail) => {
         this.selectedDetail.set(detail);
         this.detailLoading.set(false);
+        this.loadScreenshot(detail);
       },
       error: () => {
         this.detailError.set('Could not load this order.');
@@ -660,6 +679,47 @@ export class OrdersComponent implements OnInit, OnDestroy {
   closeDetail(): void {
     this.selectedDetail.set(null);
     this.detailError.set(null);
+    this.revokeScreenshot();
+    this.screenshotMissing.set(false);
+  }
+
+  /**
+   * Fetches the order's payment screenshot as a blob (admin/accountant only) so
+   * the reviewer can approve/reject based on the proof of payment. No-op when the
+   * role can't view it or the order has no screenshot.
+   */
+  private loadScreenshot(order: OrderDetail): void {
+    this.revokeScreenshot();
+    this.screenshotMissing.set(false);
+    if (!this.canViewScreenshot()) {
+      return;
+    }
+    // Always attempt the fetch for admin/accountant rather than trusting the
+    // `paymentScreenshotAvailable` flag alone: the flag can be stale (e.g. an
+    // order whose screenshot was stored under a different storage provider), so
+    // we ask the server and let the response decide. A 404 (no screenshot) shows
+    // the neutral empty state; any other error shows the "could not load" note.
+    this.screenshotLoading.set(true);
+    this.service.paymentScreenshot(order.id).subscribe({
+      next: (blob) => {
+        this.screenshotUrl.set(URL.createObjectURL(blob));
+        this.screenshotLoading.set(false);
+      },
+      error: (err) => {
+        // 404 = the order genuinely has no screenshot on file (neutral state).
+        this.screenshotMissing.set(err?.status !== 404);
+        this.screenshotLoading.set(false);
+      },
+    });
+  }
+
+  /** Revokes and clears any object URL held for the payment screenshot. */
+  private revokeScreenshot(): void {
+    const url = this.screenshotUrl();
+    if (url) {
+      URL.revokeObjectURL(url);
+    }
+    this.screenshotUrl.set(null);
   }
 
   // --- Order-detail presentation helpers (mobile redesign) ---------------

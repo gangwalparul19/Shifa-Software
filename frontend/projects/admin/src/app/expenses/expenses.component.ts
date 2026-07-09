@@ -71,6 +71,21 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     to: new FormControl<string>('', { nonNullable: true }),
   });
 
+  /** Whether the collapsible advanced-filter panel (date range) is open. */
+  protected readonly filtersOpen = signal(false);
+  /** Number of active advanced (date-range) filters, for the toggle badge. */
+  protected readonly activeFilterCount = signal(0);
+
+  /** Show/hide the advanced-filter panel. */
+  toggleFilters(): void {
+    this.filtersOpen.update((open) => !open);
+  }
+
+  private updateActiveFilterCount(): void {
+    const f = this.filters.getRawValue();
+    this.activeFilterCount.set([f.from, f.to].filter((v) => !!v).length);
+  }
+
   // --- Add form -----------------------------------------------------------
   protected readonly creating = signal(false);
   protected readonly saving = signal(false);
@@ -98,7 +113,11 @@ export class ExpensesComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.load();
-    this.filters.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => this.resetAndLoad());
+    this.filters.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => {
+      this.updateActiveFilterCount();
+      this.resetAndLoad();
+    });
+    this.updateActiveFilterCount();
   }
 
   ngOnDestroy(): void {

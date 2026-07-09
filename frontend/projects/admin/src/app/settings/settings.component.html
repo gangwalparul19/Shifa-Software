@@ -3,8 +3,15 @@
   subtitle="Company details and GST configuration for invoices."
   [breadcrumbs]="[{ label: 'Settings' }]"
 >
-  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
-    <i class="ti ti-refresh me-1"></i> Reload
+  <button
+    type="button"
+    class="btn btn-icon btn-outline-secondary"
+    (click)="load()"
+    [disabled]="loading()"
+    title="Reload"
+    aria-label="Reload"
+  >
+    <i class="ti ti-refresh"></i>
   </button>
 </admin-page-header>
 
@@ -23,7 +30,30 @@
     <button type="button" class="btn btn-sm btn-danger" (click)="load()">Retry</button>
   </div>
 } @else {
-  <form [formGroup]="form" (ngSubmit)="save()" novalidate class="shifa-settings">
+  <!-- Category tabs — split the settings into focused sections -->
+  <div class="shifa-status-tabs mb-3" role="tablist" aria-label="Settings categories">
+    @for (tab of settingsTabs; track tab.key) {
+      <button
+        type="button"
+        role="tab"
+        class="shifa-status-tab"
+        [class.active]="activeTab() === tab.key"
+        [attr.aria-selected]="activeTab() === tab.key"
+        (click)="setTab(tab.key)"
+      >
+        <i class="ti {{ tab.icon }}"></i>
+        <span class="shifa-set-tablabel">{{ tab.label }}</span>
+      </button>
+    }
+  </div>
+
+  <form
+    [formGroup]="form"
+    (ngSubmit)="save()"
+    novalidate
+    class="shifa-settings"
+    [hidden]="activeTab() === 'states'"
+  >
     @if (formError(); as err) {
       <div class="alert alert-danger anim-fade-up" role="alert">
         <i class="ti ti-alert-triangle me-2"></i>{{ err }}
@@ -31,7 +61,7 @@
     }
 
     <!-- GST section -->
-    <div class="card mb-3">
+    <div class="card mb-3" [hidden]="activeTab() !== 'gst'">
       <div class="card-header">
         <h3 class="card-title mb-0"><i class="ti ti-receipt-tax me-2"></i>GST</h3>
       </div>
@@ -47,8 +77,8 @@
           standard invoice is used.
         </p>
 
-        <div class="row">
-          <div class="col-md-6 mb-3">
+        <div class="row g-2">
+          <div class="col-12 mb-2">
             <label class="form-label" [class.required]="form.controls.gstEnabled.value">GSTIN</label>
             <input type="text" class="form-control shifa-mono" formControlName="gstin" maxlength="20"
               autocomplete="off" placeholder="e.g. 23ABCDE1234F1Z5"
@@ -59,7 +89,7 @@
               </div>
             }
           </div>
-          <div class="col-md-3 mb-3">
+          <div class="col-6 col-md-3 mb-2">
             <label class="form-label required">GST rate %</label>
             <input type="text" inputmode="decimal" class="form-control" formControlName="gstRatePercent"
               placeholder="5.00"
@@ -68,7 +98,7 @@
               <div class="invalid-feedback">Enter a valid rate (e.g. 5 or 18.00).</div>
             }
           </div>
-          <div class="col-md-3 mb-3 d-flex align-items-end">
+          <div class="col-6 col-md-3 mb-2 d-flex align-items-end">
             <label class="form-check form-switch mb-2">
               <input class="form-check-input" type="checkbox" formControlName="pricesIncludeGst" />
               <span class="form-check-label">Prices include GST</span>
@@ -79,19 +109,19 @@
     </div>
 
     <!-- Invoice & Tax section -->
-    <div class="card mb-3">
+    <div class="card mb-3" [hidden]="activeTab() !== 'gst'">
       <div class="card-header">
         <h3 class="card-title mb-0"><i class="ti ti-file-invoice me-2"></i>Invoice &amp; Tax</h3>
       </div>
       <div class="card-body">
-        <div class="row">
-          <div class="col-md-6 mb-3">
+        <div class="row g-2">
+          <div class="col-6 mb-2">
             <label class="form-label">Invoice number prefix</label>
             <input type="text" class="form-control shifa-mono" formControlName="invoiceNumberPrefix" maxlength="40"
               autocomplete="off" placeholder="e.g. SHR/24-25/" />
             <small class="form-hint">Appears on invoices, before the running number.</small>
           </div>
-          <div class="col-md-6 mb-3">
+          <div class="col-6 mb-2">
             <label class="form-label">GST slabs</label>
             <input type="text" class="form-control" formControlName="gstSlabs" maxlength="100"
               autocomplete="off" placeholder="0,5,12,18,28"
@@ -113,7 +143,7 @@
     </div>
 
     <!-- Bank details section -->
-    <div class="card mb-3">
+    <div class="card mb-3" [hidden]="activeTab() !== 'bank'">
       <div class="card-header">
         <h3 class="card-title mb-0"><i class="ti ti-building-bank me-2"></i>Bank details</h3>
       </div>
@@ -122,25 +152,23 @@
           <i class="ti ti-info-circle me-1"></i>
           These bank details appear on invoices so customers can pay by bank transfer.
         </p>
-        <div class="row">
-          <div class="col-md-6 mb-3">
+        <div class="row g-2">
+          <div class="col-6 mb-2">
             <label class="form-label">Bank name</label>
             <input type="text" class="form-control" formControlName="bankName" maxlength="120" autocomplete="off"
               placeholder="e.g. HDFC Bank" />
           </div>
-          <div class="col-md-6 mb-3">
+          <div class="col-6 mb-2">
             <label class="form-label">Account name</label>
             <input type="text" class="form-control" formControlName="bankAccountName" maxlength="120" autocomplete="off"
               placeholder="Account holder name" />
           </div>
-        </div>
-        <div class="row">
-          <div class="col-md-4 mb-3">
+          <div class="col-6 col-md-4 mb-2">
             <label class="form-label">Account number</label>
             <input type="text" class="form-control shifa-mono" formControlName="bankAccountNumber" maxlength="40"
               autocomplete="off" />
           </div>
-          <div class="col-md-4 mb-3">
+          <div class="col-6 col-md-4 mb-2">
             <label class="form-label">IFSC</label>
             <input type="text" class="form-control shifa-mono text-uppercase" formControlName="bankIfsc" maxlength="20"
               autocomplete="off" placeholder="e.g. HDFC0001234"
@@ -149,7 +177,7 @@
               <div class="invalid-feedback">Enter a valid IFSC (e.g. HDFC0001234).</div>
             }
           </div>
-          <div class="col-md-4 mb-3">
+          <div class="col-12 col-md-4 mb-2">
             <label class="form-label">Branch</label>
             <input type="text" class="form-control" formControlName="bankBranch" maxlength="120" autocomplete="off" />
           </div>
@@ -158,7 +186,7 @@
     </div>
 
     <!-- Company logo section -->
-    <div class="card mb-3">
+    <div class="card mb-3" [hidden]="activeTab() !== 'company'">
       <div class="card-header">
         <h3 class="card-title mb-0"><i class="ti ti-photo me-2"></i>Company logo</h3>
       </div>
@@ -214,7 +242,7 @@
     </div>
 
     <!-- Company section -->
-    <div class="card mb-3">
+    <div class="card mb-3" [hidden]="activeTab() !== 'company'">
       <div class="card-header">
         <h3 class="card-title mb-0"><i class="ti ti-building-store me-2"></i>Company</h3>
       </div>
@@ -233,30 +261,30 @@
           <input type="text" class="form-control" formControlName="addressLine" maxlength="250" autocomplete="off" />
         </div>
 
-        <div class="row">
-          <div class="col-md-5 mb-3">
+        <div class="row g-2">
+          <div class="col-6 col-md-5 mb-2">
             <label class="form-label">City</label>
             <input type="text" class="form-control" formControlName="city" maxlength="100" autocomplete="off" />
           </div>
-          <div class="col-md-5 mb-3">
+          <div class="col-6 col-md-2 mb-2">
+            <label class="form-label">State code</label>
+            <input type="text" class="form-control" formControlName="stateCode" maxlength="4" autocomplete="off"
+              placeholder="23" />
+          </div>
+          <div class="col-12 col-md-5 mb-2">
             <label class="form-label">State</label>
             <input type="text" class="form-control" formControlName="state" maxlength="100" autocomplete="off"
               placeholder="e.g. Madhya Pradesh" />
             <small class="form-hint">Used to decide intra-state (CGST+SGST) vs inter-state (IGST).</small>
           </div>
-          <div class="col-md-2 mb-3">
-            <label class="form-label">State code</label>
-            <input type="text" class="form-control" formControlName="stateCode" maxlength="4" autocomplete="off"
-              placeholder="23" />
-          </div>
         </div>
 
-        <div class="row">
-          <div class="col-md-6 mb-3">
+        <div class="row g-2">
+          <div class="col-6 mb-2">
             <label class="form-label">Contact phone</label>
             <input type="text" class="form-control" formControlName="contactPhone" maxlength="20" autocomplete="off" />
           </div>
-          <div class="col-md-6 mb-3">
+          <div class="col-6 mb-2">
             <label class="form-label">Contact email</label>
             <input type="text" class="form-control" formControlName="contactEmail" maxlength="120" autocomplete="off" />
           </div>
@@ -282,7 +310,7 @@
   </form>
 
   <!-- Delivery states section (independent of the settings form above) -->
-  <div class="card mb-3 mt-3">
+  <div class="card mb-3" [hidden]="activeTab() !== 'states'">
     <div class="card-header">
       <h3 class="card-title mb-0"><i class="ti ti-map-pin me-2"></i>Delivery states</h3>
     </div>

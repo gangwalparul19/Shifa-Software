@@ -25,6 +25,7 @@ import { ProfitLossComponent } from './finance/profit-loss.component';
 import { LeadsComponent } from './leads/leads.component';
 import { DueFollowUpsComponent } from './leads/due-follow-ups.component';
 import { InsightsComponent } from './insights/insights.component';
+import { BackupsComponent } from './backups/backups.component';
 
 const LOGIN_PATH = '/login';
 const FORBIDDEN_PATH = '/forbidden';
@@ -225,6 +226,12 @@ export const routes: Routes = [
         // Staff user management (ADMIN only, Req 5.4).
         path: 'users',
         component: UsersComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Database backups: run on-demand + review history (ADMIN only, Req 24).
+        path: 'backups',
+        component: BackupsComponent,
         canActivate: [adminOnlyGuard],
       },
     ],

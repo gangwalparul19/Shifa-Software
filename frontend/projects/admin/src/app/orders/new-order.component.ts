@@ -7,6 +7,7 @@ import {
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms';
+import { debounceTime, distinctUntilChanged } from 'rxjs';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ApiError, Product, paiseToMoney, toPaise } from 'core';
 import { PageHeaderComponent } from '../shared/page-header.component';
@@ -98,6 +99,12 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   protected readonly submitAttempted = signal(false);
   protected readonly serverErrors = signal<string[]>([]);
 
+  /**
+   * Number of prior orders for the entered mobile (repeat-customer hint, Req 22.2).
+   * Null until a valid 10-digit mobile has been checked; 0 means a new customer.
+   */
+  protected readonly priorOrderCount = signal<number | null>(null);
+
   /** A snapshot of the form value, refreshed on every change to drive totals. */
   private readonly model = signal<ReturnType<NewOrderComponent['snapshot']>>({
     items: [],
@@ -153,6 +160,12 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     // Keep the totals snapshot in sync with the reactive form.
     this.model.set(this.snapshot());
     this.form.valueChanges.subscribe(() => this.model.set(this.snapshot()));
+
+    // Repeat-customer hint (Req 22.2): once a valid 10-digit mobile is entered,
+    // ask the backend whether prior orders exist for it and surface a hint.
+    this.form.controls.customerMobile.valueChanges
+      .pipe(debounceTime(400), distinctUntilChanged())
+      .subscribe((mobile) => this.checkDuplicateCustomer(mobile));
 
     // Convert-from-lead mode: seed customer + source from the lead and lock them.
     const leadIdParam = this.route.snapshot.queryParamMap.get('leadId');
@@ -226,6 +239,22 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       next: (rows) => this.states.set(rows),
       // Non-fatal: the field still accepts free-typed text if the list fails.
       error: () => this.states.set([]),
+    });
+  }
+
+  /**
+   * Looks up how many prior orders exist for the entered mobile so the form can
+   * show a repeat-customer hint (Req 22.2). Only runs for a well-formed 10-digit
+   * number; anything else clears the hint. Failures are non-fatal (hint hidden).
+   */
+  private checkDuplicateCustomer(mobile: string | null): void {
+    if (!mobile || !/^\d{10}$/.test(mobile)) {
+      this.priorOrderCount.set(null);
+      return;
+    }
+    this.orders.duplicateCheck(mobile).subscribe({
+      next: (res) => this.priorOrderCount.set(res.priorOrderCount),
+      error: () => this.priorOrderCount.set(null),
     });
   }
 

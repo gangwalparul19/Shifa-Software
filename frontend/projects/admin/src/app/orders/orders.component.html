@@ -499,6 +499,27 @@
           </div>
         </div>
 
+        <!-- (8b) Payment screenshot (admin/accountant) — proof for approve/reject -->
+        @if (canViewScreenshot()) {
+          <div class="shifa-od__section">
+            <div class="shifa-od__label mb-2"><i class="ti ti-photo me-1"></i>Payment Screenshot</div>
+            <div class="shifa-od__card">
+              @if (screenshotLoading()) {
+                <div class="skeleton" style="height: 180px; border-radius: 8px"></div>
+              } @else if (screenshotUrl(); as url) {
+                <a [href]="url" target="_blank" rel="noopener">
+                  <img class="img-fluid rounded border w-100" [src]="url" alt="Payment screenshot" />
+                </a>
+              } @else {
+                <div class="shifa-od__muted d-flex align-items-center">
+                  <i class="ti ti-photo-off me-1"></i>
+                  {{ screenshotMissing() ? 'Could not load the payment screenshot.' : 'No payment screenshot for this order.' }}
+                </div>
+              }
+            </div>
+          </div>
+        }
+
         <!-- Shipment (kept when a courier has been assigned) -->
         @if (order.awb) {
           <div class="shifa-od__section">

@@ -4,9 +4,9 @@ import { Observable } from 'rxjs';
 import { ApiClient, OrderStatus, PageResponse, PaymentStatus } from 'core';
 import {
   CreateOrderRequest,
+  DuplicateCheckResponse,
   OrderDetail,
   OrderSummary,
-  PaymentTransaction,
   ScreenshotUploadResponse,
 } from './orders.model';
 
@@ -77,6 +77,17 @@ export class OrdersService {
     return this.api.post<ScreenshotUploadResponse>('/api/orders/payment-screenshots', form);
   }
 
+  /**
+   * Whether prior orders exist for a customer mobile number
+   * ({@code GET /api/orders/duplicate-check?mobile=}, SALESPERSON + ADMIN,
+   * Req 22.2). Powers the repeat-customer hint on the New Order form.
+   */
+  duplicateCheck(mobile: string): Observable<DuplicateCheckResponse> {
+    return this.api.get<DuplicateCheckResponse>('/api/orders/duplicate-check', {
+      params: { mobile },
+    });
+  }
+
   /** Search orders by name / mobile / order code / AWB, role-scoped (Req 22.1). */
   search(term?: string): Observable<OrderSummary[]> {
     const params = term && term.trim() ? { search: term.trim() } : undefined;
@@ -139,11 +150,6 @@ export class OrdersService {
   /** Full order detail with line items and payment tracking (Req 21.1). */
   detail(id: number): Observable<OrderDetail> {
     return this.api.get<OrderDetail>(`/api/orders/${id}`);
-  }
-
-  /** Online-payment transactions for an order (Phase E), ADMIN/ACCOUNTANT. */
-  payments(id: number): Observable<PaymentTransaction[]> {
-    return this.api.get<PaymentTransaction[]>(`/api/orders/${id}/payments`);
   }
 
   /** Fetch the payment screenshot as a Blob for inline rendering (Req 21.2). */

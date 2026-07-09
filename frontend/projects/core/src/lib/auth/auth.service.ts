@@ -6,7 +6,6 @@ import { AuthTokenStore } from './auth-token.store';
 import {
   AuthSession,
   LoginCredentials,
-  RegisterRequest,
   Role,
   TokenResponse,
 } from '../models/auth.model';
@@ -51,18 +50,6 @@ export class AuthService {
   /** Authenticates and stores the resulting token pair. */
   login(credentials: LoginCredentials): Observable<AuthSession> {
     return this.api.post<TokenResponse>('/api/auth/login', credentials).pipe(
-      tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken)),
-      map(() => this.requireSession()),
-    );
-  }
-
-  /**
-   * Registers a new customer and stores the returned token pair (auto-login).
-   * The registration endpoint is public; a 409 propagates when the username is
-   * already taken so callers can surface a friendly message.
-   */
-  register(request: RegisterRequest): Observable<AuthSession> {
-    return this.api.post<TokenResponse>('/api/auth/register', request).pipe(
       tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken)),
       map(() => this.requireSession()),
     );

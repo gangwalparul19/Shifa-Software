@@ -66,7 +66,7 @@ interface BottomTab {
  *       four most-used destinations for the signed-in user's role (Req 2).</li>
  *   <li><b>Hamburger menu</b> — an Angular-driven off-canvas drawer (overlay +
  *       Escape-close) listing the full navigation the role can access, grouped,
- *       including the Detailed Dashboard and lower-frequency admin pages
+ *       including the Shifa Dashboard and lower-frequency admin pages
  *       (Req 3).</li>
  * </ul>
  *
@@ -113,7 +113,7 @@ export class AdminShellComponent {
     // from the hamburger. The lighter Home summary is a later pass.
     // TODO(mobile-ui-redesign Req 4): add a lightweight Home summary landing
     // view and (optionally) redirect post-login there instead of /dashboard.
-    { kind: 'link', label: 'Detailed Dashboard', path: '/dashboard', icon: 'ti-layout-dashboard' },
+    { kind: 'link', label: 'Shifa Dashboard', path: '/dashboard', icon: 'ti-layout-dashboard' },
     {
       kind: 'group',
       label: 'Orders',
@@ -217,6 +217,7 @@ export class AdminShellComponent {
         { kind: 'link', label: 'Settings', path: '/settings', icon: 'ti-settings', adminOnly: true },
         { kind: 'link', label: 'Notifications', path: '/notifications', icon: 'ti-bell', adminOnly: true },
         { kind: 'link', label: 'Audit Log', path: '/audit', icon: 'ti-history', adminOnly: true },
+        { kind: 'link', label: 'Backups', path: '/backups', icon: 'ti-database', adminOnly: true },
       ],
     },
   ];

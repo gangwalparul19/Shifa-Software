@@ -4,38 +4,79 @@
   [breadcrumbs]="[{ label: 'Expenses' }]"
 >
   <admin-density-toggle />
-  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
-    <i class="ti ti-refresh me-1"></i> Refresh
+  <button
+    type="button"
+    class="btn btn-icon btn-outline-secondary"
+    (click)="load()"
+    [disabled]="loading()"
+    title="Refresh"
+    aria-label="Refresh"
+  >
+    <i class="ti ti-refresh"></i>
   </button>
-  <button type="button" class="btn btn-primary" (click)="openCreate()">
+  <button type="button" class="btn btn-primary text-nowrap" (click)="openCreate()">
     <i class="ti ti-plus me-1"></i> Add expense
   </button>
 </admin-page-header>
 
-<!-- Filters -->
+<!-- Filters: category search visible, date range collapsed under a toggle -->
 <div class="card mb-3" [formGroup]="filters">
   <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      <div class="col-12 col-lg">
-        <label class="form-label">Category</label>
-        <input type="search" class="form-control" formControlName="category" placeholder="Filter by category…" autocomplete="off" />
-      </div>
-      <div class="col-6 col-lg-auto">
-        <label class="form-label">From</label>
-        <input type="date" class="form-control" formControlName="from" />
-      </div>
-      <div class="col-6 col-lg-auto">
-        <label class="form-label">To</label>
-        <input type="date" class="form-control" formControlName="to" />
-      </div>
-      @if (hasFilters()) {
-        <div class="col-12 col-lg-auto">
-          <button type="button" class="btn btn-outline-secondary w-100" (click)="clearFilters()">
-            <i class="ti ti-x me-1"></i> Clear
-          </button>
+    <div class="row g-2 align-items-center flex-nowrap">
+      <div class="col">
+        <div class="input-icon">
+          <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+          <input
+            type="search"
+            class="form-control"
+            formControlName="category"
+            placeholder="Filter by category…"
+            autocomplete="off"
+            aria-label="Filter by category"
+          />
         </div>
-      }
+      </div>
+      <div class="col-auto">
+        <button
+          type="button"
+          class="btn btn-outline-secondary d-inline-flex align-items-center text-nowrap"
+          (click)="toggleFilters()"
+          [class.active]="filtersOpen()"
+          [attr.aria-expanded]="filtersOpen()"
+          aria-controls="expenses-filter-panel"
+          aria-label="Filters"
+          title="Filters"
+        >
+          <i class="ti ti-filter"></i>
+          @if (activeFilterCount() > 0) {
+            <span class="badge bg-primary text-white ms-1">{{ activeFilterCount() }}</span>
+          }
+          <i class="ti ms-1" [class.ti-chevron-down]="!filtersOpen()" [class.ti-chevron-up]="filtersOpen()"></i>
+        </button>
+      </div>
     </div>
+
+    @if (filtersOpen()) {
+      <div id="expenses-filter-panel" class="mt-2 pt-2 border-top anim-fade-up">
+        <div class="row g-2 align-items-end">
+          <div class="col-6 col-lg-3">
+            <label class="form-label small mb-1">From</label>
+            <input type="date" class="form-control" formControlName="from" aria-label="From date" />
+          </div>
+          <div class="col-6 col-lg-3">
+            <label class="form-label small mb-1">To</label>
+            <input type="date" class="form-control" formControlName="to" aria-label="To date" />
+          </div>
+          @if (hasFilters()) {
+            <div class="col-12 col-lg-auto">
+              <button type="button" class="btn btn-sm btn-link text-secondary px-1" (click)="clearFilters()">
+                <i class="ti ti-filter-off me-1"></i> Clear filters
+              </button>
+            </div>
+          }
+        </div>
+      </div>
+    }
   </div>
 </div>
 
@@ -93,15 +134,16 @@
           <div class="shifa-exp__desc">{{ e.description }}</div>
         }
         <div class="shifa-exp__r2">
-          <span class="shifa-exp__date"><i class="ti ti-calendar me-1"></i>{{ e.incurredOn | date: 'dd MMM yyyy' }}</span>
+          <span class="shifa-exp__date"><i class="ti ti-calendar-event me-1"></i>{{ e.incurredOn | date: 'dd MMM yyyy' }}</span>
           <button
             type="button"
-            class="btn btn-sm btn-outline-danger"
+            class="btn btn-sm btn-icon btn-outline-danger"
             (click)="remove(e)"
             [disabled]="deletingId() !== null"
             aria-label="Delete expense"
+            title="Delete expense"
           >
-            <i class="ti ti-trash me-1"></i> Delete
+            <i class="ti ti-trash"></i>
           </button>
         </div>
       </div>

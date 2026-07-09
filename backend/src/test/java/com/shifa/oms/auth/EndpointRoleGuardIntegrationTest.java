@@ -294,6 +294,11 @@ class EndpointRoleGuardIntegrationTest {
         }
 
         @Bean
+        SalespersonScopeResolver salespersonScopeResolver() {
+            return new SalespersonScopeResolver();
+        }
+
+        @Bean
         BulkOrderService bulkOrderService() {
             return new BulkOrderService(null, null, null);
         }

@@ -172,7 +172,7 @@ Routing in `app.routes.ts`, shell/nav in `shell/admin-shell.component.ts`. Guard
 ### Mobile-first UI redesign (spec `mobile-ui-redesign`)
 The admin app was redesigned mobile-first to a client wireframe (`docs/wireframe.jpeg`), reusing the
 Tabler theme + Shifa green + ApexCharts. The shell is a **solid dark-green banner top bar + a
-top-bar hamburger (full role-filtered menu, incl. the detailed dashboard) + a persistent role-aware
+top-bar hamburger (full role-filtered menu, incl. the Shifa dashboard) + a persistent role-aware
 bottom tab bar** carrying the four most-used destinations per role (Salesperson: New Order/Orders/
 Customers/Products; Packer: Packing/Handover/Dispatch/Orders; Accountant: Reconcile/Reports/Expenses/
 Orders; Admin: Approvals/Orders/Products/Reports). Every screen is single-column at 360px, uses

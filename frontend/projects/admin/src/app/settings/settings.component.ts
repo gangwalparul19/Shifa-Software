@@ -77,6 +77,23 @@ export class SettingsComponent implements OnInit, OnDestroy {
   protected readonly saving = signal(false);
   protected readonly formError = signal<string | null>(null);
 
+  // --- Category tabs ------------------------------------------------------
+  /** The settings categories, split into tabs so the page isn't one long scroll. */
+  protected readonly settingsTabs = [
+    { key: 'gst', label: 'GST & Invoice', icon: 'ti-receipt-tax' },
+    { key: 'company', label: 'Company', icon: 'ti-building-store' },
+    { key: 'bank', label: 'Bank', icon: 'ti-building-bank' },
+    { key: 'states', label: 'States', icon: 'ti-map-pin' },
+  ] as const;
+
+  /** Which settings category is currently shown. */
+  protected readonly activeTab = signal<'gst' | 'company' | 'bank' | 'states'>('gst');
+
+  /** Switch the visible settings category. */
+  setTab(key: 'gst' | 'company' | 'bank' | 'states'): void {
+    this.activeTab.set(key);
+  }
+
   // --- Company logo state -------------------------------------------------
   /** Object URL for the current logo preview, or null when no logo is set. */
   protected readonly logoUrl = signal<string | null>(null);

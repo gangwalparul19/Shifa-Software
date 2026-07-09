@@ -17,19 +17,6 @@ export interface LoginCredentials {
 }
 
 /**
- * Customer self-registration payload posted to {@code POST /api/auth/register}.
- * The backend derives the login username (email when present, else mobile),
- * creates a {@link Role.CUSTOMER} account, and returns a token pair for
- * immediate auto-login.
- */
-export interface RegisterRequest {
-  fullName: string;
-  mobile: string;
-  email?: string;
-  password: string;
-}
-
-/**
  * Token pair returned by {@code /api/auth/login} and {@code /api/auth/refresh}
  * (mirrors the backend {@code TokenResponse}).
  */

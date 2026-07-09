@@ -71,20 +71,15 @@ export interface ScreenshotUploadResponse {
 }
 
 /**
- * An online-payment transaction for an order (Phase E), returned by
- * {@code GET /api/orders/{id}/payments}. Mirrors the backend
- * {@code PaymentTransactionResponse}.
+ * Whether prior orders exist for a customer mobile number, from
+ * {@code GET /api/orders/duplicate-check?mobile=} (mirrors the backend
+ * {@code DuplicateCheckResponse}). Powers the repeat-customer hint on the New
+ * Order form.
  */
-export interface PaymentTransaction {
-  id: number;
-  orderId: number;
-  gateway: string;
-  gatewayOrderId: string;
-  gatewayPaymentId?: string;
-  amount: Money;
-  status: 'CREATED' | 'PAID' | 'FAILED';
-  createdAt?: string;
-  updatedAt?: string;
+export interface DuplicateCheckResponse {
+  mobile: string;
+  hasPriorOrders: boolean;
+  priorOrderCount: number;
 }
 
 /**

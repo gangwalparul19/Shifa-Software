@@ -67,7 +67,7 @@ they are presented and navigated.
 
 ### Requirement 3: Hamburger Menu (Full Navigation)
 
-**User Story:** As a staff member, I want a hamburger menu with everything else, so that less-frequent pages and the detailed dashboard are always reachable without cluttering the bottom bar.
+**User Story:** As a staff member, I want a hamburger menu with everything else, so that less-frequent pages and the Shifa dashboard are always reachable without cluttering the bottom bar.
 
 #### Acceptance Criteria
 
@@ -90,9 +90,9 @@ they are presented and navigated.
 4. THE Home_Summary SHALL provide navigation to the Detailed_Dashboard for the full breakdown.
 5. WHERE the Role is `SALESPERSON`, THE Home_Summary SHALL scope all figures to that salesperson's own orders.
 
-### Requirement 5: Detailed Dashboard
+### Requirement 5: Shifa Dashboard
 
-**User Story:** As an Admin, I want the full detailed dashboard under the hamburger, so that I can see the most accurate and complete operational picture when I need it.
+**User Story:** As an Admin, I want the full Shifa dashboard under the hamburger, so that I can see the most accurate and complete operational picture when I need it.
 
 #### Acceptance Criteria
 

@@ -4,6 +4,7 @@ import com.shifa.oms.audit.AuditActions;
 import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.CurrentUserService;
+import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.common.PageRequests;
 import com.shifa.oms.common.PageResponse;
 import com.shifa.oms.label.LabelService;
@@ -71,17 +72,20 @@ public class AdminOrderController {
     private final LabelService labelService;
     private final CurrentUserService currentUserService;
     private final AuditService auditService;
+    private final SalespersonScopeResolver scopeResolver;
 
     public AdminOrderController(AdminOrderService adminOrderService,
                                 BulkOrderService bulkOrderService,
                                 LabelService labelService,
                                 CurrentUserService currentUserService,
-                                AuditService auditService) {
+                                AuditService auditService,
+                                SalespersonScopeResolver scopeResolver) {
         this.adminOrderService = adminOrderService;
         this.bulkOrderService = bulkOrderService;
         this.labelService = labelService;
         this.currentUserService = currentUserService;
         this.auditService = auditService;
+        this.scopeResolver = scopeResolver;
     }
 
     /**
@@ -98,6 +102,7 @@ public class AdminOrderController {
      * @param sort          {@code field,dir} — one of createdAt/orderCode/customerName/totalAmount/orderStatus/paymentStatus
      */
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON')")
     public PageResponse<OrderSummaryResponse> list(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) OrderStatus status,
@@ -107,9 +112,13 @@ public class AdminOrderController {
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
             @RequestParam(required = false) String sort) {
+        // Salespeople see the same paged/filtered table scoped to the orders they
+        // punched (across every status — their history); admin/accountant see all.
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        Long createdBy = scopeResolver.creatorConstraint(actor).orElse(null);
         Pageable pageable = PageRequests.of(page, size, sort, SORT_WHITELIST, DEFAULT_SORT);
         return PageResponse.of(
-                adminOrderService.listOrders(q, status, paymentStatus, from, to, pageable));
+                adminOrderService.listOrders(q, status, paymentStatus, from, to, pageable, createdBy));
     }
 
     /** The approval queue of pending-approval orders with review details (Req 9.1, 9.2). */

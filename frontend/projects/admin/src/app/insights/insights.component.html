@@ -3,10 +3,17 @@
   subtitle="Statistical signals across sales, stock, couriers, returns and leads."
   [breadcrumbs]="[{ label: 'Insights' }]"
 >
-  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
-    <i class="ti ti-refresh me-1"></i> Refresh
+  <button
+    type="button"
+    class="btn btn-icon btn-outline-secondary"
+    (click)="load()"
+    [disabled]="loading()"
+    title="Refresh"
+    aria-label="Refresh"
+  >
+    <i class="ti ti-refresh"></i>
   </button>
-  <button type="button" class="btn btn-primary" (click)="recompute()" [disabled]="recomputing()">
+  <button type="button" class="btn btn-primary text-nowrap" (click)="recompute()" [disabled]="recomputing()">
     @if (recomputing()) {
       <span class="spinner-border spinner-border-sm me-2"></span> Recomputing…
     } @else {
@@ -54,41 +61,49 @@
 } @else {
   @for (group of groups(); track group.severity) {
     <div class="shifa-ins-group">
-      <div class="shifa-ins-grouphead">
-        <span class="shifa-ins-pill" [class]="pillClass(group.severity)">{{ group.label }}</span>
-        <span class="shifa-ins-groupcount">{{ group.insights.length }}</span>
-      </div>
+      <!-- Group divider only in the "All" lens; a single-severity lens is
+           already labelled by the active filter tab (no redundant header). -->
+      @if (severityLens() === 'ALL') {
+        <div class="shifa-ins-grouphead" [class]="groupClass(group.severity)">
+          <span class="shifa-ins-dot"></span>
+          <span class="shifa-ins-grouplabel">{{ group.label }}</span>
+          <span class="shifa-ins-groupcount">{{ group.insights.length }}</span>
+        </div>
+      }
 
       <div class="shifa-ins-cards">
         @for (insight of group.insights; track insight.id) {
           <article class="shifa-ic" [class]="groupClass(insight.severity)">
+            <!-- Row 1: type label (left) + severity pill (right) -->
             <div class="shifa-ic__r1">
               <span class="shifa-ic__type">{{ typeLabel(insight.type) }}</span>
-              <span class="shifa-ic__pill" [class]="pillClass(insight.severity)">
+              <span class="badge shifa-ic__pill" [class]="pillClass(insight.severity)">
                 {{ severityLabels[insight.severity] }}
               </span>
             </div>
 
+            <!-- Body: title + detail -->
             <h3 class="shifa-ic__title">{{ insight.title }}</h3>
-
             @if (insight.detail) {
               <p class="shifa-ic__detail">{{ insight.detail }}</p>
             }
 
-            @if (insight.scopeLabel) {
-              <div class="shifa-ic__scope">
-                <i class="ti ti-tag me-1"></i>{{ insight.scopeLabel }}
+            <!-- Chips: scope tag + metric highlight -->
+            @if (insight.scopeLabel || metricOf(insight.metricValue)) {
+              <div class="shifa-ic__chips">
+                @if (insight.scopeLabel) {
+                  <span class="shifa-ic__scope"><i class="ti ti-tag"></i>{{ insight.scopeLabel }}</span>
+                }
+                @if (metricOf(insight.metricValue); as metric) {
+                  <span class="shifa-ic__metric"><i class="ti ti-chart-dots"></i>{{ metric }}</span>
+                }
               </div>
             }
 
+            <!-- Footer: date (left) + dismiss (right) -->
             <div class="shifa-ic__r2">
-              <span class="shifa-ic__meta">
-                @if (metricOf(insight.metricValue); as metric) {
-                  <span class="shifa-ic__metric">{{ metric }}</span>
-                }
-                <span class="shifa-ic__date">
-                  <i class="ti ti-calendar me-1"></i>{{ insight.computedDate | date: 'dd MMM yyyy' }}
-                </span>
+              <span class="shifa-ic__date">
+                <i class="ti ti-calendar-event me-1"></i>{{ insight.computedDate | date: 'dd MMM yyyy' }}
               </span>
               <button
                 type="button"

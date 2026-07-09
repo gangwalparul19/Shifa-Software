@@ -129,3 +129,56 @@
     height: 120px;
   }
 }
+
+/* --- Category tabs ------------------------------------------------------ */
+/* All tabs stay on-screen: a 2x2 grid on phones (no horizontal scrolling),
+   collapsing to a single row on wider screens. */
+.shifa-status-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+.shifa-status-tab {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  background: #fff;
+  color: #4a5a52;
+  font-weight: 600;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.shifa-status-tab i {
+  flex: 0 0 auto;
+  font-size: 1rem;
+}
+.shifa-status-tab:hover {
+  border-color: var(--shifa-green-300, #7fb79a);
+}
+.shifa-status-tab.active {
+  background: var(--shifa-green-600, #1f5d3f);
+  border-color: var(--shifa-green-600, #1f5d3f);
+  color: #eafff2;
+}
+
+/* From tablet up, lay the tabs out in a single inline row. */
+@media (min-width: 576px) {
+  .shifa-status-tabs {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .shifa-status-tab {
+    flex: 1 1 auto;
+    padding: 0.4rem 0.9rem;
+  }
+}

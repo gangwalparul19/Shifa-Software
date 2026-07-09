@@ -68,8 +68,23 @@ public class AdminOrderService {
                                                  PaymentStatus paymentStatus,
                                                  LocalDate from, LocalDate to,
                                                  Pageable pageable) {
+        return listOrders(q, status, paymentStatus, from, to, pageable, null);
+    }
+
+    /**
+     * As {@link #listOrders(String, OrderStatus, PaymentStatus, LocalDate, LocalDate, Pageable)}
+     * but scoped to a single creator when {@code createdBy} is non-null. A
+     * salesperson passes their own user id so the orders table shows only the
+     * orders they punched (across every lifecycle status — their history);
+     * admins/accountants pass {@code null} to see all orders.
+     */
+    @Transactional(readOnly = true)
+    public Page<OrderSummaryResponse> listOrders(String q, OrderStatus status,
+                                                 PaymentStatus paymentStatus,
+                                                 LocalDate from, LocalDate to,
+                                                 Pageable pageable, Long createdBy) {
         Specification<OrderEntity> spec =
-                OrderListSpecifications.build(q, status, paymentStatus, from, to);
+                OrderListSpecifications.build(q, status, paymentStatus, from, to, createdBy);
         return orderRepository.findAll(spec, pageable).map(OrderSummaryResponse::from);
     }
 

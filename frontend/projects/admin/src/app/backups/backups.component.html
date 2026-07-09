@@ -1,0 +1,105 @@
+<admin-page-header
+  title="Backups"
+  subtitle="Run an on-demand database backup and review recent backup runs."
+  [breadcrumbs]="[{ label: 'Backups' }]"
+>
+  <button
+    type="button"
+    class="btn btn-icon btn-outline-secondary"
+    (click)="load()"
+    [disabled]="loading()"
+    title="Refresh"
+    aria-label="Refresh"
+  >
+    <i class="ti ti-refresh"></i>
+  </button>
+  <button type="button" class="btn btn-primary text-nowrap" (click)="runNow()" [disabled]="running()">
+    @if (running()) {
+      <span class="spinner-border spinner-border-sm me-2"></span> Running…
+    } @else {
+      <i class="ti ti-database-export me-1"></i> Run backup
+    }
+  </button>
+</admin-page-header>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading backups…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else {
+  <!-- Last-successful-backup summary -->
+  <div class="card mb-3">
+    <div class="card-body d-flex align-items-center justify-content-between">
+      <div>
+        <div class="subheader">Last successful backup</div>
+        <div class="h2 m-0">
+          @if (lastSuccess(); as ok) {
+            {{ ok.finishedAt || ok.startedAt | date: 'dd MMM yyyy · hh:mm a' }}
+          } @else {
+            —
+          }
+        </div>
+      </div>
+      <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-database"></i></span>
+    </div>
+  </div>
+
+  @if (runs().length === 0) {
+    <admin-state-panel
+      variant="empty"
+      [card]="true"
+      icon="ti-database-off"
+      title="No backups yet"
+      message="Run a backup now, or wait for the nightly scheduled backup."
+      ctaLabel="Run backup"
+      ctaIcon="ti-database-export"
+      (cta)="runNow()"
+    />
+  } @else {
+    <!-- Mobile (<768px): backup run cards -->
+    <div class="shifa-bk-cards d-md-none">
+      @for (run of runs(); track run.id) {
+        <div class="shifa-bk" [class.is-failed]="isFailed(run.status)" [class.is-success]="isSuccess(run.status)">
+          <div class="shifa-bk__r1">
+            <span class="badge" [class]="statusBadgeClass(run.status)">{{ run.status }}</span>
+            <span class="shifa-bk__when">{{ run.startedAt | date: 'dd MMM, HH:mm' }}</span>
+          </div>
+          @if (run.objectKey) {
+            <div class="shifa-bk__key shifa-mono"><i class="ti ti-file-zip me-1"></i>{{ run.objectKey }}</div>
+          }
+          @if (run.error) {
+            <div class="shifa-bk__err"><i class="ti ti-alert-triangle me-1"></i>{{ run.error }}</div>
+          }
+        </div>
+      }
+    </div>
+
+    <!-- Desktop (≥768px): backup runs table -->
+    <div class="card d-none d-md-block">
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Started</th>
+              <th>Finished</th>
+              <th>Archive</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (run of runs(); track run.id) {
+              <tr>
+                <td><span class="badge" [class]="statusBadgeClass(run.status)">{{ run.status }}</span></td>
+                <td class="text-secondary">{{ run.startedAt | date: 'dd MMM yyyy, HH:mm' }}</td>
+                <td class="text-secondary">{{ run.finishedAt ? (run.finishedAt | date: 'dd MMM yyyy, HH:mm') : '—' }}</td>
+                <td class="shifa-mono text-secondary">{{ run.objectKey || '—' }}</td>
+                <td class="text-danger">{{ run.error || '—' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  }
+}
