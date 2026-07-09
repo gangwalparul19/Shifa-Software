@@ -132,17 +132,16 @@ export class NotificationBellComponent implements OnInit, OnDestroy {
 
   markAllRead(event: Event): void {
     event.stopPropagation();
-    // The staff endpoint has no bulk read-all, so mark each visible unread
-    // notification read individually.
-    const unreadIds = this.recent().filter((n) => !n.read).map((n) => n.id);
-    this.service.markManyRead(unreadIds).subscribe({
-      next: () => {
-        this.recent.update((list) => list.map((n) => ({ ...n, read: true })));
-        this.unread.set(0);
-        // Reconcile with the server (there may be more unread beyond the dropdown).
-        this.refreshCount();
-      },
+    // Optimistically clear the UI, then reconcile with the server's authoritative
+    // count. The bulk endpoint marks every unread item visible to this user read
+    // (not just the ones shown in the dropdown).
+    this.recent.update((list) => list.map((n) => ({ ...n, read: true })));
+    this.unread.set(0);
+    this.service.markAllRead().subscribe({
+      next: (res) => this.unread.set(res.unreadCount ?? 0),
+      error: () => this.refreshCount(),
     });
+    this.close();
   }
 
   /** Escape closes the dropdown for keyboard users. */

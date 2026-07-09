@@ -127,6 +127,21 @@ public class AdminNotificationService {
         return repository.markAllRead(LocalDateTime.now());
     }
 
+    /**
+     * Marks every unread notification <em>visible to a specific staff user</em>
+     * read in one bulk update (Req 13.4). Backs the per-user bell's "Mark all
+     * read" so a user clears exactly their own role/user-addressed alerts.
+     *
+     * @param principal the authenticated staff user
+     * @return the number of notifications flipped to read
+     */
+    @Transactional
+    public int markAllReadForUser(AuthPrincipal principal) {
+        boolean legacyVisible = principal.role() == Role.ADMIN;
+        return repository.markAllReadForUser(
+                principal.userId(), principal.role(), legacyVisible, LocalDateTime.now());
+    }
+
     private static String blankToNull(String value) {
         if (value == null) {
             return null;

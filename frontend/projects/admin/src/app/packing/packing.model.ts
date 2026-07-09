@@ -1,4 +1,18 @@
 import { Money, OrderStatus, PaymentStatus } from 'core';
+import { OrderSummary } from '../orders/orders.model';
+
+/**
+ * The packing team's work queues (Req 9-11), mirroring the backend
+ * {@code PackingQueueResponse}. Each list is oldest-first (FIFO).
+ */
+export interface PackingQueue {
+  /** Orders in {@code Label_Generated} — label printed, ready to be packed. */
+  awaitingPacking: OrderSummary[];
+  /** Orders in {@code Packed} — ready to hand over to the courier. */
+  awaitingHandover: OrderSummary[];
+  /** Orders in {@code Handed_To_Delivery} — ready to dispatch. */
+  awaitingDispatch: OrderSummary[];
+}
 
 /**
  * Compact order summary returned inside a successful scan response. Mirrors the

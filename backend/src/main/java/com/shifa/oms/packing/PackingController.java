@@ -3,10 +3,12 @@ package com.shifa.oms.packing;
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.CurrentUserService;
 import com.shifa.oms.order.dto.OrderResponse;
+import com.shifa.oms.packing.dto.PackingQueueResponse;
 import com.shifa.oms.packing.dto.PackingScanRequest;
 import com.shifa.oms.packing.dto.PackingScanResponse;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -33,6 +35,16 @@ public class PackingController {
     public PackingController(PackingService packingService, CurrentUserService currentUserService) {
         this.packingService = packingService;
         this.currentUserService = currentUserService;
+    }
+
+    /**
+     * The packing work queues (awaiting packing / handover / dispatch), oldest
+     * first, so the packer can see what to work on and reprint labels (Req 9-11).
+     */
+    @GetMapping("/queue")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public PackingQueueResponse queue() {
+        return packingService.queue();
     }
 
     /** Scan a packed order's barcode to mark it Packed (Req 11.1, 11.3, 11.4). */

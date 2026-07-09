@@ -9,6 +9,7 @@ import {
 } from '@angular/forms';
 import { ApiError } from 'core';
 import { AppSettings, SettingsService } from './settings.service';
+import { DeliveryState, StatesService } from '../shared/states.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
@@ -66,6 +67,7 @@ function gstSlabsValidator(control: AbstractControl): ValidationErrors | null {
 })
 export class SettingsComponent implements OnInit, OnDestroy {
   private readonly service = inject(SettingsService);
+  private readonly statesService = inject(StatesService);
   private readonly fb = inject(FormBuilder);
   private readonly confirmService = inject(ConfirmService);
   private readonly toasts = inject(ToastService);
@@ -84,6 +86,17 @@ export class SettingsComponent implements OnInit, OnDestroy {
 
   /** The current object URL, tracked so it can be revoked to avoid leaks. */
   private currentObjectUrl: string | null = null;
+
+  // --- Delivery states (order-entry typeahead master list) ----------------
+  protected readonly states = signal<DeliveryState[]>([]);
+  protected readonly statesLoading = signal(true);
+  protected readonly statesError = signal<string | null>(null);
+  protected readonly stateBusyId = signal<number | 'new' | null>(null);
+  /** Free-text field for adding a new delivery state. */
+  protected readonly newStateName = this.fb.nonNullable.control('', [
+    Validators.required,
+    Validators.maxLength(100),
+  ]);
 
   protected readonly form = this.fb.nonNullable.group({
     gstEnabled: [false],
@@ -116,10 +129,110 @@ export class SettingsComponent implements OnInit, OnDestroy {
       this.applyGstinValidators(enabled);
     });
     this.load();
+    this.loadStates();
   }
 
   ngOnDestroy(): void {
     this.revokeObjectUrl();
+  }
+
+  // --- Delivery states ----------------------------------------------------
+
+  /** Loads the full delivery-state master list for the management table. */
+  loadStates(): void {
+    this.statesLoading.set(true);
+    this.statesError.set(null);
+    this.statesService.listAll().subscribe({
+      next: (rows) => {
+        this.states.set(rows);
+        this.statesLoading.set(false);
+      },
+      error: () => {
+        this.statesError.set('Could not load delivery states.');
+        this.statesLoading.set(false);
+      },
+    });
+  }
+
+  /** Adds a new delivery state from the free-text field. */
+  addState(): void {
+    if (this.stateBusyId() !== null) {
+      return;
+    }
+    if (this.newStateName.invalid) {
+      this.newStateName.markAsTouched();
+      return;
+    }
+    const name = this.newStateName.value.trim();
+    if (!name) {
+      return;
+    }
+    this.stateBusyId.set('new');
+    this.statesService.create({ name }).subscribe({
+      next: (created) => {
+        this.stateBusyId.set(null);
+        this.states.update((list) =>
+          [...list, created].sort(
+            (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+          ),
+        );
+        this.newStateName.reset('');
+        this.toasts.success(`Added "${created.name}".`);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.stateBusyId.set(null);
+        this.toasts.error(this.describeError(err, 'Could not add the state.'));
+      },
+    });
+  }
+
+  /** Enables / disables a state (controls whether it appears in the order picker). */
+  toggleState(state: DeliveryState): void {
+    if (this.stateBusyId() !== null) {
+      return;
+    }
+    this.stateBusyId.set(state.id);
+    this.statesService
+      .update(state.id, { name: state.name, active: !state.active, sortOrder: state.sortOrder })
+      .subscribe({
+        next: (updated) => {
+          this.stateBusyId.set(null);
+          this.states.update((list) => list.map((s) => (s.id === updated.id ? updated : s)));
+        },
+        error: (err: HttpErrorResponse) => {
+          this.stateBusyId.set(null);
+          this.toasts.error(this.describeError(err, 'Could not update the state.'));
+        },
+      });
+  }
+
+  /** Removes a state from the master list, after confirmation. */
+  async removeState(state: DeliveryState): Promise<void> {
+    if (this.stateBusyId() !== null) {
+      return;
+    }
+    const confirmed = await this.confirmService.confirm({
+      title: 'Remove state',
+      message: `Remove "${state.name}" from the delivery-state list?`,
+      confirmLabel: 'Remove',
+      danger: true,
+      icon: 'ti-trash',
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.stateBusyId.set(state.id);
+    this.statesService.delete(state.id).subscribe({
+      next: () => {
+        this.stateBusyId.set(null);
+        this.states.update((list) => list.filter((s) => s.id !== state.id));
+        this.toasts.success(`Removed "${state.name}".`);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.stateBusyId.set(null);
+        this.toasts.error(this.describeError(err, 'Could not remove the state.'));
+      },
+    });
   }
 
   private applyGstinValidators(gstEnabled: boolean): void {

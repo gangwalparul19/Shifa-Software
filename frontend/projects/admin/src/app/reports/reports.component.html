@@ -4,14 +4,16 @@
   [breadcrumbs]="[{ label: 'Reports' }]"
 />
 
-<!-- Presentation tabs (Req 12.1): Overview / Sales / Products / Customers -->
-<div class="shifa-status-tabs mb-3" role="tablist" aria-label="Report views">
+<!-- Presentation tabs (Req 12.1): Overview / Sales / Products / Customers.
+     A fixed 4-column grid so all four fit on screen without horizontal scroll. -->
+<div class="rpt-tabs mb-3" role="tablist" aria-label="Report views">
   @for (t of tabs; track t.key) {
-    <button type="button" role="tab" class="shifa-status-tab"
+    <button type="button" role="tab" class="rpt-tab"
       [class.active]="activeTab() === t.key"
       [attr.aria-selected]="activeTab() === t.key"
       (click)="selectTab(t.key)">
-      <i class="ti {{ t.icon }} me-1"></i>{{ t.label }}
+      <i class="ti {{ t.icon }}"></i>
+      <span>{{ t.label }}</span>
     </button>
   }
 </div>
@@ -19,63 +21,89 @@
 <!-- Controls: date-range chip + report type + custom range + exports -->
 <form class="card mb-3" [formGroup]="form" (ngSubmit)="generate()">
   <div class="card-body">
-    <!-- Active date-range chip -->
-    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-      <span class="shifa-range-chip"><i class="ti ti-calendar-event me-1"></i>{{ rangeLabel() }}</span>
-      <span class="text-secondary small">Tap a preset to change the range</span>
+    <!-- Summary bar (always visible): current type + range, Generate, and a
+         Filters toggle. The detailed configuration stays collapsed by default. -->
+    <div class="d-flex align-items-center flex-nowrap gap-2 shifa-report-bar">
+      <span class="shifa-range-chip shifa-report-bar__chip">
+        <i class="ti ti-calendar-event me-1"></i>{{ reportTypeLabel() }} · {{ rangeLabel() }}
+      </span>
+      <button
+        type="button"
+        class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center ms-auto text-nowrap"
+        (click)="toggleFilters()"
+        [class.active]="filtersOpen()"
+        [attr.aria-expanded]="filtersOpen()"
+        aria-controls="report-config-panel"
+        title="Filters"
+      >
+        <i class="ti ti-adjustments-horizontal"></i>
+        <span class="d-none d-sm-inline ms-1">Filters</span>
+        <i class="ti ms-1" [class.ti-chevron-down]="!filtersOpen()" [class.ti-chevron-up]="filtersOpen()"></i>
+      </button>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap" [disabled]="loading()">
+        @if (loading()) { <span class="spinner-border spinner-border-sm me-1"></span> }
+        @else { <i class="ti ti-report-analytics me-1"></i> }
+        Generate
+      </button>
     </div>
 
-    <div class="row g-3 align-items-end">
-      <div class="col-12 col-md-3">
-        <label class="form-label" for="type">Report type</label>
-        <select id="type" class="form-select" formControlName="type" (change)="generate()">
-          @for (opt of reportTypes; track opt.value) { <option [value]="opt.value">{{ opt.label }}</option> }
-        </select>
-      </div>
+    @if (filtersOpen()) {
+      <div id="report-config-panel" class="row g-3 align-items-end mt-1 pt-3 border-top anim-fade-up">
+        <div class="col-12 col-md-3">
+          <label class="form-label" for="type">Report type</label>
+          <select id="type" class="form-select" formControlName="type" (change)="generate()">
+            @for (opt of reportTypes; track opt.value) { <option [value]="opt.value">{{ opt.label }}</option> }
+          </select>
+        </div>
 
-      <div class="col-12 col-md-auto">
-        <label class="form-label d-block">Date range</label>
-        <div class="btn-group shifa-period flex-wrap" role="group">
-          @for (p of presets; track p.key) {
-            <button type="button" class="btn"
-              [class.btn-primary]="form.controls.preset.value === p.key"
-              [class.active]="form.controls.preset.value === p.key"
-              (click)="onPresetChange(p.key)">{{ p.label }}</button>
-          }
+        <div class="col-12 col-md-auto">
+          <label class="form-label d-block">Date range</label>
+          <div class="btn-group shifa-period flex-wrap" role="group">
+            @for (p of presets; track p.key) {
+              <button type="button" class="btn"
+                [class.btn-primary]="form.controls.preset.value === p.key"
+                [class.active]="form.controls.preset.value === p.key"
+                (click)="onPresetChange(p.key)">{{ p.label }}</button>
+            }
+          </div>
+        </div>
+
+        <div class="col-6 col-md-2">
+          <label class="form-label" for="from">From</label>
+          <input id="from" type="date" class="form-control" formControlName="from" [readonly]="!isCustom()" />
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label" for="to">To</label>
+          <input id="to" type="date" class="form-control" formControlName="to" [readonly]="!isCustom()" />
         </div>
       </div>
-
-      <div class="col-6 col-md-2">
-        <label class="form-label" for="from">From</label>
-        <input id="from" type="date" class="form-control" formControlName="from" [readonly]="!isCustom()" />
-      </div>
-      <div class="col-6 col-md-2">
-        <label class="form-label" for="to">To</label>
-        <input id="to" type="date" class="form-control" formControlName="to" [readonly]="!isCustom()" />
-      </div>
-
-      <div class="col-12 col-md-auto">
-        <button type="submit" class="btn btn-primary w-100 shifa-touch" [disabled]="loading()">
-          @if (loading()) { <span class="spinner-border spinner-border-sm me-2"></span> Generating… }
-          @else { <i class="ti ti-report-analytics me-1"></i> Generate }
-        </button>
-      </div>
-    </div>
+    }
   </div>
 
-  <!-- Export toolbar -->
-  <div class="card-footer d-flex align-items-center flex-wrap gap-2">
-    <span class="text-secondary me-1"><i class="ti ti-download me-1"></i> Export</span>
-    <div class="btn-list">
-      <button type="button" class="btn btn-sm btn-outline-success" [disabled]="exporting() || !report()" (click)="exportFile('xlsx')">
-        <i class="ti ti-file-spreadsheet me-1"></i> Excel
-      </button>
-      <button type="button" class="btn btn-sm btn-outline-danger" [disabled]="exporting() || !report()" (click)="exportFile('pdf')">
-        <i class="ti ti-file-type-pdf me-1"></i> PDF
-      </button>
-      <span class="vr mx-1"></span>
-      <button type="button" class="btn btn-sm btn-outline-secondary" [disabled]="exporting()" (click)="exportVyapar('csv')">Vyapar CSV</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" [disabled]="exporting()" (click)="exportVyapar('xlsx')">Vyapar Excel</button>
+  <!-- Export — a 2×2 grid so all four options stay fully visible on any width -->
+  <div class="card-footer">
+    <div class="text-secondary small mb-2"><i class="ti ti-download me-1"></i> Export</div>
+    <div class="row g-2 shifa-export-grid">
+      <div class="col-6">
+        <button type="button" class="btn btn-sm btn-outline-success w-100 text-nowrap" [disabled]="exporting() || !report()" (click)="exportFile('xlsx')">
+          <i class="ti ti-file-spreadsheet me-1"></i> Excel
+        </button>
+      </div>
+      <div class="col-6">
+        <button type="button" class="btn btn-sm btn-outline-danger w-100 text-nowrap" [disabled]="exporting() || !report()" (click)="exportFile('pdf')">
+          <i class="ti ti-file-type-pdf me-1"></i> PDF
+        </button>
+      </div>
+      <div class="col-6">
+        <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-nowrap" [disabled]="exporting()" (click)="exportVyapar('csv')">
+          <i class="ti ti-file-text me-1"></i> Vyapar CSV
+        </button>
+      </div>
+      <div class="col-6">
+        <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-nowrap" [disabled]="exporting()" (click)="exportVyapar('xlsx')">
+          <i class="ti ti-file-spreadsheet me-1"></i> Vyapar Excel
+        </button>
+      </div>
     </div>
   </div>
 </form>
@@ -219,7 +247,7 @@
       <div class="row g-2">
         <div class="col-4">
           <div class="text-secondary small">Salesperson</div>
-          <strong>{{ r.summary.topSalespersonId ?? '—' }}</strong>
+          <strong>{{ r.summary.topSalespersonName || (r.summary.topSalespersonId ? '#' + r.summary.topSalespersonId : '—') }}</strong>
         </div>
         <div class="col-4">
           <div class="text-secondary small">Product</div>

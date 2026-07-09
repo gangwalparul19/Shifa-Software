@@ -82,6 +82,85 @@
       </div>
     }
 
+    <!-- Work queues: what to pack / hand over / dispatch, with label printing (Req 9-11) -->
+    @for (section of queueSections(); track section.kind) {
+      <div class="card mb-3">
+        <div class="card-header d-flex align-items-center">
+          <h3 class="card-title mb-0"><i class="ti {{ section.icon }} me-2"></i>{{ section.title }}</h3>
+          <span class="badge bg-secondary-lt ms-2">{{ section.orders.length }}</span>
+        </div>
+        <div class="card-body py-2">
+          <p class="text-secondary small mb-2"><i class="ti ti-info-circle me-1"></i>{{ section.hint }}</p>
+          @if (section.orders.length === 0) {
+            <div class="text-secondary small py-2">
+              @if (queueLoading()) { Loading… } @else { Nothing here right now. }
+            </div>
+          } @else {
+            <div class="pk-list">
+              @for (o of section.orders; track o.id) {
+                <div class="pk-item">
+                  <div class="pk-item__info">
+                    <span class="pk-item__code shifa-mono">{{ o.orderCode }}</span>
+                    <span class="pk-item__meta">{{ o.customerName }} · ₹{{ o.totalAmount }}</span>
+                  </div>
+                  <div class="pk-item__actions">
+                    @if (section.kind !== 'dispatch') {
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-outline-secondary pk-btn-icon"
+                        (click)="printLabel(o)"
+                        [disabled]="labelBusyId() === o.id"
+                        title="Print label"
+                        aria-label="Print label"
+                      >
+                        @if (labelBusyId() === o.id) {
+                          <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        } @else {
+                          <i class="ti ti-printer"></i>
+                        }
+                      </button>
+                    }
+                    @switch (section.kind) {
+                      @case ('pack') {
+                        <button type="button" class="btn btn-sm btn-primary pk-btn" (click)="markPacked(o)" [disabled]="busyOrderId() === o.id">
+                          @if (busyOrderId() === o.id) {
+                            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                          } @else {
+                            <i class="ti ti-checkbox me-1"></i>
+                          }
+                          Pack
+                        </button>
+                      }
+                      @case ('handover') {
+                        <button type="button" class="btn btn-sm btn-primary pk-btn" (click)="handoverOrder(o)" [disabled]="busyOrderId() === o.id">
+                          @if (busyOrderId() === o.id) {
+                            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                          } @else {
+                            <i class="ti ti-truck-loading me-1"></i>
+                          }
+                          Handover
+                        </button>
+                      }
+                      @case ('dispatch') {
+                        <button type="button" class="btn btn-sm btn-primary pk-btn" (click)="dispatchOrder(o)" [disabled]="busyOrderId() === o.id">
+                          @if (busyOrderId() === o.id) {
+                            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                          } @else {
+                            <i class="ti ti-truck-delivery me-1"></i>
+                          }
+                          Dispatch
+                        </button>
+                      }
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    }
+
     <!-- Handover / Dispatch actions for the orders just moved (Req 9.2–9.4, 10.1) -->
     @if (workItems().length > 0) {
       <div class="card mb-3">

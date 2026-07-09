@@ -3,31 +3,39 @@
   subtitle="Capture enquiries and work them through your sales pipeline."
   [breadcrumbs]="[{ label: 'Leads' }]"
 >
-  <button type="button" class="btn btn-outline-secondary" (click)="load(); loadPipeline()" [disabled]="loading()">
-    <i class="ti ti-refresh me-1"></i> Refresh
+  <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load(); loadPipeline()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
+    <i class="ti ti-refresh"></i>
   </button>
-  <a class="btn btn-outline-primary" routerLink="/leads/follow-ups">
-    <i class="ti ti-calendar-event me-1"></i> Due follow-ups
-  </a>
-  @if (canManage()) {
-    <button type="button" class="btn btn-primary" (click)="openCapture()">
-      <i class="ti ti-plus me-1"></i> Add lead
-    </button>
-  }
 </admin-page-header>
+
+<!-- Follow-ups + Add lead share one row to save vertical space -->
+<div class="row g-2 mb-3">
+  <div class="col">
+    <a class="btn btn-outline-primary w-100" routerLink="/leads/follow-ups">
+      <i class="ti ti-calendar-event me-1"></i> Follow-ups
+    </a>
+  </div>
+  @if (canManage()) {
+    <div class="col">
+      <button type="button" class="btn btn-primary w-100" (click)="openCapture()">
+        <i class="ti ti-plus me-1"></i> Add lead
+      </button>
+    </div>
+  }
+</div>
 
 <!-- Search + source filter -->
 <div class="card mb-3">
   <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      <div class="col-12 col-lg">
+    <div class="row g-2 align-items-center">
+      <div class="col">
         <div class="input-icon">
           <span class="input-icon-addon"><i class="ti ti-search"></i></span>
           <input
             type="search"
             class="form-control"
             [formControl]="search"
-            placeholder="Search by name or mobile…"
+            placeholder="Search name or mobile…"
             autocomplete="off"
             aria-label="Search leads"
           />
@@ -38,14 +46,43 @@
           }
         </div>
       </div>
-      <div class="col-12 col-lg-3">
-        <label class="form-label small mb-1">Source</label>
-        <select class="form-select" [formControl]="sourceFilter" aria-label="Filter by source">
-          <option value="">All sources</option>
-          @for (opt of leadSourceOptions; track opt.value) {
-            <option [value]="opt.value">{{ opt.label }}</option>
+      <div class="col">
+        <div class="lead-source-dd">
+          <button
+            type="button"
+            class="form-select text-start lead-source-dd__btn"
+            (click)="toggleSourceMenu()"
+            [attr.aria-expanded]="sourceOpen()"
+            aria-haspopup="listbox"
+            aria-label="Filter by source"
+          >
+            <i class="ti {{ sourceIcon(sourceFilter.value) }} me-2"></i>{{ sourceButtonLabel() }}
+          </button>
+          @if (sourceOpen()) {
+            <ul class="lead-source-dd__menu" role="listbox">
+              <li
+                role="option"
+                class="lead-source-dd__opt"
+                [class.is-active]="!sourceFilter.value"
+                [attr.aria-selected]="!sourceFilter.value"
+                (click)="selectSource('')"
+              >
+                <i class="ti ti-broadcast"></i> All sources
+              </li>
+              @for (opt of leadSourceOptions; track opt.value) {
+                <li
+                  role="option"
+                  class="lead-source-dd__opt"
+                  [class.is-active]="sourceFilter.value === opt.value"
+                  [attr.aria-selected]="sourceFilter.value === opt.value"
+                  (click)="selectSource(opt.value)"
+                >
+                  <i class="ti {{ sourceIcon(opt.value) }}"></i> {{ opt.label }}
+                </li>
+              }
+            </ul>
           }
-        </select>
+        </div>
       </div>
     </div>
   </div>
@@ -99,7 +136,7 @@
         </div>
         <div class="shifa-lc__r2">
           <span class="shifa-lc__meta">
-            <i class="ti ti-broadcast me-1"></i>{{ sourceLabel(lead.leadSource) }}
+            <i class="ti {{ sourceIcon(lead.leadSource) }} me-1"></i>{{ sourceLabel(lead.leadSource) }}
             @if (lead.customerMobile) {
               · {{ lead.customerMobile }}
             }

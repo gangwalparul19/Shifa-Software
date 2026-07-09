@@ -4,8 +4,8 @@
   [breadcrumbs]="[{ label: 'Customers' }]"
 >
   <admin-density-toggle />
-  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
-    <i class="ti ti-refresh me-1"></i> Refresh
+  <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
+    <i class="ti ti-refresh"></i>
   </button>
 </admin-page-header>
 
@@ -54,18 +54,25 @@
       <div class="shifa-cust" (click)="openDetail(c)">
         <div class="shifa-cust__avatar" aria-hidden="true">{{ customerInitials(c.name) }}</div>
         <div class="shifa-cust__main">
-          <div class="shifa-cust__name">{{ c.name || '—' }}</div>
+          <div class="shifa-cust__name">
+            {{ c.name || '—' }}
+            @if (c.repeatBuyer) {
+              <span class="shifa-cust__tag"><i class="ti ti-repeat"></i> Repeat</span>
+            }
+          </div>
           <div class="shifa-cust__phone">{{ c.mobile }}</div>
-          <div class="shifa-cust__meta">{{ c.orderCount }} Orders · {{ money(c.totalSpent) }}</div>
+          <div class="shifa-cust__meta">
+            <i class="ti ti-shopping-bag me-1"></i>{{ c.orderCount }} orders
+            · <span class="fw-semibold">{{ money(c.totalSpent) }}</span>
+          </div>
         </div>
         <button
           type="button"
-          class="shifa-cust__kebab"
+          class="btn btn-sm btn-outline-primary shifa-cust__view"
           (click)="$event.stopPropagation(); openDetail(c)"
-          [attr.aria-label]="'Actions for ' + (c.name || c.mobile)"
-          title="View customer"
+          [attr.aria-label]="'View ' + (c.name || c.mobile)"
         >
-          <i class="ti ti-dots-vertical"></i>
+          <i class="ti ti-eye me-1"></i> View
         </button>
       </div>
     }
@@ -142,89 +149,104 @@
 <!-- Detail drawer -->
 @if (detailLoading() || selectedDetail() || detailError()) {
   <div class="shifa-overlay" (click)="closeDetail()"></div>
-  <aside class="shifa-drawer" role="dialog" aria-label="Customer detail">
+  <aside class="shifa-drawer cust-dr" role="dialog" aria-label="Customer detail">
     @if (detailLoading()) {
-      <div class="shifa-drawer__body">
+      <header class="cust-dr__head">
+        <span class="cust-dr__avatar">…</span>
+        <div class="cust-dr__headmain"><div class="cust-dr__name">Loading…</div></div>
+        <button type="button" class="cust-dr__close" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
+      </header>
+      <div class="shifa-drawer__body cust-dr__body">
         <div class="skeleton skeleton-line w-60 mb-3"></div>
         <div class="skeleton skeleton-card"></div>
       </div>
     } @else if (detailError()) {
-      <div class="shifa-drawer__body"><div class="alert alert-danger">{{ detailError() }}</div></div>
+      <header class="cust-dr__head">
+        <div class="cust-dr__headmain"><div class="cust-dr__name">Customer</div></div>
+        <button type="button" class="cust-dr__close" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
+      </header>
+      <div class="shifa-drawer__body cust-dr__body"><div class="alert alert-danger">{{ detailError() }}</div></div>
     } @else if (selectedDetail(); as detail) {
-      <header class="shifa-drawer__head">
-        <div>
-          <h3 class="mb-1">{{ detail.summary.name || 'Customer' }}</h3>
-          <div class="text-secondary">{{ detail.summary.mobile }}</div>
+      <!-- Themed green header: avatar + name + mobile + tag pill -->
+      <header class="cust-dr__head">
+        <span class="cust-dr__avatar">{{ customerInitials(detail.summary.name) }}</span>
+        <div class="cust-dr__headmain">
+          <div class="cust-dr__name">{{ detail.summary.name || 'Customer' }}</div>
+          <a class="cust-dr__mobile" href="tel:{{ detail.summary.mobile }}">
+            <i class="ti ti-phone me-1"></i>{{ detail.summary.mobile }}
+          </a>
         </div>
-        <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeDetail()" aria-label="Close">
-          <i class="ti ti-x"></i>
-        </button>
+        <span class="cust-dr__tag">
+          @if (detail.summary.repeatBuyer) { <i class="ti ti-repeat me-1"></i>Repeat } @else { New }
+        </span>
+        <button type="button" class="cust-dr__close" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
       </header>
 
-      <div class="shifa-drawer__body">
-        <div class="d-flex flex-wrap gap-1 mb-3">
-          @if (detail.summary.repeatBuyer) {
-            <span class="badge" data-group="done"><i class="ti ti-repeat me-1"></i>Repeat buyer</span>
-          }
-          @if (detail.summary.registered) {
-            <span class="badge" data-group="progress"><i class="ti ti-user-check me-1"></i>Registered</span>
-          } @else {
-            <span class="badge" data-group="neutral">Guest</span>
-          }
-        </div>
-
-        <div class="row row-cards mb-4">
-          <div class="col-6">
-            <div class="card card-sm"><div class="card-body">
-              <div class="text-secondary small">Orders</div>
-              <div class="h2 mb-0">{{ detail.summary.orderCount }}</div>
-            </div></div>
+      <div class="shifa-drawer__body cust-dr__body">
+        <!-- Stat cards -->
+        <div class="cust-dr__stats">
+          <div class="cust-dr__stat">
+            <div class="cust-dr__stat-label"><i class="ti ti-shopping-bag me-1"></i>Orders</div>
+            <div class="cust-dr__stat-val">{{ detail.summary.orderCount }}</div>
           </div>
-          <div class="col-6">
-            <div class="card card-sm"><div class="card-body">
-              <div class="text-secondary small">Total spent</div>
-              <div class="h2 mb-0">{{ money(detail.summary.totalSpent) }}</div>
-            </div></div>
+          <div class="cust-dr__stat">
+            <div class="cust-dr__stat-label"><i class="ti ti-cash me-1"></i>Total spent</div>
+            <div class="cust-dr__stat-val">{{ money(detail.summary.totalSpent) }}</div>
           </div>
         </div>
 
-        <div class="row g-1 mb-4">
-          <div class="col-5 text-secondary">First order</div>
-          <div class="col-7">{{ detail.summary.firstOrderAt ? (detail.summary.firstOrderAt | date: 'dd MMM yyyy') : '—' }}</div>
-          <div class="col-5 text-secondary">Last order</div>
-          <div class="col-7">{{ detail.summary.lastOrderAt ? (detail.summary.lastOrderAt | date: 'dd MMM yyyy') : '—' }}</div>
+        <!-- First / last + account type -->
+        <div class="cust-dr__facts">
+          <div class="cust-dr__fact">
+            <span class="cust-dr__fact-k">First order</span>
+            <span class="cust-dr__fact-v">{{ detail.summary.firstOrderAt ? (detail.summary.firstOrderAt | date: 'dd MMM yyyy') : '—' }}</span>
+          </div>
+          <div class="cust-dr__fact">
+            <span class="cust-dr__fact-k">Last order</span>
+            <span class="cust-dr__fact-v">{{ detail.summary.lastOrderAt ? (detail.summary.lastOrderAt | date: 'dd MMM yyyy') : '—' }}</span>
+          </div>
+          <div class="cust-dr__fact">
+            <span class="cust-dr__fact-k">Account</span>
+            <span class="cust-dr__fact-v">{{ detail.summary.registered ? 'Registered' : 'Guest' }}</span>
+          </div>
         </div>
 
-        <div class="subheader mb-2">Order history</div>
+        <!-- Order history (paginated — the list can grow) -->
+        <div class="cust-dr__label">
+          <i class="ti ti-history me-1"></i>Order history
+          <span class="cust-dr__count">{{ detail.orders.length }}</span>
+        </div>
         @if (detail.orders.length === 0) {
-          <p class="text-secondary mb-0">No orders on record.</p>
+          <div class="cust-dr__empty"><i class="ti ti-package-off me-1"></i>No orders on record.</div>
         } @else {
-          <table class="table table-sm table-vcenter">
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Date</th>
-                <th class="text-end">Total</th>
-                <th>Status</th>
-                <th>Payment</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (o of detail.orders; track o.orderCode) {
-                <tr>
-                  <td>
-                    <a class="fw-medium" [routerLink]="['/orders']" [queryParams]="{ q: o.orderCode }" (click)="closeDetail()">
-                      {{ o.orderCode }}
-                    </a>
-                  </td>
-                  <td class="text-secondary">{{ o.date ? (o.date | date: 'dd MMM, HH:mm') : '—' }}</td>
-                  <td class="text-end">{{ money(o.total) }}</td>
-                  <td><admin-status-badge [status]="o.orderStatus" /></td>
-                  <td><admin-status-badge [status]="o.paymentStatus" kind="payment" /></td>
-                </tr>
-              }
-            </tbody>
-          </table>
+          <div class="cust-oh-list">
+            @for (o of historyPageItems(); track o.orderCode) {
+              <a class="cust-oh" [routerLink]="['/orders']" [queryParams]="{ q: o.orderCode }" (click)="closeDetail()">
+                <div class="cust-oh__main">
+                  <span class="cust-oh__code shifa-mono">{{ o.orderCode }}</span>
+                  <span class="cust-oh__date">{{ o.date ? (o.date | date: 'dd MMM yyyy, HH:mm') : '—' }}</span>
+                  <div class="cust-oh__pills">
+                    <admin-status-badge [status]="o.orderStatus" />
+                    <admin-status-badge [status]="o.paymentStatus" kind="payment" />
+                  </div>
+                </div>
+                <div class="cust-oh__right">
+                  <span class="cust-oh__total">{{ money(o.total) }}</span>
+                  <i class="ti ti-chevron-right cust-oh__chev"></i>
+                </div>
+              </a>
+            }
+          </div>
+          @if (historyTotalPages() > 1) {
+            <admin-pagination
+              [page]="historyPage()"
+              [totalPages]="historyTotalPages()"
+              [totalElements]="detail.orders.length"
+              [size]="historySize()"
+              (pageChange)="goToHistoryPage($event)"
+              (sizeChange)="setHistorySize($event)"
+            />
+          }
         }
       </div>
     }

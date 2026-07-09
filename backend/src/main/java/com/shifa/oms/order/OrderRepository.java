@@ -39,6 +39,13 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     List<OrderEntity> findByOrderStatusOrderByCreatedAtDesc(OrderStatus orderStatus);
 
     /**
+     * All orders in a given lifecycle status, oldest first (FIFO). Backs the
+     * packing work queues (awaiting packing / handover / dispatch) so the packer
+     * clears the oldest orders first.
+     */
+    List<OrderEntity> findByOrderStatusOrderByCreatedAtAsc(OrderStatus orderStatus);
+
+    /**
      * All orders in any of the given lifecycle statuses, most recent first. Backs
      * the reconciliation prepaid/COD segregation view over fulfilled orders
      * (Req 18.4).

@@ -35,7 +35,7 @@
   background: #fff;
   border: 1px solid rgba(15, 51, 36, 0.08);
   border-radius: 12px;
-  padding: 0.9rem 1rem;
+  padding: 0.7rem 0.85rem;
   box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
 }
 .shifa-inv__r1 {
@@ -54,42 +54,30 @@
 }
 .shifa-inv__sku {
   color: #64726b;
-  font-size: 0.8rem;
-  margin-top: 0.1rem;
+  font-size: 0.78rem;
+  margin-top: 0.05rem;
 }
-.shifa-inv__r2 {
+/* Compact inline On hand / Threshold line (replaces the tall stat boxes). */
+.shifa-inv__meta {
   display: flex;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.25rem;
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  color: #64726b;
 }
-.shifa-inv__stat {
-  flex: 1 1 0;
-  display: flex;
-  flex-direction: column;
-  padding: 0.5rem 0.65rem;
-  border-radius: 0.6rem;
-  background: var(--shifa-green-050, #f2f9f5);
-  border: 1px solid rgba(15, 51, 36, 0.06);
-}
-.shifa-inv__stat-label {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #6b7c74;
-  font-weight: 600;
-}
-.shifa-inv__stat-value {
-  font-size: 1.15rem;
-  font-weight: 700;
+.shifa-inv__kv strong {
   color: #1c2b24;
+  font-weight: 700;
+  margin-left: 0.15rem;
 }
 .shifa-inv__actions {
   display: flex;
-  gap: 0.5rem;
-  margin-top: 0.85rem;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
 }
 .shifa-inv__actions .btn {
-  min-height: 44px;
+  min-height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -100,6 +88,6 @@
   flex: 1 1 0;
 }
 .shifa-inv__actions .btn-icon {
-  flex: 0 0 44px;
-  width: 44px;
+  flex: 0 0 36px;
+  width: 36px;
 }

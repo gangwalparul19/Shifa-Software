@@ -4,14 +4,9 @@
   [breadcrumbs]="[{ label: 'Orders' }]"
 >
   <admin-density-toggle />
-  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
-    <i class="ti ti-refresh me-1"></i> Refresh
+  <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
+    <i class="ti ti-refresh"></i>
   </button>
-  @if (canCreateOrder()) {
-    <a class="btn btn-primary" routerLink="/orders/new">
-      <i class="ti ti-plus me-1"></i> New Order
-    </a>
-  }
 </admin-page-header>
 
 <!-- Live-activity nudge (A3): subtle, click-to-refresh; keeps filters/page -->
@@ -27,15 +22,23 @@
 <!-- Filters -->
 <div class="card mb-3">
   <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      <div class="col-12 col-lg">
+    <!-- New Order + Search + Filters in one row to utilise the width -->
+    <div class="row g-2 align-items-center flex-nowrap">
+      @if (canCreateOrder()) {
+        <div class="col-auto">
+          <a class="btn btn-primary text-nowrap" routerLink="/orders/new" aria-label="New Order">
+            <i class="ti ti-plus me-1"></i> New
+          </a>
+        </div>
+      }
+      <div class="col">
         <div class="input-icon">
           <span class="input-icon-addon"><i class="ti ti-search"></i></span>
           <input
             type="search"
             class="form-control"
             [formControl]="search"
-            placeholder="Search by customer, mobile, order code, or AWB…"
+            placeholder="Search orders…"
             autocomplete="off"
             aria-label="Search orders"
           />
@@ -46,86 +49,112 @@
           }
         </div>
       </div>
-      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
-        <label class="form-label small mb-1">Status</label>
-        <select class="form-select" formControlName="status" aria-label="Filter by order status">
-          <option value="">All statuses</option>
-          @for (s of statusOptions; track s) {
-            <option [value]="s">{{ humanize(s) }}</option>
+      <div class="col-auto">
+        <button
+          type="button"
+          class="btn btn-outline-secondary d-inline-flex align-items-center text-nowrap"
+          (click)="toggleFilters()"
+          [class.active]="filtersOpen()"
+          [attr.aria-expanded]="filtersOpen()"
+          aria-controls="orders-filter-panel"
+          aria-label="Filters"
+          title="Filters"
+        >
+          <i class="ti ti-filter"></i>
+          @if (activeFilterCount() > 0) {
+            <span class="badge bg-primary text-white ms-1">{{ activeFilterCount() }}</span>
           }
-        </select>
+          <i class="ti ms-1" [class.ti-chevron-down]="!filtersOpen()" [class.ti-chevron-up]="filtersOpen()"></i>
+        </button>
       </div>
-      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
-        <label class="form-label small mb-1">Payment</label>
-        <select class="form-select" formControlName="paymentStatus" aria-label="Filter by payment status">
-          <option value="">All payments</option>
-          @for (p of paymentOptions; track p) {
-            <option [value]="p">{{ humanize(p) }}</option>
-          }
-        </select>
-      </div>
-      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
-        <label class="form-label small mb-1">From</label>
-        <input type="date" class="form-control" formControlName="from" aria-label="From date" />
-      </div>
-      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
-        <label class="form-label small mb-1">To</label>
-        <input type="date" class="form-control" formControlName="to" aria-label="To date" />
-      </div>
-      @if (hasFilters()) {
-        <div class="col-auto">
-          <button type="button" class="btn btn-link text-secondary px-1" (click)="clearFilters()">
-            <i class="ti ti-filter-off me-1"></i> Clear
-          </button>
-        </div>
-      }
     </div>
 
-    <!-- Saved views (A4): apply / save / delete filter presets -->
-    <div class="shifa-views d-flex flex-wrap align-items-center gap-2 mt-2 pt-2 border-top">
-      <span class="text-secondary small d-inline-flex align-items-center">
-        <i class="ti ti-bookmarks me-1"></i> Views
-      </span>
-      @for (v of savedViews(); track v.id) {
-        <div class="btn-group btn-group-sm shifa-view-chip" role="group" [attr.aria-label]="v.name">
-          <button type="button" class="btn btn-outline-secondary" (click)="applyView(v)">
-            {{ v.name }}
-          </button>
-          <button
-            type="button"
-            class="btn btn-outline-secondary shifa-view-del"
-            (click)="deleteView(v)"
-            [attr.aria-label]="'Delete view ' + v.name"
-            title="Delete view"
-          >
-            <i class="ti ti-x"></i>
-          </button>
+    <!-- Collapsible advanced filters + saved views -->
+    @if (filtersOpen()) {
+      <div id="orders-filter-panel" class="shifa-filter-panel mt-2 pt-2 border-top anim-fade-up">
+        <div class="row g-2 align-items-end">
+          <div class="col-6 col-lg-3" [formGroup]="filters">
+            <label class="form-label small mb-1">Status</label>
+            <select class="form-select" formControlName="status" aria-label="Filter by order status">
+              <option value="">All statuses</option>
+              @for (s of statusOptions; track s) {
+                <option [value]="s">{{ humanize(s) }}</option>
+              }
+            </select>
+          </div>
+          <div class="col-6 col-lg-3" [formGroup]="filters">
+            <label class="form-label small mb-1">Payment</label>
+            <select class="form-select" formControlName="paymentStatus" aria-label="Filter by payment status">
+              <option value="">All payments</option>
+              @for (p of paymentOptions; track p) {
+                <option [value]="p">{{ humanize(p) }}</option>
+              }
+            </select>
+          </div>
+          <div class="col-6 col-lg-3" [formGroup]="filters">
+            <label class="form-label small mb-1">From</label>
+            <input type="date" class="form-control" formControlName="from" aria-label="From date" />
+          </div>
+          <div class="col-6 col-lg-3" [formGroup]="filters">
+            <label class="form-label small mb-1">To</label>
+            <input type="date" class="form-control" formControlName="to" aria-label="To date" />
+          </div>
+          @if (hasFilters()) {
+            <div class="col-12">
+              <button type="button" class="btn btn-sm btn-link text-secondary px-1" (click)="clearFilters()">
+                <i class="ti ti-filter-off me-1"></i> Clear filters
+              </button>
+            </div>
+          }
         </div>
-      }
-      @if (savingView()) {
-        <div class="input-group input-group-sm shifa-view-save">
-          <input
-            type="text"
-            class="form-control"
-            [formControl]="newViewName"
-            placeholder="View name…"
-            aria-label="New view name"
-            (keydown.enter)="confirmSaveView()"
-            (keydown.escape)="cancelSaveView()"
-          />
-          <button type="button" class="btn btn-primary" (click)="confirmSaveView()" [disabled]="!newViewName.value.trim()">
-            Save
-          </button>
-          <button type="button" class="btn btn-outline-secondary" (click)="cancelSaveView()">
-            Cancel
-          </button>
+
+        <!-- Saved views (A4): apply / save / delete filter presets -->
+        <div class="shifa-views d-flex flex-wrap align-items-center gap-2 mt-2 pt-2 border-top">
+          <span class="text-secondary small d-inline-flex align-items-center">
+            <i class="ti ti-bookmarks me-1"></i> Views
+          </span>
+          @for (v of savedViews(); track v.id) {
+            <div class="btn-group btn-group-sm shifa-view-chip" role="group" [attr.aria-label]="v.name">
+              <button type="button" class="btn btn-outline-secondary" (click)="applyView(v)">
+                {{ v.name }}
+              </button>
+              <button
+                type="button"
+                class="btn btn-outline-secondary shifa-view-del"
+                (click)="deleteView(v)"
+                [attr.aria-label]="'Delete view ' + v.name"
+                title="Delete view"
+              >
+                <i class="ti ti-x"></i>
+              </button>
+            </div>
+          }
+          @if (savingView()) {
+            <div class="input-group input-group-sm shifa-view-save">
+              <input
+                type="text"
+                class="form-control"
+                [formControl]="newViewName"
+                placeholder="View name…"
+                aria-label="New view name"
+                (keydown.enter)="confirmSaveView()"
+                (keydown.escape)="cancelSaveView()"
+              />
+              <button type="button" class="btn btn-primary" (click)="confirmSaveView()" [disabled]="!newViewName.value.trim()">
+                Save
+              </button>
+              <button type="button" class="btn btn-outline-secondary" (click)="cancelSaveView()">
+                Cancel
+              </button>
+            </div>
+          } @else {
+            <button type="button" class="btn btn-sm btn-link text-decoration-none" (click)="beginSaveView()">
+              <i class="ti ti-bookmark-plus me-1"></i> Save current
+            </button>
+          }
         </div>
-      } @else {
-        <button type="button" class="btn btn-sm btn-link text-decoration-none" (click)="beginSaveView()">
-          <i class="ti ti-bookmark-plus me-1"></i> Save current
-        </button>
-      }
-    </div>
+      </div>
+    }
   </div>
 </div>
 
@@ -410,6 +439,14 @@
           </a>
         </div>
 
+        <!-- (5b) Order note (when the salesperson captured one) -->
+        @if (order.notes) {
+          <div class="shifa-od__card">
+            <div class="shifa-od__label">Note</div>
+            <div class="shifa-od__muted mt-1" style="white-space: pre-wrap">{{ order.notes }}</div>
+          </div>
+        }
+
         <!-- (6) Order items -->
         <div class="shifa-od__section">
           <div class="shifa-od__label mb-2">Order Items</div>
@@ -526,6 +563,23 @@
           }
           Download Invoice
         </button>
+
+        <!-- (10) Print packing label (barcode + details) — admin reprint -->
+        @if (canPrintLabel()) {
+          <button
+            type="button"
+            class="btn w-100 shifa-od__invoice mt-2"
+            (click)="printLabel(order)"
+            [disabled]="labelLoading()"
+          >
+            @if (labelLoading()) {
+              <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            } @else {
+              <i class="ti ti-barcode me-1"></i>
+            }
+            Print Label
+          </button>
+        }
       </div>
     }
   </aside>

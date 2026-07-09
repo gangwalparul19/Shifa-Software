@@ -123,6 +123,7 @@ public class OrderService {
         order.setLeadSource(request.leadSource());
         order.setLeadSourceNote(request.leadSourceNote());
         order.setCustomerEmail(request.customerEmail());
+        order.setNotes(trimToNull(request.notes()));
 
         populateAggregate(order, priced, calc, request.paymentScreenshotKey(),
                 actor.username(), SOURCE_SALESPERSON);
@@ -302,6 +303,14 @@ public class OrderService {
 
     private Money totalOf(List<PricedLine> priced) {
         return PaymentCalculator.totalAmount(priced.stream().map(PricedLine::toDomain).toList());
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private void requirePositiveTotal(Money total) {

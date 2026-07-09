@@ -177,6 +177,16 @@ export class OrdersComponent implements OnInit, OnDestroy {
     to: new FormControl<string>('', { nonNullable: true }),
   });
 
+  /** Whether the collapsible filter panel is expanded (collapsed by default). */
+  protected readonly filtersOpen = signal(false);
+  /** Number of active advanced filters (Status/Payment/From/To), for the toggle badge. */
+  protected readonly activeFilterCount = signal(0);
+
+  /** Show/hide the advanced-filter panel. */
+  toggleFilters(): void {
+    this.filtersOpen.update((open) => !open);
+  }
+
   // --- Bulk selection -----------------------------------------------------
   protected readonly selected = signal<Set<number>>(new Set());
   protected readonly bulkBusy = signal(false);
@@ -199,6 +209,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   protected readonly detailError = signal<string | null>(null);
   protected readonly invoiceLoading = signal(false);
   protected readonly invoiceError = signal<string | null>(null);
+  protected readonly labelLoading = signal(false);
   /** Busy flag for single-order lifecycle actions in the detail drawer. */
   protected readonly detailBusy = signal(false);
 
@@ -263,7 +274,19 @@ export class OrdersComponent implements OnInit, OnDestroy {
       .pipe(debounceTime(300), distinctUntilChanged(), takeUntil(this.destroy$))
       .subscribe(() => this.resetAndLoad());
 
-    this.filters.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => this.resetAndLoad());
+    this.filters.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => {
+      this.updateActiveFilterCount();
+      this.resetAndLoad();
+    });
+    this.updateActiveFilterCount();
+  }
+
+  /** Recomputes how many of the advanced filters (Status/Payment/From/To) are set. */
+  private updateActiveFilterCount(): void {
+    const f = this.filters.getRawValue();
+    this.activeFilterCount.set(
+      [f.status, f.paymentStatus, f.from, f.to].filter((v) => !!v).length,
+    );
   }
 
   /**
@@ -728,6 +751,34 @@ export class OrdersComponent implements OnInit, OnDestroy {
       error: () => {
         this.invoiceError.set('Could not generate the invoice. Please try again.');
         this.invoiceLoading.set(false);
+      },
+    });
+  }
+
+  /** Whether the acting role may print the packing label (ADMIN only here). */
+  canPrintLabel(): boolean {
+    return this.auth.hasAnyRole(Role.ADMIN);
+  }
+
+  /** Opens the internal packing label PDF (barcode + details) for printing. */
+  printLabel(order: OrderDetail): void {
+    this.labelLoading.set(true);
+    this.service.label(order.id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        const opened = window.open(url, '_blank');
+        if (!opened) {
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `label-${order.orderCode}.pdf`;
+          a.click();
+        }
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        this.labelLoading.set(false);
+      },
+      error: () => {
+        this.toasts.error('Could not open the label. Please try again.');
+        this.labelLoading.set(false);
       },
     });
   }

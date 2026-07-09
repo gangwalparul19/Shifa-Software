@@ -60,6 +60,7 @@ public class ReportTableBuilder {
             case MONTHLY -> monthly(orders, window);
             case PRODUCT -> product(orders, window);
             case STATE -> state(orders, window);
+            case CUSTOMER -> customer(orders, window);
             case SALESPERSON -> salesperson(orders, window);
             case ORDERS_BY_LEAD_SOURCE -> countTable(
                     "Lead Source", aggregator.ordersByLeadSource(orders, window));
@@ -103,6 +104,19 @@ public class ReportTableBuilder {
         List<List<String>> rows = new ArrayList<>();
         for (StateRow r : aggregator.stateWise(orders, window)) {
             rows.add(List.of(r.state(), Long.toString(r.orderCount()), money(r.totalSales())));
+        }
+        return new TabularData(headers, rows);
+    }
+
+    private TabularData customer(List<OrderReportRecord> orders, DateRange window) {
+        List<String> headers = List.of("Customer", "Mobile", "Orders", "Total Sales");
+        List<List<String>> rows = new ArrayList<>();
+        for (ReportRows.CustomerRow r : aggregator.customerWise(orders, window)) {
+            rows.add(List.of(
+                    nullToEmpty(r.customerName()),
+                    nullToEmpty(r.customerMobile()),
+                    Long.toString(r.orderCount()),
+                    money(r.totalSales())));
         }
         return new TabularData(headers, rows);
     }

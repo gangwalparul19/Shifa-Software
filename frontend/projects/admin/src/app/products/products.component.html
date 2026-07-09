@@ -4,18 +4,18 @@
   [breadcrumbs]="[{ label: 'Products' }]"
 >
   <admin-density-toggle />
-  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
-    <i class="ti ti-refresh me-1"></i> Refresh
+  <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
+    <i class="ti ti-refresh"></i>
   </button>
   @if (canManage()) {
-    <button type="button" class="btn btn-outline-secondary" (click)="openCategories()">
-      <i class="ti ti-category me-1"></i> Categories
+    <button type="button" class="btn btn-outline-secondary" (click)="openCategories()" title="Categories" aria-label="Categories">
+      <i class="ti ti-category"></i><span class="d-none d-sm-inline ms-1">Categories</span>
     </button>
-    <button type="button" class="btn btn-outline-secondary" (click)="openImport()">
-      <i class="ti ti-file-import me-1"></i> Import CSV
+    <button type="button" class="btn btn-outline-secondary" (click)="openImport()" title="Import CSV" aria-label="Import CSV">
+      <i class="ti ti-file-import"></i><span class="d-none d-sm-inline ms-1">Import CSV</span>
     </button>
-    <button type="button" class="btn btn-primary" (click)="openCreate()">
-      <i class="ti ti-plus me-1"></i> Add product
+    <button type="button" class="btn btn-primary text-nowrap" (click)="openCreate()">
+      <i class="ti ti-plus me-1"></i><span class="d-sm-none">Add</span><span class="d-none d-sm-inline">Add product</span>
     </button>
   }
 </admin-page-header>
@@ -23,8 +23,9 @@
 <!-- Filters -->
 <div class="card mb-3">
   <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      <div class="col-12 col-lg">
+    <!-- Search (75%) + Filters toggle (25%) — advanced filters collapse on load -->
+    <div class="row g-2 align-items-center">
+      <div class="col-9">
         <div class="input-icon">
           <span class="input-icon-addon"><i class="ti ti-search"></i></span>
           <input
@@ -42,40 +43,62 @@
           }
         </div>
       </div>
-      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
-        <label class="form-label small mb-1">Category</label>
-        <select class="form-select" formControlName="category" aria-label="Filter by category">
-          <option value="">All categories</option>
-          @for (cat of categories(); track cat.id) {
-            <option [value]="cat.id">{{ cat.name }}</option>
+      <div class="col-3">
+        <button
+          type="button"
+          class="btn btn-outline-secondary w-100 d-inline-flex align-items-center justify-content-center"
+          (click)="toggleFilters()"
+          [class.active]="filtersOpen()"
+          [attr.aria-expanded]="filtersOpen()"
+          aria-controls="product-filter-panel"
+        >
+          <i class="ti ti-filter"></i>
+          <span class="d-none d-sm-inline ms-1">Filters</span>
+          @if (activeFilterCount() > 0) {
+            <span class="badge bg-primary text-white ms-1">{{ activeFilterCount() }}</span>
           }
-        </select>
+          <i class="ti ms-1" [class.ti-chevron-down]="!filtersOpen()" [class.ti-chevron-up]="filtersOpen()"></i>
+        </button>
       </div>
-      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
-        <label class="form-label small mb-1">Visibility</label>
-        <select class="form-select" formControlName="visibility" aria-label="Filter by visibility">
-          <option value="">All</option>
-          <option [value]="Visibility.PUBLISHED">Published</option>
-          <option [value]="Visibility.HIDDEN">Hidden</option>
-        </select>
-      </div>
-      <div class="col-6 col-md-4 col-lg-2" [formGroup]="filters">
-        <label class="form-label small mb-1">Stock</label>
-        <select class="form-select" formControlName="stockStatus" aria-label="Filter by stock status">
-          <option value="">All stock</option>
-          @for (s of stockOptions; track s) {
-            <option [value]="s">{{ humanizeStock(s) }}</option>
-          }
-        </select>
-      </div>
-      @if (hasFilters()) {
-        <div class="col-auto">
-          <button type="button" class="btn btn-link text-secondary px-1" (click)="clearFilters()">
-            <i class="ti ti-filter-off me-1"></i> Clear
-          </button>
-        </div>
-      }
     </div>
+
+    @if (filtersOpen()) {
+      <div id="product-filter-panel" class="row g-2 align-items-end mt-1 pt-2 border-top anim-fade-up">
+        <div class="col-6 col-lg-4" [formGroup]="filters">
+          <label class="form-label small mb-1">Category</label>
+          <select class="form-select" formControlName="category" aria-label="Filter by category">
+            <option value="">All categories</option>
+            @for (cat of categories(); track cat.id) {
+              <option [value]="cat.id">{{ cat.name }}</option>
+            }
+          </select>
+        </div>
+        <div class="col-6 col-lg-4" [formGroup]="filters">
+          <label class="form-label small mb-1">Visibility</label>
+          <select class="form-select" formControlName="visibility" aria-label="Filter by visibility">
+            <option value="">All</option>
+            <option [value]="Visibility.PUBLISHED">Published</option>
+            <option [value]="Visibility.HIDDEN">Hidden</option>
+          </select>
+        </div>
+        <div class="col-6 col-lg-4" [formGroup]="filters">
+          <label class="form-label small mb-1">Stock</label>
+          <select class="form-select" formControlName="stockStatus" aria-label="Filter by stock status">
+            <option value="">All stock</option>
+            @for (s of stockOptions; track s) {
+              <option [value]="s">{{ humanizeStock(s) }}</option>
+            }
+          </select>
+        </div>
+        @if (hasFilters()) {
+          <div class="col-12">
+            <button type="button" class="btn btn-sm btn-link text-secondary px-1" (click)="clearFilters()">
+              <i class="ti ti-filter-off me-1"></i> Clear filters
+            </button>
+          </div>
+        }
+      </div>
+    }
   </div>
 </div>
 

@@ -14,6 +14,7 @@ public record ReportSummary(
         boolean salesChangeApplicable,
         BigDecimal salesChangePercent,
         Long topSalespersonId,
+        String topSalespersonName,
         String topProduct,
         String topState) {
 }

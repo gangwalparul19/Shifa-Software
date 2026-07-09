@@ -16,14 +16,15 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Internal company label printing endpoints (Req 10.4).
  *
- * <p>Restricted to the {@code ADMIN} role via method security (unauthenticated →
- * 401, non-admin → 403). Both endpoints stream a {@code application/pdf} body:
+ * <p>Restricted to {@code ADMIN} and {@code PACKING_USER} via method security
+ * (unauthenticated → 401, other roles → 403) so the packing team can reprint a
+ * label. Both endpoints stream a {@code application/pdf} body:
  * one endpoint prints a single order's internal label, the other prints a single
  * combined PDF with one internal-label block per requested order.
  */
 @RestController
 @RequestMapping("/api/admin/labels/internal")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN','PACKING_USER')")
 public class LabelController {
 
     private final LabelService labelService;

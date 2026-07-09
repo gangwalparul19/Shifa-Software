@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormControl } from '@angular/forms';
 import { ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -65,6 +65,18 @@ export class CustomersComponent implements OnInit, OnDestroy {
   protected readonly selectedDetail = signal<CustomerDetail | null>(null);
   protected readonly detailLoading = signal(false);
   protected readonly detailError = signal<string | null>(null);
+
+  // --- Order-history paging inside the drawer (the history can grow long) --
+  protected readonly historyPage = signal(0);
+  protected readonly historySize = signal(8);
+  protected readonly historyTotalPages = computed(() =>
+    Math.max(1, Math.ceil((this.selectedDetail()?.orders.length ?? 0) / this.historySize())),
+  );
+  protected readonly historyPageItems = computed(() => {
+    const orders = this.selectedDetail()?.orders ?? [];
+    const start = this.historyPage() * this.historySize();
+    return orders.slice(start, start + this.historySize());
+  });
 
   private readonly destroy$ = new Subject<void>();
 
@@ -160,6 +172,7 @@ export class CustomersComponent implements OnInit, OnDestroy {
     this.detailLoading.set(true);
     this.detailError.set(null);
     this.selectedDetail.set(null);
+    this.historyPage.set(0);
     this.service.detail(customer.mobile).subscribe({
       next: (detail) => {
         this.selectedDetail.set(detail);
@@ -170,6 +183,15 @@ export class CustomersComponent implements OnInit, OnDestroy {
         this.detailLoading.set(false);
       },
     });
+  }
+
+  goToHistoryPage(page: number): void {
+    this.historyPage.set(page);
+  }
+
+  setHistorySize(size: number): void {
+    this.historySize.set(size);
+    this.historyPage.set(0);
   }
 
   closeDetail(): void {

@@ -1,6 +1,7 @@
 package com.shifa.oms.mail.template;
 
 import com.shifa.oms.mail.DigestOrder;
+import com.shifa.oms.mail.report.DailyReport;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -122,5 +123,16 @@ public final class EmailModels {
             int excluded = orders.size() - sales;
             return new Digest(day, sales, total, prepaidCount, prepaid, codCount, cod, excluded);
         }
+    }
+
+    /**
+     * Consolidated daily report email model (admin/internal). A thin wrapper over
+     * the pre-computed {@link DailyReport} so the renderer stays a pure function
+     * of plain data (Consolidated Daily Report feature). The aggregation itself
+     * lives in {@link DailyReport#build}.
+     *
+     * @param report the fully-computed consolidated report for a single day
+     */
+    public record ConsolidatedReport(DailyReport report) {
     }
 }

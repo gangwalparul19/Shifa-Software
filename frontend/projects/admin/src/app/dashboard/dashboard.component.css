@@ -7,6 +7,14 @@
   flex-wrap: wrap;
 }
 
+/* Compact period dropdown (replaces the 9-chip segmented control). */
+.shifa-period-select {
+  min-width: 10rem;
+}
+.shifa-period-select .form-select {
+  font-weight: 600;
+}
+
 /* --- Sales SVG chart ----------------------------------------------------- */
 .chart {
   width: 100%;

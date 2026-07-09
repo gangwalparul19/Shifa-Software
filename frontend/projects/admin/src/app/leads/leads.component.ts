@@ -1,13 +1,13 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, HostListener, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import {
   FormControl,
   FormGroup,
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { ApiError, AuthService, Role } from 'core';
 import { PageHeaderComponent } from '../shared/page-header.component';
@@ -70,6 +70,7 @@ export class LeadsComponent implements OnInit, OnDestroy {
   private readonly toasts = inject(ToastService);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
 
   // --- Constants exposed to the template ---------------------------------
   protected readonly stageOrder = LEAD_STAGE_ORDER;
@@ -101,6 +102,9 @@ export class LeadsComponent implements OnInit, OnDestroy {
 
   protected readonly search = new FormControl<string>('', { nonNullable: true });
   protected readonly sourceFilter = new FormControl<string>('', { nonNullable: true });
+
+  /** Whether the custom source-filter dropdown is open. */
+  protected readonly sourceOpen = signal(false);
 
   /** The loaded leads filtered by the active status lens. */
   protected readonly visibleLeads = computed<LeadSummary[]>(() => {
@@ -227,6 +231,14 @@ export class LeadsComponent implements OnInit, OnDestroy {
     this.sourceFilter.valueChanges
       .pipe(takeUntil(this.destroy$))
       .subscribe(() => this.load());
+
+    // Deep-link: /leads?leadId=N opens that lead's detail drawer directly
+    // (e.g. tapping a row on the Due follow-ups page).
+    const leadIdParam = this.route.snapshot.queryParamMap.get('leadId');
+    const leadId = leadIdParam ? Number(leadIdParam) : NaN;
+    if (Number.isFinite(leadId) && leadId > 0) {
+      this.openDetailById(leadId);
+    }
   }
 
   ngOnDestroy(): void {
@@ -380,10 +392,15 @@ export class LeadsComponent implements OnInit, OnDestroy {
   // --- Detail drawer ------------------------------------------------------
 
   openDetail(lead: LeadSummary): void {
+    this.openDetailById(lead.id);
+  }
+
+  /** Opens the detail drawer for a lead id (used by the list + the `?leadId=` deep link). */
+  openDetailById(id: number): void {
     this.detailLoading.set(true);
     this.detailError.set(null);
     this.selectedDetail.set(null);
-    this.service.detail(lead.id).subscribe({
+    this.service.detail(id).subscribe({
       next: (detail) => {
         this.selectedDetail.set(detail);
         this.followUpControl.setValue(detail.followUpDate ?? '');
@@ -551,6 +568,51 @@ export class LeadsComponent implements OnInit, OnDestroy {
 
   sourceLabel(source: LeadSource): string {
     return this.leadSourceOptions.find((o) => o.value === source)?.label ?? source;
+  }
+
+  /** A Tabler brand/context icon for a lead source (or the "All sources" broadcast icon). */
+  sourceIcon(source: LeadSource | string | null | undefined): string {
+    switch (source) {
+      case 'WHATSAPP':
+        return 'ti-brand-whatsapp';
+      case 'INSTAGRAM':
+        return 'ti-brand-instagram';
+      case 'FACEBOOK':
+        return 'ti-brand-facebook';
+      case 'GOOGLE':
+        return 'ti-brand-google';
+      case 'OFFLINE':
+        return 'ti-building-store';
+      case 'OTHER':
+        return 'ti-dots-circle-horizontal';
+      default:
+        return 'ti-broadcast';
+    }
+  }
+
+  /** The label for the current source-filter selection (button face). */
+  sourceButtonLabel(): string {
+    const value = this.sourceFilter.value;
+    return value ? this.sourceLabel(value as LeadSource) : 'All sources';
+  }
+
+  /** Toggle the custom source-filter dropdown. */
+  toggleSourceMenu(): void {
+    this.sourceOpen.update((open) => !open);
+  }
+
+  /** Pick a source from the custom dropdown and close it. */
+  selectSource(value: string): void {
+    this.sourceFilter.setValue(value);
+    this.sourceOpen.set(false);
+  }
+
+  /** Close the source dropdown when clicking anywhere outside it. */
+  @HostListener('document:click', ['$event'])
+  onDocumentClick(event: MouseEvent): void {
+    if (this.sourceOpen() && !(event.target as HTMLElement).closest('.lead-source-dd')) {
+      this.sourceOpen.set(false);
+    }
   }
 
   lostReasonLabel(reason: LostReason | null | undefined): string {

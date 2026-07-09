@@ -60,23 +60,248 @@
   margin-top: 0.1rem;
 }
 
-/* Overflow (kebab) menu → opens the existing customer detail/actions. */
-.shifa-cust__kebab {
+.shifa-cust__meta i {
+  color: var(--shifa-green-600, #1f5d3f);
+}
+/* Small "Repeat" tag inline with the name. */
+.shifa-cust__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  vertical-align: middle;
+  background: var(--shifa-green-100, #e4f2ea);
+  color: var(--shifa-green-700, #164632);
+}
+/* Explicit View action (replaces the old kebab). */
+.shifa-cust__view {
   flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
+  white-space: nowrap;
+  align-self: center;
+}
+
+/* ==========================================================================
+   Customer detail drawer — themed to match the app (green header, soft cards,
+   compact paginated order history that fits the narrow drawer).
+   ========================================================================== */
+.cust-dr .cust-dr__head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 1rem 1.15rem;
+  background: linear-gradient(135deg, var(--shifa-green-600, #1f5d3f), var(--shifa-green-700, #164632));
+  color: #fff;
+}
+.cust-dr__avatar {
+  flex: 0 0 auto;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.cust-dr__headmain {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cust-dr__name {
+  font-weight: 700;
+  font-size: 1.05rem;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cust-dr__mobile {
+  display: inline-flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+.cust-dr__mobile:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+.cust-dr__tag {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--shifa-green-700, #164632);
+}
+.cust-dr__close {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   border: none;
-  background: transparent;
-  color: #6b7a72;
-  font-size: 1.3rem;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
 }
-.shifa-cust__kebab:hover {
-  background: var(--shifa-green-050, #f2f9f5);
+.cust-dr__close:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+.cust-dr__body {
+  background: #f6f9f7;
+}
+
+/* Two stat cards. */
+.cust-dr__stats {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+.cust-dr__stat {
+  flex: 1 1 0;
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+}
+.cust-dr__stat-label {
+  font-size: 0.75rem;
+  color: #64726b;
+}
+.cust-dr__stat-label i {
+  color: var(--shifa-green-600, #1f5d3f);
+}
+.cust-dr__stat-val {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #1c2b24;
+  line-height: 1.2;
+  margin-top: 0.15rem;
+}
+
+/* First/last/account facts card. */
+.cust-dr__facts {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.35rem 0.9rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+  margin-bottom: 1.1rem;
+}
+.cust-dr__fact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0;
+  font-size: 0.9rem;
+}
+.cust-dr__fact + .cust-dr__fact {
+  border-top: 1px solid rgba(15, 51, 36, 0.06);
+}
+.cust-dr__fact-k {
+  color: #64726b;
+}
+.cust-dr__fact-v {
+  font-weight: 600;
+  color: #1c2b24;
+}
+
+/* Section label with a count chip. */
+.cust-dr__label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--shifa-green-700, #164632);
+  margin-bottom: 0.5rem;
+}
+.cust-dr__count {
+  background: var(--shifa-green-100, #e4f2ea);
+  color: var(--shifa-green-700, #164632);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  font-size: 0.72rem;
+}
+.cust-dr__empty {
+  background: #fff;
+  border: 1px dashed rgba(15, 51, 36, 0.15);
+  border-radius: 12px;
+  padding: 1rem;
+  color: #6b7a72;
+  font-size: 0.88rem;
+  text-align: center;
+}
+
+/* Compact order-history rows (fit the narrow drawer, no horizontal overflow). */
+.cust-oh-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.cust-oh {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.6rem 0.75rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow 0.15s ease;
+}
+.cust-oh:hover {
+  box-shadow: 0 4px 14px rgba(15, 51, 36, 0.12);
+}
+.cust-oh__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cust-oh__code {
+  font-weight: 700;
+  color: var(--shifa-green-700, #164632);
+}
+.cust-oh__date {
+  display: block;
+  color: #64726b;
+  font-size: 0.78rem;
+  margin: 0.05rem 0 0.3rem;
+}
+.cust-oh__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.cust-oh__right {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.cust-oh__total {
+  font-weight: 700;
+  color: #1c2b24;
+  white-space: nowrap;
+}
+.cust-oh__chev {
+  color: #9aa8a0;
 }

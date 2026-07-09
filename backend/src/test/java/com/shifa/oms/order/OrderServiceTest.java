@@ -129,7 +129,7 @@ class OrderServiceTest {
         // payment/creation edge-case tests use WHATSAPP with no note/email.
         return new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
                 "Pune", "Maharashtra", "411001", items, amountReceived, screenshotKey,
-                LeadSource.WHATSAPP, null, null);
+                LeadSource.WHATSAPP, null, null, null);
     }
 
     // --- Zero-total guard ---------------------------------------------------

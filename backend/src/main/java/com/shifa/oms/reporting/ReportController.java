@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 
 /**
  * Reporting and export API (Req 20.1&ndash;20.4, 23.1, 23.2).
@@ -80,14 +81,18 @@ public class ReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         ReportType reportType = parseType(type);
-        TabularData table = reportService.reportTable(reportType, from, to);
+        // Generate once so the PDF can carry the KPI summary alongside the table.
+        ReportResponse report = reportService.generate(reportType, from, to);
+        TabularData table = new TabularData(report.headers(), report.rows());
         String baseName = "report-" + reportType.name().toLowerCase();
-        String title = "Shifa Herbal Remedies - " + reportType.name() + " Report";
+        String label = reportLabel(reportType);
+        String subtitle = rangeSubtitle(from, to);
         return switch (format.trim().toLowerCase()) {
             case "xlsx", "excel" -> fileResponse(
                     excelExporter.export(reportType.name(), table), XLSX, baseName + ".xlsx", null);
             case "pdf" -> fileResponse(
-                    pdfExporter.export(title, table), MediaType.APPLICATION_PDF, baseName + ".pdf", null);
+                    pdfExporter.export(label, subtitle, report.summary(), table),
+                    MediaType.APPLICATION_PDF, baseName + ".pdf", null);
             default -> throw new ApiException(HttpStatus.BAD_REQUEST, "UNSUPPORTED_FORMAT",
                     "Unsupported export format: " + format + " (expected xlsx or pdf).");
         };
@@ -131,5 +136,34 @@ public class ReportController {
         } catch (IllegalArgumentException e) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "UNKNOWN_REPORT_TYPE", e.getMessage());
         }
+    }
+
+    /** A human report title used as the PDF heading (e.g. "Customer-wise Report"). */
+    private static String reportLabel(ReportType type) {
+        return switch (type) {
+            case DAILY -> "Daily Sales Report";
+            case MONTHLY -> "Monthly Sales Report";
+            case PRODUCT -> "Product-wise Report";
+            case STATE -> "State-wise Report";
+            case CUSTOMER -> "Customer-wise Report";
+            case SALESPERSON -> "Salesperson-wise Report";
+            case ORDERS_BY_LEAD_SOURCE -> "Orders by Lead Source";
+            case ORDERS_BY_STATUS -> "Orders by Status";
+            case ORDERS_BY_SALESPERSON -> "Orders by Salesperson";
+            case DELIVERY_OUTCOME -> "Delivery Outcome Report";
+        };
+    }
+
+    private static final DateTimeFormatter RANGE_FMT = DateTimeFormatter.ofPattern("dd MMM yyyy");
+
+    /** A friendly date-range subtitle for the PDF header (e.g. "01 Jun 2026 to 30 Jun 2026"). */
+    private static String rangeSubtitle(LocalDate from, LocalDate to) {
+        if (from == null && to == null) {
+            return "All time";
+        }
+        if (from != null && to != null) {
+            return from.format(RANGE_FMT) + " to " + to.format(RANGE_FMT);
+        }
+        return from != null ? "From " + from.format(RANGE_FMT) : "Up to " + to.format(RANGE_FMT);
     }
 }

@@ -3,8 +3,8 @@
   subtitle="Leads that need a nudge today or are already overdue."
   [breadcrumbs]="[{ label: 'Leads', link: '/leads' }, { label: 'Due follow-ups' }]"
 >
-  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
-    <i class="ti ti-refresh me-1"></i> Refresh
+  <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
+    <i class="ti ti-refresh"></i>
   </button>
   <a class="btn btn-primary" routerLink="/leads">
     <i class="ti ti-list me-1"></i> All leads
@@ -33,14 +33,14 @@
 } @else {
   <div class="shifa-due-cards">
     @for (lead of pageItems(); track lead.id) {
-      <a class="shifa-due" routerLink="/leads">
+      <a class="shifa-due" routerLink="/leads" [queryParams]="{ leadId: lead.id }">
         <div class="shifa-due__r1">
           <span class="shifa-due__name">{{ lead.customerName }}</span>
           <span class="shifa-due__pill" [class]="pillClass(lead.status)">{{ statusOf(lead.status) }}</span>
         </div>
         <div class="shifa-due__r2">
           <span class="shifa-due__meta">
-            <i class="ti ti-broadcast me-1"></i>{{ sourceLabel(lead.leadSource) }}
+            <i class="ti {{ sourceIcon(lead.leadSource) }} me-1"></i>{{ sourceLabel(lead.leadSource) }}
             @if (lead.customerMobile) { · {{ lead.customerMobile }} }
           </span>
           <span class="shifa-due__date" [class.is-overdue]="isOverdue(lead)">

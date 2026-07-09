@@ -38,7 +38,7 @@ Shifa-Software/
 │  │  ├─ application.yml              # base config
 │  │  ├─ application-local.yml        # local profile (MySQL localhost, shifa_dashboard)
 │  │  ├─ application-prod.yml         # prod profile (env-driven)
-│  │  └─ db/migration/                # Flyway V1..V27 (see §6)
+│  │  └─ db/migration/                # Flyway V1..V29 (see §6)
 │  └─ pom.xml
 ├─ frontend/                    # Angular 21 workspace
 │  ├─ angular.json                    # projects: admin, core, ui
@@ -125,6 +125,7 @@ Modular monolith — one package per bounded context. Kept modules after the das
 | `adminnotification`| Durable admin alerts. `/api/admin/notifications` |
 | `audit`           | "Who did what" audit trail. `/api/admin/audit` |
 | `settings`        | Company + GST + invoice settings (GST on/off). `/api/admin/settings` |
+| `geo`             | Delivery-state master list for the order-entry typeahead. `GET /api/states` (staff), admin CRUD `/api/admin/states` |
 | `search`          | Global admin search. `/api/admin/search` |
 | `agent`           | Salesperson lookup helpers. `/api/agent` |
 | `notification`    | WhatsApp/outbox notifications (mock), transactional outbox drainer |
@@ -140,7 +141,10 @@ codes), and the public `CheckoutController` / `CatalogController` / `CatalogCate
 ### Order entry note
 Salespeople create orders via `POST /api/orders` (customer details are captured by the salesperson).
 The order-entry product picker uses `GET /api/orders/products` (published products, `?q=` filter),
-scoped to `SALESPERSON`/`ADMIN` — this replaced the retired public catalog endpoint.
+scoped to `SALESPERSON`/`ADMIN` — this replaced the retired public catalog endpoint. The New Order
+form is a compact, mobile-first layout (paired fields per row) with a **fuzzy state typeahead** fed by
+`GET /api/states` (states managed on the Settings "Delivery states" card) and an optional free-text
+**order note** (`orders.notes`, ≤1000 chars) saved with the order and shown on the order detail.
 
 ---
 
@@ -209,6 +213,11 @@ Migration history:
   receivables (COD outstanding + a lost claim), 142 stock movements (many in the last 30 days), 50
   leads with due/overdue follow-ups, 5 suppliers, 5 POs, 21 monthly expenses, notifications and audit
   events. Additive and safe — won't disturb existing data. See `docs/test-data-guide.html`.
+- `V28` — `stored_files` (DB-backed binary store for payment screenshots; prod `app.storage.provider=DB`).
+- `V29` — `orders.notes` (optional ≤1000-char order note captured at order entry) + `delivery_states`
+  (name UNIQUE, active, sort_order), seeded once with 28 states + 8 UTs. Powers the New Order state
+  typeahead (`GET /api/states`) and the admin Settings "Delivery states" manager (`/api/admin/states`).
+  Additive/nullable, safe on V22.
 
 > Fresh DB required: because V22 seeds with explicit IDs, start against an **empty**
 > `shifa_dashboard`. If a half-migrated DB exists, drop & recreate it before starting.

@@ -7,9 +7,13 @@ import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderWorkflowService;
 import com.shifa.oms.order.dto.OrderResponse;
+import com.shifa.oms.order.dto.OrderSummaryResponse;
+import com.shifa.oms.packing.dto.PackingQueueResponse;
 import com.shifa.oms.packing.dto.PackingScanResponse;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.statemachine.OrderStatus;
+
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -58,6 +62,26 @@ public class PackingService {
         this.orderRepository = orderRepository;
         this.outboxEventPublisher = outboxEventPublisher;
         this.orderWorkflowService = orderWorkflowService;
+    }
+
+    /**
+     * The packing team's work queues (oldest-first): orders awaiting packing
+     * ({@code Label_Generated}), awaiting handover ({@code Packed}), and awaiting
+     * dispatch ({@code Handed_To_Delivery}). Read-only; drives the Packing page
+     * so the packer can see what to work on and reprint labels.
+     */
+    @Transactional(readOnly = true)
+    public PackingQueueResponse queue() {
+        return new PackingQueueResponse(
+                summaries(OrderStatus.LABEL_GENERATED),
+                summaries(OrderStatus.PACKED),
+                summaries(OrderStatus.HANDED_TO_DELIVERY));
+    }
+
+    private List<OrderSummaryResponse> summaries(OrderStatus status) {
+        return orderRepository.findByOrderStatusOrderByCreatedAtAsc(status).stream()
+                .map(OrderSummaryResponse::from)
+                .toList();
     }
 
     /**

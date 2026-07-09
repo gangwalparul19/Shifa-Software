@@ -4,8 +4,8 @@
   [breadcrumbs]="[{ label: 'Inventory' }]"
 >
   <admin-density-toggle />
-  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
-    <i class="ti ti-refresh me-1"></i> Refresh
+  <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
+    <i class="ti ti-refresh"></i>
   </button>
 </admin-page-header>
 
@@ -13,7 +13,7 @@
 <div class="card mb-3">
   <div class="card-body py-2">
     <div class="row g-2 align-items-center">
-      <div class="col-12 col-lg">
+      <div class="col">
         <div class="input-icon">
           <span class="input-icon-addon"><i class="ti ti-search"></i></span>
           <input
@@ -40,7 +40,7 @@
             [checked]="lowStockOnly()"
             (change)="toggleLowStock()"
           />
-          <span class="form-check-label">Low stock only</span>
+          <span class="form-check-label">Low stock</span>
         </label>
       </div>
       @if (lowStockOnly()) {
@@ -144,20 +144,14 @@
           </div>
           <span class="badge" [attr.data-group]="tone(row)">{{ stockLabel(row) }}</span>
         </div>
-        <div class="shifa-inv__r2">
-          <div class="shifa-inv__stat">
-            <span class="shifa-inv__stat-label">On hand</span>
-            <span class="shifa-inv__stat-value">{{ row.trackInventory ? row.stockQuantity : '—' }}</span>
-          </div>
-          <div class="shifa-inv__stat">
-            <span class="shifa-inv__stat-label">Threshold</span>
-            <span class="shifa-inv__stat-value text-secondary">{{ row.trackInventory ? row.lowStockThreshold : '—' }}</span>
-          </div>
+        <div class="shifa-inv__meta">
+          <span class="shifa-inv__kv">On hand <strong>{{ row.trackInventory ? row.stockQuantity : '—' }}</strong></span>
+          <span class="shifa-inv__kv">Threshold <strong>{{ row.trackInventory ? row.lowStockThreshold : '—' }}</strong></span>
         </div>
         <div class="shifa-inv__actions">
           <button
             type="button"
-            class="btn btn-outline-primary"
+            class="btn btn-sm btn-outline-primary"
             (click)="openRestock(row)"
             [disabled]="!row.trackInventory"
           >
@@ -165,7 +159,7 @@
           </button>
           <button
             type="button"
-            class="btn btn-outline-secondary"
+            class="btn btn-sm btn-outline-secondary"
             (click)="openAdjust(row)"
             [disabled]="!row.trackInventory"
           >
@@ -173,7 +167,7 @@
           </button>
           <button
             type="button"
-            class="btn btn-icon btn-ghost-secondary"
+            class="btn btn-sm btn-icon btn-ghost-secondary"
             (click)="openHistory(row)"
             title="Stock history"
             aria-label="Stock history"

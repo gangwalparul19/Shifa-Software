@@ -100,4 +100,25 @@ public interface AdminNotificationRepository extends JpaRepository<AdminNotifica
     @Modifying(clearAutomatically = true)
     @Query("UPDATE AdminNotification n SET n.read = true, n.readAt = :now WHERE n.read = false")
     int markAllRead(@Param("now") LocalDateTime now);
+
+    /**
+     * Marks every unread notification <em>visible to a specific staff user</em>
+     * read in a single bulk update (mirrors {@link #countUnreadForUser}). Used by
+     * the per-user bell's "Mark all read" so a user clears exactly their own
+     * unread alerts, not the whole table. Returns the number of rows flipped.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("""
+            UPDATE AdminNotification n SET n.read = true, n.readAt = :now
+            WHERE n.read = false
+              AND (
+                    n.recipientUserId = :userId
+                 OR n.recipientRole = :role
+                 OR (n.recipientRole IS NULL AND n.recipientUserId IS NULL AND :legacyVisible = true)
+              )
+            """)
+    int markAllReadForUser(@Param("userId") Long userId,
+                           @Param("role") com.shifa.oms.auth.Role role,
+                           @Param("legacyVisible") boolean legacyVisible,
+                           @Param("now") LocalDateTime now);
 }

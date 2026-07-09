@@ -13,6 +13,9 @@ import java.time.Duration;
  * @param from         the From address applied to every outbound message
  * @param digestTo     recipient(s) for the daily sales digest; blank disables the
  *                     digest email (Feature C4)
+ * @param digestEnabled whether the internal scheduler may send the daily report
+ *                     (default {@code true}); set {@code false} when an external
+ *                     Lambda drives it via the ADMIN trigger endpoint
  * @param brand        branding + theme used by the HTML email templates
  *                     ({@code app.mail.brand.*})
  * @param maxAttempts  maximum send attempts before the {@code EMAIL_NOTIFY} outbox
@@ -22,7 +25,7 @@ import java.time.Duration;
  *                     mirrors {@code app.whatsapp.retry-backoff}
  */
 @ConfigurationProperties(prefix = "app.mail")
-public record MailProperties(String mode, String from, String digestTo, Brand brand,
+public record MailProperties(String mode, String from, String digestTo, Boolean digestEnabled, Brand brand,
                              Integer maxAttempts, Duration retryBackoff) {
 
     public MailProperties {
@@ -34,6 +37,9 @@ public record MailProperties(String mode, String from, String digestTo, Brand br
         }
         if (digestTo == null) {
             digestTo = "";
+        }
+        if (digestEnabled == null) {
+            digestEnabled = Boolean.TRUE;
         }
         if (brand == null) {
             brand = new Brand(null, null, null, null, null, null, null);
@@ -49,6 +55,16 @@ public record MailProperties(String mode, String from, String digestTo, Brand br
     /** Whether the mock (log-only) backend is selected. */
     public boolean isMock() {
         return "MOCK".equalsIgnoreCase(mode);
+    }
+
+    /**
+     * Whether the internal scheduler is allowed to send the daily report
+     * ({@code app.mail.digest-enabled} / {@code REPORT_DIGEST_ENABLED}, default
+     * {@code true}). Set to {@code false} when an external Lambda drives the
+     * report via the ADMIN trigger endpoint, to avoid a double-send.
+     */
+    public boolean isDigestEnabled() {
+        return digestEnabled == null || digestEnabled;
     }
 
     /**

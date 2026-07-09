@@ -7,7 +7,6 @@ import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,12 +17,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Scheduled daily sales-digest email (Feature C4).
+ * Basic daily sales-digest email builder (Feature C4).
  *
- * <p>Once a day (default 06:30, {@code REPORT_DIGEST_CRON}) it summarises the
- * <em>previous</em> day's orders and, if a recipient is configured
- * ({@code app.mail.digest-to} non-blank), emails a plain-text digest via the
- * {@link MailService}.
+ * <p>Summarises the <em>previous</em> day's orders and, if a recipient is
+ * configured ({@code app.mail.digest-to} non-blank), emails a plain-text digest
+ * via the {@link MailService}.
+ *
+ * <p><strong>Superseded on the schedule.</strong> The richer
+ * {@link com.shifa.oms.mail.report.DailyReportJob} now owns the daily 8 AM
+ * schedule and sends the consolidated report, so this basic digest is no longer
+ * {@code @Scheduled} (only one email per day). Its pure
+ * {@link #buildDigestBody(List, LocalDate)} remains fully unit-tested.
  *
  * <p><strong>Why it does not reuse {@code ReportService}.</strong>
  * {@code ReportService} scopes its data to the authenticated request user via
@@ -58,11 +62,15 @@ public class DailyDigestJob {
     }
 
     /**
-     * Scheduled entry point: builds and (if configured) sends yesterday's sales
-     * digest. Failures are logged, never rethrown, so a mail outage can never
-     * stall the scheduler.
+     * Builds and (if configured) sends yesterday's basic sales digest. Failures
+     * are logged, never rethrown.
+     *
+     * <p><strong>No longer scheduled.</strong> The richer
+     * {@link com.shifa.oms.mail.report.DailyReportJob} now owns the daily
+     * schedule (8 AM, {@code REPORT_DIGEST_CRON}) and sends the consolidated
+     * report instead, so only one email is sent per day. This method remains for
+     * backward compatibility and manual/ad-hoc use.
      */
-    @Scheduled(cron = "${REPORT_DIGEST_CRON:0 30 6 * * *}")
     public void sendDailyDigest() {
         try {
             sendDigestFor(LocalDate.now().minusDays(1));

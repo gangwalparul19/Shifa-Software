@@ -93,10 +93,21 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
   // --- Filters (receivables tab) ------------------------------------------
   protected readonly filterCourier = signal<number | null>(null);
   protected readonly filterType = signal<ReceivableType | null>(null);
-  protected readonly filterSettled = signal<SettledFilter>('all');
+  /** Default to Unsettled (outstanding) so the tab doesn't dump every settled row. */
+  protected readonly filterSettled = signal<SettledFilter>('unsettled');
   protected readonly search = new FormControl<string>('', { nonNullable: true });
   protected readonly fromDate = new FormControl<string>('', { nonNullable: true });
   protected readonly toDate = new FormControl<string>('', { nonNullable: true });
+
+  /** Whether the collapsible advanced-filter panel is open (collapsed by default). */
+  protected readonly filtersOpen = signal(false);
+  /** How many advanced filters deviate from their defaults, for the toggle badge. */
+  protected readonly activeReceivableFilterCount = signal(0);
+
+  /** Show/hide the advanced-filter panel. */
+  toggleFilters(): void {
+    this.filtersOpen.update((open) => !open);
+  }
 
   // --- Receivables paging + sort ------------------------------------------
   protected readonly recvPage = signal(0);
@@ -128,6 +139,8 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     this.toDate.valueChanges
       .pipe(takeUntil(this.destroy$))
       .subscribe(() => this.reloadReceivables());
+
+    this.updateReceivableFilterCount();
   }
 
   ngOnDestroy(): void {
@@ -193,7 +206,19 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
   /** Reset the receivables list to page 0 and reload (on any filter/sort change). */
   private reloadReceivables(): void {
     this.recvPage.set(0);
+    this.updateReceivableFilterCount();
     this.refreshReceivables();
+  }
+
+  /** Recomputes how many advanced filters deviate from their defaults (badge). */
+  private updateReceivableFilterCount(): void {
+    let count = 0;
+    if (this.filterCourier() != null) count++;
+    if (this.filterType()) count++;
+    if (this.filterSettled() !== 'unsettled') count++;
+    if (this.fromDate.value) count++;
+    if (this.toDate.value) count++;
+    this.activeReceivableFilterCount.set(count);
   }
 
   goToReceivablesPage(page: number): void {
@@ -218,7 +243,7 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
   clearReceivableFilters(): void {
     this.filterCourier.set(null);
     this.filterType.set(null);
-    this.filterSettled.set('all');
+    this.filterSettled.set('unsettled');
     this.search.setValue('', { emitEvent: false });
     this.fromDate.setValue('', { emitEvent: false });
     this.toDate.setValue('', { emitEvent: false });
@@ -229,7 +254,7 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     return !!(
       this.filterCourier() != null ||
       this.filterType() ||
-      this.filterSettled() !== 'all' ||
+      this.filterSettled() !== 'unsettled' ||
       this.search.value ||
       this.fromDate.value ||
       this.toDate.value

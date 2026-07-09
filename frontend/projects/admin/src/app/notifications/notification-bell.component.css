@@ -4,12 +4,23 @@
 
 .shifa-bell__badge {
   position: absolute;
-  top: -0.15rem;
-  right: -0.15rem;
-  font-size: 0.6rem;
-  padding: 0.15rem 0.3rem;
-  min-width: 1.1rem;
+  top: -0.35rem;
+  right: -0.35rem;
+  /* Orange badge with a white count, clearly readable over the dark-green bar. */
+  background-color: #f76707;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.1rem 0.35rem;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
   line-height: 1;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
 .shifa-bell__panel {

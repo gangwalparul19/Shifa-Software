@@ -1,18 +1,19 @@
 <!-- Page header -->
 <admin-page-header title="Dashboard" subtitle="Business performance at a glance.">
   @if (isAdmin()) {
-    <div class="btn-group btn-group-sm shifa-period" role="tablist" aria-label="Time period">
-      @for (opt of periodOptions; track opt.value) {
-        <button
-          type="button"
-          class="btn"
-          [class.active]="period() === opt.value"
-          [class.btn-primary]="period() === opt.value"
-          (click)="selectPeriod(opt.value)"
-        >
-          {{ opt.label }}
-        </button>
-      }
+    <div class="shifa-period-select">
+      <label for="dashboard-period" class="form-label visually-hidden">Time period</label>
+      <select
+        id="dashboard-period"
+        class="form-select form-select-sm"
+        aria-label="Time period"
+        [value]="period()"
+        (change)="selectPeriod($any($event.target).value)"
+      >
+        @for (opt of periodOptions; track opt.value) {
+          <option [value]="opt.value">{{ opt.label }}</option>
+        }
+      </select>
     </div>
   }
 </admin-page-header>

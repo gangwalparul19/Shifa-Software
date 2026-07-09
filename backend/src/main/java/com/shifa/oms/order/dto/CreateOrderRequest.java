@@ -75,6 +75,9 @@ public record CreateOrderRequest(
 
         @Email(message = "customerEmail must be a valid email address")
         @Size(max = 150, message = "customerEmail must be at most 150 characters")
-        String customerEmail
+        String customerEmail,
+
+        @Size(max = 1000, message = "notes must be at most 1000 characters")
+        String notes
 ) {
 }

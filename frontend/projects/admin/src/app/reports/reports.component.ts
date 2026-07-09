@@ -92,6 +92,7 @@ export class ReportsComponent implements OnInit {
     { value: 'monthly', label: 'Monthly' },
     { value: 'product', label: 'Product-wise' },
     { value: 'state', label: 'State-wise' },
+    { value: 'customer', label: 'Customer-wise' },
     { value: 'salesperson', label: 'Salesperson-wise' },
   ];
 
@@ -122,6 +123,20 @@ export class ReportsComponent implements OnInit {
   });
 
   protected readonly report = signal<ReportResponse | null>(null);
+
+  /** Whether the report configuration panel (type + date range) is expanded. */
+  protected readonly filtersOpen = signal(false);
+
+  /** Show/hide the report configuration panel. */
+  toggleFilters(): void {
+    this.filtersOpen.update((open) => !open);
+  }
+
+  /** The human label for the currently selected report type (for the summary bar). */
+  protected reportTypeLabel(): string {
+    const type = this.form.controls.type.value;
+    return this.reportTypes.find((o) => o.value === type)?.label ?? type;
+  }
 
   // --- Client-side paging for the "Report details" table ------------------
   protected readonly page = signal(0);
@@ -182,7 +197,7 @@ export class ReportsComponent implements OnInit {
       case 'products':
         return 'product';
       case 'customers':
-        return null;
+        return 'customer';
       default:
         return 'daily';
     }

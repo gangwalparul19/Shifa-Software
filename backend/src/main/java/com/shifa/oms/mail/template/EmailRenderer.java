@@ -1,5 +1,6 @@
 package com.shifa.oms.mail.template;
 
+import com.shifa.oms.mail.report.DailyReport;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -231,6 +232,124 @@ public class EmailRenderer {
         return new RenderedEmail(subject, html, text.toString());
     }
 
+    /**
+     * Consolidated daily report email (internal): a summary block, a
+     * per-salesperson table, an order-status breakdown table, and a customers
+     * block. No CTA. Pure function of the pre-computed {@link DailyReport}.
+     */
+    public RenderedEmail renderConsolidatedReport(EmailModels.ConsolidatedReport m) {
+        DailyReport r = m.report();
+        String dayLabel = r.day() == null ? "" : r.day().format(DAY_ISO);
+        String subject = "Shifa consolidated daily report — " + dayLabel;
+        DailyReport.Overall o = r.overall();
+
+        // ---- Summary block (label/value rows).
+        StringBuilder summaryRows = new StringBuilder();
+        summaryRows.append(detailRow("Date", dayLabel));
+        summaryRows.append(detailRow("Orders (excl. rejected/cancelled)", String.valueOf(o.orderCount())));
+        summaryRows.append(detailRow("Total sales", money(o.totalSales())));
+        summaryRows.append(detailRow("COD amount", money(o.codAmount())));
+        summaryRows.append(detailRow("Prepaid received", money(o.prepaidAmountReceived())));
+        summaryRows.append(detailRow("Delivered", String.valueOf(o.deliveredCount())));
+        summaryRows.append(detailRow("Cancelled + rejected", String.valueOf(o.cancelledRejectedCount())));
+
+        StringBuilder body = new StringBuilder();
+        if (o.orderCount() == 0 && r.statusBreakdown().isEmpty()) {
+            body.append(p("No orders were created on " + esc(dayLabel) + "."));
+        } else {
+            body.append(p("Here's how " + esc(dayLabel) + " looked across the business."));
+        }
+        body.append(sectionHeading("Summary"));
+        body.append(detailTable(summaryRows.toString()));
+
+        // ---- Per-salesperson table.
+        body.append(sectionHeading("By salesperson"));
+        if (r.salespersons().isEmpty()) {
+            body.append(p("No attributed sales."));
+        } else {
+            StringBuilder rows = new StringBuilder();
+            rows.append(tableHeadRow("Salesperson", "Orders", "Sales"));
+            for (DailyReport.SalespersonRow sp : r.salespersons()) {
+                rows.append(tableDataRow(
+                        safe(sp.salespersonName()),
+                        String.valueOf(sp.orderCount()),
+                        money(sp.salesValue())));
+            }
+            body.append(gridTable(rows.toString()));
+        }
+
+        // ---- Order-status breakdown table.
+        body.append(sectionHeading("Order status breakdown"));
+        if (r.statusBreakdown().isEmpty()) {
+            body.append(p("No orders on this day."));
+        } else {
+            StringBuilder rows = new StringBuilder();
+            rows.append(tableHeadRow("Status", "Count", ""));
+            for (DailyReport.StatusCount sc : r.statusBreakdown()) {
+                rows.append(tableDataRow(statusLabel(sc.status()), String.valueOf(sc.count()), ""));
+            }
+            body.append(gridTable(rows.toString()));
+        }
+
+        // ---- Customers block.
+        body.append(sectionHeading("Customers"));
+        StringBuilder custRows = new StringBuilder();
+        custRows.append(detailRow("Distinct customers", String.valueOf(r.distinctCustomerCount())));
+        if (r.topCustomer() != null) {
+            String name = r.topCustomer().customerName();
+            String label = (name == null || name.isBlank()) ? r.topCustomer().customerMobile() : name;
+            custRows.append(detailRow("Top customer", safe(label) + " · " + money(r.topCustomer().value())));
+        }
+        body.append(detailTable(custRows.toString()));
+
+        String html = layout(
+                "Shifa consolidated daily report for " + dayLabel + ".",
+                "Consolidated daily report",
+                body.toString(),
+                null,
+                null);
+
+        // ---- Plain-text fallback.
+        StringBuilder text = new StringBuilder();
+        text.append("Shifa Herbal Remedies — consolidated daily report\n");
+        text.append("Date: ").append(dayLabel).append("\n\n");
+        text.append("SUMMARY\n");
+        text.append("  Orders (excl. rejected/cancelled): ").append(o.orderCount()).append("\n");
+        text.append("  Total sales: ").append(money(o.totalSales())).append("\n");
+        text.append("  COD amount: ").append(money(o.codAmount())).append("\n");
+        text.append("  Prepaid received: ").append(money(o.prepaidAmountReceived())).append("\n");
+        text.append("  Delivered: ").append(o.deliveredCount()).append("\n");
+        text.append("  Cancelled + rejected: ").append(o.cancelledRejectedCount()).append("\n\n");
+        text.append("BY SALESPERSON\n");
+        if (r.salespersons().isEmpty()) {
+            text.append("  (no attributed sales)\n");
+        } else {
+            for (DailyReport.SalespersonRow sp : r.salespersons()) {
+                text.append("  ").append(safe(sp.salespersonName())).append(": ")
+                        .append(sp.orderCount()).append(" order(s), ")
+                        .append(money(sp.salesValue())).append("\n");
+            }
+        }
+        text.append("\nORDER STATUS BREAKDOWN\n");
+        if (r.statusBreakdown().isEmpty()) {
+            text.append("  (no orders)\n");
+        } else {
+            for (DailyReport.StatusCount sc : r.statusBreakdown()) {
+                text.append("  ").append(statusLabel(sc.status())).append(": ")
+                        .append(sc.count()).append("\n");
+            }
+        }
+        text.append("\nCUSTOMERS\n");
+        text.append("  Distinct customers: ").append(r.distinctCustomerCount()).append("\n");
+        if (r.topCustomer() != null) {
+            String name = r.topCustomer().customerName();
+            String label = (name == null || name.isBlank()) ? r.topCustomer().customerMobile() : name;
+            text.append("  Top customer: ").append(safe(label)).append(" (")
+                    .append(money(r.topCustomer().value())).append(")\n");
+        }
+        return new RenderedEmail(subject, html, text.toString());
+    }
+
     // ---------------------------------------------------------------------
     // Layout + HTML fragment helpers
     // ---------------------------------------------------------------------
@@ -381,6 +500,73 @@ public class EmailRenderer {
                 + "<td style=\"padding:10px 16px;font-size:14px;color:#3a3a3a;font-weight:bold;"
                 + "border-bottom:1px solid #eef0ec;\">" + esc(value) + "</td>"
                 + "</tr>";
+    }
+
+    /** A small section heading used to separate report blocks. */
+    private String sectionHeading(String label) {
+        return "<h2 style=\"margin:24px 0 10px 0;font-size:16px;line-height:1.3;color:"
+                + brand.primaryColor() + ";\">" + esc(label) + "</h2>";
+    }
+
+    /** Wraps grid rows (head + data) in a bordered multi-column table. */
+    private String gridTable(String rowsHtml) {
+        return "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+                + "style=\"margin:0 0 16px 0;border:1px solid #e2e6e1;border-radius:8px;"
+                + "border-collapse:separate;\">" + rowsHtml + "</table>";
+    }
+
+    /** A header row for a grid table (up to three columns; blank headers omitted). */
+    private String tableHeadRow(String c1, String c2, String c3) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<tr>");
+        sb.append("<th align=\"left\" style=\"padding:10px 16px;font-size:12px;text-transform:uppercase;"
+                + "letter-spacing:0.4px;color:#7a7f76;background-color:#f0f2ef;"
+                + "border-bottom:1px solid #e2e6e1;\">").append(esc(c1)).append("</th>");
+        sb.append("<th align=\"right\" style=\"padding:10px 16px;font-size:12px;text-transform:uppercase;"
+                + "letter-spacing:0.4px;color:#7a7f76;background-color:#f0f2ef;"
+                + "border-bottom:1px solid #e2e6e1;\">").append(esc(c2)).append("</th>");
+        if (c3 != null && !c3.isBlank()) {
+            sb.append("<th align=\"right\" style=\"padding:10px 16px;font-size:12px;text-transform:uppercase;"
+                    + "letter-spacing:0.4px;color:#7a7f76;background-color:#f0f2ef;"
+                    + "border-bottom:1px solid #e2e6e1;\">").append(esc(c3)).append("</th>");
+        }
+        sb.append("</tr>");
+        return sb.toString();
+    }
+
+    /** A data row for a grid table (up to three columns; blank third column omitted). */
+    private String tableDataRow(String c1, String c2, String c3) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<tr>");
+        sb.append("<td style=\"padding:10px 16px;font-size:14px;color:#3a3a3a;"
+                + "border-bottom:1px solid #eef0ec;\">").append(esc(c1)).append("</td>");
+        sb.append("<td align=\"right\" style=\"padding:10px 16px;font-size:14px;color:#3a3a3a;"
+                + "font-weight:bold;border-bottom:1px solid #eef0ec;\">").append(esc(c2)).append("</td>");
+        if (c3 != null && !c3.isBlank()) {
+            sb.append("<td align=\"right\" style=\"padding:10px 16px;font-size:14px;color:#3a3a3a;"
+                    + "font-weight:bold;border-bottom:1px solid #eef0ec;\">").append(esc(c3)).append("</td>");
+        }
+        sb.append("</tr>");
+        return sb.toString();
+    }
+
+    /** A human-friendly label for an order status (enum name → Title Case words). */
+    private static String statusLabel(com.shifa.oms.statemachine.OrderStatus status) {
+        if (status == null) {
+            return "";
+        }
+        String[] parts = status.name().toLowerCase(Locale.ENGLISH).split("_");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            if (parts[i].isEmpty()) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
+            sb.append(Character.toUpperCase(parts[i].charAt(0))).append(parts[i].substring(1));
+        }
+        return sb.toString();
     }
 
     /** The plain-text footer block appended to every customer text fallback. */

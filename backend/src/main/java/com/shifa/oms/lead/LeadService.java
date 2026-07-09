@@ -311,7 +311,8 @@ public class LeadService {
                 request.paymentScreenshotKey(),
                 lead.getLeadSource(),
                 lead.getLeadSourceNote(),
-                lead.getCustomerEmail());
+                lead.getCustomerEmail(),
+                request.notes());
 
         // Same transaction: a failure here rolls the whole convert back (Req 4.4).
         OrderResponse order = orderService.createSalespersonOrder(orderRequest, actor);

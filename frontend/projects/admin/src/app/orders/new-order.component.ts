@@ -11,6 +11,8 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { ApiError, Product, paiseToMoney, toPaise } from 'core';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { StateTypeaheadComponent } from '../shared/state-typeahead.component';
+import { StatesService } from '../shared/states.service';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { CatalogService } from './catalog.service';
@@ -45,7 +47,12 @@ type UploadState = 'idle' | 'uploading' | 'done' | 'error';
  */
 @Component({
   selector: 'admin-new-order',
-  imports: [ReactiveFormsModule, PageHeaderComponent, StatePanelComponent],
+  imports: [
+    ReactiveFormsModule,
+    PageHeaderComponent,
+    StatePanelComponent,
+    StateTypeaheadComponent,
+  ],
   templateUrl: './new-order.component.html',
   styleUrl: './new-order.component.css',
 })
@@ -53,6 +60,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private readonly fb = inject(FormBuilder);
   private readonly orders = inject(OrdersService);
   private readonly catalog = inject(CatalogService);
+  private readonly statesService = inject(StatesService);
   private readonly leads = inject(LeadsService);
   private readonly confirm = inject(ConfirmService);
   private readonly toasts = inject(ToastService);
@@ -74,6 +82,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   protected readonly products = signal<Product[]>([]);
   protected readonly productsLoading = signal(true);
   protected readonly productsError = signal<string | null>(null);
+
+  /** Selectable delivery states for the state typeahead (from GET /api/states). */
+  protected readonly states = signal<string[]>([]);
 
   // --- Payment screenshot upload ------------------------------------------
   protected readonly uploadState = signal<UploadState>('idle');
@@ -109,6 +120,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     leadSourceNote: ['', [Validators.maxLength(200)]],
     items: this.fb.array([this.newItem()]),
     amountReceived: [0, [Validators.required, Validators.min(0)]],
+    notes: ['', [Validators.maxLength(1000)]],
   });
 
   /** Whether the form is converting a lead (drives titles, locked fields, submit path). */
@@ -137,6 +149,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.loadProducts();
+    this.loadStates();
     // Keep the totals snapshot in sync with the reactive form.
     this.model.set(this.snapshot());
     this.form.valueChanges.subscribe(() => this.model.set(this.snapshot()));
@@ -204,6 +217,15 @@ export class NewOrderComponent implements OnInit, OnDestroy {
         this.productsError.set('Could not load products. Please try again.');
         this.productsLoading.set(false);
       },
+    });
+  }
+
+  /** Loads the admin-managed delivery states that back the state typeahead. */
+  loadStates(): void {
+    this.statesService.activeNames().subscribe({
+      next: (rows) => this.states.set(rows),
+      // Non-fatal: the field still accepts free-typed text if the list fails.
+      error: () => this.states.set([]),
     });
   }
 
@@ -351,6 +373,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
     const email = this.form.controls.customerEmail.value.trim();
     const note = this.form.controls.leadSourceNote.value.trim();
+    const orderNotes = this.form.controls.notes.value.trim();
     const isOther = raw.leadSource === 'OTHER';
     const payload: CreateOrderRequest = {
       customerName: this.form.controls.customerName.value.trim(),
@@ -370,6 +393,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       leadSource: raw.leadSource as LeadSource,
       // Only send the note when OTHER is chosen (it's meaningless otherwise, Req 4.5).
       ...(isOther && note ? { leadSourceNote: note } : {}),
+      ...(orderNotes ? { notes: orderNotes } : {}),
     };
 
     this.submitting.set(true);
@@ -414,6 +438,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       })),
       amountReceived: raw.amountReceived,
       ...(this.screenshotKey() ? { paymentScreenshotKey: this.screenshotKey()! } : {}),
+      ...(this.form.controls.notes.value.trim()
+        ? { notes: this.form.controls.notes.value.trim() }
+        : {}),
     };
 
     this.submitting.set(true);

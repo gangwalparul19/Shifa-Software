@@ -74,6 +74,13 @@ public class OrderEntity {
     private String leadSourceNote;
 
     /**
+     * Optional free-text order note captured by the salesperson at order entry
+     * (e.g. a specific customer ask). Nullable; mapped to {@code orders.notes} (V29).
+     */
+    @Column(name = "notes", length = 1000)
+    private String notes;
+
+    /**
      * Customer email for milestone emails (Req 7.2, 10.7, 11.4). When absent the
      * email channel is skipped and the skip recorded. Mapped to
      * {@code orders.customer_email} (V23).
@@ -282,6 +289,15 @@ public class OrderEntity {
 
     public void setLeadSourceNote(String leadSourceNote) {
         this.leadSourceNote = leadSourceNote;
+    }
+
+    public String getNotes() {
+        return notes;
+    }
+
+    /** Records the salesperson's free-text order note captured at order entry (V29). */
+    public void setNotes(String notes) {
+        this.notes = notes;
     }
 
     public String getCustomerEmail() {

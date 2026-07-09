@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.io.IOException;
 import java.util.List;
@@ -80,6 +81,23 @@ public class GlobalExceptionHandler {
                 "Invalid value for parameter '" + param + "'.",
                 request.getRequestURI());
         return ResponseEntity.badRequest().body(body);
+    }
+
+    /**
+     * An uploaded file (e.g. a payment screenshot) exceeded the configured
+     * multipart size limit. Render a clear 413 instead of the generic 500 so the
+     * user knows to attach a smaller image.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSize(MaxUploadSizeExceededException ex,
+                                                             HttpServletRequest request) {
+        ErrorResponse body = ErrorResponse.of(
+                HttpStatus.PAYLOAD_TOO_LARGE.value(),
+                HttpStatus.PAYLOAD_TOO_LARGE.getReasonPhrase(),
+                "UPLOAD_TOO_LARGE",
+                "The uploaded file is too large. Please attach a smaller screenshot.",
+                request.getRequestURI());
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(body);
     }
 
     /** Authenticated user lacks the required authority. */

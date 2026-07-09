@@ -33,7 +33,7 @@
   <section class="shifa-no__section">
     <h2 class="shifa-no__title">Customer Details</h2>
     <div class="shifa-no__card">
-      <div class="row g-3">
+      <div class="row g-2 g-md-3">
         <div class="col-12">
           <label class="form-label required" for="customerName">Customer name</label>
           <input
@@ -49,7 +49,9 @@
             <div class="invalid-feedback">A customer name (max 100 chars) is required.</div>
           }
         </div>
-        <div class="col-12 col-md-6">
+
+        <!-- Phone + Lead source share a row (both compact) to cut scrolling. -->
+        <div class="col-6">
           <label class="form-label required" for="customerMobile">Phone number</label>
           <input
             id="customerMobile"
@@ -66,7 +68,27 @@
             <div class="invalid-feedback">Enter exactly 10 digits.</div>
           }
         </div>
-        <div class="col-12 col-md-6">
+
+        <!-- Lead source (origin channel, Req 4.1, 4.5) — required by order entry -->
+        <div class="col-6">
+          <label class="form-label required" for="leadSource">Lead source</label>
+          <select
+            id="leadSource"
+            class="form-select"
+            formControlName="leadSource"
+            [class.is-invalid]="invalid('leadSource')"
+          >
+            <option value="" disabled>Reached us via…</option>
+            @for (opt of leadSourceOptions; track opt.value) {
+              <option [value]="opt.value">{{ opt.label }}</option>
+            }
+          </select>
+          @if (invalid('leadSource')) {
+            <div class="invalid-feedback">Choose a lead source.</div>
+          }
+        </div>
+
+        <div class="col-12" [class.col-md-6]="showLeadSourceNote()">
           <label class="form-label" for="customerEmail">Email <span class="text-secondary">(optional)</span></label>
           <input
             id="customerEmail"
@@ -81,27 +103,6 @@
           />
           @if (invalid('customerEmail')) {
             <div class="invalid-feedback">Enter a valid email address (max 150 chars).</div>
-          } @else {
-            <div class="form-hint">Used for order milestone emails.</div>
-          }
-        </div>
-
-        <!-- Lead source (origin channel, Req 4.1, 4.5) — required by order entry -->
-        <div class="col-12 col-md-6">
-          <label class="form-label required" for="leadSource">Lead source</label>
-          <select
-            id="leadSource"
-            class="form-select"
-            formControlName="leadSource"
-            [class.is-invalid]="invalid('leadSource')"
-          >
-            <option value="" disabled>How did the customer reach us?</option>
-            @for (opt of leadSourceOptions; track opt.value) {
-              <option [value]="opt.value">{{ opt.label }}</option>
-            }
-          </select>
-          @if (invalid('leadSource')) {
-            <div class="invalid-feedback">Choose a lead source.</div>
           }
         </div>
         @if (showLeadSourceNote()) {
@@ -119,8 +120,6 @@
             />
             @if (invalid('leadSourceNote')) {
               <div class="invalid-feedback">The note must be at most 200 characters.</div>
-            } @else {
-              <div class="form-hint">Optional detail for an “Other” source (max 200 chars).</div>
             }
           </div>
         }
@@ -141,7 +140,9 @@
             <div class="invalid-feedback">An address (max 250 chars) is required.</div>
           }
         </div>
-        <div class="col-12 col-md-6">
+
+        <!-- City + Pincode share a row; State typeahead gets full width for its menu. -->
+        <div class="col-7">
           <label class="form-label required" for="city">City</label>
           <input
             id="city"
@@ -156,22 +157,7 @@
             <div class="invalid-feedback">A city is required.</div>
           }
         </div>
-        <div class="col-6 col-md-3">
-          <label class="form-label required" for="state">State</label>
-          <input
-            id="state"
-            type="text"
-            class="form-control"
-            formControlName="state"
-            maxlength="100"
-            autocomplete="off"
-            [class.is-invalid]="invalid('state')"
-          />
-          @if (invalid('state')) {
-            <div class="invalid-feedback">A state is required.</div>
-          }
-        </div>
-        <div class="col-6 col-md-3">
+        <div class="col-5">
           <label class="form-label required" for="postalCode">Pincode</label>
           <input
             id="postalCode"
@@ -186,6 +172,18 @@
           />
           @if (invalid('postalCode')) {
             <div class="invalid-feedback">Enter exactly 6 digits.</div>
+          }
+        </div>
+        <div class="col-12">
+          <label class="form-label required" for="state">State</label>
+          <admin-state-typeahead
+            formControlName="state"
+            [options]="states()"
+            [invalid]="invalid('state')"
+            placeholder="Type to search a state (e.g. mh, tamilnadu)"
+          />
+          @if (invalid('state')) {
+            <div class="text-danger small mt-1">A state is required.</div>
           }
         </div>
       </div>
@@ -373,6 +371,29 @@
           <div class="text-danger small mt-1">A payment screenshot is required.</div>
         }
       </div>
+    </div>
+  </section>
+
+  <!-- ===================== Notes ===================== -->
+  <section class="shifa-no__section">
+    <h2 class="shifa-no__title">Notes</h2>
+    <div class="shifa-no__card">
+      <label class="form-label" for="notes">Order note <span class="text-secondary">(optional)</span></label>
+      <textarea
+        id="notes"
+        class="form-control"
+        formControlName="notes"
+        rows="3"
+        maxlength="1000"
+        autocomplete="off"
+        placeholder="Any specific instruction from the customer for this order…"
+        [class.is-invalid]="invalid('notes')"
+      ></textarea>
+      @if (invalid('notes')) {
+        <div class="invalid-feedback">The note must be at most 1000 characters.</div>
+      } @else {
+        <div class="form-hint">Saved with the order and visible on the order details.</div>
+      }
     </div>
   </section>
 </form>

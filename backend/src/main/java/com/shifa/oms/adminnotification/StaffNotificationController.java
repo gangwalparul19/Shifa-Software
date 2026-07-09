@@ -32,7 +32,8 @@ import java.util.Map;
  * <ul>
  *   <li>{@code GET /api/notifications?unreadOnly=&type=&page=&size=} — paged list;</li>
  *   <li>{@code GET /api/notifications/unread-count} — per-user unread badge count;</li>
- *   <li>{@code POST /api/notifications/{id}/read} — mark one read.</li>
+ *   <li>{@code POST /api/notifications/{id}/read} — mark one read;</li>
+ *   <li>{@code POST /api/notifications/read-all} — mark all the user's unread read.</li>
  * </ul>
  */
 @RestController
@@ -80,5 +81,16 @@ public class StaffNotificationController {
     @PostMapping("/{id}/read")
     public AdminNotificationResponse markRead(@PathVariable Long id) {
         return notificationService.markRead(id);
+    }
+
+    /**
+     * Marks every unread notification visible to the current staff user read and
+     * returns the updated (0) unread count for the badge.
+     */
+    @PostMapping("/read-all")
+    public UnreadCountResponse markAllRead() {
+        AuthPrincipal principal = currentUserService.requireCurrentUser();
+        notificationService.markAllReadForUser(principal);
+        return new UnreadCountResponse(notificationService.unreadCountForUser(principal));
     }
 }

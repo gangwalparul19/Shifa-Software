@@ -98,6 +98,11 @@ export class ProductsComponent implements OnInit, OnDestroy {
   protected readonly sort = signal<SortState>({ field: 'name', dir: 'asc' });
 
   // --- Filters ------------------------------------------------------------
+  /** Whether the collapsible advanced-filter panel is open (collapsed on load). */
+  protected readonly filtersOpen = signal(false);
+  /** How many advanced filters (category/visibility/stock) are set, for the toggle badge. */
+  protected readonly activeFilterCount = signal(0);
+
   protected readonly search = new FormControl<string>('', { nonNullable: true });
   protected readonly filters = new FormGroup({
     category: new FormControl<string>('', { nonNullable: true }),
@@ -180,7 +185,22 @@ export class ProductsComponent implements OnInit, OnDestroy {
       .pipe(debounceTime(300), distinctUntilChanged(), takeUntil(this.destroy$))
       .subscribe(() => this.resetAndLoad());
 
-    this.filters.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => this.resetAndLoad());
+    this.filters.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => {
+      this.updateActiveFilterCount();
+      this.resetAndLoad();
+    });
+    this.updateActiveFilterCount();
+  }
+
+  /** Show/hide the advanced-filter panel. */
+  toggleFilters(): void {
+    this.filtersOpen.update((open) => !open);
+  }
+
+  /** Recomputes how many advanced filters (category/visibility/stock) are set. */
+  private updateActiveFilterCount(): void {
+    const f = this.filters.getRawValue();
+    this.activeFilterCount.set([f.category, f.visibility, f.stockStatus].filter((v) => !!v).length);
   }
 
   ngOnDestroy(): void {

@@ -23,6 +23,7 @@ public enum ReportType {
     MONTHLY,
     PRODUCT,
     STATE,
+    CUSTOMER,
     SALESPERSON,
     ORDERS_BY_LEAD_SOURCE,
     ORDERS_BY_STATUS,
@@ -39,6 +40,7 @@ public enum ReportType {
             case "monthly" -> MONTHLY;
             case "product", "product-wise", "productwise" -> PRODUCT;
             case "state", "state-wise", "statewise" -> STATE;
+            case "customer", "customer-wise", "customerwise" -> CUSTOMER;
             case "salesperson", "salesperson-wise" -> SALESPERSON;
             case "orders-by-lead-source", "orders_by_lead_source", "lead-source", "leadsource" ->
                     ORDERS_BY_LEAD_SOURCE;

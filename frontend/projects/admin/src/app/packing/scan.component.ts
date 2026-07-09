@@ -6,6 +6,7 @@ import { ApiError } from 'core';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { PackingService } from './packing.service';
 import { PackingScanResponse, ScanLogEntry, ScanOutcome } from './packing.model';
+import { OrderSummary } from '../orders/orders.model';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
 import { ToastService } from '../shared/toast.service';
@@ -88,8 +89,148 @@ export class ScanComponent implements OnInit, AfterViewInit {
   /** The awaiting-* queue cards surfaced above the scan area. */
   protected readonly queues = computed<QueueCard[]>(() => this.queueSummary());
 
+  // --- Work queue lists (orders to pack / hand over / dispatch) -----------
+  protected readonly awaitingPacking = signal<OrderSummary[]>([]);
+  protected readonly awaitingHandover = signal<OrderSummary[]>([]);
+  protected readonly awaitingDispatch = signal<OrderSummary[]>([]);
+  protected readonly queueLoading = signal(true);
+  /** The order currently running a queue action (pack/handover/dispatch), for spinners. */
+  protected readonly busyOrderId = signal<number | null>(null);
+  /** The order whose label is currently being fetched/opened. */
+  protected readonly labelBusyId = signal<number | null>(null);
+
+  /** The three work-queue sections rendered as lists, in workflow order. */
+  protected readonly queueSections = computed(() => [
+    {
+      kind: 'pack' as const,
+      title: 'Orders to pack',
+      icon: 'ti-box',
+      hint: 'Print the label, then mark the order packed.',
+      orders: this.awaitingPacking(),
+    },
+    {
+      kind: 'handover' as const,
+      title: 'Awaiting handover',
+      icon: 'ti-package',
+      hint: 'Hand these packed orders to the delivery courier.',
+      orders: this.awaitingHandover(),
+    },
+    {
+      kind: 'dispatch' as const,
+      title: 'Awaiting dispatch',
+      icon: 'ti-truck-delivery',
+      hint: 'Dispatch to enqueue courier assignment.',
+      orders: this.awaitingDispatch(),
+    },
+  ]);
+
   ngOnInit(): void {
     this.loadQueues();
+    this.loadQueue();
+  }
+
+  /** Loads the awaiting-packing / handover / dispatch work-queue lists. */
+  loadQueue(): void {
+    this.queueLoading.set(true);
+    this.service.queue().subscribe({
+      next: (q) => {
+        this.awaitingPacking.set(q.awaitingPacking);
+        this.awaitingHandover.set(q.awaitingHandover);
+        this.awaitingDispatch.set(q.awaitingDispatch);
+        this.queueLoading.set(false);
+      },
+      error: () => {
+        this.queueLoading.set(false);
+      },
+    });
+  }
+
+  /** Opens the internal label PDF (barcode + details) for printing. */
+  printLabel(order: OrderSummary): void {
+    if (this.labelBusyId() !== null) {
+      return;
+    }
+    this.labelBusyId.set(order.id);
+    this.service.label(order.id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        const opened = window.open(url, '_blank');
+        if (!opened) {
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `label-${order.orderCode}.pdf`;
+          a.click();
+        }
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        this.labelBusyId.set(null);
+      },
+      error: () => {
+        this.toasts.error('Could not open the label. Please try again.');
+        this.labelBusyId.set(null);
+      },
+    });
+  }
+
+  /** Mark an order packed straight from the queue (equivalent to scanning it). */
+  markPacked(order: OrderSummary): void {
+    if (this.busyOrderId() !== null) {
+      return;
+    }
+    this.busyOrderId.set(order.id);
+    this.service.scan(order.orderCode).subscribe({
+      next: (res) => {
+        this.busyOrderId.set(null);
+        this.onSuccess(order.orderCode, res);
+        this.loadQueue();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.busyOrderId.set(null);
+        this.onError(order.orderCode, err);
+        this.loadQueue();
+      },
+    });
+  }
+
+  /** Hand a packed order over to the courier, straight from the queue. */
+  handoverOrder(order: OrderSummary): void {
+    if (this.busyOrderId() !== null) {
+      return;
+    }
+    this.busyOrderId.set(order.id);
+    this.service.handover(order.id).subscribe({
+      next: () => {
+        this.busyOrderId.set(null);
+        this.toasts.success(`Order ${order.orderCode} handed over to delivery`);
+        this.loadQueue();
+        this.loadQueues();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.busyOrderId.set(null);
+        this.toasts.error((err.error as ApiError | undefined)?.message ?? 'Handover failed.');
+        this.loadQueue();
+      },
+    });
+  }
+
+  /** Dispatch a handed-over order (enqueues courier assignment), from the queue. */
+  dispatchOrder(order: OrderSummary): void {
+    if (this.busyOrderId() !== null) {
+      return;
+    }
+    this.busyOrderId.set(order.id);
+    this.service.dispatch(order.id).subscribe({
+      next: () => {
+        this.busyOrderId.set(null);
+        this.toasts.success(`Order ${order.orderCode} dispatched for courier assignment`);
+        this.loadQueue();
+        this.loadQueues();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.busyOrderId.set(null);
+        this.toasts.error((err.error as ApiError | undefined)?.message ?? 'Dispatch failed.');
+        this.loadQueue();
+      },
+    });
   }
 
   ngAfterViewInit(): void {
@@ -151,6 +292,7 @@ export class ScanComponent implements OnInit, AfterViewInit {
         });
         this.toasts.success(`Order ${item.orderCode} handed over to delivery`);
         this.loadQueues();
+        this.loadQueue();
       },
       error: (err: HttpErrorResponse) => this.onActionError(item.id, err, 'Handover'),
     });
@@ -169,6 +311,7 @@ export class ScanComponent implements OnInit, AfterViewInit {
         this.patchItem(item.id, { busy: false, phase: 'dispatched' });
         this.toasts.success(`Order ${item.orderCode} dispatched for courier assignment`);
         this.loadQueues();
+        this.loadQueue();
       },
       error: (err: HttpErrorResponse) => this.onActionError(item.id, err, 'Dispatch'),
     });
@@ -250,6 +393,7 @@ export class ScanComponent implements OnInit, AfterViewInit {
         error: null,
       });
       this.loadQueues();
+      this.loadQueue();
     }
     this.finish();
   }

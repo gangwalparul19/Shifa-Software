@@ -133,6 +133,8 @@ export interface LeadConvertRequest {
   items: CreateOrderLineItem[];
   amountReceived: number;
   paymentScreenshotKey?: string;
+  /** Optional free-text order note captured at conversion (≤1000 chars). */
+  notes?: string;
 }
 
 /** Filters for the scoped lead list (`GET /api/leads`). */

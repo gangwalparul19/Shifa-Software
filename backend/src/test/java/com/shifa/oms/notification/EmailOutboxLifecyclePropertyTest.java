@@ -73,7 +73,7 @@ class EmailOutboxLifecyclePropertyTest {
 
         RecordingMailService sender = new RecordingMailService(failuresBeforeSuccess);
         MailProperties props = new MailProperties(
-                "MOCK", null, null, null, maxAttempts, Duration.ZERO);
+                "MOCK", null, null, null, null, maxAttempts, Duration.ZERO);
         EmailOutboxDrainer drainer = new EmailOutboxDrainer(repo, publisher, sender, props);
 
         // Drain enough rounds to reach a terminal outcome (each round sends at most once).

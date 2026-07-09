@@ -56,6 +56,9 @@ public record LeadConvertRequest(
         @Digits(integer = 10, fraction = 2, message = "amountReceived must be a DECIMAL(12,2) value")
         BigDecimal amountReceived,
 
-        String paymentScreenshotKey
+        String paymentScreenshotKey,
+
+        @Size(max = 1000, message = "notes must be at most 1000 characters")
+        String notes
 ) {
 }

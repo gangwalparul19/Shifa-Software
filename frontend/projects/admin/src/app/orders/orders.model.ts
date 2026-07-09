@@ -57,6 +57,8 @@ export interface CreateOrderRequest {
   paymentScreenshotKey?: string;
   leadSource: LeadSource;
   leadSourceNote?: string;
+  /** Optional free-text order note captured at order entry (≤1000 chars). */
+  notes?: string;
 }
 
 /**
@@ -156,6 +158,8 @@ export interface OrderDetail {
    */
   discountAmount?: Money;
   paymentScreenshotAvailable: boolean;
+  /** Optional free-text order note captured at order entry. */
+  notes?: string | null;
   items: OrderDetailLine[];
   createdAt?: string;
   /** Air Waybill number, when a courier has been assigned. */

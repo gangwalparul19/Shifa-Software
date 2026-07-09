@@ -2,6 +2,8 @@ package com.shifa.oms.reporting;
 
 import com.shifa.oms.auth.CurrentUserService;
 import com.shifa.oms.auth.SalespersonScopeResolver;
+import com.shifa.oms.auth.User;
+import com.shifa.oms.auth.UserRepository;
 import com.shifa.oms.courier.CourierRecord;
 import com.shifa.oms.courier.CourierRecordRepository;
 import com.shifa.oms.order.OrderEntity;
@@ -25,7 +27,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * The reporting/export service (Req 20.1&ndash;20.4, 23.1, 23.2).
@@ -46,6 +52,7 @@ public class ReportService {
     private final CourierRecordRepository courierRecordRepository;
     private final CurrentUserService currentUserService;
     private final SalespersonScopeResolver scopeResolver;
+    private final UserRepository userRepository;
 
     private final ReportAggregator aggregator = new ReportAggregator();
     private final ReportTableBuilder tableBuilder = new ReportTableBuilder(aggregator);
@@ -55,12 +62,14 @@ public class ReportService {
                          ReceivableRepository receivableRepository,
                          CourierRecordRepository courierRecordRepository,
                          CurrentUserService currentUserService,
-                         SalespersonScopeResolver scopeResolver) {
+                         SalespersonScopeResolver scopeResolver,
+                         UserRepository userRepository) {
         this.orderRepository = orderRepository;
         this.receivableRepository = receivableRepository;
         this.courierRecordRepository = courierRecordRepository;
         this.currentUserService = currentUserService;
         this.scopeResolver = scopeResolver;
+        this.userRepository = userRepository;
     }
 
     /** Generates a report of the given type over the window, for the current user. */
@@ -68,8 +77,11 @@ public class ReportService {
     public ReportResponse generate(ReportType type, LocalDate from, LocalDate to) {
         DateRange window = new DateRange(from, to);
         List<OrderReportRecord> records = loadRecords();
+        Map<Long, String> salespersonNames = salespersonNames(records);
         TabularData table = tableBuilder.build(type, records, window);
-        ReportSummary summary = summarize(records, window);
+        // Show salesperson names (not raw ids) in the grouped-by-salesperson report.
+        table = remapSalespersonColumn(type, table, salespersonNames);
+        ReportSummary summary = summarize(records, window, salespersonNames);
         return new ReportResponse(type.name(), from, to, table.headers(), table.rows(), summary);
     }
 
@@ -89,16 +101,72 @@ public class ReportService {
 
     // --- Assembly -----------------------------------------------------------
 
-    private ReportSummary summarize(List<OrderReportRecord> records, DateRange window) {
+    private ReportSummary summarize(List<OrderReportRecord> records, DateRange window,
+                                    Map<Long, String> salespersonNames) {
         PercentChange change = aggregator.salesPercentChange(records, window);
+        Long topSalespersonId = aggregator.topSalesperson(records, window).orElse(null);
+        String topSalespersonName = topSalespersonId == null
+                ? null : salespersonNames.get(topSalespersonId);
         return new ReportSummary(
                 aggregator.totalSales(records, window),
                 aggregator.orderCount(records, window),
                 change.applicable(),
                 change.value(),
-                aggregator.topSalesperson(records, window).orElse(null),
+                topSalespersonId,
+                topSalespersonName,
                 aggregator.topProduct(records, window).orElse(null),
                 aggregator.topState(records, window).orElse(null));
+    }
+
+    /**
+     * Resolves every salesperson id present in the records to a display name
+     * (full name when set, else username) in a single query, so reports show
+     * names instead of raw ids.
+     */
+    private Map<Long, String> salespersonNames(List<OrderReportRecord> records) {
+        Set<Long> ids = new HashSet<>();
+        for (OrderReportRecord r : records) {
+            if (r.salespersonId() != null) {
+                ids.add(r.salespersonId());
+            }
+        }
+        Map<Long, String> names = new LinkedHashMap<>();
+        if (ids.isEmpty()) {
+            return names;
+        }
+        for (User u : userRepository.findAllById(ids)) {
+            String name = (u.getFullName() != null && !u.getFullName().isBlank())
+                    ? u.getFullName() : u.getUsername();
+            names.put(u.getId(), name);
+        }
+        return names;
+    }
+
+    /**
+     * For the orders-grouped-by-salesperson report, replaces the raw id in the
+     * first column with the resolved salesperson name (leaving {@code UNSPECIFIED}
+     * and any unresolved id as-is). Other report types are returned unchanged.
+     */
+    private TabularData remapSalespersonColumn(ReportType type, TabularData table,
+                                               Map<Long, String> names) {
+        if (type != ReportType.ORDERS_BY_SALESPERSON || table.rows().isEmpty()) {
+            return table;
+        }
+        List<List<String>> rows = new ArrayList<>(table.rows().size());
+        for (List<String> row : table.rows()) {
+            List<String> copy = new ArrayList<>(row);
+            String key = copy.get(0);
+            try {
+                String name = names.get(Long.parseLong(key));
+                if (name != null) {
+                    copy.set(0, name);
+                }
+            } catch (NumberFormatException ignored) {
+                // Non-numeric key (e.g. UNSPECIFIED) — leave unchanged.
+            }
+            rows.add(copy);
+        }
+        return new TabularData(table.headers(), rows);
     }
 
     /** Loads the orders visible to the current user as pure report records. */

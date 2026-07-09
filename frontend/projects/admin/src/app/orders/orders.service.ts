@@ -164,4 +164,15 @@ export class OrdersService {
       responseType: 'blob',
     });
   }
+
+  /**
+   * Fetch the internal packing label PDF (Code128 barcode + order/customer
+   * details) as a Blob so it can be opened/printed
+   * ({@code GET /api/admin/labels/internal/{id}}, ADMIN + PACKING_USER).
+   */
+  label(id: number): Observable<Blob> {
+    return this.http.get(this.api.url(`/api/admin/labels/internal/${id}`), {
+      responseType: 'blob',
+    });
+  }
 }

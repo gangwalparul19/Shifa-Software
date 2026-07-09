@@ -113,7 +113,7 @@ class LeadConvertPropertyTest {
         LeadConvertRequest request = new LeadConvertRequest(
                 "12 MG Road", "Pune", "Maharashtra", "411001",
                 List.of(new LineItemRequest(1L, 1, new BigDecimal("100.00"))),
-                new BigDecimal("100.00"), "screenshot-key");
+                new BigDecimal("100.00"), "screenshot-key", null);
 
         boolean terminal = LeadStatus.isTerminal(from);
 

@@ -127,3 +127,92 @@ apx-chart {
     font-size: 1.7rem;
   }
 }
+
+/* ==========================================================================
+   Compact controls: chip + Filters + Generate on one row; a single-row,
+   scroll-safe export toolbar. Saves vertical space on mobile.
+   ========================================================================== */
+.shifa-report-bar {
+  min-width: 0;
+}
+/* The type·range chip shrinks and truncates so the two buttons always fit. */
+.shifa-report-bar__chip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Export toolbar: one row; scrolls horizontally if it can't all fit. */
+.shifa-export {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.shifa-export::-webkit-scrollbar {
+  display: none;
+}
+.shifa-export__label {
+  flex: 0 0 auto;
+}
+.shifa-export .btn {
+  flex: 0 0 auto;
+}
+
+/* ==========================================================================
+   Report view tabs — a fixed 4-column grid (icon over label) so Overview /
+   Sales / Products / Customers all fit on one screen without cutting off.
+   ========================================================================== */
+.rpt-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem;
+}
+.rpt-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0.5rem 0.25rem;
+  border: 1px solid rgba(15, 51, 36, 0.14);
+  background: #fff;
+  border-radius: 12px;
+  color: #45524b;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.15;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.rpt-tab i {
+  font-size: 1.1rem;
+}
+.rpt-tab span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rpt-tab:hover:not(.active) {
+  background: var(--shifa-green-050, #f2f9f5);
+  border-color: rgba(15, 51, 36, 0.22);
+}
+.rpt-tab.active {
+  background: var(--shifa-green-600, #1f5d3f);
+  border-color: var(--shifa-green-600, #1f5d3f);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(15, 51, 36, 0.18);
+}
+
+/* A touch more label room on very small phones. */
+@media (min-width: 400px) {
+  .rpt-tab {
+    font-size: 0.8rem;
+  }
+}

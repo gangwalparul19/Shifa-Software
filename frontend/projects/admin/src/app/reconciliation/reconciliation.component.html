@@ -4,8 +4,8 @@
   [breadcrumbs]="[{ label: 'Reconciliation' }]"
 >
   <admin-density-toggle />
-  <button type="button" class="btn btn-outline-secondary" (click)="loadAll()" [disabled]="loading()">
-    <i class="ti ti-refresh me-1"></i> Refresh
+  <button type="button" class="btn btn-icon btn-outline-secondary" (click)="loadAll()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
+    <i class="ti ti-refresh"></i>
   </button>
 </admin-page-header>
 
@@ -88,25 +88,31 @@
 
 <!-- Tabs -->
 <div class="card">
-  <div class="card-header p-0">
-    <ul class="nav nav-tabs card-header-tabs px-2" role="tablist">
-      <li class="nav-item"><button type="button" class="nav-link" [class.active]="tab() === 'receivables'" (click)="setTab('receivables')">Receivables</button></li>
-      <li class="nav-item"><button type="button" class="nav-link" [class.active]="tab() === 'unsettled'" (click)="setTab('unsettled')">
-        Unsettled COD @if (unsettled().length) { <span class="badge bg-blue-lt ms-1">{{ unsettled().length }}</span> }
-      </button></li>
-      <li class="nav-item"><button type="button" class="nav-link" [class.active]="tab() === 'segregation'" (click)="setTab('segregation')">Prepaid / COD</button></li>
-      <li class="nav-item"><button type="button" class="nav-link" [class.active]="tab() === 'claims'" (click)="setTab('claims')">
-        Pending Claims @if (claims().length) { <span class="badge bg-red-lt ms-1">{{ claims().length }}</span> }
-      </button></li>
-    </ul>
+  <div class="card-header p-0 border-0">
+    <div class="recon-tabs" role="tablist" aria-label="Reconciliation views">
+      <button type="button" class="recon-tab" role="tab" [class.active]="tab() === 'receivables'" [attr.aria-selected]="tab() === 'receivables'" (click)="setTab('receivables')">
+        Receivables
+      </button>
+      <button type="button" class="recon-tab" role="tab" [class.active]="tab() === 'unsettled'" [attr.aria-selected]="tab() === 'unsettled'" (click)="setTab('unsettled')">
+        Unsettled COD
+        @if (unsettled().length) { <span class="recon-tab__badge">{{ unsettled().length }}</span> }
+      </button>
+      <button type="button" class="recon-tab" role="tab" [class.active]="tab() === 'segregation'" [attr.aria-selected]="tab() === 'segregation'" (click)="setTab('segregation')">
+        Prepaid / COD
+      </button>
+      <button type="button" class="recon-tab" role="tab" [class.active]="tab() === 'claims'" [attr.aria-selected]="tab() === 'claims'" (click)="setTab('claims')">
+        Pending Claims
+        @if (claims().length) { <span class="recon-tab__badge is-red">{{ claims().length }}</span> }
+      </button>
+    </div>
   </div>
 
   <!-- Receivables tab -->
   @if (tab() === 'receivables') {
     <div class="card-body border-bottom py-2">
-      <div class="row g-2 align-items-end">
-        <div class="col-12 col-lg">
-          <label class="form-label small mb-1">Search</label>
+      <!-- Search (grows) + Filters toggle — advanced filters collapse to save space -->
+      <div class="row g-2 align-items-center">
+        <div class="col">
           <div class="input-icon">
             <span class="input-icon-addon"><i class="ti ti-search"></i></span>
             <input
@@ -119,45 +125,69 @@
             />
           </div>
         </div>
-        <div class="col-6 col-md-4 col-lg-2">
-          <label class="form-label small mb-1">Courier</label>
-          <select class="form-select" [value]="filterCourier() ?? ''" (change)="onCourierFilter($any($event.target).value)">
-            <option value="">All couriers</option>
-            @for (c of summary(); track c.courierCompanyId) {
-              @if (c.courierCompanyId != null) { <option [value]="c.courierCompanyId">{{ courierLabel(c.courierName) }}</option> }
+        <div class="col-auto">
+          <button
+            type="button"
+            class="btn btn-outline-secondary d-inline-flex align-items-center text-nowrap"
+            (click)="toggleFilters()"
+            [class.active]="filtersOpen()"
+            [attr.aria-expanded]="filtersOpen()"
+            aria-controls="recon-filter-panel"
+          >
+            <i class="ti ti-filter me-1"></i>
+            <span class="d-none d-sm-inline">Filters</span>
+            @if (activeReceivableFilterCount() > 0) {
+              <span class="badge bg-primary text-white ms-1">{{ activeReceivableFilterCount() }}</span>
             }
-          </select>
+            <i class="ti ms-1" [class.ti-chevron-down]="!filtersOpen()" [class.ti-chevron-up]="filtersOpen()"></i>
+          </button>
         </div>
-        <div class="col-6 col-md-4 col-lg-2">
-          <label class="form-label small mb-1">Type</label>
-          <select class="form-select" [value]="filterType() ?? ''" (change)="onTypeFilter($any($event.target).value)">
-            <option value="">All types</option>
-            <option [value]="ReceivableType.COD_RECEIVABLE">COD receivable</option>
-            <option [value]="ReceivableType.CLAIM_RECEIVABLE">Claim receivable</option>
-          </select>
-        </div>
-        <div class="col-6 col-md-4 col-lg-2">
-          <label class="form-label small mb-1">Status</label>
-          <select class="form-select" [value]="filterSettled()" (change)="onSettledFilter($any($event.target).value)">
-            <option value="all">All</option><option value="unsettled">Unsettled</option><option value="settled">Settled</option>
-          </select>
-        </div>
-        <div class="col-6 col-lg-2">
-          <label class="form-label small mb-1">From</label>
-          <input type="date" class="form-control" [formControl]="fromDate" aria-label="From date" />
-        </div>
-        <div class="col-6 col-lg-2">
-          <label class="form-label small mb-1">To</label>
-          <input type="date" class="form-control" [formControl]="toDate" aria-label="To date" />
-        </div>
-        @if (hasReceivableFilters()) {
-          <div class="col-auto">
-            <button type="button" class="btn btn-link text-secondary px-1" (click)="clearReceivableFilters()">
-              <i class="ti ti-filter-off me-1"></i> Clear
-            </button>
-          </div>
-        }
       </div>
+
+      @if (filtersOpen()) {
+        <div id="recon-filter-panel" class="row g-2 align-items-end mt-1 pt-2 border-top anim-fade-up">
+          <div class="col-6 col-lg-3">
+            <label class="form-label small mb-1">Courier</label>
+            <select class="form-select" [value]="filterCourier() ?? ''" (change)="onCourierFilter($any($event.target).value)">
+              <option value="">All couriers</option>
+              @for (c of summary(); track c.courierCompanyId) {
+                @if (c.courierCompanyId != null) { <option [value]="c.courierCompanyId">{{ courierLabel(c.courierName) }}</option> }
+              }
+            </select>
+          </div>
+          <div class="col-6 col-lg-3">
+            <label class="form-label small mb-1">Type</label>
+            <select class="form-select" [value]="filterType() ?? ''" (change)="onTypeFilter($any($event.target).value)">
+              <option value="">All types</option>
+              <option [value]="ReceivableType.COD_RECEIVABLE">COD receivable</option>
+              <option [value]="ReceivableType.CLAIM_RECEIVABLE">Claim receivable</option>
+            </select>
+          </div>
+          <div class="col-6 col-lg-3">
+            <label class="form-label small mb-1">Status</label>
+            <select class="form-select" [value]="filterSettled()" (change)="onSettledFilter($any($event.target).value)">
+              <option value="unsettled">Unsettled</option><option value="settled">Settled</option><option value="all">All</option>
+            </select>
+          </div>
+          <div class="col-6 col-lg-3 d-flex gap-2">
+            <div class="flex-fill">
+              <label class="form-label small mb-1">From</label>
+              <input type="date" class="form-control" [formControl]="fromDate" aria-label="From date" />
+            </div>
+            <div class="flex-fill">
+              <label class="form-label small mb-1">To</label>
+              <input type="date" class="form-control" [formControl]="toDate" aria-label="To date" />
+            </div>
+          </div>
+          @if (hasReceivableFilters()) {
+            <div class="col-12">
+              <button type="button" class="btn btn-sm btn-link text-secondary px-1" (click)="clearReceivableFilters()">
+                <i class="ti ti-filter-off me-1"></i> Reset to Unsettled
+              </button>
+            </div>
+          }
+        </div>
+      }
     </div>
 
     @if (receivables().length === 0) {
@@ -181,16 +211,18 @@
                 <span class="shifa-rc__pill is-amber">Outstanding</span>
               }
             </div>
-            @if (r.awb) {
-              <div class="shifa-rc__awb"><i class="ti ti-barcode me-1"></i><span class="shifa-mono">{{ r.awb }}</span></div>
-            }
-            @if (!r.settled) {
-              <button type="button" class="btn btn-primary w-100 shifa-rc__btn" (click)="openSettle(r)" [disabled]="acting()">
-                <i class="ti ti-check me-1"></i> Settle
-              </button>
-            } @else if (r.settledDate) {
-              <div class="shifa-rc__settled">Settled on {{ r.settledDate | date: 'dd MMM yyyy' }}</div>
-            }
+            <div class="shifa-rc__foot">
+              <span class="shifa-rc__awb">
+                @if (r.awb) { <i class="ti ti-barcode me-1"></i><span class="shifa-mono">{{ r.awb }}</span> }
+              </span>
+              @if (!r.settled) {
+                <button type="button" class="btn btn-sm btn-primary shifa-rc__btn" (click)="openSettle(r)" [disabled]="acting()">
+                  <i class="ti ti-check me-1"></i> Settle
+                </button>
+              } @else if (r.settledDate) {
+                <span class="shifa-rc__settled">Settled {{ r.settledDate | date: 'dd MMM yyyy' }}</span>
+              }
+            </div>
           </div>
         }
       </div>
@@ -257,12 +289,14 @@
               <span class="shifa-rc__meta">{{ u.customerName ?? '—' }} · {{ courierLabel(u.courierName) }}</span>
               <span class="shifa-rc__pill is-amber">Unsettled</span>
             </div>
-            @if (u.awb) {
-              <div class="shifa-rc__awb"><i class="ti ti-barcode me-1"></i><span class="shifa-mono">{{ u.awb }}</span></div>
-            }
-            <button type="button" class="btn btn-primary w-100 shifa-rc__btn" (click)="openSettle(u)" [disabled]="acting()">
-              <i class="ti ti-check me-1"></i> Settle
-            </button>
+            <div class="shifa-rc__foot">
+              <span class="shifa-rc__awb">
+                @if (u.awb) { <i class="ti ti-barcode me-1"></i><span class="shifa-mono">{{ u.awb }}</span> }
+              </span>
+              <button type="button" class="btn btn-sm btn-primary shifa-rc__btn" (click)="openSettle(u)" [disabled]="acting()">
+                <i class="ti ti-check me-1"></i> Settle
+              </button>
+            </div>
           </div>
         }
       </div>
@@ -350,12 +384,14 @@
               </span>
               <span class="shifa-rc__pill is-red">Claim</span>
             </div>
-            @if (c.awb) {
-              <div class="shifa-rc__awb"><i class="ti ti-barcode me-1"></i><span class="shifa-mono">{{ c.awb }}</span></div>
-            }
-            <button type="button" class="btn btn-primary w-100 shifa-rc__btn" (click)="openSettle(c)" [disabled]="acting()">
-              <i class="ti ti-check me-1"></i> Mark settled
-            </button>
+            <div class="shifa-rc__foot">
+              <span class="shifa-rc__awb">
+                @if (c.awb) { <i class="ti ti-barcode me-1"></i><span class="shifa-mono">{{ c.awb }}</span> }
+              </span>
+              <button type="button" class="btn btn-sm btn-primary shifa-rc__btn" (click)="openSettle(c)" [disabled]="acting()">
+                <i class="ti ti-check me-1"></i> Mark settled
+              </button>
+            </div>
           </div>
         }
       </div>

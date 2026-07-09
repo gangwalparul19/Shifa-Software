@@ -8,6 +8,13 @@ spring:
     name: shifa-oms
   profiles:
     default: local
+  servlet:
+    multipart:
+      # Payment screenshots from phones are commonly 2-5 MB; the Spring default
+      # of 1 MB/file rejected them with a generic 500. Nginx allows 15m, so keep
+      # these comfortably under that. Override via env if needed.
+      max-file-size: ${MAX_UPLOAD_FILE_SIZE:10MB}
+      max-request-size: ${MAX_UPLOAD_REQUEST_SIZE:12MB}
   jpa:
     open-in-view: false
     hibernate:
@@ -65,6 +72,11 @@ app:
     mode: ${MAIL_MODE:MOCK}
     from: ${MAIL_FROM:Shifa Herbal Remedies <no-reply@shifa.local>}
     digest-to: ${REPORT_DIGEST_TO:}
+    # Whether the INTERNAL scheduler sends the consolidated daily report (default
+    # true). Set false (REPORT_DIGEST_ENABLED=false) when an external AWS Lambda
+    # drives the report via POST /api/admin/reports/daily-digest/run to avoid a
+    # double-send. The ADMIN trigger endpoint always works regardless of this flag.
+    digest-enabled: ${REPORT_DIGEST_ENABLED:true}
     # Milestone-email send retry policy for the email outbox drainer (Req 14.5).
     max-attempts: ${MAIL_MAX_ATTEMPTS:3}
     retry-backoff: PT30S
@@ -164,9 +176,27 @@ app:
     # Unsettled-COD amount above which a COD build-up fires.
     cod-outstanding-warn: ${INSIGHTS_COD_OUTSTANDING_WARN:50000}
   storage:
-    # Binary object store for payment screenshots (and later PDFs).
-    # provider: LOCAL (dev, filesystem) or OCI (cloud, Object Storage - TODO).
+    # Binary object store for payment screenshots and internal label PDFs.
+    # provider:
+    #   LOCAL (default, dev) - filesystem under local.base-path
+    #   DB                   - stored_files table (durable, in the DB)
+    #   S3                   - Amazon S3 bucket (labels/ + payments/ folders)
     provider: ${STORAGE_PROVIDER:LOCAL}
     local:
       # Folder that LocalStorageService writes objects under (dev only).
       base-path: ${STORAGE_LOCAL_PATH:storage}
+    s3:
+      # Target bucket (required when provider=S3). Objects are namespaced by the
+      # caller's logical prefix, so labels land under labels/internal/... and
+      # payment screenshots under payments/... within the bucket.
+      bucket: ${STORAGE_S3_BUCKET:}
+      # AWS region of the bucket.
+      region: ${STORAGE_S3_REGION:ap-south-1}
+      # Optional common root prefix (e.g. "shifa/") to share a bucket across envs.
+      prefix: ${STORAGE_S3_PREFIX:}
+      # Leave blank to use the EC2 instance role (recommended). Only set these for
+      # environments without an instance role; inject via env, never commit them.
+      access-key: ${STORAGE_S3_ACCESS_KEY:}
+      secret-key: ${STORAGE_S3_SECRET_KEY:}
+      # Optional S3-compatible endpoint (MinIO/LocalStack); blank = real AWS S3.
+      endpoint: ${STORAGE_S3_ENDPOINT:}

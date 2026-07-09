@@ -30,6 +30,14 @@ public final class ReportRows {
     public record StateRow(String state, long orderCount, BigDecimal totalSales) {
     }
 
+    /**
+     * One row of the customer-wise report: the customer (name + mobile), how many
+     * orders they placed in the window, and the total sales they contributed.
+     */
+    public record CustomerRow(String customerName, String customerMobile,
+                              long orderCount, BigDecimal totalSales) {
+    }
+
     /** One row of a grouped-count report: a group key label and its order count (Req 16.1&ndash;16.3). */
     public record CountRow(String key, long orderCount) {
     }

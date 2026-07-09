@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shifa OMS — Cost Estimate (One-time & Monthly)</title>
+<style>
+  :root{
+    --green:#1F5D3F; --green-700:#184b32; --green-50:#eef4f0; --gold:#C9A227;
+    --ink:#1f2a24; --muted:#5b6b62; --line:#dce7e0; --danger:#b23b3b; --warn:#8a6d00;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--green-50);line-height:1.55}
+  .band{background:linear-gradient(135deg,var(--green),var(--green-700));color:#fff;padding:32px 24px;
+    border-bottom:4px solid var(--gold)}
+  .wrap{max-width:1080px;margin:0 auto;padding:24px}
+  .band .wrap{padding:0}
+  h1{margin:0 0 6px;font-size:1.7rem}
+  h2{color:var(--green);border-bottom:2px solid var(--line);padding-bottom:6px;margin-top:38px;font-size:1.25rem}
+  h3{color:var(--green-700);margin:22px 0 8px;font-size:1.05rem}
+  .sub{opacity:.9;margin:0}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:18px 0}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;box-shadow:0 1px 3px rgba(15,51,36,.05)}
+  .card .k{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .card .v{font-size:1.5rem;font-weight:700;color:var(--green);margin-top:4px}
+  .card .n{font-size:.8rem;color:var(--muted);margin-top:2px}
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;
+    overflow:hidden;margin:12px 0;font-size:.92rem}
+  th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--green);color:#fff;font-weight:600;font-size:.82rem;letter-spacing:.03em}
+  tr:last-child td{border-bottom:0}
+  tbody tr:nth-child(even){background:#fafcfb}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .total td{background:var(--green-50);font-weight:700;color:var(--green-700)}
+  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.72rem;font-weight:600}
+  .pill.free{background:#e5f2ea;color:var(--green)}
+  .pill.opt{background:#eef1f5;color:#546}
+  .pill.rec{background:#fdf3d6;color:var(--warn)}
+  .note{background:#fff;border-left:4px solid var(--gold);border-radius:8px;padding:12px 16px;margin:14px 0;font-size:.9rem}
+  .note.warn{border-left-color:var(--warn)}
+  .note.danger{border-left-color:var(--danger)}
+  .assump{background:#fff;border:1px dashed var(--green);border-radius:12px;padding:16px 20px;margin:16px 0}
+  .assump ul{margin:8px 0 0;padding-left:20px}
+  .foot{color:var(--muted);font-size:.82rem;margin:30px 0 10px}
+  a{color:var(--green-700)}
+  code{background:#eef4f0;padding:1px 5px;border-radius:4px;font-size:.85em}
+</style>
+</head>
+<body>
+<div class="band"><div class="wrap">
+  <h1>Shifa Herbal Remedies — OMS Cost Estimate</h1>
+  <p class="sub">One-time setup &amp; monthly running costs · first 6 months · dashboard-only Order Management System</p>
+</div></div>
+
+<div class="wrap">
+
+  <div class="assump">
+    <strong>Planning assumptions</strong>
+    <ul>
+      <li><strong>Users:</strong> up to ~50 staff (mostly salespersons on mobile) for the first 6 months.</li>
+      <li><strong>Orders:</strong> 3,000 (low) to 5,000 (high) per month.</li>
+      <li><strong>WhatsApp:</strong> 3–4 messages per order (order updates = <em>Utility</em> template category).</li>
+      <li><strong>Server:</strong> <code>t4g.medium</code> (2 vCPU / 4 GB), run <strong>19 hours/day</strong> — powered down
+        <strong>00:30–05:30 IST</strong> daily (≈ 578 hours/month) to cut compute cost.</li>
+      <li><strong>Courier:</strong> handled directly by the client with their courier partner — <em>excluded</em> from this estimate.</li>
+      <li><strong>FX rate used:</strong> ≈ <strong>₹96 = $1</strong> (planning rate; verify current rate).</li>
+    </ul>
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="k">Software running cost</div><div class="v">₹3.3k–11.9k</div><div class="n">/month all-in</div></div>
+    <div class="card"><div class="k">WhatsApp (per-order)</div><div class="v">₹3.1k–7.0k</div><div class="n">/month · 9k–20k msgs</div></div>
+    <div class="card"><div class="k">One-time setup</div><div class="v">₹1k–6.5k</div><div class="n">infra only (excl. labour)</div></div>
+    <div class="card"><div class="k">Hosting (Year 1)</div><div class="v">≈ ₹0</div><div class="n">covered by AWS credits</div></div>
+  </div>
+
+  <div class="note">
+    <strong>Courier is excluded.</strong> Shipping charges are handled directly by the client with their courier partner. Everything
+    below is the <strong>cost to run the OMS software</strong> — about <strong>₹3,300–₹11,900/month</strong>, most of which is WhatsApp
+    usage. Hosting is ≈ ₹0 in the first year (AWS sign-up credits).
+  </div>
+
+  <h2>1. Monthly costs</h2>
+
+  <h3>1a. Platform &amp; infrastructure</h3>
+  <table>
+    <thead><tr><th>Item</th><th>What / size</th><th class="num">Low (₹/mo)</th><th class="num">High (₹/mo)</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>App hosting — AWS EC2 <code>t4g.medium</code> <span class="pill rec">recommended</span></td>
+        <td>2 vCPU / 4 GB, MySQL on same box, run 19 h/day (~578 h/mo)</td>
+        <td class="num">0</td>
+        <td class="num">1,243</td>
+        <td><span class="pill free">Year 1 ≈ ₹0</span> covered by $100–$200 credits. After credits: ~$13/mo (₹1,243) at 19 h/day (24×7 would be ~₹1,570).</td>
+      </tr>
+      <tr>
+        <td>EBS disk + public IP</td>
+        <td>30 GB gp3 + 1 Elastic IP (stable URL)</td>
+        <td class="num">0</td>
+        <td class="num">590</td>
+        <td>Free for first 12 months. After: ~₹240 (disk) + ~₹350 (IPv4) ≈ ₹590/mo.</td>
+      </tr>
+      <tr>
+        <td>Domain name</td>
+        <td>.com / .in (amortised from annual)</td>
+        <td class="num">85</td>
+        <td class="num">125</td>
+        <td>~₹1,000–1,500 / year (Hostinger / GoDaddy / Namecheap).</td>
+      </tr>
+      <tr>
+        <td>SSL certificate</td>
+        <td>Let's Encrypt (auto-renew)</td>
+        <td class="num">0</td>
+        <td class="num">0</td>
+        <td><span class="pill free">Free</span></td>
+      </tr>
+      <tr>
+        <td>Business email <span class="pill opt">optional</span></td>
+        <td>Zoho Mail (free ≤5 users) or Google Workspace</td>
+        <td class="num">0</td>
+        <td class="num">480</td>
+        <td>Zoho free = ₹0. Google Workspace ≈ ₹160/user × ~3 admins for branded email.</td>
+      </tr>
+      <tr>
+        <td>WhatsApp BSP platform fee <span class="pill opt">optional</span></td>
+        <td>AiSensy / Interakt / Wati plan</td>
+        <td class="num">0</td>
+        <td class="num">2,500</td>
+        <td>₹0 if you use <strong>Meta Cloud API directly</strong> (app supports a swappable provider); ₹1,000–2,500/mo via a BSP dashboard.</td>
+      </tr>
+      <tr class="total"><td colspan="2">Platform subtotal</td><td class="num">≈ 85</td><td class="num">≈ 4,938</td><td>Low = Year-1 (credits), Meta-direct, Zoho free.</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    <strong>Why 19 h/day?</strong> On the free <code>t4g.small</code> shutting down saves nothing (it's already free 24×7). It only
+    saves money on a <em>paid, bigger</em> instance like <code>t4g.medium</code> — the nightly power-down trims ~21% off compute and
+    lets you afford the extra RAM headroom for 50 users. See §3 for a fully-free alternative (<code>t4g.small</code> + RDS).
+  </div>
+
+  <h3>1b. WhatsApp messages (variable, per order)</h3>
+  <table>
+    <thead><tr><th>Scenario</th><th class="num">Orders/mo</th><th class="num">Msgs/order</th><th class="num">Total msgs</th><th class="num">Rate (Utility)</th><th class="num">Cost/mo</th></tr></thead>
+    <tbody>
+      <tr><td>Low</td><td class="num">3,000</td><td class="num">3</td><td class="num">9,000</td><td class="num">₹0.35</td><td class="num">₹3,150 (~$33)</td></tr>
+      <tr><td>High</td><td class="num">5,000</td><td class="num">4</td><td class="num">20,000</td><td class="num">₹0.35</td><td class="num">₹7,000 (~$73)</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    Order-status updates are <strong>Utility</strong> template messages (≈ <strong>₹0.35 / message</strong> in India, early 2026).
+    Since 1 Jul 2025, utility messages inside a 24-hour customer-initiated window are <strong>free</strong>, so real cost can be lower.
+    Marketing/promo blasts (≈ ₹0.78–0.88/msg) are not included — the app only sends transactional updates.
+    Sources: <a href="https://www.medianama.com/2025/07/223-whatsapp-business-per-message-pricing-india/">MediaNama</a>,
+    <a href="https://blog.campaignhq.co/whatsapp-business-api-pricing-india/">CampaignHQ (Feb 2026 India rates)</a>. <em>Re-summarised for compliance; verify live rates.</em>
+  </div>
+
+  <h3>1c. Monthly totals (software only)</h3>
+  <table>
+    <thead><tr><th>Bucket</th><th class="num">Low (₹/mo)</th><th class="num">High (₹/mo)</th></tr></thead>
+    <tbody>
+      <tr><td>Platform &amp; infrastructure (1a)</td><td class="num">85</td><td class="num">4,938</td></tr>
+      <tr><td>WhatsApp messaging (1b)</td><td class="num">3,150</td><td class="num">7,000</td></tr>
+      <tr class="total"><td>Total software running cost</td><td class="num">≈ ₹3,235 (~$34)</td><td class="num">≈ ₹11,938 (~$124)</td></tr>
+    </tbody>
+  </table>
+  <div class="note">Courier/shipping is <strong>not included</strong> — the client manages that directly with their courier partner.</div>
+
+  <h2>2. One-time (setup) costs</h2>
+  <table>
+    <thead><tr><th>Item</th><th class="num">Cost (₹)</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Domain registration (first year)</td><td class="num">1,000–1,500</td><td>Recurs annually. .in is cheaper than .com.</td></tr>
+      <tr><td>AWS account &amp; server setup</td><td class="num">0</td><td><span class="pill free">Free</span> covered by $100–$200 sign-up credits.</td></tr>
+      <tr><td>SSL certificate</td><td class="num">0</td><td><span class="pill free">Free</span> Let's Encrypt.</td></tr>
+      <tr><td>WhatsApp Business API onboarding + green-tick verification</td><td class="num">0–5,000</td><td>Meta business verification is free; some BSPs charge a one-time onboarding fee.</td></tr>
+      <tr><td>Business email setup</td><td class="num">0</td><td>Zoho free tier; ₹0.</td></tr>
+      <tr><td>Initial deployment &amp; configuration (labour) <span class="pill opt">varies</span></td><td class="num">as per team/vendor</td><td>₹0 if your existing developer deploys (guide provided); est. ₹15k–30k if outsourced one-time.</td></tr>
+      <tr class="total"><td>One-time infra subtotal (excl. labour)</td><td class="num">≈ ₹1,000–6,500</td><td>Plus optional deployment labour.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. Hosting options compared (₹96/$1)</h2>
+  <table>
+    <thead><tr><th>Option</th><th>Spec</th><th class="num">Year-1</th><th class="num">Steady state</th><th>Best for</th></tr></thead>
+    <tbody>
+      <tr><td><strong>EC2 t4g.medium @ 19h/day</strong> <span class="pill rec">recommended</span></td><td>2 vCPU/4 GB, local MySQL</td><td class="num">≈ ₹0</td><td class="num">~₹1,833/mo</td><td>~50 users, bigger RAM, cost trimmed by nightly power-down. Credits cover year 1.</td></tr>
+      <tr><td>EC2 t4g.medium @ 24×7</td><td>2 vCPU/4 GB, local MySQL</td><td class="num">≈ ₹0</td><td class="num">~₹2,160/mo</td><td>Same, always-on (no scheduling to manage; nightly jobs just work).</td></tr>
+      <tr><td>EC2 t4g.small + RDS db.t4g.micro</td><td>2 GB app + managed 1 GB DB</td><td class="num">₹0</td><td class="num">~₹2,700/mo</td><td><strong>Fully free in year 1</strong>; always-on DB (needed if you run night-time Lambda jobs). RDS adds cost after its 12-month free window.</td></tr>
+      <tr><td>EC2 t4g.large @ 19h/day</td><td>2 vCPU/8 GB, local MySQL</td><td class="num">≈ ₹0</td><td class="num">~₹3,076/mo</td><td>Extra headroom if usage grows beyond 50 users.</td></tr>
+      <tr><td>Oracle Cloud Always Free</td><td>up to 4 OCPU/24 GB (Arm)</td><td class="num">₹0</td><td class="num">₹0 (forever)</td><td>Long-term $0 hosting; no credit expiry.</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    Steady-state figures include compute + 30 GB EBS (~₹240) + public IPv4 (~₹350). During year 1 all of this is covered by your
+    <strong>$100–$200 AWS credits</strong>, so hosting is effectively <strong>₹0</strong>. Deployment steps: <a href="deployment-aws.html">deployment-aws.html</a>.
+  </div>
+
+  <h2>4. Server sizing &amp; capacity (~50 users)</h2>
+  <p>The workload is light (form entry, 10-row paginated lists, dashboards). Data <em>volume</em> is a non-issue — ~30k orders in
+  6 months is trivial for MySQL 8 with the existing indexes (sub-second queries). The only real constraint on the smallest box is
+  <strong>RAM</strong>, because the JVM and MySQL share it. For ~50 users, <strong><code>t4g.medium</code> (4 GB)</strong> is the
+  sweet spot; a fully-free alternative is <strong><code>t4g.small</code> + RDS <code>db.t4g.micro</code></strong> (DB on its own
+  instance, both free 12 months). <code>db</code> engine capacity is not the concern — RAM headroom is.</p>
+
+  <h2>5. Nightly power-down (00:30–05:30 IST) — what to watch</h2>
+  <table>
+    <thead><tr><th>Point</th><th>Detail</th></tr></thead>
+    <tbody>
+      <tr><td>Compute saving</td><td>~19 h/day ≈ 578 h/mo vs 730 h — ~21% off compute on a <em>paid</em> instance. (No saving on the free <code>t4g.small</code>.)</td></tr>
+      <tr><td>⚠️ Scheduled jobs at 02:00</td><td>The app runs the <strong>DB backup</strong> and <strong>insights computation</strong> at 02:00 — inside the downtime. <strong>Move these out of the window</strong> (e.g. backup 23:45, insights 23:50, daily digest 06:00) via the env cron settings, or run them on Lambda (§6).</td></tr>
+      <tr><td>Stable URL</td><td>Use an <strong>Elastic IP</strong> — the auto-assigned public IP changes on every stop/start. (EIP ~₹350/mo after the 12-month free IPv4 window.)</td></tr>
+      <tr><td>Automation</td><td>Automate stop (00:30) / start (05:30) with <strong>EventBridge Scheduler + a tiny Lambda</strong> or AWS Instance Scheduler — no manual work.</td></tr>
+      <tr><td>Data safety</td><td>MySQL data lives on the EBS disk and <strong>persists across stop/start</strong> — no data loss.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6. Optional — AWS Lambda for reports &amp; automation</h2>
+  <p>Lambda + EventBridge Scheduler is a clean, near-free way to run scheduled work <em>independently of the EC2</em> (so it keeps
+  working during the nightly power-down). Good uses:</p>
+  <ul>
+    <li><strong>EC2 stop/start automation</strong> (00:30 / 05:30) — the simplest, highest-value Lambda here.</li>
+    <li><strong>Scheduled reports</strong> (daily / weekly / monthly) emailed as PDF/Excel, and the <strong>nightly insights + DB backup</strong> — offloaded from the app box.</li>
+  </ul>
+  <div class="note warn">
+    <strong>Dependency:</strong> night-time Lambda jobs need the database while the EC2 is off, so the DB must be <strong>always-on
+    → use RDS</strong> (the <code>t4g.small + RDS</code> option), not MySQL on the stopped EC2. Also, today's report/insight logic lives
+    inside the Spring Boot app, so a Lambda would either package that Java code or call an API — some engineering effort.
+  </div>
+  <div class="note">
+    <strong>Cost:</strong> Lambda's always-free tier (1M requests + 400,000 GB-seconds/month) means a handful of scheduled runs per
+    day is effectively <strong>₹0 forever</strong>. <strong>Recommendation:</strong> for now, keep reports/insights inside the app and
+    just move the cron times out of the downtime window (₹0, no new moving parts). Adopt RDS + Lambda later if you want true
+    night-time jobs or heavy off-box report generation.
+  </div>
+
+  <h2>7. 6-month projection (software running cost only)</h2>
+  <table>
+    <thead><tr><th>Period</th><th class="num">Low (₹)</th><th class="num">High (₹)</th></tr></thead>
+    <tbody>
+      <tr><td>One-time setup (infra)</td><td class="num">1,000</td><td class="num">6,500</td></tr>
+      <tr><td>Months 1–6 running cost</td><td class="num">≈ 19,400</td><td class="num">≈ 71,600</td></tr>
+      <tr class="total"><td>6-month software total</td><td class="num">≈ ₹20,400 (~$213)</td><td class="num">≈ ₹78,100 (~$814)</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    Hosting is ≈ ₹0 during the first year (AWS credits), so almost all of the running cost above is <strong>WhatsApp usage</strong>.
+    Courier/shipping is managed separately by the client and is not included.
+  </div>
+
+  <p class="foot">
+    Figures are planning estimates as of early 2026 in ₹ (≈ ₹96/$1) for AWS Mumbai (ap-south-1) and depend on live AWS/Meta rates,
+    your actual order volume, message mix, and whether you self-host MySQL vs use a managed database. Verify current pricing on the
+    <a href="https://calculator.aws">AWS Pricing Calculator</a> and your WhatsApp provider before committing. Prepared for Shifa Herbal Remedies.
+  </p>
+
+</div>
+</body>
+</html>

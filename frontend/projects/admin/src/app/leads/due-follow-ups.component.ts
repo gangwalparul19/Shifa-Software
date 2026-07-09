@@ -94,6 +94,26 @@ export class DueFollowUpsComponent implements OnInit {
     return LEAD_SOURCE_OPTIONS.find((o) => o.value === source)?.label ?? source;
   }
 
+  /** A Tabler brand/context icon for a lead source (mirrors the Leads list). */
+  sourceIcon(source: LeadSource | string | null | undefined): string {
+    switch (source) {
+      case 'WHATSAPP':
+        return 'ti-brand-whatsapp';
+      case 'INSTAGRAM':
+        return 'ti-brand-instagram';
+      case 'FACEBOOK':
+        return 'ti-brand-facebook';
+      case 'GOOGLE':
+        return 'ti-brand-google';
+      case 'OFFLINE':
+        return 'ti-building-store';
+      case 'OTHER':
+        return 'ti-dots-circle-horizontal';
+      default:
+        return 'ti-broadcast';
+    }
+  }
+
   statusOf(status: LeadStatus): string {
     return this.statusLabels[status];
   }

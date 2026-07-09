@@ -128,6 +128,39 @@ public class ReportAggregator {
     }
 
     /**
+     * Customer-wise report: one row per customer (keyed by mobile, falling back
+     * to name when the mobile is blank) within the window, with their order
+     * count and total sales, ordered by sales descending then customer name.
+     */
+    public List<ReportRows.CustomerRow> customerWise(List<OrderReportRecord> orders, DateRange window) {
+        Map<String, long[]> counts = new LinkedHashMap<>();
+        Map<String, BigDecimal> sales = new LinkedHashMap<>();
+        Map<String, String> names = new LinkedHashMap<>();
+        Map<String, String> mobiles = new LinkedHashMap<>();
+        for (OrderReportRecord o : within(orders, window)) {
+            String mobile = o.customerMobile() == null ? "" : o.customerMobile();
+            String name = o.customerName() == null ? "" : o.customerName();
+            String key = !mobile.isBlank() ? mobile : name;
+            counts.computeIfAbsent(key, k -> new long[1])[0]++;
+            sales.merge(key, o.totalAmount(), BigDecimal::add);
+            names.putIfAbsent(key, name);
+            mobiles.putIfAbsent(key, mobile);
+        }
+        List<ReportRows.CustomerRow> rows = new ArrayList<>();
+        for (Map.Entry<String, long[]> e : counts.entrySet()) {
+            String key = e.getKey();
+            rows.add(new ReportRows.CustomerRow(
+                    names.getOrDefault(key, ""),
+                    mobiles.getOrDefault(key, ""),
+                    e.getValue()[0],
+                    scale(sales.get(key))));
+        }
+        rows.sort(Comparator.comparing(ReportRows.CustomerRow::totalSales).reversed()
+                .thenComparing(ReportRows.CustomerRow::customerName));
+        return rows;
+    }
+
+    /**
      * Salesperson-wise detailed report: the windowed orders themselves, ordered
      * by order date descending then id, each carrying every required column
      * (Req 20.3). Scoping to a single salesperson is applied upstream by the

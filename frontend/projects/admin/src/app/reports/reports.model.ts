@@ -1,5 +1,5 @@
 /** The report views the backend can generate (Req 20.1, 20.3). */
-export type ReportType = 'daily' | 'monthly' | 'product' | 'state' | 'salesperson';
+export type ReportType = 'daily' | 'monthly' | 'product' | 'state' | 'customer' | 'salesperson';
 
 /** Export file formats offered for a report (Req 20.4, 23.1). */
 export type ExportFormat = 'xlsx' | 'pdf';
@@ -17,6 +17,7 @@ export interface ReportSummary {
   salesChangeApplicable: boolean;
   salesChangePercent: string | null;
   topSalespersonId: number | null;
+  topSalespersonName: string | null;
   topProduct: string | null;
   topState: string | null;
 }

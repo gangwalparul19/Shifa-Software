@@ -1,8 +1,9 @@
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
 import { OrderDetail } from '../orders/orders.model';
-import { PackingScanResponse } from './packing.model';
+import { PackingQueue, PackingScanResponse } from './packing.model';
 
 /**
  * Data access for the packing barcode-scan workflow (Req 11).
@@ -16,6 +17,24 @@ import { PackingScanResponse } from './packing.model';
 @Injectable({ providedIn: 'root' })
 export class PackingService {
   private readonly api = inject(ApiClient);
+  private readonly http = inject(HttpClient);
+
+  /** The packing work queues (awaiting packing / handover / dispatch), oldest-first. */
+  queue(): Observable<PackingQueue> {
+    return this.api.get<PackingQueue>('/api/packing/queue');
+  }
+
+  /**
+   * Fetch the internal label PDF (barcode + order/customer details) for an order
+   * as a Blob so it can be opened/printed. Uses {@link HttpClient} directly so
+   * the auth interceptor attaches the bearer token
+   * ({@code GET /api/admin/labels/internal/{id}}, ADMIN + PACKING_USER).
+   */
+  label(orderId: number): Observable<Blob> {
+    return this.http.get(this.api.url(`/api/admin/labels/internal/${orderId}`), {
+      responseType: 'blob',
+    });
+  }
 
   /** Scan a barcode to mark the matching order Packed (Req 11.1). */
   scan(barcode: string): Observable<PackingScanResponse> {

@@ -280,4 +280,110 @@
       </button>
     </div>
   </form>
+
+  <!-- Delivery states section (independent of the settings form above) -->
+  <div class="card mb-3 mt-3">
+    <div class="card-header">
+      <h3 class="card-title mb-0"><i class="ti ti-map-pin me-2"></i>Delivery states</h3>
+    </div>
+    <div class="card-body">
+      <p class="text-secondary small mb-3">
+        <i class="ti ti-info-circle me-1"></i>
+        These states power the state typeahead on the <strong>New Order</strong> form. Disable a
+        state to hide it from the picker without deleting it.
+      </p>
+
+      <!-- Add a new state -->
+      <div class="row g-2 align-items-start mb-3">
+        <div class="col">
+          <input
+            type="text"
+            class="form-control"
+            [formControl]="newStateName"
+            maxlength="100"
+            autocomplete="off"
+            placeholder="Add a state (e.g. Maharashtra)"
+            (keydown.enter)="$event.preventDefault(); addState()"
+            [class.is-invalid]="newStateName.touched && newStateName.invalid"
+          />
+          @if (newStateName.touched && newStateName.invalid) {
+            <div class="invalid-feedback">A state name (max 100 chars) is required.</div>
+          }
+        </div>
+        <div class="col-auto">
+          <button
+            type="button"
+            class="btn btn-primary"
+            (click)="addState()"
+            [disabled]="stateBusyId() === 'new'"
+          >
+            @if (stateBusyId() === 'new') {
+              <span class="spinner-border spinner-border-sm me-1"></span>
+            } @else {
+              <i class="ti ti-plus me-1"></i>
+            }
+            Add
+          </button>
+        </div>
+      </div>
+
+      @if (statesLoading()) {
+        <div class="skeleton skeleton-line w-75 mb-2"></div>
+        <div class="skeleton skeleton-line w-50"></div>
+      } @else if (statesError()) {
+        <div class="alert alert-danger d-flex align-items-center" role="alert">
+          <i class="ti ti-alert-triangle me-2"></i>
+          <span class="me-auto">{{ statesError() }}</span>
+          <button type="button" class="btn btn-sm btn-danger" (click)="loadStates()">Retry</button>
+        </div>
+      } @else {
+        <div class="table-responsive">
+          <table class="table table-vcenter table-sm mb-0">
+            <thead>
+              <tr>
+                <th>State</th>
+                <th class="text-center">Active</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (s of states(); track s.id) {
+                <tr [class.text-secondary]="!s.active">
+                  <td>{{ s.name }}</td>
+                  <td class="text-center">
+                    <label class="form-check form-switch mb-0 d-inline-flex">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        [checked]="s.active"
+                        [disabled]="stateBusyId() === s.id"
+                        (change)="toggleState(s)"
+                      />
+                    </label>
+                  </td>
+                  <td class="text-end">
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-ghost-danger"
+                      (click)="removeState(s)"
+                      [disabled]="stateBusyId() === s.id"
+                      title="Remove state"
+                    >
+                      <i class="ti ti-trash"></i>
+                    </button>
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="3" class="text-center text-secondary py-3">
+                    No states yet. Add one above.
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  </div>
 }

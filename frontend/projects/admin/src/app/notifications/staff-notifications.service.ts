@@ -1,6 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, forkJoin, of } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { Observable } from 'rxjs';
 import { ApiClient, PageResponse } from 'core';
 import { AdminNotificationItem, UnreadCount } from './notifications.model';
 import { NotificationPageQuery } from './notifications.service';
@@ -52,14 +51,10 @@ export class StaffNotificationsService {
   }
 
   /**
-   * Mark the supplied notifications read. The staff endpoint has no bulk
-   * read-all, so this fans out one {@code /read} call per id; a no-op resolves
-   * immediately when the list is empty.
+   * Mark every unread notification visible to the current user read in one call
+   * and return the updated (0) unread count for the badge.
    */
-  markManyRead(ids: number[]): Observable<unknown> {
-    if (ids.length === 0) {
-      return of(null);
-    }
-    return forkJoin(ids.map((id) => this.markRead(id))).pipe(map(() => null));
+  markAllRead(): Observable<UnreadCount> {
+    return this.api.post<UnreadCount>('/api/notifications/read-all');
   }
 }

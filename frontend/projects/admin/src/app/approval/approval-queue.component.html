@@ -4,8 +4,8 @@
   [breadcrumbs]="[{ label: 'Approval Queue' }]"
 >
   <admin-density-toggle />
-  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
-    <i class="ti ti-refresh me-1"></i> Refresh
+  <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
+    <i class="ti ti-refresh"></i>
   </button>
 </admin-page-header>
 
@@ -37,29 +37,31 @@
   <div class="shifa-appr-cards d-md-none">
     @for (item of pageItems(); track item.id) {
       <div class="shifa-appr">
-        <div class="shifa-appr__r1" (click)="openDetail(item)">
-          <span class="shifa-appr__code">{{ item.orderCode }}</span>
-          <span class="shifa-appr__amount">{{ money(item.totalAmount) }}</span>
-        </div>
-        <div class="shifa-appr__r2" (click)="openDetail(item)">
-          <span class="shifa-appr__meta">
-            {{ item.customerName }} · {{ item.createdAt ? (item.createdAt | date: 'dd MMM, HH:mm') : '—' }}
-          </span>
-          <admin-status-badge [status]="item.paymentStatus" kind="payment" />
-        </div>
-        @if (itemsSummary(item) !== '—') {
-          <div class="shifa-appr__items" (click)="openDetail(item)">
-            <i class="ti ti-package me-1"></i>{{ itemsSummary(item) }}
+        <div class="shifa-appr__top" (click)="openDetail(item)">
+          <div class="shifa-appr__idwrap">
+            <span class="shifa-appr__code">{{ item.orderCode }}</span>
+            <span class="shifa-appr__meta">
+              {{ item.customerName }} · {{ item.createdAt ? (item.createdAt | date: 'dd MMM, HH:mm') : '—' }}
+            </span>
+            @if (itemsSummary(item) !== '—') {
+              <span class="shifa-appr__items">
+                <i class="ti ti-package me-1"></i>{{ itemsSummary(item) }}
+              </span>
+            }
           </div>
-        }
+          <div class="shifa-appr__right">
+            <span class="shifa-appr__amount">{{ money(item.totalAmount) }}</span>
+            <admin-status-badge [status]="item.paymentStatus" kind="payment" />
+          </div>
+        </div>
         <div class="shifa-appr__actions">
-          <button type="button" class="btn btn-outline-secondary" (click)="openDetail(item)">
-            <i class="ti ti-eye me-1"></i> Review
+          <button type="button" class="btn btn-sm btn-outline-secondary shifa-appr__review" (click)="openDetail(item)" title="Review" aria-label="Review">
+            <i class="ti ti-eye"></i>
           </button>
-          <button type="button" class="btn btn-outline-danger" (click)="openReject(item)" [disabled]="acting()">
+          <button type="button" class="btn btn-sm btn-outline-danger" (click)="openReject(item)" [disabled]="acting()">
             <i class="ti ti-x me-1"></i> Reject
           </button>
-          <button type="button" class="btn btn-success" (click)="approve(item)" [disabled]="acting()">
+          <button type="button" class="btn btn-sm btn-success" (click)="approve(item)" [disabled]="acting()">
             <i class="ti ti-check me-1"></i> Approve
           </button>
         </div>
@@ -124,54 +126,111 @@
 <!-- Detail drawer -->
 @if (selected(); as item) {
   <div class="shifa-overlay" (click)="closeDetail()"></div>
-  <aside class="shifa-drawer" role="dialog" aria-label="Order review">
-    <header class="shifa-drawer__head">
-      <div>
-        <h3 class="mb-1">{{ item.orderCode }}</h3>
-        <admin-status-badge [status]="item.paymentStatus" kind="payment" />
+  <aside class="shifa-drawer sa-dr" role="dialog" aria-label="Order review">
+    <!-- Themed green header: avatar + order code + payment pill + date -->
+    <header class="sa-dr__head">
+      <span class="sa-dr__avatar">{{ initials(item.customerName) }}</span>
+      <div class="sa-dr__headmain">
+        <div class="sa-dr__code">{{ item.orderCode }}</div>
+        <div class="sa-dr__sub">
+          {{ item.customerName }}
+          @if (item.createdAt) { · {{ item.createdAt | date: 'dd MMM, HH:mm' }} }
+        </div>
       </div>
-      <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
+      <span class="sa-dr__pill">{{ formatStatus(item.paymentStatus) }}</span>
+      <button type="button" class="sa-dr__close" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
     </header>
 
-    <div class="shifa-drawer__body">
-      <div class="mb-4">
-        <div class="subheader mb-2">Customer</div>
-        <div class="fw-medium">{{ item.customerName }}</div>
-        <div class="text-secondary">{{ item.customerMobile }}</div>
-        <div class="text-secondary mt-1">{{ item.addressLine }}, {{ item.city }}, {{ item.state }} — {{ item.postalCode }}</div>
-      </div>
+    <div class="shifa-drawer__body sa-dr__body">
+      <!-- Customer -->
+      <section class="sa-dr__section">
+        <div class="sa-dr__label"><i class="ti ti-user me-1"></i>Customer</div>
+        <div class="sa-dr__card">
+          <div class="sa-dr__cust">
+            <div>
+              <div class="fw-semibold">{{ item.customerName }}</div>
+              <a class="sa-dr__mobile" href="tel:{{ item.customerMobile }}">
+                <i class="ti ti-phone me-1"></i>{{ item.customerMobile }}
+              </a>
+            </div>
+            <a
+              class="sa-dr__round"
+              [href]="mapsUrl(item)"
+              target="_blank"
+              rel="noopener"
+              aria-label="Open address in Google Maps"
+              title="Open in Google Maps"
+            >
+              <i class="ti ti-map-pin"></i>
+            </a>
+          </div>
+          <div class="sa-dr__addr">
+            <i class="ti ti-map-2 me-1"></i>{{ item.addressLine }}, {{ item.city }}, {{ item.state }} — {{ item.postalCode }}
+          </div>
+        </div>
+      </section>
 
-      <div class="mb-4">
-        <div class="subheader mb-2">Line items</div>
-        <table class="table table-sm table-vcenter">
-          <thead><tr><th>Product</th><th class="text-end">Qty</th><th class="text-end">Rate</th><th class="text-end">Line total</th></tr></thead>
-          <tbody>
-            @for (li of item.items; track $index) {
-              <tr><td>{{ li.productName }}</td><td class="text-end">{{ li.quantity }}</td><td class="text-end">{{ money(li.rate) }}</td><td class="text-end">{{ money(li.lineTotal) }}</td></tr>
-            }
-          </tbody>
-        </table>
-      </div>
+      <!-- Line items -->
+      <section class="sa-dr__section">
+        <div class="sa-dr__label"><i class="ti ti-package me-1"></i>Line items</div>
+        <div class="sa-dr__card p-0">
+          <table class="table table-sm table-vcenter sa-dr__items mb-0">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th class="text-center">Qty</th>
+                <th class="text-end">Rate</th>
+                <th class="text-end">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (li of item.items; track $index) {
+                <tr>
+                  <td class="fw-medium">{{ li.productName }}</td>
+                  <td class="text-center">{{ li.quantity }}</td>
+                  <td class="text-end text-secondary">{{ money(li.rate) }}</td>
+                  <td class="text-end fw-semibold">{{ money(li.lineTotal) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-      <div class="card card-sm mb-4"><div class="card-body">
-        <div class="d-flex justify-content-between py-1"><span class="text-secondary">Total</span><strong>{{ money(item.totalAmount) }}</strong></div>
-        <div class="d-flex justify-content-between py-1"><span class="text-secondary">Amount received</span><strong>{{ money(item.amountReceived) }}</strong></div>
-        <div class="d-flex justify-content-between py-1"><span class="text-secondary">COD amount</span><strong>{{ money(item.codAmount) }}</strong></div>
-      </div></div>
+      <!-- Payment summary -->
+      <section class="sa-dr__section">
+        <div class="sa-dr__label"><i class="ti ti-receipt-2 me-1"></i>Payment</div>
+        <div class="sa-dr__totals">
+          <div class="sa-dr__totline">
+            <span>Total</span><strong>{{ money(item.totalAmount) }}</strong>
+          </div>
+          <div class="sa-dr__totline">
+            <span>Amount received</span><strong class="text-success">{{ money(item.amountReceived) }}</strong>
+          </div>
+          <div class="sa-dr__totline sa-dr__totline--cod">
+            <span>COD to collect</span><strong>{{ money(item.codAmount) }}</strong>
+          </div>
+        </div>
+      </section>
 
-      <div>
-        <div class="subheader mb-2">Payment screenshot</div>
+      <!-- Payment screenshot -->
+      <section class="sa-dr__section">
+        <div class="sa-dr__label"><i class="ti ti-photo me-1"></i>Payment screenshot</div>
         @if (screenshotLoading()) {
-          <div class="skeleton" style="height: 180px"></div>
+          <div class="skeleton sa-dr__shot" style="height: 180px"></div>
         } @else if (screenshotUrl(); as url) {
-          <a [href]="url" target="_blank" rel="noopener"><img class="img-fluid rounded border" [src]="url" alt="Payment screenshot" /></a>
+          <a [href]="url" target="_blank" rel="noopener">
+            <img class="img-fluid rounded border sa-dr__shot" [src]="url" alt="Payment screenshot" />
+          </a>
         } @else {
-          <p class="text-secondary">No payment screenshot for this order.</p>
+          <div class="sa-dr__empty">
+            <i class="ti ti-photo-off me-1"></i>No payment screenshot for this order.
+          </div>
         }
-      </div>
+      </section>
     </div>
 
-    <footer class="shifa-drawer__foot">
+    <footer class="shifa-drawer__foot sa-dr__foot">
       <button type="button" class="btn btn-outline-primary me-auto" (click)="downloadInvoice(item)" [disabled]="invoiceLoading()">
         @if (invoiceLoading()) {
           <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>

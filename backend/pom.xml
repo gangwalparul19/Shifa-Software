@@ -28,6 +28,7 @@
         <openpdf.version>2.0.3</openpdf.version>
         <zxing.version>3.5.3</zxing.version>
         <oci.sdk.version>3.54.0</oci.sdk.version>
+        <aws.sdk.version>2.29.29</aws.sdk.version>
     </properties>
 
     <dependencyManagement>
@@ -36,6 +37,13 @@
                 <groupId>com.oracle.oci.sdk</groupId>
                 <artifactId>oci-java-sdk-bom</artifactId>
                 <version>${oci.sdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${aws.sdk.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -120,6 +128,17 @@
         <dependency>
             <groupId>com.oracle.oci.sdk</groupId>
             <artifactId>oci-java-sdk-objectstorage</artifactId>
+        </dependency>
+
+        <!-- AWS SDK - S3 (labels + payment screenshots when app.storage.provider=S3) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+        </dependency>
+        <!-- Lightweight sync HTTP client for the S3 client (avoids Netty/CRT) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>apache-client</artifactId>
         </dependency>
 
         <!-- Test -->

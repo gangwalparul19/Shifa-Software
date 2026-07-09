@@ -9,7 +9,7 @@
   >
     <i class="ti ti-bell" aria-hidden="true"></i>
     @if (unread() > 0) {
-      <span class="badge bg-red shifa-bell__badge" aria-hidden="true">
+      <span class="badge shifa-bell__badge" aria-hidden="true">
         {{ unread() > 99 ? '99+' : unread() }}
       </span>
     }

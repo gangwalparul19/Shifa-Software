@@ -164,6 +164,35 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     return `₹${value}`;
   }
 
+  /** Up-to-two-letter initials from a customer name, for the drawer avatar. */
+  initials(name: string | undefined): string {
+    const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) {
+      return '?';
+    }
+    const first = parts[0][0] ?? '';
+    const last = parts.length > 1 ? parts[parts.length - 1][0] ?? '' : '';
+    return (first + last).toUpperCase();
+  }
+
+  /** Humanises an enum status (e.g. PARTIALLY_PAID → "Partially Paid") for the pill. */
+  formatStatus(status: string | undefined): string {
+    if (!status) {
+      return '';
+    }
+    return status
+      .toLowerCase()
+      .split('_')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+  }
+
+  /** A Google Maps search link for an order's shipping address. */
+  mapsUrl(item: ApprovalQueueItem): string {
+    const query = `${item.addressLine}, ${item.city}, ${item.state} ${item.postalCode}`;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  }
+
   // --- Detail drawer ------------------------------------------------------
 
   openDetail(item: ApprovalQueueItem): void {

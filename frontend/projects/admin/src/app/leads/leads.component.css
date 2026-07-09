@@ -167,7 +167,9 @@
 .shifa-fab {
   position: fixed;
   right: 1rem;
-  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  /* Clear the fixed mobile bottom tab bar (~3.75rem) + safe-area so the FAB
+     is never hidden behind it. */
+  bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
   z-index: 1030;
   width: 56px;
   height: 56px;
@@ -189,7 +191,7 @@
 .shifa-fab:active {
   transform: scale(0.96);
 }
-/* The bottom tab bar covers the FAB spot ≥768px; nudge it up on desktop. */
+/* No bottom tab bar ≥768px, so the FAB can sit near the bottom edge. */
 @media (min-width: 768px) {
   .shifa-fab {
     bottom: 1.5rem;
@@ -429,4 +431,68 @@
 }
 .shifa-ld__lost:hover:not(:disabled) {
   background: #fdf3f2;
+}
+
+/* ==========================================================================
+   Custom source-filter dropdown — replaces the native <select> whose option
+   popup overflowed the viewport on mobile. The menu is constrained to the
+   field width (left:0/right:0 within the relative wrapper) and shows a Tabler
+   brand icon per source.
+   ========================================================================== */
+.lead-source-dd {
+  position: relative;
+}
+.lead-source-dd__btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lead-source-dd__btn i {
+  color: var(--shifa-green-600, #1f5d3f);
+}
+.lead-source-dd__menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 2px);
+  /* Anchor to the right edge of the (narrow) field and open a readable width
+     leftward, so it never overflows the screen. */
+  right: 0;
+  left: auto;
+  min-width: 12rem;
+  max-width: 80vw;
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  max-height: 16rem;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.15);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 51, 36, 0.14);
+}
+.lead-source-dd__opt {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.85rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: #2b3a32;
+}
+.lead-source-dd__opt i {
+  width: 1.2rem;
+  text-align: center;
+  color: var(--shifa-green-600, #1f5d3f);
+  font-size: 1.05rem;
+}
+.lead-source-dd__opt:hover {
+  background: var(--shifa-green-050, #f2f9f5);
+}
+.lead-source-dd__opt.is-active {
+  background: var(--shifa-green-100, #e4f2ea);
+  color: var(--shifa-green-700, #164632);
+  font-weight: 600;
 }

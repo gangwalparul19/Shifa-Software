@@ -421,16 +421,29 @@ tr.clickable {
    Fits ~3 count-cards per row without clipping; keeps the accent bar.
    -------------------------------------------------------------------------- */
 @media (max-width: 575.98px) {
-  /* Page header: title on top, actions drop below and stretch full-width */
+  /* Page header: keep the title and its actions (e.g. Refresh) on one row with
+     the actions pinned top-right, level with the title, consistent across pages.
+     nowrap + a shrinkable title block stops the actions dropping below. */
   .shifa-page-head {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: flex-start;
     gap: 0.75rem;
     margin-bottom: 1rem;
   }
+  .shifa-page-head__title {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
   .shifa-page-head__actions {
-    margin-left: 0;
-    width: 100%;
+    margin-left: auto;
+    width: auto;
+    justify-content: flex-end;
+    /* Allow the action buttons to wrap onto a second right-aligned row when a
+       page has many/large actions (e.g. Products), instead of overflowing. */
+    flex: 0 1 auto;
+    min-width: 0;
+    flex-wrap: wrap;
   }
 
   /* Compact stat card body: tighter padding, no fixed min-height */
