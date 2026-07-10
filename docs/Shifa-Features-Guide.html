@@ -22,6 +22,13 @@
   header.brand .leaf{font-size:32px;}
   header.brand h1{margin:6px 0 4px;font-size:28px;}
   header.brand p{margin:0;color:#dceee2;font-size:14px;}
+  
+  @media(max-width:768px){
+    header.brand{padding:28px 20px;}
+    header.brand h1{font-size:24px;}
+    header.brand .leaf{font-size:28px;}
+  }
+  
   .rule{height:4px;background:var(--gold);}
 
   .intro{background:#fff;border-radius:16px;padding:24px 28px;margin:24px 0;box-shadow:var(--shadow);
@@ -31,7 +38,6 @@
 
   /* Sidebar navigation */
   .layout{display:grid;grid-template-columns:280px 1fr;gap:24px;margin-top:24px;}
-  @media(max-width:920px){.layout{grid-template-columns:1fr;}}
   
   .sidebar{position:sticky;top:20px;height:fit-content;background:#fff;border-radius:14px;
     padding:16px;box-shadow:var(--shadow);border:1px solid var(--line);}
@@ -42,6 +48,24 @@
   .nav-item.active{background:var(--green);color:#fff;font-weight:600;}
   .nav-badge{display:inline-block;background:var(--gold);color:#3a2c05;font-size:10px;
     font-weight:800;border-radius:999px;padding:2px 8px;margin-left:6px;}
+  
+  /* Mobile navigation toggle */
+  .mobile-nav-toggle{display:none;position:fixed;bottom:20px;right:20px;z-index:100;
+    background:var(--green);color:#fff;width:56px;height:56px;border-radius:50%;
+    border:none;font-size:24px;box-shadow:0 4px 16px rgba(15,61,39,.3);cursor:pointer;
+    transition:.2s;}
+  .mobile-nav-toggle:active{transform:scale(0.95);}
+  
+  @media(max-width:920px){
+    .layout{grid-template-columns:1fr;}
+    .sidebar{position:fixed;top:0;left:-100%;width:280px;height:100vh;z-index:99;
+      border-radius:0;transition:.3s;overflow-y:auto;}
+    .sidebar.show{left:0;}
+    .mobile-nav-toggle{display:flex;align-items:center;justify-content:center;}
+    .mobile-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+      z-index:98;}
+    .mobile-overlay.show{display:block;}
+  }
 
   /* Feature sections */
   .content{background:#fff;border-radius:14px;padding:32px;box-shadow:var(--shadow);}
@@ -50,12 +74,20 @@
   @keyframes fadeIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
   
   .feature-section h2{color:var(--green-dark);font-size:24px;margin:0 0 6px;
-    display:flex;align-items:center;gap:12px;}
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
   .feature-section h2 .icon{font-size:28px;}
-  .feature-section .subtitle{color:var(--muted);font-size:14px;margin:0 0 20px;}
+  .feature-section .subtitle{color:var(--muted);font-size:14px;margin:0 0 20px;line-height:1.6;}
   
   h3{color:var(--green-2);font-size:18px;margin:28px 0 12px;}
   h4{color:var(--text);font-size:16px;margin:20px 0 10px;font-weight:600;}
+  
+  @media(max-width:768px){
+    .content{padding:20px 16px;border-radius:0;}
+    .feature-section h2{font-size:20px;}
+    .feature-section h2 .icon{font-size:24px;}
+    h3{font-size:17px;}
+    h4{font-size:15px;}
+  }
   
   .screenshot{background:#f8f9fa;border:2px solid var(--line);border-radius:12px;
     padding:12px;margin:16px 0;text-align:center;min-height:300px;display:flex;
@@ -91,6 +123,11 @@
   .feature-card p{margin:0;font-size:13.5px;color:var(--text);line-height:1.6;}
   .feature-card ul{margin:8px 0 0;padding-left:20px;font-size:13.5px;}
   .feature-card li{margin:4px 0;}
+  
+  @media(max-width:768px){
+    .feature-grid{grid-template-columns:1fr;gap:12px;}
+    .feature-card{padding:16px;}
+  }
 
   .info-box{background:#fff5da;border-left:4px solid var(--gold);border-radius:8px;
     padding:14px 18px;margin:16px 0;font-size:14px;}
@@ -113,10 +150,15 @@
   .role-badge.packing{background:#7c3aed;}
   .role-badge.accountant{background:#059669;}
 
-  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13.5px;}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13.5px;overflow-x:auto;display:block;}
   th,td{text-align:left;padding:10px 12px;border:1px solid var(--line);}
   th{background:var(--green);color:#fff;font-weight:600;}
   tr:nth-child(even) td{background:#f2f8f4;}
+  
+  @media(max-width:768px){
+    table{font-size:12px;}
+    th,td{padding:8px 10px;}
+  }
 
   .btn{display:inline-block;background:var(--green);color:#fff;padding:10px 20px;
     border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;
@@ -155,9 +197,13 @@
     <p>This comprehensive guide covers every feature of the Shifa Order Management System. Navigate through sections using the sidebar, view screenshots of the actual application, and understand workflows for each role. Perfect for training, presentations, and client demonstrations.</p>
   </div>
 
+  <!-- Mobile Navigation Toggle -->
+  <button class="mobile-nav-toggle" onclick="toggleMobileNav()">☰</button>
+  <div class="mobile-overlay" onclick="toggleMobileNav()"></div>
+
   <div class="layout">
     <!-- Sidebar Navigation -->
-    <nav class="sidebar">
+    <nav class="sidebar" id="sidebar">
       <h3>📑 Features</h3>
       <a href="#dashboard" class="nav-item active" data-section="dashboard">🏠 Dashboard & Overview</a>
       <a href="#order-management" class="nav-item" data-section="order-management">📦 Order Management</a>
@@ -1238,8 +1284,21 @@
       
       // Scroll to top of content
       document.querySelector('.content').scrollIntoView({ behavior: 'smooth' });
+      
+      // Close mobile nav
+      if (window.innerWidth <= 920) {
+        toggleMobileNav();
+      }
     });
   });
+
+  // Mobile navigation toggle
+  function toggleMobileNav() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.querySelector('.mobile-overlay');
+    sidebar.classList.toggle('show');
+    overlay.classList.toggle('show');
+  }
 
   // Placeholder click instruction
   document.querySelectorAll('.screenshot.placeholder').forEach(placeholder => {
