@@ -61,7 +61,8 @@
     padding:12px;margin:16px 0;text-align:center;min-height:300px;display:flex;
     align-items:center;justify-content:center;color:var(--muted);font-size:14px;
     position:relative;overflow:hidden;}
-  .screenshot img{max-width:100%;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1);}
+  .screenshot img{max-width:100%;height:auto;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.1);
+    display:block;margin:0 auto;}
   .screenshot.placeholder{background:linear-gradient(135deg,#f8f9fa,#e9ecef);
     border-style:dashed;}
   .screenshot-caption{font-size:13px;color:var(--muted);margin:8px 0 0;text-align:center;
@@ -69,6 +70,16 @@
   .screenshot-note{background:#fff3cd;border:1px solid #ffc107;border-radius:8px;
     padding:14px 18px;margin:16px 0;font-size:14px;}
   .screenshot-note p{margin:0;color:#856404;}
+  
+  /* Mobile responsive screenshots */
+  @media(max-width:768px){
+    .screenshot{min-height:200px;padding:8px;margin:12px 0;}
+    .screenshot img{max-width:100%;height:auto;}
+    .content{padding:20px 16px;}
+    .sidebar{position:static;margin-bottom:20px;}
+    .screenshot-caption{font-size:12px;}
+    .screenshot-note{padding:12px 14px;font-size:13px;}
+  }
 
   .feature-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;
     margin:16px 0;}
@@ -1236,6 +1247,28 @@
       alert('📸 Screenshot Placeholder\n\nTo add screenshots:\n1. Login to http://13.207.62.222/dashboard\n2. Navigate to the mentioned page\n3. Take screenshot\n4. Replace this placeholder with: <img src="path/to/screenshot.png" alt="Description">');
     });
   });
+
+  // Image loading error handling - show helpful message
+  document.querySelectorAll('.screenshot img').forEach(img => {
+    img.addEventListener('error', function() {
+      const parent = this.closest('.screenshot');
+      if (parent) {
+        parent.style.minHeight = '120px';
+        parent.style.padding = '20px';
+        parent.innerHTML = `
+          <div style="text-align:center;color:var(--muted);">
+            <div style="font-size:32px;margin-bottom:8px;">📷</div>
+            <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Screenshot: ${this.alt}</div>
+            <div style="font-size:12px;">Image not accessible in this view</div>
+            <div style="font-size:11px;margin-top:8px;color:#999;">
+              Open HTML file in browser or view hosted version
+            </div>
+          </div>
+        `;
+      }
+    });
+  });
+
 </script>
 
 </body>
