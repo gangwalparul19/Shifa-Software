@@ -56,15 +56,28 @@
     transition:.2s;}
   .mobile-nav-toggle:active{transform:scale(0.95);}
   
+  /* Mobile dropdown selector */
+  .mobile-section-selector{display:none;background:#fff;border:2px solid var(--green);
+    border-radius:12px;padding:12px;margin:16px 0;box-shadow:var(--shadow);}
+  .mobile-section-selector label{display:block;font-weight:600;color:var(--green-dark);
+    margin-bottom:8px;font-size:14px;}
+  .mobile-section-selector select{width:100%;padding:12px 16px;border:1px solid var(--line);
+    border-radius:8px;font-size:15px;color:var(--text);background:#fff;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%231F5D3F' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 12px center;
+    padding-right:40px;cursor:pointer;appearance:none;}
+  .mobile-section-selector select:focus{outline:2px solid var(--green);outline-offset:2px;}
+  
   @media(max-width:920px){
     .layout{grid-template-columns:1fr;}
-    .sidebar{position:fixed;top:0;left:-100%;width:280px;height:100vh;z-index:99;
-      border-radius:0;transition:.3s;overflow-y:auto;}
-    .sidebar.show{left:0;}
-    .mobile-nav-toggle{display:flex;align-items:center;justify-content:center;}
-    .mobile-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
-      z-index:98;}
-    .mobile-overlay.show{display:block;}
+    .sidebar{display:none !important;} /* Hide desktop sidebar on mobile */
+    .mobile-nav-toggle{display:none;} /* Hide toggle button, use dropdown instead */
+    .mobile-section-selector{display:block;} /* Show dropdown on mobile */
+    .mobile-overlay{display:none !important;} /* Remove overlay */
+  }
+  
+  @media(min-width:921px){
+    .mobile-section-selector{display:none;} /* Hide dropdown on desktop */
   }
 
   /* Feature sections */
@@ -197,12 +210,31 @@
     <p>This comprehensive guide covers every feature of the Shifa Order Management System. Navigate through sections using the sidebar, view screenshots of the actual application, and understand workflows for each role. Perfect for training, presentations, and client demonstrations.</p>
   </div>
 
-  <!-- Mobile Navigation Toggle -->
-  <button class="mobile-nav-toggle" onclick="toggleMobileNav()">☰</button>
-  <div class="mobile-overlay" onclick="toggleMobileNav()"></div>
+  <!-- Mobile Section Selector (Dropdown) -->
+  <div class="mobile-section-selector">
+    <label for="mobile-nav-select">📑 Jump to Section:</label>
+    <select id="mobile-nav-select" onchange="navigateToSection(this.value)">
+      <option value="dashboard">🏠 Dashboard & Overview</option>
+      <option value="order-management">📦 Order Management</option>
+      <option value="approval-workflow">✅ Approval Workflow</option>
+      <option value="packing-dispatch">📋 Packing & Dispatch</option>
+      <option value="courier-tracking">🚚 Courier & Tracking</option>
+      <option value="cod-reconciliation">💰 COD Reconciliation</option>
+      <option value="finance-invoicing">📊 Finance & Invoicing</option>
+      <option value="products-inventory">📦 Products & Inventory</option>
+      <option value="leads-crm">👥 Leads & CRM</option>
+      <option value="returns-management">↩️ Returns Management</option>
+      <option value="procurement">🛒 Procurement</option>
+      <option value="staff-management">👤 Staff Management</option>
+      <option value="insights">💡 Reports & Insights</option>
+      <option value="notifications">🔔 Notifications</option>
+      <option value="security-audit">🔒 Security & Audit</option>
+      <option value="mobile-experience">📱 Mobile Experience</option>
+    </select>
+  </div>
 
   <div class="layout">
-    <!-- Sidebar Navigation -->
+    <!-- Sidebar Navigation (Desktop Only) -->
     <nav class="sidebar" id="sidebar">
       <h3>📑 Features</h3>
       <a href="#dashboard" class="nav-item active" data-section="dashboard">🏠 Dashboard & Overview</a>
@@ -1273,31 +1305,36 @@
     item.addEventListener('click', (e) => {
       e.preventDefault();
       const targetId = item.getAttribute('data-section');
-      
-      // Update active nav
-      navItems.forEach(n => n.classList.remove('active'));
-      item.classList.add('active');
-      
-      // Show target section
-      sections.forEach(s => s.classList.remove('active'));
-      document.getElementById(targetId).classList.add('active');
-      
-      // Scroll to top of content
-      document.querySelector('.content').scrollIntoView({ behavior: 'smooth' });
-      
-      // Close mobile nav
-      if (window.innerWidth <= 920) {
-        toggleMobileNav();
-      }
+      navigateToSectionById(targetId);
     });
   });
 
-  // Mobile navigation toggle
-  function toggleMobileNav() {
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.querySelector('.mobile-overlay');
-    sidebar.classList.toggle('show');
-    overlay.classList.toggle('show');
+  // Navigate to section by ID
+  function navigateToSectionById(targetId) {
+    // Update active nav
+    navItems.forEach(n => n.classList.remove('active'));
+    const activeNav = document.querySelector(`[data-section="${targetId}"]`);
+    if (activeNav) activeNav.classList.add('active');
+    
+    // Show target section
+    sections.forEach(s => s.classList.remove('active'));
+    const targetSection = document.getElementById(targetId);
+    if (targetSection) {
+      targetSection.classList.add('active');
+      // Scroll to top of content
+      document.querySelector('.content').scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    // Update mobile dropdown
+    const mobileSelect = document.getElementById('mobile-nav-select');
+    if (mobileSelect) mobileSelect.value = targetId;
+  }
+
+  // Mobile dropdown navigation
+  function navigateToSection(sectionId) {
+    if (sectionId) {
+      navigateToSectionById(sectionId);
+    }
   }
 
   // Placeholder click instruction
