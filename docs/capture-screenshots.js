@@ -49,14 +49,95 @@ async function waitForPageLoad(page, timeout = 2000) {
   await page.waitForTimeout(timeout);
 }
 
-// Login function
+// Login function with better error handling
 async function login(page, credentials) {
   console.log(`  Logging in as ${credentials.username}...`);
-  await page.goto(CONFIG.baseUrl);
-  await page.fill('input[name="username"]', credentials.username);
-  await page.fill('input[type="password"]', credentials.password);
-  await page.click('button[type="submit"]');
-  await waitForPageLoad(page, 3000);
+  try {
+    await page.goto(CONFIG.baseUrl, { waitUntil: 'networkidle', timeout: 15000 });
+    await page.waitForTimeout(1000);
+    
+    // Try multiple selector strategies for username
+    const usernameSelectors = [
+      'input[name="username"]',
+      'input[type="text"]',
+      'input[placeholder*="username" i]',
+      'input[placeholder*="user" i]',
+      'input[id*="username" i]'
+    ];
+    
+    let usernameFilled = false;
+    for (const selector of usernameSelectors) {
+      try {
+        await page.fill(selector, credentials.username, { timeout: 2000 });
+        usernameFilled = true;
+        console.log(`    Username filled with selector: ${selector}`);
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    if (!usernameFilled) {
+      throw new Error('Could not find username field');
+    }
+    
+    // Try multiple selector strategies for password
+    const passwordSelectors = [
+      'input[type="password"]',
+      'input[name="password"]',
+      'input[placeholder*="password" i]'
+    ];
+    
+    let passwordFilled = false;
+    for (const selector of passwordSelectors) {
+      try {
+        await page.fill(selector, credentials.password, { timeout: 2000 });
+        passwordFilled = true;
+        console.log(`    Password filled with selector: ${selector}`);
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    if (!passwordFilled) {
+      throw new Error('Could not find password field');
+    }
+    
+    // Try multiple selector strategies for submit button
+    const submitSelectors = [
+      'button[type="submit"]',
+      'button:has-text("Login")',
+      'button:has-text("Sign in")',
+      'input[type="submit"]',
+      'button.btn-primary',
+      'button.login-btn'
+    ];
+    
+    let submitted = false;
+    for (const selector of submitSelectors) {
+      try {
+        await page.click(selector, { timeout: 2000 });
+        submitted = true;
+        console.log(`    Login button clicked with selector: ${selector}`);
+        break;
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    if (!submitted) {
+      // Try pressing Enter as fallback
+      await page.keyboard.press('Enter');
+      console.log(`    Login submitted with Enter key`);
+    }
+    
+    await waitForPageLoad(page, 3000);
+    console.log(`  ✓ Logged in successfully as ${credentials.username}`);
+  } catch (error) {
+    console.error(`  ✗ Login failed for ${credentials.username}: ${error.message}`);
+    throw error;
+  }
 }
 
 // Screenshot capture function with error handling
@@ -79,6 +160,10 @@ async function captureScreenshot(page, filename, fullPage = false) {
 // Main screenshot capture function
 async function captureAllScreenshots() {
   console.log('Starting automated screenshot capture...\n');
+  console.log('Configuration:');
+  console.log(`  Base URL: ${CONFIG.baseUrl}`);
+  console.log(`  Screenshots Dir: ${CONFIG.screenshotsDir}`);
+  console.log(`  Admin Credentials: ${CONFIG.credentials.admin.username} / ${CONFIG.credentials.admin.password}\n`);
   
   const browser = await chromium.launch({ 
     headless: false, // Set to true for headless mode
@@ -487,12 +572,30 @@ async function captureAllScreenshots() {
     console.log(`\nScreenshots saved to: ${CONFIG.screenshotsDir}`);
     console.log(`Mobile screenshots saved to: ${CONFIG.mobileScreenshotsDir}`);
     
+    // List captured screenshots
+    const screenshots = fs.readdirSync(CONFIG.screenshotsDir).filter(f => f.endsWith('.png'));
+    console.log(`\nTotal screenshots captured: ${screenshots.length}`);
+    
   } catch (error) {
     console.error('\n❌ Error during screenshot capture:', error);
+    console.error('\nError details:', error.message);
+    console.error('\nStack trace:', error.stack);
+    
+    // Don't close browser immediately on error so you can see what happened
+    console.log('\n⚠️  Press Ctrl+C to close the browser and exit');
+    await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30 seconds before closing
   } finally {
     await browser.close();
   }
 }
 
-// Run the script
-captureAllScreenshots().catch(console.error);
+// Run the script with better error handling
+captureAllScreenshots()
+  .then(() => {
+    console.log('\n✅ Script completed successfully!');
+    process.exit(0);
+  })
+  .catch(error => {
+    console.error('\n❌ Script failed:', error.message);
+    process.exit(1);
+  });
