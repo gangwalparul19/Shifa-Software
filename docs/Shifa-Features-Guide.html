@@ -66,6 +66,9 @@
     border-style:dashed;}
   .screenshot-caption{font-size:13px;color:var(--muted);margin:8px 0 0;text-align:center;
     font-style:italic;}
+  .screenshot-note{background:#fff3cd;border:1px solid #ffc107;border-radius:8px;
+    padding:14px 18px;margin:16px 0;font-size:14px;}
+  .screenshot-note p{margin:0;color:#856404;}
 
   .feature-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;
     margin:16px 0;}
@@ -166,8 +169,8 @@
         <h3>Role-Based Dashboards</h3>
         <p>Each user sees a dashboard tailored to their role with relevant KPIs and action items.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Admin Dashboard<br><small>Replace with actual screenshot from http://13.207.62.222/dashboard</small></div>
+        <div class="screenshot">
+          <img src="screenshots/admin-dashboard.png" alt="Admin Dashboard">
         </div>
         <p class="screenshot-caption">Admin dashboard showing order summary, financial metrics, and pending approvals</p>
 
@@ -212,10 +215,20 @@
           </div>
         </div>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Salesperson Dashboard<br><small>Login as sales1/admin123 and capture dashboard</small></div>
+        <div class="screenshot">
+          <img src="screenshots/salesperson-dashboard.png" alt="Salesperson Dashboard">
         </div>
         <p class="screenshot-caption">Salesperson dashboard with order stats and lead pipeline</p>
+
+        <div class="screenshot">
+          <img src="screenshots/packer-dashboard.png" alt="Packer Dashboard">
+        </div>
+        <p class="screenshot-caption">Packer dashboard showing packing queues and recent scanned orders</p>
+
+        <div class="screenshot">
+          <img src="screenshots/accountant-dashboard.png" alt="Accountant Dashboard">
+        </div>
+        <p class="screenshot-caption">Accountant dashboard with financial metrics and pending receivables</p>
       </section>
 
       <!-- Section: Order Management -->
@@ -226,9 +239,15 @@
         <h3>Order Entry (Salesperson)</h3>
         <p>Salespeople capture orders with customer details, products, pricing, payment info, and lead source.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: New Order Form (Top Half)<br><small>Navigate to /orders/new and capture customer details section</small></div>
+        <div class="screenshot">
+          <img src="screenshots/new-order-form-top.png" alt="New Order Form - Top Section">
         </div>
+        <p class="screenshot-caption">New order form - Customer details and lead source selection</p>
+
+        <div class="screenshot">
+          <img src="screenshots/new-order-form-bottom.png" alt="New Order Form - Bottom Section">
+        </div>
+        <p class="screenshot-caption">New order form - Product selection, payment details, and order notes</p>
 
         <h4>Key Features:</h4>
         <div class="feature-grid">
@@ -250,8 +269,8 @@
           </div>
         </div>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Order Detail Drawer<br><small>Click any order to open detail drawer, capture full view</small></div>
+        <div class="screenshot">
+          <img src="screenshots/orders-list.png" alt="Orders List View">
         </div>
         <p class="screenshot-caption">Order detail showing customer info, line items with thumbnails, payment, status history</p>
 
@@ -260,8 +279,8 @@
           <strong>Smart Filtering:</strong> Filter orders by status (All, Pending, Approved, Delivered, Cancelled), date range, salesperson (admin only), and search by order code or customer name.
         </div>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Orders List View<br><small>Capture /orders page with filter tabs visible</small></div>
+        <div class="screenshot">
+          <img src="screenshots/orders-list.png" alt="Orders List with Filters">
         </div>
 
         <h3>Order Statuses</h3>
@@ -290,8 +309,8 @@
         <h3>Approval Queue</h3>
         <p>Admin sees all pending orders in a dedicated approval queue with full order details for review.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Approval Queue<br><small>Login as admin/admin123, navigate to approval queue</small></div>
+        <div class="screenshot">
+          <img src="screenshots/approval-queue.png" alt="Approval Queue">
         </div>
 
         <div class="workflow">
@@ -329,10 +348,9 @@
              • Order status advances to LABEL_GENERATED</p>
         </div>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Generated Label PDF<br><small>Open any approved order, click "Print Label", capture PDF</small></div>
+        <div class="screenshot-note">
+          <p><strong>Note:</strong> Label PDFs are auto-generated with Code128 barcodes showing order code, customer details, items, and COD amount. PDF generation requires server-side rendering which cannot be captured in automated screenshots.</p>
         </div>
-        <p class="screenshot-caption">Auto-generated label with barcode, customer address, and order items</p>
 
         <h3>Notification Matrix</h3>
         <table>
@@ -354,8 +372,8 @@
         <h3>Packing Work Queues</h3>
         <p>Packing users see three queues organized by status:</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Packing Page<br><small>Login as packer/packer123, capture /packing page with all 3 queues</small></div>
+        <div class="screenshot">
+          <img src="screenshots/packing-queues.png" alt="Packing Work Queues">
         </div>
 
         <div class="feature-grid">
@@ -406,8 +424,8 @@
           </div>
         </div>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Barcode Scanner in Action<br><small>Show scanner input box + recent scans section</small></div>
+        <div class="screenshot">
+          <img src="screenshots/barcode-scanner.png" alt="Barcode Scanner">
         </div>
 
         <h3>Handover & Dispatch</h3>
@@ -424,8 +442,8 @@
         <h3>Courier Assignment</h3>
         <p>Admin assigns courier company to dispatched orders and enters tracking number/AWB.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Assign Courier Modal<br><small>Click "Assign Courier" on any dispatched order</small></div>
+        <div class="screenshot-note">
+          <p><strong>Note:</strong> The "Assign Courier" modal appears when clicking on dispatched orders in the courier management screen. This modal interaction requires manual demonstration and is not captured in automated screenshots.</p>
         </div>
 
         <div class="feature-grid">
@@ -461,8 +479,8 @@
           <p>Customers receive WhatsApp updates at every major milestone: Approved, Dispatched, In Transit, Out for Delivery, Delivered. Messages include order code, tracking link (if available), and status-specific details.</p>
         </div>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Courier Records List<br><small>Navigate to Reconciliation → Couriers, show shipment list</small></div>
+        <div class="screenshot">
+          <img src="screenshots/courier-records.png" alt="Courier Records List">
         </div>
       </section>
 
@@ -474,8 +492,8 @@
         <h3>Receivables Management</h3>
         <p>All COD orders create receivables. Admins/Accountants track outstanding amounts and settle when courier remits.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Receivables List<br><small>Navigate to Reconciliation → Receivables</small></div>
+        <div class="screenshot">
+          <img src="screenshots/receivables-list.png" alt="Receivables List">
         </div>
 
         <div class="feature-grid">
@@ -529,8 +547,8 @@
           </div>
         </div>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Settle Receivable Modal<br><small>Click "Settle" on any pending receivable, capture form</small></div>
+        <div class="screenshot-note">
+          <p><strong>Note:</strong> The "Settle Receivable" modal appears when clicking "Settle" on pending COD amounts. This modal interaction requires manual demonstration and is not captured in automated screenshots. The receivables list view is shown above.</p>
         </div>
 
         <h3>Claims Management</h3>
@@ -547,8 +565,8 @@
         <h3>GST Tax Invoices</h3>
         <p>Auto-generated GST invoices for every order with sequential numbering, tax breakdown, and business branding.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Tax Invoice PDF<br><small>Open any order, click "Download Invoice", capture PDF</small></div>
+        <div class="screenshot-note">
+          <p><strong>Note:</strong> Tax invoices are auto-generated PDF documents with GST compliance, sequential numbering (INV-0001, INV-0002...), business GSTIN, and complete tax breakdown. PDF generation requires server-side rendering which cannot be captured in automated screenshots.</p>
         </div>
 
         <div class="feature-grid">
@@ -574,8 +592,8 @@
         <h3>Expense Tracking</h3>
         <p>Track business expenses categorized by type for P&L calculation.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Expenses Page<br><small>Navigate to Finance → Expenses</small></div>
+        <div class="screenshot">
+          <img src="screenshots/expenses-page.png" alt="Expenses Page">
         </div>
 
         <table>
@@ -601,8 +619,8 @@
              <strong>Net Profit/Loss:</strong> Revenue - Expenses</p>
         </div>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: P&L Report<br><small>Navigate to Finance → P&L, select month, capture</small></div>
+        <div class="screenshot">
+          <img src="screenshots/pnl-report.png" alt="P&L Report">
         </div>
 
         <h3>Export to Vyapar</h3>
@@ -619,8 +637,8 @@
         <h3>Product Catalog</h3>
         <p>Admins manage the full product catalog with images, pricing, SKUs, and inventory tracking.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Products List<br><small>Navigate to Products page</small></div>
+        <div class="screenshot">
+          <img src="screenshots/products-list.png" alt="Products List">
         </div>
 
         <div class="feature-grid">
@@ -646,8 +664,8 @@
         <h3>Inventory Management</h3>
         <p>Real-time stock tracking with movement history and low-stock alerts.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Inventory Page<br><small>Navigate to Inventory, show stock levels</small></div>
+        <div class="screenshot">
+          <img src="screenshots/inventory-page.png" alt="Inventory Page">
         </div>
 
         <h4>Stock Movements:</h4>
@@ -671,8 +689,8 @@
         <h3>Procurement: Suppliers & Purchase Orders</h3>
         <p>Manage suppliers, create purchase orders, track receipts, and reconcile against inventory.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Purchase Orders<br><small>Navigate to Procurement → Purchase Orders</small></div>
+        <div class="screenshot">
+          <img src="screenshots/purchase-orders.png" alt="Purchase Orders">
         </div>
 
         <div class="feature-card">
@@ -693,8 +711,8 @@
         <h3>Lead Capture</h3>
         <p>Salespeople capture leads from various sources with full contact details and initial notes.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Capture Lead Form<br><small>Login as salesperson, click "+ New Lead", capture form</small></div>
+        <div class="screenshot-note">
+          <p><strong>Note:</strong> The "Capture Lead" form appears as a modal when clicking "+ New Lead" in the leads page. This modal interaction requires manual demonstration and is not captured in automated screenshots. The leads list view is shown below.</p>
         </div>
 
         <h4>Lead Sources:</h4>
@@ -722,8 +740,8 @@
         <h3>Lead Pipeline</h3>
         <p>Leads progress through stages from NEW to WON/LOST with full history tracking.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Leads List with Pipeline<br><small>Navigate to /leads, show status filter tabs with counts</small></div>
+        <div class="screenshot">
+          <img src="screenshots/leads-list.png" alt="Leads List with Pipeline">
         </div>
 
         <div class="workflow">
@@ -756,8 +774,8 @@
           <p>Set follow-up dates on leads. Overdue follow-ups appear on dashboard with badge. Daily reminder job notifies sales at 9 AM (configurable). Clear follow-up once contacted.</p>
         </div>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Lead Detail with Follow-Up<br><small>Open lead detail drawer, show follow-up picker & due date</small></div>
+        <div class="screenshot">
+          <img src="screenshots/lead-detail.png" alt="Lead Detail with Follow-Up">
         </div>
 
         <h3>Convert to Order</h3>
@@ -776,8 +794,8 @@
         <h3>Salespeople Directory (Admin Only)</h3>
         <p>Admins see all salespeople with full profiles, verification status, and document uploads.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Salespeople Directory<br><small>Navigate to Settings → Salespeople (admin only)</small></div>
+        <div class="screenshot">
+          <img src="screenshots/salespeople-directory.png" alt="Salespeople Directory">
         </div>
 
         <div class="feature-grid">
@@ -833,15 +851,15 @@
           </div>
         </div>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Salesperson Profile with Verify Button<br><small>Open any salesperson in directory, show profile drawer with images</small></div>
+        <div class="screenshot">
+          <img src="screenshots/salesperson-profile.png" alt="Salesperson Profile">
         </div>
 
         <h3>My Profile (Self-Service)</h3>
         <p>All staff can view their own profile and request changes that require admin approval.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: My Profile Page<br><small>Login as sales1, navigate to "My Profile" from top nav</small></div>
+        <div class="screenshot">
+          <img src="screenshots/my-profile-page.png" alt="My Profile Page">
         </div>
 
         <h4>Self-Service Features:</h4>
@@ -855,8 +873,8 @@
         <h3>Profile Change Approval (Admin Only)</h3>
         <p>Admins review and approve/reject staff profile change requests.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Profile Approvals<br><small>Navigate to Settings → Profile Approvals (admin only)</small></div>
+        <div class="screenshot">
+          <img src="screenshots/profile-approvals.png" alt="Profile Approvals">
         </div>
 
         <div class="highlight-box">
@@ -873,8 +891,8 @@
         <h3>Standard Reports</h3>
         <p>Pre-built reports for common business questions:</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Reports Page<br><small>Navigate to Reports</small></div>
+        <div class="screenshot">
+          <img src="screenshots/reports-page.png" alt="Reports Page">
         </div>
 
         <div class="feature-grid">
@@ -899,8 +917,8 @@
         <h3>Insights Engine (Statistical Alerts)</h3>
         <p>Automated nightly analysis flags anomalies, risks, and opportunities across 7 families:</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Insights Page<br><small>Navigate to Insights (admin only)</small></div>
+        <div class="screenshot">
+          <img src="screenshots/insights-page.png" alt="Insights Page">
         </div>
 
         <table>
@@ -939,8 +957,8 @@
         <h3>In-App Notifications</h3>
         <p>Staff see role-relevant notifications in a persistent bell icon with badge count.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Notification Bell & Dropdown<br><small>Click bell icon in top nav, capture dropdown</small></div>
+        <div class="screenshot">
+          <img src="screenshots/notification-dropdown.png" alt="Notification Dropdown">
         </div>
 
         <div class="feature-grid">
@@ -984,8 +1002,8 @@
           <p>All notifications (WhatsApp, Email, In-app) go through an outbox pattern. Failed sends retry automatically. Admins can view outbox logs to diagnose delivery issues.</p>
         </div>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Notifications List<br><small>Navigate to Notifications page</small></div>
+        <div class="screenshot">
+          <img src="screenshots/notifications-list.png" alt="Notifications List">
         </div>
       </section>
 
@@ -997,8 +1015,8 @@
         <h3>Authentication</h3>
         <p>Secure JWT-based login with password hashing (BCrypt) and session management.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Login Page<br><small>Capture login screen at http://13.207.62.222/</small></div>
+        <div class="screenshot">
+          <img src="screenshots/login-page.png" alt="Login Page">
         </div>
 
         <div class="feature-grid">
@@ -1059,8 +1077,8 @@
         <h3>Audit Trail</h3>
         <p>Every sensitive action is logged with who, what, when, and context.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Audit Log<br><small>Navigate to Audit page (admin only)</small></div>
+        <div class="screenshot">
+          <img src="screenshots/audit-log.png" alt="Audit Log">
         </div>
 
         <h4>Audited Actions:</h4>
@@ -1096,8 +1114,9 @@
         <h3>Mobile-Optimized Interface</h3>
         <p>The entire admin panel is designed mobile-first with touch-friendly targets and adaptive layouts.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Mobile Dashboard<br><small>Capture dashboard on mobile viewport (360px wide)</small></div>
+        <!-- Mobile screenshots removed - manual capture recommended for better quality -->
+        <div class="info-box">
+          <strong>Note:</strong> Mobile screenshots are best captured manually using browser DevTools responsive mode at 360px width for optimal quality and layout representation.
         </div>
 
         <div class="feature-grid">
@@ -1138,8 +1157,8 @@
         <h3>Bottom Tab Bar (Mobile Navigation)</h3>
         <p>Each role gets a persistent 4-tab bar at the bottom on mobile for one-tap access to core features.</p>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Mobile Bottom Tabs<br><small>Capture bottom of any mobile page showing 4 tabs</small></div>
+        <div class="screenshot-note">
+          <p><strong>Note:</strong> Mobile screenshots from automated capture had quality issues. The bottom tab bar is a persistent navigation element at the bottom of mobile screens (≤768px), showing 4 role-specific tabs. See the table below for each role's tab configuration.</p>
         </div>
 
         <table>
@@ -1157,8 +1176,8 @@
           <strong>Breakpoints:</strong> <768px mobile (cards), 768–1024px tablet (mixed), ≥1024px desktop (tables). All layouts tested at 360px (small phone), 768px (tablet), and 1920px (desktop).
         </div>
 
-        <div class="screenshot placeholder">
-          <div>📸 Screenshot: Tablet View<br><small>Capture any page at 768px wide</small></div>
+        <div class="screenshot">
+          <img src="screenshots/tablet-view.png" alt="Tablet View">
         </div>
       </section>
 
