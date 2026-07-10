@@ -1,0 +1,80 @@
+<!-- 
+  SCREENSHOT REPLACEMENT TEMPLATE
+  Copy-paste this whenever you need to add a screenshot to Shifa-Features-Guide.html
+-->
+
+<!-- EXAMPLE 1: Simple Screenshot -->
+<div class="screenshot">
+  <img src="screenshots/admin-dashboard.png" alt="Admin Dashboard">
+</div>
+<p class="screenshot-caption">Admin dashboard showing order summary, KPIs, and pending approvals</p>
+
+<!-- EXAMPLE 2: Screenshot with Mobile Variant -->
+<div class="screenshot">
+  <img src="screenshots/order-detail.png" alt="Order Detail Drawer">
+</div>
+<p class="screenshot-caption">Order detail showing customer info, line items with thumbnails, payment, status history</p>
+
+<!-- For mobile-specific screenshots, use mobile/ subfolder -->
+<div class="screenshot">
+  <img src="screenshots/mobile/dashboard-mobile.png" alt="Dashboard on Mobile">
+</div>
+<p class="screenshot-caption">Mobile dashboard with stacked KPI cards and hamburger menu</p>
+
+<!-- EXAMPLE 3: Side-by-Side Comparison (Desktop vs Mobile) -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0;">
+  <div>
+    <div class="screenshot">
+      <img src="screenshots/orders-desktop.png" alt="Orders on Desktop">
+    </div>
+    <p class="screenshot-caption">Desktop view with table layout</p>
+  </div>
+  <div>
+    <div class="screenshot">
+      <img src="screenshots/mobile/orders-mobile.png" alt="Orders on Mobile">
+    </div>
+    <p class="screenshot-caption">Mobile view with card layout</p>
+  </div>
+</div>
+
+<!-- EXAMPLE 4: Screenshot with Annotations (if needed) -->
+<div class="screenshot" style="position:relative;">
+  <img src="screenshots/packing-workflow.png" alt="Packing Workflow">
+  <!-- Optional: Add annotation arrows/text using absolute positioning -->
+</div>
+<p class="screenshot-caption">Packing queues showing three stages: to pack, awaiting handover, awaiting dispatch</p>
+
+<!-- NOTES:
+  - Save all screenshots in docs/screenshots/ folder
+  - Use PNG for UI screenshots, JPEG for photos
+  - Keep file sizes under 500KB (compress if needed)
+  - Use descriptive filenames: admin-dashboard.png, order-detail.png
+  - Mobile screenshots go in docs/screenshots/mobile/
+  - Alt text is important for accessibility
+  - Screenshot captions should be descriptive and match the image
+  - Always test that images load before committing
+-->
+
+<!-- SCREENSHOT COMPRESSION TIP:
+  Use online tools like TinyPNG or ImageOptim to compress before adding
+  Target: <500KB per image
+  Recommended dimensions:
+    - Desktop: 1400px max width
+    - Mobile: 360px width
+    - Tablet: 768px width
+-->
+
+<!-- FIND & REPLACE IN Shifa-Features-Guide.html:
+  
+  FIND THIS PATTERN:
+  <div class="screenshot placeholder">
+    <div>📸 Screenshot: DESCRIPTION<br><small>INSTRUCTIONS</small></div>
+  </div>
+
+  REPLACE WITH:
+  <div class="screenshot">
+    <img src="screenshots/FILENAME.png" alt="DESCRIPTION">
+  </div>
+
+  Then update the caption below to match
+-->
