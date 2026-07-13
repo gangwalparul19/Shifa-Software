@@ -255,6 +255,18 @@ a {
   max-width: 100%;
 }
 
+/* Clickable data rows/cards that open a detail view (paired with a kebab menu
+   for per-row actions). Used across the admin lists. */
+.shifa-rowlink {
+  cursor: pointer;
+}
+.shifa-rowlink:hover {
+  background: var(--shifa-green-050, #f2f9f5);
+}
+.shifa-appr--clickable {
+  cursor: pointer;
+}
+
 /* Stat card coloured accent bar */
 .stat-accent {
   position: relative;

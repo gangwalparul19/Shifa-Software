@@ -11,6 +11,7 @@ import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
 
 interface Toast {
@@ -38,6 +39,7 @@ interface Toast {
     StatusBadgeComponent,
     StatePanelComponent,
     DensityToggleComponent,
+    RowActionsMenuComponent,
   ],
   templateUrl: './approval-queue.component.html',
   styleUrl: './approval-queue.component.css',
@@ -198,6 +200,23 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
   openDetail(item: ApprovalQueueItem): void {
     this.selected.set(item);
     this.loadScreenshot(item);
+  }
+
+  /** Per-row kebab actions (row click opens the detail, so it isn't repeated here). */
+  rowActions(): RowAction[] {
+    return [
+      { key: 'approve', label: 'Approve', icon: 'ti-check', variant: 'success', disabled: this.acting() },
+      { key: 'reject', label: 'Reject', icon: 'ti-x', variant: 'danger', disabled: this.acting() },
+    ];
+  }
+
+  /** Dispatches a kebab action for the given row. */
+  onRowAction(key: string, item: ApprovalQueueItem): void {
+    if (key === 'approve') {
+      void this.approve(item);
+    } else if (key === 'reject') {
+      this.openReject(item);
+    }
   }
 
   closeDetail(): void {

@@ -36,8 +36,8 @@
        payment pill, and clear Approve / Reject actions (mockup-faithful). -->
   <div class="shifa-appr-cards d-md-none">
     @for (item of pageItems(); track item.id) {
-      <div class="shifa-appr">
-        <div class="shifa-appr__top" (click)="openDetail(item)">
+      <div class="shifa-appr shifa-appr--clickable" (click)="openDetail(item)" tabindex="0" (keydown.enter)="openDetail(item)">
+        <div class="shifa-appr__top">
           <div class="shifa-appr__idwrap">
             <span class="shifa-appr__code">{{ item.orderCode }}</span>
             <span class="shifa-appr__meta">
@@ -52,18 +52,8 @@
           <div class="shifa-appr__right">
             <span class="shifa-appr__amount">{{ money(item.totalAmount) }}</span>
             <admin-status-badge [status]="item.paymentStatus" kind="payment" />
+            <admin-row-actions [actions]="rowActions()" ariaLabel="Order actions" (select)="onRowAction($event, item)" />
           </div>
-        </div>
-        <div class="shifa-appr__actions">
-          <button type="button" class="btn btn-sm btn-outline-secondary shifa-appr__review" (click)="openDetail(item)" title="Review" aria-label="Review">
-            <i class="ti ti-eye"></i>
-          </button>
-          <button type="button" class="btn btn-sm btn-outline-danger" (click)="openReject(item)" [disabled]="acting()">
-            <i class="ti ti-x me-1"></i> Reject
-          </button>
-          <button type="button" class="btn btn-sm btn-success" (click)="approve(item)" [disabled]="acting()">
-            <i class="ti ti-check me-1"></i> Approve
-          </button>
         </div>
       </div>
     }
@@ -82,9 +72,9 @@
         </thead>
         <tbody>
           @for (item of pageItems(); track item.id) {
-            <tr>
+            <tr class="shifa-rowlink" (click)="openDetail(item)">
               <td>
-                <button type="button" class="btn btn-link p-0 fw-medium" (click)="openDetail(item)">{{ item.orderCode }}</button>
+                <span class="fw-medium">{{ item.orderCode }}</span>
                 <div><span class="badge bg-secondary-lt">{{ item.source }}</span></div>
               </td>
               <td>{{ item.customerName }}</td>
@@ -95,16 +85,8 @@
               <td class="text-end">{{ money(item.codAmount) }}</td>
               <td><admin-status-badge [status]="item.paymentStatus" kind="payment" /></td>
               <td class="text-secondary">{{ item.createdAt ? (item.createdAt | date: 'dd MMM, HH:mm') : '—' }}</td>
-              <td class="text-end">
-                <div class="btn-list justify-content-end flex-nowrap">
-                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openDetail(item)">Review</button>
-                  <button type="button" class="btn btn-sm btn-success" (click)="approve(item)" [disabled]="acting()">
-                    <i class="ti ti-check"></i>
-                  </button>
-                  <button type="button" class="btn btn-sm btn-outline-danger" (click)="openReject(item)" [disabled]="acting()">
-                    <i class="ti ti-x"></i>
-                  </button>
-                </div>
+              <td class="text-end" (click)="$event.stopPropagation()">
+                <admin-row-actions [actions]="rowActions()" ariaLabel="Order actions" (select)="onRowAction($event, item)" />
               </td>
             </tr>
           }
