@@ -126,6 +126,9 @@
             <span class="shifa-ret__return">Return #{{ r.id }}</span>
           </a>
           <span class="badge" [attr.data-group]="statusTone(r.status)">{{ r.status }}</span>
+          @if (rowActions(r).length) {
+            <admin-row-actions class="ms-1" [actions]="rowActions(r)" ariaLabel="Return actions" (select)="onRowAction($event, r)" />
+          }
         </div>
         <div class="shifa-ret__reason">{{ r.reason }}</div>
         @if (r.notes) {
@@ -137,23 +140,6 @@
             <span class="badge" data-group="done"><i class="ti ti-package-import me-1"></i>Restocked</span>
           }
         </div>
-        @if (canApproveOrReject(r) || canMarkRefunded(r)) {
-          <div class="shifa-ret__actions">
-            @if (canApproveOrReject(r)) {
-              <button type="button" class="btn btn-success" (click)="openApprove(r)">
-                <i class="ti ti-check me-1"></i> Approve
-              </button>
-              <button type="button" class="btn btn-outline-danger" (click)="openReject(r)">
-                <i class="ti ti-x me-1"></i> Reject
-              </button>
-            }
-            @if (canMarkRefunded(r)) {
-              <button type="button" class="btn btn-primary" (click)="openRefund(r)">
-                <i class="ti ti-cash me-1"></i> Mark refunded
-              </button>
-            }
-          </div>
-        }
       </div>
     }
     <admin-pagination
@@ -207,24 +193,11 @@
               </td>
               <td class="text-secondary">{{ r.createdAt ? (r.createdAt | date: 'dd MMM, HH:mm') : '—' }}</td>
               <td class="text-end">
-                <div class="btn-list justify-content-end">
-                  @if (canApproveOrReject(r)) {
-                    <button type="button" class="btn btn-sm btn-primary" (click)="openApprove(r)">
-                      <i class="ti ti-check me-1"></i> Approve
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-danger" (click)="openReject(r)">
-                      <i class="ti ti-x me-1"></i> Reject
-                    </button>
-                  }
-                  @if (canMarkRefunded(r)) {
-                    <button type="button" class="btn btn-sm btn-outline-primary" (click)="openRefund(r)">
-                      <i class="ti ti-cash me-1"></i> Mark refunded
-                    </button>
-                  }
-                  @if (!canApproveOrReject(r) && !canMarkRefunded(r)) {
-                    <span class="text-secondary small">—</span>
-                  }
-                </div>
+                @if (rowActions(r).length) {
+                  <admin-row-actions [actions]="rowActions(r)" ariaLabel="Return actions" (select)="onRowAction($event, r)" />
+                } @else {
+                  <span class="text-secondary small">—</span>
+                }
               </td>
             </tr>
           }

@@ -11,6 +11,7 @@ import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { SortableHeaderComponent } from '../shared/sortable-header.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ToastService } from '../shared/toast.service';
 import { toggleSort, sortParam } from '../shared/sort.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
@@ -42,6 +43,7 @@ type ReturnModal = 'approve' | 'reject' | 'refund' | 'create' | null;
     DensityToggleComponent,
     PaginationComponent,
     SortableHeaderComponent,
+    RowActionsMenuComponent,
   ],
   templateUrl: './returns.component.html',
   styleUrl: './returns.component.css',
@@ -233,6 +235,30 @@ export class ReturnsComponent implements OnInit, OnDestroy {
 
   canMarkRefunded(r: ReturnResponse): boolean {
     return this.canRefund() && r.status === 'APPROVED';
+  }
+
+  /** Status- and role-gated per-row kebab actions. */
+  rowActions(r: ReturnResponse): RowAction[] {
+    const actions: RowAction[] = [];
+    if (this.canApproveOrReject(r)) {
+      actions.push({ key: 'approve', label: 'Approve', icon: 'ti-check', variant: 'success' });
+      actions.push({ key: 'reject', label: 'Reject', icon: 'ti-x', variant: 'danger' });
+    }
+    if (this.canMarkRefunded(r)) {
+      actions.push({ key: 'refund', label: 'Mark refunded', icon: 'ti-cash', variant: 'primary' });
+    }
+    return actions;
+  }
+
+  /** Dispatches a kebab action for the given return row. */
+  onRowAction(key: string, r: ReturnResponse): void {
+    if (key === 'approve') {
+      this.openApprove(r);
+    } else if (key === 'reject') {
+      this.openReject(r);
+    } else if (key === 'refund') {
+      this.openRefund(r);
+    }
   }
 
   // --- Modals -------------------------------------------------------------
