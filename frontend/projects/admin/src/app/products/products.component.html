@@ -217,7 +217,7 @@
         </thead>
         <tbody>
           @for (product of products(); track product.id) {
-            <tr>
+            <tr class="shifa-rowlink" (click)="openDetail(product)">
               <td>
                 <img
                   class="avatar avatar-md shifa-thumb-img"
@@ -228,9 +228,7 @@
                 />
               </td>
               <td>
-                <button type="button" class="btn btn-link p-0 fw-medium text-start" (click)="openDetail(product)">
-                  {{ product.name }}
-                </button>
+                <span class="fw-medium">{{ product.name }}</span>
                 @if (product.featured) {
                   <span class="badge bg-yellow-lt ms-1" title="Featured"><i class="ti ti-star"></i></span>
                 }
@@ -248,20 +246,8 @@
                 </span>
               </td>
               @if (canManage()) {
-                <td class="text-end">
-                  <div class="btn-list justify-content-end flex-nowrap">
-                    <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openEdit(product)">
-                      <i class="ti ti-edit"></i>
-                    </button>
-                    <button
-                      type="button"
-                      class="btn btn-sm btn-outline-primary"
-                      (click)="toggleVisibility(product)"
-                      [disabled]="togglingId() !== null"
-                    >
-                      {{ product.visibility === Visibility.PUBLISHED ? 'Hide' : 'Publish' }}
-                    </button>
-                  </div>
+                <td class="text-end" (click)="$event.stopPropagation()">
+                  <admin-row-actions [actions]="rowActions(product)" ariaLabel="Product actions" (select)="onRowAction($event, product)" />
                 </td>
               }
             </tr>
@@ -473,16 +459,7 @@
                           </span>
                         </td>
                         <td class="text-end">
-                          <div class="btn-list justify-content-end flex-nowrap">
-                            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="editCategory(cat)">
-                              <i class="ti ti-edit"></i>
-                            </button>
-                            @if (cat.active) {
-                              <button type="button" class="btn btn-sm btn-outline-danger" (click)="deactivateCategory(cat)">
-                                Deactivate
-                              </button>
-                            }
-                          </div>
+                          <admin-row-actions [actions]="categoryActions(cat)" ariaLabel="Category actions" (select)="onCategoryAction($event, cat)" />
                         </td>
                       </tr>
                     }

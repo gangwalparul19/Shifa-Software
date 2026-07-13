@@ -129,26 +129,9 @@
           <span class="shifa-po__meta"><i class="ti ti-box me-1"></i>{{ po.itemCount }} item{{ po.itemCount === 1 ? '' : 's' }}</span>
           <span class="shifa-po__total">{{ money(po.totalAmount) }}</span>
         </div>
-        @if (isReceivable(po.status) || isCancellable(po.status)) {
+        @if (rowActions(po).length) {
           <div class="shifa-po__actions" (click)="$event.stopPropagation()">
-            @if (isReceivable(po.status)) {
-              <button type="button" class="btn btn-outline-primary" (click)="startReceive(po)">
-                <i class="ti ti-package-import me-1"></i> Receive
-              </button>
-            }
-            @if (isCancellable(po.status)) {
-              <button
-                type="button"
-                class="btn btn-outline-danger"
-                (click)="cancel(po)"
-                [disabled]="cancellingId() !== null"
-              >
-                <i class="ti ti-ban me-1"></i> Cancel
-              </button>
-            }
-            <button type="button" class="btn btn-outline-secondary" (click)="openDetail(po)">
-              <i class="ti ti-eye me-1"></i> View
-            </button>
+            <admin-row-actions [actions]="rowActions(po)" ariaLabel="Purchase order actions" (select)="onRowAction($event, po)" />
           </div>
         }
       </div>
@@ -181,7 +164,7 @@
         </thead>
         <tbody>
           @for (po of pos(); track po.id) {
-            <tr class="clickable" (click)="openDetail(po)">
+            <tr class="shifa-rowlink" (click)="openDetail(po)">
               <td class="fw-medium">{{ po.poNumber }}</td>
               <td>{{ supplierName(po.supplierId) }}</td>
               <td><span class="badge" [attr.data-group]="statusTone(po.status)">{{ statusLabel(po.status) }}</span></td>
@@ -189,25 +172,12 @@
               <td class="text-end fw-medium">{{ money(po.totalAmount) }}</td>
               <td class="text-secondary">{{ po.createdAt | date: 'dd MMM, HH:mm' }}</td>
               <td class="text-secondary">{{ po.receivedAt ? (po.receivedAt | date: 'dd MMM, HH:mm') : '—' }}</td>
-              <td class="text-end">
-                <div class="btn-list justify-content-end flex-nowrap" (click)="$event.stopPropagation()">
-                  @if (isReceivable(po.status)) {
-                    <button type="button" class="btn btn-sm btn-outline-primary" (click)="startReceive(po)">
-                      <i class="ti ti-package-import me-1"></i> Receive
-                    </button>
-                  }
-                  @if (isCancellable(po.status)) {
-                    <button
-                      type="button"
-                      class="btn btn-sm btn-outline-danger"
-                      (click)="cancel(po)"
-                      [disabled]="cancellingId() !== null"
-                    >
-                      Cancel
-                    </button>
-                  }
-                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openDetail(po)">View</button>
-                </div>
+              <td class="text-end" (click)="$event.stopPropagation()">
+                @if (rowActions(po).length) {
+                  <admin-row-actions [actions]="rowActions(po)" ariaLabel="Purchase order actions" (select)="onRowAction($event, po)" />
+                } @else {
+                  <span class="text-secondary small">—</span>
+                }
               </td>
             </tr>
           }

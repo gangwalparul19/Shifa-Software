@@ -5,6 +5,7 @@ import { Subject, takeUntil } from 'rxjs';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { PaginationComponent } from '../shared/pagination.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ToastService } from '../shared/toast.service';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { NotificationsService } from './notifications.service';
@@ -28,6 +29,7 @@ const TABLE_KEY = 'notifications';
     PageHeaderComponent,
     StatePanelComponent,
     PaginationComponent,
+    RowActionsMenuComponent,
   ],
   templateUrl: './notifications.component.html',
   styleUrl: './notifications.component.css',
@@ -123,6 +125,21 @@ export class NotificationsComponent implements OnInit, OnDestroy {
   hasFilters(): boolean {
     const f = this.filters.getRawValue();
     return f.unreadOnly || !!f.type;
+  }
+
+  /** Per-row kebab action mirroring the original Mark read button (unread only). */
+  rowActions(item: AdminNotificationItem): RowAction[] {
+    if (item.read) {
+      return [];
+    }
+    return [{ key: 'read', label: 'Mark read', icon: 'ti-check', variant: 'primary' }];
+  }
+
+  /** Dispatches a kebab action for the given notification row. */
+  onRowAction(key: string, item: AdminNotificationItem): void {
+    if (key === 'read') {
+      this.markRead(item);
+    }
   }
 
   markRead(item: AdminNotificationItem): void {

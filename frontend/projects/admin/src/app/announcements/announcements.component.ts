@@ -3,6 +3,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ToastService } from '../shared/toast.service';
 import { ConfirmService } from '../shared/confirm.service';
 import { AnnouncementsService } from './announcements.service';
@@ -20,7 +21,13 @@ import {
  */
 @Component({
   selector: 'admin-announcements',
-  imports: [ReactiveFormsModule, DatePipe, PageHeaderComponent, StatePanelComponent],
+  imports: [
+    ReactiveFormsModule,
+    DatePipe,
+    PageHeaderComponent,
+    StatePanelComponent,
+    RowActionsMenuComponent,
+  ],
   templateUrl: './announcements.component.html',
   styleUrl: './announcements.component.css',
 })
@@ -83,6 +90,27 @@ export class AnnouncementsComponent implements OnInit {
         this.toasts.error('Could not post the announcement.');
       },
     });
+  }
+
+  /** Per-row kebab actions mirroring the original Hide/Show + Delete buttons. */
+  rowActions(a: Announcement): RowAction[] {
+    return [
+      {
+        key: 'toggle',
+        label: a.active ? 'Hide' : 'Show',
+        icon: a.active ? 'ti-eye-off' : 'ti-eye',
+      },
+      { key: 'delete', label: 'Delete', icon: 'ti-trash', variant: 'danger' },
+    ];
+  }
+
+  /** Dispatches a kebab action for the given announcement row. */
+  onRowAction(key: string, a: Announcement): void {
+    if (key === 'toggle') {
+      this.toggle(a);
+    } else if (key === 'delete') {
+      this.remove(a);
+    }
   }
 
   toggle(a: Announcement): void {

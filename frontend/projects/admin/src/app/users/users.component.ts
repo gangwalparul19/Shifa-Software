@@ -15,6 +15,7 @@ import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 
@@ -36,6 +37,7 @@ import { ToastService } from '../shared/toast.service';
     PaginationComponent,
     StatePanelComponent,
     DensityToggleComponent,
+    RowActionsMenuComponent,
   ],
   templateUrl: './users.component.html',
   styleUrl: './users.component.css',
@@ -180,6 +182,34 @@ export class UsersComponent implements OnInit {
       return iso;
     }
     return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  /** Per-row kebab actions mirroring the original Edit / Reset / (de)activate buttons. */
+  rowActions(user: AdminUser): RowAction[] {
+    const actions: RowAction[] = [
+      { key: 'edit', label: 'Edit', icon: 'ti-edit' },
+      { key: 'reset', label: 'Reset password', icon: 'ti-key' },
+    ];
+    const blockDeactivate = user.active && this.isSelf(user);
+    actions.push({
+      key: 'toggle',
+      label: user.active ? 'Deactivate' : 'Activate',
+      icon: user.active ? 'ti-user-off' : 'ti-user-check',
+      variant: user.active ? 'danger' : 'success',
+      disabled: this.actioningId() !== null || blockDeactivate,
+    });
+    return actions;
+  }
+
+  /** Dispatches a kebab action for the given user row. */
+  onRowAction(key: string, user: AdminUser): void {
+    if (key === 'edit') {
+      this.openEdit(user);
+    } else if (key === 'reset') {
+      this.openReset(user);
+    } else if (key === 'toggle') {
+      this.toggleActive(user);
+    }
   }
 
   // --- Create / edit form -------------------------------------------------

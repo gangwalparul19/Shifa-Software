@@ -135,16 +135,7 @@
         }
         <div class="shifa-exp__r2">
           <span class="shifa-exp__date"><i class="ti ti-calendar-event me-1"></i>{{ e.incurredOn | date: 'dd MMM yyyy' }}</span>
-          <button
-            type="button"
-            class="btn btn-sm btn-icon btn-outline-danger"
-            (click)="remove(e)"
-            [disabled]="deletingId() !== null"
-            aria-label="Delete expense"
-            title="Delete expense"
-          >
-            <i class="ti ti-trash"></i>
-          </button>
+          <admin-row-actions [actions]="rowActions(e)" ariaLabel="Expense actions" (select)="onRowAction($event, e)" />
         </div>
       </div>
     }
@@ -181,14 +172,7 @@
               <td class="text-end fw-medium">{{ money(e.amount) }}</td>
               <td class="text-secondary">{{ e.createdAt | date: 'dd MMM, HH:mm' }}</td>
               <td class="text-end">
-                <button
-                  type="button"
-                  class="btn btn-sm btn-outline-danger"
-                  (click)="remove(e)"
-                  [disabled]="deletingId() !== null"
-                >
-                  <i class="ti ti-trash"></i>
-                </button>
+                <admin-row-actions [actions]="rowActions(e)" ariaLabel="Expense actions" (select)="onRowAction($event, e)" />
               </td>
             </tr>
           }

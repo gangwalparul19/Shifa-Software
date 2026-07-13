@@ -64,24 +64,7 @@
         <div class="shifa-uc__foot">
           <span class="shifa-uc__created"><i class="ti ti-calendar-event me-1"></i>{{ createdLabel(user.createdAt) }}</span>
           <div class="shifa-uc__actions">
-            <button type="button" class="btn btn-sm btn-icon btn-outline-secondary" (click)="openEdit(user)" title="Edit" aria-label="Edit">
-              <i class="ti ti-edit"></i>
-            </button>
-            <button type="button" class="btn btn-sm btn-icon btn-outline-secondary" (click)="openReset(user)" title="Reset password" aria-label="Reset password">
-              <i class="ti ti-key"></i>
-            </button>
-            <button
-              type="button"
-              class="btn btn-sm btn-icon"
-              [class.btn-outline-danger]="user.active"
-              [class.btn-outline-success]="!user.active"
-              (click)="toggleActive(user)"
-              [disabled]="actioningId() !== null || (user.active && isSelf(user))"
-              [title]="user.active ? (isSelf(user) ? 'You cannot deactivate your own account' : 'Deactivate') : 'Activate'"
-              [attr.aria-label]="user.active ? 'Deactivate' : 'Activate'"
-            >
-              <i class="ti" [class.ti-user-off]="user.active" [class.ti-user-check]="!user.active"></i>
-            </button>
+            <admin-row-actions [actions]="rowActions(user)" ariaLabel="User actions" (select)="onRowAction($event, user)" />
           </div>
         </div>
       </div>
@@ -104,11 +87,9 @@
         </thead>
         <tbody>
           @for (user of pageItems(); track user.id) {
-            <tr>
+            <tr class="shifa-rowlink" (click)="openEdit(user)">
               <td>
-                <button type="button" class="btn btn-link p-0 fw-medium text-start" (click)="openEdit(user)">
-                  <span class="shifa-mono">{{ user.username }}</span>
-                </button>
+                <span class="fw-medium shifa-mono">{{ user.username }}</span>
                 @if (isSelf(user)) {
                   <span class="badge bg-secondary-lt ms-1">You</span>
                 }
@@ -121,26 +102,8 @@
                 </span>
               </td>
               <td class="text-secondary">{{ createdLabel(user.createdAt) }}</td>
-              <td class="text-end">
-                <div class="btn-list justify-content-end flex-nowrap">
-                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openEdit(user)" title="Edit">
-                    <i class="ti ti-edit"></i>
-                  </button>
-                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openReset(user)" title="Reset password">
-                    <i class="ti ti-key"></i>
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-sm"
-                    [class.btn-outline-danger]="user.active"
-                    [class.btn-outline-success]="!user.active"
-                    (click)="toggleActive(user)"
-                    [disabled]="actioningId() !== null || (user.active && isSelf(user))"
-                    [title]="user.active && isSelf(user) ? 'You cannot deactivate your own account' : ''"
-                  >
-                    {{ user.active ? 'Deactivate' : 'Activate' }}
-                  </button>
-                </div>
+              <td class="text-end" (click)="$event.stopPropagation()">
+                <admin-row-actions [actions]="rowActions(user)" ariaLabel="User actions" (select)="onRowAction($event, user)" />
               </td>
             </tr>
           }

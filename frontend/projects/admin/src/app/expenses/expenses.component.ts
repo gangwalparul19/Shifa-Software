@@ -11,6 +11,7 @@ import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { SortableHeaderComponent } from '../shared/sortable-header.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { toggleSort, sortParam } from '../shared/sort.util';
@@ -38,6 +39,7 @@ const TABLE_KEY = 'expenses';
     DensityToggleComponent,
     PaginationComponent,
     SortableHeaderComponent,
+    RowActionsMenuComponent,
   ],
   templateUrl: './expenses.component.html',
   styleUrl: './expenses.component.css',
@@ -238,6 +240,26 @@ export class ExpensesComponent implements OnInit, OnDestroy {
         this.formError.set(this.describeError(err));
       },
     });
+  }
+
+  /** Per-row kebab actions mirroring the original Delete button. */
+  rowActions(expense: ExpenseResponse): RowAction[] {
+    return [
+      {
+        key: 'delete',
+        label: 'Delete',
+        icon: 'ti-trash',
+        variant: 'danger',
+        disabled: this.deletingId() !== null,
+      },
+    ];
+  }
+
+  /** Dispatches a kebab action for the given expense row. */
+  onRowAction(key: string, expense: ExpenseResponse): void {
+    if (key === 'delete') {
+      this.remove(expense);
+    }
   }
 
   // --- Delete -------------------------------------------------------------

@@ -23,6 +23,7 @@ import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { SortableHeaderComponent } from '../shared/sortable-header.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { toggleSort, sortParam } from '../shared/sort.util';
@@ -51,6 +52,7 @@ const TABLE_KEY = 'products';
     DensityToggleComponent,
     PaginationComponent,
     SortableHeaderComponent,
+    RowActionsMenuComponent,
   ],
   templateUrl: './products.component.html',
   styleUrl: './products.component.css',
@@ -555,6 +557,48 @@ export class ProductsComponent implements OnInit, OnDestroy {
         this.formError.set(this.describeError(err));
       },
     });
+  }
+
+  /** Per-row kebab actions mirroring the original Edit / Hide-Publish buttons. */
+  rowActions(product: Product): RowAction[] {
+    const published = product.visibility === ProductVisibility.PUBLISHED;
+    return [
+      { key: 'edit', label: 'Edit', icon: 'ti-edit' },
+      {
+        key: 'toggle',
+        label: published ? 'Hide' : 'Publish',
+        icon: published ? 'ti-eye-off' : 'ti-eye',
+        variant: 'primary',
+        disabled: this.togglingId() !== null,
+      },
+    ];
+  }
+
+  /** Dispatches a kebab action for the given product row. */
+  onRowAction(key: string, product: Product): void {
+    if (key === 'edit') {
+      this.openEdit(product);
+    } else if (key === 'toggle') {
+      this.toggleVisibility(product);
+    }
+  }
+
+  /** Per-row kebab actions for the categories sub-table (Edit / Deactivate). */
+  categoryActions(category: Category): RowAction[] {
+    const actions: RowAction[] = [{ key: 'edit', label: 'Edit', icon: 'ti-edit' }];
+    if (category.active) {
+      actions.push({ key: 'deactivate', label: 'Deactivate', icon: 'ti-eye-off', variant: 'danger' });
+    }
+    return actions;
+  }
+
+  /** Dispatches a kebab action for the given category row. */
+  onCategoryAction(key: string, category: Category): void {
+    if (key === 'edit') {
+      this.editCategory(category);
+    } else if (key === 'deactivate') {
+      this.deactivateCategory(category);
+    }
   }
 
   // --- Quick publish/hide toggle -----------------------------------------

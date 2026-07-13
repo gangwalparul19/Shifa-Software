@@ -66,14 +66,7 @@
             · <span class="fw-semibold">{{ money(c.totalSpent) }}</span>
           </div>
         </div>
-        <button
-          type="button"
-          class="btn btn-sm btn-outline-primary shifa-cust__view"
-          (click)="$event.stopPropagation(); openDetail(c)"
-          [attr.aria-label]="'View ' + (c.name || c.mobile)"
-        >
-          <i class="ti ti-eye me-1"></i> View
-        </button>
+        <i class="ti ti-chevron-right shifa-cust__view text-secondary" aria-hidden="true"></i>
       </div>
     }
     <admin-pagination
@@ -98,7 +91,6 @@
             <th class="text-end" adminSortHeader field="totalSpent" [sort]="sort()" (sortChange)="onSort($event)">Total spent</th>
             <th adminSortHeader field="lastOrderAt" [sort]="sort()" (sortChange)="onSort($event)">Last order</th>
             <th>Tags</th>
-            <th class="text-end">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -120,15 +112,6 @@
                     <span class="badge" data-group="neutral">Guest</span>
                   }
                 </div>
-              </td>
-              <td class="text-end">
-                <button
-                  type="button"
-                  class="btn btn-sm btn-outline-primary"
-                  (click)="$event.stopPropagation(); openDetail(c)"
-                >
-                  View
-                </button>
               </td>
             </tr>
           }

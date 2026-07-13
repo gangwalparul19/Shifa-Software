@@ -149,31 +149,7 @@
           <span class="shifa-inv__kv">Threshold <strong>{{ row.trackInventory ? row.lowStockThreshold : '—' }}</strong></span>
         </div>
         <div class="shifa-inv__actions">
-          <button
-            type="button"
-            class="btn btn-sm btn-outline-primary"
-            (click)="openRestock(row)"
-            [disabled]="!row.trackInventory"
-          >
-            <i class="ti ti-package-import me-1"></i> Restock
-          </button>
-          <button
-            type="button"
-            class="btn btn-sm btn-outline-secondary"
-            (click)="openAdjust(row)"
-            [disabled]="!row.trackInventory"
-          >
-            <i class="ti ti-adjustments me-1"></i> Adjust
-          </button>
-          <button
-            type="button"
-            class="btn btn-sm btn-icon btn-ghost-secondary"
-            (click)="openHistory(row)"
-            title="Stock history"
-            aria-label="Stock history"
-          >
-            <i class="ti ti-history"></i>
-          </button>
+          <admin-row-actions [actions]="rowActions(row)" ariaLabel="Inventory actions" (select)="onRowAction($event, row)" />
         </div>
       </div>
     }
@@ -208,35 +184,7 @@
                 <span class="badge" [attr.data-group]="tone(row)">{{ stockLabel(row) }}</span>
               </td>
               <td class="text-end">
-                <div class="btn-list justify-content-end flex-nowrap">
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-outline-primary"
-                    (click)="openRestock(row)"
-                    [disabled]="!row.trackInventory"
-                    title="Restock"
-                  >
-                    <i class="ti ti-package-import me-1"></i> Restock
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-outline-secondary"
-                    (click)="openAdjust(row)"
-                    [disabled]="!row.trackInventory"
-                    title="Adjust"
-                  >
-                    <i class="ti ti-adjustments me-1"></i> Adjust
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-icon btn-ghost-secondary"
-                    (click)="openHistory(row)"
-                    title="Stock history"
-                    aria-label="Stock history"
-                  >
-                    <i class="ti ti-history"></i>
-                  </button>
-                </div>
+                <admin-row-actions [actions]="rowActions(row)" ariaLabel="Inventory actions" (select)="onRowAction($event, row)" />
               </td>
             </tr>
           }

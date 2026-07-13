@@ -71,21 +71,8 @@
               </div>
             </div>
           </div>
-          <div class="btn-list flex-column">
-            <button
-              type="button"
-              class="btn btn-sm"
-              [class.btn-outline-secondary]="a.active"
-              [class.btn-outline-success]="!a.active"
-              (click)="toggle(a)"
-            >
-              <i class="ti {{ a.active ? 'ti-eye-off' : 'ti-eye' }} me-1"></i>
-              {{ a.active ? 'Hide' : 'Show' }}
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-danger" (click)="remove(a)">
-              <i class="ti ti-trash me-1"></i> Delete
-            </button>
-          </div>
+          <admin-row-actions [actions]="rowActions(a)" ariaLabel="Announcement actions" (select)="onRowAction($event, a)" />
+
         </div>
       </div>
     }

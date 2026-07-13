@@ -9,6 +9,7 @@ import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 
@@ -28,6 +29,7 @@ import { ToastService } from '../shared/toast.service';
     PaginationComponent,
     StatePanelComponent,
     DensityToggleComponent,
+    RowActionsMenuComponent,
   ],
   templateUrl: './suppliers.component.html',
   styleUrl: './suppliers.component.css',
@@ -194,6 +196,29 @@ export class SuppliersComponent implements OnInit {
         this.formError.set(this.describeError(err));
       },
     });
+  }
+
+  /** Per-row kebab actions mirroring the original Edit / (de)activate buttons. */
+  rowActions(supplier: SupplierResponse): RowAction[] {
+    return [
+      { key: 'edit', label: 'Edit', icon: 'ti-edit' },
+      {
+        key: 'toggle',
+        label: supplier.active ? 'Deactivate' : 'Activate',
+        icon: supplier.active ? 'ti-building-off' : 'ti-building',
+        variant: supplier.active ? 'danger' : 'success',
+        disabled: this.togglingId() !== null,
+      },
+    ];
+  }
+
+  /** Dispatches a kebab action for the given supplier row. */
+  onRowAction(key: string, supplier: SupplierResponse): void {
+    if (key === 'edit') {
+      this.openEdit(supplier);
+    } else if (key === 'toggle') {
+      this.toggleActive(supplier);
+    }
   }
 
   // --- Activate / deactivate ---------------------------------------------

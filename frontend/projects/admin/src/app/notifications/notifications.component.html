@@ -71,9 +71,7 @@
         </div>
         <div class="shifa-nc__action">
           @if (!n.read) {
-            <button type="button" class="btn btn-sm btn-outline-primary shifa-nc__read" (click)="markRead(n)">
-              <i class="ti ti-check me-1"></i> Mark read
-            </button>
+            <admin-row-actions [actions]="rowActions(n)" ariaLabel="Notification actions" (select)="onRowAction($event, n)" />
           } @else {
             <span class="shifa-nc__done"><i class="ti ti-check me-1"></i>Read</span>
           }

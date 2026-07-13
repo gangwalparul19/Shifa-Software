@@ -15,6 +15,7 @@ import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 
@@ -53,6 +54,7 @@ const ADJUST_REASONS = [
     PaginationComponent,
     StatePanelComponent,
     DensityToggleComponent,
+    RowActionsMenuComponent,
   ],
   templateUrl: './inventory.component.html',
   styleUrl: './inventory.component.css',
@@ -232,6 +234,32 @@ export class InventoryComponent implements OnInit {
         return 'Low stock';
       default:
         return 'In stock';
+    }
+  }
+
+  /** Per-row kebab actions mirroring the original Restock / Adjust / History buttons. */
+  rowActions(row: InventoryProduct): RowAction[] {
+    return [
+      {
+        key: 'restock',
+        label: 'Restock',
+        icon: 'ti-package-import',
+        variant: 'primary',
+        disabled: !row.trackInventory,
+      },
+      { key: 'adjust', label: 'Adjust', icon: 'ti-adjustments', disabled: !row.trackInventory },
+      { key: 'history', label: 'Stock history', icon: 'ti-history' },
+    ];
+  }
+
+  /** Dispatches a kebab action for the given inventory row. */
+  onRowAction(key: string, row: InventoryProduct): void {
+    if (key === 'restock') {
+      this.openRestock(row);
+    } else if (key === 'adjust') {
+      this.openAdjust(row);
+    } else if (key === 'history') {
+      this.openHistory(row);
     }
   }
 

@@ -97,19 +97,7 @@
           <div class="shifa-sup__addr"><i class="ti ti-map-pin me-1"></i>{{ s.address }}</div>
         }
         <div class="shifa-sup__actions">
-          <button type="button" class="btn btn-outline-secondary" (click)="openEdit(s)">
-            <i class="ti ti-edit me-1"></i> Edit
-          </button>
-          <button
-            type="button"
-            class="btn"
-            [class.btn-outline-danger]="s.active"
-            [class.btn-outline-success]="!s.active"
-            (click)="toggleActive(s)"
-            [disabled]="togglingId() !== null"
-          >
-            {{ s.active ? 'Deactivate' : 'Activate' }}
-          </button>
+          <admin-row-actions [actions]="rowActions(s)" ariaLabel="Supplier actions" (select)="onRowAction($event, s)" />
         </div>
       </div>
     }
@@ -131,11 +119,9 @@
         </thead>
         <tbody>
           @for (s of pageItems(); track s.id) {
-            <tr>
+            <tr class="shifa-rowlink" (click)="openEdit(s)">
               <td>
-                <button type="button" class="btn btn-link p-0 fw-medium text-start" (click)="openEdit(s)">
-                  {{ s.name }}
-                </button>
+                <span class="fw-medium">{{ s.name }}</span>
                 @if (s.address) {
                   <div class="text-secondary small">{{ s.address }}</div>
                 }
@@ -148,22 +134,8 @@
                   {{ s.active ? 'Active' : 'Inactive' }}
                 </span>
               </td>
-              <td class="text-end">
-                <div class="btn-list justify-content-end flex-nowrap">
-                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openEdit(s)">
-                    <i class="ti ti-edit"></i>
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-sm"
-                    [class.btn-outline-danger]="s.active"
-                    [class.btn-outline-success]="!s.active"
-                    (click)="toggleActive(s)"
-                    [disabled]="togglingId() !== null"
-                  >
-                    {{ s.active ? 'Deactivate' : 'Activate' }}
-                  </button>
-                </div>
+              <td class="text-end" (click)="$event.stopPropagation()">
+                <admin-row-actions [actions]="rowActions(s)" ariaLabel="Supplier actions" (select)="onRowAction($event, s)" />
               </td>
             </tr>
           }

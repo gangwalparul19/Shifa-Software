@@ -6,6 +6,7 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ToastService } from '../shared/toast.service';
 import { InsightsService } from './insights.service';
 import {
@@ -50,7 +51,13 @@ interface SeverityGroup {
  */
 @Component({
   selector: 'admin-insights',
-  imports: [DatePipe, PageHeaderComponent, PaginationComponent, StatePanelComponent],
+  imports: [
+    DatePipe,
+    PageHeaderComponent,
+    PaginationComponent,
+    StatePanelComponent,
+    RowActionsMenuComponent,
+  ],
   templateUrl: './insights.component.html',
   styleUrl: './insights.component.css',
 })
@@ -191,6 +198,18 @@ export class InsightsComponent implements OnInit {
   }
 
   // --- Dismiss ------------------------------------------------------------
+
+  /** Per-row kebab action mirroring the original Dismiss button. */
+  rowActions(insight: Insight): RowAction[] {
+    return [{ key: 'dismiss', label: 'Dismiss', icon: 'ti-check' }];
+  }
+
+  /** Dispatches a kebab action for the given insight card. */
+  onRowAction(key: string, insight: Insight): void {
+    if (key === 'dismiss') {
+      this.dismiss(insight);
+    }
+  }
 
   /** Dismisses one insight (ADMIN, idempotent) and removes it from the list (Req 9.3). */
   dismiss(insight: Insight): void {
