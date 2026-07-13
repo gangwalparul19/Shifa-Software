@@ -15,16 +15,30 @@
   }
 }
 
-/* Mobile: expanded overlay across the top bar */
+/* Mobile: expanded search takes over the whole top bar. It must fully cover the
+   app-bar behind it (title + actions) — previously it was a transparent floating
+   field, so the "Shifa Dashboard" title and bell/avatar bled through. */
 .shifa-search.is-expanded {
   position: fixed;
-  top: 0.5rem;
-  left: 0.75rem;
-  right: 0.75rem;
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 1080;
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  padding: 0.5rem 0.75rem;
+  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+  background: var(--shifa-green-600, #1f5d3f);
+  box-shadow: 0 2px 12px rgba(15, 51, 36, 0.28);
 }
 .shifa-search.is-expanded .shifa-search__field {
   width: 100%;
+}
+/* Solid white input on the green overlay (don't inherit the app-bar's transparent/white-text styling). */
+.shifa-search.is-expanded .form-control {
+  background-color: #fff;
+  color: var(--tblr-body-color, #1a2e22);
 }
 
 .shifa-search__close {
