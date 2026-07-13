@@ -227,12 +227,13 @@
       <option value="leads-crm">👥 Leads & CRM</option>
       <option value="customer-360">🧑‍🤝‍🧑 Customer 360</option>
       <option value="returns-management">↩️ Returns Management</option>
-      <option value="procurement">🛒 Procurement</option>
+      <option value="products-inventory">🛒 Procurement</option>
       <option value="staff-management">👤 Staff Management</option>
       <option value="sales-performance">🏆 Sales Performance & Targets</option>
       <option value="reports-insights">💡 Reports & Insights</option>
       <option value="analytics">🔮 Analytics & Forecasting</option>
       <option value="notifications">🔔 Notifications</option>
+      <option value="administration">⚙️ Administration</option>
       <option value="security-audit">🔒 Security & Audit</option>
       <option value="mobile-responsive">📱 Mobile Experience</option>
     </select>
@@ -252,11 +253,13 @@
       <a href="#products-inventory" class="nav-item" data-section="products-inventory">📦 Products & Inventory</a>
       <a href="#leads-crm" class="nav-item" data-section="leads-crm">👥 Leads & CRM</a>
       <a href="#customer-360" class="nav-item" data-section="customer-360">🧑‍🤝‍🧑 Customer 360 <span class="nav-badge">NEW</span></a>
+      <a href="#returns-management" class="nav-item" data-section="returns-management">↩️ Returns Management</a>
       <a href="#staff-management" class="nav-item" data-section="staff-management">👤 Staff Management</a>
       <a href="#sales-performance" class="nav-item" data-section="sales-performance">🏆 Sales Performance <span class="nav-badge">NEW</span></a>
       <a href="#reports-insights" class="nav-item" data-section="reports-insights">📈 Reports & Insights</a>
       <a href="#analytics" class="nav-item" data-section="analytics">🔮 Analytics & Forecasting <span class="nav-badge">NEW</span></a>
       <a href="#notifications" class="nav-item" data-section="notifications">🔔 Notifications</a>
+      <a href="#administration" class="nav-item" data-section="administration">⚙️ Administration</a>
       <a href="#security-audit" class="nav-item" data-section="security-audit">🔒 Security & Audit</a>
       <a href="#mobile-responsive" class="nav-item" data-section="mobile-responsive">📱 Mobile Experience</a>
     </nav>
@@ -601,6 +604,14 @@
         <h2><span class="icon">💰</span> COD Reconciliation</h2>
         <p class="subtitle">Track COD receivables, settle payments, handle claims for lost/damaged shipments</p>
 
+        <h3>Reconciliation Workspace</h3>
+        <p>The reconciliation page brings COD tracking, courier records and settlement into one accountant-facing workspace.</p>
+
+        <div class="screenshot">
+          <img src="screenshots/reconciliation-page.png" alt="Reconciliation Workspace">
+        </div>
+        <p class="screenshot-caption">Reconciliation — COD receivables and settlement in one place</p>
+
         <h3>Receivables Management</h3>
         <p>All COD orders create receivables. Admins/Accountants track outstanding amounts and settle when courier remits.</p>
 
@@ -752,6 +763,12 @@
         <div class="screenshot">
           <img src="screenshots/products-list.png" alt="Products List">
         </div>
+        <p class="screenshot-caption">Product catalog — images, pricing, SKU/HSN and stock at a glance</p>
+
+        <div class="screenshot">
+          <img src="screenshots/product-detail.png" alt="Product Detail">
+        </div>
+        <p class="screenshot-caption">Product detail — full product info with this-month sales &amp; order stats</p>
 
         <div class="feature-grid">
           <div class="feature-card">
@@ -798,12 +815,18 @@
           <p>When a product's stock falls below the threshold (configurable per product), admin receives an in-app notification and the Insights engine flags it for reorder.</p>
         </div>
 
-        <h3>Procurement: Suppliers & Purchase Orders</h3>
+        <h3>Procurement: Suppliers &amp; Purchase Orders</h3>
         <p>Manage suppliers, create purchase orders, track receipts, and reconcile against inventory.</p>
+
+        <div class="screenshot">
+          <img src="screenshots/suppliers-page.png" alt="Suppliers">
+        </div>
+        <p class="screenshot-caption">Suppliers — contacts, GSTIN and payment terms for each vendor</p>
 
         <div class="screenshot">
           <img src="screenshots/purchase-orders.png" alt="Purchase Orders">
         </div>
+        <p class="screenshot-caption">Purchase orders — raise and track POs against suppliers and inventory</p>
 
         <div class="feature-card">
           <h4><span class="ic">🏭</span> Supplier Management</h4>
@@ -890,6 +913,14 @@
           <img src="screenshots/lead-detail.png" alt="Lead Detail with Follow-Up">
         </div>
 
+        <h3>Due Follow-Ups</h3>
+        <p>A dedicated view lists all leads due (and overdue) for follow-up, so no lead slips through the cracks.</p>
+
+        <div class="screenshot">
+          <img src="screenshots/due-follow-ups.png" alt="Due Follow-Ups">
+        </div>
+        <p class="screenshot-caption">Due follow-ups — leads needing attention, with overdue ones flagged</p>
+
         <h3>Convert to Order</h3>
         <p>One-click conversion pre-fills New Order form with customer details from lead.</p>
 
@@ -902,6 +933,14 @@
       <section class="feature-section" id="customer-360">
         <h2><span class="icon">🧑‍🤝‍🧑</span> Customer 360 &amp; CRM <span class="nav-badge">NEW</span></h2>
         <p class="subtitle">A complete, staff-facing view of every customer — reliability risk, history, segments and notes — all derived automatically from their orders</p>
+
+        <h3>Customer Directory</h3>
+        <p>The Customers page lists every customer (derived from orders) with quick search — the entry point to each Customer 360 profile.</p>
+
+        <div class="screenshot">
+          <img src="screenshots/customers-list.png" alt="Customers List">
+        </div>
+        <p class="screenshot-caption">Customers directory — searchable list of all customers, keyed by mobile</p>
 
         <h3>Customer 360 Profile</h3>
         <p>Open any customer from the Customers page to see a single, rich profile built from their entire order history — no separate data entry needed.</p>
@@ -953,6 +992,40 @@
 
         <div class="info-box">
           <strong>Salesperson scoping:</strong> A salesperson only sees the customers from their own orders; admins and accountants see everyone. All tags and notes are audited.
+        </div>
+      </section>
+
+      <!-- Section: Returns Management -->
+      <section class="feature-section" id="returns-management">
+        <h2><span class="icon">↩️</span> Returns Management</h2>
+        <p class="subtitle">Track RTO and customer returns end-to-end — from request through approval to refund</p>
+
+        <h3>Returns &amp; Refunds</h3>
+        <p>Admins and accountants manage the full returns lifecycle with KPI tiles (pending / approved / refunded) and a filterable list of every return.</p>
+
+        <div class="screenshot">
+          <img src="screenshots/returns-page.png" alt="Returns Management">
+        </div>
+        <p class="screenshot-caption">Returns page — pending/approved/refunded KPIs, filters and the returns list with per-row actions</p>
+
+        <div class="workflow">
+          <h4>Return Lifecycle:</h4>
+          <div class="workflow-step">
+            <div class="num">1</div>
+            <div class="desc"><strong>Requested</strong><p>A return is raised against a delivered/RTO order with a reason</p></div>
+          </div>
+          <div class="workflow-step">
+            <div class="num">2</div>
+            <div class="desc"><strong>Approved / Rejected</strong><p>Admin reviews and approves or rejects the return</p></div>
+          </div>
+          <div class="workflow-step">
+            <div class="num">3</div>
+            <div class="desc"><strong>Refunded</strong><p>Once goods are back, the refund is recorded and the return closed</p></div>
+          </div>
+        </div>
+
+        <div class="info-box">
+          <strong>Tied to the order lifecycle:</strong> Returns link back to the original order and its COD/prepaid status, so refunds and RTO outcomes stay consistent with reconciliation and the P&amp;L.
         </div>
       </section>
 
@@ -1324,6 +1397,40 @@
         </div>
       </section>
 
+      <!-- Section: Administration -->
+      <section class="feature-section" id="administration">
+        <h2><span class="icon">⚙️</span> Administration</h2>
+        <p class="subtitle">Company &amp; GST configuration, staff user management, and database backups — the admin control room</p>
+
+        <h3>Settings (Company &amp; GST)</h3>
+        <p>Configure business details, GST on/off and rates, invoice numbering, logo, low-stock threshold, and the delivery-state master list used by the New Order typeahead.</p>
+
+        <div class="screenshot">
+          <img src="screenshots/settings-page.png" alt="Settings Page">
+        </div>
+        <p class="screenshot-caption">Settings — company profile, GST/invoice configuration and delivery-state management</p>
+
+        <h3>Staff Users &amp; Roles</h3>
+        <p>Create staff accounts, assign roles (Admin, Salesperson, Packing, Accountant), reset passwords, and activate/deactivate users.</p>
+
+        <div class="screenshot">
+          <img src="screenshots/users-page.png" alt="Users Management">
+        </div>
+        <p class="screenshot-caption">Users — staff accounts with role assignment and activation controls</p>
+
+        <h3>Database Backups</h3>
+        <p>Run on-demand backups and review backup history, so the business's data is protected and recoverable.</p>
+
+        <div class="screenshot">
+          <img src="screenshots/backups-page.png" alt="Database Backups">
+        </div>
+        <p class="screenshot-caption">Backups — run on-demand backups and review history</p>
+
+        <div class="info-box">
+          <strong>Admin-only:</strong> All three screens are restricted to the Admin role. User, settings and backup actions are recorded in the audit trail.
+        </div>
+      </section>
+
       <!-- Section: Security & Audit -->
       <section class="feature-section" id="security-audit">
         <h2><span class="icon">🔒</span> Security & Audit</h2>
@@ -1468,10 +1575,15 @@
         <h3>Mobile-Optimized Interface</h3>
         <p>The entire admin panel is designed mobile-first with touch-friendly targets and adaptive layouts.</p>
 
-        <!-- Mobile screenshots removed - manual capture recommended for better quality -->
-        <div class="info-box">
-          <strong>Note:</strong> Mobile screenshots are best captured manually using browser DevTools responsive mode at 360px width for optimal quality and layout representation.
+        <div class="screenshot">
+          <img src="screenshots/mobile/dashboard-mobile.png" alt="Mobile Dashboard" style="max-height:640px;width:auto;">
         </div>
+        <p class="screenshot-caption">Dashboard on a phone (360px) — KPI tiles stack into a single column</p>
+
+        <div class="screenshot">
+          <img src="screenshots/mobile/orders-mobile.png" alt="Mobile Orders" style="max-height:640px;width:auto;">
+        </div>
+        <p class="screenshot-caption">Orders on a phone — wide tables become tap-friendly cards</p>
 
         <div class="feature-grid">
           <div class="feature-card">
@@ -1511,9 +1623,10 @@
         <h3>Bottom Tab Bar (Mobile Navigation)</h3>
         <p>Each role gets a persistent 4-tab bar at the bottom on mobile for one-tap access to core features.</p>
 
-        <div class="screenshot-note">
-          <p><strong>Note:</strong> Mobile screenshots from automated capture had quality issues. The bottom tab bar is a persistent navigation element at the bottom of mobile screens (≤768px), showing 4 role-specific tabs. See the table below for each role's tab configuration.</p>
+        <div class="screenshot">
+          <img src="screenshots/mobile/bottom-tabs.png" alt="Mobile Bottom Tab Bar" style="max-height:640px;width:auto;">
         </div>
+        <p class="screenshot-caption">Persistent bottom tab bar — 4 role-specific tabs for one-tap access</p>
 
         <table>
           <thead><tr><th>Role</th><th>Tab 1</th><th>Tab 2</th><th>Tab 3</th><th>Tab 4</th></tr></thead>
