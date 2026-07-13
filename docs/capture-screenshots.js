@@ -570,12 +570,19 @@ async function captureAllScreenshots() {
     await captureScreenshot(page, 'customer-360.png');
     await page.close();
 
-    // --- Salesperson 360 / performance (admin) : Salespeople directory with performance KPIs
+    // --- Salesperson 360 / performance (admin) : leaderboard + per-rep drawer
     page = await browser.newPage({ viewport: CONFIG.viewport.desktop });
     await login(page, CONFIG.credentials.admin);
     await page.goto(`${CONFIG.baseUrl}/salespeople`);
     await waitForPageLoad(page);
-    await captureScreenshot(page, 'salesperson-performance.png');
+    await captureScreenshot(page, 'salesperson-performance.png', true); // full-page: whole team's KPIs
+    // Open the first card -> Salesperson 360 performance drawer
+    try {
+      await page.locator('.salesperson-card').first().click({ timeout: 5000 });
+      await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+      await page.waitForTimeout(3000);
+      await captureScreenshot(page, 'salesperson-performance-detail.png', true);
+    } catch (e) { console.log('  ⚠ Could not open salesperson performance drawer'); }
     await page.close();
 
     // --- Analytics (admin) : Targets / Retention / Forecast tabs
