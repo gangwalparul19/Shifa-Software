@@ -67,6 +67,19 @@
   padding-inline: 1.5rem;
 }
 
+/* On phones/tablets the fixed bottom tab bar sits at the viewport bottom, so the
+   sticky save bar must clear it (and use a solid bg so content can't show through). */
+@media (max-width: 767.98px) {
+  .shifa-set-savebar {
+    bottom: calc(3.75rem + env(safe-area-inset-bottom, 0px));
+    background: #fff;
+    border-top: 1px solid var(--tblr-border-color, #e6e7e9);
+    box-shadow: 0 -4px 14px rgba(15, 51, 36, 0.08);
+    border-radius: 0.6rem 0.6rem 0 0;
+    padding: 0.75rem;
+  }
+}
+
 @media (max-width: 575.98px) {
   .shifa-set-save {
     width: 100%;

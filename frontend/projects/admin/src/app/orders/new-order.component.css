@@ -186,7 +186,13 @@
   z-index: 20;
   display: flex;
   gap: 0.75rem;
-  padding: 0.75rem 0.25rem;
+  /* Opaque background so scrolling form content can't show through the bar
+     (was transparent on mobile, making the buttons appear to overlap the page). */
+  background: #fff;
+  border-top: 1px solid var(--tblr-border-color, #e6e7e9);
+  box-shadow: 0 -4px 14px rgba(15, 51, 36, 0.08);
+  border-radius: 0.6rem 0.6rem 0 0;
+  padding: 0.75rem;
 }
 .shifa-no__footer .btn {
   min-height: 48px;
@@ -208,6 +214,10 @@
     bottom: 0;
     background: linear-gradient(to top, #fff 70%, rgba(255, 255, 255, 0));
     padding: 1rem 0.25rem;
+    /* Desktop keeps the original flush, borderless look. */
+    border-top: 0;
+    box-shadow: none;
+    margin-inline: 0;
   }
   .shifa-no__cancel {
     flex: 0 0 auto;
