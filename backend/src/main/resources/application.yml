@@ -200,3 +200,11 @@ app:
       secret-key: ${STORAGE_S3_SECRET_KEY:}
       # Optional S3-compatible endpoint (MinIO/LocalStack); blank = real AWS S3.
       endpoint: ${STORAGE_S3_ENDPOINT:}
+  push:
+    # Browser Web Push (VAPID) for staff notifications (FEATURE-ROADMAP §8.3).
+    # Leave the keys BLANK to disable push entirely (default) — the in-app bell is
+    # unaffected. To enable, generate a VAPID keypair (base64url) and inject via env.
+    vapid:
+      public-key: ${PUSH_VAPID_PUBLIC_KEY:}
+      private-key: ${PUSH_VAPID_PRIVATE_KEY:}
+      subject: ${PUSH_VAPID_SUBJECT:mailto:admin@shifa.local}

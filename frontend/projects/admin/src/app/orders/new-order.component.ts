@@ -18,6 +18,9 @@ import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { CatalogService } from './catalog.service';
 import { OrdersService } from './orders.service';
+import { OfflineOrderQueueService } from './offline-order-queue.service';
+import { CustomersService } from '../customers/customers.service';
+import { CustomerRisk, riskLabel, riskPillClass } from '../customers/customers.model';
 import { LeadsService } from '../leads/leads.service';
 import { LeadConvertRequest } from '../leads/leads.model';
 import {
@@ -60,6 +63,8 @@ type UploadState = 'idle' | 'uploading' | 'done' | 'error';
 export class NewOrderComponent implements OnInit, OnDestroy {
   private readonly fb = inject(FormBuilder);
   private readonly orders = inject(OrdersService);
+  protected readonly offlineQueue = inject(OfflineOrderQueueService);
+  private readonly customers = inject(CustomersService);
   private readonly catalog = inject(CatalogService);
   private readonly statesService = inject(StatesService);
   private readonly leads = inject(LeadsService);
@@ -104,6 +109,17 @@ export class NewOrderComponent implements OnInit, OnDestroy {
    * Null until a valid 10-digit mobile has been checked; 0 means a new customer.
    */
   protected readonly priorOrderCount = signal<number | null>(null);
+
+  /**
+   * Delivery-reliability risk for the entered customer mobile (FEATURE-ROADMAP
+   * §1.2). Null until a valid mobile has been checked; drives a prepaid nudge for
+   * MEDIUM/HIGH-risk customers so a salesperson can avoid a likely COD failure.
+   */
+  protected readonly customerRisk = signal<CustomerRisk | null>(null);
+
+  // Risk badge helpers for the template.
+  protected readonly riskPillClass = riskPillClass;
+  protected readonly riskLabel = riskLabel;
 
   /** A snapshot of the form value, refreshed on every change to drive totals. */
   private readonly model = signal<ReturnType<NewOrderComponent['snapshot']>>({
@@ -250,11 +266,17 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private checkDuplicateCustomer(mobile: string | null): void {
     if (!mobile || !/^\d{10}$/.test(mobile)) {
       this.priorOrderCount.set(null);
+      this.customerRisk.set(null);
       return;
     }
     this.orders.duplicateCheck(mobile).subscribe({
       next: (res) => this.priorOrderCount.set(res.priorOrderCount),
       error: () => this.priorOrderCount.set(null),
+    });
+    // Delivery-reliability risk nudge (FEATURE-ROADMAP §1.2): non-fatal, hidden on failure.
+    this.customers.risk(mobile).subscribe({
+      next: (risk) => this.customerRisk.set(risk),
+      error: () => this.customerRisk.set(null),
     });
   }
 
@@ -425,6 +447,24 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       ...(orderNotes ? { notes: orderNotes } : {}),
     };
 
+    // Offline capture (FEATURE-ROADMAP §8.1): a COD order (no money collected) is
+    // queued locally and synced on reconnect. An order that takes payment needs a
+    // screenshot upload, which requires a connection — so it's blocked offline.
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      if (raw.amountReceived > 0) {
+        this.toasts.error(
+          'You are offline. A paid order needs its payment screenshot uploaded — please try again when back online.',
+        );
+        return;
+      }
+      this.offlineQueue.enqueue(payload, this.orderTotalPaise());
+      this.toasts.success(
+        `Saved offline for ${payload.customerName} — it will sync automatically when you reconnect.`,
+      );
+      void this.router.navigate(['/orders']);
+      return;
+    }
+
     this.submitting.set(true);
     this.orders.createOrder(payload).subscribe({
       next: (order) => {
@@ -453,6 +493,12 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private submitConvert(raw: ReturnType<NewOrderComponent['snapshot']>): void {
     const leadId = this.convertLeadId();
     if (leadId === null) {
+      return;
+    }
+    // Convert runs a server-side transaction (order + lead update) — it can't be
+    // queued offline (FEATURE-ROADMAP §8.1).
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      this.toasts.error('You are offline. Converting a lead needs a connection — please try again when back online.');
       return;
     }
     const payload: LeadConvertRequest = {

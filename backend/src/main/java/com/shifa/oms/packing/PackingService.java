@@ -1,19 +1,25 @@
 package com.shifa.oms.packing;
 
 import com.shifa.oms.auth.AuthPrincipal;
+import com.shifa.oms.auth.User;
+import com.shifa.oms.auth.UserRepository;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.order.Actor;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderWorkflowService;
 import com.shifa.oms.order.dto.OrderResponse;
-import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.packing.dto.PackingQueueResponse;
+import com.shifa.oms.packing.dto.PackingQueueRow;
 import com.shifa.oms.packing.dto.PackingScanResponse;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.statemachine.OrderStatus;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -56,12 +62,14 @@ public class PackingService {
     private final OrderRepository orderRepository;
     private final OutboxEventPublisher outboxEventPublisher;
     private final OrderWorkflowService orderWorkflowService;
+    private final UserRepository userRepository;
 
     public PackingService(OrderRepository orderRepository, OutboxEventPublisher outboxEventPublisher,
-                          OrderWorkflowService orderWorkflowService) {
+                          OrderWorkflowService orderWorkflowService, UserRepository userRepository) {
         this.orderRepository = orderRepository;
         this.outboxEventPublisher = outboxEventPublisher;
         this.orderWorkflowService = orderWorkflowService;
+        this.userRepository = userRepository;
     }
 
     /**
@@ -72,15 +80,46 @@ public class PackingService {
      */
     @Transactional(readOnly = true)
     public PackingQueueResponse queue() {
-        return new PackingQueueResponse(
-                summaries(OrderStatus.LABEL_GENERATED),
-                summaries(OrderStatus.PACKED),
-                summaries(OrderStatus.HANDED_TO_DELIVERY));
+        List<OrderEntity> pack = orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.LABEL_GENERATED);
+        List<OrderEntity> handover = orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.PACKED);
+        List<OrderEntity> dispatch = orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.HANDED_TO_DELIVERY);
+        // Batch-resolve salesperson (created_by) names once for all three queues,
+        // mirroring the reporting module's name resolution (full name, else username).
+        Map<Long, String> names = resolveSalespersonNames(pack, handover, dispatch);
+        return new PackingQueueResponse(rows(pack, names), rows(handover, names), rows(dispatch, names));
     }
 
-    private List<OrderSummaryResponse> summaries(OrderStatus status) {
-        return orderRepository.findByOrderStatusOrderByCreatedAtAsc(status).stream()
-                .map(OrderSummaryResponse::from)
+    private Map<Long, String> resolveSalespersonNames(List<OrderEntity> pack,
+                                                      List<OrderEntity> handover,
+                                                      List<OrderEntity> dispatch) {
+        Set<Long> ids = new HashSet<>();
+        collectCreators(pack, ids);
+        collectCreators(handover, ids);
+        collectCreators(dispatch, ids);
+        Map<Long, String> names = new HashMap<>();
+        if (ids.isEmpty()) {
+            return names;
+        }
+        for (User u : userRepository.findAllById(ids)) {
+            String name = (u.getFullName() != null && !u.getFullName().isBlank())
+                    ? u.getFullName() : u.getUsername();
+            names.put(u.getId(), name);
+        }
+        return names;
+    }
+
+    private static void collectCreators(List<OrderEntity> orders, Set<Long> ids) {
+        for (OrderEntity o : orders) {
+            if (o.getCreatedBy() != null) {
+                ids.add(o.getCreatedBy());
+            }
+        }
+    }
+
+    private static List<PackingQueueRow> rows(List<OrderEntity> orders, Map<Long, String> names) {
+        return orders.stream()
+                .map(o -> PackingQueueRow.from(
+                        o, o.getCreatedBy() == null ? null : names.get(o.getCreatedBy())))
                 .toList();
     }
 

@@ -10,6 +10,7 @@ import {
 import { RouterLink } from '@angular/router';
 import { AdminEventsService } from '../dashboard/admin-events.service';
 import { StaffNotificationsService } from './staff-notifications.service';
+import { PushNotificationsService } from './push-notifications.service';
 import { AdminNotificationItem } from './notifications.model';
 import { relativeTime, severityColor, severityIcon } from './notifications.util';
 
@@ -42,6 +43,7 @@ const DROPDOWN_LIMIT = 8;
 export class NotificationBellComponent implements OnInit, OnDestroy {
   private readonly service = inject(StaffNotificationsService);
   private readonly events = inject(AdminEventsService);
+  protected readonly push = inject(PushNotificationsService);
 
   protected readonly relativeTime = relativeTime;
   protected readonly severityColor = severityColor;

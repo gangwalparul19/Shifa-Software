@@ -6,7 +6,8 @@ import { RouterLink } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { Money, SortState } from 'core';
 import { CustomersService } from './customers.service';
-import { CustomerDetail, CustomerSummary } from './customers.model';
+import { CustomerProfile, CustomerSummary, riskLabel, riskPillClass } from './customers.model';
+import { ToastService } from '../shared/toast.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
@@ -46,6 +47,11 @@ const TABLE_KEY = 'customers';
 })
 export class CustomersComponent implements OnInit, OnDestroy {
   private readonly service = inject(CustomersService);
+  private readonly toasts = inject(ToastService);
+
+  // Expose risk badge helpers to the template.
+  protected readonly riskPillClass = riskPillClass;
+  protected readonly riskLabel = riskLabel;
 
   protected readonly customers = signal<CustomerSummary[]>([]);
   protected readonly loading = signal(true);
@@ -61,19 +67,25 @@ export class CustomersComponent implements OnInit, OnDestroy {
   // --- Filters ------------------------------------------------------------
   protected readonly search = new FormControl<string>('', { nonNullable: true });
 
-  // --- Detail drawer ------------------------------------------------------
-  protected readonly selectedDetail = signal<CustomerDetail | null>(null);
+  // --- Detail drawer (Customer 360) ---------------------------------------
+  protected readonly selectedProfile = signal<CustomerProfile | null>(null);
   protected readonly detailLoading = signal(false);
   protected readonly detailError = signal<string | null>(null);
+
+  // --- Tag + note editing in the drawer -----------------------------------
+  protected readonly newTag = new FormControl<string>('', { nonNullable: true });
+  protected readonly savingTag = signal(false);
+  protected readonly newNote = new FormControl<string>('', { nonNullable: true });
+  protected readonly savingNote = signal(false);
 
   // --- Order-history paging inside the drawer (the history can grow long) --
   protected readonly historyPage = signal(0);
   protected readonly historySize = signal(8);
   protected readonly historyTotalPages = computed(() =>
-    Math.max(1, Math.ceil((this.selectedDetail()?.orders.length ?? 0) / this.historySize())),
+    Math.max(1, Math.ceil((this.selectedProfile()?.orders.length ?? 0) / this.historySize())),
   );
   protected readonly historyPageItems = computed(() => {
-    const orders = this.selectedDetail()?.orders ?? [];
+    const orders = this.selectedProfile()?.orders ?? [];
     const start = this.historyPage() * this.historySize();
     return orders.slice(start, start + this.historySize());
   });
@@ -171,11 +183,13 @@ export class CustomersComponent implements OnInit, OnDestroy {
   openDetail(customer: CustomerSummary): void {
     this.detailLoading.set(true);
     this.detailError.set(null);
-    this.selectedDetail.set(null);
+    this.selectedProfile.set(null);
     this.historyPage.set(0);
-    this.service.detail(customer.mobile).subscribe({
-      next: (detail) => {
-        this.selectedDetail.set(detail);
+    this.newTag.reset('');
+    this.newNote.reset('');
+    this.service.profile(customer.mobile).subscribe({
+      next: (profile) => {
+        this.selectedProfile.set(profile);
         this.detailLoading.set(false);
       },
       error: () => {
@@ -183,6 +197,76 @@ export class CustomersComponent implements OnInit, OnDestroy {
         this.detailLoading.set(false);
       },
     });
+  }
+
+  /** The mobile of the customer currently open in the drawer, or null. */
+  private currentMobile(): string | null {
+    return this.selectedProfile()?.summary.mobile ?? null;
+  }
+
+  addTag(): void {
+    const mobile = this.currentMobile();
+    const tag = this.newTag.value.trim();
+    if (!mobile || !tag || this.savingTag()) {
+      return;
+    }
+    this.savingTag.set(true);
+    this.service.addTag(mobile, tag).subscribe({
+      next: (tags) => {
+        this.patchProfile({ tags });
+        this.newTag.reset('');
+        this.savingTag.set(false);
+      },
+      error: () => {
+        this.toasts.error('Could not add the tag.');
+        this.savingTag.set(false);
+      },
+    });
+  }
+
+  removeTag(tag: string): void {
+    const mobile = this.currentMobile();
+    if (!mobile) {
+      return;
+    }
+    this.service.removeTag(mobile, tag).subscribe({
+      next: (tags) => this.patchProfile({ tags }),
+      error: () => this.toasts.error('Could not remove the tag.'),
+    });
+  }
+
+  addNote(): void {
+    const mobile = this.currentMobile();
+    const note = this.newNote.value.trim();
+    if (!mobile || !note || this.savingNote()) {
+      return;
+    }
+    this.savingNote.set(true);
+    this.service.addNote(mobile, note).subscribe({
+      next: (notes) => {
+        this.patchProfile({ notes });
+        this.newNote.reset('');
+        this.savingNote.set(false);
+        this.toasts.success('Note added');
+      },
+      error: () => {
+        this.toasts.error('Could not add the note.');
+        this.savingNote.set(false);
+      },
+    });
+  }
+
+  /** Immutably patches fields of the open profile signal. */
+  private patchProfile(patch: Partial<CustomerProfile>): void {
+    const current = this.selectedProfile();
+    if (current) {
+      this.selectedProfile.set({ ...current, ...patch });
+    }
+  }
+
+  /** Percentage (0–100) for a 0..1 rate, rounded. */
+  pct(rate: number): number {
+    return Math.round((rate ?? 0) * 100);
   }
 
   goToHistoryPage(page: number): void {
@@ -195,7 +279,7 @@ export class CustomersComponent implements OnInit, OnDestroy {
   }
 
   closeDetail(): void {
-    this.selectedDetail.set(null);
+    this.selectedProfile.set(null);
     this.detailError.set(null);
   }
 }

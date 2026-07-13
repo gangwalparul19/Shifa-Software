@@ -1,264 +1,298 @@
 <admin-page-header
   title="Packing"
-  subtitle="Scan a label barcode to mark the order Packed, then hand over and dispatch."
+  subtitle="Scan a label to pack an order, then hand over and dispatch."
   [breadcrumbs]="[{ label: 'Packing' }]"
-/>
+>
+  <button
+    type="button"
+    class="btn btn-icon btn-outline-secondary"
+    (click)="loadQueue(); loadQueues()"
+    [disabled]="queueLoading()"
+    title="Refresh queues"
+    aria-label="Refresh queues"
+  >
+    <i class="ti ti-refresh"></i>
+  </button>
+</admin-page-header>
 
-<!-- Awaiting-handover / awaiting-dispatch context (Req 9.4, 10.1) -->
-@if (queues().length > 0) {
-  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
-    @for (q of queues(); track q.label) {
-      <div class="col-6 col-md-3">
-        <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
-          <div class="card-body d-flex align-items-center justify-content-between">
-            <div>
-              <div class="subheader">{{ q.label }}</div>
-              <div class="h1 m-0">{{ q.value }}</div>
-            </div>
-            <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti {{ q.icon }}"></i></span>
+<!-- Workflow queue tiles (tap to jump to the list) -->
+<div class="row row-cards g-2 g-md-3 mb-3 stagger">
+  @for (section of queueSections(); track section.kind) {
+    <div class="col-4">
+      <button
+        type="button"
+        class="card card-hover stat-accent w-100 text-start pk-tile"
+        [style.--accent]="section.accent"
+        [style.--accent-soft]="section.accentSoft"
+        (click)="scrollToSection(section.kind)"
+      >
+        <div class="card-body d-flex align-items-center justify-content-between p-2 p-md-3">
+          <div class="min-w-0">
+            <div class="subheader text-truncate">{{ section.short }}</div>
+            <div class="h1 m-0">{{ section.orders.length }}</div>
           </div>
+          <span class="stat-icon" [style.--accent]="section.accent" [style.--accent-soft]="section.accentSoft">
+            <i class="ti {{ section.icon }}"></i>
+          </span>
+        </div>
+      </button>
+    </div>
+  }
+</div>
+
+<!-- Hero: the scan box — the primary action of the page -->
+<div class="card card-hover mb-3 pk-hero shifa-touch">
+  <div class="card-body">
+    <form [formGroup]="form" (ngSubmit)="submit()">
+      <div class="pk-hero__top">
+        <span class="pk-hero__icon"><i class="ti ti-barcode"></i></span>
+        <div class="pk-hero__field">
+          <label class="form-label mb-1" for="barcode">Scan or type the order barcode</label>
+          <input
+            #barcodeInput
+            id="barcode"
+            class="form-control form-control-lg shifa-barcode"
+            type="text"
+            formControlName="barcode"
+            placeholder="e.g. SHR-5012"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            [attr.aria-invalid]="form.controls.barcode.touched && form.controls.barcode.invalid"
+          />
         </div>
       </div>
-    }
+      <div class="pk-hero__btns">
+        <button type="submit" class="btn btn-primary btn-lg pk-hero__scan" [disabled]="submitting()">
+          @if (submitting()) {
+            <span class="spinner-border spinner-border-sm me-2"></span> Scanning…
+          } @else {
+            <i class="ti ti-scan me-1"></i> Scan &amp; pack
+          }
+        </button>
+        <button
+          type="button"
+          class="btn btn-outline-primary btn-lg pk-hero__cam"
+          (click)="openCamera()"
+          [disabled]="submitting()"
+        >
+          <i class="ti ti-camera me-1"></i> Use camera
+        </button>
+      </div>
+      <p class="text-secondary small m-0 mt-2">
+        <i class="ti ti-info-circle me-1"></i>
+        Press Enter to submit — works with a handheld scanner, your phone camera, or manual entry.
+      </p>
+    </form>
+  </div>
+</div>
+
+@if (cameraOpen()) {
+  <admin-camera-scanner (scanned)="onCameraScanned($event)" (closed)="closeCamera()" />
+}
+
+@if (banner(); as b) {
+  <div
+    class="alert d-flex align-items-center anim-pop"
+    [class.alert-success]="b.outcome === 'packed'"
+    [class.alert-warning]="b.outcome === 'not-recognized' || b.outcome === 'wrong-status'"
+    [class.alert-danger]="b.outcome === 'error'"
+    role="status"
+    aria-live="polite"
+  >
+    <i class="ti fs-2 me-3"
+      [class.ti-circle-check]="b.outcome === 'packed'"
+      [class.ti-help-circle]="b.outcome === 'not-recognized'"
+      [class.ti-alert-triangle]="b.outcome === 'wrong-status'"
+      [class.ti-circle-x]="b.outcome === 'error'"></i>
+    <div>
+      <h4 class="alert-title mb-0">{{ b.title }}</h4>
+      <div class="text-secondary">{{ b.detail }}</div>
+    </div>
   </div>
 }
 
-<div class="row justify-content-center packing-scan shifa-touch">
-  <div class="col-lg-8 col-xl-7">
-    <div class="card card-hover mb-3">
-      <div class="card-body">
-        <div class="text-center mb-3">
-          <span class="shifa-scan-icon"><i class="ti ti-barcode"></i></span>
-        </div>
-        <form [formGroup]="form" (ngSubmit)="submit()">
-          <label class="form-label" for="barcode">Barcode</label>
-          <div class="input-group input-group-flat mb-2">
-            <input
-              #barcodeInput
-              id="barcode"
-              class="form-control form-control-lg shifa-barcode"
-              type="text"
-              formControlName="barcode"
-              placeholder="Scan or type the order barcode…"
-              autocomplete="off"
-              autocapitalize="characters"
-              spellcheck="false"
-              [attr.aria-invalid]="form.controls.barcode.touched && form.controls.barcode.invalid"
-            />
-            <button type="submit" class="btn btn-primary btn-lg" [disabled]="submitting()">
-              @if (submitting()) {
-                <span class="spinner-border spinner-border-sm me-2"></span> Scanning…
-              } @else {
-                <i class="ti ti-scan me-1"></i> Scan
-              }
-            </button>
-          </div>
-          <p class="text-secondary small m-0">
-            <i class="ti ti-info-circle me-1"></i>
-            Press Enter to submit — works with a handheld scanner or manual entry.
-          </p>
-        </form>
-      </div>
+<!-- Work queues: pack / hand over / dispatch, each with label printing (Req 9-11) -->
+@for (section of queueSections(); track section.kind) {
+  <div class="card mb-3" [id]="'pk-section-' + section.kind">
+    <div class="card-header d-flex align-items-center py-2">
+      <span class="pk-sec-icon" [style.--accent]="section.accent" [style.--accent-soft]="section.accentSoft">
+        <i class="ti {{ section.icon }}"></i>
+      </span>
+      <h3 class="card-title mb-0 ms-2">{{ section.title }}</h3>
+      <span class="badge ms-2" [style.background]="section.accentSoft" [style.color]="section.accent">
+        {{ section.orders.length }}
+      </span>
     </div>
-
-    @if (banner(); as b) {
-      <div
-        class="alert d-flex align-items-center anim-pop"
-        [class.alert-success]="b.outcome === 'packed'"
-        [class.alert-warning]="b.outcome === 'not-recognized' || b.outcome === 'wrong-status'"
-        [class.alert-danger]="b.outcome === 'error'"
-        role="status"
-        aria-live="polite"
-      >
-        <i class="ti fs-2 me-3"
-          [class.ti-circle-check]="b.outcome === 'packed'"
-          [class.ti-help-circle]="b.outcome === 'not-recognized'"
-          [class.ti-alert-triangle]="b.outcome === 'wrong-status'"
-          [class.ti-circle-x]="b.outcome === 'error'"></i>
-        <div>
-          <h4 class="alert-title mb-0">{{ b.title }}</h4>
-          <div class="text-secondary">{{ b.detail }}</div>
-        </div>
-      </div>
-    }
-
-    <!-- Work queues: what to pack / hand over / dispatch, with label printing (Req 9-11) -->
-    @for (section of queueSections(); track section.kind) {
-      <div class="card mb-3">
-        <div class="card-header d-flex align-items-center">
-          <h3 class="card-title mb-0"><i class="ti {{ section.icon }} me-2"></i>{{ section.title }}</h3>
-          <span class="badge bg-secondary-lt ms-2">{{ section.orders.length }}</span>
-        </div>
-        <div class="card-body py-2">
-          <p class="text-secondary small mb-2"><i class="ti ti-info-circle me-1"></i>{{ section.hint }}</p>
-          @if (section.orders.length === 0) {
-            <div class="text-secondary small py-2">
-              @if (queueLoading()) { Loading… } @else { Nothing here right now. }
-            </div>
+    <div class="card-body p-0">
+      @if (section.orders.length === 0) {
+        <div class="text-secondary small text-center py-4">
+          @if (queueLoading()) {
+            <span class="spinner-border spinner-border-sm me-1"></span> Loading…
           } @else {
-            <div class="pk-list">
-              @for (o of section.orders; track o.id) {
-                <div class="pk-item">
-                  <div class="pk-item__info">
-                    <span class="pk-item__code shifa-mono">{{ o.orderCode }}</span>
-                    <span class="pk-item__meta">{{ o.customerName }} · ₹{{ o.totalAmount }}</span>
-                  </div>
-                  <div class="pk-item__actions">
-                    @if (section.kind !== 'dispatch') {
-                      <button
-                        type="button"
-                        class="btn btn-sm btn-outline-secondary pk-btn-icon"
-                        (click)="printLabel(o)"
-                        [disabled]="labelBusyId() === o.id"
-                        title="Print label"
-                        aria-label="Print label"
-                      >
-                        @if (labelBusyId() === o.id) {
-                          <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                        } @else {
-                          <i class="ti ti-printer"></i>
-                        }
-                      </button>
-                    }
-                    @switch (section.kind) {
-                      @case ('pack') {
-                        <button type="button" class="btn btn-sm btn-primary pk-btn" (click)="markPacked(o)" [disabled]="busyOrderId() === o.id">
-                          @if (busyOrderId() === o.id) {
-                            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                          } @else {
-                            <i class="ti ti-checkbox me-1"></i>
-                          }
-                          Pack
-                        </button>
-                      }
-                      @case ('handover') {
-                        <button type="button" class="btn btn-sm btn-primary pk-btn" (click)="handoverOrder(o)" [disabled]="busyOrderId() === o.id">
-                          @if (busyOrderId() === o.id) {
-                            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                          } @else {
-                            <i class="ti ti-truck-loading me-1"></i>
-                          }
-                          Handover
-                        </button>
-                      }
-                      @case ('dispatch') {
-                        <button type="button" class="btn btn-sm btn-primary pk-btn" (click)="dispatchOrder(o)" [disabled]="busyOrderId() === o.id">
-                          @if (busyOrderId() === o.id) {
-                            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                          } @else {
-                            <i class="ti ti-truck-delivery me-1"></i>
-                          }
-                          Dispatch
-                        </button>
-                      }
-                    }
-                  </div>
-                </div>
-              }
-            </div>
+            <i class="ti ti-checks me-1"></i> Nothing here — all clear.
           }
-        </div>
-      </div>
-    }
-
-    <!-- Handover / Dispatch actions for the orders just moved (Req 9.2–9.4, 10.1) -->
-    @if (workItems().length > 0) {
-      <div class="card mb-3">
-        <div class="card-header">
-          <h3 class="card-title mb-0">Ready to move</h3>
-        </div>
-        <div class="card-body shifa-work-list">
-          @for (item of workItems(); track item.id) {
-            <div class="shifa-work">
-              <div class="shifa-work__head">
-                <div class="shifa-work__main">
-                  <div class="shifa-work__code shifa-mono">{{ item.orderCode }}</div>
-                  <div class="shifa-work__meta">{{ item.customerName }}</div>
-                </div>
-                <admin-status-badge [status]="item.status" />
-                <button type="button" class="shifa-work__dismiss" (click)="dismissItem(item.id)" aria-label="Dismiss">
-                  <i class="ti ti-x"></i>
-                </button>
-              </div>
-
-              @if (item.error) {
-                <div class="text-danger small mt-1"><i class="ti ti-alert-triangle me-1"></i>{{ item.error }}</div>
-              }
-
-              <div class="shifa-work__action">
-                @switch (item.phase) {
-                  @case ('packed') {
-                    <button type="button" class="btn btn-primary w-100" (click)="handover(item)" [disabled]="item.busy">
-                      @if (item.busy) {
-                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                      } @else {
-                        <i class="ti ti-truck-loading me-1"></i>
-                      }
-                      Handover
-                    </button>
-                  }
-                  @case ('handed_over') {
-                    <button type="button" class="btn btn-primary w-100" (click)="dispatch(item)" [disabled]="item.busy">
-                      @if (item.busy) {
-                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-                      } @else {
-                        <i class="ti ti-truck-delivery me-1"></i>
-                      }
-                      Dispatch
-                    </button>
-                  }
-                  @case ('dispatched') {
-                    <span class="badge bg-success-lt w-100 py-2"><i class="ti ti-check me-1"></i>Dispatched</span>
-                  }
-                  @default {
-                    <span class="badge bg-secondary-lt w-100 py-2">Done</span>
-                  }
-                }
-              </div>
-            </div>
-          }
-        </div>
-      </div>
-    }
-
-    <div class="card">
-      <div class="card-header">
-        <h3 class="card-title mb-0">Recent scans</h3>
-        <div class="card-actions">
-          @if (log().length) {
-            <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="clearLog()">Clear</button>
-          }
-        </div>
-      </div>
-      @if (log().length === 0) {
-        <div class="empty py-4">
-          <div class="empty-icon"><i class="ti ti-history"></i></div>
-          <p class="empty-title">No scans yet in this session</p>
         </div>
       } @else {
-        <div class="list-group list-group-flush">
-          @for (entry of log(); track entry.at.getTime()) {
-            <div class="list-group-item feed-item">
-              <div class="d-flex align-items-center">
-                <span class="shifa-note-dot me-3"
-                  [class.bg-success]="entry.outcome === 'packed'"
-                  [class.bg-warning]="entry.outcome === 'not-recognized' || entry.outcome === 'wrong-status'"
-                  [class.bg-danger]="entry.outcome === 'error'"></span>
-                <div class="me-auto">
-                  <div class="fw-medium shifa-mono">{{ entry.barcode }}</div>
-                  <div class="text-secondary small d-flex align-items-center gap-1 flex-wrap">
-                    <span>{{ entry.message }}</span>
-                    @if (entry.currentStatus) {
-                      <admin-status-badge [status]="entry.currentStatus" />
-                    }
-                  </div>
-                </div>
-                <span class="text-secondary small">{{ entry.at | date: 'HH:mm:ss' }}</span>
-              </div>
-            </div>
-          }
+        <div class="table-responsive">
+          <table class="table table-vcenter card-table table-hover pk-table mb-0">
+            <thead>
+              <tr>
+                <th>Order ID</th>
+                <th>Customer</th>
+                <th class="text-end">Price</th>
+                <th>Order date</th>
+                <th>Salesperson</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (o of section.orders; track o.id) {
+                <tr class="clickable" (click)="openOrder(o)">
+                  <td class="shifa-mono fw-bold">{{ o.orderCode }}</td>
+                  <td>{{ o.customerName }}</td>
+                  <td class="text-end fw-semibold">₹{{ o.totalAmount }}</td>
+                  <td class="text-secondary">{{ o.createdAt ? (o.createdAt | date: 'dd MMM yyyy, HH:mm') : '—' }}</td>
+                  <td class="text-secondary">{{ o.salespersonName || '—' }}</td>
+                  <td class="text-end" (click)="$event.stopPropagation()">
+                    <div class="pk-row__actions justify-content-end">
+                      @if (section.kind !== 'dispatch') {
+                        <button
+                          type="button"
+                          class="btn btn-outline-secondary pk-row__print"
+                          (click)="printLabel(o)"
+                          [disabled]="labelBusyId() === o.id"
+                          title="Print label"
+                          aria-label="Print label"
+                        >
+                          @if (labelBusyId() === o.id) {
+                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                          } @else {
+                            <i class="ti ti-printer"></i>
+                          }
+                        </button>
+                      }
+                      <button
+                        type="button"
+                        class="btn btn-primary pk-row__action"
+                        (click)="queueAction(section.kind, o)"
+                        [disabled]="busyOrderId() === o.id"
+                      >
+                        @if (busyOrderId() === o.id) {
+                          <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                        } @else {
+                          <i class="ti {{ section.actionIcon }} me-1"></i>
+                        }
+                        {{ section.actionLabel }}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
         </div>
       }
     </div>
   </div>
+}
+
+<!-- Handover / Dispatch actions for the orders just moved (Req 9.2–9.4, 10.1) -->
+@if (workItems().length > 0) {
+  <div class="card mb-3">
+    <div class="card-header py-2">
+      <h3 class="card-title mb-0"><i class="ti ti-arrows-transfer-up me-2"></i>Ready to move</h3>
+    </div>
+    <div class="card-body shifa-work-list">
+      @for (item of workItems(); track item.id) {
+        <div class="shifa-work">
+          <div class="shifa-work__head">
+            <div class="shifa-work__main">
+              <div class="shifa-work__code shifa-mono">{{ item.orderCode }}</div>
+              <div class="shifa-work__meta">{{ item.customerName }}</div>
+            </div>
+            <admin-status-badge [status]="item.status" />
+            <button type="button" class="shifa-work__dismiss" (click)="dismissItem(item.id)" aria-label="Dismiss">
+              <i class="ti ti-x"></i>
+            </button>
+          </div>
+
+          @if (item.error) {
+            <div class="text-danger small mt-1"><i class="ti ti-alert-triangle me-1"></i>{{ item.error }}</div>
+          }
+
+          <div class="shifa-work__action">
+            @switch (item.phase) {
+              @case ('packed') {
+                <button type="button" class="btn btn-primary w-100" (click)="handover(item)" [disabled]="item.busy">
+                  @if (item.busy) {
+                    <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                  } @else {
+                    <i class="ti ti-truck-loading me-1"></i>
+                  }
+                  Handover
+                </button>
+              }
+              @case ('handed_over') {
+                <button type="button" class="btn btn-primary w-100" (click)="dispatch(item)" [disabled]="item.busy">
+                  @if (item.busy) {
+                    <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                  } @else {
+                    <i class="ti ti-truck-delivery me-1"></i>
+                  }
+                  Dispatch
+                </button>
+              }
+              @case ('dispatched') {
+                <span class="badge bg-success-lt w-100 py-2"><i class="ti ti-check me-1"></i>Dispatched</span>
+              }
+              @default {
+                <span class="badge bg-secondary-lt w-100 py-2">Done</span>
+              }
+            }
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+}
+
+<div class="card">
+  <div class="card-header py-2">
+    <h3 class="card-title mb-0"><i class="ti ti-history me-2"></i>Recent scans</h3>
+    <div class="card-actions">
+      @if (log().length) {
+        <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="clearLog()">Clear</button>
+      }
+    </div>
+  </div>
+  @if (log().length === 0) {
+    <div class="empty py-4">
+      <div class="empty-icon"><i class="ti ti-history"></i></div>
+      <p class="empty-title">No scans yet in this session</p>
+    </div>
+  } @else {
+    <div class="list-group list-group-flush">
+      @for (entry of log(); track entry.at.getTime()) {
+        <div class="list-group-item feed-item">
+          <div class="d-flex align-items-center">
+            <span class="shifa-note-dot me-3"
+              [class.bg-success]="entry.outcome === 'packed'"
+              [class.bg-warning]="entry.outcome === 'not-recognized' || entry.outcome === 'wrong-status'"
+              [class.bg-danger]="entry.outcome === 'error'"></span>
+            <div class="me-auto">
+              <div class="fw-medium shifa-mono">{{ entry.barcode }}</div>
+              <div class="text-secondary small d-flex align-items-center gap-1 flex-wrap">
+                <span>{{ entry.message }}</span>
+                @if (entry.currentStatus) {
+                  <admin-status-badge [status]="entry.currentStatus" />
+                }
+              </div>
+            </div>
+            <span class="text-secondary small">{{ entry.at | date: 'HH:mm:ss' }}</span>
+          </div>
+        </div>
+      }
+    </div>
+  }
 </div>

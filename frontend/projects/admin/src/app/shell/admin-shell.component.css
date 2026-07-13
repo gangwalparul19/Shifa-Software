@@ -26,6 +26,9 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  /* Bootstrap sets `.navbar > .container-xl { flex-wrap: inherit }` which resolves
+     to wrap and pushes the search onto a second row — force a single row. */
+  flex-wrap: nowrap;
 }
 
 /* Left cluster: hamburger + page title */
@@ -90,10 +93,14 @@
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+  justify-content: flex-end;
 }
 .shifa-appbar__search {
   min-width: 0;
+  flex: 0 1 auto;
 }
 
 /* --- User dropdown ------------------------------------------------------- */
@@ -386,4 +393,50 @@
     left: 26%;
     right: 26%;
   }
+}
+
+/* PWA chrome — offline chip, install button, app banners (FEATURE-ROADMAP §8.1). */
+.shifa-offline-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: #fff4e6;
+  color: #b5651d;
+  border: 1px solid #f0c99a;
+}
+.shifa-install-btn {
+  white-space: nowrap;
+}
+.shifa-app-banner {
+  margin-top: 0.75rem;
+  margin-bottom: 0;
+}
+
+/* Collapsible nav groups in the hamburger drawer (collapsed by default). */
+.shifa-navdrawer__label--toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.shifa-navdrawer__label--toggle:hover {
+  color: var(--shifa-green-700, #164632);
+}
+.shifa-navdrawer__chev {
+  margin-left: auto;
+  font-size: 1rem;
+  transition: transform 0.2s ease;
+  opacity: 0.7;
+}
+.shifa-navdrawer__group.is-open .shifa-navdrawer__chev {
+  transform: rotate(180deg);
 }

@@ -29,6 +29,7 @@
         <zxing.version>3.5.3</zxing.version>
         <oci.sdk.version>3.54.0</oci.sdk.version>
         <aws.sdk.version>2.29.29</aws.sdk.version>
+        <webpush.version>5.1.1</webpush.version>
     </properties>
 
     <dependencyManagement>
@@ -122,6 +123,20 @@
             <groupId>com.google.zxing</groupId>
             <artifactId>javase</artifactId>
             <version>${zxing.version}</version>
+        </dependency>
+
+        <!-- Web Push (VAPID) — staff browser push notifications (FEATURE-ROADMAP §8.3).
+             Sending is gated on VAPID keys being configured (app.push.*); a no-op otherwise. -->
+        <dependency>
+            <groupId>nl.martijndwars</groupId>
+            <artifactId>web-push</artifactId>
+            <version>${webpush.version}</version>
+        </dependency>
+        <!-- BouncyCastle provider — required by web-push for VAPID/ECDH crypto. -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.78.1</version>
         </dependency>
 
         <!-- OCI SDK - Object Storage (screenshots, PDFs, DB backups) -->

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Shifa OMS">
+  <rect width="512" height="512" rx="112" fill="#1F5D3F"/>
+  <g fill="none" stroke="#ffffff" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M256 400 C256 300 256 220 256 150" />
+    <path d="M256 250 C200 250 150 220 132 160 C210 150 262 190 270 254 Z" fill="#8FD3A6" stroke="#8FD3A6"/>
+    <path d="M256 300 C312 300 362 270 380 210 C302 200 250 240 242 304 Z" fill="#ffffff" stroke="#ffffff"/>
+  </g>
+</svg>

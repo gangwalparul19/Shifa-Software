@@ -29,6 +29,8 @@ import { LeadsComponent } from './leads/leads.component';
 import { DueFollowUpsComponent } from './leads/due-follow-ups.component';
 import { InsightsComponent } from './insights/insights.component';
 import { BackupsComponent } from './backups/backups.component';
+import { AnnouncementsComponent } from './announcements/announcements.component';
+import { AnalyticsComponent } from './analytics/analytics.component';
 
 const LOGIN_PATH = '/login';
 const FORBIDDEN_PATH = '/forbidden';
@@ -254,6 +256,19 @@ export const routes: Routes = [
         // Database backups: run on-demand + review history (ADMIN only, Req 24).
         path: 'backups',
         component: BackupsComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Staff announcement banners (ADMIN only, FEATURE-ROADMAP §8.4).
+        path: 'announcements',
+        component: AnnouncementsComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Analytics suite: targets & incentives, retention, forecasting
+        // (ADMIN only, FEATURE-ROADMAP §6).
+        path: 'analytics',
+        component: AnalyticsComponent,
         canActivate: [adminOnlyGuard],
       },
     ],

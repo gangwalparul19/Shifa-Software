@@ -120,9 +120,13 @@ Modular monolith — one package per bounded context. Kept modules after the das
 | `finance`         | Expenses + Profit & Loss. `/api/admin/expenses`, `/api/admin/finance` |
 | `procurement`     | Suppliers + purchase orders. `/api/admin/suppliers`, `/api/admin/purchase-orders` |
 | `returns`         | Order returns/refunds. `/api/admin/returns` |
-| `crm`             | Customer list derived from orders. `/api/admin/customers` |
+| `crm`             | Customer records derived from orders + **Customer 360**: list/detail (`/api/admin/customers`), profile/risk/tags/notes (`/{mobile}/profile`, `/{mobile}/risk`, `/{mobile}/notes`, `/{mobile}/tags`) |
+| `performance`     | **Salesperson 360**: leaderboard + per-salesperson performance detail + monthly sales targets. `/api/admin/salespeople/performance`, `/api/admin/salespeople/{id}/performance`, `/api/admin/salespeople/targets` |
+| `analytics`       | Customer **retention** cohorts + revenue/demand **forecast** for admin dashboards. `/api/admin/analytics/retention`, `/api/admin/analytics/forecast` |
+| `announcement`    | Staff announcement banners. `GET /api/announcements` (staff), admin CRUD `/api/admin/announcements` |
+| `push`            | Browser Web Push (VAPID, config-gated). `/api/notifications/push/{public-key,subscribe,unsubscribe}` |
 | `dashboard`       | Metrics + SSE event stream. `/api/admin/metrics`, `/api/admin/events` |
-| `adminnotification`| Durable admin alerts. `/api/admin/notifications` |
+| `adminnotification`| Durable staff alerts (role/user-addressed). `/api/notifications` (staff), `/api/admin/notifications` |
 | `audit`           | "Who did what" audit trail. `/api/admin/audit` |
 | `settings`        | Company + GST + invoice settings (GST on/off). `/api/admin/settings` |
 | `geo`             | Delivery-state master list for the order-entry typeahead. `GET /api/states` (staff), admin CRUD `/api/admin/states` |
@@ -160,15 +164,22 @@ Routing in `app.routes.ts`, shell/nav in `shell/admin-shell.component.ts`. Guard
 | `/orders`, `/orders/new` | Orders list / new order entry | staff / SALESPERSON+ADMIN |
 | `/products` | Catalog (manage: ADMIN) | ADMIN + SALESPERSON (read-only) |
 | `/inventory` | Stock | ADMIN |
-| `/customers` | CRM (SALESPERSON sees only their own customers) | ADMIN + ACCOUNTANT + SALESPERSON |
+| `/customers` | CRM + Customer 360 drawer (metrics, delivery-risk, tags, notes, order history; SALESPERSON sees only their own) | ADMIN + ACCOUNTANT + SALESPERSON |
 | `/returns` | Returns/refunds | ADMIN+ACCOUNTANT |
 | `/notifications`, `/audit` | Alerts / audit log | ADMIN |
+| `/announcements` | Post/hide/delete staff announcement banners | ADMIN |
 | `/suppliers`, `/purchase-orders` | Procurement | ADMIN |
 | `/expenses`, `/finance/pnl` | Finance | ADMIN+ACCOUNTANT |
 | `/packing` | Barcode scan + handover/dispatch | PACKING_USER+ADMIN |
 | `/reconciliation`, `/reports` | Settlement + exports | ADMIN+ACCOUNTANT |
+| `/analytics` | Sales targets, retention cohorts, revenue/demand forecast | ADMIN |
 | `/settings`, `/users` | Config + staff users | ADMIN |
-| `/salespeople` | Salesperson onboarding profiles + ID verification directory | ADMIN |
+| `/salespeople` | Salesperson onboarding + ID verification directory + **Salesperson 360** performance (leaderboard KPIs, sort, per-person performance drawer, monthly targets) | ADMIN |
+
+The shell hamburger nav groups links under **collapsible, collapsed-by-default named groups**
+(accordion): only "Shifa Dashboard" is standalone; the rest sit under **CRM** (Leads, Due follow-ups,
+Customers, Salespeople), **Analytics & Reports** (Reports, Analytics, Insights), and
+**Account & Settings** (My Profile, Settings, Users, …). The role-aware bottom tab bar is unchanged.
 
 ### Mobile-first UI redesign (spec `mobile-ui-redesign`)
 The admin app was redesigned mobile-first to a client wireframe (`docs/wireframe.jpeg`), reusing the
@@ -182,6 +193,50 @@ pills, ≥44px touch targets, real product images (served from `admin/public/pro
 order/product detail + all operational/config/auth pages follow the same language. Presentation-only
 — it reuses existing endpoints (plus the additive `GET /api/admin/products/{id}/stats` and the order
 line `imageKey` / `discountAmount` fields).
+
+### Customer records & internal CRM (FEATURE-ROADMAP §1)
+The `/customers` drawer is a **Customer 360**: derived delivery-reliability **risk score**
+(LOW/MEDIUM/HIGH from delivered vs failed/RTO/rejected history), metrics (delivered / failed /
+in-flight / outstanding), products bought, status breakdown, staff-managed **segment tags** and a
+**notes timeline**, alongside the order history. Backed by a separate `CustomerInsightService` +
+`CustomerCrmController` (the original list/detail `CustomerService`/`CustomerController` are unchanged),
+persisted via `V34` (`customer_tags`, `customer_notes`). The New Order form shows a **prepaid nudge**
+when a MEDIUM/HIGH-risk customer's mobile is entered (`GET /api/admin/customers/{mobile}/risk`).
+Salesperson scoping applies throughout (a salesperson only sees customers from their own orders).
+
+### Staff mobile & UX (FEATURE-ROADMAP §8)
+- **Installable PWA + offline order capture (8.1)** — Angular service worker (`ngsw-config.json`,
+  registered in production via `provideServiceWorker`), `manifest.webmanifest` + icon. `PwaService`
+  drives an offline chip, an **Install** button and an **update-ready** banner in the shell.
+  `OfflineOrderQueueService` queues COD (no-payment) orders in `localStorage` when offline and
+  auto-syncs to `POST /api/orders` on reconnect (paid orders / lead-conversion require connectivity).
+- **Phone-camera barcode scan (8.2)** — `CameraScannerComponent` uses the native `BarcodeDetector`
+  (Code 128) so the packer can scan the internal label with a phone camera; a **Camera** button on
+  `/packing` feeds the decoded order code into the existing scan flow (graceful fallback when unsupported).
+- **Web push (8.3, config-gated)** — VAPID push via `nl.martijndwars:web-push`, **no-op unless
+  `app.push.vapid.*` keys are set**. `push_subscriptions` (`V36`), `PushController`, and a best-effort
+  hook off `StaffNotificationDispatcher`; the frontend opt-in lives in the notification bell (`SwPush`),
+  and notification taps deep-link to the order.
+- **Staff announcement banners (8.4)** — admins post notices at `/announcements` (`staff_announcements`,
+  `V35`); every signed-in staff member sees active banners in the shell (dismissible per-user).
+
+### Packing page redesign
+The `/packing` page (the most-used floor screen) was rebuilt to match the rest of the app: KPI tiles
+(awaiting pack / handover / dispatch), a hero scan box (keyboard scanner + phone camera), and the work
+queues rendered as a **table** (Order ID / Customer / Price / Order date / Salesperson) with **clickable
+rows → `/orders?q={code}`** and per-row primary action + Print label. The queue DTO gained salesperson
+name + order date (`PackingQueueRow`), rows are **DESC by order date**, and focus uses `preventScroll`
+so opening the page no longer jumps to the bottom.
+
+### Analytics, insights & reporting (FEATURE-ROADMAP §6)
+`/analytics` (ADMIN) has three tabs backed by the `performance` + `analytics` modules:
+- **Sales targets (6.1)** — per-salesperson monthly targets (`sales_targets`, `V38`) with achieved vs
+  target progress, set/edit from the tab and surfaced on Salesperson 360.
+- **Retention (6.3)** — repeat-customer cohorts (new vs returning, repeat rate) from order history.
+- **Forecast (6.5)** — next-period revenue + product-demand projection from trailing sales.
+- Dashboard tiles are user-configurable (show/hide, persisted in `localStorage`, 6.4).
+**Salesperson 360** (leaderboard + per-person KPIs: orders, revenue, conversion, delivery success,
+target progress) lives on the `/salespeople` page so admins can track and compare team performance.
 
 ---
 
@@ -227,6 +282,21 @@ Migration history:
   all existing rows to `VERIFIED` so current logins aren't flagged. Additive/nullable, safe on V22/V27.
   Powers `/api/admin/staff` and the admin **Salespeople** directory. The uploaded ID document lives in
   the pluggable `StorageService` (only `id_proof_key` is persisted).
+- `V32__staff_profile_image.sql` — adds `users.profile_image_key` (staff profile photo; images are
+  server-side compressed before storage via `ImageCompressor`).
+- `V33__staff_profile_change_requests.sql` — `staff_profile_change_requests` (self-service "My Profile"
+  edits queued for admin approval; nothing on `users` changes until approved).
+- `V34__customer_crm_tags_notes.sql` — `customer_tags` + `customer_notes` (keyed by `customer_mobile`),
+  the first persisted per-customer data behind the Customer 360 tags/notes (FEATURE-ROADMAP §1).
+- `V35__staff_announcements.sql` — `staff_announcements` (admin-posted banners shown to all staff,
+  FEATURE-ROADMAP §8.4).
+- `V36__push_subscriptions.sql` — `push_subscriptions` (browser Web Push endpoints + keys per staff
+  user; sending is gated on VAPID config, FEATURE-ROADMAP §8.3).
+- `V37__fix_future_order_dates.sql` — one-time data fix: clamps any `orders.created_at` set in the
+  future back to now (bad seed/test dates), so the DESC-sorted lists and reports read correctly. No
+  schema change.
+- `V38__sales_targets.sql` — `sales_targets` (per-salesperson monthly revenue target) behind the
+  Analytics **Sales targets** tab + Salesperson 360 progress (FEATURE-ROADMAP §6.1).
 
 > Fresh DB required: because V22 seeds with explicit IDs, start against an **empty**
 > `shifa_dashboard`. If a half-migrated DB exists, drop & recreate it before starting.

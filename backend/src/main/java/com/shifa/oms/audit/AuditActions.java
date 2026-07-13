@@ -73,6 +73,19 @@ public final class AuditActions {
     /** A nightly/on-demand statistical-insights computation run (statistical-insights-engine). */
     public static final String INSIGHTS_COMPUTED = "INSIGHTS_COMPUTED";
 
+    // Customer records & internal CRM depth (FEATURE-ROADMAP §1).
+    public static final String CUSTOMER_NOTE_ADDED = "CUSTOMER_NOTE_ADDED";
+    public static final String CUSTOMER_TAG_ADDED = "CUSTOMER_TAG_ADDED";
+    public static final String CUSTOMER_TAG_REMOVED = "CUSTOMER_TAG_REMOVED";
+
+    // Staff announcement banners (FEATURE-ROADMAP §8.4).
+    public static final String ANNOUNCEMENT_CREATED = "ANNOUNCEMENT_CREATED";
+    public static final String ANNOUNCEMENT_UPDATED = "ANNOUNCEMENT_UPDATED";
+    public static final String ANNOUNCEMENT_DELETED = "ANNOUNCEMENT_DELETED";
+
+    // Sales targets & incentives (FEATURE-ROADMAP §6.1).
+    public static final String SALES_TARGET_SET = "SALES_TARGET_SET";
+
     // --- Entity types -------------------------------------------------------
 
     public static final String ENTITY_ORDER = "ORDER";
@@ -86,4 +99,7 @@ public final class AuditActions {
     public static final String ENTITY_EXPENSE = "EXPENSE";
     public static final String ENTITY_LEAD = "LEAD";
     public static final String ENTITY_INSIGHT = "INSIGHT";
+    public static final String ENTITY_CUSTOMER = "CUSTOMER";
+    public static final String ENTITY_ANNOUNCEMENT = "ANNOUNCEMENT";
+    public static final String ENTITY_SALES_TARGET = "SALES_TARGET";
 }

@@ -73,7 +73,8 @@ class PackingServiceTest {
         AuditService auditService = new AuditService(
                 mock(AuditEventRepository.class), new CurrentUserService());
         OrderWorkflowService workflowService = new OrderWorkflowService(auditService);
-        service = new PackingService(orderRepository, publisher, workflowService);
+        service = new PackingService(orderRepository, publisher, workflowService,
+                mock(com.shifa.oms.auth.UserRepository.class));
         lenient().when(orderRepository.save(any(OrderEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
         lenient().when(outboxEventRepository.save(any(OutboxEvent.class)))

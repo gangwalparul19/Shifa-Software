@@ -1,7 +1,5 @@
 package com.shifa.oms.packing.dto;
 
-import com.shifa.oms.order.dto.OrderSummaryResponse;
-
 import java.util.List;
 
 /**
@@ -21,8 +19,8 @@ import java.util.List;
  * </ul>
  */
 public record PackingQueueResponse(
-        List<OrderSummaryResponse> awaitingPacking,
-        List<OrderSummaryResponse> awaitingHandover,
-        List<OrderSummaryResponse> awaitingDispatch
+        List<PackingQueueRow> awaitingPacking,
+        List<PackingQueueRow> awaitingHandover,
+        List<PackingQueueRow> awaitingDispatch
 ) {
 }

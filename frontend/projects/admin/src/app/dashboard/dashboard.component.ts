@@ -131,6 +131,55 @@ export class DashboardComponent implements OnInit, OnDestroy {
   /** Whether the current user is an ADMIN (gates the rich metrics dashboard + SSE). */
   protected readonly isAdmin = computed(() => this.role() === Role.ADMIN);
 
+  // --- Configurable dashboard sections (FEATURE-ROADMAP §6.4) --------------
+  private static readonly SECTIONS_KEY = 'shifa.dashboardHiddenSections.v1';
+  /** The admin dashboard sections a user can show/hide, in display order. */
+  protected readonly adminSections: { key: string; label: string }[] = [
+    { key: 'fulfilment', label: 'Fulfilment queues' },
+    { key: 'live', label: 'Today (live)' },
+    { key: 'orders', label: 'Orders KPIs' },
+    { key: 'exceptions', label: 'Exceptions KPIs' },
+    { key: 'finance', label: 'Finance KPIs' },
+  ];
+  /** Section keys the user has hidden (persisted locally). */
+  protected readonly hiddenSections = signal<Set<string>>(this.loadHiddenSections());
+  /** Whether the "customize" popover is open. */
+  protected readonly customizeOpen = signal(false);
+
+  /** Whether a dashboard section is currently shown. */
+  sectionVisible(key: string): boolean {
+    return !this.hiddenSections().has(key);
+  }
+
+  /** Toggles a dashboard section's visibility and persists the choice locally. */
+  toggleSection(key: string): void {
+    const next = new Set(this.hiddenSections());
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    this.hiddenSections.set(next);
+    try {
+      localStorage.setItem(DashboardComponent.SECTIONS_KEY, JSON.stringify([...next]));
+    } catch {
+      /* storage unavailable — non-fatal */
+    }
+  }
+
+  toggleCustomize(): void {
+    this.customizeOpen.update((open) => !open);
+  }
+
+  private loadHiddenSections(): Set<string> {
+    try {
+      const raw = localStorage.getItem(DashboardComponent.SECTIONS_KEY);
+      return raw ? new Set<string>(JSON.parse(raw) as string[]) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  }
+
   // --- Role-shaped summary (all roles, Req 3.1–3.6) -----------------------
   protected readonly summary = signal<RoleDashboardSummary | null>(null);
   protected readonly summaryLoading = signal(true);

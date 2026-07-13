@@ -191,4 +191,159 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
 
         long getOrderCount();
     }
+
+    /**
+     * Per-salesperson order aggregate for the Salesperson 360 leaderboard
+     * (FEATURE request): one row per {@code created_by} with total/this-month/today
+     * order counts, revenue (all + this month, excluding REJECTED/CANCELLED),
+     * delivered vs failed delivery counts, and outstanding COD. {@code monthStart}
+     * / {@code dayStart} bound the windowed sums.
+     */
+    @Query(value = """
+            SELECT o.created_by AS salespersonId,
+                   COUNT(*) AS ordersTotal,
+                   SUM(CASE WHEN o.created_at >= :monthStart THEN 1 ELSE 0 END) AS ordersThisMonth,
+                   SUM(CASE WHEN o.created_at >= :dayStart THEN 1 ELSE 0 END) AS ordersToday,
+                   COALESCE(SUM(CASE WHEN o.order_status NOT IN ('REJECTED','CANCELLED')
+                                     THEN o.total_amount ELSE 0 END), 0) AS revenueTotal,
+                   COALESCE(SUM(CASE WHEN o.created_at >= :monthStart
+                                      AND o.order_status NOT IN ('REJECTED','CANCELLED')
+                                     THEN o.total_amount ELSE 0 END), 0) AS revenueThisMonth,
+                   SUM(CASE WHEN o.order_status IN ('DELIVERED','COD_COLLECTED','CLOSED')
+                            THEN 1 ELSE 0 END) AS deliveredCount,
+                   SUM(CASE WHEN o.order_status IN ('CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','COURIER_LOST')
+                            THEN 1 ELSE 0 END) AS failedCount,
+                   COALESCE(SUM(o.customer_outstanding), 0) AS codOutstanding
+            FROM orders o
+            WHERE o.created_by IS NOT NULL
+            GROUP BY o.created_by
+            """, nativeQuery = true)
+    List<SalespersonOrderAggregate> salespersonOrderStats(
+            @Param("monthStart") java.time.LocalDateTime monthStart,
+            @Param("dayStart") java.time.LocalDateTime dayStart);
+
+    /** Projection over {@link #salespersonOrderStats} (one row per salesperson). */
+    interface SalespersonOrderAggregate {
+        Long getSalespersonId();
+
+        long getOrdersTotal();
+
+        long getOrdersThisMonth();
+
+        long getOrdersToday();
+
+        java.math.BigDecimal getRevenueTotal();
+
+        java.math.BigDecimal getRevenueThisMonth();
+
+        long getDeliveredCount();
+
+        long getFailedCount();
+
+        java.math.BigDecimal getCodOutstanding();
+    }
+
+    // --- Analytics §6 aggregates (targets / retention / forecasting) --------
+
+    /**
+     * Per-salesperson revenue + order count over a window {@code [from, to)},
+     * excluding REJECTED/CANCELLED (sales-targets attainment, FEATURE-ROADMAP §6.1).
+     */
+    @Query(value = """
+            SELECT o.created_by AS salespersonId,
+                   COUNT(*) AS orderCount,
+                   COALESCE(SUM(o.total_amount), 0) AS revenue
+            FROM orders o
+            WHERE o.created_by IS NOT NULL
+              AND o.created_at >= :from AND o.created_at < :to
+              AND o.order_status NOT IN ('REJECTED','CANCELLED')
+            GROUP BY o.created_by
+            """, nativeQuery = true)
+    List<SalespersonRevenueRow> salespersonRevenueBetween(
+            @Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+
+    /** Projection over {@link #salespersonRevenueBetween}. */
+    interface SalespersonRevenueRow {
+        Long getSalespersonId();
+
+        long getOrderCount();
+
+        java.math.BigDecimal getRevenue();
+    }
+
+    /**
+     * (mobile, created_at) for every non-rejected/cancelled order, ordered by
+     * customer then time — the raw signal for cohort/retention analysis
+     * (FEATURE-ROADMAP §6.3). Lightweight projection (no line items).
+     */
+    @Query(value = """
+            SELECT o.customer_mobile AS mobile, o.created_at AS createdAt
+            FROM orders o
+            WHERE o.customer_mobile IS NOT NULL AND o.customer_mobile <> ''
+              AND o.order_status NOT IN ('REJECTED','CANCELLED')
+            ORDER BY o.customer_mobile, o.created_at
+            """, nativeQuery = true)
+    List<CustomerOrderDateRow> customerOrderDates();
+
+    /** Projection over {@link #customerOrderDates}. */
+    interface CustomerOrderDateRow {
+        String getMobile();
+
+        java.time.LocalDateTime getCreatedAt();
+    }
+
+    /**
+     * Per-product units sold + distinct orders over a window {@code [from, to)},
+     * excluding REJECTED/CANCELLED — the demand signal for forecasting
+     * (FEATURE-ROADMAP §6.5).
+     */
+    @Query(value = """
+            SELECT li.product_id AS productId,
+                   MAX(li.product_name) AS productName,
+                   COALESCE(SUM(li.quantity), 0) AS units,
+                   COUNT(DISTINCT o.id) AS orders
+            FROM line_items li
+            JOIN orders o ON o.id = li.order_id
+            WHERE li.product_id IS NOT NULL
+              AND o.created_at >= :from AND o.created_at < :to
+              AND o.order_status NOT IN ('REJECTED','CANCELLED')
+            GROUP BY li.product_id
+            """, nativeQuery = true)
+    List<ProductDemandRow> productDemandBetween(
+            @Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+
+    /** Projection over {@link #productDemandBetween}. */
+    interface ProductDemandRow {
+        Long getProductId();
+
+        String getProductName();
+
+        long getUnits();
+
+        long getOrders();
+    }
+
+    /**
+     * Total customer COD still expected — sum of {@code customer_outstanding} on
+     * orders not in a terminal collected/failed/cancelled state (cash forecast,
+     * FEATURE-ROADMAP §6.5).
+     */
+    @Query(value = """
+            SELECT COALESCE(SUM(o.customer_outstanding), 0) FROM orders o
+            WHERE o.order_status NOT IN
+              ('CLOSED','COD_COLLECTED','REJECTED','CANCELLED',
+               'DELIVERY_FAILED','CUSTOMER_REJECTED','RTO','COURIER_LOST')
+            """, nativeQuery = true)
+    java.math.BigDecimal sumOutstandingCodActive();
+
+    /**
+     * COD collected since a timestamp — sum of {@code cod_amount} on orders that
+     * reached {@code COD_COLLECTED} and were last updated on/after {@code since}
+     * (recent collection run-rate for the cash forecast, FEATURE-ROADMAP §6.5).
+     */
+    @Query(value = """
+            SELECT COALESCE(SUM(o.cod_amount), 0) FROM orders o
+            WHERE o.order_status = 'COD_COLLECTED' AND o.updated_at >= :since
+            """, nativeQuery = true)
+    java.math.BigDecimal sumCodCollectedSince(@Param("since") java.time.LocalDateTime since);
 }

@@ -28,7 +28,8 @@
               "node_modules/@tabler/core/dist/css/tabler.min.css",
               "node_modules/@tabler/icons-webfont/dist/tabler-icons.min.css",
               "projects/admin/src/styles.css"
-            ]
+            ],
+            "serviceWorker": "projects/admin/ngsw-config.json"
           },
           "configurations": {
             "production": {

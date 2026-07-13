@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -6,6 +7,8 @@ import {
   ID_PROOF_TYPES,
   IdProofType,
   SalespeopleService,
+  SalespersonPerformanceDetail,
+  SalespersonPerformanceSummary,
   StaffProfile,
   UpdateStaffProfileRequest,
   VerificationStatus,
@@ -29,7 +32,7 @@ type StatusFilter = 'ALL' | VerificationStatus;
 @Component({
   selector: 'admin-salespeople',
   standalone: true,
-  imports: [ReactiveFormsModule, PageHeaderComponent, StatePanelComponent],
+  imports: [ReactiveFormsModule, DatePipe, PageHeaderComponent, StatePanelComponent],
   templateUrl: './salespeople.component.html',
   styleUrl: './salespeople.component.css',
 })
@@ -43,6 +46,17 @@ export class SalespeopleComponent implements OnInit {
   protected readonly staff = signal<StaffProfile[]>([]);
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
+
+  // --- Salesperson 360 (performance) --------------------------------------
+  /** Leaderboard metrics indexed by salesperson id (for list KPIs + sorting). */
+  protected readonly perfById = signal<Map<number, SalespersonPerformanceSummary>>(new Map());
+  /** How the directory list is sorted. */
+  protected readonly sortKey = signal<'revenueThisMonth' | 'ordersThisMonth' | 'successRate' | 'name'>(
+    'revenueThisMonth',
+  );
+  /** The open salesperson's full 360 detail (loaded when the drawer opens). */
+  protected readonly detail = signal<SalespersonPerformanceDetail | null>(null);
+  protected readonly detailLoading = signal(false);
 
   /** Verification filter tab. */
   protected readonly filter = signal<StatusFilter>('ALL');
@@ -72,9 +86,35 @@ export class SalespeopleComponent implements OnInit {
 
   protected readonly filtered = computed(() => {
     const f = this.filter();
-    const list = this.staff();
-    return f === 'ALL' ? list : list.filter((s) => s.verificationStatus === f);
+    const base = f === 'ALL' ? this.staff() : this.staff().filter((s) => s.verificationStatus === f);
+    const perf = this.perfById();
+    const key = this.sortKey();
+    const list = [...base];
+    if (key === 'name') {
+      list.sort((a, b) => (a.fullName || a.username).localeCompare(b.fullName || b.username));
+    } else {
+      list.sort((a, b) => this.metric(perf, b.id, key) - this.metric(perf, a.id, key));
+    }
+    return list;
   });
+
+  private metric(
+    perf: Map<number, SalespersonPerformanceSummary>,
+    id: number,
+    key: 'revenueThisMonth' | 'ordersThisMonth' | 'successRate',
+  ): number {
+    const p = perf.get(id);
+    if (!p) {
+      return -1;
+    }
+    if (key === 'revenueThisMonth') {
+      return Number(p.revenueThisMonth) || 0;
+    }
+    if (key === 'ordersThisMonth') {
+      return p.ordersThisMonth;
+    }
+    return p.successRate;
+  }
 
   /** The staff member open in the drawer; null when closed. */
   protected readonly selected = signal<StaffProfile | null>(null);
@@ -117,10 +157,53 @@ export class SalespeopleComponent implements OnInit {
         this.loading.set(false);
       },
     });
+    // Leaderboard metrics (non-fatal): powers the per-card KPIs + sorting.
+    this.service.performanceLeaderboard().subscribe({
+      next: (rows) => {
+        const map = new Map<number, SalespersonPerformanceSummary>();
+        rows.forEach((r) => map.set(r.id, r));
+        this.perfById.set(map);
+      },
+      error: () => {
+        /* non-fatal — cards just omit the KPIs */
+      },
+    });
   }
 
   setFilter(f: StatusFilter): void {
     this.filter.set(f);
+  }
+
+  setSort(key: 'revenueThisMonth' | 'ordersThisMonth' | 'successRate' | 'name'): void {
+    this.sortKey.set(key);
+  }
+
+  /** Leaderboard summary for a salesperson (undefined until the board loads). */
+  perfFor(id: number): SalespersonPerformanceSummary | undefined {
+    return this.perfById().get(id);
+  }
+
+  /** Money display for a decimal string (₹, no decimals for compactness). */
+  money(value: string | number | null | undefined): string {
+    const n = Number(value ?? 0);
+    return '₹' + Math.round(n).toLocaleString('en-IN');
+  }
+
+  /** Bootstrap text class reflecting a success/conversion rate. */
+  rateClass(rate: number): string {
+    if (rate >= 80) {
+      return 'text-success';
+    }
+    if (rate >= 50) {
+      return 'text-warning';
+    }
+    return 'text-danger';
+  }
+
+  /** The tallest daily order count in the trend, for bar scaling (min 1). */
+  trendMax(): number {
+    const t = this.detail()?.trend ?? [];
+    return Math.max(1, ...t.map((p) => p.orders));
   }
 
   // --- Drawer -------------------------------------------------------------
@@ -130,6 +213,16 @@ export class SalespeopleComponent implements OnInit {
     this.selected.set(member);
     this.verifyNote.reset('');
     this.clearProfilePreview();
+    // Load the Salesperson 360 detail for the performance section.
+    this.detail.set(null);
+    this.detailLoading.set(true);
+    this.service.performance(member.id).subscribe({
+      next: (d) => {
+        this.detail.set(d);
+        this.detailLoading.set(false);
+      },
+      error: () => this.detailLoading.set(false),
+    });
     if (member.hasProfileImage) {
       this.loadProfilePreview(member.id);
     }
@@ -148,6 +241,7 @@ export class SalespeopleComponent implements OnInit {
   close(): void {
     this.selected.set(null);
     this.formError.set(null);
+    this.detail.set(null);
     this.clearProfilePreview();
   }
 

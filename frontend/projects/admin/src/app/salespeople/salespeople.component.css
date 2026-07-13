@@ -169,3 +169,136 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* ==========================================================================
+   Salesperson 360 — per-card KPIs + drawer performance section.
+   ========================================================================== */
+
+/* Card KPI strip (orders / revenue / success). */
+.sp-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
+  border-top: 1px solid rgba(15, 51, 36, 0.08);
+  padding-top: 0.6rem;
+}
+.sp-kpi {
+  text-align: center;
+  min-width: 0;
+}
+.sp-kpi__v {
+  display: block;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #1c2b24;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sp-kpi__k {
+  font-size: 0.68rem;
+  color: #64726b;
+}
+
+/* Drawer performance tiles (2 cols on narrow, 4 on wide). */
+.sp-perf-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+@media (min-width: 480px) {
+  .sp-perf-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+.sp-perf {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 10px;
+  padding: 0.5rem 0.4rem;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+}
+.sp-perf__v {
+  display: block;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #1c2b24;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sp-perf__k {
+  font-size: 0.66rem;
+  color: #64726b;
+}
+
+/* Daily trend bar chart. */
+.sp-trend {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  margin-bottom: 0.85rem;
+}
+.sp-trend__label {
+  font-size: 0.72rem;
+  color: #64726b;
+  margin-bottom: 0.4rem;
+}
+.sp-trend__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 56px;
+}
+.sp-trend__bar {
+  flex: 1 1 0;
+  background: var(--shifa-green-600, #1f5d3f);
+  border-radius: 3px 3px 0 0;
+  min-height: 3px;
+  transition: opacity 0.15s ease;
+}
+.sp-trend__bar.is-empty {
+  background: #e3e9e5;
+}
+
+/* Lead metrics rows. */
+.sp-lead {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 10px;
+  padding: 0.25rem 0.75rem;
+  margin-bottom: 0.85rem;
+}
+.sp-lead__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0;
+  font-size: 0.88rem;
+}
+.sp-lead__row + .sp-lead__row {
+  border-top: 1px solid rgba(15, 51, 36, 0.06);
+}
+
+/* Recent orders list. */
+.sp-recent {
+  margin-bottom: 0.5rem;
+}
+.sp-recent__label {
+  font-size: 0.72rem;
+  color: #64726b;
+  margin-bottom: 0.35rem;
+}
+.sp-recent__row {
+  display: flex;
+  align-items: center;
+  font-size: 0.82rem;
+  padding: 0.35rem 0;
+  border-top: 1px solid rgba(15, 51, 36, 0.06);
+}
+.sp-recent__row:first-of-type {
+  border-top: 0;
+}

@@ -368,7 +368,7 @@ class EndpointRoleGuardIntegrationTest {
 
     static class StubPackingService extends PackingService {
         StubPackingService() {
-            super(null, null, null);
+            super(null, null, null, null);
         }
 
         @Override

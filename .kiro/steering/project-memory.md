@@ -102,8 +102,12 @@ Salesperson **New Order** form reworked to cut scrolling and add two fields:
 
 ## Backend modules kept (`com.shifa.oms.*`)
 auth, order (+`GET /api/orders/products` picker), statemachine, product, inventory, packing, courier,
-label, invoice, reconciliation, reporting, finance, procurement, returns, crm, dashboard,
-adminnotification, audit, settings, geo (delivery-state master list → `/api/states`, admin `/api/admin/states`),
+label, invoice, reconciliation, reporting, finance, procurement, returns, crm (+Customer 360), dashboard,
+adminnotification, announcement (staff banners → `/api/announcements`, admin `/api/admin/announcements`),
+push (Web Push VAPID, config-gated → `/api/notifications/push/*`),
+audit, settings, geo (delivery-state master list → `/api/states`, admin `/api/admin/states`),
+performance (Salesperson 360 → `/api/admin/salespeople/performance`, `/{id}/performance`, `/targets`),
+analytics (retention + forecast → `/api/admin/analytics/{retention,forecast}`),
 search, agent, notification, mail, platform, common,
 lead (Lead Management — Tasks 1–7 done, backend complete: `LeadStatus`/`LostReason` enums, `LeadEntity`/
 `LeadStatusHistory`, `LeadRepository`/`LeadStatusHistoryRepository`, `LeadService` capture/edit/transition/
@@ -163,7 +167,7 @@ Optional `insights.component.spec.ts` (360px checks) type-compiles. Admin `build
 
 ## Admin pages
 dashboard, approval-queue, orders(+/new, +convert-from-lead via `?leadId=`), leads(+/follow-ups),
-products, inventory, customers, returns, notifications,
+products, inventory, customers(+Customer 360 drawer), returns, notifications, announcements,
 audit, suppliers, purchase-orders, expenses, finance/pnl, packing, reconciliation, reports, settings, users.
 Routes: `frontend/projects/admin/src/app/app.routes.ts`; nav: `shell/admin-shell.component.ts`.
 
@@ -177,6 +181,13 @@ Routes: `frontend/projects/admin/src/app/app.routes.ts`; nav: `shell/admin-shell
 - `V29` (new-order UX) adds `orders.notes VARCHAR(1000) NULL` + creates `delivery_states` (name UNIQUE, active, sort_order),
   seeded once with 28 states + 8 UTs. Powers the New Order state typeahead (`GET /api/states`) + admin Settings management
   (`/api/admin/states`). Additive; safe on seeded data.
+- `V34` (Customer 360, FEATURE-ROADMAP §1) creates `customer_tags` (mobile, tag, UNIQUE(mobile,tag)) + `customer_notes`
+  (mobile, note, created_by/_name, created_at), keyed by `customer_mobile`. First persisted per-customer data.
+- `V35` (announcements, §8.4) creates `staff_announcements` (message, severity, active, created_by/_name, timestamps).
+- `V36` (web push, §8.3) creates `push_subscriptions` (user_id, endpoint UNIQUE, p256dh, auth_secret, created_at).
+- `V37` (packing redesign) one-time data fix: clamps future `orders.created_at` back to now (no schema change).
+- `V38` (analytics §6.1) creates `sales_targets` (per-salesperson monthly revenue target).
+- **Highest migration is now V38.** V31/V32/V33 (staff profiles/photo/change-requests) sit between V29 and V34.
 - `V28` (payment-screenshot storage) adds `stored_files` (id, `storage_key` UNIQUE, filename, content_type, byte_size, `content` LONGBLOB, created_at) — DB-backed binary store so payment screenshots are durable/backed-up records, not fragile server files. New `platform/storage/DatabaseStorageService` (`@Primary @ConditionalOnProperty app.storage.provider=DB`) + `StoredFileEntity`/`StoredFileRepository`; `LocalStorageService` now `@ConditionalOnProperty(...=LOCAL, matchIfMissing=true)` so exactly one bean is active. **Prod uses `app.storage.provider=DB`** (application-prod.yml; env `STORAGE_PROVIDER`). Also added `spring.servlet.multipart.max-file-size=10MB`/`max-request-size=12MB` (default 1MB was 500ing phone screenshots) + a `MaxUploadSizeExceededException`→413 handler in `GlobalExceptionHandler`.
 - `V27__seed_test_data.sql` — **large NOW()-relative TEST/DEMO seed** layered additively on top of V22 (plain SQL, runs in ALL profiles, auto-applies on deploy/restart). Non-colliding explicit IDs: users 101–123, orders 1000–1119 (codes `SHR-5001`..`SHR-5120`), courier_companies 2–4, suppliers 10–14, purchase_orders 10–14 (`PO-0006`..`PO-0010`); child tables use AUTO_INCREMENT. Seeds 23 new users (20 salespersons `sales01`..`sales20` + `accountant2`/`packer2`/`admin2`) — **all logins share password `admin123`** (same bcrypt hash as V22 admin). Volumes: 120 orders across the full lifecycle (~56 customers, repeat buyers), 240 line_items, ~926 status_history rows (first row NULL→PENDING, last == order_status), 72 payments, 91 courier_records, 37 receivables (COD outstanding unsettled + a COURIER_LOST claim), 142 stock_movements (many SALE rows in the last 30 days for insights), 9 order_returns, 21 monthly expenses, 50 leads (+124 lead_status_history, due/overdue follow-ups, some WON→converted_order_id), 13 admin_notifications (role- & user-addressed), 18 audit_events. Bumps `invoice_sequence` (next_value 69) and `purchase_order_sequence` (next_value 11). Money math mirrors V22. **Guide: `docs/test-data-guide.html`** (full login list + per-role tour). Validated: V1..V27 apply 100% clean into a throwaway scratch DB (never touch `shifa_dashboard`).
 - Start against an **empty** `shifa_dashboard` (V22 uses explicit IDs). If half-migrated, drop & recreate the DB first.
@@ -267,3 +278,104 @@ until an ADMIN approves — the edit is queued as a moderated request.
 - Admin still edits staff directly in the Salespeople directory (unmoderated); the approval flow is only for employee
   self-service. Verified: backend compile BUILD SUCCESS (456 sources), `AdminUserServiceTest` 9/9 green, admin `build:admin`
   bundle complete. Highest migration is now **V33**.
+
+## Customer records & internal CRM — Customer 360 (FEATURE-ROADMAP §1) — implemented
+Customers remain **derived data keyed by `customer_mobile`** (no customer master table). Kept the existing
+`CustomerService`/`CustomerController` (list/detail `/api/admin/customers`) UNTOUCHED so their tests stay green
+(the guard test's `StubCustomerService extends CustomerService` uses the 5-arg ctor). Added a SEPARATE
+`crm.CustomerInsightService` + `crm.CustomerCrmController` (same `/api/admin/customers` base path, new sub-paths):
+`GET /{mobile}/profile` (Customer 360), `GET /{mobile}/risk` (never 404s — new mobile = LOW/0), `POST /{mobile}/notes`,
+`POST /{mobile}/tags`, `DELETE /{mobile}/tags/{tag}`. Class `@PreAuthorize hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON')`;
+same `SalespersonScopeResolver` scoping (salesperson sees only their own-order customers; out-of-scope → 404).
+- Pure `crm/domain/CustomerRiskCalculator` + `CustomerRiskLevel` (LOW/MEDIUM/HIGH): failed deliveries
+  (CUSTOMER_REJECTED/DELIVERY_FAILED/RTO/COURIER_LOST) vs delivered (DELIVERED/COD_COLLECTED/CLOSED); HIGH when
+  ≥2 failures AND failure-rate ≥0.4, MEDIUM when ≥1 failure, else LOW. Profile also has metrics (delivered/failed/
+  in-flight/cancelled/successRate/outstanding), top products bought (excl. cancelled), status breakdown, tags, notes.
+- **Migration V34** (`customer_tags`, `customer_notes`, keyed by mobile) — first persisted per-customer data. New audit
+  verbs CUSTOMER_NOTE_ADDED/TAG_ADDED/TAG_REMOVED + ENTITY_CUSTOMER.
+- Frontend `customers`: model/service extended (profile/risk/addNote/addTag/removeTag); drawer upgraded to a 360 view
+  (risk banner, delivery mini-metrics, tags add/remove, products bought, notes timeline, order history). New Order form
+  shows a **prepaid nudge** for MEDIUM/HIGH-risk mobiles (`customers.risk`). Item **1.3 (dup detect/merge) deferred** —
+  true merge needs a customer master + rewriting order history. Verified: backend compiles, 21 tests pass
+  (`CustomerServiceTest`+`EndpointRoleGuardIntegrationTest`), admin `build:admin` complete.
+
+## Staff mobile & UX (FEATURE-ROADMAP §8) — implemented
+- **8.1 PWA + offline orders**: `@angular/service-worker` wired (`projects/admin/ngsw-config.json` + `serviceWorker` in
+  angular.json build options + `provideServiceWorker('ngsw-worker.js', {enabled: environment.production, registerWhenStable})`
+  in `app.config.ts`), `public/manifest.webmanifest` + `public/icons/shifa-icon.svg`, PWA meta in `index.html`.
+  `shared/pwa.service.ts` (online/offline signal, `beforeinstallprompt` capture, `SwUpdate` version-ready) → shell shows
+  offline chip + Install button + update banner. `orders/offline-order-queue.service.ts` queues **COD (no-payment) orders**
+  in localStorage when `!navigator.onLine`, auto-flushes to `POST /api/orders` on the `online` event/startup; New Order
+  submit branches to enqueue when offline (paid orders + convert require connectivity), with a pending-sync banner.
+- **8.2 camera scan**: `packing/camera-scanner.component.ts` uses native `BarcodeDetector` (code_128 + qr/ean/code_39),
+  rear camera overlay, graceful fallback. `ScanComponent` gains a **Camera** button → `onCameraScanned(code)` sets the
+  barcode field + `submit()` (reuses the normal scan flow).
+- **8.3 web push (CONFIG-GATED)**: pom adds `nl.martijndwars:web-push:5.1.1` + `bcprov-jdk18on`. `push` module:
+  `PushSubscriptionEntity`/`Repository` (V36 `push_subscriptions`), `WebPushService` (VAPID via `app.push.vapid.*`;
+  **no-op unless keys set** — `pushService` stays null; best-effort/never-throws; payload shaped for ngsw auto-display
+  `{notification:{title,body,data:{url}}}`), `PushSubscriptionService`, `PushController` (`/api/notifications/push/
+  {public-key,subscribe,unsubscribe}`). Hooked best-effort into `StaffNotificationDispatcher.dispatchToRole/User` (ctor
+  now takes `WebPushService` — updated 2 test call sites: `NotificationMatrixEnqueuePropertyTest`,
+  `InsightComputationServiceTest`). Frontend `notifications/push-notifications.service.ts` (`SwPush` subscribe/unsubscribe
+  + notificationClicks deep-link) + opt-in in the notification bell dropdown. `app.push.*` added to application.yml.
+- **8.4 announcements**: `announcement` module — `Announcement` entity (V35 `staff_announcements`), repo, service (audit
+  ANNOUNCEMENT_CREATED/UPDATED/DELETED + ENTITY_ANNOUNCEMENT), `StaffAnnouncementController` `GET /api/announcements`
+  (isAuthenticated, active only) + `AdminAnnouncementController` `/api/admin/announcements` (ADMIN CRUD + `/{id}/active`).
+  Frontend `announcements/` feature (route `/announcements` adminOnly, nav link under Settings) + shell renders active
+  banners for all staff, dismissible per-user via localStorage.
+- Verified: backend compiles (web-push + BC resolve), targeted tests pass (guard/notification/insights = 18), admin
+  `build:admin` complete with `ngsw-worker.js`/`ngsw.json`/`manifest.webmanifest` emitted. **Highest migration now V36.**
+- NOTE (pre-existing, out of scope): `POST /api/notifications/{id}/read` doesn't verify the notification belongs to the
+  caller — flagged, not fixed.
+
+## Packing page redesign (V37) — implemented
+The `/packing` page (most-used floor screen) was rebuilt to match the app's design language:
+- **KPI tiles** (awaiting pack / handover / dispatch counts), a **hero scan box** (keyboard scanner +
+  phone camera button from §8.2), and the three work queues rendered as a **table** — columns Order ID /
+  Customer / Price / Order date / Salesperson — with **clickable rows → `/orders?q={code}`**, per-row
+  primary action (Mark packed / Handover / Dispatch) + Print label.
+- Backend: new `packing/dto/PackingQueueRow` adds `salespersonName` + `orderDate` to each queue row;
+  `PackingService.queue()` resolves salesperson names (via `UserRepository`) and maps to the new DTO;
+  queues sorted **DESC by order date**. `PackingQueueResponse` now carries `PackingQueueRow` lists.
+- Frontend `packing/scan.component.*` + `packing.model.ts` updated; focus uses `preventScroll:true` so
+  opening the page no longer auto-scrolls to the bottom.
+- **Migration V37** clamps any future-dated `orders.created_at` back to now (bad seed/test dates). No
+  schema change. Verified: backend tests pass (`PackingServiceTest` updated), admin `build:admin` clean.
+
+## Salesperson 360 + Analytics/insights/reporting §6 (V38) — implemented
+Admin-facing performance tracking + analytics, so admins can monitor/compare salespeople daily.
+- **`performance` module**: `SalespersonPerformanceService` (leaderboard = per-salesperson orders/
+  revenue/conversion/delivery-success/target-progress; + per-person detail) + `SalespersonPerformanceController`
+  (`GET /api/admin/salespeople/performance` leaderboard, `GET /{id}/performance` detail; ADMIN). **Sales
+  targets (§6.1)**: `SalesTarget` entity + `SalesTargetService` (per-salesperson monthly revenue target),
+  endpoints `GET/POST /api/admin/salespeople/targets` on the same controller. **Migration V38** creates
+  `sales_targets`. Frontend: Salespeople page gains per-card KPIs + sort + a **performance drawer**;
+  "Salespeople" promoted to a top-level nav entry (CRM group).
+- **`analytics` module (§6.3 retention + §6.5 forecast)**: `RetentionService` (repeat-customer cohorts:
+  new vs returning, repeat rate from `OrderRepository.customerOrderDates`), `ForecastService` (next-period
+  revenue + product demand from trailing sales via `productDemandBetween`), `AnalyticsController`
+  `GET /api/admin/analytics/{retention,forecast}` (ADMIN). Added `OrderRepository` queries
+  `salespersonRevenueBetween`, `customerOrderDates`, `productDemandBetween`, `sumOutstandingCodActive`,
+  `sumCodCollectedSince`.
+- Frontend `analytics/` feature — tabs **Targets / Retention / Forecast**, route `/analytics`
+  (`adminOnlyGuard`), nav under "Analytics & Reports". §6.4 configurable dashboard tiles = show/hide
+  persisted in `localStorage`. §6.2 confirmed already covered by existing reporting.
+- Verified: backend 25 analytics/performance tests pass; admin `build:admin` complete. Uses Clock
+  dual-constructor pattern + `SalespersonScopeResolver` + `AuditService` (no duplication).
+
+## Nav reorg + collapsible groups — implemented
+`shell/admin-shell.component.ts` hamburger nav: groups are **collapsible (accordion), collapsed by
+default**, reset on drawer close (`openGroups` signal + `isGroupOpen`/`toggleGroup` + chevron CSS).
+Every link sits under a named group — only "Shifa Dashboard" is standalone. Groups: **CRM** (Leads,
+Due follow-ups, Customers, Salespeople), **Analytics & Reports** (Reports [ADMIN+ACCOUNTANT], Analytics,
+Insights), **Account & Settings** (My Profile, Settings, Users, …). Bottom 4-tab bar unchanged.
+Also fixed the top appbar splitting into two rows: `.shifa-appbar__inner { flex-wrap: nowrap }`
+(Bootstrap's `.navbar > .container-xl` inherits `flex-wrap: wrap`); actions/search made shrinkable.
+
+## Global table-overflow fix — implemented
+Wide tables (Returns, Orders, …) bled off-screen because Tabler `.card` is `display:flex; flex-direction:
+column`, so `.card-body`/`.table-responsive` defaulted to `min-width:auto` and refused to shrink,
+defeating `overflow-x:auto` and widening the whole page. Fix in `frontend/projects/admin/src/styles.css`:
+`.card-body, .card > .table-responsive, .card-body > .table-responsive { min-width:0 }` +
+`.table-responsive { min-width:0; max-width:100% }` so wide tables scroll **inside** their card instead
+of stretching the layout. Global (covers every table). Frontend-only; admin `build:admin` clean.

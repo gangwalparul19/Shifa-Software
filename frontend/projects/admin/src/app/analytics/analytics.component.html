@@ -1,0 +1,316 @@
+<admin-page-header
+  title="Analytics"
+  subtitle="Targets & incentives, customer retention, and demand/cash forecasting."
+  [breadcrumbs]="[{ label: 'Analytics' }]"
+/>
+
+<!-- Tabs -->
+<div class="btn-list mb-3">
+  @for (t of tabs; track t.key) {
+    <button
+      type="button"
+      class="btn btn-sm"
+      [class.btn-primary]="activeTab() === t.key"
+      [class.btn-outline-secondary]="activeTab() !== t.key"
+      (click)="selectTab(t.key)"
+    >
+      <i class="ti {{ t.icon }} me-1"></i>{{ t.label }}
+    </button>
+  }
+</div>
+
+<!-- ============================ TARGETS (§6.1) ============================ -->
+@if (activeTab() === 'targets') {
+  <div class="card mb-3">
+    <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+      <label class="form-label mb-0 me-1">Month</label>
+      <input
+        type="month"
+        class="form-control form-control-sm w-auto"
+        [value]="month()"
+        (change)="onMonthChange($any($event.target).value)"
+      />
+      <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" (click)="loadTargets()" [disabled]="targetsLoading()">
+        <i class="ti ti-refresh me-1"></i> Refresh
+      </button>
+    </div>
+  </div>
+
+  @if (targetsLoading()) {
+    <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading targets…" />
+  } @else if (targetsError()) {
+    <admin-state-panel variant="error" [card]="true" [message]="targetsError()!" (retry)="loadTargets()" />
+  } @else if (targetRows().length === 0) {
+    <admin-state-panel variant="empty" [card]="true" icon="ti-target" title="No salespeople"
+      message="Create salesperson accounts under Users to set targets." />
+  } @else {
+    <div class="card">
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+          <thead>
+            <tr>
+              <th>Salesperson</th>
+              <th class="text-end">Target (₹)</th>
+              <th class="text-end">Achieved</th>
+              <th style="min-width: 140px">Attainment</th>
+              <th class="text-end">Incentive %</th>
+              <th class="text-end">Incentive</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of targetRows(); track r.salespersonId) {
+              <tr>
+                <td>
+                  <div class="fw-medium">{{ r.salespersonName }}</div>
+                  <div class="text-secondary small">{{ r.orderCount }} orders</div>
+                </td>
+                <td class="text-end" style="max-width: 130px">
+                  <input
+                    type="number"
+                    class="form-control form-control-sm text-end"
+                    min="0"
+                    [value]="edits()[r.salespersonId]?.target ?? ''"
+                    (input)="setEdit(r.salespersonId, 'target', $any($event.target).value)"
+                    placeholder="—"
+                  />
+                </td>
+                <td class="text-end fw-semibold">{{ money(r.achieved) }}</td>
+                <td>
+                  @if (r.attainmentPct !== null) {
+                    <div class="d-flex align-items-center gap-2">
+                      <div class="progress flex-fill" style="height: 6px">
+                        <div
+                          class="progress-bar"
+                          [class.bg-success]="r.attainmentPct >= 100"
+                          [class.bg-warning]="r.attainmentPct >= 60 && r.attainmentPct < 100"
+                          [class.bg-danger]="r.attainmentPct < 60"
+                          [style.width.%]="r.attainmentPct > 100 ? 100 : r.attainmentPct"
+                        ></div>
+                      </div>
+                      <span class="small fw-semibold {{ attainmentClass(r.attainmentPct) }}">{{ r.attainmentPct }}%</span>
+                    </div>
+                  } @else {
+                    <span class="text-secondary small">No target</span>
+                  }
+                </td>
+                <td class="text-end" style="max-width: 90px">
+                  <input
+                    type="number"
+                    class="form-control form-control-sm text-end"
+                    min="0" max="100"
+                    [value]="edits()[r.salespersonId]?.incentive ?? ''"
+                    (input)="setEdit(r.salespersonId, 'incentive', $any($event.target).value)"
+                    placeholder="—"
+                  />
+                </td>
+                <td class="text-end">
+                  @if (r.targetMet && r.incentiveAmount) {
+                    <span class="text-success fw-semibold">{{ money(r.incentiveAmount) }}</span>
+                  } @else {
+                    <span class="text-secondary">—</span>
+                  }
+                </td>
+                <td class="text-end">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    (click)="saveTarget(r)"
+                    [disabled]="savingId() === r.salespersonId || (edits()[r.salespersonId]?.target ?? null) === null"
+                  >
+                    @if (savingId() === r.salespersonId) {
+                      <span class="spinner-border spinner-border-sm"></span>
+                    } @else {
+                      <i class="ti ti-device-floppy"></i>
+                    }
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  }
+}
+
+<!-- =========================== RETENTION (§6.3) =========================== -->
+@if (activeTab() === 'retention') {
+  <div class="card mb-3">
+    <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+      <label class="form-label mb-0 me-1">Cohorts</label>
+      <select class="form-select form-select-sm w-auto" [value]="cohortMonths()" (change)="setCohortMonths($any($event.target).value)">
+        <option value="3">Last 3 months</option>
+        <option value="6">Last 6 months</option>
+        <option value="12">Last 12 months</option>
+      </select>
+      <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" (click)="loadRetention()" [disabled]="retentionLoading()">
+        <i class="ti ti-refresh me-1"></i> Refresh
+      </button>
+    </div>
+  </div>
+
+  @if (retentionLoading()) {
+    <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading retention…" />
+  } @else if (retentionError()) {
+    <admin-state-panel variant="error" [card]="true" [message]="retentionError()!" (retry)="loadRetention()" />
+  } @else if (retention(); as r) {
+    <div class="row row-cards mb-3">
+      <div class="col-6 col-lg-3">
+        <div class="card"><div class="card-body">
+          <div class="subheader">Repeat rate</div>
+          <div class="h1 m-0">{{ r.repeatRatePct }}%</div>
+          <div class="text-secondary small">{{ r.repeatCustomers }} of {{ r.totalCustomers }} customers</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card"><div class="card-body">
+          <div class="subheader">Avg orders / customer</div>
+          <div class="h1 m-0">{{ r.avgOrdersPerCustomer }}</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card"><div class="card-body">
+          <div class="subheader">Avg days to reorder</div>
+          <div class="h1 m-0">{{ r.avgDaysToReorder }}</div>
+          <div class="text-secondary small">1st → 2nd order</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card"><div class="card-body">
+          <div class="subheader">Total customers</div>
+          <div class="h1 m-0">{{ r.totalCustomers }}</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="row row-cards">
+      <div class="col-lg-5">
+        <div class="card mb-3">
+          <div class="card-header py-2"><h3 class="card-title mb-0">Time to reorder</h3></div>
+          <div class="card-body">
+            @if (reorderChart(); as opts) {
+              <apx-chart [series]="opts.series" [chart]="opts.chart" [colors]="opts.colors"
+                [dataLabels]="opts.dataLabels" [plotOptions]="opts.plotOptions" [xaxis]="opts.xaxis"
+                [yaxis]="opts.yaxis" [grid]="opts.grid" [tooltip]="opts.tooltip" />
+            } @else {
+              <div class="text-secondary small py-4 text-center">Not enough repeat orders yet.</div>
+            }
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-7">
+        <div class="card mb-3">
+          <div class="card-header py-2"><h3 class="card-title mb-0">Cohort retention</h3></div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-vcenter card-table text-center mb-0 cohort-grid">
+                <thead>
+                  <tr>
+                    <th class="text-start">Cohort</th>
+                    <th class="text-end">Size</th>
+                    @for (n of [0,1,2,3,4,5,6,7,8,9,10,11].slice(0, cohortMonths()); track n) {
+                      <th>M{{ n }}</th>
+                    }
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (c of r.cohorts; track c.cohortMonth) {
+                    <tr>
+                      <td class="text-start fw-medium">{{ c.cohortMonth }}</td>
+                      <td class="text-end">{{ c.cohortSize }}</td>
+                      @for (p of c.retentionPct; track $index) {
+                        <td class="{{ heatClass(p) }}">{{ p }}%</td>
+                      }
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+}
+
+<!-- =========================== FORECAST (§6.5) =========================== -->
+@if (activeTab() === 'forecast') {
+  @if (forecastLoading()) {
+    <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading forecast…" />
+  } @else if (forecastError()) {
+    <admin-state-panel variant="error" [card]="true" [message]="forecastError()!" (retry)="loadForecast()" />
+  } @else if (forecast(); as f) {
+    <div class="row row-cards mb-3">
+      <div class="col-6 col-lg-3">
+        <div class="card"><div class="card-body">
+          <div class="subheader">COD outstanding</div>
+          <div class="h1 m-0">{{ money(f.cash.outstandingCod) }}</div>
+          <div class="text-secondary small">expected from active orders</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card"><div class="card-body">
+          <div class="subheader">Collected ({{ f.cash.windowDays }}d)</div>
+          <div class="h1 m-0">{{ money(f.cash.collectedInWindow) }}</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card"><div class="card-body">
+          <div class="subheader">Avg weekly collection</div>
+          <div class="h1 m-0">{{ money(f.cash.avgWeeklyCollection) }}</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card"><div class="card-body">
+          <div class="subheader">Weeks to clear</div>
+          <div class="h1 m-0">{{ f.cash.estimatedWeeksToClear ?? '—' }}</div>
+          <div class="text-secondary small">at current run-rate</div>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header py-2">
+        <h3 class="card-title mb-0">Projected demand — next {{ f.horizonDays }} days</h3>
+        <span class="text-secondary small ms-2">(from last {{ f.lookbackDays }} days)</span>
+      </div>
+      <div class="card-body">
+        @if (demandChart(); as opts) {
+          <apx-chart [series]="opts.series" [chart]="opts.chart" [colors]="opts.colors"
+            [dataLabels]="opts.dataLabels" [plotOptions]="opts.plotOptions" [xaxis]="opts.xaxis"
+            [yaxis]="opts.yaxis" [grid]="opts.grid" [tooltip]="opts.tooltip" />
+        } @else {
+          <div class="text-secondary small py-4 text-center">No recent sales to forecast from.</div>
+        }
+      </div>
+    </div>
+
+    @if (f.topDemand.length > 0) {
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-vcenter card-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th class="text-end">Sold (last {{ f.lookbackDays }}d)</th>
+                <th class="text-end">Avg / day</th>
+                <th class="text-end">Projected (next {{ f.horizonDays }}d)</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (d of f.topDemand; track d.productId) {
+                <tr>
+                  <td class="fw-medium">{{ d.productName }}</td>
+                  <td class="text-end">{{ d.unitsRecent }}</td>
+                  <td class="text-end">{{ d.avgPerDay }}</td>
+                  <td class="text-end fw-semibold">{{ d.projectedUnits }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    }
+  }
+}

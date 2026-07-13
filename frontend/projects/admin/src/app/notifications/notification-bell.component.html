@@ -69,6 +69,26 @@
         }
       </div>
 
+      <!-- Browser push opt-in (FEATURE-ROADMAP §8.3); hidden when unsupported/unconfigured -->
+      @if (push.state() === 'available') {
+        <div class="card-footer p-2">
+          <button type="button" class="btn btn-sm btn-outline-primary w-100" (click)="push.enable()">
+            <i class="ti ti-bell-plus me-1"></i> Enable push on this device
+          </button>
+        </div>
+      } @else if (push.state() === 'subscribed') {
+        <div class="card-footer p-2 d-flex align-items-center justify-content-between">
+          <span class="text-secondary small"><i class="ti ti-bell-check me-1"></i> Push is on</span>
+          <button type="button" class="btn btn-sm btn-link text-decoration-none" (click)="push.disable()">
+            Turn off
+          </button>
+        </div>
+      } @else if (push.state() === 'denied') {
+        <div class="card-footer p-2 text-center text-secondary small">
+          <i class="ti ti-bell-off me-1"></i> Push is blocked in your browser settings.
+        </div>
+      }
+
       <div class="card-footer p-2 text-center">
         <a class="btn btn-sm btn-link text-decoration-none w-100" routerLink="/notifications" (click)="close()">
           View all

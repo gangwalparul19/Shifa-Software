@@ -236,6 +236,25 @@ a {
   border-top-color: rgba(4, 32, 69, 0.08);
 }
 
+/* --------------------------------------------------------------------------
+   Global table-overflow guard.
+   Tabler/Bootstrap .card is `display:flex; flex-direction:column`, so its
+   flex children (.card-body / .table-responsive) default to `min-width:auto`
+   and refuse to shrink below their content width. That defeats
+   `.table-responsive { overflow-x:auto }` and pushes the whole page wider than
+   the viewport (wide tables like Returns/Orders bleed off-screen).
+   Letting those flex items shrink to zero re-enables the inner scroll so wide
+   tables scroll *inside* their card instead of stretching the layout. */
+.card-body,
+.card > .table-responsive,
+.card-body > .table-responsive {
+  min-width: 0;
+}
+.table-responsive {
+  min-width: 0;
+  max-width: 100%;
+}
+
 /* Stat card coloured accent bar */
 .stat-accent {
   position: relative;

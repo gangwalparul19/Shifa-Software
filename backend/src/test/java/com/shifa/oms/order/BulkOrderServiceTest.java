@@ -66,7 +66,8 @@ class BulkOrderServiceTest {
         AdminOrderService adminOrderService =
                 new AdminOrderService(orderRepository, labelService, workflowService);
         PackingService packingService = new PackingService(
-                orderRepository, new OutboxEventPublisher(outboxEventRepository), workflowService);
+                orderRepository, new OutboxEventPublisher(outboxEventRepository), workflowService,
+                org.mockito.Mockito.mock(com.shifa.oms.auth.UserRepository.class));
         service = new BulkOrderService(adminOrderService, packingService, orderRepository);
 
         lenient().when(orderRepository.save(any(OrderEntity.class)))

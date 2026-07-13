@@ -88,6 +88,63 @@ export interface UpdateStaffProfileRequest {
   idProofNumber: string | null;
 }
 
+// --- Salesperson 360 (performance) ---------------------------------------
+
+/** Headline performance metrics for one salesperson (leaderboard row). */
+export interface SalespersonPerformanceSummary {
+  id: number;
+  username: string;
+  fullName: string;
+  active: boolean;
+  verificationStatus: VerificationStatus | string | null;
+  ordersTotal: number;
+  ordersThisMonth: number;
+  ordersToday: number;
+  revenueTotal: string;
+  revenueThisMonth: string;
+  deliveredCount: number;
+  failedCount: number;
+  /** delivered / (delivered + failed) as a percentage (0–100). */
+  successRate: number;
+  codOutstanding: string;
+}
+
+/** One day of a salesperson's activity trend. */
+export interface SalespersonDailyPoint {
+  date: string;
+  orders: number;
+  revenue: string;
+}
+
+/** A recent order in a salesperson's 360. */
+export interface SalespersonOrderRow {
+  orderCode: string;
+  customerName: string;
+  totalAmount: string;
+  orderStatus: string;
+  paymentStatus: string;
+  createdAt: string;
+}
+
+/** A salesperson's lead/CRM performance. */
+export interface SalespersonLeadMetrics {
+  total: number;
+  won: number;
+  lost: number;
+  active: number;
+  /** won / total as a percentage (0–100). */
+  conversionRate: number;
+  dueFollowUps: number;
+}
+
+/** The full "Salesperson 360" detail. */
+export interface SalespersonPerformanceDetail {
+  summary: SalespersonPerformanceSummary;
+  trend: SalespersonDailyPoint[];
+  recentOrders: SalespersonOrderRow[];
+  leads: SalespersonLeadMetrics;
+}
+
 /**
  * Data access for ADMIN-only staff onboarding &amp; ID verification
  * ({@code /api/admin/staff}). JSON calls go through {@link ApiClient} (the auth
@@ -161,6 +218,22 @@ export class SalespeopleService {
     return this.api.post<ProfileChangeRequest>(
       `/api/admin/staff/change-requests/${id}/review`,
       { status, note },
+    );
+  }
+
+  // --- Salesperson 360 (performance) -------------------------------------
+
+  /** Team leaderboard — headline performance metrics for every salesperson. */
+  performanceLeaderboard(): Observable<SalespersonPerformanceSummary[]> {
+    return this.api.get<SalespersonPerformanceSummary[]>('/api/admin/salespeople/performance');
+  }
+
+  /** One salesperson's full 360 (summary + daily trend + recent orders + leads). */
+  performance(id: number, days?: number): Observable<SalespersonPerformanceDetail> {
+    const params = days ? { params: { days } } : undefined;
+    return this.api.get<SalespersonPerformanceDetail>(
+      `/api/admin/salespeople/${id}/performance`,
+      params,
     );
   }
 }

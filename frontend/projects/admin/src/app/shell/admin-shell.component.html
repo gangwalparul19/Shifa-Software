@@ -24,6 +24,27 @@
           <admin-global-search />
         </div>
 
+        <!-- Offline indicator (FEATURE-ROADMAP §8.1) -->
+        @if (!pwa.online()) {
+          <span class="shifa-offline-chip" title="You are offline — changes are saved and sync when you reconnect">
+            <i class="ti ti-wifi-off" aria-hidden="true"></i>
+            <span class="d-none d-sm-inline">Offline</span>
+          </span>
+        }
+
+        <!-- Install app (FEATURE-ROADMAP §8.1) -->
+        @if (pwa.installable()) {
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-primary shifa-install-btn"
+            (click)="pwa.promptInstall()"
+            title="Install Shifa OMS as an app"
+          >
+            <i class="ti ti-download me-1" aria-hidden="true"></i>
+            <span class="d-none d-sm-inline">Install</span>
+          </button>
+        }
+
         <!-- Live SSE indicator -->
         <span
           class="live-indicator d-none d-sm-inline-flex"
@@ -100,6 +121,32 @@
   <!-- ===================== Page body ===================== -->
   <div class="page-wrapper">
     <main class="page-body shifa-appshell__body">
+      <div class="container-xl">
+        <!-- App-update ready banner (FEATURE-ROADMAP §8.1) -->
+        @if (pwa.updateReady()) {
+          <div class="alert alert-info d-flex align-items-center shifa-app-banner" role="status">
+            <i class="ti ti-rocket me-2"></i>
+            <div class="flex-fill">A new version of Shifa OMS is ready.</div>
+            <button type="button" class="btn btn-sm btn-info ms-2" (click)="pwa.applyUpdate()">
+              Update now
+            </button>
+          </div>
+        }
+
+        <!-- Staff announcement banners (FEATURE-ROADMAP §8.4) -->
+        @for (a of visibleAnnouncements(); track a.id) {
+          <div class="alert {{ annAlertClass(a.severity) }} d-flex align-items-center shifa-app-banner" role="status">
+            <i class="ti {{ annIcon(a.severity) }} me-2"></i>
+            <div class="flex-fill">{{ a.message }}</div>
+            <button
+              type="button"
+              class="btn-close ms-2"
+              (click)="dismissAnnouncement(a.id)"
+              aria-label="Dismiss announcement"
+            ></button>
+          </div>
+        }
+      </div>
       <div class="container-xl" [@routeFade]="pageTitle()">
         <router-outlet />
       </div>
@@ -161,21 +208,29 @@
               <span class="shifa-navdrawer__text">{{ entry.label }}</span>
             </a>
           } @else {
-            <div class="shifa-navdrawer__group">
-              <div class="shifa-navdrawer__label">
+            <div class="shifa-navdrawer__group" [class.is-open]="isGroupOpen(entry.label)">
+              <button
+                type="button"
+                class="shifa-navdrawer__label shifa-navdrawer__label--toggle"
+                (click)="toggleGroup(entry.label)"
+                [attr.aria-expanded]="isGroupOpen(entry.label)"
+              >
                 <i class="ti {{ entry.icon }}" aria-hidden="true"></i>
                 <span>{{ entry.label }}</span>
-              </div>
-              @for (child of entry.children; track child.path) {
-                <a
-                  class="shifa-navdrawer__item shifa-navdrawer__item--child"
-                  [routerLink]="child.path"
-                  routerLinkActive="active"
-                  (click)="closeMenu()"
-                >
-                  <span class="nav-link-icon"><i class="ti {{ child.icon }}"></i></span>
-                  <span class="shifa-navdrawer__text">{{ child.label }}</span>
-                </a>
+                <i class="ti ti-chevron-down shifa-navdrawer__chev" aria-hidden="true"></i>
+              </button>
+              @if (isGroupOpen(entry.label)) {
+                @for (child of entry.children; track child.path) {
+                  <a
+                    class="shifa-navdrawer__item shifa-navdrawer__item--child"
+                    [routerLink]="child.path"
+                    routerLinkActive="active"
+                    (click)="closeMenu()"
+                  >
+                    <span class="nav-link-icon"><i class="ti {{ child.icon }}"></i></span>
+                    <span class="shifa-navdrawer__text">{{ child.label }}</span>
+                  </a>
+                }
               }
             </div>
           }

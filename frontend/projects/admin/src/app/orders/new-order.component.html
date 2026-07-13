@@ -28,6 +28,20 @@
   </div>
 }
 
+<!-- Offline orders waiting to sync (FEATURE-ROADMAP §8.1) -->
+@if (offlineQueue.pendingCount() > 0) {
+  <div class="alert alert-warning d-flex align-items-center" role="status">
+    <i class="ti ti-cloud-off me-2"></i>
+    <div class="flex-fill">
+      {{ offlineQueue.pendingCount() }} order{{ offlineQueue.pendingCount() === 1 ? '' : 's' }}
+      saved offline, waiting to sync.
+    </div>
+    <button type="button" class="btn btn-sm btn-warning ms-2" (click)="offlineQueue.flush()">
+      <i class="ti ti-refresh me-1"></i> Sync now
+    </button>
+  </div>
+}
+
 <form [formGroup]="form" (ngSubmit)="submit()" novalidate class="shifa-no">
   <!-- ===================== Customer Details ===================== -->
   <section class="shifa-no__section">
@@ -72,6 +86,17 @@
               <i class="ti ti-alert-triangle me-1"></i>
               Repeat customer — {{ prior }} previous order{{ prior === 1 ? '' : 's' }} on this number.
             </small>
+          }
+          <!-- Delivery-reliability nudge (FEATURE-ROADMAP §1.2): only when there is risk. -->
+          @if (customerRisk(); as risk) {
+            @if (risk.level !== 'LOW') {
+              <div class="alert alert-{{ risk.level === 'HIGH' ? 'danger' : 'warning' }} py-1 px-2 mt-2 mb-0 d-flex align-items-start">
+                <i class="ti ti-shield-half-filled me-1 mt-1"></i>
+                <div class="small">
+                  <strong>{{ riskLabel(risk.level) }}.</strong> {{ risk.message }}
+                </div>
+              </div>
+            }
           }
         </div>
 

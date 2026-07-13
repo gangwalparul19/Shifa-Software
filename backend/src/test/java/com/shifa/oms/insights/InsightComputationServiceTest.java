@@ -119,7 +119,9 @@ class InsightComputationServiceTest {
             notificationStore.add(n);
             return n;
         });
-        StaffNotificationDispatcher dispatcher = new StaffNotificationDispatcher(notificationRepository);
+        StaffNotificationDispatcher dispatcher = new StaffNotificationDispatcher(notificationRepository,
+                new com.shifa.oms.push.WebPushService(
+                        null, new com.fasterxml.jackson.databind.ObjectMapper(), "", "", ""));
 
         // Real audit service over a stubbed repo (never-throwing, best-effort).
         AuditEventRepository auditEventRepository = mock(AuditEventRepository.class);

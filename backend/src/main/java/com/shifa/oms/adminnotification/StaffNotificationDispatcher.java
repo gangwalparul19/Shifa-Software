@@ -30,9 +30,17 @@ import org.springframework.stereotype.Service;
 public class StaffNotificationDispatcher {
 
     private final AdminNotificationRepository repository;
+    private final com.shifa.oms.push.WebPushService webPushService;
 
-    public StaffNotificationDispatcher(AdminNotificationRepository repository) {
+    public StaffNotificationDispatcher(AdminNotificationRepository repository,
+                                       com.shifa.oms.push.WebPushService webPushService) {
         this.repository = repository;
+        this.webPushService = webPushService;
+    }
+
+    /** Deep-link a push to the order (when known), else the app home. */
+    private static String linkFor(String orderCode) {
+        return orderCode != null && !orderCode.isBlank() ? "/orders?q=" + orderCode : "/";
     }
 
     /**
@@ -54,7 +62,10 @@ public class StaffNotificationDispatcher {
         AdminNotification notification = new AdminNotification(
                 type, title, detail, severity, orderId, orderCode, sourceEventId);
         notification.setRecipientRole(role);
-        return repository.save(notification);
+        AdminNotification saved = repository.save(notification);
+        // Best-effort browser push (FEATURE-ROADMAP §8.3); no-op unless configured.
+        webPushService.sendToRole(role, title, detail, linkFor(orderCode));
+        return saved;
     }
 
     /**
@@ -76,7 +87,10 @@ public class StaffNotificationDispatcher {
         AdminNotification notification = new AdminNotification(
                 type, title, detail, severity, orderId, orderCode, sourceEventId);
         notification.setRecipientUserId(userId);
-        return repository.save(notification);
+        AdminNotification saved = repository.save(notification);
+        // Best-effort browser push (FEATURE-ROADMAP §8.3); no-op unless configured.
+        webPushService.sendToUser(userId, title, detail, linkFor(orderCode));
+        return saved;
     }
 
     private boolean isDuplicate(Long sourceEventId, Role role, Long userId) {

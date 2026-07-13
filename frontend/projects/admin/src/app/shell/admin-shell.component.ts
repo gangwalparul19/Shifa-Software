@@ -12,6 +12,13 @@ import { AuthService, Role } from 'core';
 import { AdminEventsService } from '../dashboard/admin-events.service';
 import { routeFade } from '../shared/animations';
 import { ConfirmService } from '../shared/confirm.service';
+import { PwaService } from '../shared/pwa.service';
+import { AnnouncementsService } from '../announcements/announcements.service';
+import {
+  Announcement,
+  announcementAlertClass,
+  announcementIcon,
+} from '../announcements/announcements.model';
 import { ToastsComponent } from '../shared/toasts.component';
 import { GlobalSearchComponent } from './global-search.component';
 import { NotificationBellComponent } from '../notifications/notification-bell.component';
@@ -92,13 +99,79 @@ interface BottomTab {
 export class AdminShellComponent {
   protected readonly auth = inject(AuthService);
   protected readonly events = inject(AdminEventsService);
+  protected readonly pwa = inject(PwaService);
+  private readonly announcementsService = inject(AnnouncementsService);
   private readonly router = inject(Router);
   private readonly confirm = inject(ConfirmService);
+
+  // --- Staff announcement banners (FEATURE-ROADMAP §8.4) ------------------
+  private static readonly DISMISSED_KEY = 'shifa.dismissedAnnouncements.v1';
+  private readonly announcements = signal<Announcement[]>([]);
+  private readonly dismissed = signal<Set<number>>(this.loadDismissed());
+  /** Active announcements the current user has not dismissed. */
+  protected readonly visibleAnnouncements = computed(() =>
+    this.announcements().filter((a) => !this.dismissed().has(a.id)),
+  );
+  protected readonly annAlertClass = announcementAlertClass;
+  protected readonly annIcon = announcementIcon;
+
+  constructor() {
+    // The shell only mounts for authenticated staff (staffGuard), so it is safe
+    // to fetch the active announcements immediately for the banner.
+    if (this.auth.session()) {
+      this.announcementsService.active().subscribe({
+        next: (rows) => this.announcements.set(rows),
+        error: () => {
+          /* non-fatal — no banner */
+        },
+      });
+    }
+  }
+
+  /** Dismisses an announcement banner for this user (remembered locally). */
+  dismissAnnouncement(id: number): void {
+    const next = new Set(this.dismissed());
+    next.add(id);
+    this.dismissed.set(next);
+    try {
+      localStorage.setItem(AdminShellComponent.DISMISSED_KEY, JSON.stringify([...next]));
+    } catch {
+      /* storage unavailable — non-fatal */
+    }
+  }
+
+  private loadDismissed(): Set<number> {
+    try {
+      const raw = localStorage.getItem(AdminShellComponent.DISMISSED_KEY);
+      return raw ? new Set<number>(JSON.parse(raw) as number[]) : new Set<number>();
+    } catch {
+      return new Set<number>();
+    }
+  }
 
   /** Whether the off-canvas hamburger navigation drawer is open. */
   protected readonly menuOpen = signal(false);
   /** Whether the top-bar user dropdown is open. */
   protected readonly userMenuOpen = signal(false);
+
+  /** Nav groups currently expanded in the drawer (all collapsed by default). */
+  private readonly openGroups = signal<Set<string>>(new Set());
+
+  /** Whether a nav group is expanded. */
+  isGroupOpen(label: string): boolean {
+    return this.openGroups().has(label);
+  }
+
+  /** Expands/collapses a nav group (accordion-style, collapsed by default). */
+  toggleGroup(label: string): void {
+    const next = new Set(this.openGroups());
+    if (next.has(label)) {
+      next.delete(label);
+    } else {
+      next.add(label);
+    }
+    this.openGroups.set(next);
+  }
 
   /**
    * Full navigation model used by the hamburger drawer (Req 3). Standalone
@@ -114,7 +187,6 @@ export class AdminShellComponent {
     // TODO(mobile-ui-redesign Req 4): add a lightweight Home summary landing
     // view and (optionally) redirect post-login there instead of /dashboard.
     { kind: 'link', label: 'Shifa Dashboard', path: '/dashboard', icon: 'ti-layout-dashboard' },
-    { kind: 'link', label: 'My Profile', path: '/my-profile', icon: 'ti-user-circle' },
     {
       kind: 'group',
       label: 'Orders',
@@ -141,11 +213,10 @@ export class AdminShellComponent {
       ],
     },
     {
-      // Lead Management / sales pipeline (SALESPERSON + ADMIN, lead-management
-      // Task 8). Kept out of the 4 bottom tabs; reachable here for both roles.
+      // CRM: leads pipeline, customers, and the salesperson directory/360.
       kind: 'group',
-      label: 'Leads',
-      icon: 'ti-user-plus',
+      label: 'CRM',
+      icon: 'ti-users',
       children: [
         {
           kind: 'link',
@@ -161,16 +232,24 @@ export class AdminShellComponent {
           icon: 'ti-calendar-event',
           roles: [Role.SALESPERSON, Role.ADMIN],
         },
+        {
+          kind: 'link',
+          label: 'Customers',
+          path: '/customers',
+          icon: 'ti-users',
+          // Salesperson sees Customers too, scoped by the backend to their own
+          // orders' customers (Req 5.4, 5.5); admin/accountant see everyone.
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON],
+        },
+        {
+          // Salesperson 360 — directory + performance leaderboard (ADMIN only).
+          kind: 'link',
+          label: 'Salespeople',
+          path: '/salespeople',
+          icon: 'ti-id-badge-2',
+          adminOnly: true,
+        },
       ],
-    },
-    {
-      kind: 'link',
-      label: 'Customers',
-      path: '/customers',
-      icon: 'ti-users',
-      // Salesperson sees Customers too, scoped by the backend to their own
-      // orders' customers (Req 5.4, 5.5); admin/accountant see everyone.
-      roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON],
     },
     {
       kind: 'group',
@@ -190,15 +269,22 @@ export class AdminShellComponent {
         { kind: 'link', label: 'Purchase Orders', path: '/purchase-orders', icon: 'ti-clipboard-list', adminOnly: true },
       ],
     },
-    { kind: 'link', label: 'Reports', path: '/reports', icon: 'ti-chart-histogram' },
     {
-      // Statistical Insights (ADMIN only, statistical-insights-engine Req 13).
-      // Kept out of the 4 bottom tabs; reachable here for admins.
-      kind: 'link',
-      label: 'Insights',
-      path: '/insights',
-      icon: 'ti-bulb',
-      adminOnly: true,
+      // Analytics & reporting (FEATURE-ROADMAP §6, statistical-insights-engine).
+      kind: 'group',
+      label: 'Analytics & Reports',
+      icon: 'ti-chart-histogram',
+      children: [
+        {
+          kind: 'link',
+          label: 'Reports',
+          path: '/reports',
+          icon: 'ti-chart-histogram',
+          roles: [Role.ADMIN, Role.ACCOUNTANT],
+        },
+        { kind: 'link', label: 'Analytics', path: '/analytics', icon: 'ti-chart-dots', adminOnly: true },
+        { kind: 'link', label: 'Insights', path: '/insights', icon: 'ti-bulb', adminOnly: true },
+      ],
     },
     {
       kind: 'group',
@@ -211,14 +297,15 @@ export class AdminShellComponent {
     },
     {
       kind: 'group',
-      label: 'Settings',
+      label: 'Account & Settings',
       icon: 'ti-settings',
       children: [
+        { kind: 'link', label: 'My Profile', path: '/my-profile', icon: 'ti-user-circle' },
         { kind: 'link', label: 'Users', path: '/users', icon: 'ti-users', adminOnly: true },
-        { kind: 'link', label: 'Salespeople', path: '/salespeople', icon: 'ti-id-badge-2', adminOnly: true },
         { kind: 'link', label: 'Profile approvals', path: '/profile-approvals', icon: 'ti-user-check', adminOnly: true },
         { kind: 'link', label: 'Settings', path: '/settings', icon: 'ti-settings', adminOnly: true },
         { kind: 'link', label: 'Notifications', path: '/notifications', icon: 'ti-bell', adminOnly: true },
+        { kind: 'link', label: 'Announcements', path: '/announcements', icon: 'ti-speakerphone', adminOnly: true },
         { kind: 'link', label: 'Audit Log', path: '/audit', icon: 'ti-history', adminOnly: true },
         { kind: 'link', label: 'Backups', path: '/backups', icon: 'ti-database', adminOnly: true },
       ],
@@ -374,6 +461,8 @@ export class AdminShellComponent {
 
   closeMenu(): void {
     this.menuOpen.set(false);
+    // Reset groups so the drawer always opens with everything collapsed.
+    this.openGroups.set(new Set());
   }
 
   toggleUserMenu(): void {

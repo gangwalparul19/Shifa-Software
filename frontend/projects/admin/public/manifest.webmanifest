@@ -1,0 +1,19 @@
+{
+  "name": "Shifa OMS",
+  "short_name": "Shifa OMS",
+  "description": "Shifa Herbal Remedies — Order Management dashboard for staff.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f6f9f7",
+  "theme_color": "#1F5D3F",
+  "icons": [
+    {
+      "src": "icons/shifa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

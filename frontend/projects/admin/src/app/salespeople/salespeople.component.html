@@ -18,20 +18,36 @@
     (retry)="load()"
   />
 } @else {
-  <!-- Verification filter tabs -->
-  <div class="btn-list mb-3 salespeople-filters">
-    @for (tab of filterTabs; track tab) {
-      <button
-        type="button"
-        class="btn btn-sm"
-        [class.btn-primary]="filter() === tab"
-        [class.btn-outline-secondary]="filter() !== tab"
-        (click)="setFilter(tab)"
+  <!-- Verification filter tabs + performance sort -->
+  <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-3">
+    <div class="btn-list salespeople-filters">
+      @for (tab of filterTabs; track tab) {
+        <button
+          type="button"
+          class="btn btn-sm"
+          [class.btn-primary]="filter() === tab"
+          [class.btn-outline-secondary]="filter() !== tab"
+          (click)="setFilter(tab)"
+        >
+          {{ tabLabel(tab) }}
+          <span class="badge bg-secondary-lt ms-1">{{ countFor(tab) }}</span>
+        </button>
+      }
+    </div>
+    <div class="d-flex align-items-center gap-1">
+      <span class="text-secondary small d-none d-sm-inline"><i class="ti ti-sort-descending me-1"></i>Sort by</span>
+      <select
+        class="form-select form-select-sm w-auto"
+        [value]="sortKey()"
+        (change)="setSort($any($event.target).value)"
+        aria-label="Sort salespeople"
       >
-        {{ tabLabel(tab) }}
-        <span class="badge bg-secondary-lt ms-1">{{ countFor(tab) }}</span>
-      </button>
-    }
+        <option value="revenueThisMonth">Revenue (this month)</option>
+        <option value="ordersThisMonth">Orders (this month)</option>
+        <option value="successRate">Delivery success %</option>
+        <option value="name">Name</option>
+      </select>
+    </div>
   </div>
 
   @if (filtered().length === 0) {
@@ -82,6 +98,23 @@
                   }
                 </span>
               </div>
+              <!-- Performance snapshot (Salesperson 360) -->
+              @if (perfFor(member.id); as p) {
+                <div class="sp-kpis mt-3">
+                  <div class="sp-kpi">
+                    <span class="sp-kpi__v">{{ p.ordersThisMonth }}</span>
+                    <span class="sp-kpi__k">Orders (mo)</span>
+                  </div>
+                  <div class="sp-kpi">
+                    <span class="sp-kpi__v">{{ money(p.revenueThisMonth) }}</span>
+                    <span class="sp-kpi__k">Revenue (mo)</span>
+                  </div>
+                  <div class="sp-kpi">
+                    <span class="sp-kpi__v" [class]="rateClass(p.successRate)">{{ p.successRate }}%</span>
+                    <span class="sp-kpi__k">Success</span>
+                  </div>
+                </div>
+              }
               @if (!member.active) {
                 <div class="mt-2">
                   <span class="badge bg-secondary-lt">Inactive</span>
@@ -114,6 +147,102 @@
     </header>
 
     <div class="shifa-drawer__body sp-dr__body">
+      <!-- Salesperson 360 — performance -->
+      <section class="sp-section">
+        <h3 class="sp-section__title"><i class="ti ti-chart-line me-1"></i>Performance</h3>
+        @if (detailLoading()) {
+          <div class="text-secondary small py-2"><span class="spinner-border spinner-border-sm me-1"></span> Loading performance…</div>
+        } @else if (detail(); as d) {
+          <!-- Headline metric tiles -->
+          <div class="sp-perf-grid">
+            <div class="sp-perf">
+              <span class="sp-perf__v">{{ d.summary.ordersThisMonth }}</span>
+              <span class="sp-perf__k">Orders this month</span>
+            </div>
+            <div class="sp-perf">
+              <span class="sp-perf__v">{{ money(d.summary.revenueThisMonth) }}</span>
+              <span class="sp-perf__k">Revenue this month</span>
+            </div>
+            <div class="sp-perf">
+              <span class="sp-perf__v">{{ d.summary.ordersToday }}</span>
+              <span class="sp-perf__k">Orders today</span>
+            </div>
+            <div class="sp-perf">
+              <span class="sp-perf__v" [class]="rateClass(d.summary.successRate)">{{ d.summary.successRate }}%</span>
+              <span class="sp-perf__k">Delivery success</span>
+            </div>
+            <div class="sp-perf">
+              <span class="sp-perf__v text-success">{{ d.summary.deliveredCount }}</span>
+              <span class="sp-perf__k">Delivered</span>
+            </div>
+            <div class="sp-perf">
+              <span class="sp-perf__v text-danger">{{ d.summary.failedCount }}</span>
+              <span class="sp-perf__k">Failed / RTO</span>
+            </div>
+            <div class="sp-perf">
+              <span class="sp-perf__v">{{ money(d.summary.revenueTotal) }}</span>
+              <span class="sp-perf__k">Lifetime revenue</span>
+            </div>
+            <div class="sp-perf">
+              <span class="sp-perf__v">{{ money(d.summary.codOutstanding) }}</span>
+              <span class="sp-perf__k">COD outstanding</span>
+            </div>
+          </div>
+
+          <!-- Daily activity trend (orders/day) -->
+          <div class="sp-trend">
+            <div class="sp-trend__label">Orders / day (last {{ d.trend.length }} days)</div>
+            <div class="sp-trend__bars">
+              @for (pt of d.trend; track pt.date) {
+                <span
+                  class="sp-trend__bar"
+                  [style.height.%]="pt.orders ? (pt.orders / trendMax()) * 100 : 4"
+                  [class.is-empty]="!pt.orders"
+                  [title]="(pt.date | date: 'dd MMM') + ': ' + pt.orders + ' orders'"
+                ></span>
+              }
+            </div>
+          </div>
+
+          <!-- Lead / CRM performance -->
+          <div class="sp-lead">
+            <div class="sp-lead__row">
+              <span><i class="ti ti-user-plus me-1"></i>Leads</span>
+              <span class="fw-semibold">{{ d.leads.total }}</span>
+            </div>
+            <div class="sp-lead__row">
+              <span>Converted (won)</span>
+              <span class="fw-semibold text-success">{{ d.leads.won }}</span>
+            </div>
+            <div class="sp-lead__row">
+              <span>Conversion rate</span>
+              <span class="fw-semibold" [class]="rateClass(d.leads.conversionRate)">{{ d.leads.conversionRate }}%</span>
+            </div>
+            <div class="sp-lead__row">
+              <span>Active / due follow-ups</span>
+              <span class="fw-semibold">{{ d.leads.active }} / {{ d.leads.dueFollowUps }}</span>
+            </div>
+          </div>
+
+          <!-- Recent orders -->
+          @if (d.recentOrders.length > 0) {
+            <div class="sp-recent">
+              <div class="sp-recent__label">Recent orders</div>
+              @for (o of d.recentOrders; track o.orderCode) {
+                <div class="sp-recent__row">
+                  <span class="shifa-mono fw-semibold">{{ o.orderCode }}</span>
+                  <span class="text-truncate flex-fill mx-2">{{ o.customerName }}</span>
+                  <span class="text-secondary me-2">{{ o.createdAt | date: 'dd MMM' }}</span>
+                  <span class="fw-semibold">{{ money(o.totalAmount) }}</span>
+                </div>
+              }
+            </div>
+          }
+        } @else {
+          <div class="text-secondary small py-2">No performance data available.</div>
+        }
+      </section>
+
       @if (member.verifiedAt || member.verificationNote) {
         <div class="sp-verify-meta">
           @if (member.verifiedAt) {

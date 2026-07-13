@@ -146,8 +146,8 @@
   </div>
 }
 
-<!-- Detail drawer -->
-@if (detailLoading() || selectedDetail() || detailError()) {
+<!-- Detail drawer (Customer 360) -->
+@if (detailLoading() || selectedProfile() || detailError()) {
   <div class="shifa-overlay" (click)="closeDetail()"></div>
   <aside class="shifa-drawer cust-dr" role="dialog" aria-label="Customer detail">
     @if (detailLoading()) {
@@ -166,57 +166,163 @@
         <button type="button" class="cust-dr__close" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
       </header>
       <div class="shifa-drawer__body cust-dr__body"><div class="alert alert-danger">{{ detailError() }}</div></div>
-    } @else if (selectedDetail(); as detail) {
-      <!-- Themed green header: avatar + name + mobile + tag pill -->
+    } @else if (selectedProfile(); as profile) {
+      <!-- Themed green header: avatar + name + mobile + risk pill -->
       <header class="cust-dr__head">
-        <span class="cust-dr__avatar">{{ customerInitials(detail.summary.name) }}</span>
+        <span class="cust-dr__avatar">{{ customerInitials(profile.summary.name) }}</span>
         <div class="cust-dr__headmain">
-          <div class="cust-dr__name">{{ detail.summary.name || 'Customer' }}</div>
-          <a class="cust-dr__mobile" href="tel:{{ detail.summary.mobile }}">
-            <i class="ti ti-phone me-1"></i>{{ detail.summary.mobile }}
+          <div class="cust-dr__name">{{ profile.summary.name || 'Customer' }}</div>
+          <a class="cust-dr__mobile" href="tel:{{ profile.summary.mobile }}">
+            <i class="ti ti-phone me-1"></i>{{ profile.summary.mobile }}
           </a>
         </div>
         <span class="cust-dr__tag">
-          @if (detail.summary.repeatBuyer) { <i class="ti ti-repeat me-1"></i>Repeat } @else { New }
+          @if (profile.summary.repeatBuyer) { <i class="ti ti-repeat me-1"></i>Repeat } @else { New }
         </span>
         <button type="button" class="cust-dr__close" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
       </header>
 
       <div class="shifa-drawer__body cust-dr__body">
+        <!-- Risk banner (§1.2) -->
+        <div class="cust-dr__risk" [attr.data-level]="profile.risk.level">
+          <div class="cust-dr__risk-top">
+            <span class="badge {{ riskPillClass(profile.risk.level) }}">
+              <i class="ti ti-shield-half-filled me-1"></i>{{ riskLabel(profile.risk.level) }}
+            </span>
+            <span class="cust-dr__risk-rate">
+              {{ pct(profile.metrics.successRate) }}% delivery success
+            </span>
+          </div>
+          <div class="cust-dr__risk-msg">{{ profile.risk.message }}</div>
+        </div>
+
         <!-- Stat cards -->
         <div class="cust-dr__stats">
           <div class="cust-dr__stat">
             <div class="cust-dr__stat-label"><i class="ti ti-shopping-bag me-1"></i>Orders</div>
-            <div class="cust-dr__stat-val">{{ detail.summary.orderCount }}</div>
+            <div class="cust-dr__stat-val">{{ profile.summary.orderCount }}</div>
           </div>
           <div class="cust-dr__stat">
             <div class="cust-dr__stat-label"><i class="ti ti-cash me-1"></i>Total spent</div>
-            <div class="cust-dr__stat-val">{{ money(detail.summary.totalSpent) }}</div>
+            <div class="cust-dr__stat-val">{{ money(profile.summary.totalSpent) }}</div>
           </div>
         </div>
+
+        <!-- Delivery reliability mini-metrics -->
+        <div class="cust-dr__metrics">
+          <div class="cust-dr__metric">
+            <span class="cust-dr__metric-v text-success">{{ profile.metrics.deliveredCount }}</span>
+            <span class="cust-dr__metric-k">Delivered</span>
+          </div>
+          <div class="cust-dr__metric">
+            <span class="cust-dr__metric-v text-danger">{{ profile.metrics.failedDeliveryCount }}</span>
+            <span class="cust-dr__metric-k">Failed</span>
+          </div>
+          <div class="cust-dr__metric">
+            <span class="cust-dr__metric-v">{{ profile.metrics.inFlightCount }}</span>
+            <span class="cust-dr__metric-k">In flight</span>
+          </div>
+          <div class="cust-dr__metric">
+            <span class="cust-dr__metric-v">{{ money(profile.metrics.outstanding) }}</span>
+            <span class="cust-dr__metric-k">Outstanding</span>
+          </div>
+        </div>
+
+        <!-- Tags (§1.4) -->
+        <div class="cust-dr__label"><i class="ti ti-tags me-1"></i>Tags</div>
+        <div class="cust-dr__tags">
+          @for (t of profile.tags; track t) {
+            <span class="cust-tag">
+              {{ t }}
+              <button type="button" class="cust-tag__x" (click)="removeTag(t)" [attr.aria-label]="'Remove tag ' + t">
+                <i class="ti ti-x"></i>
+              </button>
+            </span>
+          } @empty {
+            <span class="cust-dr__muted">No tags yet.</span>
+          }
+        </div>
+        <form class="cust-dr__inline" (ngSubmit)="addTag()">
+          <input
+            type="text"
+            class="form-control form-control-sm"
+            [formControl]="newTag"
+            placeholder="Add a tag (e.g. VIP, wholesale)…"
+            maxlength="40"
+            aria-label="Add a tag"
+          />
+          <button type="submit" class="btn btn-sm btn-outline-primary" [disabled]="!newTag.value.trim() || savingTag()">
+            <i class="ti ti-plus"></i>
+          </button>
+        </form>
+
+        <!-- Products bought (§1.1) -->
+        @if (profile.topProducts.length > 0) {
+          <div class="cust-dr__label"><i class="ti ti-leaf me-1"></i>Products bought</div>
+          <div class="cust-dr__facts">
+            @for (p of profile.topProducts; track p.productId ?? p.productName) {
+              <div class="cust-dr__fact">
+                <span class="cust-dr__fact-k">{{ p.productName }} <span class="cust-dr__muted">× {{ p.quantity }}</span></span>
+                <span class="cust-dr__fact-v">{{ money(p.amount) }}</span>
+              </div>
+            }
+          </div>
+        }
 
         <!-- First / last + account type -->
         <div class="cust-dr__facts">
           <div class="cust-dr__fact">
             <span class="cust-dr__fact-k">First order</span>
-            <span class="cust-dr__fact-v">{{ detail.summary.firstOrderAt ? (detail.summary.firstOrderAt | date: 'dd MMM yyyy') : '—' }}</span>
+            <span class="cust-dr__fact-v">{{ profile.summary.firstOrderAt ? (profile.summary.firstOrderAt | date: 'dd MMM yyyy') : '—' }}</span>
           </div>
           <div class="cust-dr__fact">
             <span class="cust-dr__fact-k">Last order</span>
-            <span class="cust-dr__fact-v">{{ detail.summary.lastOrderAt ? (detail.summary.lastOrderAt | date: 'dd MMM yyyy') : '—' }}</span>
+            <span class="cust-dr__fact-v">{{ profile.summary.lastOrderAt ? (profile.summary.lastOrderAt | date: 'dd MMM yyyy') : '—' }}</span>
           </div>
           <div class="cust-dr__fact">
             <span class="cust-dr__fact-k">Account</span>
-            <span class="cust-dr__fact-v">{{ detail.summary.registered ? 'Registered' : 'Guest' }}</span>
+            <span class="cust-dr__fact-v">{{ profile.summary.registered ? 'Registered' : 'Guest' }}</span>
           </div>
         </div>
+
+        <!-- Notes timeline (§1.1) -->
+        <div class="cust-dr__label">
+          <i class="ti ti-notes me-1"></i>Notes
+          <span class="cust-dr__count">{{ profile.notes.length }}</span>
+        </div>
+        <form class="cust-dr__note-add" (ngSubmit)="addNote()">
+          <textarea
+            class="form-control form-control-sm"
+            [formControl]="newNote"
+            rows="2"
+            maxlength="1000"
+            placeholder="Add a note about this customer…"
+            aria-label="Add a note"
+          ></textarea>
+          <button type="submit" class="btn btn-sm btn-primary mt-1" [disabled]="!newNote.value.trim() || savingNote()">
+            <i class="ti ti-plus me-1"></i>Add note
+          </button>
+        </form>
+        @if (profile.notes.length > 0) {
+          <div class="cust-notes">
+            @for (n of profile.notes; track n.id) {
+              <div class="cust-note">
+                <div class="cust-note__text">{{ n.note }}</div>
+                <div class="cust-note__meta">
+                  <i class="ti ti-user me-1"></i>{{ n.authorName || 'Staff' }}
+                  · {{ n.createdAt | date: 'dd MMM yyyy, HH:mm' }}
+                </div>
+              </div>
+            }
+          </div>
+        }
 
         <!-- Order history (paginated — the list can grow) -->
         <div class="cust-dr__label">
           <i class="ti ti-history me-1"></i>Order history
-          <span class="cust-dr__count">{{ detail.orders.length }}</span>
+          <span class="cust-dr__count">{{ profile.orders.length }}</span>
         </div>
-        @if (detail.orders.length === 0) {
+        @if (profile.orders.length === 0) {
           <div class="cust-dr__empty"><i class="ti ti-package-off me-1"></i>No orders on record.</div>
         } @else {
           <div class="cust-oh-list">
@@ -241,7 +347,7 @@
             <admin-pagination
               [page]="historyPage()"
               [totalPages]="historyTotalPages()"
-              [totalElements]="detail.orders.length"
+              [totalElements]="profile.orders.length"
               [size]="historySize()"
               (pageChange)="goToHistoryPage($event)"
               (sizeChange)="setHistorySize($event)"

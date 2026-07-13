@@ -305,3 +305,152 @@
 .cust-oh__chev {
   color: #9aa8a0;
 }
+
+/* ==========================================================================
+   Customer 360 additions — risk banner, delivery mini-metrics, tags, notes
+   (FEATURE-ROADMAP §1).
+   ========================================================================== */
+
+/* Risk banner: colour-accented by data-level. */
+.cust-dr__risk {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-left: 4px solid #9aa8a0;
+  border-radius: 12px;
+  padding: 0.7rem 0.85rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+  margin-bottom: 1rem;
+}
+.cust-dr__risk[data-level='LOW'] {
+  border-left-color: #2fb344;
+}
+.cust-dr__risk[data-level='MEDIUM'] {
+  border-left-color: #f59f00;
+}
+.cust-dr__risk[data-level='HIGH'] {
+  border-left-color: #d63939;
+}
+.cust-dr__risk-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.cust-dr__risk-rate {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #45524b;
+}
+.cust-dr__risk-msg {
+  margin-top: 0.4rem;
+  font-size: 0.86rem;
+  color: #45524b;
+}
+
+/* Delivery reliability mini-metrics (4-up). */
+.cust-dr__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 1.1rem;
+}
+.cust-dr__metric {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.5rem 0.4rem;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+}
+.cust-dr__metric-v {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1c2b24;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cust-dr__metric-k {
+  font-size: 0.68rem;
+  color: #64726b;
+}
+
+/* Tags. */
+.cust-dr__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+.cust-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--shifa-green-100, #e4f2ea);
+  color: var(--shifa-green-700, #164632);
+  border-radius: 999px;
+  padding: 0.15rem 0.3rem 0.15rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.cust-tag__x {
+  border: none;
+  background: rgba(22, 70, 50, 0.12);
+  color: var(--shifa-green-700, #164632);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+.cust-tag__x:hover {
+  background: rgba(214, 57, 57, 0.18);
+  color: #d63939;
+}
+.cust-dr__muted {
+  color: #8a988f;
+  font-size: 0.83rem;
+}
+
+/* Inline add-row (tag input + button). */
+.cust-dr__inline {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1.1rem;
+}
+.cust-dr__inline .form-control {
+  flex: 1 1 auto;
+}
+
+/* Note add + timeline. */
+.cust-dr__note-add {
+  margin-bottom: 0.75rem;
+}
+.cust-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.1rem;
+}
+.cust-note {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.6rem 0.75rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+}
+.cust-note__text {
+  font-size: 0.88rem;
+  color: #1c2b24;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.cust-note__meta {
+  margin-top: 0.3rem;
+  font-size: 0.72rem;
+  color: #8a988f;
+}

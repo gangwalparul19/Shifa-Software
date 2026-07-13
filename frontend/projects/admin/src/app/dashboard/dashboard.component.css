@@ -317,3 +317,23 @@ apx-chart {
 .shifa-period-totals__item {
   min-width: 0;
 }
+
+/* Customize-dashboard popover (FEATURE-ROADMAP §6.4). */
+.shifa-customize {
+  position: relative;
+}
+.shifa-customize__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 1050;
+  min-width: 220px;
+  box-shadow: 0 12px 32px rgba(15, 51, 36, 0.18);
+}
+.shifa-customize__panel .dropdown-item {
+  cursor: pointer;
+  border-radius: 6px;
+}
+.shifa-customize__panel .dropdown-item:hover {
+  background: var(--shifa-green-50, #f2f9f5);
+}

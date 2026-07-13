@@ -2,14 +2,15 @@ import { DatePipe } from '@angular/common';
 import { AfterViewInit, Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
+import { Router } from '@angular/router';
 import { ApiError } from 'core';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { PackingService } from './packing.service';
-import { PackingScanResponse, ScanLogEntry, ScanOutcome } from './packing.model';
-import { OrderSummary } from '../orders/orders.model';
+import { PackingQueueRow, PackingScanResponse, ScanLogEntry, ScanOutcome } from './packing.model';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
 import { ToastService } from '../shared/toast.service';
+import { CameraScannerComponent } from './camera-scanner.component';
 
 /** The current banner shown above the input after a scan. */
 interface ScanBanner {
@@ -60,7 +61,13 @@ interface PackWorkItem {
  */
 @Component({
   selector: 'admin-packing-scan',
-  imports: [ReactiveFormsModule, DatePipe, PageHeaderComponent, StatusBadgeComponent],
+  imports: [
+    ReactiveFormsModule,
+    DatePipe,
+    PageHeaderComponent,
+    StatusBadgeComponent,
+    CameraScannerComponent,
+  ],
   templateUrl: './scan.component.html',
   styleUrl: './scan.component.css',
 })
@@ -69,6 +76,7 @@ export class ScanComponent implements OnInit, AfterViewInit {
   private readonly dashboard = inject(DashboardService);
   private readonly toasts = inject(ToastService);
   private readonly fb = inject(FormBuilder);
+  private readonly router = inject(Router);
 
   @ViewChild('barcodeInput') private barcodeInput?: ElementRef<HTMLInputElement>;
 
@@ -78,6 +86,9 @@ export class ScanComponent implements OnInit, AfterViewInit {
 
   protected readonly submitting = signal(false);
   protected readonly banner = signal<ScanBanner | null>(null);
+
+  /** Whether the phone-camera scanner overlay is open (FEATURE-ROADMAP §8.2). */
+  protected readonly cameraOpen = signal(false);
   protected readonly log = signal<ScanLogEntry[]>([]);
 
   /** Orders the packer is actively moving through handover / dispatch this session. */
@@ -90,9 +101,9 @@ export class ScanComponent implements OnInit, AfterViewInit {
   protected readonly queues = computed<QueueCard[]>(() => this.queueSummary());
 
   // --- Work queue lists (orders to pack / hand over / dispatch) -----------
-  protected readonly awaitingPacking = signal<OrderSummary[]>([]);
-  protected readonly awaitingHandover = signal<OrderSummary[]>([]);
-  protected readonly awaitingDispatch = signal<OrderSummary[]>([]);
+  protected readonly awaitingPacking = signal<PackingQueueRow[]>([]);
+  protected readonly awaitingHandover = signal<PackingQueueRow[]>([]);
+  protected readonly awaitingDispatch = signal<PackingQueueRow[]>([]);
   protected readonly queueLoading = signal(true);
   /** The order currently running a queue action (pack/handover/dispatch), for spinners. */
   protected readonly busyOrderId = signal<number | null>(null);
@@ -104,25 +115,53 @@ export class ScanComponent implements OnInit, AfterViewInit {
     {
       kind: 'pack' as const,
       title: 'Orders to pack',
+      short: 'To pack',
       icon: 'ti-box',
+      accent: '#1f5d3f',
+      accentSoft: '#e4f2ea',
+      actionLabel: 'Pack',
+      actionIcon: 'ti-checkbox',
       hint: 'Print the label, then mark the order packed.',
       orders: this.awaitingPacking(),
     },
     {
       kind: 'handover' as const,
       title: 'Awaiting handover',
+      short: 'Handover',
       icon: 'ti-package',
+      accent: '#0284c7',
+      accentSoft: '#e0f2fe',
+      actionLabel: 'Handover',
+      actionIcon: 'ti-truck-loading',
       hint: 'Hand these packed orders to the delivery courier.',
       orders: this.awaitingHandover(),
     },
     {
       kind: 'dispatch' as const,
       title: 'Awaiting dispatch',
+      short: 'Dispatch',
       icon: 'ti-truck-delivery',
+      accent: '#b7791f',
+      accentSoft: '#fdf0d5',
+      actionLabel: 'Dispatch',
+      actionIcon: 'ti-truck-delivery',
       hint: 'Dispatch to enqueue courier assignment.',
       orders: this.awaitingDispatch(),
     },
   ]);
+
+  /** Total orders waiting across all three work queues (hero context). */
+  protected readonly totalInQueues = computed(
+    () => this.awaitingPacking().length + this.awaitingHandover().length + this.awaitingDispatch().length,
+  );
+
+  /** Scroll to a work-queue section when its KPI tile is tapped. */
+  scrollToSection(kind: string): void {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    document.getElementById('pk-section-' + kind)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   ngOnInit(): void {
     this.loadQueues();
@@ -146,7 +185,7 @@ export class ScanComponent implements OnInit, AfterViewInit {
   }
 
   /** Opens the internal label PDF (barcode + details) for printing. */
-  printLabel(order: OrderSummary): void {
+  printLabel(order: PackingQueueRow): void {
     if (this.labelBusyId() !== null) {
       return;
     }
@@ -171,8 +210,28 @@ export class ScanComponent implements OnInit, AfterViewInit {
     });
   }
 
+  /** Opens the order detail (via the Orders page filtered to this order code). */
+  openOrder(order: PackingQueueRow): void {
+    void this.router.navigate(['/orders'], { queryParams: { q: order.orderCode } });
+  }
+
+  /** Runs the primary action for a work-queue row based on its section kind. */
+  queueAction(kind: 'pack' | 'handover' | 'dispatch', order: PackingQueueRow): void {
+    switch (kind) {
+      case 'pack':
+        this.markPacked(order);
+        break;
+      case 'handover':
+        this.handoverOrder(order);
+        break;
+      case 'dispatch':
+        this.dispatchOrder(order);
+        break;
+    }
+  }
+
   /** Mark an order packed straight from the queue (equivalent to scanning it). */
-  markPacked(order: OrderSummary): void {
+  markPacked(order: PackingQueueRow): void {
     if (this.busyOrderId() !== null) {
       return;
     }
@@ -192,7 +251,7 @@ export class ScanComponent implements OnInit, AfterViewInit {
   }
 
   /** Hand a packed order over to the courier, straight from the queue. */
-  handoverOrder(order: OrderSummary): void {
+  handoverOrder(order: PackingQueueRow): void {
     if (this.busyOrderId() !== null) {
       return;
     }
@@ -213,7 +272,7 @@ export class ScanComponent implements OnInit, AfterViewInit {
   }
 
   /** Dispatch a handed-over order (enqueues courier assignment), from the queue. */
-  dispatchOrder(order: OrderSummary): void {
+  dispatchOrder(order: PackingQueueRow): void {
     if (this.busyOrderId() !== null) {
       return;
     }
@@ -360,6 +419,25 @@ export class ScanComponent implements OnInit, AfterViewInit {
     this.log.set([]);
   }
 
+  // --- Camera scan (FEATURE-ROADMAP §8.2) ---------------------------------
+
+  /** Opens the phone-camera barcode scanner overlay. */
+  openCamera(): void {
+    this.cameraOpen.set(true);
+  }
+
+  /** Closes the camera scanner overlay. */
+  closeCamera(): void {
+    this.cameraOpen.set(false);
+  }
+
+  /** A barcode decoded from the camera → feed it into the normal scan flow. */
+  onCameraScanned(code: string): void {
+    this.cameraOpen.set(false);
+    this.form.controls.barcode.setValue(code.trim());
+    this.submit();
+  }
+
   formatStatus(status: string | undefined): string {
     return status ? status.replaceAll('_', ' ') : '';
   }
@@ -470,7 +548,8 @@ export class ScanComponent implements OnInit, AfterViewInit {
   }
 
   private focusInput(): void {
-    // Defer so the DOM has settled before focusing the field.
-    setTimeout(() => this.barcodeInput?.nativeElement.focus(), 0);
+    // Defer so the DOM has settled before focusing the field. `preventScroll`
+    // stops the browser from scrolling the page down to the input on load.
+    setTimeout(() => this.barcodeInput?.nativeElement.focus({ preventScroll: true }), 0);
   }
 }

@@ -15,6 +15,28 @@
         }
       </select>
     </div>
+    <!-- Customize dashboard sections (FEATURE-ROADMAP §6.4) -->
+    <div class="shifa-customize">
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="toggleCustomize()"
+        [attr.aria-expanded]="customizeOpen()" title="Show or hide dashboard sections">
+        <i class="ti ti-layout-grid-add me-1"></i> Customize
+      </button>
+      @if (customizeOpen()) {
+        <div class="shifa-backdrop-transparent" (click)="toggleCustomize()"></div>
+        <div class="card shifa-customize__panel">
+          <div class="card-body p-2">
+            <div class="text-secondary small px-1 pb-1">Show sections</div>
+            @for (s of adminSections; track s.key) {
+              <label class="dropdown-item d-flex align-items-center gap-2 py-1">
+                <input type="checkbox" class="form-check-input m-0"
+                  [checked]="sectionVisible(s.key)" (change)="toggleSection(s.key)" />
+                <span>{{ s.label }}</span>
+              </label>
+            }
+          </div>
+        </div>
+      }
+    </div>
   }
 </admin-page-header>
 
@@ -146,6 +168,7 @@
 <!-- Fulfilment workflow queues (Req 3.3, §7.1) — pending approval + the new
      handover / dispatch stages surfaced from the role summary. -->
 @if (summary()?.admin; as adm) {
+  @if (sectionVisible('fulfilment')) {
   <div class="shifa-section-title">Fulfilment queues</div>
   <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
     <div class="col-4 col-md-4 col-xl-3">
@@ -216,6 +239,7 @@
       </a>
     </div>
   </div>
+  }
 }
 
 <!-- Loading skeletons -->
@@ -236,6 +260,7 @@
 
 <!-- Live stats strip (Req 19.5) -->
 @if (live(); as ls) {
+  @if (sectionVisible('live')) {
   <div class="shifa-section-title">Today (live)</div>
   <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
     <div class="col-4 col-md-3 col-xl-2">
@@ -283,6 +308,7 @@
       </div>
     </div>
   </div>
+  }
 }
 
 @if (metrics(); as m) {
@@ -295,6 +321,7 @@
   </div>
 
   <!-- Orders group (count metrics → 3 per row on mobile) -->
+  @if (sectionVisible('orders')) {
   <div class="shifa-section-title">Orders</div>
   <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
     <div class="col-4 col-md-3 col-xl-2">
@@ -400,6 +427,8 @@
   </div>
 
   <!-- Exceptions group (count metrics → 3 per row on mobile) -->
+  }
+  @if (sectionVisible('exceptions')) {
   <div class="shifa-section-title">Exceptions</div>
   <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
     <div class="col-4 col-md-3 col-xl-2">
@@ -445,6 +474,8 @@
   </div>
 
   <!-- Finance group (money → 2 per row on mobile; conversion count → 3) -->
+  }
+  @if (sectionVisible('finance')) {
   <div class="shifa-section-title">Finance</div>
   <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
     <div class="col-6 col-md-4 col-lg-3">
@@ -481,6 +512,7 @@
       </div>
     </div>
   </div>
+  }
 
   <div class="row row-cards mb-3">
     <!-- Sales graph (Req 19.4) -->
