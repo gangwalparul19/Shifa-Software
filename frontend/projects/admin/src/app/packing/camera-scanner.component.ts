@@ -7,28 +7,22 @@ import {
   output,
   signal,
 } from '@angular/core';
-
-/** Minimal shape of the native BarcodeDetector API (not in TS DOM lib yet). */
-interface DetectedBarcode {
-  rawValue: string;
-}
-interface BarcodeDetectorLike {
-  detect(source: CanvasImageSource): Promise<DetectedBarcode[]>;
-}
-interface BarcodeDetectorCtor {
-  new (options?: { formats?: string[] }): BarcodeDetectorLike;
-  getSupportedFormats?: () => Promise<string[]>;
-}
+import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
+import { BarcodeFormat, DecodeHintType } from '@zxing/library';
 
 /**
  * Phone-camera barcode scanner overlay for packing (FEATURE-ROADMAP §8.2).
  *
- * <p>Opens the rear camera and uses the browser's native {@code BarcodeDetector}
- * to read the Code 128 barcode printed on the internal label (the order code).
- * On a successful read it emits {@link scanned} with the decoded value and the
- * caller feeds it into the existing scan flow — so no dedicated hardware scanner
- * is needed. When the API or camera is unavailable it shows a clear message and
- * the packer falls back to typing the code.
+ * <p>Opens the rear camera and decodes the Code 128 barcode printed on the
+ * internal label (the order code) using ZXing, which works across Chrome, Edge,
+ * Firefox and Safari (desktop + mobile) — unlike the native {@code BarcodeDetector},
+ * which many browsers (Firefox, iOS Safari, older Chrome) don't implement. On a
+ * successful read it emits {@link scanned} with the decoded value and the caller
+ * feeds it into the existing scan flow — so no dedicated hardware scanner is needed.
+ *
+ * <p>Camera access requires a <strong>secure context (HTTPS or localhost)</strong>;
+ * on a plain http:// origin the browser blocks the camera, so we detect that and
+ * show a clear message telling the packer to use the https:// URL (or type the code).
  */
 @Component({
   selector: 'admin-camera-scanner',
@@ -153,37 +147,61 @@ export class CameraScannerComponent implements AfterViewInit, OnDestroy {
 
   protected readonly error = signal<string | null>(null);
 
-  private stream: MediaStream | null = null;
-  private timer: ReturnType<typeof setInterval> | null = null;
-  private detector: BarcodeDetectorLike | null = null;
+  private controls: IScannerControls | null = null;
   private done = false;
 
   async ngAfterViewInit(): Promise<void> {
-    const ctor = (window as unknown as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector;
-    if (!ctor) {
+    // Camera access is only granted in a secure context (HTTPS or localhost).
+    // On a plain http:// origin `navigator.mediaDevices` is undefined, so no
+    // library can open the camera — surface a precise, actionable message.
+    const insecure =
+      typeof window !== 'undefined' && window.isSecureContext === false;
+    if (!navigator.mediaDevices?.getUserMedia) {
       this.error.set(
-        'This device/browser cannot scan with the camera. Please type the order code instead. (Tip: use Chrome on Android.)',
+        insecure
+          ? 'Camera scanning needs a secure (HTTPS) connection. Open the app using its https:// address, or type the order code instead.'
+          : 'Camera access is not available on this device/browser. Please type the order code instead.',
       );
       return;
     }
-    if (!navigator.mediaDevices?.getUserMedia) {
-      this.error.set('Camera access is not available on this device. Please type the order code.');
+    const el = this.video?.nativeElement;
+    if (!el) {
+      this.error.set('Could not initialise the camera view. Please type the order code instead.');
       return;
     }
     try {
-      this.detector = new ctor({ formats: ['code_128', 'qr_code', 'ean_13', 'code_39'] });
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-        audio: false,
+      const hints = new Map<DecodeHintType, unknown>();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.CODE_128,
+        BarcodeFormat.CODE_39,
+        BarcodeFormat.EAN_13,
+        BarcodeFormat.QR_CODE,
+      ]);
+      const reader = new BrowserMultiFormatReader(hints, {
+        delayBetweenScanAttempts: 250,
       });
-      const el = this.video?.nativeElement;
-      if (el) {
-        el.srcObject = this.stream;
-        await el.play();
-      }
-      this.timer = setInterval(() => void this.tick(), 350);
-    } catch {
-      this.error.set('Could not open the camera. Check permissions, or type the order code instead.');
+      // Prefer the rear camera on phones; falls back to the default device.
+      this.controls = await reader.decodeFromConstraints(
+        { video: { facingMode: { ideal: 'environment' } }, audio: false },
+        el,
+        (result) => {
+          if (result && !this.done) {
+            const value = result.getText()?.trim();
+            if (value) {
+              this.done = true;
+              this.stop();
+              this.scanned.emit(value);
+            }
+          }
+        },
+      );
+    } catch (e) {
+      const name = (e as { name?: string })?.name;
+      this.error.set(
+        name === 'NotAllowedError'
+          ? 'Camera permission was blocked. Allow camera access in your browser and try again, or type the order code.'
+          : 'Could not open the camera. Check permissions, or type the order code instead.',
+      );
       this.stop();
     }
   }
@@ -197,31 +215,14 @@ export class CameraScannerComponent implements AfterViewInit, OnDestroy {
     this.closed.emit();
   }
 
-  private async tick(): Promise<void> {
-    if (this.done || !this.detector || !this.video?.nativeElement) {
-      return;
-    }
-    try {
-      const results = await this.detector.detect(this.video.nativeElement);
-      const value = results?.[0]?.rawValue?.trim();
-      if (value) {
-        this.done = true;
-        this.stop();
-        this.scanned.emit(value);
-      }
-    } catch {
-      /* transient decode error — keep trying */
-    }
-  }
-
   private stop(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
-    if (this.stream) {
-      this.stream.getTracks().forEach((t) => t.stop());
-      this.stream = null;
+    if (this.controls) {
+      try {
+        this.controls.stop();
+      } catch {
+        /* already stopped */
+      }
+      this.controls = null;
     }
   }
 }
