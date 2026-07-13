@@ -32,16 +32,17 @@
           </span>
         }
 
-        <!-- Install app (FEATURE-ROADMAP §8.1) -->
-        @if (pwa.installable()) {
+        <!-- Install app (FEATURE-ROADMAP §8.1) — always available unless already
+             installed; falls back to instructions when the browser can't auto-prompt. -->
+        @if (!pwa.installed()) {
           <button
             type="button"
             class="btn btn-sm btn-outline-primary shifa-install-btn"
-            (click)="pwa.promptInstall()"
+            (click)="installApp()"
             title="Install Shifa OMS as an app"
           >
             <i class="ti ti-download me-1" aria-hidden="true"></i>
-            <span class="d-none d-sm-inline">Install</span>
+            <span class="d-none d-sm-inline">Install app</span>
           </button>
         }
 
@@ -235,6 +236,18 @@
             </div>
           }
         }
+
+        <!-- Install app (FEATURE-ROADMAP §8.1) — discoverable entry point -->
+        @if (!pwa.installed()) {
+          <button
+            type="button"
+            class="shifa-navdrawer__item shifa-navdrawer__install"
+            (click)="closeMenu(); installApp()"
+          >
+            <span class="nav-link-icon"><i class="ti ti-device-mobile-down"></i></span>
+            <span class="shifa-navdrawer__text">Install app</span>
+          </button>
+        }
       </nav>
     </div>
 
@@ -259,6 +272,52 @@
       </div>
     }
   </aside>
+}
+
+<!-- ===================== Install-app instructions (FEATURE-ROADMAP §8.1) ===================== -->
+@if (installHelpOpen()) {
+  <div class="shifa-overlay" (click)="closeInstallHelp()"></div>
+  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-modal="true" aria-label="Install Shifa OMS">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-device-mobile-down me-2"></i>Install Shifa OMS</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeInstallHelp()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">
+          Add Shifa OMS to your home screen to open it like a native app — full screen, faster, and it
+          keeps working on patchy networks.
+        </p>
+
+        @if (pwa.isIos) {
+          <!-- iOS Safari never fires the auto prompt; must be added manually. -->
+          <div class="mb-2 fw-medium"><i class="ti ti-brand-safari me-1"></i>On iPhone / iPad (Safari)</div>
+          <ol class="ps-3 mb-0 small">
+            <li>Tap the <strong>Share</strong> button <i class="ti ti-share"></i> in the Safari toolbar.</li>
+            <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+            <li>Tap <strong>Add</strong> — the Shifa icon appears on your home screen.</li>
+          </ol>
+        } @else {
+          <div class="mb-2 fw-medium"><i class="ti ti-brand-chrome me-1"></i>On Android / Chrome / Edge</div>
+          <ol class="ps-3 mb-3 small">
+            <li>Open the browser <strong>⋮ menu</strong> (top-right).</li>
+            <li>Tap <strong>Install app</strong> (or <strong>Add to Home screen</strong>).</li>
+            <li>Confirm — the Shifa icon appears on your home screen.</li>
+          </ol>
+          <div class="alert alert-warning py-2 px-3 small mb-0">
+            <i class="ti ti-info-circle me-1"></i>
+            The one-tap install button only appears when the app is opened over <strong>https://</strong>.
+            If you're on a plain <code>http://</code> address or the local dev server, use the browser menu
+            steps above instead.
+          </div>
+        }
+      </div>
+    </div>
+  </div>
 }
 
 <!-- App-wide toast notifications (single host for the whole admin) -->

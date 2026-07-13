@@ -408,6 +408,20 @@
   color: #b5651d;
   border: 1px solid #f0c99a;
 }
+/* Install entry in the hamburger drawer: a <button> styled as a nav item + accent. */
+.shifa-navdrawer__install {
+  width: 100%;
+  border: 1px solid var(--shifa-green-200, #b7d8c6);
+  background: var(--shifa-green-050, #f2f9f5);
+  cursor: pointer;
+  text-align: left;
+  margin-top: 0.5rem;
+  color: var(--shifa-green-700);
+  font-weight: 600;
+}
+.shifa-navdrawer__install:hover {
+  background: var(--shifa-green-100);
+}
 .shifa-install-btn {
   white-space: nowrap;
 }

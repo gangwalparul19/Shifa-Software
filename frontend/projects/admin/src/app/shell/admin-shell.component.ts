@@ -115,6 +115,27 @@ export class AdminShellComponent {
   protected readonly annAlertClass = announcementAlertClass;
   protected readonly annIcon = announcementIcon;
 
+  // --- Install app help (FEATURE-ROADMAP §8.1) ---------------------------
+  /** Whether the "how to install" instructions overlay is open. */
+  protected readonly installHelpOpen = signal(false);
+
+  /**
+   * Install action: fire the native prompt when the browser has offered one,
+   * otherwise show platform-specific instructions (iOS Safari never fires the
+   * prompt, and it only appears on HTTPS with the service worker active).
+   */
+  installApp(): void {
+    if (this.pwa.installable()) {
+      void this.pwa.promptInstall();
+    } else {
+      this.installHelpOpen.set(true);
+    }
+  }
+
+  closeInstallHelp(): void {
+    this.installHelpOpen.set(false);
+  }
+
   constructor() {
     // The shell only mounts for authenticated staff (staffGuard), so it is safe
     // to fetch the active announcements immediately for the banner.

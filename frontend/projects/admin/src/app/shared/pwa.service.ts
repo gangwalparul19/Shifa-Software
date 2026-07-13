@@ -31,10 +31,37 @@ export class PwaService {
   /** True when the browser has offered an install prompt we can replay. */
   readonly installable = computed(() => this.deferredPrompt() !== null);
 
+  /** True when the app is already running as an installed PWA (standalone). */
+  readonly installed = signal(this.detectStandalone());
+
+  /** True on iOS/iPadOS Safari, which never fires `beforeinstallprompt` and needs manual Add-to-Home-Screen. */
+  readonly isIos = this.detectIos();
+
   /** True when a newer app version has been downloaded and is ready to activate. */
   readonly updateReady = signal(false);
 
   private readonly deferredPrompt = signal<BeforeInstallPromptEvent | null>(null);
+
+  private detectStandalone(): boolean {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    const displayMode = window.matchMedia?.('(display-mode: standalone)')?.matches ?? false;
+    // iOS Safari exposes navigator.standalone rather than the display-mode query.
+    const iosStandalone = (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+    return displayMode || iosStandalone;
+  }
+
+  private detectIos(): boolean {
+    if (typeof navigator === 'undefined') {
+      return false;
+    }
+    const ua = navigator.userAgent || '';
+    const isIosDevice = /iPad|iPhone|iPod/.test(ua);
+    // iPadOS 13+ reports as Mac; detect touch-capable "Mac" as iPad.
+    const isIpadOs = /Macintosh/.test(ua) && (navigator.maxTouchPoints ?? 0) > 1;
+    return isIosDevice || isIpadOs;
+  }
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -44,7 +71,10 @@ export class PwaService {
         e.preventDefault();
         this.deferredPrompt.set(e as BeforeInstallPromptEvent);
       };
-      const onInstalled = () => this.deferredPrompt.set(null);
+      const onInstalled = () => {
+        this.deferredPrompt.set(null);
+        this.installed.set(true);
+      };
 
       window.addEventListener('online', onOnline);
       window.addEventListener('offline', onOffline);
