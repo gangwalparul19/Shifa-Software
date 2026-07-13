@@ -18,8 +18,11 @@ const fs = require('fs');
 const path = require('path');
 
 // Configuration
+// Target the LOCAL running app by default (new Phase-2 features aren't on prod yet).
+// Override with env: SHIFA_BASE_URL=http://13.207.62.222 node capture-screenshots.js
 const CONFIG = {
-  baseUrl: 'http://13.207.62.222',
+  baseUrl: process.env.SHIFA_BASE_URL || 'http://localhost:4300',
+  headless: process.env.HEADLESS !== 'false', // headless by default; set HEADLESS=false to watch
   screenshotsDir: path.join(__dirname, 'screenshots'),
   mobileScreenshotsDir: path.join(__dirname, 'screenshots', 'mobile'),
   viewport: {
@@ -166,8 +169,8 @@ async function captureAllScreenshots() {
   console.log(`  Admin Credentials: ${CONFIG.credentials.admin.username} / ${CONFIG.credentials.admin.password}\n`);
   
   const browser = await chromium.launch({ 
-    headless: false, // Set to true for headless mode
-    slowMo: 100 // Slow down for visibility
+    headless: CONFIG.headless,
+    slowMo: CONFIG.headless ? 0 : 100
   });
 
   try {
@@ -227,15 +230,17 @@ async function captureAllScreenshots() {
     await waitForPageLoad(page);
     await captureScreenshot(page, 'orders-list.png');
     
-    // Order Detail (click first order if exists)
+    // Order Detail (click first order row if exists)
     try {
-      const firstOrder = await page.locator('.order-card, .order-row, [class*="order"]').first();
+      const firstOrder = page.locator('table tbody tr, .order-card, .order-row').first();
       if (await firstOrder.count() > 0) {
         await firstOrder.click();
         await page.waitForTimeout(2000);
         await captureScreenshot(page, 'order-detail.png');
         // Close drawer if it's a modal
         await page.keyboard.press('Escape');
+      } else {
+        console.log('  ⚠ No order rows found for order-detail');
       }
     } catch (e) {
       console.log('  ⚠ Could not capture order detail');
@@ -545,6 +550,63 @@ async function captureAllScreenshots() {
     await page.goto(`${CONFIG.baseUrl}/dashboard`);
     await waitForPageLoad(page);
     await captureScreenshot(page, 'tablet-view.png');
+    await page.close();
+
+    // ========== SECTION 15: PHASE-2 NEW PAGES ==========
+    console.log('\n🆕 Section 15: Phase-2 New Pages (Customer 360, Salesperson 360, Analytics, Announcements)');
+
+    // --- Customer 360 (admin) : open Customers, click first customer to reveal the 360 drawer
+    page = await browser.newPage({ viewport: CONFIG.viewport.desktop });
+    await login(page, CONFIG.credentials.admin);
+    await page.goto(`${CONFIG.baseUrl}/customers`);
+    await waitForPageLoad(page);
+    try {
+      const firstCustomer = page.locator('table tbody tr, .customer-card, [class*="customer"]').first();
+      if (await firstCustomer.count() > 0) {
+        await firstCustomer.click();
+        await page.waitForTimeout(2000);
+      }
+    } catch (e) { console.log('  ⚠ Could not open customer drawer'); }
+    await captureScreenshot(page, 'customer-360.png');
+    await page.close();
+
+    // --- Salesperson 360 / performance (admin) : Salespeople directory with performance KPIs
+    page = await browser.newPage({ viewport: CONFIG.viewport.desktop });
+    await login(page, CONFIG.credentials.admin);
+    await page.goto(`${CONFIG.baseUrl}/salespeople`);
+    await waitForPageLoad(page);
+    await captureScreenshot(page, 'salesperson-performance.png');
+    await page.close();
+
+    // --- Analytics (admin) : Targets / Retention / Forecast tabs
+    page = await browser.newPage({ viewport: CONFIG.viewport.desktop });
+    await login(page, CONFIG.credentials.admin);
+    await page.goto(`${CONFIG.baseUrl}/analytics`);
+    await waitForPageLoad(page);
+    // Each tab's unique content sits below the fold, so capture full-page. Tab labels
+    // come from analytics.component.ts (tabs[]): 'Targets & Incentives' / 'Retention' / 'Forecast'.
+    for (const [label, file] of [
+      ['Targets & Incentives', 'analytics-targets.png'],
+      ['Retention', 'analytics-retention.png'],
+      ['Forecast', 'analytics-forecast.png'],
+    ]) {
+      try {
+        await page.getByRole('button', { name: label, exact: false }).first().click({ timeout: 5000 });
+      } catch (e) {
+        await page.click(`button:has-text("${label}")`).catch(() => console.log(`  ⚠ Could not switch to ${label} tab`));
+      }
+      await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+      await page.waitForTimeout(2500);
+      await captureScreenshot(page, file, true); // fullPage so the tab's content is visible
+    }
+    await page.close();
+
+    // --- Announcements (admin)
+    page = await browser.newPage({ viewport: CONFIG.viewport.desktop });
+    await login(page, CONFIG.credentials.admin);
+    await page.goto(`${CONFIG.baseUrl}/announcements`);
+    await waitForPageLoad(page);
+    await captureScreenshot(page, 'announcements-page.png');
     await page.close();
 
     // ========== ADDITIONAL SCREENSHOTS ==========

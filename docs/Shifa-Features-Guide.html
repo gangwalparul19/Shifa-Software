@@ -225,13 +225,16 @@
       <option value="finance-invoicing">📊 Finance & Invoicing</option>
       <option value="products-inventory">📦 Products & Inventory</option>
       <option value="leads-crm">👥 Leads & CRM</option>
+      <option value="customer-360">🧑‍🤝‍🧑 Customer 360</option>
       <option value="returns-management">↩️ Returns Management</option>
       <option value="procurement">🛒 Procurement</option>
       <option value="staff-management">👤 Staff Management</option>
-      <option value="insights">💡 Reports & Insights</option>
+      <option value="sales-performance">🏆 Sales Performance & Targets</option>
+      <option value="reports-insights">💡 Reports & Insights</option>
+      <option value="analytics">🔮 Analytics & Forecasting</option>
       <option value="notifications">🔔 Notifications</option>
       <option value="security-audit">🔒 Security & Audit</option>
-      <option value="mobile-experience">📱 Mobile Experience</option>
+      <option value="mobile-responsive">📱 Mobile Experience</option>
     </select>
   </div>
 
@@ -248,8 +251,11 @@
       <a href="#finance-invoicing" class="nav-item" data-section="finance-invoicing">📊 Finance & Invoicing</a>
       <a href="#products-inventory" class="nav-item" data-section="products-inventory">📦 Products & Inventory</a>
       <a href="#leads-crm" class="nav-item" data-section="leads-crm">👥 Leads & CRM</a>
-      <a href="#staff-management" class="nav-item" data-section="staff-management">👤 Staff Management <span class="nav-badge">NEW</span></a>
+      <a href="#customer-360" class="nav-item" data-section="customer-360">🧑‍🤝‍🧑 Customer 360 <span class="nav-badge">NEW</span></a>
+      <a href="#staff-management" class="nav-item" data-section="staff-management">👤 Staff Management</a>
+      <a href="#sales-performance" class="nav-item" data-section="sales-performance">🏆 Sales Performance <span class="nav-badge">NEW</span></a>
       <a href="#reports-insights" class="nav-item" data-section="reports-insights">📈 Reports & Insights</a>
+      <a href="#analytics" class="nav-item" data-section="analytics">🔮 Analytics & Forecasting <span class="nav-badge">NEW</span></a>
       <a href="#notifications" class="nav-item" data-section="notifications">🔔 Notifications</a>
       <a href="#security-audit" class="nav-item" data-section="security-audit">🔒 Security & Audit</a>
       <a href="#mobile-responsive" class="nav-item" data-section="mobile-responsive">📱 Mobile Experience</a>
@@ -367,7 +373,7 @@
         </div>
 
         <div class="screenshot">
-          <img src="screenshots/orders-list.png" alt="Orders List View">
+          <img src="screenshots/order-detail.png" alt="Order Detail View">
         </div>
         <p class="screenshot-caption">Order detail showing customer info, line items with thumbnails, payment, status history</p>
 
@@ -467,11 +473,15 @@
         <p class="subtitle">Barcode-driven packing workflow with work queues, label printing, and handover/dispatch tracking</p>
 
         <h3>Packing Work Queues</h3>
-        <p>Packing users see three queues organized by status:</p>
+        <p>Packing users see three queues organized by status. As the most-used screen on the floor, it was
+           redesigned to match the rest of the app — KPI tiles for each queue, a prominent scan box, and each
+           queue shown as a clear table (Order ID, Customer, Price, Order date, Salesperson) with clickable rows
+           that open the full order.</p>
 
         <div class="screenshot">
           <img src="screenshots/packing-queues.png" alt="Packing Work Queues">
         </div>
+        <p class="screenshot-caption">Redesigned packing page — KPI tiles, hero scan box and tabular work queues with clickable rows</p>
 
         <div class="feature-grid">
           <div class="feature-card">
@@ -523,6 +533,11 @@
 
         <div class="screenshot">
           <img src="screenshots/barcode-scanner.png" alt="Barcode Scanner">
+        </div>
+
+        <div class="highlight-box">
+          <h4>📷 Scan with the phone camera <span class="nav-badge">NEW</span></h4>
+          <p>No dedicated scanner needed — tap <strong>Camera</strong> on the packing page and point the phone at the label's Code128 barcode. The decoded order code feeds straight into the normal scan flow, with a graceful fallback to the keyboard scanner box on unsupported devices.</p>
         </div>
 
         <h3>Handover & Dispatch</h3>
@@ -883,6 +898,64 @@
         </div>
       </section>
 
+      <!-- Section: Customer 360 -->
+      <section class="feature-section" id="customer-360">
+        <h2><span class="icon">🧑‍🤝‍🧑</span> Customer 360 &amp; CRM <span class="nav-badge">NEW</span></h2>
+        <p class="subtitle">A complete, staff-facing view of every customer — reliability risk, history, segments and notes — all derived automatically from their orders</p>
+
+        <h3>Customer 360 Profile</h3>
+        <p>Open any customer from the Customers page to see a single, rich profile built from their entire order history — no separate data entry needed.</p>
+
+        <div class="screenshot">
+          <img src="screenshots/customer-360.png" alt="Customer 360 Profile Drawer">
+        </div>
+        <p class="screenshot-caption">Customer 360 drawer — delivery-risk banner, metrics, tags, products bought, notes timeline and order history</p>
+
+        <div class="feature-grid">
+          <div class="feature-card">
+            <h4><span class="ic">⚠️</span> Delivery-Reliability Risk</h4>
+            <ul>
+              <li>Automatic LOW / MEDIUM / HIGH score</li>
+              <li>Based on delivered vs. failed / RTO / rejected history</li>
+              <li>HIGH = ≥2 failures &amp; failure rate ≥40%</li>
+            </ul>
+          </div>
+          <div class="feature-card">
+            <h4><span class="ic">📊</span> Reliability Metrics</h4>
+            <ul>
+              <li>Delivered, failed, in-flight, cancelled counts</li>
+              <li>Success rate &amp; COD outstanding</li>
+              <li>Status breakdown across the lifecycle</li>
+            </ul>
+          </div>
+          <div class="feature-card">
+            <h4><span class="ic">🏷️</span> Segment Tags</h4>
+            <ul>
+              <li>Add/remove tags (e.g. VIP, Wholesale, Repeat)</li>
+              <li>Staff-managed, per customer</li>
+              <li>Great for targeted follow-ups</li>
+            </ul>
+          </div>
+          <div class="feature-card">
+            <h4><span class="ic">📝</span> Notes Timeline</h4>
+            <ul>
+              <li>Free-text notes with author &amp; timestamp</li>
+              <li>Shared internal context for the whole team</li>
+              <li>Products bought &amp; full order history</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="highlight-box">
+          <h4>💡 Prepaid Nudge on Risky Customers</h4>
+          <p>When a salesperson enters the mobile number of a MEDIUM or HIGH-risk customer on the New Order form, the app shows a gentle nudge to collect payment upfront (prepaid) — cutting COD losses on customers with a poor delivery track record.</p>
+        </div>
+
+        <div class="info-box">
+          <strong>Salesperson scoping:</strong> A salesperson only sees the customers from their own orders; admins and accountants see everyone. All tags and notes are audited.
+        </div>
+      </section>
+
       <!-- Section: Staff Management -->
       <section class="feature-section" id="staff-management">
         <h2><span class="icon">👤</span> Staff Management <span class="nav-badge">NEW</span></h2>
@@ -980,6 +1053,63 @@
         </div>
       </section>
 
+      <!-- Section: Sales Performance & Targets -->
+      <section class="feature-section" id="sales-performance">
+        <h2><span class="icon">🏆</span> Sales Performance &amp; Targets <span class="nav-badge">NEW</span></h2>
+        <p class="subtitle">Salesperson 360 — a leaderboard and per-rep scorecard so admins can track, coach and compare the team on a daily basis</p>
+
+        <h3>Team Leaderboard</h3>
+        <p>The Salespeople directory now shows live performance KPIs per rep, sortable so the strongest and weakest performers are obvious at a glance.</p>
+
+        <div class="screenshot">
+          <img src="screenshots/salesperson-performance.png" alt="Salesperson Performance Leaderboard">
+        </div>
+        <p class="screenshot-caption">Salesperson 360 — per-rep KPIs (orders, revenue, conversion, delivery success) with sort and a performance drawer</p>
+
+        <div class="feature-grid">
+          <div class="feature-card">
+            <h4><span class="ic">📦</span> Orders &amp; Revenue</h4>
+            <ul>
+              <li>Orders created &amp; revenue generated</li>
+              <li>Excludes cancelled / rejected from sales</li>
+              <li>Period-over-period view</li>
+            </ul>
+          </div>
+          <div class="feature-card">
+            <h4><span class="ic">🎯</span> Conversion</h4>
+            <ul>
+              <li>Lead → order conversion rate</li>
+              <li>Pipeline contribution</li>
+              <li>Follow-up discipline</li>
+            </ul>
+          </div>
+          <div class="feature-card">
+            <h4><span class="ic">🚚</span> Delivery Success</h4>
+            <ul>
+              <li>Delivered vs. failed on their orders</li>
+              <li>Surfaces reps pushing risky COD</li>
+              <li>Quality, not just volume</li>
+            </ul>
+          </div>
+          <div class="feature-card">
+            <h4><span class="ic">📈</span> Target Progress</h4>
+            <ul>
+              <li>Achieved vs. monthly target</li>
+              <li>Progress bar per rep</li>
+              <li>Coaching cue at a glance</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>Monthly Sales Targets</h3>
+        <p>Admins set a monthly revenue target per salesperson; achievement is tracked automatically against real orders and shown on both the Analytics page and each rep's scorecard.</p>
+
+        <div class="highlight-box">
+          <h4>👥 Track, coach, and act</h4>
+          <p>The admin's ask was simple: know which salespeople are performing and which are not, every day. Salesperson 360 turns raw orders into a clear scorecard — celebrate top performers, coach the middle, and make confident decisions about the team.</p>
+        </div>
+      </section>
+
       <!-- Section: Reports & Insights -->
       <section class="feature-section" id="reports-insights">
         <h2><span class="icon">📈</span> Reports & Insights</h2>
@@ -1046,6 +1176,55 @@
         </div>
       </section>
 
+      <!-- Section: Analytics & Forecasting -->
+      <section class="feature-section" id="analytics">
+        <h2><span class="icon">🔮</span> Analytics &amp; Forecasting <span class="nav-badge">NEW</span></h2>
+        <p class="subtitle">Forward-looking business intelligence — sales targets, customer retention cohorts and revenue/demand forecasts on one admin screen</p>
+
+        <h3>Sales Targets</h3>
+        <p>Set and monitor monthly revenue targets per salesperson, with achieved-vs-target progress.</p>
+
+        <div class="screenshot">
+          <img src="screenshots/analytics-targets.png" alt="Analytics — Sales Targets Tab">
+        </div>
+        <p class="screenshot-caption">Analytics → Targets — per-salesperson monthly target vs. achieved</p>
+
+        <h3>Customer Retention</h3>
+        <p>See how many customers come back. Retention cohorts split new vs. returning buyers and compute the repeat-purchase rate over time.</p>
+
+        <div class="screenshot">
+          <img src="screenshots/analytics-retention.png" alt="Analytics — Retention Tab">
+        </div>
+        <p class="screenshot-caption">Analytics → Retention — new vs. returning customers and repeat rate</p>
+
+        <h3>Revenue &amp; Demand Forecast</h3>
+        <p>Project next-period revenue and per-product demand from trailing sales, so purchasing and cash-flow planning stay ahead of the curve.</p>
+
+        <div class="screenshot">
+          <img src="screenshots/analytics-forecast.png" alt="Analytics — Forecast Tab">
+        </div>
+        <p class="screenshot-caption">Analytics → Forecast — projected revenue and product demand</p>
+
+        <div class="feature-grid">
+          <div class="feature-card">
+            <h4><span class="ic">📈</span> Targets</h4>
+            <p>Per-rep monthly revenue goals with live progress tracking against real orders.</p>
+          </div>
+          <div class="feature-card">
+            <h4><span class="ic">🔁</span> Retention</h4>
+            <p>Repeat-buyer cohorts and repeat-purchase rate — a health check on customer loyalty.</p>
+          </div>
+          <div class="feature-card">
+            <h4><span class="ic">🔮</span> Forecast</h4>
+            <p>Next-period revenue and product-demand projection to guide stock &amp; cash planning.</p>
+          </div>
+          <div class="feature-card">
+            <h4><span class="ic">🎛️</span> Configurable Tiles</h4>
+            <p>Admins can show/hide dashboard tiles; the choice is remembered per browser.</p>
+          </div>
+        </div>
+      </section>
+
       <!-- Section: Notifications -->
       <section class="feature-section" id="notifications">
         <h2><span class="icon">🔔</span> Notifications</h2>
@@ -1101,6 +1280,39 @@
 
         <div class="screenshot">
           <img src="screenshots/notifications-list.png" alt="Notifications List">
+        </div>
+
+        <h3>Browser Push Notifications <span class="nav-badge">NEW</span></h3>
+        <p>Staff can opt in to real-time browser push (Web Push) from the notification bell — alerts land even when the app tab isn't open, and tapping one deep-links straight to the order.</p>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <h4><span class="ic">📲</span> Push Alerts</h4>
+            <ul>
+              <li>New orders to approve, follow-ups due, low stock</li>
+              <li>Opt-in per device from the bell dropdown</li>
+              <li>Tap-to-open deep links to the record</li>
+            </ul>
+          </div>
+          <div class="feature-card">
+            <h4><span class="ic">🔕</span> Fully Optional</h4>
+            <ul>
+              <li>Off until staff enable it</li>
+              <li>Unsubscribe anytime</li>
+              <li>Standard secure Web Push (VAPID)</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>Staff Announcement Banners <span class="nav-badge">NEW</span></h3>
+        <p>Admins post an announcement that every staff member sees as a banner on login — internal comms (policy changes, target pushes, holidays) without relying on WhatsApp groups.</p>
+
+        <div class="screenshot">
+          <img src="screenshots/announcements-page.png" alt="Staff Announcements">
+        </div>
+        <p class="screenshot-caption">Announcements manager — post, enable/disable and delete banners shown to all staff</p>
+
+        <div class="info-box">
+          <strong>How it works:</strong> Admin creates an announcement (with a severity colour) → active banners appear at the top of the app for all signed-in staff → each user can dismiss it (remembered on their device). Admins can toggle a banner active/inactive or delete it anytime.
         </div>
       </section>
 
@@ -1207,6 +1419,43 @@
       <section class="feature-section" id="mobile-responsive">
         <h2><span class="icon">📱</span> Mobile-First Design</h2>
         <p class="subtitle">Fully responsive UI optimized for smartphones, tablets, and desktop — built mobile-first</p>
+
+        <h3>Installable App, Offline &amp; Camera Scan <span class="nav-badge">NEW</span></h3>
+        <p>The admin app is now a full Progressive Web App (PWA): staff can install it to their phone home screen and keep working even on patchy networks.</p>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <h4><span class="ic">⬇️</span> Installable (PWA)</h4>
+            <ul>
+              <li>Add to home screen — runs like a native app</li>
+              <li>App icon, splash, full-screen</li>
+              <li>Auto update banner when a new version ships</li>
+            </ul>
+          </div>
+          <div class="feature-card">
+            <h4><span class="ic">📴</span> Offline Order Capture</h4>
+            <ul>
+              <li>Start a COD order with no signal</li>
+              <li>Queued locally and auto-synced on reconnect</li>
+              <li>Clear offline &amp; pending-sync indicators</li>
+            </ul>
+          </div>
+          <div class="feature-card">
+            <h4><span class="ic">📷</span> Phone-Camera Barcode Scan</h4>
+            <ul>
+              <li>Scan the packing label with the phone camera</li>
+              <li>No dedicated scanner hardware needed</li>
+              <li>Falls back to keyboard scanner gracefully</li>
+            </ul>
+          </div>
+          <div class="feature-card">
+            <h4><span class="ic">🔔</span> Push Notifications</h4>
+            <ul>
+              <li>Opt-in browser push to staff devices</li>
+              <li>New orders, due follow-ups, low stock</li>
+              <li>Tap to jump straight to the record</li>
+            </ul>
+          </div>
+        </div>
 
         <h3>Mobile-Optimized Interface</h3>
         <p>The entire admin panel is designed mobile-first with touch-friendly targets and adaptive layouts.</p>
