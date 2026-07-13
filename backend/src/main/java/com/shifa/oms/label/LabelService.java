@@ -55,21 +55,30 @@ public class LabelService {
     private final OrderRepository orderRepository;
     private final StorageService storageService;
     private final com.shifa.oms.settings.CompanyLogoService companyLogoService;
+    private final com.shifa.oms.settings.SettingsService settingsService;
     private final LabelContentBuilder contentBuilder;
     private final LabelPdfRenderer pdfRenderer;
     private final OrderStatusStateMachine stateMachine;
 
-    /** Test-friendly constructor without the company-logo collaborator (no logo on labels). */
+    /** Test-friendly constructor without the company collaborators (no logo/seller on labels). */
     public LabelService(OrderRepository orderRepository, StorageService storageService) {
-        this(orderRepository, storageService, null);
+        this(orderRepository, storageService, null, null);
+    }
+
+    /** Constructor with the logo collaborator only (kept for callers that don't wire settings). */
+    public LabelService(OrderRepository orderRepository, StorageService storageService,
+                        com.shifa.oms.settings.CompanyLogoService companyLogoService) {
+        this(orderRepository, storageService, companyLogoService, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public LabelService(OrderRepository orderRepository, StorageService storageService,
-                        com.shifa.oms.settings.CompanyLogoService companyLogoService) {
+                        com.shifa.oms.settings.CompanyLogoService companyLogoService,
+                        com.shifa.oms.settings.SettingsService settingsService) {
         this.orderRepository = orderRepository;
         this.storageService = storageService;
         this.companyLogoService = companyLogoService;
+        this.settingsService = settingsService;
         this.contentBuilder = new LabelContentBuilder();
         this.pdfRenderer = new LabelPdfRenderer(new BarcodeGenerator());
         this.stateMachine = new OrderStatusStateMachine();
@@ -78,6 +87,36 @@ public class LabelService {
     /** The configured company logo bytes for rendering, or {@code null} when none/absent. */
     private byte[] logoPng() {
         return companyLogoService != null ? companyLogoService.currentLogoPng().orElse(null) : null;
+    }
+
+    /** Seller/brand details for the label header + grid, sourced from app settings. */
+    private LabelCompany company() {
+        if (settingsService == null) {
+            return LabelCompany.defaults();
+        }
+        try {
+            com.shifa.oms.settings.AppSettings s = settingsService.getSettings();
+            String brand = s.getLegalName() != null && !s.getLegalName().isBlank()
+                    ? s.getLegalName() : "Shifa Herbal Remedies";
+            String pickup = joinNonBlank(", ", s.getAddressLine(), s.getCity(), s.getState());
+            return new LabelCompany(brand, brand, pickup.isBlank() ? null : pickup);
+        } catch (Exception e) {
+            log.debug("Falling back to default label company (settings unavailable): {}", e.getMessage());
+            return LabelCompany.defaults();
+        }
+    }
+
+    private static String joinNonBlank(String sep, String... parts) {
+        StringBuilder sb = new StringBuilder();
+        for (String p : parts) {
+            if (p != null && !p.isBlank()) {
+                if (sb.length() > 0) {
+                    sb.append(sep);
+                }
+                sb.append(p.trim());
+            }
+        }
+        return sb.toString();
     }
 
     /**
@@ -94,7 +133,7 @@ public class LabelService {
      * @return the storage key of the archived label PDF
      */
     public String generateInternalLabelOnApproval(OrderEntity order, String actor) {
-        InternalLabelContent content = contentBuilder.buildInternal(order);
+        InternalLabelContent content = contentBuilder.buildInternal(order, company());
         byte[] pdf = pdfRenderer.render(content, logoPng());
 
         StorageService.StoredObjectRef ref = storageService.store(
@@ -114,7 +153,7 @@ public class LabelService {
     @Transactional(readOnly = true)
     public byte[] internalLabelPdf(Long orderId) {
         OrderEntity order = requireOrder(orderId);
-        return pdfRenderer.render(contentBuilder.buildInternal(order), logoPng());
+        return pdfRenderer.render(contentBuilder.buildInternal(order, company()), logoPng());
     }
 
     /**
@@ -134,7 +173,7 @@ public class LabelService {
         for (Long id : orderIds) {
             orders.add(requireOrder(id));
         }
-        List<InternalLabelContent> contents = contentBuilder.buildBulk(orders);
+        List<InternalLabelContent> contents = contentBuilder.buildBulk(orders, company());
         return pdfRenderer.render(contents, logoPng());
     }
 

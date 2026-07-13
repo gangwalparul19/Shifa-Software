@@ -3,6 +3,7 @@ package com.shifa.oms.label;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * Pure, render-agnostic model of a single internal company label (Req 10.1,
@@ -41,12 +42,24 @@ public record InternalLabelContent(
         String postalCode,
         List<LabelLineItem> lineItems,
         boolean codApplicable,
-        BigDecimal codAmount) {
+        BigDecimal codAmount,
+        String orderedOn,
+        BigDecimal totalAmount,
+        String paymentLabel,
+        String sellerName,
+        String pickupReturnAddress) {
 
     public InternalLabelContent {
         Objects.requireNonNull(orderCode, "orderCode");
         Objects.requireNonNull(barcodeValue, "barcodeValue");
         lineItems = List.copyOf(Objects.requireNonNull(lineItems, "lineItems"));
+    }
+
+    /** A compact one-line summary of the ordered items, e.g. "Ashwagandha x 2, Triphala x 1". */
+    public String itemSummary() {
+        return lineItems.stream()
+                .map(li -> li.productName() + " x " + li.quantity())
+                .collect(Collectors.joining(", "));
     }
 
     /** A single ordered product on the label: its name and quantity (Req 10.1). */
