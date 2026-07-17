@@ -91,12 +91,6 @@
   .why-card h3{margin:0 0 8px;font-size:18px;color:var(--green-dark);}
   .why-card p{margin:0;font-size:14px;color:var(--text);line-height:1.6;}
 
-  /* "Why your investment is priced this way" — professional, no savings bars */
-  .why-price-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:22px 28px;}
-  .why-price{border-left:3px solid var(--green);padding:2px 0 2px 16px;}
-  .why-price h3{margin:0 0 6px;font-size:16px;color:var(--green-dark);}
-  .why-price p{margin:0;font-size:14px;color:var(--text);line-height:1.65;}
-
   /* Modules table */
   table{width:100%;border-collapse:collapse;margin:24px 0;font-size:14px;}
   th,td{text-align:left;padding:12px 14px;border:1px solid var(--line);}
@@ -106,9 +100,8 @@
   tfoot td{font-weight:800;background:#e6f4ec !important;color:var(--green-dark);font-size:16px;}
 
   /* Payment plans */
-  .plans-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:32px 0;}
-  @media(max-width:700px){.plans-grid{grid-template-columns:1fr;}}
-  .plan-card{background:var(--card);border:2px solid var(--line);border-radius:14px;padding:20px;
+  .plans-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;margin:32px 0;}
+  .plan-card{background:var(--card);border:2px solid var(--line);border-radius:14px;padding:24px;
     transition:.2s;}
   .plan-card:hover{border-color:var(--green);box-shadow:var(--shadow);}
   .plan-card.recommended{border-color:var(--green);border-width:3px;position:relative;}
@@ -116,7 +109,7 @@
     transform:translateX(-50%);background:var(--green);color:#fff;padding:4px 16px;border-radius:999px;
     font-size:11px;font-weight:800;letter-spacing:1px;}
   .plan-card h3{margin:0 0 8px;font-size:19px;color:var(--green-dark);}
-  .plan-card .price{font-size:23px;font-weight:800;color:var(--green-dark);margin:8px 0;line-height:1.25;}
+  .plan-card .price{font-size:32px;font-weight:800;color:var(--green-dark);margin:8px 0;}
   .plan-card .desc{color:var(--muted);font-size:13px;margin:8px 0;line-height:1.5;}
   .plan-card ul{margin:16px 0 0;padding:0;list-style:none;}
   .plan-card li{padding:6px 0 6px 24px;position:relative;font-size:14px;}
@@ -168,12 +161,12 @@
     <div class="label">Complete Platform</div>
     <div class="hero-headline">A purpose-built Order Management System for Shifa — 17 complete modules, weekend staff training and full source-code handover.</div>
     <div class="desc">
-      One-time build · 17 complete modules · Weekend staff training · 3 months post-launch support · Source code handover · <strong>server hosting on us for the first year</strong>
+      One-time build · 17 complete modules · Weekend staff training · 1 month post-launch support · Source code handover · <strong>deployment &amp; hosting covered by us for the first 3 months</strong>
     </div>
     <details class="hero-reveal">
       <summary>💰 View the investment</summary>
-      <div class="amount"><span>₹</span>36,999 <em>one-time</em></div>
-      <div class="savings">₹68,000 of delivered value for ₹36,999 · Save 66% vs. alternatives</div>
+      <div class="amount"><span>₹</span>47,500 <em>one-time</em></div>
+      <div class="savings">₹68,000 of delivered value for ₹47,500 · Save 57% vs. alternatives</div>
     </details>
   </div>
 
@@ -190,56 +183,75 @@
         <div class="cap">Your monthly sales<br>(3,000 × ₹300)</div>
       </div>
       <div class="roi-box">
-        <div class="num">₹36,999</div>
-        <div class="cap">One-time build — about <strong>4%</strong> of a single month's sales</div>
+        <div class="num">₹47,500</div>
+        <div class="cap">One-time build — about <strong>5%</strong> of a single month's sales</div>
       </div>
       <div class="roi-box">
-        <div class="num">₹5,499<span style="font-size:13px;">/mo</span></div>
-        <div class="cap">Post-launch support — first <strong>3 months</strong></div>
+        <div class="num">~₹6.6–7K<span style="font-size:13px;">/mo</span></div>
+        <div class="cap">Running cost — about <strong>₹2.4 per order</strong> (WhatsApp + hosting)</div>
       </div>
       <div class="roi-box">
-        <div class="num">Year 1 free</div>
-        <div class="cap">Server hosting on us for the first year; ~₹10,000/yr after</div>
+        <div class="num">3 months</div>
+        <div class="cap">Deployment &amp; hosting on us; after that ~₹2,500–3,000/mo</div>
       </div>
     </div>
     <p class="roi-note">
-      In short: the one-time build is barely <strong>4% of a single month's sales</strong>, and from year two the only
-      infrastructure cost is about <strong>₹10,000 a year</strong> — under half a day's revenue — so the system pays for itself within days.
+      In short: the entire build is about <strong>one-twentieth of one month's revenue</strong>, and day-to-day running
+      costs work out to roughly <strong>₹2.4 per order</strong> — so the system effectively pays for itself within the first few days of use.
     </p>
   </div>
 
-  <!-- WHY THIS PRICING -->
-  <h2>Why Your Investment Is Priced This Way</h2>
+  <!-- SAVINGS COMPARISON -->
+  <h2>📊 How Much You Save</h2>
   <p class="section-intro">
-    Full transparency on what the one-time price reflects — a considered, fair investment in a
-    finished product, not an arbitrary quote.
+    Compare our pricing against typical alternatives. Shifa OMS costs <strong>57% less</strong> than local vendors and <strong>62% less</strong> than Shopify over 1 year.
   </p>
 
   <div class="card">
-    <div class="why-price-grid">
-      <div class="why-price">
-        <h3>A complete, proven platform</h3>
-        <p>You receive a fully built, production-tested system — 17 modules backed by 490+ automated tests. You are paying for a finished, dependable product, not an open-ended, higher-risk from-scratch build.</p>
+    <div class="comparison">
+      <div class="comp-item">
+        <div class="comp-label">
+          <span class="name">🌿 Shifa OMS (Us)</span>
+          <span class="price">₹47,500</span>
+        </div>
+        <div class="comp-bar">
+          <div class="fill us" style="width:43%;">43% of typical cost</div>
+        </div>
       </div>
-      <div class="why-price">
-        <h3>You own the source code</h3>
-        <p>Complete source-code handover with no vendor lock-in and no per-user subscription. The platform is yours to keep, extend, or move at any time.</p>
+
+      <div class="comp-item">
+        <div class="comp-label">
+          <span class="name">🧰 Local WordPress Vendor</span>
+          <span class="price">₹1,10,000</span>
+        </div>
+        <div class="comp-bar">
+          <div class="fill them" style="width:100%;">132% more expensive</div>
+        </div>
       </div>
-      <div class="why-price">
-        <h3>On-site training &amp; 3 months of support</h3>
-        <p>Weekend on-site training for your whole team, followed by three months of hands-on post-launch support so your staff go live with confidence.</p>
+
+      <div class="comp-item">
+        <div class="comp-label">
+          <span class="name">🛒 Shopify (1 year)</span>
+          <span class="price">₹1,25,000</span>
+        </div>
+        <div class="comp-bar">
+          <div class="fill shopify" style="width:113%;">163% more expensive</div>
+        </div>
       </div>
-      <div class="why-price">
-        <h3>Hosting handled for the first year</h3>
-        <p>We cover server hosting and infrastructure for the first year. Thereafter the only ongoing infrastructure cost is approximately ₹10,000 per year.</p>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="number">57%</div>
+        <div class="label">Savings vs. Local Vendors</div>
       </div>
-      <div class="why-price">
-        <h3>Built for how Shifa operates</h3>
-        <p>A purpose-built order-management engine — role-based access, COD reconciliation, GST invoicing and full audit trails — tailored to your workflow rather than a generic template.</p>
+      <div class="stat-box">
+        <div class="number">62%</div>
+        <div class="label">Savings vs. Shopify (Year 1)</div>
       </div>
-      <div class="why-price">
-        <h3>One-time cost, predictable thereafter</h3>
-        <p>A single upfront investment with clear, minimal running costs — no recurring licence fees quietly eroding your margin every month.</p>
+      <div class="stat-box">
+        <div class="number">₹62K+</div>
+        <div class="label">Money Saved Immediately</div>
       </div>
     </div>
   </div>
@@ -284,7 +296,7 @@
     <div class="why-card">
       <div class="icon">🚀</div>
       <h3>Launch Support</h3>
-      <p>3 months of hands-on post-launch support (₹5,499/month), with server hosting on us for the first year — just ~₹10.5K/year for infrastructure after that.</p>
+      <p>1 month of post-launch support included, plus deployment &amp; hosting covered by us for the first 3 months. Optional AMC after that.</p>
     </div>
   </div>
 
@@ -436,49 +448,10 @@
         </tr>
         <tr>
           <td colspan="3"><strong>🌿 Your All-Inclusive Price</strong></td>
-          <td class="num"><strong>₹36,999</strong></td>
+          <td class="num"><strong>₹47,500</strong></td>
         </tr>
       </tfoot>
     </table>
-  </div>
-
-  <!-- OVERALL COST -->
-  <h2>Overall Cost of the Application</h2>
-  <p class="section-intro">A clear, all-in view of what you pay.</p>
-
-  <div class="card">
-    <table>
-      <tbody>
-        <tr>
-          <td>
-            <strong>One-time platform build</strong><br />
-            <span style="color:var(--muted);font-size:13px;">17 modules · weekend training · source-code handover · hosting free for year 1</span>
-          </td>
-          <td class="num">₹36,999</td>
-        </tr>
-        <tr>
-          <td>
-            <strong>Post-launch support (AMC)</strong><br />
-            <span style="color:var(--muted);font-size:13px;">₹5,499 × 3 months</span>
-          </td>
-          <td class="num">₹16,497</td>
-        </tr>
-      </tbody>
-      <tfoot>
-        <tr>
-          <td><strong>Overall Cost</strong></td>
-          <td class="num"><strong>₹53,496</strong></td>
-        </tr>
-      </tfoot>
-    </table>
-
-    <div style="background:#fff8e8;border:1px solid var(--gold);border-radius:10px;padding:16px 20px;margin-top:4px;font-size:14px;color:#8a6a12;">
-      <strong style="color:#7a5c12;">Please note:</strong>
-      <ul style="margin:8px 0 0;padding-left:20px;">
-        <li><strong>WhatsApp message charges are borne by the client</strong> — paid directly to the WhatsApp provider (~₹1.20–1.40 per order); a pass-through cost we do not mark up.</li>
-        <li><strong>Server hosting is on us for the first year.</strong> After one year, approximately <strong>₹10,000/year</strong> towards infrastructure.</li>
-      </ul>
-    </div>
   </div>
 
   <!-- PAYMENT OPTIONS -->
@@ -490,7 +463,7 @@
   <div class="plans-grid">
     <div class="plan-card">
       <h3>Full Payment</h3>
-      <div class="price">₹36,999</div>
+      <div class="price">₹47,500</div>
       <div class="desc">One-time payment, complete platform delivered</div>
       <ul>
         <li>No payment plan fees</li>
@@ -501,24 +474,24 @@
 
     <div class="plan-card recommended">
       <h3>Payment Plan</h3>
-      <div class="price">₹13K + ₹12K + ₹12K</div>
+      <div class="price">₹15K + ₹15K + ₹17.5K</div>
       <div class="desc">Spread across 3 milestones over 2-3 weeks</div>
       <ul>
-        <li>₹12,999 on Day 1 (start)</li>
-        <li>₹12,000 after 7-day trial</li>
-        <li>₹12,000 when live in production</li>
+        <li>₹15,000 on Day 1 (start)</li>
+        <li>₹15,000 after 7-day trial</li>
+        <li>₹17,500 when live in production</li>
       </ul>
     </div>
 
     <div class="plan-card">
-      <h3>Support &amp; Hosting</h3>
-      <div class="price">₹5,499/month</div>
-      <div class="desc">Post-launch support for the first 3 months</div>
+      <h3>AMC (Optional)</h3>
+      <div class="price">₹6,999/month</div>
+      <div class="desc">Optional ongoing maintenance &amp; support (after the included 1-month support)</div>
       <ul>
-        <li>Bug fixes &amp; updates</li>
-        <li>Priority WhatsApp / call support</li>
-        <li>Server hosting on us for year 1</li>
-        <li>~₹10,000/year infra after year 1</li>
+        <li>Bug fixes & updates</li>
+        <li>Feature enhancements</li>
+        <li>Priority support</li>
+        <li>₹9,999/month for growth tier</li>
       </ul>
     </div>
   </div>
@@ -544,14 +517,14 @@
       </thead>
       <tbody>
         <tr>
-          <td><strong>Post-launch Support</strong></td>
-          <td>Hands-on support for the first 3 months (bug fixes, updates, priority support)</td>
-          <td class="num">5,499/mo × 3 months</td>
+          <td><strong>AMC (Optional)</strong></td>
+          <td>Optional ongoing maintenance &amp; support (1 month included free, then optional)</td>
+          <td class="num">6,999 – 9,999</td>
         </tr>
         <tr>
-          <td><strong>Cloud Hosting &amp; Infrastructure</strong></td>
-          <td>AWS cloud (EC2 app server + managed RDS database) — <strong>on us for the first year</strong>, then borne by you</td>
-          <td class="num">0 (year 1), then ~10,000/year (~833/mo)</td>
+          <td><strong>Cloud Hosting &amp; Deployment</strong></td>
+          <td>AWS cloud (EC2 app server + managed RDS database) — <strong>covered by us for the first 3 months</strong>, then borne by you</td>
+          <td class="num">0 (first 3 mo), then 2,500 – 3,000</td>
         </tr>
         <tr>
           <td><strong>WhatsApp API</strong></td>
@@ -571,16 +544,12 @@
       </tbody>
       <tfoot>
         <tr>
-          <td colspan="2"><strong>Months 1–3 (with support, hosting free)</strong></td>
-          <td class="num"><strong>~₹9,633/mo</strong></td>
+          <td colspan="2"><strong>Estimated Monthly Total (with AMC)</strong></td>
+          <td class="num"><strong>₹13,633 – ₹17,133</strong></td>
         </tr>
         <tr>
-          <td colspan="2"><strong>Month 4 → Year 1 (hosting still on us)</strong></td>
-          <td class="num"><strong>~₹4,134/mo</strong></td>
-        </tr>
-        <tr>
-          <td colspan="2"><strong>After Year 1 (incl. infra ~₹10.5K/yr)</strong></td>
-          <td class="num"><strong>~₹10,499/yr</strong></td>
+          <td colspan="2"><strong>Estimated Monthly Total (without AMC)</strong></td>
+          <td class="num"><strong>₹6,634 – ₹7,134</strong></td>
         </tr>
       </tfoot>
     </table>
@@ -594,6 +563,19 @@
   <br>
   Developed by <a href="http://www.weblithic.com" target="_blank">Weblithic</a>
 </footer>
+
+<script>
+  // Animate comparison bars on load
+  window.addEventListener('load', () => {
+    document.querySelectorAll('.comp-bar .fill').forEach(fill => {
+      const width = fill.style.width;
+      fill.style.width = '0%';
+      setTimeout(() => {
+        fill.style.width = width;
+      }, 300);
+    });
+  });
+</script>
 
 </body>
 </html>
