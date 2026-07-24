@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shifa OMS — EC2 Deployment, Step by Step</title>
+<style>
+  :root{
+    --green:#1F5D3F; --green-2:#1F7A4D; --green-dark:#0f3d27; --gold:#C8A24A;
+    --bg:#eef2ee; --card:#ffffff; --text:#22332b; --muted:#6b7b72; --line:#e2e8e4;
+    --shadow:0 6px 24px rgba(15,61,39,.10); --blue:#2563eb; --red:#dc2626;
+    --code-bg:#0f3d27; --code-text:#e8f5ec;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.65;font-size:15px;}
+
+  header.brand{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;
+    padding:34px 24px;text-align:center;position:relative;overflow:hidden;}
+  header.brand::after{content:"🖥️";position:absolute;right:16px;bottom:-14px;font-size:120px;opacity:.10;}
+  header.brand h1{margin:6px 0 4px;font-size:26px;}
+  header.brand p{margin:0;color:#dceee2;}
+  .rule{height:4px;background:var(--gold);}
+
+  /* Layout: sticky sidebar TOC + content */
+  .layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:270px 1fr;gap:28px;
+    padding:0 20px 90px;}
+  .sidebar{position:sticky;top:0;align-self:start;max-height:100vh;overflow-y:auto;padding:22px 0 22px;}
+  .sidebar h3{margin:14px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);}
+  .sidebar ol{list-style:none;margin:0;padding:0;counter-reset:part;}
+  .sidebar li{margin:0;}
+  .sidebar a{display:block;padding:7px 12px;border-radius:8px;color:var(--text);text-decoration:none;
+    font-size:13.5px;border-left:3px solid transparent;}
+  .sidebar a:hover{background:#e3efe7;color:var(--green-dark);}
+  .sidebar a.active{background:#e6f4ec;border-left-color:var(--green);color:var(--green-dark);font-weight:700;}
+  .content{min-width:0;padding-top:22px;}
+
+  .intro{background:linear-gradient(135deg,#eaf3ec,#fff);border:2px solid var(--green);border-radius:14px;
+    padding:20px 24px;margin:0 0 24px;}
+  .intro ul{margin:8px 0 0;padding-left:20px;} .intro li{margin:5px 0;}
+
+  .part{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--green);
+    border-radius:12px;padding:22px 26px;margin:20px 0;box-shadow:var(--shadow);scroll-margin-top:14px;}
+  .part h2{margin:0 0 6px;font-size:20px;color:var(--green-dark);display:flex;align-items:center;gap:12px;}
+  .part .num{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;
+    background:var(--green);color:#fff;border-radius:50%;font-size:15px;font-weight:800;flex:none;}
+  .part .time{font-size:12.5px;color:var(--muted);font-weight:600;margin:0 0 12px 46px;}
+  .part h3{color:var(--green-dark);font-size:15.5px;margin:18px 0 6px;}
+  .part ol,.part ul{padding-left:22px;} .part li{margin:6px 0;}
+
+  pre{background:var(--code-bg);color:var(--code-text);border-radius:10px;padding:15px 16px;overflow-x:auto;
+    font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:12.5px;line-height:1.6;margin:10px 0;}
+  code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;background:#e6f0ea;
+    color:var(--green-dark);padding:1px 6px;border-radius:5px;font-size:12.5px;}
+  pre code{background:none;color:inherit;padding:0;}
+  .pc{display:inline-block;background:var(--gold);color:#3a2c05;font-size:10.5px;font-weight:800;
+    padding:1px 7px;border-radius:4px;letter-spacing:.4px;vertical-align:middle;margin-right:6px;}
+
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 11px;border:1px solid var(--line);vertical-align:top;}
+  th{background:var(--green);color:#fff;font-weight:600;}
+  tr:nth-child(even) td{background:#f2f8f4;}
+
+  .verify{background:#eef7f1;border:1px solid var(--green);border-radius:9px;padding:11px 16px;margin:12px 0;
+    font-size:14px;color:#1f5d3f;}
+  .verify b{color:var(--green-dark);}
+  .verify::before{content:"✔ ";font-weight:900;}
+  .note{border-radius:9px;padding:11px 16px;margin:12px 0;font-size:13.8px;}
+  .note.warn{background:#fff8e8;border:1px solid var(--gold);color:#7a5c12;}
+  .note.tip{background:#eef5ff;border:1px solid var(--blue);color:#1e3a8a;}
+  .checklist{list-style:none;padding-left:4px;} .checklist li{margin:7px 0;}
+  .checklist li::before{content:"☐ ";color:var(--green);font-weight:900;}
+
+  footer{text-align:center;color:var(--muted);font-size:13px;margin-top:20px;padding:20px;
+    border-top:1px solid var(--line);background:linear-gradient(to bottom,#ffffff,#f8f9fa);}
+  footer b{color:var(--green-dark);} footer a{color:var(--green);text-decoration:none;font-weight:500;}
+
+  @media(max-width:880px){
+    .layout{grid-template-columns:1fr;}
+    .sidebar{position:static;max-height:none;border-bottom:1px solid var(--line);}
+  }
+</style>
+</head>
+<body>
+
+<header class="brand">
+  <h1>🌿 Shifa OMS — EC2 Deployment, Step by Step</h1>
+  <p>New EC2 instance · self-hosted MySQL · your current data migrated from RDS</p>
+</header>
+<div class="rule"></div>
+
+<div class="layout">
+
+  <!-- SIDEBAR TOC -->
+  <nav class="sidebar">
+    <h3>Runbook</h3>
+    <ol>
+      <li><a href="#p1">1 · Build the app (PC)</a></li>
+      <li><a href="#p2">2 · Launch EC2 instance</a></li>
+      <li><a href="#p3">3 · Elastic IP</a></li>
+      <li><a href="#p4">4 · Connect via SSH</a></li>
+      <li><a href="#p5">5 · Prep: swap &amp; timezone</a></li>
+      <li><a href="#p6">6 · Install Java/MySQL/Nginx</a></li>
+      <li><a href="#p7">7 · Create &amp; tune MySQL</a></li>
+      <li><a href="#p8">8 · Migrate data from RDS</a></li>
+      <li><a href="#p9">9 · Upload artifacts</a></li>
+      <li><a href="#p10">10 · Backend config</a></li>
+      <li><a href="#p11">11 · Run as a service</a></li>
+      <li><a href="#p12">12 · Configure Nginx</a></li>
+      <li><a href="#p13">13 · Free HTTPS</a></li>
+      <li><a href="#p14">14 · Smoke test</a></li>
+      <li><a href="#p15">15 · Lock back down</a></li>
+      <li><a href="#p16">16 · Nightly backups</a></li>
+      <li><a href="#p17">17 · Retire RDS</a></li>
+      <li><a href="#p18">18 · Ops cheat-sheet</a></li>
+      <li><a href="#trouble">⚠ Troubleshooting</a></li>
+    </ol>
+  </nav>
+
+  <!-- CONTENT -->
+  <main class="content">
+
+    <div class="intro">
+      <p style="margin:0;">A precise, follow-along runbook to stand up a <b>new EC2 instance</b> running
+      the whole app (Angular Admin + Spring Boot API + <b>self-hosted MySQL 8</b>) loaded with your
+      <b>current data</b> migrated from RDS. No RDS, no Lambda.</p>
+      <ul>
+        <li><b>Time:</b> ~60–90 min · <b>Region:</b> <code>ap-south-1</code> (Mumbai) · <b>Instance:</b> <code>t2.micro</code> (Free Tier, $0)</li>
+        <li>Every step ends with a <b>✔ Verify</b> — don't move on until it passes.</li>
+        <li><span class="pc">PC</span> = run on your Windows PC (PowerShell). Everything else runs on the EC2 SSH shell.</li>
+        <li><b>Before starting:</b> AWS login · your RDS endpoint + user + password · Java 21 + Maven &amp; Node 20 + npm on your PC.</li>
+      </ul>
+    </div>
+
+    <!-- P1 -->
+    <section class="part" id="p1">
+      <h2><span class="num">1</span> Build the app on your PC</h2>
+      <div class="time">⏱ 10–15 min · never build on the t2.micro (it will OOM)</div>
+<pre><span class="pc">PC</span>cd "c:\E Drive\Shifa-Software"
+
+# Backend JAR
+mvn -f "backend/pom.xml" -DskipTests package
+
+# Angular admin bundle
+npm --prefix frontend ci
+npm --prefix frontend run build:admin</pre>
+      <div class="verify"><b>Verify:</b> <code>backend\target\shifa-oms-0.0.1-SNAPSHOT.jar</code> and <code>frontend\dist\admin\browser\index.html</code> exist.</div>
+      <p>Zip the bundle for upload:</p>
+<pre><span class="pc">PC</span>Compress-Archive -Path "frontend\dist\admin\browser\*" -DestinationPath "admin.zip" -Force</pre>
+      <div class="verify"><b>Verify:</b> <code>admin.zip</code> exists in the project root.</div>
+    </section>
+
+    <!-- P2 -->
+    <section class="part" id="p2">
+      <h2><span class="num">2</span> Launch the EC2 instance</h2>
+      <div class="time">⏱ 10 min</div>
+      <ol>
+        <li>Console → region <b>Asia Pacific (Mumbai) ap-south-1</b> (top-right).</li>
+        <li><b>EC2 → Instances → Launch instances</b>.</li>
+        <li><b>Name:</b> <code>shifa-oms</code>.</li>
+        <li><b>AMI:</b> <b>Ubuntu Server 22.04 LTS</b> (64-bit x86, Free tier eligible).</li>
+        <li><b>Instance type:</b> <b>t2.micro</b> (Free tier eligible).</li>
+        <li><b>Key pair:</b> Create new → name <code>shifa-key</code>, RSA, <b>.pem</b> → Create. Save the
+          downloaded file to <code>C:\E Drive\aws-keys\shifa-key.pem</code> (you can't re-download it).</li>
+        <li><b>Network settings → Edit:</b> Auto-assign public IP <b>Enable</b>; create security group
+          <code>shifa-sg</code> with these inbound rules:</li>
+      </ol>
+      <table>
+        <thead><tr><th>Type</th><th>Port</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td>SSH</td><td>22</td><td>My IP</td></tr>
+          <tr><td>HTTP</td><td>80</td><td>Anywhere 0.0.0.0/0</td></tr>
+          <tr><td>HTTPS</td><td>443</td><td>Anywhere 0.0.0.0/0</td></tr>
+        </tbody>
+      </table>
+      <ol start="8">
+        <li><b>Storage:</b> root volume <b>30 GiB gp3</b>.</li>
+        <li><b>Launch instance.</b></li>
+      </ol>
+      <div class="verify"><b>Verify:</b> <code>shifa-oms</code> shows <b>Running</b> and <b>2/2 checks passed</b> (~2 min).</div>
+    </section>
+
+    <!-- P3 -->
+    <section class="part" id="p3">
+      <h2><span class="num">3</span> Give it a fixed public IP (Elastic IP)</h2>
+      <div class="time">⏱ 3 min</div>
+      <ol>
+        <li>EC2 → <b>Network &amp; Security → Elastic IPs → Allocate</b>.</li>
+        <li>Select it → <b>Actions → Associate</b> → Instance <code>shifa-oms</code> → Associate.</li>
+        <li>Note this IP as <code>&lt;EIP&gt;</code> for the rest of the guide.</li>
+      </ol>
+      <div class="verify"><b>Verify:</b> the instance's Public IPv4 equals <code>&lt;EIP&gt;</code>.</div>
+      <div class="note warn">An Elastic IP is free <b>while attached to a running instance</b>. Keep exactly one, attached — an idle/unattached one bills ~$3.6/mo.</div>
+    </section>
+
+    <!-- P4 -->
+    <section class="part" id="p4">
+      <h2><span class="num">4</span> Connect via SSH from Windows</h2>
+      <div class="time">⏱ 5 min</div>
+<pre><span class="pc">PC</span># Lock down the key once (SSH refuses loose permissions)
+icacls "C:\E Drive\aws-keys\shifa-key.pem" /inheritance:r
+icacls "C:\E Drive\aws-keys\shifa-key.pem" /grant:r "%USERNAME%:R"
+
+# Connect (Ubuntu default user is 'ubuntu')
+ssh -i "C:\E Drive\aws-keys\shifa-key.pem" ubuntu@&lt;EIP&gt;</pre>
+      <div class="verify"><b>Verify:</b> prompt becomes <code>ubuntu@ip-...:~$</code> — you're on the server.</div>
+    </section>
+
+    <!-- P5 -->
+    <section class="part" id="p5">
+      <h2><span class="num">5</span> Prep the server: updates, swap, timezone</h2>
+      <div class="time">⏱ 10 min · on the instance</div>
+<pre># 1. Update the OS
+sudo apt update &amp;&amp; sudo apt -y upgrade
+
+# 2. Add 2 GB swap (critical on 1 GB RAM)
+sudo fallocate -l 2G /swapfile &amp;&amp; sudo chmod 600 /swapfile
+sudo mkswap /swapfile &amp;&amp; sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+sudo sysctl vm.swappiness=10 &amp;&amp; echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
+
+# 3. Timezone IST
+sudo timedatectl set-timezone Asia/Kolkata</pre>
+      <div class="verify"><b>Verify:</b> <code>free -h</code> shows Swap 2.0Gi; <code>date</code> shows IST.</div>
+    </section>
+
+    <!-- P6 -->
+    <section class="part" id="p6">
+      <h2><span class="num">6</span> Install Java 21, MySQL 8, Nginx</h2>
+      <div class="time">⏱ 10 min</div>
+<pre>sudo apt -y install openjdk-21-jre-headless mysql-server mysql-client nginx unzip</pre>
+      <div class="verify"><b>Verify:</b> <code>java -version</code> (21), <code>mysql --version</code> (8.0), <code>nginx -v</code> all print versions.</div>
+    </section>
+
+    <!-- P7 -->
+    <section class="part" id="p7">
+      <h2><span class="num">7</span> Create the database + user, tune MySQL</h2>
+      <div class="time">⏱ 10 min</div>
+<pre>sudo mysql_secure_installation        # set a root password; answer Y to prompts
+
+sudo mysql &lt;&lt;'SQL'
+CREATE DATABASE IF NOT EXISTS shifa_dashboard CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'shifa'@'localhost' IDENTIFIED BY 'CHANGE_ME_DB_PASSWORD';
+GRANT ALL PRIVILEGES ON shifa_dashboard.* TO 'shifa'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+
+sudo tee /etc/mysql/mysql.conf.d/shifa.cnf &gt;/dev/null &lt;&lt;'CNF'
+[mysqld]
+innodb_buffer_pool_size = 128M
+performance_schema = OFF
+max_connections = 50
+CNF
+sudo systemctl restart mysql</pre>
+      <div class="verify"><b>Verify:</b> <code>mysql -u shifa -p -e "SHOW DATABASES;"</code> lists <code>shifa_dashboard</code>.</div>
+    </section>
+
+    <!-- P8 -->
+    <section class="part" id="p8">
+      <h2><span class="num">8</span> Migrate your CURRENT data from RDS</h2>
+      <div class="time">⏱ 15 min · the dump includes flyway history, so no migrations re-run</div>
+      <h3>8.1 Temporarily let the EC2 reach RDS</h3>
+      <p>RDS console → your DB → its <b>VPC security group → Inbound → Edit → Add rule</b>: MySQL/Aurora
+        <b>3306</b>, Source = the <code>shifa-sg</code> security group. Save. (Removed again in Part 15.)</p>
+      <h3>8.2 Dump from RDS &amp; import locally (on the EC2)</h3>
+<pre>mysqldump -h &lt;RDS_ENDPOINT&gt; -u &lt;RDS_USERNAME&gt; -p \
+  --single-transaction --routines --triggers --set-gtid-purged=OFF \
+  shifa_dashboard &gt; ~/rds_dump.sql
+
+mysql -u shifa -p shifa_dashboard &lt; ~/rds_dump.sql</pre>
+      <div class="verify"><b>Verify — row counts should match RDS:</b>
+<pre>mysql -u shifa -p shifa_dashboard -e \
+ "SELECT (SELECT COUNT(*) FROM orders) orders, \
+         (SELECT COUNT(*) FROM users) users, \
+         (SELECT COUNT(*) FROM flyway_schema_history) migrations;"</pre></div>
+      <div class="note tip">EC2 can't reach RDS? Run the <code>mysqldump</code> from a machine that can (or your PC), then <code>scp</code> <code>rds_dump.sql</code> to the EC2 and import.</div>
+    </section>
+
+    <!-- P9 -->
+    <section class="part" id="p9">
+      <h2><span class="num">9</span> Upload the app artifacts</h2>
+      <div class="time">⏱ 10 min</div>
+<pre><span class="pc">PC</span>scp -i "C:\E Drive\aws-keys\shifa-key.pem" "c:\E Drive\Shifa-Software\backend\target\shifa-oms-0.0.1-SNAPSHOT.jar" ubuntu@&lt;EIP&gt;:/home/ubuntu/shifa-oms.jar
+<span class="pc">PC</span>scp -i "C:\E Drive\aws-keys\shifa-key.pem" "c:\E Drive\Shifa-Software\admin.zip" ubuntu@&lt;EIP&gt;:/home/ubuntu/</pre>
+      <p>On the EC2:</p>
+<pre>sudo mkdir -p /opt/shifa /opt/shifa/storage /var/www/shifa/admin
+sudo mv ~/shifa-oms.jar /opt/shifa/shifa-oms.jar
+sudo unzip -o ~/admin.zip -d /var/www/shifa/admin
+sudo useradd -r -s /usr/sbin/nologin shifa || true
+sudo chown -R shifa:shifa /opt/shifa</pre>
+      <div class="verify"><b>Verify:</b> <code>ls -lh /opt/shifa/shifa-oms.jar</code> and <code>ls /var/www/shifa/admin/index.html</code> exist.</div>
+    </section>
+
+    <!-- P10 -->
+    <section class="part" id="p10">
+      <h2><span class="num">10</span> Backend configuration file</h2>
+      <div class="time">⏱ 5 min</div>
+<pre>sudo mkdir -p /etc/shifa
+sudo tee /etc/shifa/shifa.env &gt;/dev/null &lt;&lt;'ENV'
+SPRING_PROFILES_ACTIVE=prod
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=shifa_dashboard
+DB_USERNAME=shifa
+DB_PASSWORD=CHANGE_ME_DB_PASSWORD
+DB_POOL_SIZE=8
+JWT_SECRET=CHANGE_ME_LONG_RANDOM_SECRET
+SEED_ADMIN_PASSWORD=CHANGE_ME_ADMIN_PW
+SEED_PACKING_PASSWORD=CHANGE_ME_PACKER_PW
+STORAGE_PROVIDER=LOCAL
+COURIER_MODE=MOCK
+WHATSAPP_MODE=MOCK
+MAIL_MODE=MOCK
+JAVA_OPTS=-Xms256m -Xmx512m
+ENV
+sudo chmod 600 /etc/shifa/shifa.env
+
+openssl rand -base64 48                 # copy the output
+sudo nano /etc/shifa/shifa.env          # paste JWT_SECRET, set DB_PASSWORD to match Part 7</pre>
+      <div class="verify"><b>Verify:</b> <code>sudo cat /etc/shifa/shifa.env</code> shows a real <code>DB_PASSWORD</code> + long <code>JWT_SECRET</code>.</div>
+      <div class="note warn"><code>STORAGE_PROVIDER=LOCAL</code> keeps files on the instance disk (simplest, $0). If your old app stored screenshots in <b>S3</b>, those stay in S3 and won't show under LOCAL — keep <code>S3</code> + an EC2 instance role instead if you need them served.</div>
+    </section>
+
+    <!-- P11 -->
+    <section class="part" id="p11">
+      <h2><span class="num">11</span> Run the backend as a service</h2>
+      <div class="time">⏱ 10 min</div>
+<pre>sudo tee /etc/systemd/system/shifa-oms.service &gt;/dev/null &lt;&lt;'UNIT'
+[Unit]
+Description=Shifa OMS (Spring Boot)
+After=network.target mysql.service
+Wants=mysql.service
+[Service]
+User=shifa
+EnvironmentFile=/etc/shifa/shifa.env
+ExecStart=/usr/bin/java $JAVA_OPTS -jar /opt/shifa/shifa-oms.jar
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now shifa-oms
+sudo journalctl -u shifa-oms -f</pre>
+      <div class="verify"><b>Verify:</b> log shows <code>Tomcat started on port 8080</code> + <code>Started ...Application</code>. Ctrl-C to stop tailing, then <code>curl -s -o /dev/null -w "%{http_code}\n" -X POST http://127.0.0.1:8080/api/auth/login</code> returns an HTTP code (API is up).</div>
+    </section>
+
+    <!-- P12 -->
+    <section class="part" id="p12">
+      <h2><span class="num">12</span> Configure Nginx</h2>
+      <div class="time">⏱ 5 min · Admin at /, proxy /api/, SSE</div>
+<pre>sudo tee /etc/nginx/sites-available/shifa &gt;/dev/null &lt;&lt;'NGINX'
+server {
+    listen 80;
+    server_name _;
+    client_max_body_size 15m;
+    gzip on;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }
+    location = /api/admin/events {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Connection '';
+        proxy_buffering off; proxy_cache off; proxy_read_timeout 3600s;
+    }
+    location / {
+        root /var/www/shifa/admin;
+        try_files $uri $uri/ /index.html;
+    }
+}
+NGINX
+sudo ln -sf /etc/nginx/sites-available/shifa /etc/nginx/sites-enabled/shifa
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t &amp;&amp; sudo systemctl reload nginx</pre>
+      <div class="verify"><b>Verify:</b> open <code>http://&lt;EIP&gt;/</code> → Admin login loads; log in as a migrated user → live data shows.</div>
+    </section>
+
+    <!-- P13 -->
+    <section class="part" id="p13">
+      <h2><span class="num">13</span> Free HTTPS with a hostname</h2>
+      <div class="time">⏱ 10 min · sslip.io, no domain purchase</div>
+<pre>sudo apt -y install certbot python3-certbot-nginx
+# EIP 13.234.56.78  ->  13-234-56-78.sslip.io
+sudo sed -i 's/server_name _;/server_name &lt;EIP-with-dashes&gt;.sslip.io;/' /etc/nginx/sites-available/shifa
+sudo systemctl reload nginx
+sudo certbot --nginx -d &lt;EIP-with-dashes&gt;.sslip.io --redirect --agree-tos -m you@example.com --no-eff-email</pre>
+      <div class="verify"><b>Verify:</b> <code>https://&lt;EIP-with-dashes&gt;.sslip.io/</code> loads with a padlock; login works.</div>
+      <div class="note tip">Own a domain? Point an <b>A record</b> to <code>&lt;EIP&gt;</code> and run certbot with <code>-d yourdomain.com</code>.</div>
+    </section>
+
+    <!-- P14 -->
+    <section class="part" id="p14">
+      <h2><span class="num">14</span> Smoke test the full flow</h2>
+      <div class="time">⏱ 10 min</div>
+      <ul class="checklist">
+        <li>Dashboard loads with your real numbers.</li>
+        <li>Orders list shows migrated orders.</li>
+        <li>Create a test order as a salesperson → appears &amp; can be approved.</li>
+        <li>Approve it → label generated (Print Label works).</li>
+        <li>A report / analytics page renders.</li>
+        <li>Log out / log back in.</li>
+      </ul>
+      <div class="verify"><b>Verify:</b> all pass → cutover successful.</div>
+    </section>
+
+    <!-- P15 -->
+    <section class="part" id="p15">
+      <h2><span class="num">15</span> Lock things back down</h2>
+      <div class="time">⏱ 5 min</div>
+      <ol>
+        <li>RDS security group → delete the temporary <code>3306 from shifa-sg</code> inbound rule.</li>
+        <li><code>rm ~/rds_dump.sql</code> on the EC2.</li>
+      </ol>
+      <div class="verify"><b>Verify:</b> app still works (now using local MySQL, not RDS).</div>
+    </section>
+
+    <!-- P16 -->
+    <section class="part" id="p16">
+      <h2><span class="num">16</span> Nightly backups</h2>
+      <div class="time">⏱ 5 min</div>
+<pre>sudo tee /opt/shifa/backup.sh &gt;/dev/null &lt;&lt;'BK'
+#!/usr/bin/env bash
+set -e
+STAMP=$(date +%F); mkdir -p /opt/shifa/backups
+mysqldump -u shifa -p"$DB_PASSWORD" --single-transaction shifa_dashboard | gzip &gt; /opt/shifa/backups/db-$STAMP.sql.gz
+find /opt/shifa/backups -name 'db-*.sql.gz' -mtime +14 -delete
+BK
+sudo chmod +x /opt/shifa/backup.sh
+( sudo crontab -l 2>/dev/null; echo "0 2 * * * DB_PASSWORD=CHANGE_ME_DB_PASSWORD /opt/shifa/backup.sh" ) | sudo crontab -
+
+sudo DB_PASSWORD=CHANGE_ME_DB_PASSWORD /opt/shifa/backup.sh   # run once now
+ls -lh /opt/shifa/backups/</pre>
+      <div class="verify"><b>Verify:</b> a <code>db-&lt;date&gt;.sql.gz</code> exists. Test a restore into a scratch DB at least once.</div>
+    </section>
+
+    <!-- P17 -->
+    <section class="part" id="p17">
+      <h2><span class="num">17</span> Retire RDS to stop the bill</h2>
+      <div class="time">⏱ after 2–3 confident days</div>
+      <ol>
+        <li>RDS → your DB → <b>Actions → Take snapshot</b> (<code>shifa-final-pre-delete</code>).</li>
+        <li>RDS → <b>Actions → Delete</b> (you already have a snapshot) → confirm. Stops ~$7.35/mo.</li>
+        <li>EC2 → Elastic IPs → release any <b>unattached</b> IPs (keep the one on <code>shifa-oms</code>).</li>
+      </ol>
+      <div class="verify"><b>Verify:</b> RDS shows no running instance; Billing → Cost Explorer trends down next day.</div>
+    </section>
+
+    <!-- P18 -->
+    <section class="part" id="p18">
+      <h2><span class="num">18</span> Operations cheat-sheet</h2>
+      <h3>Service control / logs</h3>
+<pre>sudo systemctl status shifa-oms
+sudo journalctl -u shifa-oms -f
+sudo systemctl restart shifa-oms
+sudo tail -f /var/log/nginx/error.log</pre>
+      <h3>Redeploy after code changes (build on PC first)</h3>
+<pre><span class="pc">PC</span>scp -i "C:\E Drive\aws-keys\shifa-key.pem" "c:\E Drive\Shifa-Software\backend\target\shifa-oms-0.0.1-SNAPSHOT.jar" ubuntu@&lt;EIP&gt;:/home/ubuntu/shifa-oms.jar
+<span class="pc">PC</span>Compress-Archive -Path "frontend\dist\admin\browser\*" -DestinationPath "admin.zip" -Force
+<span class="pc">PC</span>scp -i "C:\E Drive\aws-keys\shifa-key.pem" "c:\E Drive\Shifa-Software\admin.zip" ubuntu@&lt;EIP&gt;:/home/ubuntu/</pre>
+<pre># on the EC2:
+sudo mv ~/shifa-oms.jar /opt/shifa/shifa-oms.jar
+sudo rm -rf /var/www/shifa/admin/* &amp;&amp; sudo unzip -o ~/admin.zip -d /var/www/shifa/admin
+sudo chown -R shifa:shifa /opt/shifa
+sudo systemctl restart shifa-oms &amp;&amp; sudo systemctl reload nginx</pre>
+      <p>Schema changes: add a new Flyway file <code>V39__...sql</code> before building — it applies on restart. Data + env are never touched by a redeploy.</p>
+      <h3>If reports feel slow → resize to t3.small (2 GB), ~3 min</h3>
+      <ol>
+        <li>EC2 → <code>shifa-oms</code> → <b>Instance state → Stop</b> (wait for Stopped).</li>
+        <li><b>Actions → Instance settings → Change instance type → t3.small</b> → Apply.</li>
+        <li><b>Instance state → Start.</b> (Elastic IP stays — same URL.)</li>
+        <li>Bump limits: <code>JAVA_OPTS=-Xms512m -Xmx1g</code>, <code>DB_POOL_SIZE=12</code>, MySQL <code>innodb_buffer_pool_size = 512M</code>; then restart mysql &amp; shifa-oms.</li>
+      </ol>
+    </section>
+
+    <!-- TROUBLE -->
+    <section class="part" id="trouble" style="border-left-color:var(--gold);">
+      <h2><span class="num" style="background:var(--gold);color:#3a2c05;">⚠</span> Troubleshooting</h2>
+      <table>
+        <thead><tr><th>Symptom</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>Can't reach <code>http://&lt;EIP&gt;/</code></td><td>Security group allows 80/443 (Part 2); instance Running; <code>sudo systemctl status nginx</code>.</td></tr>
+          <tr><td><b>502 Bad Gateway</b></td><td>Backend down: <code>sudo journalctl -u shifa-oms -e</code>. Usually a DB password mismatch in <code>/etc/shifa/shifa.env</code>.</td></tr>
+          <tr><td>Backend won't start, DB error</td><td><code>DB_PASSWORD</code> must match Part 7; <code>mysql -u shifa -p</code> should connect.</td></tr>
+          <tr><td>App starts, no/blank data</td><td>RDS import (Part 8) didn't run or counts were 0 — re-import &amp; re-check counts.</td></tr>
+          <tr><td>Flyway "validate" error on boot</td><td>Migrated schema differs from the JAR's migrations — deploy the matching JAR / correct dump.</td></tr>
+          <tr><td>Out of memory / killed</td><td>Confirm 2 GB swap (<code>free -h</code>); keep <code>-Xmx512m</code>; if persistent, resize to t3.small (Part 18).</td></tr>
+          <tr><td>SSH refused</td><td>Fix key perms (Part 4 <code>icacls</code>); SSH-22 source = your IP; ISP IP changed → update the SG rule.</td></tr>
+          <tr><td>SSE dashboard not live</td><td>Ensure the <code>location = /api/admin/events</code> block is present and <code>nginx -t</code> passes.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <b>Shifa Herbal Remedies — OMS.</b> EC2 single-instance deployment runbook · prepared for internal use.<br>
+  Prices indicative USD, ap-south-1 · verify in the AWS console before provisioning.<br><br>
+  Developed by <a href="http://www.weblithic.com" target="_blank">Weblithic</a>
+</footer>
+
+<script>
+  // Highlight the current section in the sidebar as you scroll.
+  const links = Array.from(document.querySelectorAll('.sidebar a'));
+  const map = {};
+  links.forEach(a => { const id = a.getAttribute('href').slice(1); const el = document.getElementById(id); if (el) map[id] = a; });
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const a = map[e.target.id];
+        if (a) a.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-10% 0px -80% 0px', threshold: 0 });
+  Object.keys(map).forEach(id => obs.observe(document.getElementById(id)));
+</script>
+
+</body>
+</html>

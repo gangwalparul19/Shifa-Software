@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shifa OMS — Oracle Cloud Always Free Deployment Plan</title>
+<style>
+  :root{
+    --green:#1F5D3F; --green-2:#1F7A4D; --green-dark:#0f3d27; --gold:#C8A24A;
+    --bg:#eef2ee; --card:#ffffff; --text:#22332b; --muted:#6b7b72; --line:#e2e8e4;
+    --shadow:0 6px 24px rgba(15,61,39,.10); --blue:#2563eb; --red:#dc2626;
+    --code-bg:#0f3d27; --code-text:#e8f5ec;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.65;font-size:15px;}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 20px 90px;}
+
+  header.brand{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;
+    padding:38px 24px;text-align:center;position:relative;overflow:hidden;}
+  header.brand::after{content:"☁️";position:absolute;right:14px;bottom:-18px;font-size:130px;opacity:.10;}
+  header.brand .leaf{font-size:32px;}
+  header.brand h1{margin:6px 0 4px;font-size:27px;}
+  header.brand p{margin:0;color:#dceee2;}
+  .rule{height:4px;background:var(--gold);}
+
+  /* Free-forever hero */
+  .hero{background:linear-gradient(135deg,#ffffff,#f8fdf9);border:3px solid var(--green);
+    border-radius:20px;padding:36px 40px;margin:32px 0;text-align:center;box-shadow:0 12px 40px rgba(15,61,39,.15);}
+  .hero .label{color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:8px;}
+  .hero .headline{font-size:22px;font-weight:800;color:var(--green-dark);line-height:1.35;margin:4px auto;max-width:680px;}
+  .hero .amount{font-size:52px;color:var(--green-dark);font-weight:900;line-height:1;margin:16px 0 6px;}
+  .hero .amount span{font-size:28px;font-weight:700;}
+  .hero .savings{display:inline-block;background:#fff8e8;border:2px solid var(--gold);
+    padding:12px 24px;border-radius:999px;font-size:15px;font-weight:700;color:#7a5c12;margin-top:14px;}
+
+  h2{color:var(--green-dark);font-size:24px;margin:48px 0 12px;text-align:center;}
+  h3{color:var(--green-dark);}
+  .section-intro{text-align:center;color:var(--muted);max-width:720px;margin:0 auto 28px;font-size:16px;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px 28px;margin:16px 0;
+    box-shadow:var(--shadow);}
+
+  /* Tables */
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;}
+  th,td{text-align:left;padding:11px 13px;border:1px solid var(--line);vertical-align:top;}
+  th{background:var(--green);color:#fff;font-weight:600;}
+  tr:nth-child(even) td{background:#f2f8f4;}
+  td.num,th.num{text-align:right;white-space:nowrap;}
+  tfoot td{font-weight:800;background:#e6f4ec !important;color:var(--green-dark);font-size:15px;}
+
+  /* Phase steps */
+  .phase{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--green);
+    border-radius:12px;padding:20px 24px;margin:16px 0;box-shadow:var(--shadow);}
+  .phase h3{margin:0 0 10px;font-size:18px;display:flex;align-items:center;gap:10px;}
+  .phase .badge{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;
+    padding:0 8px;background:var(--green);color:#fff;border-radius:999px;font-size:14px;font-weight:800;}
+  .phase ol,.phase ul{margin:8px 0 0;padding-left:22px;}
+  .phase li{margin:6px 0;}
+
+  /* Code blocks */
+  pre{background:var(--code-bg);color:var(--code-text);border-radius:10px;padding:16px 18px;overflow-x:auto;
+    font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:13px;line-height:1.55;margin:12px 0;}
+  code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;background:#e6f0ea;
+    color:var(--green-dark);padding:1px 6px;border-radius:5px;font-size:13px;}
+  pre code{background:none;color:inherit;padding:0;}
+
+  /* Callouts */
+  .note{border-radius:10px;padding:14px 18px;margin:14px 0;font-size:14.5px;}
+  .note.warn{background:#fff8e8;border:1px solid var(--gold);color:#7a5c12;}
+  .note.info{background:#eef7f1;border:1px solid var(--green);color:#1f5d3f;}
+  .note.tip{background:#eef5ff;border:1px solid var(--blue);color:#1e3a8a;}
+  .note b{color:inherit;}
+
+  /* Architecture */
+  .arch{background:var(--code-bg);color:var(--code-text);border-radius:12px;padding:20px;overflow-x:auto;}
+  .arch pre{background:none;padding:0;margin:0;}
+
+  /* KPI stat boxes */
+  .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin:24px 0;}
+  .stat-box{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;
+    border-radius:12px;padding:22px;text-align:center;}
+  .stat-box .number{font-size:30px;font-weight:900;line-height:1;margin-bottom:8px;}
+  .stat-box .label{font-size:13.5px;opacity:.92;line-height:1.4;}
+
+  /* TOC */
+  .toc{background:linear-gradient(135deg,#eaf3ec,#fff);border:2px solid var(--green);border-radius:14px;
+    padding:20px 26px;margin:28px 0;}
+  .toc h3{margin:0 0 10px;}
+  .toc ol{margin:0;padding-left:22px;columns:2;column-gap:32px;}
+  .toc a{color:var(--green);text-decoration:none;font-weight:500;}
+  .toc a:hover{color:var(--green-dark);text-decoration:underline;}
+  @media(max-width:640px){.toc ol{columns:1;}}
+
+  footer{text-align:center;color:var(--muted);font-size:13px;margin-top:64px;padding:20px;
+    border-top:1px solid var(--line);background:linear-gradient(to bottom,#ffffff,#f8f9fa);}
+  footer b{color:var(--green-dark);}
+  footer a{color:var(--green);text-decoration:none;font-weight:500;}
+  footer a:hover{color:var(--green-dark);text-decoration:underline;}
+
+  @media(max-width:640px){
+    .wrap{padding:0 14px 70px;}
+    .hero{padding:28px 20px;} .hero .amount{font-size:40px;}
+    .card,.phase{padding:18px;}
+    footer{padding:16px;font-size:12px;}
+  }
+</style>
+</head>
+<body>
+
+<header class="brand">
+  <div class="leaf">☁️🌿</div>
+  <h1>Oracle Cloud Always Free — Deployment Plan</h1>
+  <p>Hosting Shifa OMS for ~100 staff (≈60–70 concurrent, 9 AM–6 PM IST) at ₹0/month, indefinitely</p>
+</header>
+<div class="rule"></div>
+
+<div class="wrap">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="label">The outcome</div>
+    <div class="headline">One Oracle Always Free A1 VM (4 OCPU / 24 GB) runs the entire dashboard-only Shifa OMS — Admin app, API and MySQL — for ~100 staff with 60–70 working concurrently.</div>
+    <div class="amount"><span>₹</span>0 <span style="font-size:20px;">/ month</span></div>
+    <div class="savings">Free forever, provided you stay within the Always-Free tier (steps inside)</div>
+  </div>
+
+  <div class="toc">
+    <h3>📋 What this plan covers</h3>
+    <ol>
+      <li><a href="#sizing">Sizing for 60–70 concurrent</a></li>
+      <li><a href="#cap212">Impact of 2 OCPU / 12 GB</a></li>
+      <li><a href="#growth">Data &amp; storage growth</a></li>
+      <li><a href="#arch">Target architecture</a></li>
+      <li><a href="#steps">Step-by-step deployment</a></li>
+      <li><a href="#free">Staying free forever</a></li>
+      <li><a href="#ops">Day-2 operations</a></li>
+      <li><a href="#cost">Cost summary</a></li>
+      <li><a href="#nginx">Appendix: Nginx config</a></li>
+    </ol>
+  </div>
+
+  <div class="note info">
+    <b>Note vs. the old guide.</b> This plan supersedes the older <code>DEPLOYMENT.md</code> in two ways:
+    (1) there is <b>no public storefront</b> anymore (the store is on Shopify) — we serve only the
+    <b>Admin app at <code>/</code></b> plus the <code>/api/</code> backend; (2) it adds explicit
+    <b>capacity sizing for 100 users</b> and an <b>"always free forever"</b> strategy. The mechanical
+    VM / SSH / MySQL steps still apply — this is the decision + sizing layer on top.
+  </div>
+
+  <!-- SIZING -->
+  <h2 id="sizing">1. Sizing for the real workload: 60–70 concurrent (9 AM–6 PM shift)</h2>
+  <p class="section-intro">
+    The client confirmed the actual load: <strong>~60–70 staff working the same 9 AM–6 PM IST shift, all
+    online at once.</strong> That is a <strong>sustained, all-day concurrent load</strong> — not a
+    trickle of logins — and it moves the bottleneck from RAM to <strong>CPU</strong>.
+  </p>
+
+  <div class="stats-row">
+    <div class="stat-box"><div class="number">4 / 24</div><div class="label">OCPU / GB RAM free (Ampere A1)</div></div>
+    <div class="stat-box"><div class="number">200 GB</div><div class="label">Block storage free</div></div>
+    <div class="stat-box"><div class="number">20 GB</div><div class="label">Object Storage free</div></div>
+    <div class="stat-box"><div class="number">10 TB</div><div class="label">Outbound egress / month free</div></div>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>Resource</th><th>Always Free allowance</th><th>We use</th><th>Why</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Compute (Ampere A1 Arm)</strong></td>
+          <td>up to 4 OCPU / 24 GB RAM total</td>
+          <td>1 VM: 4 OCPU / 24 GB</td>
+          <td>4 cores absorb the 9 AM login stampede + simultaneous reports; RAM lets JVM + MySQL both run big</td>
+        </tr>
+        <tr>
+          <td><strong>Block storage</strong></td>
+          <td>200 GB total (≤2 volumes)</td>
+          <td>~50 GB boot volume</td>
+          <td>DB + logs + JAR + web bundle stay under a few GB for years</td>
+        </tr>
+        <tr>
+          <td><strong>Object Storage</strong></td>
+          <td>20 GB + 50k requests/mo</td>
+          <td>optional, off-VM backups</td>
+          <td>Comfortably holds nightly DB dumps</td>
+        </tr>
+        <tr>
+          <td><strong>Egress</strong></td>
+          <td>10 TB/month outbound</td>
+          <td>tiny</td>
+          <td>A dashboard app won't get close</td>
+        </tr>
+        <tr>
+          <td><strong>Load balancer</strong></td>
+          <td>1 flexible LB (10 Mbps)</td>
+          <td>not used</td>
+          <td>Nginx on the VM terminates TLS — one less moving part</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note tip">
+      <b>Recommendation (changed):</b> provision the <b>FULL free A1 shape — 4 OCPU / 24 GB</b>. It's the
+      same Always-Free tier (₹0), and for 60–70 concurrent users the extra 2 cores are exactly the
+      resource under pressure. Fall back to 2 OCPU / 12 GB <em>only</em> if regional capacity blocks A1
+      4/24 — and resize up the moment capacity frees (see §1a for the impact).
+    </div>
+
+    <h3>Tuning for 4 OCPU / 24 GB</h3>
+<pre># Spring Boot: 6 GB heap (room for 60-70 concurrent + a growing codebase)
+JAVA_OPTS=-Xms2g -Xmx6g
+DB_POOL_SIZE=30
+
+# MySQL (/etc/mysql/mysql.conf.d/mysqld.cnf)
+innodb_buffer_pool_size = 8G
+max_connections = 200</pre>
+    <p>Footprint ≈ JVM ~7 GB + MySQL ~9 GB + OS/Nginx ~1.5 GB ≈ <strong>~17–18 GB of 24 GB</strong>, leaving ~6 GB free.</p>
+  </div>
+
+  <!-- IMPACT ON 2/12 -->
+  <h2 id="cap212">1a. Impact of running on 2 OCPU / 12 GB with 60–70 concurrent</h2>
+  <p class="section-intro">
+    If A1 capacity forces you onto <strong>2 OCPU / 12 GB</strong>, the app still runs the
+    <strong>entire feature set</strong> and handles 60–70 concurrent users for <strong>ordinary CRUD and
+    dashboard work</strong> — but it is <strong>tight, not comfortable</strong>, because the 2 cores are
+    <em>shared</em> between the JVM and MySQL. Expect visible slowdowns at peaks.
+  </p>
+
+  <div class="stats-row">
+    <div class="stat-box"><div class="number">10–20</div><div class="label">Sustained requests/sec</div></div>
+    <div class="stat-box"><div class="number">40–60</div><div class="label">Peak requests/sec</div></div>
+    <div class="stat-box"><div class="number">CPU</div><div class="label">The bottleneck (RAM is fine)</div></div>
+    <div class="stat-box"><div class="number">Resize</div><div class="label">Fix = 4/24, free, no migration</div></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0;">Where the 2 cores get tight (peaks)</h3>
+    <ul style="margin-top:0;">
+      <li><b>9 AM login stampede</b> — bcrypt password hashing is deliberately CPU-heavy (~50–100 ms each). 60–70 logins in a few minutes is a real CPU spike on 2 cores.</li>
+      <li><b>Simultaneous heavy endpoints</b> — several people running reports/analytics, generating invoice/label PDFs, or refreshing the role dashboard at once. On 2 cores these queue behind each other → latency for everyone.</li>
+      <li><b>JVM ↔ MySQL CPU contention</b> — under concurrent load both want CPU at the same moment, and 2 cores leave no slack.</li>
+    </ul>
+    <div class="note info"><b>RAM is fine</b> on 12 GB (JVM ~3.5–4 GB + MySQL ~3.5 GB + OS ~1 GB ≈ 8–8.5 GB). <b>CPU is the limit.</b></div>
+
+    <h3>Realistic verdict</h3>
+    <ul>
+      <li><b>60–70 concurrent, normal work</b> → <b>works, but tight</b> — fine most of the day, sluggish at peaks.</li>
+      <li><b>60–70 concurrent + several heavy reports/PDFs at once</b> → noticeable latency; requests queue.</li>
+      <li>The fix is CPU: <b>resize to 4 OCPU / 24 GB</b> (free) — a shape change, no migration, no data move.</li>
+    </ul>
+
+    <h3>Mitigations if you must stay on 2/12 for now</h3>
+<pre># Spring Boot: 3 GB heap
+JAVA_OPTS=-Xms1g -Xmx3g
+DB_POOL_SIZE=25            # enough concurrency without thrashing 2 cores
+
+# MySQL (/etc/mysql/mysql.conf.d/mysqld.cnf): 3 GB InnoDB buffer pool
+innodb_buffer_pool_size = 3G</pre>
+    <ul>
+      <li><b>Cache the role dashboard summary</b> (short TTL) so 60–70 simultaneous dashboard loads don't each recompute the aggregates.</li>
+      <li><b>Shift heavy reports/analytics to off-peak</b> or run them async; the nightly insights + backup jobs already run at 02:00.</li>
+      <li>Keep the existing admin-table indexes (migrations V14/V15) — they matter under concurrency.</li>
+      <li><b>Watch CPU during the 9 AM window</b> (<code>top</code>/<code>htop</code>). If it pins at ~100% and requests back up, that's the signal to move to 4/24.</li>
+    </ul>
+    <p>Add a 2 GB swap file as an OOM safety net:</p>
+<pre>sudo fallocate -l 2G /swapfile &amp;&amp; sudo chmod 600 /swapfile
+sudo mkswap /swapfile &amp;&amp; sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab</pre>
+
+    <div class="note warn">
+      <b>Bottom line:</b> for 60–70 concurrent all-day users, go <b>4 OCPU / 24 GB</b> from the start
+      (it's free). 2/12 is a temporary fallback that works but will feel slow at peaks.
+    </div>
+  </div>
+
+  <!-- DATA & STORAGE GROWTH -->
+  <h2 id="growth">1b. Data &amp; storage growth (5,000 orders/month → 60,000/year)</h2>
+  <p class="section-intro">
+    Split growth into two very different buckets: the <strong>relational database</strong> (tiny — keep
+    in MySQL) and <strong>binary files</strong> (screenshots + label PDFs — the only thing that grows fast).
+  </p>
+
+  <div class="stats-row">
+    <div class="stat-box"><div class="number">~1 GB</div><div class="label">Relational DB growth / year</div></div>
+    <div class="stat-box"><div class="number">4–9 GB</div><div class="label">Payment screenshots / year</div></div>
+    <div class="stat-box"><div class="number">disposable</div><div class="label">Label PDFs (regenerate on demand)</div></div>
+    <div class="stat-box"><div class="number">~20 yrs</div><div class="label">Before 200 GB disk fills</div></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0;">Relational data (MySQL) — stays small</h3>
+    <p style="margin-top:0;">
+      Per year at 60,000 orders: orders (~60 MB) + line items (~20 MB) + status history (~500–600k rows,
+      ~120 MB) + payments / courier / receivables / notifications / audit / stock / leads (~100–150 MB),
+      plus ~40–60% for indexes → <strong>≈ 0.5–1 GB/year</strong>. Over 5 years ~5 GB — trivial against
+      the 200 GB volume, and the <strong>3 GB InnoDB buffer pool caches all hot/recent orders</strong> for
+      years. Nightly <code>mysqldump</code> stays fast <b>only if binaries are NOT stored in the DB</b>.
+    </p>
+
+    <h3>Binary files — the part that grows</h3>
+    <table>
+      <thead><tr><th>Asset</th><th>Volume</th><th>Retention</th><th>Plan</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Payment screenshots</strong><br><code>payments/{orderId}/…</code></td>
+          <td>~0.3–0.75 GB/month (compressed JPEG ~150–400 KB each) → <strong>~4–9 GB/year</strong></td>
+          <td><strong>Durable — irreplaceable</strong></td>
+          <td>Archive monthly; keep a rolling window live</td>
+        </tr>
+        <tr>
+          <td><strong>Label PDFs</strong><br><code>labels/internal/&lt;code&gt;.pdf</code></td>
+          <td>~0.2 GB/month (~30–50 KB each) → ~2.4 GB/year</td>
+          <td><strong>Disposable</strong></td>
+          <td>Purge freely — the print endpoint <b>re-renders them from order state</b> (<code>LabelService.internalLabelPdf</code>), so reprinting an old label still works</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note info">
+      <b>Key insight:</b> only <b>payment screenshots</b> must be retained. Label PDFs regenerate on
+      demand, so they can be purged on a short cycle and don't count toward long-term growth.
+    </div>
+
+    <h3>Recommended strategy (free forever)</h3>
+    <p>
+      Use <code>STORAGE_PROVIDER=LOCAL</code> — files on the 200 GB block volume under
+      <code>/opt/shifa/storage</code>, <b>not</b> in MySQL (keeps the DB lean and <code>mysqldump</code>
+      fast). Then run one <b>monthly maintenance job</b> (cron):
+    </p>
+    <ol>
+      <li><b>Purge label PDFs</b> older than ~1 month — they regenerate on demand.</li>
+      <li><b>Zip last month's screenshots</b> → <code>shifa-screenshots-YYYY-MM.zip</code>.</li>
+      <li><b>Hand off the zip</b> to the client (and/or upload to OCI Object Storage).</li>
+      <li><b>Delete the archived originals</b> from disk once handoff is confirmed (optional — see note).</li>
+    </ol>
+<pre># /opt/shifa/monthly-archive.sh  (run 1st of month via cron)
+MON=$(date -d "last month" +%Y-%m)
+SRC=/opt/shifa/storage/payments
+OUT=/opt/shifa/archives/shifa-screenshots-$MON.zip
+mkdir -p /opt/shifa/archives
+# zip files modified last month
+find "$SRC" -type f -newermt "$MON-01" ! -newermt "$(date +%Y-%m-01)" -print | zip -q "$OUT" -@
+# purge disposable label PDFs older than 30 days
+find /opt/shifa/storage/labels/internal -type f -mtime +30 -delete
+# optional: push to OCI Object Storage, then remove local originals
+# oci os object put --bucket-name shifa-archives --file "$OUT"</pre>
+    <div class="note warn">
+      <b>Trade-off:</b> once a screenshot is deleted from disk, the order-detail "view screenshot" link
+      for that old order returns 404 (the order's amount/status stay in the DB — only the image is
+      offloaded). Reconciliation happens within the month, so keep a <b>rolling 2–3 month window live</b>
+      and archive older. Since disk is huge, you can also <b>skip deletion entirely</b> and just take the
+      monthly zip as an off-VM backup.
+    </div>
+
+    <h3>Do we even need to delete?</h3>
+    <p>
+      The 200 GB block volume is enormous here: at ~9 GB/year (worst case, keeping labels too), local disk
+      alone lasts <strong>~20 years</strong>. So deletion is a <b>business/handoff choice, not a capacity
+      necessity</b>:
+    </p>
+    <ul>
+      <li><b>Option 1 (recommended): keep local + monthly zip to client.</b> Simplest, guaranteed free, DB stays lean. The monthly zip doubles as an off-site backup the client holds. Delete originals only for a minimal footprint.</li>
+      <li><b>Option 2: OCI Object Storage as the live store.</b> Point <code>STORAGE_PROVIDER=S3</code> at OCI Object Storage's <b>S3-compatible endpoint</b> (<code>STORAGE_S3_ENDPOINT</code> + bucket + Customer Secret Key). Free tier is <b>20 GB</b> (≈ 2–4 years) + 50k requests/mo (well under 5k uploads + views). Add a <b>lifecycle rule</b> to move objects &gt;2 months to the Archive tier and/or delete after the monthly handoff, staying inside 20 GB forever. (The bundled <code>OciStorageService</code> is a stub — use the S3-compat path.)</li>
+    </ul>
+    <div class="note tip">
+      <b>Recommendation:</b> Option 1 (local + monthly zip handover + label purge). Least moving parts,
+      provably free forever, and matches "archive monthly and send the client a zip." Use Option 2 only
+      if the client prefers Oracle to hold the archives.
+    </div>
+  </div>
+
+  <!-- ARCHITECTURE -->
+  <h2 id="arch">2. Target architecture</h2>
+  <p class="section-intro">Single Always-Free A1 VM, single origin — no CORS, only ports 80/443 exposed.</p>
+  <div class="arch">
+<pre>          ┌────────── OCI Always-Free A1 VM (Ubuntu 22.04, 4 OCPU / 24 GB) ──────────┐
+ Staff ───┼─▶ Nginx :443/:80  (Let's Encrypt TLS)                                     │
+ browser  │      /        → /var/www/shifa/admin   (Angular Admin SPA)                │
+ https://  │      /api/    → reverse proxy → 127.0.0.1:8080  (Spring Boot JAR, systemd)│
+          │                                  └──▶ MySQL 8 (localhost:3306)            │
+          │      nightly: mysqldump → gzip → /opt/shifa/backups (+ Object Storage)     │
+          └────────────────────────────────────────────────────────────────────────────┘</pre>
+  </div>
+  <p>
+    Binary files (payment screenshots, label PDFs) are stored on the <strong>block volume</strong>
+    (<code>STORAGE_PROVIDER=LOCAL</code>, under <code>/opt/shifa/storage</code>) — <strong>not</strong>
+    in MySQL — so the nightly <code>mysqldump</code> stays small and fast, and files are archived
+    monthly (see §1b). MySQL holds only relational data.
+  </p>
+
+  <!-- STEPS -->
+  <h2 id="steps">3. Step-by-step deployment</h2>
+
+  <div class="phase">
+    <h3><span class="badge">A</span> Create the Oracle account (once, ~15 min)</h3>
+    <ol>
+      <li>Go to <b>oracle.com/cloud/free</b> → <b>Start for free</b>.</li>
+      <li>Sign up: email, <b>Country = India</b>, mobile OTP, and a <b>credit/debit card for identity only</b> (Always Free is never charged; a small refundable hold may appear).</li>
+      <li><b>Home Region</b>: pick the one nearest your staff — <b>India West (Mumbai)</b> or <b>India South (Hyderabad)</b>. <b>Cannot be changed later.</b></li>
+      <li>Log in to the OCI Console (cloud.oracle.com). Look for the green <b>"Always Free Eligible"</b> tags.</li>
+      <li>Immediately do the "free forever" hardening in section 4 (budget alert + PAYG) before building anything.</li>
+    </ol>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">B</span> Provision services (all free)</h3>
+    <ol>
+      <li><b>Networking → VCN:</b> run <b>Start VCN Wizard → "VCN with Internet Connectivity"</b> (name <code>shifa-vcn</code>). Creates a public subnet + Internet Gateway + route — avoids the "public IP toggle disabled" trap.</li>
+      <li><b>Compute → Instance</b> <code>shifa-oms</code>: Image <b>Ubuntu 22.04</b>; Shape <b>VM.Standard.A1.Flex → 4 OCPU / 24 GB</b> (or 2/12 if capacity is tight); Network = existing <code>shifa-vcn</code> public subnet with <b>public IPv4 enabled</b>; <b>generate an SSH key pair</b> and download both keys; Create → wait for <b>Running</b> → note the <b>public IP</b>.</li>
+      <li><b>Object Storage</b> (optional): create a bucket <code>shifa-backups</code> in the same region for off-VM backups. Skip for on-VM-only backups.</li>
+    </ol>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">C</span> Network + firewall</h3>
+    <ol>
+      <li>VCN → Default Security List → <b>Add Ingress</b>: TCP <b>80</b> and TCP <b>443</b> from <code>0.0.0.0/0</code> (22 is already open).</li>
+      <li>Open Ubuntu's own iptables on the VM:</li>
+    </ol>
+<pre>sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80  -j ACCEPT
+sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
+sudo netfilter-persistent save</pre>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">D</span> Install the stack (on the VM)</h3>
+<pre>sudo apt update &amp;&amp; sudo apt -y upgrade
+sudo apt -y install openjdk-21-jdk maven git unzip nginx mysql-server mysql-client
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt -y install nodejs</pre>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">E</span> Database</h3>
+<pre>sudo mysql_secure_installation
+sudo mysql &lt;&lt;'SQL'
+CREATE DATABASE IF NOT EXISTS shifa_dashboard CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'shifa'@'localhost' IDENTIFIED BY 'STRONG_DB_PASSWORD';
+GRANT ALL PRIVILEGES ON shifa_dashboard.* TO 'shifa'@'localhost';
+FLUSH PRIVILEGES;
+SQL</pre>
+    <div class="note info">Flyway runs migrations V1→V38 automatically on first backend start — do <b>not</b> create tables by hand. Start against an <b>empty</b> <code>shifa_dashboard</code> (the V22 seed uses explicit IDs).</div>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">F</span> Backend config <code>/etc/shifa/shifa.env</code></h3>
+    <p>Copy <code>deploy/shifa.env.example</code> → <code>/etc/shifa/shifa.env</code> (<code>chmod 600</code>) and set, at minimum:</p>
+<pre>SPRING_PROFILES_ACTIVE=prod
+DB_USERNAME=shifa
+DB_PASSWORD=STRONG_DB_PASSWORD
+JWT_SECRET=$(openssl rand -base64 48)
+SEED_ADMIN_PASSWORD=your-admin-pw
+SEED_PACKING_PASSWORD=your-packer-pw
+
+# Free-forever: files on the block volume (NOT MySQL), archived monthly (§1b)
+STORAGE_PROVIDER=LOCAL
+
+# Integrations stay mock unless/until you wire real providers
+COURIER_MODE=MOCK
+WHATSAPP_MODE=MOCK
+MAIL_MODE=MOCK          # switch to SMTP + Gmail app password to send real email
+
+# JVM sizing for the 24 GB box
+JAVA_OPTS=-Xms512m -Xmx2g</pre>
+    <div class="note warn"><b>Important:</b> the prod default is <code>STORAGE_PROVIDER=S3</code>, which <b>fails to start</b> with no bucket. For Oracle-only / free, use <code>STORAGE_PROVIDER=LOCAL</code> (block volume) so <code>mysqldump</code> stays small — files are archived monthly (see §1b).</div>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">G</span> Build + deploy (dashboard-only)</h3>
+    <p>Serve the <b>Admin app at <code>/</code></b> (storefront is gone). Build the JAR + admin bundle:</p>
+<pre>npm --prefix ~/shifa/frontend ci
+npm --prefix ~/shifa/frontend run build:admin        # -&gt; dist/admin/browser (base-href /)
+sudo mkdir -p /var/www/shifa/admin
+sudo cp -r ~/shifa/frontend/dist/admin/browser/* /var/www/shifa/admin/
+
+cd ~/shifa/backend &amp;&amp; mvn -DskipTests package
+sudo mkdir -p /opt/shifa &amp;&amp; sudo cp target/shifa-oms-*.jar /opt/shifa/shifa-oms.jar</pre>
+    <p>Install the systemd unit and the Nginx site (see Appendix), then start:</p>
+<pre>sudo useradd -r -s /usr/sbin/nologin shifa || true
+sudo cp ~/shifa/deploy/shifa-oms.service /etc/systemd/system/
+sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now shifa-oms
+sudo journalctl -u shifa-oms -f     # look for "Started Application" / "Tomcat started on port 8080"</pre>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">H</span> HTTPS (free)</h3>
+    <p>Use a <b>nip.io</b> hostname (no domain purchase) or your own domain's A record → public IP, then:</p>
+<pre>sudo apt -y install certbot python3-certbot-nginx
+sudo certbot --nginx -d &lt;PUBLIC-IP-with-dashes&gt;.nip.io --redirect \
+     --agree-tos -m you@example.com --no-eff-email</pre>
+    <p>Certbot installs auto-renewal. Share <code>https://&lt;host&gt;/</code> with staff.</p>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">I</span> Backups</h3>
+    <p>The app runs a nightly <code>mysqldump</code> (<code>BACKUP_CRON=0 0 2 * * *</code>) to <code>/opt/shifa/backups</code>. For off-VM durability, sync those to the Object Storage bucket from Phase B via cron (OCI CLI or S3-compat endpoint). <b>Test a restore at least once.</b></p>
+  </div>
+
+  <!-- FREE FOREVER -->
+  <h2 id="free">4. Staying "Always Free — forever"</h2>
+  <p class="section-intro">
+    The free tier can bite you two ways: <strong>idle reclamation</strong> and <strong>accidental paid
+    resources</strong>. Do all of these.
+  </p>
+
+  <div class="card">
+    <ol>
+      <li><b>Upgrade to Pay-As-You-Go (PAYG) but stay within Always-Free limits.</b> Oracle may <b>reclaim idle compute on accounts that are still "Always Free" (never upgraded)</b>. Upgrading to PAYG <b>stops the idle-reclaim risk</b>, and as long as you use only Always-Free-eligible resources, your bill stays ₹0. This is the single best move for "free forever."</li>
+      <li><b>Create a Budget alert:</b> Billing → <b>Budgets → Create budget</b> at a tiny threshold (₹1 / $1) so you're emailed the instant anything accrues cost.</li>
+      <li><b>Only pick "Always Free Eligible" resources:</b> stick to <b>VM.Standard.A1.Flex</b> within <b>4 OCPU / 24 GB total</b>, block volume within <b>200 GB total</b>, no Load Balancer, no extra DBs.</li>
+      <li><b>Don't exceed the A1 pool</b> — a second VM shares the same 4 OCPU / 24 GB allocation.</li>
+      <li><b>Watch Object Storage requests</b> (50k/month free) — nightly backups are fine.</li>
+      <li><b>Check Cost Analysis</b> (Billing → Cost Analysis) monthly for the first few months.</li>
+    </ol>
+    <div class="note tip">
+      <b>Net effect:</b> one A1 VM (4 OCPU / 24 GB) + ≤200 GB block + optional 20 GB Object Storage, on a
+      <b>PAYG account with a ₹1 budget alert</b>, runs Shifa OMS for 100 users at <b>zero cost, indefinitely.</b>
+    </div>
+  </div>
+
+  <!-- OPS -->
+  <h2 id="ops">5. Day-2 operations</h2>
+  <div class="card">
+    <ul>
+      <li><b>Redeploy:</b> rebuild JAR + admin bundle, copy into <code>/opt/shifa</code> and <code>/var/www/shifa/admin</code>, then <code>sudo systemctl restart shifa-oms &amp;&amp; sudo systemctl reload nginx</code>. <code>apply-on-vm.sh</code> never touches the DB or <code>/etc/shifa/shifa.env</code>.</li>
+      <li><b>Schema changes:</b> add a new Flyway migration <code>V39__...sql</code> (never edit an applied one); Flyway applies it on the next restart against live data.</li>
+      <li><b>Logs:</b> <code>sudo journalctl -u shifa-oms -f</code>, <code>sudo tail -f /var/log/nginx/error.log</code>.</li>
+      <li><b>Restore drill:</b> <code>gunzip &lt; backup.sql.gz | mysql -u shifa -p shifa_dashboard</code> into a scratch DB.</li>
+    </ul>
+  </div>
+
+  <!-- COST -->
+  <h2 id="cost">6. Cost summary</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>Item</th><th>Tier</th><th class="num">Monthly cost</th></tr></thead>
+      <tbody>
+        <tr><td>A1 VM (4 OCPU / 24 GB)</td><td>Always Free</td><td class="num">₹0</td></tr>
+        <tr><td>50 GB boot volume (of 200 GB free)</td><td>Always Free</td><td class="num">₹0</td></tr>
+        <tr><td>Object Storage backups (&lt; 20 GB)</td><td>Always Free</td><td class="num">₹0</td></tr>
+        <tr><td>10 TB egress</td><td>Always Free</td><td class="num">₹0</td></tr>
+        <tr><td>TLS cert (Let's Encrypt)</td><td>Free</td><td class="num">₹0</td></tr>
+        <tr><td>nip.io hostname (domain optional)</td><td>Free</td><td class="num">₹0</td></tr>
+      </tbody>
+      <tfoot><tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>₹0 / month</strong></td></tr></tfoot>
+    </table>
+    <div class="note info">
+      Only optional spend later: a custom domain (~₹700–1,000/yr) and — if you switch email / courier /
+      WhatsApp from mock to live — those providers' own fees. None are required to run the app.
+    </div>
+  </div>
+
+  <!-- APPENDIX -->
+  <h2 id="nginx">Appendix — Dashboard-only Nginx site</h2>
+  <p class="section-intro">
+    Install to <code>/etc/nginx/sites-available/shifa</code>, symlink into <code>sites-enabled</code>,
+    remove <code>default</code>, then <code>sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code>.
+    Certbot (Phase H) adds the 443 block + redirect.
+  </p>
+  <div class="card">
+<pre>server {
+    listen 80;
+    listen [::]:80;
+    server_name _;                 # replace with your IP / nip.io host
+
+    client_max_body_size 15m;      # payment screenshots
+    gzip on;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    # ---- API -&gt; Spring Boot ----
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }
+
+    # ---- Live dashboard (SSE): buffering must be off ----
+    location = /api/admin/events {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host       $host;
+        proxy_set_header Connection '';
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+    }
+
+    # ---- Admin SPA served at root ----
+    location / {
+        root /var/www/shifa/admin;
+        try_files $uri $uri/ /index.html;
+    }
+}</pre>
+    <div class="note tip">
+      <code>npm --prefix frontend run build:admin</code> (= <code>ng build admin</code>) already builds
+      with the default base-href <code>/</code>, which matches serving the SPA at root — no
+      <code>--base-href</code> change needed. Output lands in <code>frontend/dist/admin/browser</code>;
+      copy that into <code>/var/www/shifa/admin</code>.
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <b>Shifa Herbal Remedies — OMS.</b> Oracle Cloud Always Free deployment plan · prepared for internal use.<br>
+  Free-tier allowances are subject to Oracle's current terms · verify limits in the OCI Console before provisioning.<br>
+  <br>
+  Developed by <a href="http://www.weblithic.com" target="_blank">Weblithic</a>
+</footer>
+
+</body>
+</html>

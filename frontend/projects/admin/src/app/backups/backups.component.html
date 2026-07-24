@@ -70,6 +70,20 @@
           @if (run.error) {
             <div class="shifa-bk__err"><i class="ti ti-alert-triangle me-1"></i>{{ run.error }}</div>
           }
+          @if (isSuccess(run.status)) {
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-primary mt-2"
+              (click)="download(run)"
+              [disabled]="downloadingId() !== null"
+            >
+              @if (downloadingId() === run.id) {
+                <span class="spinner-border spinner-border-sm me-1"></span> Downloading…
+              } @else {
+                <i class="ti ti-download me-1"></i> Download
+              }
+            </button>
+          }
         </div>
       }
     </div>
@@ -85,6 +99,7 @@
               <th>Finished</th>
               <th>Archive</th>
               <th>Error</th>
+              <th class="text-end">Download</th>
             </tr>
           </thead>
           <tbody>
@@ -95,6 +110,25 @@
                 <td class="text-secondary">{{ run.finishedAt ? (run.finishedAt | date: 'dd MMM yyyy, HH:mm') : '—' }}</td>
                 <td class="shifa-mono text-secondary">{{ run.objectKey || '—' }}</td>
                 <td class="text-danger">{{ run.error || '—' }}</td>
+                <td class="text-end">
+                  @if (isSuccess(run.status)) {
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-outline-primary"
+                      (click)="download(run)"
+                      [disabled]="downloadingId() !== null"
+                      title="Download archive"
+                    >
+                      @if (downloadingId() === run.id) {
+                        <span class="spinner-border spinner-border-sm"></span>
+                      } @else {
+                        <i class="ti ti-download"></i>
+                      }
+                    </button>
+                  } @else {
+                    <span class="text-secondary">—</span>
+                  }
+                </td>
               </tr>
             }
           </tbody>

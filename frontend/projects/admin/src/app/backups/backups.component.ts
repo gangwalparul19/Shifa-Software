@@ -30,6 +30,8 @@ export class BackupsComponent implements OnInit {
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
   protected readonly running = signal(false);
+  /** Id of the run currently being downloaded (to show a per-row spinner). */
+  protected readonly downloadingId = signal<number | null>(null);
 
   /** The most recent successful run, for the summary tile. */
   protected readonly lastSuccess = computed<BackupRun | null>(
@@ -85,6 +87,38 @@ export class BackupsComponent implements OnInit {
         this.toasts.error('Could not start the backup. Please try again.');
       },
     });
+  }
+
+  /** Downloads a successful run's archive from S3 (via the backend) as a file. */
+  download(run: BackupRun): void {
+    if (!this.isSuccess(run.status) || this.downloadingId() !== null) {
+      return;
+    }
+    this.downloadingId.set(run.id);
+    this.service.download(run.id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = this.downloadName(run);
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        this.downloadingId.set(null);
+      },
+      error: () => {
+        this.downloadingId.set(null);
+        this.toasts.error('Could not download the backup archive. Please try again.');
+      },
+    });
+  }
+
+  /** A friendly filename for the downloaded archive, e.g. shifa-backup-2026-07-24.sql.gz. */
+  private downloadName(run: BackupRun): string {
+    const when = run.finishedAt || run.startedAt;
+    const stamp = when ? new Date(when).toISOString().slice(0, 10) : String(run.id);
+    return `shifa-backup-${stamp}.sql.gz`;
   }
 
   // --- Presentation helpers ----------------------------------------------

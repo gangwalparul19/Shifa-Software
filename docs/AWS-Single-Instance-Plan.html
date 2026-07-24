@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shifa OMS — AWS Single-Instance Deployment Plan</title>
+<style>
+  :root{
+    --green:#1F5D3F; --green-2:#1F7A4D; --green-dark:#0f3d27; --gold:#C8A24A;
+    --bg:#eef2ee; --card:#ffffff; --text:#22332b; --muted:#6b7b72; --line:#e2e8e4;
+    --shadow:0 6px 24px rgba(15,61,39,.10); --blue:#2563eb; --red:#dc2626;
+    --code-bg:#0f3d27; --code-text:#e8f5ec;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.65;font-size:15px;}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 20px 90px;}
+
+  header.brand{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;
+    padding:38px 24px;text-align:center;position:relative;overflow:hidden;}
+  header.brand::after{content:"🖥️";position:absolute;right:16px;bottom:-14px;font-size:120px;opacity:.10;}
+  header.brand .leaf{font-size:32px;}
+  header.brand h1{margin:6px 0 4px;font-size:27px;}
+  header.brand p{margin:0;color:#dceee2;}
+  .rule{height:4px;background:var(--gold);}
+
+  .hero{background:linear-gradient(135deg,#ffffff,#f8fdf9);border:3px solid var(--green);
+    border-radius:20px;padding:36px 40px;margin:32px 0;text-align:center;box-shadow:0 12px 40px rgba(15,61,39,.15);}
+  .hero .label{color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:8px;}
+  .hero .headline{font-size:22px;font-weight:800;color:var(--green-dark);line-height:1.35;margin:4px auto;max-width:680px;}
+  .hero .amount{font-size:48px;color:var(--green-dark);font-weight:900;line-height:1;margin:16px 0 6px;}
+  .hero .amount span{font-size:26px;font-weight:700;}
+  .hero .savings{display:inline-block;background:#fff8e8;border:2px solid var(--gold);
+    padding:12px 24px;border-radius:999px;font-size:15px;font-weight:700;color:#7a5c12;margin-top:14px;}
+
+  h2{color:var(--green-dark);font-size:24px;margin:48px 0 12px;text-align:center;}
+  h3{color:var(--green-dark);}
+  .section-intro{text-align:center;color:var(--muted);max-width:720px;margin:0 auto 28px;font-size:16px;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px 28px;margin:16px 0;
+    box-shadow:var(--shadow);}
+
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;}
+  th,td{text-align:left;padding:11px 13px;border:1px solid var(--line);vertical-align:top;}
+  th{background:var(--green);color:#fff;font-weight:600;}
+  tr:nth-child(even) td{background:#f2f8f4;}
+  td.num,th.num{text-align:right;white-space:nowrap;}
+  tfoot td{font-weight:800;background:#e6f4ec !important;color:var(--green-dark);font-size:15px;}
+  .rec td{background:#fff8e8 !important;}
+
+  .phase{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--green);
+    border-radius:12px;padding:20px 24px;margin:16px 0;box-shadow:var(--shadow);}
+  .phase h3{margin:0 0 10px;font-size:18px;display:flex;align-items:center;gap:10px;}
+  .phase .badge{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;
+    padding:0 8px;background:var(--green);color:#fff;border-radius:999px;font-size:14px;font-weight:800;}
+  .phase ol,.phase ul{margin:8px 0 0;padding-left:22px;} .phase li{margin:6px 0;}
+
+  pre{background:var(--code-bg);color:var(--code-text);border-radius:10px;padding:16px 18px;overflow-x:auto;
+    font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:12.5px;line-height:1.55;margin:12px 0;}
+  code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;background:#e6f0ea;
+    color:var(--green-dark);padding:1px 6px;border-radius:5px;font-size:13px;}
+  pre code{background:none;color:inherit;padding:0;}
+
+  .note{border-radius:10px;padding:14px 18px;margin:14px 0;font-size:14.5px;}
+  .note.warn{background:#fff8e8;border:1px solid var(--gold);color:#7a5c12;}
+  .note.info{background:#eef7f1;border:1px solid var(--green);color:#1f5d3f;}
+  .note.tip{background:#eef5ff;border:1px solid var(--blue);color:#1e3a8a;}
+
+  .arch{background:var(--code-bg);color:var(--code-text);border-radius:12px;padding:20px;overflow-x:auto;}
+  .arch pre{background:none;padding:0;margin:0;}
+
+  .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin:24px 0;}
+  .stat-box{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;border-radius:12px;padding:22px;text-align:center;}
+  .stat-box .number{font-size:28px;font-weight:900;line-height:1;margin-bottom:8px;}
+  .stat-box .label{font-size:13px;opacity:.92;line-height:1.4;}
+
+  .toc{background:linear-gradient(135deg,#eaf3ec,#fff);border:2px solid var(--green);border-radius:14px;padding:20px 26px;margin:28px 0;}
+  .toc h3{margin:0 0 10px;}
+  .toc ol{margin:0;padding-left:22px;columns:2;column-gap:32px;}
+  .toc a{color:var(--green);text-decoration:none;font-weight:500;}
+  .toc a:hover{color:var(--green-dark);text-decoration:underline;}
+  @media(max-width:640px){.toc ol{columns:1;}}
+
+  footer{text-align:center;color:var(--muted);font-size:13px;margin-top:64px;padding:20px;
+    border-top:1px solid var(--line);background:linear-gradient(to bottom,#ffffff,#f8f9fa);}
+  footer b{color:var(--green-dark);} footer a{color:var(--green);text-decoration:none;font-weight:500;}
+  footer a:hover{color:var(--green-dark);text-decoration:underline;}
+
+  @media(max-width:640px){
+    .wrap{padding:0 14px 70px;} .hero{padding:28px 20px;} .hero .amount{font-size:38px;}
+    .card,.phase{padding:18px;} footer{padding:16px;font-size:12px;}
+  }
+</style>
+</head>
+<body>
+
+<header class="brand">
+  <div class="leaf">🖥️🌿</div>
+  <h1>AWS Single-Instance Deployment Plan</h1>
+  <p>Java + self-hosted MySQL + Angular on one box — no RDS, no Lambda, no DynamoDB</p>
+</header>
+<div class="rule"></div>
+
+<div class="wrap">
+
+  <div class="hero">
+    <div class="label">The outcome</div>
+    <div class="headline">One small AWS instance runs the entire dashboard-only Shifa OMS — Admin app, API and MySQL — for a light 40-salesperson workload.</div>
+    <div class="amount"><span>$</span>0<span style="font-size:22px;">–7 / month</span></div>
+    <div class="savings">$0 during the 12-month Free Tier, then ~$7–8/mo · removing RDS is the big saving</div>
+  </div>
+
+  <div class="toc">
+    <h3>📋 Contents</h3>
+    <ol>
+      <li><a href="#load">Workload &amp; sizing</a></li>
+      <li><a href="#arch">Target architecture</a></li>
+      <li><a href="#prereq">Prerequisites (build on PC)</a></li>
+      <li><a href="#steps">Step-by-step (A–N)</a></li>
+      <li><a href="#tuning">Tuning by RAM</a></li>
+      <li><a href="#cache">Optional caching</a></li>
+      <li><a href="#cost">Cost summary</a></li>
+      <li><a href="#checklist">Cost-efficiency checklist</a></li>
+    </ol>
+  </div>
+
+  <div class="note info">
+    <b>Why this shape.</b> The real workload is light — ~40 salespeople doing ~100 light GETs + ≤10
+    orders each per day, and only ~10 users running dashboards/reports. That's ~0.15 req/s average, a few
+    req/s at peak. It needs neither a managed database nor serverless. One small instance co-hosting
+    everything is the cheapest correct answer, and self-hosting MySQL removes the ~$7.35/mo <b>RDS</b>
+    charge that dominates the current bill.
+  </div>
+
+  <!-- LOAD -->
+  <h2 id="load">1. Workload &amp; sizing</h2>
+
+  <div class="stats-row">
+    <div class="stat-box"><div class="number">~40</div><div class="label">Salespeople (light GETs)</div></div>
+    <div class="stat-box"><div class="number">~400/day</div><div class="label">Order writes</div></div>
+    <div class="stat-box"><div class="number">~10</div><div class="label">Dashboard/report users</div></div>
+    <div class="stat-box"><div class="number">~1–3/s</div><div class="label">Peak requests (RAM is the limit, not CPU)</div></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0;">Instance options (cheapest first)</h3>
+    <table>
+      <thead><tr><th>Instance</th><th>vCPU / RAM</th><th class="num">~Monthly</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr><td><strong>EC2 t2.micro</strong></td><td>1 / 1 GB</td><td class="num">$0 (12-mo Free Tier), then ~$8.5</td><td>Works with swap + tight tuning; tight when reports run</td></tr>
+        <tr class="rec"><td><strong>Lightsail 2 GB ⭐</strong></td><td>2 / 2 GB</td><td class="num">~$7 (flat, incl. bandwidth + IP)</td><td><strong>Recommended</strong> — comfortable, simplest pricing</td></tr>
+        <tr><td>t4g.small (ARM)</td><td>2 / 2 GB</td><td class="num">~$12 (~$8 w/ 1-yr Savings Plan)</td><td>Graviton alternative</td></tr>
+      </tbody>
+    </table>
+    <div class="note tip">
+      <b>Recommendation:</b> ride <b>t2.micro</b> while the Free Tier lasts ($0), or go straight to
+      <b>Lightsail 2 GB (~$7/mo)</b> for headroom — especially for the 10 report users. Both host UI +
+      backend + MySQL in one instance; only the tuning differs by RAM (§5).
+    </div>
+  </div>
+
+  <!-- ARCHITECTURE -->
+  <h2 id="arch">2. Target architecture</h2>
+  <div class="arch">
+<pre>       ┌──────── AWS instance (Ubuntu 22.04 · t2.micro 1GB / Lightsail 2GB) ────────┐
+ Staff ┼─▶ Nginx :443/:80  (Let's Encrypt TLS)                                       │
+ https  │     /        → /var/www/shifa/admin   (Angular Admin SPA, static)          │
+       │     /api/    → reverse proxy → 127.0.0.1:8080  (Spring Boot JAR, systemd)  │
+       │                                 └──▶ MySQL 8 (localhost:3306, self-hosted) │
+       │     files → S3        ·        nightly mysqldump → gzip → S3                │
+       └────────────────────────────────────────────────────────────────────────────┘</pre>
+  </div>
+  <p>Single origin → no CORS, only 80/443 public. MySQL stays on <code>localhost</code>. Binary files go
+  to <strong>S3</strong> (a few cents/month) so the DB stays lean and <code>mysqldump</code> is fast.</p>
+
+  <!-- PREREQ -->
+  <h2 id="prereq">3. Prerequisites (build on your PC)</h2>
+  <div class="card">
+    <p style="margin-top:0;">Build artifacts <b>locally</b> and upload them — never build on a 1–2 GB
+    instance (Maven/Angular will OOM it). You need <b>Java 21 + Maven</b>, <b>Node 20 + npm</b>, and the
+    built-in Windows <b>OpenSSH</b>.</p>
+<pre># Backend JAR
+mvn -f "backend/pom.xml" -DskipTests package        # -&gt; backend/target/shifa-oms-*.jar
+
+# Angular admin (base-href '/' is the default)
+npm --prefix frontend ci
+npm --prefix frontend run build:admin                # -&gt; frontend/dist/admin/browser</pre>
+  </div>
+
+  <!-- STEPS -->
+  <h2 id="steps">4. Step-by-step deployment</h2>
+
+  <div class="phase">
+    <h3><span class="badge">A</span> Create the instance</h3>
+    <p><b>Lightsail (recommended):</b> Create instance → region <b>Mumbai ap-south-1</b> → OS Only
+    <b>Ubuntu 22.04</b> → plan <b>2 GB / 2 vCPU (~$7)</b> → name <code>shifa-oms</code> → attach a
+    <b>Static IP</b>.</p>
+    <p><b>EC2 t2.micro (Free Tier):</b> Launch → Ubuntu 22.04, type <b>t2.micro</b> → key pair → 20–30 GB
+    gp3 → security group allows 22/80/443 → allocate + associate an <b>Elastic IP</b>.</p>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">B</span> Firewall</h3>
+    <ul>
+      <li><b>Lightsail:</b> Networking → IPv4 Firewall → add <b>HTTP 80</b> + <b>HTTPS 443</b> (SSH 22 default).</li>
+      <li><b>EC2:</b> Security Group inbound → TCP <b>22</b> (your IP), <b>80</b> + <b>443</b> (<code>0.0.0.0/0</code>).</li>
+    </ul>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">C</span> Connect</h3>
+<pre>ssh -i "LightsailKey.pem" ubuntu@&lt;STATIC_IP&gt;      # Lightsail (or use browser SSH)
+ssh -i "your-key.pem"    ubuntu@&lt;ELASTIC_IP&gt;      # EC2</pre>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">D</span> Add swap (do this first on a small box)</h3>
+    <p>Essential on 1 GB, recommended on 2 GB — prevents OOM during report spikes.</p>
+<pre>sudo fallocate -l 2G /swapfile &amp;&amp; sudo chmod 600 /swapfile
+sudo mkswap /swapfile &amp;&amp; sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+sudo sysctl vm.swappiness=10 &amp;&amp; echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf</pre>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">E</span> Install the runtime (not build tools)</h3>
+<pre>sudo apt update &amp;&amp; sudo apt -y upgrade
+sudo apt -y install openjdk-21-jre-headless mysql-server nginx unzip
+java -version &amp;&amp; nginx -v &amp;&amp; mysql --version</pre>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">F</span> MySQL — create DB + user, tune small</h3>
+<pre>sudo mysql_secure_installation
+sudo mysql &lt;&lt;'SQL'
+CREATE DATABASE IF NOT EXISTS shifa_dashboard CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'shifa'@'localhost' IDENTIFIED BY 'STRONG_DB_PASSWORD';
+GRANT ALL PRIVILEGES ON shifa_dashboard.* TO 'shifa'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+
+sudo tee /etc/mysql/mysql.conf.d/shifa.cnf &gt;/dev/null &lt;&lt;'CNF'
+[mysqld]
+innodb_buffer_pool_size = 256M      # 128M on 1GB t2.micro; 512M on 2GB
+performance_schema = OFF            # saves ~150-250MB
+max_connections = 50
+CNF
+sudo systemctl restart mysql</pre>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">G</span> Bring data over from RDS (one-time)</h3>
+<pre>mysqldump -h &lt;RDS_ENDPOINT&gt; -u &lt;RDS_USER&gt; -p --single-transaction \
+  --routines --triggers shifa_dashboard &gt; shifa_rds_dump.sql
+mysql -u shifa -p shifa_dashboard &lt; shifa_rds_dump.sql</pre>
+    <div class="note info">Starting fresh instead? Skip this — Flyway (V1→V38) builds the schema automatically on first boot.</div>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">H</span> Upload the built artifacts</h3>
+    <p>From your <b>PC</b> (after §3):</p>
+<pre>scp -i "key.pem" backend/target/shifa-oms-*.jar ubuntu@&lt;IP&gt;:/home/ubuntu/shifa-oms.jar
+Compress-Archive -Path frontend/dist/admin/browser/* -DestinationPath admin.zip -Force
+scp -i "key.pem" admin.zip ubuntu@&lt;IP&gt;:/home/ubuntu/</pre>
+    <p>On the <b>instance</b>:</p>
+<pre>sudo mkdir -p /opt/shifa /var/www/shifa/admin /opt/shifa/storage
+sudo mv ~/shifa-oms.jar /opt/shifa/shifa-oms.jar
+sudo unzip -o ~/admin.zip -d /var/www/shifa/admin
+sudo useradd -r -s /usr/sbin/nologin shifa || true
+sudo chown -R shifa:shifa /opt/shifa</pre>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">I</span> Backend env <code>/etc/shifa/shifa.env</code></h3>
+<pre>SPRING_PROFILES_ACTIVE=prod
+DB_HOST=localhost
+DB_NAME=shifa_dashboard
+DB_USERNAME=shifa
+DB_PASSWORD=STRONG_DB_PASSWORD
+JWT_SECRET=$(openssl rand -base64 48)
+SEED_ADMIN_PASSWORD=your-admin-pw
+SEED_PACKING_PASSWORD=your-packer-pw
+
+# Files: S3 (durable) or LOCAL. On EC2 use an instance role (blank keys).
+STORAGE_PROVIDER=S3
+STORAGE_S3_BUCKET=shifa-files-&lt;unique&gt;
+STORAGE_S3_REGION=ap-south-1
+
+COURIER_MODE=MOCK
+WHATSAPP_MODE=MOCK
+MAIL_MODE=MOCK
+JAVA_OPTS=-Xms256m -Xmx512m          # see §5 for 2GB values</pre>
+    <div class="note warn">
+      <b>Lightsail has no IAM instance role.</b> Either set <code>STORAGE_PROVIDER=LOCAL</code> (files on
+      <code>/opt/shifa/storage</code>, archived monthly) or create an IAM user with
+      <code>s3:PutObject/GetObject</code> and set <code>STORAGE_S3_ACCESS_KEY/SECRET_KEY</code>. On
+      <b>EC2</b>, attach an instance role and leave the keys blank. <code>chmod 600</code> the file.
+    </div>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">J</span> Run as a service (systemd)</h3>
+<pre>sudo tee /etc/systemd/system/shifa-oms.service &gt;/dev/null &lt;&lt;'UNIT'
+[Unit]
+Description=Shifa OMS (Spring Boot)
+After=network.target mysql.service
+Wants=mysql.service
+[Service]
+User=shifa
+EnvironmentFile=/etc/shifa/shifa.env
+ExecStart=/usr/bin/java $JAVA_OPTS -jar /opt/shifa/shifa-oms.jar
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+UNIT
+sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now shifa-oms
+sudo journalctl -u shifa-oms -f   # wait for "Started Application" / "Tomcat started on port 8080"</pre>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">K</span> Nginx (Admin at <code>/</code>, proxy <code>/api/</code>, SSE)</h3>
+<pre>sudo tee /etc/nginx/sites-available/shifa &gt;/dev/null &lt;&lt;'NGINX'
+server {
+    listen 80;
+    server_name _;                 # replace with your host / sslip.io name
+    client_max_body_size 15m;
+    gzip on;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }
+    location = /api/admin/events {          # SSE — no buffering
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Connection '';
+        proxy_buffering off; proxy_cache off; proxy_read_timeout 3600s;
+    }
+    location / {
+        root /var/www/shifa/admin;
+        try_files $uri $uri/ /index.html;
+    }
+}
+NGINX
+sudo ln -sf /etc/nginx/sites-available/shifa /etc/nginx/sites-enabled/shifa
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t &amp;&amp; sudo systemctl reload nginx</pre>
+    <p>Open <code>http://&lt;IP&gt;/</code> → Admin login (<code>admin</code> / your <code>SEED_ADMIN_PASSWORD</code>).</p>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">L</span> Free HTTPS (no domain needed)</h3>
+<pre>sudo apt -y install certbot python3-certbot-nginx
+# IP 13.234.56.78 -> 13-234-56-78.sslip.io
+sudo sed -i 's/server_name _;/server_name &lt;IP-with-dashes&gt;.sslip.io;/' /etc/nginx/sites-available/shifa
+sudo systemctl reload nginx
+sudo certbot --nginx -d &lt;IP-with-dashes&gt;.sslip.io --redirect --agree-tos -m you@example.com --no-eff-email</pre>
+    <div class="note tip">Own a domain? Point an <b>A record</b> to the static/Elastic IP and run certbot with <code>-d yourdomain.com</code>.</div>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">M</span> Stop the RDS bill</h3>
+    <ol>
+      <li>Take a <b>final RDS snapshot</b> (safety).</li>
+      <li><b>Delete the RDS instance</b> → stops the ~$7.35/mo charge.</li>
+      <li><b>Release idle Elastic IPs</b> (each idle public IPv4 bills ~$3.6/mo).</li>
+    </ol>
+  </div>
+
+  <div class="phase">
+    <h3><span class="badge">N</span> Backups (you now own this)</h3>
+<pre>sudo tee /opt/shifa/backup.sh &gt;/dev/null &lt;&lt;'BK'
+#!/usr/bin/env bash
+set -e
+STAMP=$(date +%F); mkdir -p /opt/shifa/backups
+mysqldump -u shifa -p"$DB_PASSWORD" --single-transaction shifa_dashboard | gzip &gt; /opt/shifa/backups/db-$STAMP.sql.gz
+# off-box: aws s3 cp /opt/shifa/backups/db-$STAMP.sql.gz s3://shifa-files-&lt;unique&gt;/backups/
+find /opt/shifa/backups -name 'db-*.sql.gz' -mtime +14 -delete
+BK
+sudo chmod +x /opt/shifa/backup.sh
+( sudo crontab -l 2>/dev/null; echo "0 2 * * * DB_PASSWORD=STRONG_DB_PASSWORD /opt/shifa/backup.sh" ) | sudo crontab -</pre>
+    <div class="note warn"><b>Test a restore</b> into a scratch DB at least once — self-hosting means there's no managed safety net.</div>
+  </div>
+
+  <!-- TUNING -->
+  <h2 id="tuning">5. Tuning by RAM</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>Setting</th><th>t2.micro (1 GB)</th><th>Lightsail / 2 GB</th></tr></thead>
+      <tbody>
+        <tr><td><code>JAVA_OPTS</code> heap</td><td><code>-Xms256m -Xmx512m</code></td><td><code>-Xms512m -Xmx1g</code></td></tr>
+        <tr><td><code>DB_POOL_SIZE</code></td><td>8</td><td>12</td></tr>
+        <tr><td>MySQL <code>innodb_buffer_pool_size</code></td><td><code>128M</code></td><td><code>512M</code></td></tr>
+        <tr><td>MySQL <code>performance_schema</code></td><td><code>OFF</code></td><td><code>OFF</code> (or ON if RAM allows)</td></tr>
+        <tr><td>Swap</td><td><strong>2 GB (required)</strong></td><td>2 GB (recommended)</td></tr>
+      </tbody>
+    </table>
+    <p>Footprint: 1 GB box ≈ JVM ~600 MB + MySQL ~250 MB + OS/Nginx ~200 MB (swap covers spikes);
+    2 GB box ≈ JVM ~1.2 GB + MySQL ~650 MB + OS/Nginx ~250 MB with comfortable headroom.</p>
+  </div>
+
+  <!-- CACHE -->
+  <h2 id="cache">6. Optional: in-process caching (Caffeine)</h2>
+  <div class="card">
+    <p style="margin-top:0;">For the ~10 dashboard/report users, cache the expensive aggregates
+    <b>in-process</b> — do <b>not</b> add Redis/ElastiCache (an extra paid service, unnecessary for one
+    instance):</p>
+    <ul>
+      <li>Add <code>spring-boot-starter-cache</code> + <code>caffeine</code>, <code>@EnableCaching</code>, and <code>@Cacheable</code> on dashboard-summary / report methods with a short TTL (30–60 s).</li>
+      <li>Keep invalidation simple: let entries expire by TTL; optionally evict a salesperson's own list on their order write. Avoid hand-managing per-field cache mutations (a classic stale-data bug source).</li>
+      <li>At ~400 orders/day the salespeople's GETs are trivial for MySQL even uncached — caching is really about the 10 report users.</li>
+    </ul>
+  </div>
+
+  <!-- COST -->
+  <h2 id="cost">7. Cost summary</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>Item</th><th class="num">Free Tier (12 mo)</th><th class="num">After Free Tier</th></tr></thead>
+      <tbody>
+        <tr><td>Compute (t2.micro / Lightsail 2 GB)</td><td class="num">$0 / ~$7</td><td class="num">~$8.5 / ~$7</td></tr>
+        <tr><td>MySQL (self-hosted, no RDS)</td><td class="num">$0</td><td class="num">$0</td></tr>
+        <tr><td>S3 files + backups</td><td class="num">~$0.05–0.20</td><td class="num">~$0.05–0.20</td></tr>
+        <tr><td>Static IP (attached)</td><td class="num">$0</td><td class="num">$0</td></tr>
+      </tbody>
+      <tfoot>
+        <tr><td><strong>Total</strong></td><td class="num"><strong>~$0–7/mo</strong></td><td class="num"><strong>~$7–9/mo</strong></td></tr>
+      </tfoot>
+    </table>
+    <div class="note info">Removing RDS (~$7.35) + idle Elastic IPs (~$3.6 each) is where the real saving comes from.</div>
+  </div>
+
+  <!-- CHECKLIST -->
+  <h2 id="checklist">8. Cost-efficiency checklist</h2>
+  <div class="card">
+    <ul style="margin:0;">
+      <li>✅ One instance runs UI + API + MySQL — no RDS, no Lambda, no DynamoDB, no ElastiCache.</li>
+      <li>✅ Self-host MySQL on <code>localhost</code>; keep binaries in S3/local so <code>mysqldump</code> stays small.</li>
+      <li>✅ Build artifacts on your PC — never on a 1–2 GB instance.</li>
+      <li>✅ Add swap; tune JVM + MySQL to the box (§5).</li>
+      <li>✅ Release idle Elastic IPs; keep exactly one attached static IP.</li>
+      <li>✅ Set an <b>AWS Budget alert</b> (Billing → Budgets, e.g. $5).</li>
+      <li>✅ Nightly <code>mysqldump</code> → S3; test one restore.</li>
+      <li>✅ Delete the old RDS instance after cutover (keep one final snapshot).</li>
+    </ul>
+  </div>
+
+</div>
+
+<footer>
+  <b>Shifa Herbal Remedies — OMS.</b> AWS single-instance (Java + MySQL + Angular) deployment plan · prepared for internal use.<br>
+  Prices are indicative USD, ap-south-1, and subject to AWS's current terms · verify in the AWS console before provisioning.<br>
+  <br>
+  Developed by <a href="http://www.weblithic.com" target="_blank">Weblithic</a>
+</footer>
+
+</body>
+</html>
