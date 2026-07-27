@@ -372,6 +372,43 @@ Insights), **Account & Settings** (My Profile, Settings, Users, …). Bottom 4-t
 Also fixed the top appbar splitting into two rows: `.shifa-appbar__inner { flex-wrap: nowrap }`
 (Bootstrap's `.navbar > .container-xl` inherits `flex-wrap: wrap`); actions/search made shrinkable.
 
+## Grouped order-status filter (club ~18 raw statuses into 9 stages) — implemented
+Client feedback: ~20 of 25 staff are less-technical salespeople and the raw ~18-status dropdown was
+overwhelming. Clubbed all `OrderStatus` values into 9 business-facing lifecycle groups used as the Orders
+page filter (server-side, correct across pagination + search). Labels match the **packing queue** wording
+so Orders + Packing pages speak the same language.
+- **Groups** (complete, non-overlapping partition): Pending Approval=`PENDING_ADMIN_APPROVAL`;
+  Packaging=`APPROVED`; Label Generated=`LABEL_GENERATED`; **Awaiting Handover=`PACKED`**;
+  **Awaiting Dispatch=`HANDED_TO_DELIVERY`** (these two mirror the packing queue: PACKED="awaiting handover",
+  HANDED_TO_DELIVERY="awaiting dispatch"); In Transit=`COURIER_ASSIGNED,DISPATCHED,IN_TRANSIT,OUT_FOR_DELIVERY`;
+  Completed=`DELIVERED,COD_COLLECTED,CLOSED`; Cancelled=`REJECTED,CANCELLED`;
+  Failed/Returned=`CUSTOMER_REJECTED,DELIVERY_FAILED,RTO,COURIER_LOST`.
+- **Backend**: new `order/OrderStatusGroup` enum (`statuses()` per group). `OrderListSpecifications.build`
+  gained an `OrderStatusGroup statusGroup` overload → `orderStatus IN (members)` (old overloads delegate with
+  null; AND-combined with the exact `status` if both set). `AdminOrderService.listOrders` canonical method +
+  `AdminOrderController` accept `?statusGroup=` (exact enum-name binding, e.g. `PENDING_APPROVAL`). Old
+  `status`/callers untouched (backward compatible). Test `OrderStatusGroupTest` (8 cases) pins the partition
+  (every status in exactly one group, none empty) + workflow-critical memberships. Backend targeted run 16/16 green.
+- **Frontend**: `orders/order-status-groups.ts` mirrors the enum 1:1 (`ORDER_STATUS_GROUPS`, `OrderStatusGroupKey`,
+  `groupForStatus()` maps a legacy raw status → its group). Orders page: the quick **tab strip** (All + 9 groups,
+  horizontally scrollable) and the advanced-panel **Status dropdown** both drive ONE shared server-side
+  `statusGroup` filter control (`activeStatusGroup` signal mirrors it for the active-tab highlight). Removed the
+  old client-side 4-tab lens + `visibleOrders` filtering (now identity over the loaded page). `OrdersService.page`
+  sends `statusGroup`. Deep links (`?status=` from dashboard drilldowns) + saved views map raw→group; `SavedView`
+  gained optional `statusGroup`. Admin `build:admin` clean.
+
+## Fit tables inside the viewport WITHOUT a horizontal scrollbar — implemented
+Client wanted no horizontal scrollbar on screen (reported on the Orders table ~1024px). The full desktop
+tables show every column ≥768px, but with the roomy 1.25rem cell padding a 10-column table (Orders) is
+wider than the container between ~768–1400px (shell is full-width, container-xl caps width), so an inner
+scrollbar appeared. Fix in `frontend/projects/admin/src/styles.css`: a `@media (max-width: 1399.98px)` block
+that compacts EVERY table (`.card-table`/`.table`) — cell `padding-inline: 0.5rem`, smaller header/body font,
+and `.badge { white-space: normal }` so long status/payment pills (e.g. "Pending Admin Approval") wrap to a
+second line instead of forcing the column wider. `.table-responsive { overflow-x:auto }` stays as a safety net
+for the very narrow 768px edge. Plus the densest table (Orders) demotes its 3 least-essential columns
+(COD, Date, Actions) from `d-md-table-cell` → `d-xl-table-cell`, so md–lg shows 7 core columns (Order/Customer/
+Mobile/Total/Payment/Status) and xl adds the rest — guarantees the reported view fits. Admin `build:admin` clean.
+
 ## Global table-overflow fix — implemented
 Wide tables (Returns, Orders, …) bled off-screen because Tabler `.card` is `display:flex; flex-direction:
 column`, so `.card-body`/`.table-responsive` defaulted to `min-width:auto` and refused to shrink,
@@ -379,3 +416,343 @@ defeating `overflow-x:auto` and widening the whole page. Fix in `frontend/projec
 `.card-body, .card > .table-responsive, .card-body > .table-responsive { min-width:0 }` +
 `.table-responsive { min-width:0; max-width:100% }` so wide tables scroll **inside** their card instead
 of stretching the layout. Global (covers every table). Frontend-only; admin `build:admin` clean.
+
+## Client roadmap wave — packing/order/payment/UX (V39–V42) — implemented
+Batch of client-requested + audit-driven features (see `docs/PRODUCT-AUDIT-AND-ROADMAP.md`). All additive/nullable
+migrations (V39–V42; V42 is now the highest). Full backend suite **509 tests, 0 failures**; admin `build:admin` clean.
+- **Alternate contact number** (V39 `orders.alternate_mobile`): threaded through `CreateOrderRequest.alternateMobile`
+  (appended LAST to keep record ctor churn minimal), `OrderEntity`, `OrderResponse`, `OrderService`; New Order form field
+  + order-detail display.
+- **Handover name popup** (V40 `orders.handover_name`/`handover_phone`): `HandoverRequest` DTO →
+  `POST /api/packing/{id}/handover` (`PackingController`/`PackingService.handover(id,actor,request)`); popup in packing
+  `scan.component` captures who took the parcel.
+- **Multi-label print**: packing "to pack" queue has per-row checkboxes + "Print N labels" → `PackingService.bulkLabels()`
+  over existing `/api/admin/labels/internal/bulk`.
+- **Round-off to nearest rupee** (product-audit §4.6): `order/domain/Money.roundToWholeRupees()`, applied in
+  `OrderService.createSalespersonOrder` (rounds total, absorbs sub-rupee overage; GST-safe as prices-include-GST). New
+  Order live total rounds too (`orderTotalPaise` = round to whole ₹).
+- **Multi-pack** (V41 `orders.package_count` default 1): `POST /api/packing/{id}/packages` + `PackageCountRequest` +
+  `PackingService.setPackageCount`; `LabelService.internalLabelPdf` renders N label copies; boxes input on packing queue.
+- **Payment Verifier role + dashboard** (V42 `orders.payment_verification_status/_by/_at/_note`): new
+  `Role.PAYMENT_VERIFIER` + `PaymentVerificationStatus` enum. This is an ADDITIVE verification layer that does NOT touch
+  the order state machine. `payment/PaymentVerificationService`+`Controller` (`GET /api/payments/queue`,
+  `POST /{id}/verify`, `POST /{id}/reject`); `OrderRepository.findByPaymentVerificationStatusOrderByCreatedAtAsc`; prepaid
+  orders start PENDING verification on creation; `OrderResponse.paymentVerificationStatus`. Frontend `payments/` feature
+  (service/model/component: screenshot viewer + verify/reject modal), route `/payments` + `paymentVerifierGuard`, nav link +
+  bottom tab, added to `STAFF_ROLES` (users mgmt) + core `Role` enum. Java 25 test note: overrode
+  `CurrentUserService.requireCurrentUser()` in the payment test (can't Mockito-mock concrete classes).
+- **Simplified Salesperson Home**: big action cards (New Order / My Orders / My Leads) atop the salesperson dashboard.
+- **Guided New Order wizard** (product-audit §3.2, frontend-only): 4-step flow (Customer→Items→Payment→Review) with a
+  progress stepper, Back/Next, per-step validation, and a review summary in `new-order.component`.
+- **PIN-code auto-fill** (product-audit, frontend-only, no backend/migration): `shared/pincode.service.ts` resolves a
+  6-digit pincode → city+state via the free key-less India Post API (`api.postalpincode.in`). Best-effort only (skips when
+  offline, 5s timeout, in-memory cache, never throws); New Order pre-fills empty City/State + shows a "Detected: …" hint.
+  Manual entry unaffected on failure. **Security fix shipped with it**: the shared `core` `authInterceptor` previously
+  attached `Authorization: Bearer <jwt>` to EVERY HttpClient call — which would have leaked the JWT to the third-party
+  pincode host. Now scoped via pure `auth/auth-request-scope.ts#isApiRequest(url, apiBaseUrl)` (relative paths always
+  qualify; absolute URLs only when they start with the configured `API_BASE_URL`; all other hosts get NO token). Covered by
+  `auth/auth-interceptor-scope.pbt.ts` (4 fast-check properties, `npm --prefix frontend run test:pbt` green).
+- Docs: `docs/PRODUCT-AUDIT-AND-ROADMAP.md`(+`.html`) drives this wave; `docs/ENHANCEMENT-IDEAS.md` catalogues further
+  fresh ideas (customer auto-fill from phone, click-to-WhatsApp, order timeline, reorder, pick-list, etc.).
+- **Still LOCAL ONLY / not yet deployed**: one redeploy applies V39–V42 (rebuild JAR + admin bundle → PSCP → restart).
+- Deployment docs added this cycle: `docs/AWS-SINGLE-INSTANCE-PLAN.md`(+`.html`), `docs/AWS-EC2-STEP-BY-STEP.md`(+`.html`),
+  `docs/PuTTY-Build-Deploy-Guide.html`, `docs/ORACLE-ALWAYS-FREE-PLAN.md`(+`.html`). Live AWS EC2 uses `STORAGE_PROVIDER=S3`
+  (bucket `shifa-oms-files`, IAM instance role `shifa-ec2-role`); admin-only Backups page has a `GET /api/admin/backups/{id}/download` endpoint + Download button.
+
+## Team Lead role — team-scoped order oversight (V43) — implemented
+New `TEAM_LEAD` role: read-only oversight of the salespeople assigned to them. A team lead sees the orders
+punched by their team (list/search/detail/invoice) + a team-scoped dashboard. Cannot approve/dispatch/mutate.
+- **Assignment**: `users.team_lead_id` (V43, nullable self-FK → `users.id`, `ON DELETE SET NULL`, `ix_users_team_lead`).
+  A salesperson's manager is recorded there. Additive/nullable, safe on seeded data.
+- **Role**: `auth/Role.TEAM_LEAD` (backend) + core `Role.TEAM_LEAD` (frontend). Added to `STAFF_ROLES` (users mgmt
+  create/edit dropdown) so admins can create team leads. `User.teamLeadId` field + getter/setter.
+- **Scoping (security-critical)**: `SalespersonScopeResolver` gains `creatorScope(principal): Optional<List<Long>>`
+  (SALESPERSON→[ownId]; TEAM_LEAD→their team's ids via `UserRepository.findIdsByTeamLeadId`; ADMIN/ACCOUNTANT→empty
+  Optional=unscoped). **Present-but-empty list = scoped to NOTHING** (a lead with no team sees no orders, never all).
+  The legacy single-id `creatorConstraint` is UNCHANGED (salesperson-only) for backward compat. Resolver now has a
+  no-arg ctor (test/legacy, team lead→nothing) + an `@Autowired(UserRepository)` ctor. Consumers converted to
+  `creatorScope`: `AdminOrderController.list` (Orders page), `OrderService.search`/`loadScoped` (detail),
+  `InvoiceService.invoicePdf`, `RoleDashboardService` (new TEAM_LEAD branch). Each keeps the single-id repo method for
+  a singleton scope (salesperson unchanged, zero test churn) and uses new IN-queries only for a multi-id (team) scope:
+  `OrderRepository.findAllScopedIn`/`searchIn`/`findByIdAndCreatedByIn`; `OrderListSpecifications` gained a
+  `Collection<Long> creatorIds` overload (empty → `cb.disjunction()` = match nothing).
+- **Endpoints granted to TEAM_LEAD**: `GET /api/admin/orders`, `GET /api/orders` (search), `GET /api/orders/{id}`,
+  `GET /api/orders/{id}/invoice`, `GET /api/dashboard/summary`. NOT granted leads/crm/reports/mutations (so no leak via
+  the still-single-id `creatorConstraint` paths). Dashboard TEAM_LEAD branch reuses the Salesperson section shape
+  (team-aggregated order status + awaiting-approval; empty lead pipeline) — no DTO change.
+- **Admin team management**: new `auth/TeamManagementService` + `TeamManagementController` `/api/admin/team` (ADMIN):
+  `GET /leads` (team leads + member counts), `GET /salespeople` (all salespeople + current assignment),
+  `PUT /salespeople/{id}` (assign/clear `team_lead_id`; validates target is SALESPERSON & lead is TEAM_LEAD). Kept
+  SEPARATE from the tested `AdminUserService`. DTOs `TeamLeadSummary`/`TeamMemberRow`/`AssignTeamLeadRequest`.
+- **Frontend**: `TEAM_LEAD` in core Role + STAFF_ROLES; `staffGuard` includes TEAM_LEAD (shell access); bottom tabs
+  (Dashboard/Orders/My Profile). New admin `team/` feature (`TeamService` + `TeamComponent`, route `/team` adminOnly,
+  nav "Teams" under CRM group) to assign salespeople to leads. Dashboard `isTeamLead()` tailors the salesperson section
+  (single "Team Orders" CTA, "Team orders" title, hides New Order / My Leads / lead pipeline). Users roleLabel/badge
+  gain a "Team Lead" case.
+- **Tests**: `TeamScopeResolverTest` (6 cases: salesperson singleton, team-lead set, empty-team=scoped-to-nothing,
+  admin/accountant unscoped, legacy creatorConstraint unchanged, no-arg resolver safe). Verified green with
+  InvoiceServiceTest/AdminOrderServiceTest/OrderServiceTest (42) + EndpointRoleGuardIntegrationTest (15, no
+  authorization regression). Admin `build:admin` clean. **Highest migration is now V43.**
+
+## Team Lead performance dashboard (orders + lead-source conversion) — implemented
+Extends the TEAM_LEAD role so a lead sees how their team is performing: team-scoped KPIs, a per-salesperson
+leaderboard, and lead-source conversion ("which source converts best"). Read-only; ADMIN sees the whole sales force.
+- **Backend** (`performance` module, no new tables/migration): `TeamPerformanceService.forCaller(actor)` resolves the
+  team via `SalespersonScopeResolver.creatorScope` (TEAM_LEAD→their team ids; ADMIN unscoped→all salespeople) and rolls
+  up: overall KPIs (orders total/this-month, revenue total/this-month, delivered/failed, deliverySuccessRate,
+  codOutstanding), a leaderboard (reuses new `SalespersonPerformanceService.leaderboardFor(Collection<Long> memberIds)`
+  — refactor of `leaderboard()`; null=all, empty=none), team-wide lead metrics (total/won/rate), and per-source
+  conversion (`TeamSourceConversion{source,leads,won,conversionRate}` sorted best-rate first) with headline
+  `topPerformerName` + `topSource`. New `LeadRepository.findAllScopedIn(Collection<Long> ownerIds)`. DTOs
+  `TeamPerformanceResponse`/`TeamSourceConversion`. `TeamPerformanceController` `GET /api/team/performance`
+  (`hasAnyRole('TEAM_LEAD','ADMIN')`, team resolved server-side — a lead can't view another team). Source conversion
+  reuses `LeadReportRecord.from` for the projection.
+- **Frontend** `team/`: `TeamPerformanceService` + `TeamPerformanceComponent` (route `/team-performance`, new
+  `teamLeadGuard` = ADMIN+TEAM_LEAD). Mobile-first: KPI tiles (revenue/delivery success/lead conversion/COD),
+  headline top-performer + best-converting source, salesperson leaderboard table, and lead-source conversion table
+  (green ≥50% / yellow <50%). Nav "Team Performance" under Analytics & Reports (roles ADMIN+TEAM_LEAD); TEAM_LEAD
+  bottom tabs now Dashboard/Orders/**Performance**/My Profile.
+- **Tests**: `TeamPerformanceServiceTest` (2) — KPI rollup + source-conversion ranking (Instagram 100% ranks above
+  WhatsApp 50%, topSource=Instagram) + empty-team path; uses a recording subclass of `SalespersonPerformanceService`
+  and a real `SalespersonScopeResolver` over a mocked `UserRepository` (Java 25 can't mock concretes). Full backend
+  suite **525 tests, 0 failures**; admin `build:admin` clean. No migration (V43 remains highest).
+
+## Integration audit fixes (frontend↔backend) — implemented
+Audit of the shipped features surfaced two real bugs (both fixed) + minor surfacing gaps (noted):
+- **BUG (shipped, now fixed): `staffGuard` excluded `PAYMENT_VERIFIER`.** The app shell (`AdminShellComponent`,
+  route `''`) is gated by `staffGuard`, which listed ADMIN/ACCOUNTANT/SALESPERSON/TEAM_LEAD/PACKING_USER but NOT
+  PAYMENT_VERIFIER — so a payment verifier was bounced to `/forbidden` and could never reach their own `/payments`
+  dashboard (the whole payments feature was unreachable for that role). Fixed: added `Role.PAYMENT_VERIFIER` to
+  `staffGuard` in `app.routes.ts`.
+- **BUG (pre-existing, now fixed): frontend `OrderStatus` enum used mixed-case values** (`'Pending_Admin_Approval'`)
+  while the backend serialises enums as their UPPERCASE `name()` (no custom Jackson enum config; `PaymentStatus` was
+  already uppercase, and `packing/scan.component` hardcoded uppercase cases — both confirm the wire format). The
+  mismatch meant every `order.orderStatus === OrderStatus.X` comparison silently failed → status pill/badge COLOURS
+  defaulted app-wide and `orders.component.isReturnEligible` never matched. Fixed `order.model.ts` to use uppercase
+  values matching the wire. Updated stale `models.pbt.ts` (asserted 15 states; enum has 18) + added a guard that every
+  OrderStatus value is UPPER_SNAKE. Core pbt suite 24/24 green; admin `build:admin` clean.
+- **Order-detail surfacing (now fixed)**: the drawer (`orders.component.html`) now shows a fulfilment card with
+  **"Handed to" (`handoverName`)** + **Packages (`packageCount`, when >1)** after the note, and a **Verification pill**
+  in the Payment card driven by `paymentVerificationStatus` (green VERIFIED / yellow PENDING / red REJECTED; hidden for
+  pure-COD nulls) via new `orders.component` helpers `paymentVerificationLabel`/`paymentVerificationClass`. Added
+  `paymentVerificationStatus` to the frontend `OrderDetail` model (backend `OrderResponse` already exposed
+  handoverName/packageCount/paymentVerificationStatus; `handoverPhone` is captured on the entity but NOT in
+  `OrderResponse`, so only the name is shown — add the field to `OrderResponse` if the phone is wanted too).
+- **Payment Verifier landing (now fixed)**: `DashboardComponent.ngOnInit` redirects a `PAYMENT_VERIFIER` to `/payments`
+  (their home) instead of the empty role-less dashboard — covers both post-login and a direct `''`→`/dashboard` hit.
+- Verified: admin `build:admin` clean; core pbt 24/24; no diagnostics.
+
+
+## Accountant money/receivables reports + full report catalogue exposed — implemented
+Client ask: the ACCOUNTANT role (already exists) should track money — amount received, pending from the delivery
+partner, how much is outstanding and when to chase — and the Reports page should expose far more than the ~4 it did.
+- **Role**: `ACCOUNTANT` was already a `Role` (no change). Reports endpoints already allow ADMIN+ACCOUNTANT.
+- **New report types** (`reporting/domain/ReportType` + `from()` parser + `ReportTableBuilder`, all pure/no-DB):
+  - `PAYMENTS` — daily money: Date / Orders / Total Sales / Amount Received / COD / Outstanding (excludes cancelled/rejected).
+  - `OUTSTANDING` — per-order collectible dues (total − received > 0, excl. cancelled/rejected), **oldest first** with
+    **Days** outstanding — the accountant's chase list (customer remainder + un-collected COD).
+  - `COD_REMITTANCE` — COD **pending from the courier** (codSettlementStatus == "Pending"), oldest first with Days — what
+    to chase the delivery partner for.
+  - "Days" uses a pure reference date = window `to` if set, else the latest order date (no clock). Reuses the money +
+    `codSettlementStatus` fields already on `OrderReportRecord` (no new cross-module plumbing). All existing report types
+    (ORDERS_BY_STATUS/LEAD_SOURCE/SALESPERSON, DELIVERY_OUTCOME) were already built server-side but hidden in the UI.
+- **Frontend Reports page**: the type `<select>` is now a **grouped optgroup picker** (`reportGroups()`) exposing ALL 13
+  report types under **Sales / Orders / Money & Receivables** (previously only 6 were listed). Added a 5th presentation
+  tab **Finance** (`ti-cash`, grid widened `repeat(4→5,1fr)`) that maps to the `OUTSTANDING` chase list. `reports.model.ts`
+  `ReportType` union + `ReportTypeOption.group` extended. Export (Excel/PDF) + date presets work for the new types
+  (they flow through the same `GET /api/reports/{type}` + `/export`).
+- **Tests**: `reporting/FinanceReportTableBuilderTest` (3) — OUTSTANDING (oldest-first, excludes cancelled, balance/days),
+  COD_REMITTANCE (only courier-pending COD), PAYMENTS (daily money, excludes cancelled). Full backend suite **528 tests,
+  0 failures**; admin `build:admin` clean. No migration.
+- **Finance summary tiles (added)**: `ReportSummary` gained `totalReceived` / `totalOutstanding` /
+  `codPendingFromCourier` (computed in `ReportService.moneyTotals` over the windowed records, mirroring the money-report
+  tables: received & outstanding exclude cancelled/rejected; codPending = codSettlementStatus "Pending"). The Reports
+  page shows a **money tiles row** (Outstanding dues / COD pending (courier) / Amount received / Total sales) whenever
+  `isMoneyView()` (Finance tab or a payments/outstanding/cod-remittance type). `reports.model.ts` `ReportSummary` +
+  component helpers `totalReceivedValue`/`totalOutstandingValue`/`codPendingValue`/`isMoneyView`. All 16 reporting tests
+  pass (incl. export-fidelity); admin build clean.
+## Per-module operational reports (expenses / procurement / returns / inventory) — implemented
+Added drill-down reports for the remaining modules, served through the SAME `/api/reports/{type}` + Excel/PDF export
+pipeline (both JSON + export go through `ReportService.generate`, so exporters reproduce them for free — Property 24).
+- **Report types** (`ReportType` + parser + `isModuleReport()`): `EXPENSES` (Date/Category/Amount/Description),
+  `PURCHASE_ORDERS` (PO#/Supplier/Status/Total/Ordered/Received), `RETURNS` (Order/Reason/Status/Refund/Restocked/Created),
+  `STOCK` (Date/Product/Type/Change/Balance/Reason). Windowed by the relevant date (expenses=incurredOn; PO/returns/stock=
+  createdAt.toLocalDate()); resolves supplier/order/product names via `findAllById` batch maps.
+- **`ModuleReportService`** (new, `reporting` pkg) builds these from ExpenseRepository/PurchaseOrderRepository/
+  SupplierRepository/OrderReturnRepository/OrderRepository/StockMovementRepository/ProductRepository. `ReportService`
+  injects it and, in `generate()`, branches for `type.isModuleReport()` → **requireAdminOrAccountant()** (throws Spring
+  `AccessDeniedException`→403; these are business-wide, NOT salesperson-scoped) → delegates. Module reports return a
+  zeroed `ReportSummary` (the frontend hides the sales chrome for them).
+- **Frontend**: 4 types added under a new **Operations** optgroup in the Reports type picker. `isModuleReport()` in the
+  component hides the Total-Revenue card / KPI tiles / trend chart / top-performers for module reports (pure tables);
+  export (Excel/PDF) works via the same path. `reports.model.ts` `ReportType` union extended.
+- **Gotcha fixed (important)**: two `switch (ReportType)` expressions were only passing due to **incremental
+  compilation masking exhaustiveness** — a `mvn clean` build failed on `ReportController.reportLabel` (missing the money
+  types too!) and `ReportTableBuilder.build`. Fixed: reportLabel now covers ALL types; `ReportTableBuilder.build` got a
+  `default -> throw` (module types never reach it). Lesson: **run `mvn clean test`, not incremental, to catch enum-switch
+  gaps.** Also updated `EndpointRoleGuardIntegrationTest.StubReportService` super() (7th ctor arg) and scoped
+  `ReportExportFidelityPropertyTest` to non-module types (`@Provide orderReportTypes`).
+- **Tests**: `ModuleReportServiceTest` (4 — expenses row/window/sort + header contracts for PO/returns/stock);
+  `FinanceReportTableBuilderTest` (3, prior). Full **clean** backend suite **532 tests, 0 failures**; admin `build:admin`
+  clean. No migration. The Reports page now offers **17 report types** across Sales / Orders / Money & Receivables /
+  Operations, all with Excel/PDF export.
+
+## Backend startup fix — PaymentVerificationService missing @Autowired (fixed)
+On the first backend **restart** since the payments feature shipped, Spring failed to boot: `PaymentVerificationService`
+had two constructors (a `Clock` test variant) and **neither was `@Autowired`** → "No default constructor found" → whole
+context aborts → nothing listens on :8080 (frontend showed `ERR_CONNECTION_REFUSED`). Fixed by adding `@Autowired` to its
+primary constructor (matching every other Clock dual-constructor service). Audited all such services — the rest already
+have it (some fully-qualified). The full-context guard test masked it by stubbing the bean. Backend now boots clean
+(Flyway validates 43 migrations, Tomcat on 8080). **Consider adding a plain `@SpringBootTest` context-load smoke test** to
+catch this class of DI failure before a restart.
+
+## Admin full user editing on the Users page (no migration) — implemented
+The Users page (`/api/admin/users`, `AdminUserController`) previously let an admin edit only full name +
+role + active. Extended it so an admin can change **every detail** of a user from the edit drawer, reusing
+the profile columns already on `users` (V31) — **no new migration**.
+- **Backend** (`auth`): `UpdateUserRequest` gained (appended AFTER `active`, all optional) `email`(@Email),
+  `mobile`(@Pattern 10-digit), `dateOfBirth`, `address`(≤500), `joinedOn`, `idProofType`(enum), `idProofNumber`(≤60).
+  `AdminUserService.update` now sets these too (private `blankToNull` normalises empty→null). `AdminUserResponse`
+  gained (appended) `email/mobile/dateOfBirth/address/joinedOn/idProofType/idProofNumber/verificationStatus/teamLeadId`
+  so the edit form pre-fills; `verificationStatus`/`teamLeadId` are **read-only display** (verify decision + ID
+  doc/photo stay on the Salespeople page `/api/admin/staff`; team assignment on the Teams page). Username stays
+  immutable; password stays on the dedicated reset endpoint. `AdminUserService`/`Controller` guardrails
+  (self-demotion, last-admin, dedupe) unchanged. Only the 2 `UpdateUserRequest` call sites in
+  `AdminUserServiceTest` needed updating (pass nulls) — `AdminUserServiceTest` **9/9 green**; clean compile of
+  524 main + 132 test sources OK.
+- **Frontend** (`users/`): `AdminUser` + `UpdateUserRequest` interfaces extended; added `IdProofType`/
+  `ID_PROOF_TYPES`/`VerificationStatus`. `users.component` form gained the profile controls (email/mobile/DOB/
+  address/joinedOn/idProofType/idProofNumber) with matching validators; a **"Profile details"** section renders
+  ONLY when editing (create stays essentials-only) with a read-only verification-status pill. `openEdit` pre-fills,
+  `save()` sends them on update. Admin `build:admin` bundle complete.
+
+## Tabbed drawer/modal navigation (no long scroll) — implemented
+Client feedback: the Users edit modal (now longer with the full profile) scrolled a lot. Reused the New Order
+step-navigation idea as a lightweight **segmented tab strip** (`.shifa-formtabs`/`.shifa-formtab` — pill buttons,
+active = white w/ shadow; component-scoped CSS, brand green) instead of a linear wizard, so any tab is directly
+clickable.
+- **Users** (`users/users.component.*`): `formTab` signal `'account'|'profile'`. Tab strip shows only when
+  **editing** (create stays a single essentials form, `formTab` reset to `account` on open). Account tab =
+  username/password[create]/fullName/role/active; Profile tab = the contact + onboarding fields + read-only
+  verification pill. On invalid save, `save()` jumps to the tab holding the first invalid control (fullName/role →
+  account, else profile). Reactive-form controls stay registered across tabs so a hidden tab's values still submit
+  and validate.
+- **Salespeople** (`salespeople/salespeople.component.*`): drawer split into `drawerTab` `'performance'|'profile'
+  |'verification'` (reset to `performance` on `open`). Performance tab = Salesperson 360 metrics/trend/leads/recent;
+  Profile tab = photo + profile form + govt-ID document; Verification tab = decision-meta + verify/reject. Same
+  `.shifa-formtabs` strip (`.sp-dr__tabs` margin), Angular `@if (drawerTab()===…)` around the existing sections.
+- New Order already uses the linear wizard; short single-purpose modals (add expense, restock/adjust stock,
+  approve/reject/refund return, settle receivable, create return) are intentionally left as-is (tabs add nothing).
+- **CSS centralised**: `.shifa-formtabs`/`.shifa-formtab` now live in the GLOBAL `frontend/projects/admin/src/styles.css`
+  (works on component DOM). The identical scoped copies in users/salespeople CSS are harmless leftovers.
+
+### Extended to the remaining long drawers/forms — implemented
+Applied the same `.shifa-formtabs` strip + Angular `@if (tab()===…)` section-wrapping to the other long views
+(action buttons stay pinned outside the tab blocks, visible from any tab; the tab signal resets on open):
+- **Orders detail drawer** (`orders/orders.component.*`): `detailTab` `'details'|'items'|'payment'` (reset in
+  `openDetail`). Details = date/customer/address/note/fulfilment; Items = line items + totals; Payment = payment card
+  + screenshot + shipment. Status pill + code stay above the tabs; approve/return/invoice/label buttons stay below.
+- **Customer 360 drawer** (`customers/customers.component.*`): `custTab` `'overview'|'crm'|'orders'` (reset in
+  `openDetail`). Overview = risk banner + stats + delivery metrics + first/last/account; CRM = tags + notes; Orders =
+  products bought + order history (paginated). Blocks wrapped in place (two overview + two crm `@if`s) so no reordering.
+- **Product add/edit modal** (`products/products.component.*`): `formTab` `'basics'|'pricing'|'inventory'` (reset in
+  `openCreate`/`openEdit`). Basics = name/sku/description; Pricing & tax = MRP/sale/HSN/GST; Inventory = visibility/
+  category/stock/track/featured. On invalid save, `save()` jumps to the tab with the first invalid control.
+- Admin `build:admin` bundle complete (new hashes). Frontend-only; ships with next deploy.
+
+## App-wide "mobile-fit" — no horizontal page scrollbar (global) — implemented
+Client wants the whole app to read like a pure mobile-fit screen: content stays within the viewport and the
+PAGE never scrolls sideways. Added a global guard in `frontend/projects/admin/src/styles.css` (CSS-only):
+- **`.page-wrapper, main.page-body { max-width:100%; overflow-x: clip }`** — clips accidental horizontal overflow.
+  `clip` (NOT `hidden`) is deliberate: it does NOT establish a scroll container, so the `sticky-top` app bar and
+  normal vertical page scroll are untouched, and `overflow-y` stays `visible` (dropdowns/kebab menus that open
+  downward are NOT clipped). Fixed-position drawers/modals/overlays escape the clip (no transformed ancestor).
+- Inner horizontal scrollers keep their OWN `overflow-x` and still scroll internally (wide desktop tables via
+  `.table-responsive`; the Orders status tab strip) — they never widen the page.
+- Supporting rules so content fits gracefully rather than being clipped: `img/svg/video/canvas { max-width:100% }`;
+  long unbreakable tokens wrap (`overflow-wrap: break-word` on card/drawer bodies, `p/dd/li/td/th/.form-hint/.shifa-mono`);
+  grid columns `.row > [class*="col"], .col { min-width:0 }` (scoped to columns — deliberately NOT `.d-flex > *` to
+  avoid over-shrinking toolbar buttons); `.card { max-width:100% }`.
+- Builds on the earlier table-overflow fixes (kept). This is the app-wide follow-through to the segmented tab-strip
+  work (which also forces its 3 buttons into one non-wrapping row). Frontend-only; admin `build:admin` clean
+  (styles hash changed, main unchanged). Ships with next deploy.
+
+## Orders page: search-vs-stage-tab trap ("no data in any order type") — fixed
+Symptom: user searched an order (e.g. `?q=SHR-1001`) then clicked stage tabs and every stage showed
+"No orders found". Root cause was NOT a data/query bug — the grouped `statusGroup` filter AND the free-text
+search are AND-combined server-side, so an order that lives in ONE stage (SHR-1001 = PENDING_ADMIN_APPROVAL)
+is correctly empty under any other stage tab; the leftover search pinned results so most tabs looked empty.
+Backend query/enum/seed all verified correct. Frontend UX fixes in `orders/orders.component.*`:
+- **Search is now global**: when the user types a non-empty search, the stage tab snaps back to "All"
+  (`search.valueChanges` clears `statusGroup` via `emitEvent:false` + resync) so a searched order is found
+  wherever it is. Likewise `initFiltersFromQueryParams` ignores `?statusGroup=`/`?status=` when a `?q=` is
+  present (search deep links are never pinned to a stage).
+- **Actionable empty state**: the "No orders found" panel now shows a **Clear search & filters** CTA
+  (`hasFilters()` → `clearFilters()`) and a clearer message that names the search term and hints to clear
+  filters to search every stage.
+- Admin `build:admin` clean (new main hash). Frontend-only.
+
+## Select-all header checkbox on multi-select lists — implemented
+Client: wherever rows are selectable, add a "select all" checkbox at the top. Audited all multi-row selection
+lists (form toggles/single filters excluded): only two have per-row selection — the **Orders** desktop table
+(already had a header select-all: `allOnPageSelected()`/`toggleAllOnPage()`) and the **Packing "Orders to pack"
+queue** (per-row label checkboxes for batch printing, but no header select-all). Added it to packing:
+- `scan.component.ts`: `allSelectedForLabel(rows)` (true when every row in the queue is selected) +
+  `toggleSelectAllForLabel(rows)` (clear all if all selected, else add all) operating on `selectedForLabel` Set.
+- `scan.component.html`: the pack-queue header's placeholder `<th>` now holds a checkbox bound to
+  `allSelectedForLabel(section.orders)` / `toggleSelectAllForLabel(section.orders)`. Only the `pack` queue has
+  label checkboxes, so only it gets the header box (handover/dispatch unchanged).
+- Approval-queue has no bulk selection; Orders mobile cards have no per-row selection (nothing to select-all).
+Admin `build:admin` clean (new main hash). Frontend-only.
+
+## DEPLOYED to AWS EC2 (2026-07-27) — live at http://13.234.22.207/
+Pushed the full local state (all the tab/mobile-fit/select-all/orders-search work + migrations V39–V43) to
+the production EC2 box. **Now live and verified.**
+- **Instance**: `ubuntu@13.234.22.207` (public IP; may change if the VM is stop/started). Key:
+  `C:\Users\Parul\Downloads\shifa-admin.pem`. Admin served at **root `/`** (base-href `/`); Nginx → Spring Boot
+  `127.0.0.1:8080`; **MySQL 8 is LOCAL on the same EC2 box** (not RDS); storage `STORAGE_PROVIDER=S3`.
+- **Process actually used** (the old `deploy/package-local.ps1` + `apply-on-vm.sh` are STALE — they build/serve the
+  removed storefront and would fail; DEPLOYMENT.md is the old Oracle guide):
+  1. `mvn -DskipTests clean package` (done locally) → `backend/target/shifa-oms-0.0.1-SNAPSHOT.jar` (~102MB).
+  2. `npm run build:admin` → `frontend/dist/admin/browser` (base-href `/`).
+  3. `scp` JAR → `~/shifa-oms.jar`; `scp -r dist/admin/browser` → `~/admin-dist`.
+  4. `scp deploy/aws-apply.sh` → `~/aws-apply.sh`; run `ssh … "sed -i 's/\r$//' ~/aws-apply.sh; bash ~/aws-apply.sh"`.
+     `aws-apply.sh` (NEW, committed): backs up MySQL FIRST (`sudo bash -c` sources root-only `/etc/shifa/shifa.env`,
+     `MYSQL_PWD=… mysqldump --no-tablespaces -u"$DB_USERNAME" "$DB_NAME"` → `~/shifa-backup-<ts>.sql`), then
+     `sudo cp` JAR → `/opt/shifa/shifa-oms.jar` (chown shifa:shifa), publish admin → `/var/www/shifa/admin`
+     (chown www-data), `sudo systemctl restart shifa-oms`, `nginx -t && systemctl reload nginx`.
+  Also created `deploy/push-to-aws.ps1` (one-shot PS wrapper, IP baked in, `-KeyPath`/`-SkipBuild`/`-AdminBaseHref`)
+  — but the step-by-step cmd path above is what was actually run (PS mangles the multiline remote heredoc).
+- **Verified**: Flyway "Successfully applied 5 migrations … now at version v43"; "Tomcat started on port 8080
+  (context path '/')"; `curl localhost/` = 200, `curl localhost/api/states` = 401 (auth working), external
+  `curl http://13.234.22.207/` = 200. Pre-restart `ClassNotFoundException`/`s3Client`/Tomcat `Lifecycle$SingleUse`
+  lines in the log are the OLD JVM's shutdown-hook noise (harmless), not new-process startup errors.
+- **Gotchas hit + fixed during deploy**: (a) cmd eats `2>/dev/null`/`;`/single-quotes in remote commands → wrap the
+  remote command in DOUBLE quotes, or ship a `.sh` and run it. (b) `/etc/shifa/shifa.env` is mode 600 (root) → must
+  `sudo` to source it for the backup. (c) MySQL 8 mysqldump needs `--no-tablespaces` (no PROCESS priv for `shifa` user).
+  (d) Sourcing shifa.env via `. ` prints a harmless `-Xmx…: command not found` (unquoted JAVA_OPTS) — systemd reads it
+  fine. (e) systemd warns "unit file changed on disk, run daemon-reload" — pre-existing (someone hand-edited the units);
+  restart still worked; a `sudo systemctl daemon-reload` is a pending nicety.
+- **Rollback**: previous JAR was overwritten in place; DB backup is `~/shifa-backup-2026-07-27-*.sql`. V39–V43 are
+  additive so old code tolerates the new columns if a code rollback is ever needed.
+
+## Deployment consolidated to AWS — Oracle removed, single canonical guide (2026-07-27)
+Client finalized on AWS EC2 (dropped Oracle Cloud). Cleaned up and made ONE guide:
+- **`DEPLOYMENT.md`** rewritten as the **single canonical AWS guide** (was the old Oracle walkthrough).
+  Everyday redeploy = ONE command: `deploy\push-to-aws.ps1 -KeyPath "<pem>"` (`-SkipBuild`/`-Ip` flags).
+  Covers verify (journalctl/curl), DB-change flow (add V44+ migration), rollback, day-2 ops, troubleshooting,
+  and a first-time-provisioning appendix (deeper detail still in `docs/DEPLOYMENT-AWS.md`).
+- **`deploy/push-to-aws.ps1`** rewritten to the flow that actually worked: build (opt) → scp JAR + admin
+  bundle + `aws-apply.sh` → `ssh "sed -i 's/\r$//' ~/aws-apply.sh; bash ~/aws-apply.sh"` (NO inline heredoc —
+  PowerShell mangled it). **`deploy/aws-apply.sh`** = server-side backup→swap→restart→reload (keep).
+- **`deploy/nginx-shifa.conf`** updated to the dashboard-only AWS layout: admin SPA served at **`/`** (not the
+  old storefront-at-`/` + admin-at-`/admin/`), `/api/` proxy + SSE block retained.
+- **Deleted** (Oracle / stale storefront-era): `docs/Oracle-Always-Free-Plan.html`,
+  `docs/ORACLE-ALWAYS-FREE-PLAN.md`, `deploy/build-and-deploy.sh`, `deploy/apply-on-vm.sh`,
+  `deploy/make-bundle.ps1`, `deploy/package-local.ps1`, `deploy/package-run.txt`, root `shifa-deploy.zip`.
+- **Fixed dangling refs**: `README.md` §Deployment (AWS + new scripts) and `docs/DEPLOYMENT-AWS.md` intro
+  (points to DEPLOYMENT.md as canonical; lists current `deploy/` helpers).
+- `deploy/` now holds only: `push-to-aws.ps1`, `aws-apply.sh`, `nginx-shifa.conf`, `shifa-oms.service`,
+  `shifa.env.example`. NOTE (not changed): several client-facing pricing/hosting docs
+  (`docs/Shifa-Pricing-Proposal.html`, `Shifa-Hosting-Cost-Guide.html`, `Sales-Enablement-and-AI-Insights.md`)
+  still MENTION Oracle/OCI as a cost option — left as-is (client content); update if desired.

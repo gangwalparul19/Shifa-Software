@@ -57,7 +57,7 @@ class ReportExportFidelityPropertyTest {
     @Property(tries = 150)
     void exportsReproduceTheDisplayedReport(
             @ForAll @Size(max = 25) List<@net.jqwik.api.From("orders") OrderReportRecord> orders,
-            @ForAll ReportType type) throws IOException {
+            @ForAll("orderReportTypes") ReportType type) throws IOException {
 
         DateRange window = DateRange.all();
         TabularData table = tableBuilder.build(type, orders, window);
@@ -179,6 +179,20 @@ class ReportExportFidelityPropertyTest {
     }
 
     // --- Generators ---------------------------------------------------------
+
+    /**
+     * Only the order-based report types build via {@link ReportTableBuilder}. The
+     * per-module reports (expenses/procurement/returns/inventory) are built by
+     * {@code ModuleReportService} from their own repositories, so they are out of
+     * scope for this order-projection fidelity property.
+     */
+    @Provide
+    Arbitrary<ReportType> orderReportTypes() {
+        return Arbitraries.of(
+                java.util.Arrays.stream(ReportType.values())
+                        .filter(t -> !t.isModuleReport())
+                        .toArray(ReportType[]::new));
+    }
 
     @Provide
     Arbitrary<OrderReportRecord> orders() {

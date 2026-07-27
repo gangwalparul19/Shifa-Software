@@ -1,5 +1,6 @@
 package com.shifa.oms.auth;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -26,9 +27,33 @@ import java.util.function.Function;
 public class SalespersonScopeResolver {
 
     /**
+     * Looks up the salespeople assigned to a team lead. Optional so tests that
+     * construct the resolver directly (no team-lead scenarios) keep working; when
+     * absent, a team lead is scoped to nothing (safe — sees no orders rather than
+     * all).
+     */
+    private final UserRepository userRepository;
+
+    /** Test/legacy convenience: no team-lead lookup (team leads see nothing). */
+    public SalespersonScopeResolver() {
+        this(null);
+    }
+
+    @Autowired
+    public SalespersonScopeResolver(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    /**
      * The {@code created_by} value a query for {@code principal} must be filtered
      * to, or {@link Optional#empty()} when the principal is not scoped (i.e. sees
      * everything, e.g. an Admin).
+     *
+     * <p>Single-creator constraint — correct for a {@code SALESPERSON} (their own
+     * id) only. A {@code TEAM_LEAD} needs a <em>set</em> of creator ids, so
+     * team-aware call sites must use {@link #creatorScope(AuthPrincipal)} instead;
+     * this method returns empty for a team lead and must not be used to scope
+     * endpoints a team lead can reach.
      *
      * @param principal the authenticated user the query runs on behalf of
      * @return the required {@code createdBy} id for a salesperson; empty otherwise
@@ -39,6 +64,38 @@ public class SalespersonScopeResolver {
             return Optional.of(principal.userId());
         }
         return Optional.empty();
+    }
+
+    /**
+     * The set of {@code created_by} ids a query for {@code principal} must be
+     * restricted to, or {@link Optional#empty()} when the principal is unscoped
+     * (ADMIN / ACCOUNTANT — sees everything).
+     *
+     * <ul>
+     *   <li>{@code SALESPERSON} → a singleton of their own id (their own orders);</li>
+     *   <li>{@code TEAM_LEAD} → the ids of the salespeople assigned to them (may
+     *       be empty — a lead with no team sees nothing, never everything);</li>
+     *   <li>every other role → empty {@link Optional} (unscoped).</li>
+     * </ul>
+     *
+     * <p>A present-but-empty list means "scoped to nothing" and callers must
+     * return no rows (NOT treat it as unscoped).
+     */
+    public Optional<List<Long>> creatorScope(AuthPrincipal principal) {
+        Objects.requireNonNull(principal, "principal");
+        return switch (principal.role()) {
+            case SALESPERSON -> Optional.of(List.of(principal.userId()));
+            case TEAM_LEAD -> Optional.of(teamMemberIds(principal.userId()));
+            default -> Optional.empty();
+        };
+    }
+
+    /** Ids of the salespeople assigned to a team lead; empty when unknown/none. */
+    private List<Long> teamMemberIds(Long teamLeadId) {
+        if (userRepository == null || teamLeadId == null) {
+            return List.of();
+        }
+        return userRepository.findIdsByTeamLeadId(teamLeadId);
     }
 
     /** Whether queries for this principal must be scoped to their own records. */

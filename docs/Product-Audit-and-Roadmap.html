@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shifa OMS — Product Audit &amp; Enhancement Roadmap</title>
+<style>
+  :root{
+    --green:#1F5D3F; --green-2:#1F7A4D; --green-dark:#0f3d27; --gold:#C8A24A;
+    --bg:#eef2ee; --card:#ffffff; --text:#22332b; --muted:#6b7b72; --line:#e2e8e4;
+    --shadow:0 6px 24px rgba(15,61,39,.10); --blue:#2563eb; --red:#dc2626;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.65;font-size:15px;}
+
+  header.brand{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;
+    padding:34px 24px;text-align:center;position:relative;overflow:hidden;}
+  header.brand::after{content:"🌿";position:absolute;right:16px;bottom:-20px;font-size:130px;opacity:.10;}
+  header.brand h1{margin:6px 0 4px;font-size:26px;}
+  header.brand p{margin:0;color:#dceee2;}
+  .rule{height:4px;background:var(--gold);}
+
+  .layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;gap:28px;padding:0 20px 90px;}
+  .sidebar{position:sticky;top:0;align-self:start;max-height:100vh;overflow-y:auto;padding:22px 0;}
+  .sidebar h3{margin:14px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);}
+  .sidebar ol{list-style:none;margin:0;padding:0;}
+  .sidebar a{display:block;padding:7px 12px;border-radius:8px;color:var(--text);text-decoration:none;font-size:13.5px;border-left:3px solid transparent;}
+  .sidebar a:hover{background:#e3efe7;color:var(--green-dark);}
+  .sidebar a.active{background:#e6f4ec;border-left-color:var(--green);color:var(--green-dark);font-weight:700;}
+  .content{min-width:0;padding-top:22px;}
+
+  h2{color:var(--green-dark);font-size:22px;margin:34px 0 10px;scroll-margin-top:14px;}
+  h3{color:var(--green-dark);font-size:16px;margin:18px 0 6px;}
+  p,li{font-size:14.5px;}
+  .lead{background:linear-gradient(135deg,#eaf3ec,#fff);border:2px solid var(--green);border-radius:14px;padding:18px 22px;margin:0 0 22px;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin:14px 0;box-shadow:var(--shadow);}
+  .card.feat{border-left:4px solid var(--green);}
+
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 11px;border:1px solid var(--line);vertical-align:top;}
+  th{background:var(--green);color:#fff;font-weight:600;}
+  tr:nth-child(even) td{background:#f2f8f4;}
+
+  .badge{display:inline-block;font-size:11px;font-weight:800;padding:2px 9px;border-radius:999px;letter-spacing:.3px;}
+  .b-low{background:#e4f2ea;color:#1f5d3f;} .b-med{background:#fff2d6;color:#7a5c12;} .b-high{background:#fde2e2;color:#b42318;}
+  .b-val{background:#e6eefc;color:#1e3a8a;}
+  .pill{display:inline-block;font-size:11px;font-weight:800;padding:2px 9px;border-radius:6px;background:var(--green);color:#fff;margin-right:6px;}
+  .pill.now{background:#1f5d3f;} .pill.soon{background:#C8A24A;color:#3a2c05;} .pill.plan{background:#6b7b72;}
+
+  .note{border-radius:9px;padding:11px 16px;margin:12px 0;font-size:13.8px;}
+  .note.warn{background:#fff8e8;border:1px solid var(--gold);color:#7a5c12;}
+  .note.tip{background:#eef5ff;border:1px solid var(--blue);color:#1e3a8a;}
+  .note.ok{background:#eef7f1;border:1px solid var(--green);color:#1f5d3f;}
+
+  .metaline{margin:8px 0 0;font-size:12.5px;color:var(--muted);}
+  .metaline .badge{margin-right:6px;}
+
+  footer{text-align:center;color:var(--muted);font-size:13px;margin-top:20px;padding:20px;border-top:1px solid var(--line);background:linear-gradient(to bottom,#ffffff,#f8f9fa);}
+  footer b{color:var(--green-dark);} footer a{color:var(--green);text-decoration:none;font-weight:500;}
+
+  @media(max-width:880px){.layout{grid-template-columns:1fr;} .sidebar{position:static;max-height:none;border-bottom:1px solid var(--line);}}
+</style>
+</head>
+<body>
+
+<header class="brand">
+  <h1>🌿 Shifa OMS — Product Audit &amp; Enhancement Roadmap</h1>
+  <p>Usability gaps + new features · reference before any code changes</p>
+</header>
+<div class="rule"></div>
+
+<div class="layout">
+  <nav class="sidebar">
+    <h3>Contents</h3>
+    <ol>
+      <li><a href="#who">1 · Who uses it</a></li>
+      <li><a href="#inv">2 · Current functionality</a></li>
+      <li><a href="#gaps">3 · Usability loop holes</a></li>
+      <li><a href="#client">4 · Client-requested features</a></li>
+      <li><a href="#more">5 · Extra suggestions</a></li>
+      <li><a href="#remove">6 · Simplify / remove</a></li>
+      <li><a href="#road">7 · Prioritized roadmap</a></li>
+      <li><a href="#risks">8 · Risks to confirm</a></li>
+      <li><a href="#next">9 · Next steps</a></li>
+    </ol>
+  </nav>
+
+  <main class="content">
+
+    <div class="lead">
+      Reference to review <b>existing usability gaps</b> and <b>new features</b>, before any code changes.
+      Written for the real team: <b>~25 users, ~20 of them salespeople with limited digital experience.</b>
+      Guiding principle: <b>make the salesperson's daily path dead-simple; keep power features for
+      Admin/Accountant.</b>
+      <div class="note ok" style="margin:12px 0 0;">Analysis only — nothing in the app has been changed. Each item notes rough <b>value / effort / risk</b>.</div>
+    </div>
+
+    <!-- WHO -->
+    <h2 id="who">1. Who uses the app</h2>
+    <div class="card">
+      <table>
+        <thead><tr><th>Role</th><th>Count</th><th>What they do</th><th>Design implication</th></tr></thead>
+        <tbody>
+          <tr><td><b>Salesperson</b></td><td>~20</td><td>Capture orders, follow leads, check their own orders</td><td><b>Extremely simple</b> — big buttons, few fields, plain language</td></tr>
+          <tr><td><b>Packing</b></td><td>few</td><td>Pack, print labels, handover, dispatch</td><td>Fast, scanner/print-first</td></tr>
+          <tr><td><b>Accountant</b></td><td>1–2</td><td>COD reconciliation, expenses, P&amp;L, reports</td><td>Data-dense is OK</td></tr>
+          <tr><td><b>Admin</b></td><td>1–2</td><td>Approvals, config, staff, analytics — everything</td><td>Full power</td></tr>
+        </tbody>
+      </table>
+      <div class="note tip"><b>Takeaway:</b> 80% of users are the least technical. Success hinges on the <b>salesperson experience</b>, not on more admin features.</div>
+    </div>
+
+    <!-- INVENTORY -->
+    <h2 id="inv">2. Current functionality (quick inventory)</h2>
+    <div class="card">
+      <ul>
+        <li><b>Order lifecycle:</b> Pending approval → Approved → Label generated → Packed → Handed to delivery → Courier assigned → Dispatched → In transit → Out for delivery → Delivered/COD collected/Closed (+ Rejected, Cancelled, RTO, Delivery failed, Courier lost).</li>
+        <li><b>Salesperson:</b> New Order, Orders (own), Leads (+ due follow-ups), Customers (own), Products (read), My Profile.</li>
+        <li><b>Packing:</b> work queues (to pack / awaiting handover / awaiting dispatch), barcode scan, label print, handover, dispatch.</li>
+        <li><b>Accountant:</b> Reconciliation, Reports, Expenses, P&amp;L, Returns, Customers.</li>
+        <li><b>Admin:</b> the above + Approvals, Inventory, Suppliers, POs, Notifications, Announcements, Audit, Users, Salespeople, Insights, Analytics, Backups, Settings.</li>
+        <li><b>Platform:</b> JWT/RBAC, S3 storage, nightly backup, WhatsApp/courier in MOCK, PWA + offline order capture, live SSE dashboard.</li>
+      </ul>
+    </div>
+
+    <!-- GAPS -->
+    <h2 id="gaps">3. Usability "loop holes" (existing pain points)</h2>
+
+    <div class="card">
+      <h3>3.1 Too much on screen for salespeople</h3>
+      <p>A salesperson really needs only <b>New Order, My Orders, My Leads</b>. Everything else is noise.</p>
+      <p><b>Fix:</b> a stripped-down <b>Salesperson Home</b> — one big "➕ New Order" button, a simple "My Orders" list (search by phone), a "My Leads" tile; hide the rest.</p>
+
+      <h3>3.2 The New Order form is long and technical</h3>
+      <p>Many fields at once; optional vs required unclear; developer-style errors (e.g. <i>"amountReceived must be a DECIMAL(12,2) value"</i>).</p>
+      <p><b>Fix:</b> a <b>guided wizard</b> (Customer → Items → Payment → Review), plain-language errors (<i>"Enter the 6-digit PIN code"</i>), optional fields clearly marked, large touch targets.</p>
+
+      <h3>3.3 Language barrier</h3>
+      <p>UI is English-only; many salespeople prefer <b>Hindi / regional language</b>.</p>
+      <p><b>Fix (high impact):</b> a <b>bilingual UI (English + Hindi)</b> toggle for the salesperson screens. Likely the single biggest error-reducer.</p>
+
+      <h3>3.4 Typing-heavy address entry → data errors</h3>
+      <p>City/State/PIN typed by hand → typos, mismatches.</p>
+      <p><b>Fix:</b> <b>auto-fill City + State from the 6-digit PIN code</b>. Big accuracy + speed win.</p>
+
+      <h3>3.5 Too many statuses exposed</h3>
+      <p>14+ statuses confuse a salesperson who just wants "where is my order?".</p>
+      <p><b>Fix:</b> a <b>simplified status tracker</b> — Placed → Approved → Packed → Shipped → Delivered, with friendly icons.</p>
+
+      <h3>3.6 Error &amp; empty states</h3>
+      <p><b>Fix:</b> plain-language messages, "what to do next" hints, consistent primary-button placement.</p>
+
+      <h3>3.7 Confirmation on important actions</h3>
+      <p>Ensure cancel/reject/delete always confirm with a clear plain-language prompt (audit for gaps).</p>
+    </div>
+
+    <!-- CLIENT -->
+    <h2 id="client">4. Client-requested features (detailed)</h2>
+
+    <div class="card feat">
+      <h3>4.1 Multi-Label Print (Packaging)</h3>
+      <p>Print labels for <b>several orders at once</b> in one PDF.</p>
+      <div class="note ok"><b>Good news:</b> the backend already supports this (<code>POST /api/admin/labels/internal/bulk</code>). It's just not surfaced in the packing UI.</div>
+      <p><b>Work:</b> add multi-select to the "to pack" queue + a "Print selected labels" button calling the existing endpoint.</p>
+      <div class="metaline"><span class="badge b-val">Value: High</span><span class="badge b-low">Effort: Low</span><span class="badge b-low">Risk: Low</span></div>
+    </div>
+
+    <div class="card feat">
+      <h3>4.2 Multi-Pack Option (Packaging)</h3>
+      <p>One order shipped in <b>multiple boxes</b> — capture package count, produce a label per box ("Box 1 of 3").</p>
+      <p><b>Work:</b> add <code>packageCount</code> (+ optional per-box weight/notes) to the order; render N labels; reflect in handover/dispatch + courier AWB. Needs a migration.</p>
+      <div class="metaline"><span class="badge b-val">Value: Med-High</span><span class="badge b-med">Effort: Med-High</span><span class="badge b-med">Risk: Med</span></div>
+    </div>
+
+    <div class="card feat">
+      <h3>4.3 Handover popup with handover person's name</h3>
+      <p>When the packer clicks <b>Handover</b>, a popup captures <b>who it was handed to</b> (courier/agency name, optional phone).</p>
+      <div class="note tip">Today <code>POST /api/packing/{id}/handover</code> takes no data — no name is captured.</div>
+      <p><b>Work:</b> add <code>handoverName</code> (+ optional phone) to the handover request; persist on the order/status-history; show on detail; add the popup in the packing UI.</p>
+      <div class="metaline"><span class="badge b-val">Value: High</span><span class="badge b-low">Effort: Low</span><span class="badge b-low">Risk: Low</span></div>
+    </div>
+
+    <div class="card feat">
+      <h3>4.4 New "Payment Verifier" role + Payment dashboard</h3>
+      <p>A dedicated role that <b>verifies each payment's authenticity</b> (screenshot vs amount) and handles <b>customer engagement</b>, with a <b>separate Payment dashboard</b>. New salesperson orders surface here.</p>
+      <p><b>Work (significant):</b></p>
+      <ul>
+        <li>New role <code>PAYMENT_VERIFIER</code> (enum + security + nav).</li>
+        <li>New step: order created → <b>Payment verification</b> (view screenshot, confirm amount, Verify/Reject + note) → Admin approval. Needs a new order status + state-machine transitions + notifications.</li>
+        <li>New <b>Payment dashboard</b>: verification queue, screenshot viewer, amount check, verify/reject, engagement notes, filters.</li>
+        <li>Admin dashboard: prominent <b>live new-order alert</b> (SSE already exists).</li>
+      </ul>
+      <div class="note warn"><b>Design choice:</b> verification <i>before</i> admin approval (blocking) is cleaner for authenticity control than a parallel check.</div>
+      <div class="metaline"><span class="badge b-val">Value: High</span><span class="badge b-high">Effort: High</span><span class="badge b-med">Risk: Med-High (core workflow + 490+ tests)</span></div>
+    </div>
+
+    <div class="card feat">
+      <h3>4.5 Alternate contact number on the order page</h3>
+      <p>Capture a <b>second phone number</b> (for failed-delivery contact). Only <code>customerMobile</code> exists today.</p>
+      <p><b>Work:</b> add optional <code>alternateMobile</code> (10-digit) to the order-entry payload, entity (migration), New Order form, and detail view — mirrors the existing optional email field.</p>
+      <div class="metaline"><span class="badge b-val">Value: Med</span><span class="badge b-low">Effort: Low</span><span class="badge b-low">Risk: Low</span></div>
+    </div>
+
+    <div class="card feat">
+      <h3>4.6 Round order price to the nearest rupee</h3>
+      <p>₹2679.99 → ₹2680 (round the grand total).</p>
+      <p><b>Work:</b> half-up rounding on the total, plus a visible <b>"Round-off" line</b> on the invoice (standard Indian practice) rather than silently changing the taxable value. Apply across total, invoice PDF, COD amount, reports.</p>
+      <div class="note warn"><b>Validate with the accountant</b> — GST taxable base and invoice/Vyapar totals must reconcile.</div>
+      <div class="metaline"><span class="badge b-val">Value: Med</span><span class="badge b-med">Effort: Low-Med</span><span class="badge b-med">Risk: Med (GST)</span></div>
+    </div>
+
+    <!-- MORE -->
+    <h2 id="more">5. Additional suggestions</h2>
+    <div class="card">
+      <h3>High-value additions</h3>
+      <ul>
+        <li><b>Bilingual English/Hindi UI</b> — biggest error-reducer for this team (§3.3).</li>
+        <li><b>PIN-code auto-fill of city/state</b> (§3.4).</li>
+        <li><b>Simplified Salesperson Home + status tracker</b> (§3.1, §3.5).</li>
+        <li><b>Guided New Order wizard</b> (§3.2).</li>
+        <li><b>Go live with WhatsApp order confirmations</b> (currently MOCK) — fewer "where's my order?" calls.</li>
+        <li><b>Prominent risky-customer nudge</b> at order entry (Customer-360 risk already exists).</li>
+        <li><b>Draft orders</b> — save an incomplete order and finish later.</li>
+        <li><b>Packing slip</b> printed with the label (item checklist).</li>
+      </ul>
+      <h3>Small quality-of-life fixes</h3>
+      <ul>
+        <li>Plain-language validation messages everywhere.</li>
+        <li>Bigger tap targets, fewer taps on the salesperson flow.</li>
+        <li>"Search order by phone" front-and-center for salespeople.</li>
+        <li>Consistent confirmation dialogs.</li>
+      </ul>
+    </div>
+
+    <!-- REMOVE -->
+    <h2 id="remove">6. What to simplify or remove</h2>
+    <div class="card">
+      <ul>
+        <li><b>Trim salesperson navigation</b> to New Order, My Orders, My Leads, My Profile — nothing else visible.</li>
+        <li><b>Unused <code>CUSTOMER</code> role</b> (leftover from the removed storefront) + dead storefront-era columns — consider cleanup. <i>Low priority; via migration, don't drop columns casually.</i></li>
+        <li><b>Consolidate overlapping concepts</b> (Leads vs Orders vs Customers) for salespeople — clearer naming/grouping so they aren't unsure where to go.</li>
+        <li><b>Reduce visible order statuses</b> for non-admins (§3.5).</li>
+        <li><b>Keep advanced modules admin/accountant-only</b> (Insights, Analytics, Suppliers, POs, Expenses, P&amp;L) — verify salespeople never reach them.</li>
+      </ul>
+      <div class="note warn">⚠️ Don't delete DB columns/tables casually. Prefer hiding in the UI; if removing, use a new Flyway migration (V39+), never edit an applied one, and keep the 490+ tests green.</div>
+    </div>
+
+    <!-- ROADMAP -->
+    <h2 id="road">7. Prioritized roadmap</h2>
+    <div class="card">
+      <table>
+        <thead><tr><th>#</th><th>Item</th><th>Value</th><th>Effort</th><th>Risk</th><th>Priority</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Handover name popup (§4.3)</td><td>High</td><td>Low</td><td>Low</td><td><span class="pill now">Now</span></td></tr>
+          <tr><td>2</td><td>Alternate contact number (§4.5)</td><td>Med</td><td>Low</td><td>Low</td><td><span class="pill now">Now</span></td></tr>
+          <tr><td>3</td><td>Multi-label print UI (§4.1)</td><td>High</td><td>Low</td><td>Low</td><td><span class="pill now">Now</span></td></tr>
+          <tr><td>4</td><td>Plain-language errors + salesperson nav trim (§3)</td><td>High</td><td>Low</td><td>Low</td><td><span class="pill now">Now</span></td></tr>
+          <tr><td>5</td><td>Round-off to nearest rupee (§4.6)</td><td>Med</td><td>Low-Med</td><td>Med</td><td><span class="pill soon">Soon</span></td></tr>
+          <tr><td>6</td><td>PIN-code auto-fill (§3.4)</td><td>High</td><td>Med</td><td>Low</td><td><span class="pill soon">Soon</span></td></tr>
+          <tr><td>7</td><td>Simplified Salesperson Home + tracker (§3.1/3.5)</td><td>High</td><td>Med</td><td>Low</td><td><span class="pill soon">Soon</span></td></tr>
+          <tr><td>8</td><td>Bilingual Hindi UI (§3.3)</td><td>Very High</td><td>Med-High</td><td>Low</td><td><span class="pill plan">Plan</span></td></tr>
+          <tr><td>9</td><td>Guided New Order wizard (§3.2)</td><td>High</td><td>Med</td><td>Low</td><td><span class="pill plan">Plan</span></td></tr>
+          <tr><td>10</td><td>Multi-pack option (§4.2)</td><td>Med-High</td><td>Med-High</td><td>Med</td><td><span class="pill plan">Plan</span></td></tr>
+          <tr><td>11</td><td>Payment Verifier role + dashboard (§4.4)</td><td>High</td><td>High</td><td>Med-High</td><td><span class="pill plan">Plan</span></td></tr>
+        </tbody>
+      </table>
+      <div class="note ok"><b>Suggested first sprint:</b> items 1–4 — small additive changes that improve packing + sales without touching the core workflow or GST.</div>
+    </div>
+
+    <!-- RISKS -->
+    <h2 id="risks">8. Risks &amp; things to confirm before building</h2>
+    <div class="card">
+      <ul>
+        <li><b>Rounding vs GST:</b> round the total with a visible round-off line; don't distort the taxable base. Confirm invoice PDF + Vyapar export reconcile.</li>
+        <li><b>Payment-verification workflow</b> changes the state machine + notifications — plan the new status and update tests deliberately.</li>
+        <li><b>Every schema change = a new Flyway migration</b> (V39+); never edit an applied one.</li>
+        <li><b>Keep the 490+ test suite green.</b></li>
+        <li><b>Train the team</b> — with 20 low-experience users, in-app help / a one-page guide per change matters as much as the code.</li>
+      </ul>
+    </div>
+
+    <!-- NEXT -->
+    <h2 id="next">9. Next steps</h2>
+    <div class="card">
+      <ol>
+        <li>You pick the items to proceed with (the "Now" set is a safe, high-impact start).</li>
+        <li>Each chosen item becomes its own <b>spec</b> (requirements → design → tasks).</li>
+        <li>We batch the small additive ones (handover name, alternate contact, multi-label UI, round-off) into a single deploy.</li>
+      </ol>
+    </div>
+
+  </main>
+</div>
+
+<footer>
+  <b>Shifa Herbal Remedies — OMS.</b> Product audit &amp; enhancement roadmap · reference before code changes.<br><br>
+  Developed by <a href="http://www.weblithic.com" target="_blank">Weblithic</a>
+</footer>
+
+<script>
+  const links = Array.from(document.querySelectorAll('.sidebar a'));
+  const map = {};
+  links.forEach(a => { const id = a.getAttribute('href').slice(1); const el = document.getElementById(id); if (el) map[id] = a; });
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { links.forEach(l => l.classList.remove('active')); const a = map[e.target.id]; if (a) a.classList.add('active'); } });
+  }, { rootMargin: '-10% 0px -80% 0px', threshold: 0 });
+  Object.keys(map).forEach(id => obs.observe(document.getElementById(id)));
+</script>
+
+</body>
+</html>

@@ -16,5 +16,12 @@ public record ReportSummary(
         Long topSalespersonId,
         String topSalespersonName,
         String topProduct,
-        String topState) {
+        String topState,
+        // --- Money / receivables aggregates (accountant Finance tiles) ---
+        /** Amount actually received over the window (excludes cancelled/rejected). */
+        BigDecimal totalReceived,
+        /** Collectible dues still to come in = sum(total − received) over the window. */
+        BigDecimal totalOutstanding,
+        /** COD amount pending remittance from the courier (COD settlement "Pending"). */
+        BigDecimal codPendingFromCourier) {
 }

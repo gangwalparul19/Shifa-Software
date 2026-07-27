@@ -53,6 +53,14 @@ public class User {
     @Column(name = "active", nullable = false)
     private boolean active = true;
 
+    /**
+     * The team lead this user (a salesperson) reports to, or null when
+     * unassigned. Self-referencing to another {@code users.id} whose role is
+     * {@link Role#TEAM_LEAD}. Drives team-scoped visibility (V43).
+     */
+    @Column(name = "team_lead_id")
+    private Long teamLeadId;
+
     // --- Staff onboarding profile (V31, nullable; customers leave these null) ---
 
     /** Staff date of birth (optional). */
@@ -186,6 +194,14 @@ public class User {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public Long getTeamLeadId() {
+        return teamLeadId;
+    }
+
+    public void setTeamLeadId(Long teamLeadId) {
+        this.teamLeadId = teamLeadId;
     }
 
     public LocalDate getDateOfBirth() {

@@ -20,9 +20,10 @@ AWS EC2 instance**, staying inside the AWS Free Tier / your sign-up credits.
 - Admin panel (staff): `http://<your-host>/` (login `admin` / your chosen password)
 - One EC2 instance running: **Nginx** (web + reverse proxy) + **Spring Boot** (API) + **MySQL 8** (DB)
 
-The Oracle guide (`DEPLOYMENT.md`) and the helper files in `deploy/` (`shifa-oms.service`,
-`shifa.env.example`, `apply-on-vm.sh`, `package-local.ps1`) are reused almost unchanged — only the
-Nginx site and the cloud-console steps differ.
+> **Canonical guide:** `DEPLOYMENT.md` at the repo root is the single source of truth for deploying
+> (routine redeploy is one command: `deploy/push-to-aws.ps1`). This file is a deeper first-time AWS
+> provisioning reference. The `deploy/` helpers are `push-to-aws.ps1`, `aws-apply.sh`,
+> `nginx-shifa.conf`, `shifa-oms.service`, and `shifa.env.example`.
 
 ---
 

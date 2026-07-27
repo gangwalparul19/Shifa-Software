@@ -17,6 +17,9 @@ public final class AuditActions {
 
     public static final String ORDER_APPROVED = "ORDER_APPROVED";
     public static final String ORDER_REJECTED = "ORDER_REJECTED";
+    /** Payment authenticity verification decisions (product-audit §4.4). */
+    public static final String PAYMENT_VERIFIED = "PAYMENT_VERIFIED";
+    public static final String PAYMENT_REJECTED = "PAYMENT_REJECTED";
     /** Generic per-transition audit written by the central OrderWorkflowService (Req 15.1, 15.5). */
     public static final String ORDER_STATUS_CHANGED = "ORDER_STATUS_CHANGED";
 

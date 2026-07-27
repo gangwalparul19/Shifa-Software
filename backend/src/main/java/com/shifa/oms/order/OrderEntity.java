@@ -106,6 +106,14 @@ public class OrderEntity {
     @Column(name = "customer_mobile", nullable = false, length = 10)
     private String customerMobile;
 
+    /**
+     * Optional alternate contact number for the customer (product-audit §4.5),
+     * used for failed-delivery follow-up. Nullable; mapped to
+     * {@code orders.alternate_mobile} (V39).
+     */
+    @Column(name = "alternate_mobile", length = 10)
+    private String alternateMobile;
+
     @Column(name = "address_line", nullable = false, length = 250)
     private String addressLine;
 
@@ -159,6 +167,43 @@ public class OrderEntity {
 
     @Column(name = "rejection_reason", length = 500)
     private String rejectionReason;
+
+    /**
+     * Who the packed order was handed to at the handover step (courier person /
+     * agency name) and an optional phone (product-audit §4.3). Nullable; mapped
+     * to {@code orders.handover_name}/{@code handover_phone} (V40).
+     */
+    @Column(name = "handover_name", length = 120)
+    private String handoverName;
+
+    @Column(name = "handover_phone", length = 10)
+    private String handoverPhone;
+
+    /**
+     * Number of physical boxes/packages the order ships in (product-audit §4.2);
+     * drives how many label copies are printed. Defaults to 1. Mapped to
+     * {@code orders.package_count} (V41).
+     */
+    @Column(name = "package_count", nullable = false)
+    private int packageCount = 1;
+
+    /**
+     * Payment authenticity verification (product-audit §4.4) — an additive layer
+     * that does not gate the order status. Non-null only for prepaid / partially-
+     * paid orders. Mapped to {@code orders.payment_verification_*} (V42).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_verification_status", length = 20)
+    private PaymentVerificationStatus paymentVerificationStatus;
+
+    @Column(name = "payment_verified_by")
+    private Long paymentVerifiedBy;
+
+    @Column(name = "payment_verified_at")
+    private LocalDateTime paymentVerifiedAt;
+
+    @Column(name = "payment_verification_note", length = 500)
+    private String paymentVerificationNote;
 
     @Column(name = "payment_screenshot_key", length = 512)
     private String paymentScreenshotKey;
@@ -254,6 +299,59 @@ public class OrderEntity {
         this.rejectionReason = rejectionReason;
     }
 
+    public String getHandoverName() {
+        return handoverName;
+    }
+
+    public String getHandoverPhone() {
+        return handoverPhone;
+    }
+
+    /** Records who a packed order was handed to at the handover step (V40, product-audit §4.3). */
+    public void setHandoverDetails(String handoverName, String handoverPhone) {
+        this.handoverName = handoverName;
+        this.handoverPhone = handoverPhone;
+    }
+
+    public int getPackageCount() {
+        return packageCount < 1 ? 1 : packageCount;
+    }
+
+    /** Sets the number of physical boxes the order ships in (V41, product-audit §4.2). */
+    public void setPackageCount(int packageCount) {
+        this.packageCount = packageCount < 1 ? 1 : packageCount;
+    }
+
+    public PaymentVerificationStatus getPaymentVerificationStatus() {
+        return paymentVerificationStatus;
+    }
+
+    public Long getPaymentVerifiedBy() {
+        return paymentVerifiedBy;
+    }
+
+    public LocalDateTime getPaymentVerifiedAt() {
+        return paymentVerifiedAt;
+    }
+
+    public String getPaymentVerificationNote() {
+        return paymentVerificationNote;
+    }
+
+    /** Marks this order's payment as awaiting verification (prepaid/partially-paid orders only). */
+    public void markPaymentPendingVerification() {
+        this.paymentVerificationStatus = PaymentVerificationStatus.PENDING;
+    }
+
+    /** Records a verifier's decision on the payment's authenticity (product-audit §4.4). */
+    public void recordPaymentVerification(PaymentVerificationStatus status, Long verifiedBy,
+                                          LocalDateTime verifiedAt, String note) {
+        this.paymentVerificationStatus = status;
+        this.paymentVerifiedBy = verifiedBy;
+        this.paymentVerifiedAt = verifiedAt;
+        this.paymentVerificationNote = note;
+    }
+
     public Long getId() {
         return id;
     }
@@ -326,6 +424,15 @@ public class OrderEntity {
 
     public String getCustomerMobile() {
         return customerMobile;
+    }
+
+    public String getAlternateMobile() {
+        return alternateMobile;
+    }
+
+    /** Records the optional alternate contact number captured at order entry (V39). */
+    public void setAlternateMobile(String alternateMobile) {
+        this.alternateMobile = alternateMobile;
     }
 
     public String getAddressLine() {

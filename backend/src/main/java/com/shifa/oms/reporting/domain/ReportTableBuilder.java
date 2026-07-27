@@ -69,7 +69,153 @@ public class ReportTableBuilder {
             case ORDERS_BY_SALESPERSON -> countTable(
                     "Salesperson", aggregator.ordersBySalesperson(orders, window));
             case DELIVERY_OUTCOME -> deliveryOutcome(orders, window);
+            case PAYMENTS -> payments(orders, window);
+            case OUTSTANDING -> outstanding(orders, window);
+            case COD_REMITTANCE -> codRemittance(orders, window);
+            // Per-module reports (expenses/procurement/returns/inventory) are built by
+            // ModuleReportService and routed there by ReportService before reaching here.
+            default -> throw new IllegalArgumentException(
+                    "Not an order-based report type: " + type);
         };
+    }
+
+    // --- Money / receivables (accountant) -----------------------------------
+
+    /** Order statuses whose money is written off (never collectible) — excluded from dues. */
+    private static boolean isCancelledOrRejected(OrderReportRecord o) {
+        return o.orderStatus() == com.shifa.oms.statemachine.OrderStatus.CANCELLED
+                || o.orderStatus() == com.shifa.oms.statemachine.OrderStatus.REJECTED;
+    }
+
+    /**
+     * Daily money view: per order-date within the window, the order count, total
+     * sales, amount received, COD amount, and outstanding (total − received).
+     */
+    private TabularData payments(List<OrderReportRecord> orders, DateRange window) {
+        List<String> headers = List.of(
+                "Date", "Orders", "Total Sales", "Amount Received", "COD Amount", "Outstanding");
+        // Ordered by date so the daily cash trend reads top-to-bottom.
+        java.util.TreeMap<java.time.LocalDate, BigDecimal[]> byDate = new java.util.TreeMap<>();
+        java.util.TreeMap<java.time.LocalDate, long[]> counts = new java.util.TreeMap<>();
+        for (OrderReportRecord o : orders) {
+            if (o.orderDate() == null || !window.contains(o.orderDate()) || isCancelledOrRejected(o)) {
+                continue;
+            }
+            BigDecimal[] acc = byDate.computeIfAbsent(o.orderDate(),
+                    k -> new BigDecimal[] {BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
+            acc[0] = acc[0].add(o.totalAmount());
+            acc[1] = acc[1].add(o.amountReceived());
+            acc[2] = acc[2].add(o.codAmount());
+            acc[3] = acc[3].add(o.totalAmount().subtract(o.amountReceived()));
+            counts.computeIfAbsent(o.orderDate(), k -> new long[1])[0]++;
+        }
+        List<List<String>> rows = new ArrayList<>();
+        for (var e : byDate.entrySet()) {
+            BigDecimal[] a = e.getValue();
+            rows.add(List.of(
+                    e.getKey().format(DATE),
+                    Long.toString(counts.get(e.getKey())[0]),
+                    money(a[0]), money(a[1]), money(a[2]), money(a[3])));
+        }
+        return new TabularData(headers, rows);
+    }
+
+    /**
+     * Per-order outstanding balances still collectible (total − received &gt; 0,
+     * excluding cancelled/rejected), oldest first with days outstanding — the
+     * accountant's chase list for money still to come in.
+     */
+    private TabularData outstanding(List<OrderReportRecord> orders, DateRange window) {
+        List<String> headers = List.of(
+                "Order", "Customer", "Mobile", "Order Date", "Days", "Total",
+                "Received", "Balance Due", "Order Status", "COD Status");
+        java.time.LocalDate reference = referenceDate(orders, window);
+        List<OrderReportRecord> due = new ArrayList<>();
+        for (OrderReportRecord o : orders) {
+            if (o.orderDate() == null || !window.contains(o.orderDate()) || isCancelledOrRejected(o)) {
+                continue;
+            }
+            if (o.totalAmount().subtract(o.amountReceived()).signum() > 0) {
+                due.add(o);
+            }
+        }
+        // Oldest dues first (largest days outstanding), so the accountant chases them first.
+        due.sort(java.util.Comparator.comparing(OrderReportRecord::orderDate));
+        List<List<String>> rows = new ArrayList<>();
+        for (OrderReportRecord o : due) {
+            BigDecimal balance = o.totalAmount().subtract(o.amountReceived());
+            rows.add(List.of(
+                    nullToEmpty(o.orderCode()),
+                    nullToEmpty(o.customerName()),
+                    nullToEmpty(o.customerMobile()),
+                    o.orderDate().format(DATE),
+                    daysBetween(o.orderDate(), reference),
+                    money(o.totalAmount()),
+                    money(o.amountReceived()),
+                    money(balance),
+                    o.orderStatus() == null ? "" : o.orderStatus().name(),
+                    nullToEmpty(o.codSettlementStatus())));
+        }
+        return new TabularData(headers, rows);
+    }
+
+    /**
+     * COD amounts pending remittance from the delivery partner (COD settlement
+     * status "Pending"), oldest first with days outstanding — what to chase the
+     * courier for.
+     */
+    private TabularData codRemittance(List<OrderReportRecord> orders, DateRange window) {
+        List<String> headers = List.of(
+                "Order", "Customer", "AWB", "Order Date", "Days", "COD Amount", "Order Status");
+        java.time.LocalDate reference = referenceDate(orders, window);
+        List<OrderReportRecord> pending = new ArrayList<>();
+        for (OrderReportRecord o : orders) {
+            if (o.orderDate() == null || !window.contains(o.orderDate())) {
+                continue;
+            }
+            // "Pending" = a COD receivable exists and is not yet settled by the courier.
+            if ("Pending".equalsIgnoreCase(o.codSettlementStatus())) {
+                pending.add(o);
+            }
+        }
+        pending.sort(java.util.Comparator.comparing(OrderReportRecord::orderDate));
+        List<List<String>> rows = new ArrayList<>();
+        for (OrderReportRecord o : pending) {
+            rows.add(List.of(
+                    nullToEmpty(o.orderCode()),
+                    nullToEmpty(o.customerName()),
+                    nullToEmpty(o.awb()),
+                    o.orderDate().format(DATE),
+                    daysBetween(o.orderDate(), reference),
+                    money(o.codAmount()),
+                    o.orderStatus() == null ? "" : o.orderStatus().name()));
+        }
+        return new TabularData(headers, rows);
+    }
+
+    /**
+     * The reference date for "days outstanding": the window's upper bound when
+     * set, else the latest order date in the set (deterministic + pure — no clock).
+     */
+    private static java.time.LocalDate referenceDate(List<OrderReportRecord> orders, DateRange window) {
+        if (window.to() != null) {
+            return window.to();
+        }
+        java.time.LocalDate max = null;
+        for (OrderReportRecord o : orders) {
+            if (o.orderDate() != null && (max == null || o.orderDate().isAfter(max))) {
+                max = o.orderDate();
+            }
+        }
+        return max;
+    }
+
+    /** Whole days from {@code date} to {@code reference}, or "" when unknown. */
+    private static String daysBetween(java.time.LocalDate date, java.time.LocalDate reference) {
+        if (date == null || reference == null) {
+            return "";
+        }
+        return Long.toString(java.time.temporal.ChronoUnit.DAYS.between(date, reference));
     }
 
     private TabularData daily(List<OrderReportRecord> orders, DateRange window) {

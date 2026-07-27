@@ -14,6 +14,8 @@ import {
 export interface OrderPageQuery {
   q?: string | null;
   status?: OrderStatus | string | null;
+  /** Coarse lifecycle group key (e.g. PENDING_APPROVAL); expands server-side to a status set. */
+  statusGroup?: string | null;
   paymentStatus?: PaymentStatus | string | null;
   /** Inclusive lower bound, yyyy-MM-dd. */
   from?: string | null;
@@ -110,6 +112,9 @@ export class OrdersService {
     }
     if (query.status) {
       params['status'] = query.status;
+    }
+    if (query.statusGroup) {
+      params['statusGroup'] = query.statusGroup;
     }
     if (query.paymentStatus) {
       params['paymentStatus'] = query.paymentStatus;

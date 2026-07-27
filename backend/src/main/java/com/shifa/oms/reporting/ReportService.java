@@ -1,9 +1,11 @@
 package com.shifa.oms.reporting;
 
 import com.shifa.oms.auth.CurrentUserService;
+import com.shifa.oms.auth.Role;
 import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.auth.User;
 import com.shifa.oms.auth.UserRepository;
+import org.springframework.security.access.AccessDeniedException;
 import com.shifa.oms.courier.CourierRecord;
 import com.shifa.oms.courier.CourierRecordRepository;
 import com.shifa.oms.order.OrderEntity;
@@ -25,6 +27,7 @@ import com.shifa.oms.reporting.dto.ReportSummary;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -53,6 +56,7 @@ public class ReportService {
     private final CurrentUserService currentUserService;
     private final SalespersonScopeResolver scopeResolver;
     private final UserRepository userRepository;
+    private final ModuleReportService moduleReportService;
 
     private final ReportAggregator aggregator = new ReportAggregator();
     private final ReportTableBuilder tableBuilder = new ReportTableBuilder(aggregator);
@@ -63,18 +67,26 @@ public class ReportService {
                          CourierRecordRepository courierRecordRepository,
                          CurrentUserService currentUserService,
                          SalespersonScopeResolver scopeResolver,
-                         UserRepository userRepository) {
+                         UserRepository userRepository,
+                         ModuleReportService moduleReportService) {
         this.orderRepository = orderRepository;
         this.receivableRepository = receivableRepository;
         this.courierRecordRepository = courierRecordRepository;
         this.currentUserService = currentUserService;
         this.scopeResolver = scopeResolver;
         this.userRepository = userRepository;
+        this.moduleReportService = moduleReportService;
     }
 
     /** Generates a report of the given type over the window, for the current user. */
     @Transactional(readOnly = true)
     public ReportResponse generate(ReportType type, LocalDate from, LocalDate to) {
+        // Per-module operational reports (expenses/procurement/returns/inventory) are
+        // business-wide and restricted to ADMIN / ACCOUNTANT (never salesperson-scoped).
+        if (type.isModuleReport()) {
+            requireAdminOrAccountant();
+            return moduleReportService.generate(type, from, to);
+        }
         DateRange window = new DateRange(from, to);
         List<OrderReportRecord> records = loadRecords();
         Map<Long, String> salespersonNames = salespersonNames(records);
@@ -107,6 +119,7 @@ public class ReportService {
         Long topSalespersonId = aggregator.topSalesperson(records, window).orElse(null);
         String topSalespersonName = topSalespersonId == null
                 ? null : salespersonNames.get(topSalespersonId);
+        MoneyTotals money = moneyTotals(records, window);
         return new ReportSummary(
                 aggregator.totalSales(records, window),
                 aggregator.orderCount(records, window),
@@ -115,7 +128,44 @@ public class ReportService {
                 topSalespersonId,
                 topSalespersonName,
                 aggregator.topProduct(records, window).orElse(null),
-                aggregator.topState(records, window).orElse(null));
+                aggregator.topState(records, window).orElse(null),
+                money.received, money.outstanding, money.codPending);
+    }
+
+    /** Restricts per-module reports to ADMIN / ACCOUNTANT (403 otherwise). */
+    private void requireAdminOrAccountant() {
+        Role role = currentUserService.currentUser().map(p -> p.role()).orElse(null);
+        if (role != Role.ADMIN && role != Role.ACCOUNTANT) {
+            throw new AccessDeniedException("This report is restricted to admin and accountant.");
+        }
+    }
+
+    /** Money aggregates for the Finance summary tiles, mirroring the money-report tables. */
+    private record MoneyTotals(BigDecimal received, BigDecimal outstanding, BigDecimal codPending) {
+    }
+
+    private MoneyTotals moneyTotals(List<OrderReportRecord> records, DateRange window) {
+        BigDecimal received = BigDecimal.ZERO;
+        BigDecimal outstanding = BigDecimal.ZERO;
+        BigDecimal codPending = BigDecimal.ZERO;
+        for (OrderReportRecord o : records) {
+            if (o.orderDate() == null || !window.contains(o.orderDate())) {
+                continue;
+            }
+            boolean writtenOff = o.orderStatus() == com.shifa.oms.statemachine.OrderStatus.CANCELLED
+                    || o.orderStatus() == com.shifa.oms.statemachine.OrderStatus.REJECTED;
+            if (!writtenOff) {
+                received = received.add(o.amountReceived());
+                BigDecimal balance = o.totalAmount().subtract(o.amountReceived());
+                if (balance.signum() > 0) {
+                    outstanding = outstanding.add(balance);
+                }
+            }
+            if ("Pending".equalsIgnoreCase(o.codSettlementStatus())) {
+                codPending = codPending.add(o.codAmount());
+            }
+        }
+        return new MoneyTotals(received, outstanding, codPending);
     }
 
     /**

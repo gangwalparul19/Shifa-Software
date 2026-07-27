@@ -337,3 +337,49 @@ apx-chart {
 .shifa-customize__panel .dropdown-item:hover {
   background: var(--shifa-green-50, #f2f9f5);
 }
+
+/* Simplified Salesperson Home — big, obvious action cards (product-audit §3.1) */
+.shifa-home-cta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  text-decoration: none;
+  color: var(--tblr-body-color, #22332b);
+  border: 2px solid #e2e8e4;
+  min-height: 96px;
+}
+.shifa-home-cta:hover {
+  border-color: #1f5d3f;
+}
+.shifa-home-cta__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: #e4f2ea;
+  color: #1f5d3f;
+  font-size: 28px;
+  flex: none;
+}
+.shifa-home-cta__title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f3d27;
+  display: block;
+}
+.shifa-home-cta__sub {
+  font-size: 13px;
+  color: #6b7b72;
+  display: block;
+}
+.shifa-home-cta--primary {
+  background: linear-gradient(135deg, #eaf3ec, #ffffff);
+  border-color: #1f5d3f;
+}
+.shifa-home-cta--primary .shifa-home-cta__icon {
+  background: #1f5d3f;
+  color: #fff;
+}

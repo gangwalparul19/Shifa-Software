@@ -28,7 +28,40 @@ public enum ReportType {
     ORDERS_BY_LEAD_SOURCE,
     ORDERS_BY_STATUS,
     ORDERS_BY_SALESPERSON,
-    DELIVERY_OUTCOME;
+    DELIVERY_OUTCOME,
+
+    // --- Money / receivables (accountant) ---
+    /** Daily money view: orders, total sales, amount received, COD, and outstanding. */
+    PAYMENTS,
+    /**
+     * Per-order outstanding balances (total − received) still collectible, oldest
+     * first — the accountant's "who owes how much, and how long" chase list.
+     */
+    OUTSTANDING,
+    /**
+     * COD amounts pending remittance FROM the delivery partner (COD receivable not
+     * yet settled), oldest first — what to chase the courier for.
+     */
+    COD_REMITTANCE,
+
+    // --- Per-module operational reports (ADMIN / ACCOUNTANT only) ---
+    /** Business expenses in the window: date, category, amount, description. */
+    EXPENSES,
+    /** Purchase orders in the window: PO number, supplier, status, total, dates. */
+    PURCHASE_ORDERS,
+    /** Order returns/refunds in the window: order, reason, status, refund, restocked. */
+    RETURNS,
+    /** Stock ledger movements in the window: date, product, type, change, balance, reason. */
+    STOCK;
+
+    /**
+     * Whether this is a per-module operational report (expenses / procurement /
+     * returns / inventory). These are business-wide and NOT salesperson-scoped,
+     * so the service restricts them to ADMIN / ACCOUNTANT.
+     */
+    public boolean isModuleReport() {
+        return this == EXPENSES || this == PURCHASE_ORDERS || this == RETURNS || this == STOCK;
+    }
 
     /** Case-insensitive parse of a report type from a request path/param value. */
     public static ReportType from(String value) {
@@ -48,6 +81,13 @@ public enum ReportType {
             case "orders-by-salesperson", "orders_by_salesperson", "by-salesperson" ->
                     ORDERS_BY_SALESPERSON;
             case "delivery-outcome", "delivery_outcome", "outcome" -> DELIVERY_OUTCOME;
+            case "payments", "payment", "money" -> PAYMENTS;
+            case "outstanding", "dues", "pending" -> OUTSTANDING;
+            case "cod-remittance", "cod_remittance", "cod-pending", "cod" -> COD_REMITTANCE;
+            case "expenses", "expense" -> EXPENSES;
+            case "purchase-orders", "purchase_orders", "po", "procurement" -> PURCHASE_ORDERS;
+            case "returns", "return" -> RETURNS;
+            case "stock", "inventory", "stock-movements" -> STOCK;
             default -> throw new IllegalArgumentException("unknown report type: " + value);
         };
     }

@@ -47,6 +47,8 @@ export const LEAD_SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
 export interface CreateOrderRequest {
   customerName: string;
   customerMobile: string;
+  /** Optional alternate contact number (10 digits) for failed-delivery follow-up. */
+  alternateMobile?: string;
   customerEmail?: string;
   addressLine: string;
   city: string;
@@ -138,6 +140,8 @@ export interface OrderDetail {
   paymentStatus: PaymentStatus;
   customerName: string;
   customerMobile: string;
+  /** Optional alternate contact number captured at order entry. */
+  alternateMobile?: string | null;
   addressLine: string;
   city: string;
   state: string;
@@ -155,6 +159,15 @@ export interface OrderDetail {
   paymentScreenshotAvailable: boolean;
   /** Optional free-text order note captured at order entry. */
   notes?: string | null;
+  /** Who the order was handed to at handover (product-audit §4.3), when captured. */
+  handoverName?: string | null;
+  /** Number of boxes the order ships in (product-audit §4.2); defaults to 1. */
+  packageCount?: number;
+  /**
+   * Payment authenticity-verification state (product-audit §4.4): PENDING /
+   * VERIFIED / REJECTED for prepaid orders; null for pure COD (nothing to verify).
+   */
+  paymentVerificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
   items: OrderDetailLine[];
   createdAt?: string;
   /** Air Waybill number, when a courier has been assigned. */

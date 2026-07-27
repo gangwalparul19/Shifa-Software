@@ -302,3 +302,10 @@
 .sp-recent__row:first-of-type {
   border-top: 0;
 }
+
+/* The drawer tab strip (.shifa-formtabs/.shifa-formtab) is styled globally in
+   styles.css so it stays a single, non-wrapping row; only the layout margin is
+   scoped here. */
+.sp-dr__tabs {
+  margin: 0 1rem;
+}

@@ -221,6 +221,13 @@ export class AdminShellComponent {
           roles: [Role.SALESPERSON, Role.ADMIN],
         },
         { kind: 'link', label: 'Approval Queue', path: '/approval-queue', icon: 'ti-checklist' },
+        {
+          kind: 'link',
+          label: 'Payments',
+          path: '/payments',
+          icon: 'ti-shield-check',
+          roles: [Role.ADMIN, Role.PAYMENT_VERIFIER],
+        },
         { kind: 'link', label: 'Orders', path: '/orders', icon: 'ti-receipt' },
         { kind: 'link', label: 'Packing', path: '/packing', icon: 'ti-package' },
         { kind: 'link', label: 'Reconciliation', path: '/reconciliation', icon: 'ti-cash-register' },
@@ -270,6 +277,13 @@ export class AdminShellComponent {
           icon: 'ti-id-badge-2',
           adminOnly: true,
         },
+        {
+          kind: 'link',
+          label: 'Teams',
+          path: '/team',
+          icon: 'ti-users-group',
+          adminOnly: true,
+        },
       ],
     },
     {
@@ -305,6 +319,13 @@ export class AdminShellComponent {
         },
         { kind: 'link', label: 'Analytics', path: '/analytics', icon: 'ti-chart-dots', adminOnly: true },
         { kind: 'link', label: 'Insights', path: '/insights', icon: 'ti-bulb', adminOnly: true },
+        {
+          kind: 'link',
+          label: 'Team Performance',
+          path: '/team-performance',
+          icon: 'ti-chart-arrows',
+          roles: [Role.ADMIN, Role.TEAM_LEAD],
+        },
       ],
     },
     {
@@ -370,6 +391,19 @@ export class AdminShellComponent {
       { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
       { label: 'Products', path: '/products', icon: 'ti-leaf' },
       { label: 'Reports', path: '/reports', icon: 'ti-chart-histogram' },
+    ],
+    // Payment Verifier (product-audit §4.4): the payment queue is their home.
+    [Role.PAYMENT_VERIFIER]: [
+      { label: 'Payments', path: '/payments', icon: 'ti-shield-check' },
+      { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
+    ],
+    // Team Lead: read-only oversight — Dashboard, team-scoped Orders, and the
+    // team Performance rollup are their day-to-day, plus their own profile.
+    [Role.TEAM_LEAD]: [
+      { label: 'Dashboard', path: '/dashboard', icon: 'ti-layout-dashboard' },
+      { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
+      { label: 'Performance', path: '/team-performance', icon: 'ti-chart-arrows' },
+      { label: 'My Profile', path: '/my-profile', icon: 'ti-user-circle' },
     ],
     // Customers never reach the staff shell; no bottom bar.
     [Role.CUSTOMER]: [],

@@ -25,24 +25,28 @@ export enum PaymentStatus {
  * and {@link OrderStatus.DELIVERY_FAILED}.
  */
 export enum OrderStatus {
-  PENDING_ADMIN_APPROVAL = 'Pending_Admin_Approval',
-  APPROVED = 'Approved',
-  REJECTED = 'Rejected',
-  CANCELLED = 'Cancelled',
-  LABEL_GENERATED = 'Label_Generated',
-  PACKED = 'Packed',
-  HANDED_TO_DELIVERY = 'Handed_To_Delivery',
-  COURIER_ASSIGNED = 'Courier_Assigned',
-  DISPATCHED = 'Dispatched',
-  IN_TRANSIT = 'In_Transit',
-  OUT_FOR_DELIVERY = 'Out_For_Delivery',
-  DELIVERED = 'Delivered',
-  CUSTOMER_REJECTED = 'Customer_Rejected',
-  DELIVERY_FAILED = 'Delivery_Failed',
+  // String values MUST equal the backend enum name() — that's what Jackson puts
+  // on the wire (no custom enum serialization). Using the uppercase names (like
+  // PaymentStatus) is what makes status comparisons — pill/badge colours, return
+  // eligibility, grouping — actually match the API responses.
+  PENDING_ADMIN_APPROVAL = 'PENDING_ADMIN_APPROVAL',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  CANCELLED = 'CANCELLED',
+  LABEL_GENERATED = 'LABEL_GENERATED',
+  PACKED = 'PACKED',
+  HANDED_TO_DELIVERY = 'HANDED_TO_DELIVERY',
+  COURIER_ASSIGNED = 'COURIER_ASSIGNED',
+  DISPATCHED = 'DISPATCHED',
+  IN_TRANSIT = 'IN_TRANSIT',
+  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
+  DELIVERED = 'DELIVERED',
+  CUSTOMER_REJECTED = 'CUSTOMER_REJECTED',
+  DELIVERY_FAILED = 'DELIVERY_FAILED',
   RTO = 'RTO',
-  COURIER_LOST = 'Courier_Lost',
-  COD_COLLECTED = 'COD_Collected',
-  CLOSED = 'Closed',
+  COURIER_LOST = 'COURIER_LOST',
+  COD_COLLECTED = 'COD_COLLECTED',
+  CLOSED = 'CLOSED',
 }
 
 /** Origin of the order. */

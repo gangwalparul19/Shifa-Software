@@ -339,6 +339,45 @@ tr.clickable {
   cursor: pointer;
 }
 
+/* ------------------------------------------------------------------
+   Fit wide tables inside the viewport WITHOUT a horizontal scrollbar.
+   Above the mobile card breakpoint (768px) the full desktop tables show
+   every column (Orders has 10). With the generous default 1.25rem cell
+   padding those columns are wider than the card between 768px and ~1200px,
+   which triggered an inner horizontal scrollbar (see screenshot report).
+   Compact the cell padding + font and let long status/payment pills wrap so
+   the columns shrink to fit the available width instead of scrolling.
+   Applies to EVERY admin table (card-table + plain .table). The range runs up
+   to 1400px because the shell is full-width (no persistent sidebar) and the
+   container-xl cap means a 10-column table can still overflow around 1200-1366px
+   laptops; above 1400px there is room for the roomy default padding. The
+   .table-responsive overflow-x:auto stays as a last-resort safety net for the
+   very narrow 768px edge. --------------------------------------------------- */
+@media (max-width: 1399.98px) {
+  .card-table > :not(caption) > * > *,
+  .table > :not(caption) > * > * {
+    padding-inline: 0.5rem;
+  }
+  .card-table thead th,
+  .table thead th {
+    font-size: 0.66rem;
+    letter-spacing: 0.02em;
+    white-space: normal;
+  }
+  .table tbody td,
+  .card-table tbody td {
+    font-size: 0.8125rem;
+  }
+  /* Long pills (e.g. "Pending Admin Approval") wrap to a second line rather
+     than forcing their column — and the whole table — past the screen edge. */
+  .card-table .badge,
+  .table .badge {
+    white-space: normal;
+    text-align: center;
+    line-height: 1.15;
+  }
+}
+
 /* Buttons: crisp weight + Tabler radius; solid brand green (no heavy gradient) */
 .btn {
   font-weight: 500;
@@ -1105,4 +1144,124 @@ a:focus-visible,
   .shifa-touch .btn {
     min-height: 44px;
   }
+}
+
+/* =====================================================================
+   Segmented tab strip (shared) — used to split long drawers/modals into
+   tabs instead of one long scroll (Users, Salespeople, Orders, Customers,
+   Products …). Mirrors the New Order step navigation. Global so components
+   don't each re-declare it.
+   ===================================================================== */
+.shifa-formtabs {
+  display: flex;
+  flex-wrap: nowrap; /* always one row — never stack the tab buttons */
+  gap: 6px;
+  background: #eef2f0;
+  border-radius: 10px;
+  padding: 4px;
+}
+.shifa-formtab {
+  flex: 1 1 0;
+  min-width: 0; /* allow the button to shrink so all tabs fit one row */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #64726b;
+  font-weight: 600;
+  font-size: 0.85rem;
+  line-height: 1.1;
+  white-space: nowrap; /* keep each label on a single line */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.shifa-formtab > i {
+  flex: 0 0 auto;
+}
+/* On narrow screens tighten spacing/size so three tabs still fit one row. */
+@media (max-width: 480px) {
+  .shifa-formtabs {
+    gap: 4px;
+  }
+  .shifa-formtab {
+    gap: 3px;
+    padding: 6px 4px;
+    font-size: 0.78rem;
+  }
+}
+.shifa-formtab:hover {
+  color: var(--shifa-green-700, #1a4f38);
+}
+.shifa-formtab.is-active {
+  background: #fff;
+  color: var(--shifa-green-700, #1a4f38);
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.12);
+}
+
+/* ==========================================================================
+   Mobile-fit — no horizontal page scrollbar, app-wide.
+
+   Goal: the app should read like a "pure mobile-fit" screen — content stays
+   within the viewport width and the PAGE itself never scrolls sideways.
+
+   Strategy:
+   • The page content area clips accidental horizontal overflow with
+     `overflow-x: clip`. Unlike `overflow-x: hidden`, `clip` does NOT establish
+     a scroll container, so the sticky top bar and normal vertical page scroll
+     are untouched. Fixed-position drawers/modals/overlays escape the clip
+     (no transformed ancestor), so they are unaffected too.
+   • Legitimate INNER horizontal scrollers keep their own overflow-x and still
+     scroll internally: wide desktop tables (.table-responsive) and the Orders
+     status tab strip. They live inside the clipped area but scroll themselves,
+     so they never widen the page.
+   • Long unbreakable tokens (emails, URLs, order codes, addresses) wrap, and
+     media is capped to its column, so nothing pushes the layout wide.
+   ========================================================================== */
+.page-wrapper,
+main.page-body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+/* Media never forces a column (and therefore the page) wider than the screen. */
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+/* Long unbreakable strings wrap instead of blowing out the layout width. */
+.card-body,
+.shifa-drawer__body,
+.shifa-modal .card-body,
+p,
+dd,
+li,
+td,
+th,
+.form-hint,
+.shifa-mono {
+  overflow-wrap: break-word;
+}
+
+/* Grid columns may shrink below their content width so a long child (table,
+   pre, long word) can't force horizontal overflow. Scoped to columns to avoid
+   over-shrinking toolbar buttons/labels in arbitrary flex rows. */
+.row > [class*="col"],
+.col {
+  min-width: 0;
+}
+
+/* Safety net for any component that lays a raw horizontally-wide block inside
+   a card without its own scroller — keep it inside the card, not the page. */
+.card {
+  max-width: 100%;
 }

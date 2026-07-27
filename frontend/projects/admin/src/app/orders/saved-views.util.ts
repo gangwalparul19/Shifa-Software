@@ -21,8 +21,16 @@ export interface SavedView {
   name: string;
   /** Free-text search term. */
   q: string;
-  /** Order-status filter value (empty = all). */
+  /**
+   * Legacy raw order-status filter value (empty = all). Retained for backward
+   * compatibility with previously saved views; new views use {@link statusGroup}.
+   */
   status: string;
+  /**
+   * Grouped order-status filter key (e.g. {@code PENDING_APPROVAL}); empty = all.
+   * Preferred over {@link status}. Optional so older persisted views still parse.
+   */
+  statusGroup?: string;
   /** Payment-status filter value (empty = all). */
   paymentStatus: string;
   /** Inclusive from date, yyyy-MM-dd (empty = none). */

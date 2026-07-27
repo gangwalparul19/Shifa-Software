@@ -377,7 +377,8 @@ class EndpointRoleGuardIntegrationTest {
         }
 
         @Override
-        public OrderResponse handover(Long orderId, AuthPrincipal actor) {
+        public OrderResponse handover(Long orderId, AuthPrincipal actor,
+                                      com.shifa.oms.packing.dto.HandoverRequest request) {
             return null;
         }
 
@@ -400,7 +401,7 @@ class EndpointRoleGuardIntegrationTest {
 
     static class StubReportService extends ReportService {
         StubReportService() {
-            super(null, null, null, null, null, null);
+            super(null, null, null, null, null, null, null);
         }
 
         @Override

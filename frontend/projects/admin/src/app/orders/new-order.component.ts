@@ -14,6 +14,7 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { StateTypeaheadComponent } from '../shared/state-typeahead.component';
 import { StatesService } from '../shared/states.service';
+import { PincodeService } from '../shared/pincode.service';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { CatalogService } from './catalog.service';
@@ -67,6 +68,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private readonly customers = inject(CustomersService);
   private readonly catalog = inject(CatalogService);
   private readonly statesService = inject(StatesService);
+  private readonly pincodes = inject(PincodeService);
   private readonly leads = inject(LeadsService);
   private readonly confirm = inject(ConfirmService);
   private readonly toasts = inject(ToastService);
@@ -121,6 +123,15 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   protected readonly riskPillClass = riskPillClass;
   protected readonly riskLabel = riskLabel;
 
+  /**
+   * The locality auto-detected from the entered pincode (product-audit PIN-code
+   * auto-fill). Null until a 6-digit pincode resolves; drives a subtle
+   * "Detected: <city>, <state>" hint under the pincode field.
+   */
+  protected readonly detectedLocation = signal<string | null>(null);
+  /** True while a pincode lookup is in flight (shows a tiny spinner). */
+  protected readonly pincodeLooking = signal(false);
+
   /** A snapshot of the form value, refreshed on every change to drive totals. */
   private readonly model = signal<ReturnType<NewOrderComponent['snapshot']>>({
     items: [],
@@ -134,6 +145,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   protected readonly form = this.fb.nonNullable.group({
     customerName: ['', [Validators.required, Validators.maxLength(100)]],
     customerMobile: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
+    alternateMobile: ['', [Validators.pattern(/^\d{10}$/)]],
     customerEmail: ['', [Validators.email, Validators.maxLength(150)]],
     addressLine: ['', [Validators.required, Validators.maxLength(250)]],
     city: ['', [Validators.required, Validators.maxLength(100)]],
@@ -160,10 +172,15 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     this.model().items.map((it) => toPaise(it.rate ?? 0) * (it.quantity || 0)),
   );
 
-  /** The running order total in paise. */
-  protected readonly orderTotalPaise = computed(() =>
-    this.lineTotals().reduce((sum, cents) => sum + cents, 0),
-  );
+  /**
+   * The running order total in paise, rounded to the nearest whole rupee so the
+   * figure the salesperson sees matches what the backend will charge
+   * (product-audit §4.6, e.g. ₹2679.99 shown as ₹2680).
+   */
+  protected readonly orderTotalPaise = computed(() => {
+    const raw = this.lineTotals().reduce((sum, cents) => sum + cents, 0);
+    return Math.round(raw / 100) * 100;
+  });
 
   /** Remaining balance after the amount received (may be negative if overpaid). */
   protected readonly remainingPaise = computed(
@@ -182,6 +199,13 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     this.form.controls.customerMobile.valueChanges
       .pipe(debounceTime(400), distinctUntilChanged())
       .subscribe((mobile) => this.checkDuplicateCustomer(mobile));
+
+    // PIN-code auto-fill (product-audit): once a 6-digit pincode is entered, look
+    // up its city + state via the India Post API and pre-fill those fields. It's
+    // best-effort — a failed/blocked lookup just leaves the fields for manual entry.
+    this.form.controls.postalCode.valueChanges
+      .pipe(debounceTime(400), distinctUntilChanged())
+      .subscribe((pincode) => this.autoFillFromPincode(pincode));
 
     // Convert-from-lead mode: seed customer + source from the lead and lock them.
     const leadIdParam = this.route.snapshot.queryParamMap.get('leadId');
@@ -277,6 +301,46 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     this.customers.risk(mobile).subscribe({
       next: (risk) => this.customerRisk.set(risk),
       error: () => this.customerRisk.set(null),
+    });
+  }
+
+  /**
+   * Resolves a 6-digit pincode to city + state (product-audit PIN-code auto-fill)
+   * and pre-fills those fields. To avoid clobbering a salesperson's own typing it
+   * only fills City/State when they are currently empty; the "Detected" hint is
+   * always shown so they can copy it if they'd already typed something else.
+   * Entirely best-effort: a malformed/blocked/no-match lookup clears the hint.
+   */
+  private autoFillFromPincode(pincode: string | null): void {
+    if (!pincode || !/^\d{6}$/.test(pincode)) {
+      this.detectedLocation.set(null);
+      this.pincodeLooking.set(false);
+      return;
+    }
+    this.pincodeLooking.set(true);
+    this.pincodes.lookup(pincode).subscribe({
+      next: (location) => {
+        this.pincodeLooking.set(false);
+        if (!location) {
+          this.detectedLocation.set(null);
+          return;
+        }
+        this.detectedLocation.set(`${location.city}, ${location.state}`);
+        const city = this.form.controls.city;
+        const state = this.form.controls.state;
+        if (city.enabled && !city.value.trim()) {
+          city.setValue(location.city);
+          city.markAsDirty();
+        }
+        if (state.enabled && !state.value.trim()) {
+          state.setValue(location.state);
+          state.markAsDirty();
+        }
+      },
+      error: () => {
+        this.pincodeLooking.set(false);
+        this.detectedLocation.set(null);
+      },
     });
   }
 
@@ -385,6 +449,87 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     this.screenshotPreview.set(null);
   }
 
+  // --- Guided wizard (product-audit §3.2) ---------------------------------
+
+  /** The current wizard step (1=Customer, 2=Items, 3=Payment, 4=Review). */
+  protected readonly step = signal(1);
+  protected readonly totalSteps = 4;
+  protected readonly stepLabels = ['Customer', 'Items', 'Payment', 'Review'];
+
+  /** Form controls that belong to each step, validated before advancing. */
+  private readonly stepControlNames: Record<number, string[]> = {
+    1: [
+      'customerName', 'customerMobile', 'alternateMobile', 'customerEmail',
+      'leadSource', 'leadSourceNote', 'addressLine', 'city', 'postalCode', 'state',
+    ],
+    2: [],
+    3: ['amountReceived'],
+    4: ['notes'],
+  };
+
+  /** Advance to the next step if the current one is valid. */
+  nextStep(): void {
+    if (this.validateStep(this.step())) {
+      this.step.set(Math.min(this.totalSteps, this.step() + 1));
+      this.scrollTop();
+    }
+  }
+
+  /** Go back one step (no validation needed). */
+  prevStep(): void {
+    this.step.set(Math.max(1, this.step() - 1));
+    this.scrollTop();
+  }
+
+  /** Jump to a step from the progress bar; forward jumps validate intervening steps. */
+  goToStep(target: number): void {
+    if (target < 1 || target > this.totalSteps) {
+      return;
+    }
+    if (target > this.step()) {
+      for (let s = this.step(); s < target; s++) {
+        if (!this.validateStep(s)) {
+          this.step.set(s);
+          return;
+        }
+      }
+    }
+    this.step.set(target);
+    this.scrollTop();
+  }
+
+  /** Validates the controls (and item/screenshot rules) owned by a step. */
+  private validateStep(step: number): boolean {
+    let ok = true;
+    for (const name of this.stepControlNames[step] ?? []) {
+      const control = this.form.get(name);
+      if (control && control.enabled && control.invalid) {
+        control.markAsTouched();
+        ok = false;
+      }
+    }
+    if (step === 2) {
+      this.items.controls.forEach((group) => group.markAllAsTouched());
+      if (this.items.invalid || this.orderTotalPaise() <= 0) {
+        ok = false;
+      }
+    }
+    if (step === 3 && this.screenshotRequired() && !this.screenshotKey()) {
+      this.submitAttempted.set(true);
+      ok = false;
+    }
+    if (!ok) {
+      this.toasts.error('Please complete this step before continuing.');
+    }
+    return ok;
+  }
+
+  private scrollTop(): void {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+
   // --- Submit -------------------------------------------------------------
 
   async submit(): Promise<void> {
@@ -423,12 +568,14 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     }
 
     const email = this.form.controls.customerEmail.value.trim();
+    const altMobile = this.form.controls.alternateMobile.value.trim();
     const note = this.form.controls.leadSourceNote.value.trim();
     const orderNotes = this.form.controls.notes.value.trim();
     const isOther = raw.leadSource === 'OTHER';
     const payload: CreateOrderRequest = {
       customerName: this.form.controls.customerName.value.trim(),
       customerMobile: this.form.controls.customerMobile.value.trim(),
+      ...(altMobile ? { alternateMobile: altMobile } : {}),
       ...(email ? { customerEmail: email } : {}),
       addressLine: this.form.controls.addressLine.value.trim(),
       city: this.form.controls.city.value.trim(),

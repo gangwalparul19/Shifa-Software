@@ -822,7 +822,47 @@
 
 <!-- Salesperson (Req 3.2) -->
 @if (summary()?.salesperson; as sp) {
-  <div class="shifa-section-title">My orders</div>
+  <!-- Simplified home: big, obvious actions first (product-audit §3.1) -->
+  @if (isTeamLead()) {
+    <!-- Team lead: read-only oversight — a single action into their team's orders. -->
+    <div class="row row-cards g-2 g-md-3 mb-3 shifa-home-cta-row">
+      <div class="col-12">
+        <a routerLink="/orders" class="card card-hover shifa-home-cta shifa-home-cta--primary shifa-touch">
+          <span class="shifa-home-cta__icon"><i class="ti ti-receipt"></i></span>
+          <span class="shifa-home-cta__text">
+            <span class="shifa-home-cta__title">Team Orders</span>
+            <span class="shifa-home-cta__sub">Track orders punched by your team</span>
+          </span>
+        </a>
+      </div>
+    </div>
+  } @else {
+    <div class="row row-cards g-2 g-md-3 mb-3 shifa-home-cta-row">
+      <div class="col-12 col-md-6">
+        <a routerLink="/orders/new" class="card card-hover shifa-home-cta shifa-home-cta--primary shifa-touch">
+          <span class="shifa-home-cta__icon"><i class="ti ti-plus"></i></span>
+          <span class="shifa-home-cta__text">
+            <span class="shifa-home-cta__title">New Order</span>
+            <span class="shifa-home-cta__sub">Punch a customer order</span>
+          </span>
+        </a>
+      </div>
+      <div class="col-6 col-md-3">
+        <a routerLink="/orders" class="card card-hover shifa-home-cta shifa-touch">
+          <span class="shifa-home-cta__icon"><i class="ti ti-receipt"></i></span>
+          <span class="shifa-home-cta__title">My Orders</span>
+        </a>
+      </div>
+      <div class="col-6 col-md-3">
+        <a routerLink="/leads" class="card card-hover shifa-home-cta shifa-touch">
+          <span class="shifa-home-cta__icon"><i class="ti ti-user-plus"></i></span>
+          <span class="shifa-home-cta__title">My Leads</span>
+        </a>
+      </div>
+    </div>
+  }
+
+  <div class="shifa-section-title">{{ isTeamLead() ? 'Team orders' : 'My orders' }}</div>
   <div class="row row-cards g-2 g-md-3 mb-3 stagger">
     <div class="col-6 col-md-4 col-xl-3">
       <div class="card card-hover stat-accent" style="--accent: #f59f00; --accent-soft: #fdf1da">
@@ -842,8 +882,12 @@
     <div class="empty py-4">
       <div class="empty-icon"><i class="ti ti-inbox"></i></div>
       <p class="empty-title">No orders yet</p>
-      <p class="empty-subtitle text-secondary">Create your first order to see it here.</p>
-      <a class="btn btn-primary mt-2 shifa-touch" routerLink="/orders/new"><i class="ti ti-plus me-1"></i> New order</a>
+      @if (isTeamLead()) {
+        <p class="empty-subtitle text-secondary">Orders punched by your team will appear here.</p>
+      } @else {
+        <p class="empty-subtitle text-secondary">Create your first order to see it here.</p>
+        <a class="btn btn-primary mt-2 shifa-touch" routerLink="/orders/new"><i class="ti ti-plus me-1"></i> New order</a>
+      }
     </div>
   } @else {
     <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
@@ -862,7 +906,9 @@
     </div>
   }
 
-  <!-- My leads: pipeline-by-stage counts + due-follow-up badge (Req 6.6) -->
+  <!-- My leads: pipeline-by-stage counts + due-follow-up badge (Req 6.6). Hidden
+       for a team lead (read-only oversight — they don't own a lead pipeline). -->
+  @if (!isTeamLead()) {
   <div class="shifa-section-title d-flex align-items-center justify-content-between">
     <span>My leads</span>
     <a class="btn btn-sm btn-outline-primary shifa-touch" routerLink="/leads/follow-ups">
@@ -901,6 +947,7 @@
   <div class="mb-3">
     <a class="btn btn-primary shifa-touch" routerLink="/leads"><i class="ti ti-user-plus me-1"></i> Open pipeline</a>
   </div>
+  }
 }
 
 <!-- Packer (Req 3.4) -->

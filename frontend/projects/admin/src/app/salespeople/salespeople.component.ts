@@ -118,6 +118,13 @@ export class SalespeopleComponent implements OnInit {
 
   /** The staff member open in the drawer; null when closed. */
   protected readonly selected = signal<StaffProfile | null>(null);
+
+  /**
+   * Active tab within the drawer so its (long) content is split into
+   * Performance / Profile / Verification tabs instead of one long scroll —
+   * mirroring the step navigation on the New Order screen.
+   */
+  protected readonly drawerTab = signal<'performance' | 'profile' | 'verification'>('performance');
   protected readonly saving = signal(false);
   protected readonly uploading = signal(false);
   protected readonly uploadingPhoto = signal(false);
@@ -210,6 +217,7 @@ export class SalespeopleComponent implements OnInit {
 
   open(member: StaffProfile): void {
     this.formError.set(null);
+    this.drawerTab.set('performance');
     this.selected.set(member);
     this.verifyNote.reset('');
     this.clearProfilePreview();

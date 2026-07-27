@@ -248,3 +248,27 @@
   align-items: center;
   justify-content: center;
 }
+
+/* Handover "handed to" popup (product-audit §4.3) */
+.pk-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 61, 39, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 1080;
+}
+.pk-modal {
+  width: 100%;
+  max-width: 420px;
+  margin: 0;
+  box-shadow: 0 20px 60px rgba(15, 61, 39, 0.3);
+}
+
+/* Multi-pack box-count input on the "to pack" queue (product-audit §4.2) */
+.pk-boxes {
+  width: 64px;
+  text-align: center;
+}

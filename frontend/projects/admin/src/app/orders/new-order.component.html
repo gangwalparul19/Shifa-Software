@@ -42,7 +42,26 @@
   </div>
 }
 
+<!-- Guided wizard progress (product-audit §3.2) -->
+<div class="shifa-wizard-steps mb-3">
+  @for (label of stepLabels; track label; let i = $index) {
+    <button
+      type="button"
+      class="shifa-wizard-step"
+      [class.is-active]="step() === i + 1"
+      [class.is-done]="step() > i + 1"
+      (click)="goToStep(i + 1)"
+    >
+      <span class="shifa-wizard-step__num">
+        @if (step() > i + 1) { <i class="ti ti-check"></i> } @else { {{ i + 1 }} }
+      </span>
+      <span class="shifa-wizard-step__label">{{ label }}</span>
+    </button>
+  }
+</div>
+
 <form [formGroup]="form" (ngSubmit)="submit()" novalidate class="shifa-no">
+  @if (step() === 1) {
   <!-- ===================== Customer Details ===================== -->
   <section class="shifa-no__section">
     <h2 class="shifa-no__title">Customer Details</h2>
@@ -116,6 +135,25 @@
           </select>
           @if (invalid('leadSource')) {
             <div class="invalid-feedback">Choose a lead source.</div>
+          }
+        </div>
+
+        <!-- Alternate contact number (product-audit §4.5) — optional, for failed-delivery follow-up -->
+        <div class="col-12 col-md-6">
+          <label class="form-label" for="alternateMobile">Alternate number <span class="text-secondary">(optional)</span></label>
+          <input
+            id="alternateMobile"
+            type="tel"
+            inputmode="numeric"
+            class="form-control"
+            formControlName="alternateMobile"
+            maxlength="10"
+            placeholder="10-digit mobile"
+            autocomplete="off"
+            [class.is-invalid]="invalid('alternateMobile')"
+          />
+          @if (invalid('alternateMobile')) {
+            <div class="invalid-feedback">Enter exactly 10 digits, or leave blank.</div>
           }
         </div>
 
@@ -204,6 +242,16 @@
           @if (invalid('postalCode')) {
             <div class="invalid-feedback">Enter exactly 6 digits.</div>
           }
+          @if (pincodeLooking()) {
+            <small class="form-hint text-secondary d-inline-flex align-items-center mt-1">
+              <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+              Looking up pincode…
+            </small>
+          } @else if (detectedLocation(); as loc) {
+            <small class="form-hint text-success d-inline-flex align-items-center mt-1">
+              <i class="ti ti-map-pin-check me-1"></i> Detected: {{ loc }}
+            </small>
+          }
         </div>
         <div class="col-12">
           <label class="form-label required" for="state">State</label>
@@ -220,7 +268,9 @@
       </div>
     </div>
   </section>
+  }
 
+  @if (step() === 2) {
   <!-- ===================== Order Details ===================== -->
   <section class="shifa-no__section">
     <div class="shifa-no__titlerow">
@@ -334,7 +384,9 @@
       </div>
     }
   </section>
+  }
 
+  @if (step() === 3) {
   <!-- ===================== Payment Details ===================== -->
   <section class="shifa-no__section">
     <h2 class="shifa-no__title">Payment Details</h2>
@@ -404,6 +456,22 @@
       </div>
     </div>
   </section>
+  }
+
+  @if (step() === 4) {
+  <!-- ===================== Review + Notes ===================== -->
+  <section class="shifa-no__section">
+    <h2 class="shifa-no__title">Review</h2>
+    <div class="shifa-no__card">
+      <dl class="shifa-review">
+        <dt>Customer</dt><dd>{{ form.controls.customerName.value || '—' }} · {{ form.controls.customerMobile.value || '—' }}</dd>
+        <dt>Deliver to</dt><dd>{{ form.controls.addressLine.value }}, {{ form.controls.city.value }}, {{ form.controls.state.value }} — {{ form.controls.postalCode.value }}</dd>
+        <dt>Items</dt><dd>{{ items.length }} item{{ items.length === 1 ? '' : 's' }}</dd>
+        <dt>Order total</dt><dd class="fw-bold">{{ formatMoney(orderTotalPaise()) }}</dd>
+        <dt>Amount received</dt><dd>₹{{ form.controls.amountReceived.value }}</dd>
+      </dl>
+    </div>
+  </section>
 
   <!-- ===================== Notes ===================== -->
   <section class="shifa-no__section">
@@ -427,19 +495,33 @@
       }
     </div>
   </section>
+  }
 </form>
 
-<!-- Sticky bottom action bar (Req 10.4) -->
+<!-- Sticky bottom action bar (Req 10.4) — wizard Back / Next / Save -->
 <div class="shifa-no__footer">
-  <button type="button" class="btn btn-outline-secondary shifa-no__cancel" (click)="cancel()" [disabled]="submitting()">
-    Cancel
-  </button>
-  <button type="button" class="btn btn-primary shifa-no__save" (click)="submit()" [disabled]="submitting()">
-    @if (submitting()) {
-      <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-    } @else {
-      <i class="ti ti-check me-1"></i>
-    }
-    {{ convertMode() ? 'Convert Lead' : 'Save Order' }}
-  </button>
+  @if (step() === 1) {
+    <button type="button" class="btn btn-outline-secondary shifa-no__cancel" (click)="cancel()" [disabled]="submitting()">
+      Cancel
+    </button>
+  } @else {
+    <button type="button" class="btn btn-outline-secondary shifa-no__cancel" (click)="prevStep()" [disabled]="submitting()">
+      <i class="ti ti-arrow-left me-1"></i> Back
+    </button>
+  }
+
+  @if (step() < totalSteps) {
+    <button type="button" class="btn btn-primary shifa-no__save" (click)="nextStep()">
+      Next <i class="ti ti-arrow-right ms-1"></i>
+    </button>
+  } @else {
+    <button type="button" class="btn btn-primary shifa-no__save" (click)="submit()" [disabled]="submitting()">
+      @if (submitting()) {
+        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+      } @else {
+        <i class="ti ti-check me-1"></i>
+      }
+      {{ convertMode() ? 'Convert Lead' : 'Save Order' }}
+    </button>
+  }
 </div>

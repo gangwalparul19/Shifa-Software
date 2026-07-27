@@ -52,7 +52,13 @@
         <div class="col-12 col-md-3">
           <label class="form-label" for="type">Report type</label>
           <select id="type" class="form-select" formControlName="type" (change)="generate()">
-            @for (opt of reportTypes; track opt.value) { <option [value]="opt.value">{{ opt.label }}</option> }
+            @for (grp of reportGroups(); track grp.name) {
+              <optgroup [label]="grp.name">
+                @for (opt of grp.options; track opt.value) {
+                  <option [value]="opt.value">{{ opt.label }}</option>
+                }
+              </optgroup>
+            }
           </select>
         </div>
 
@@ -125,6 +131,52 @@
     </div>
   </div>
 } @else if (report(); as r) {
+
+  <!-- Money & receivables summary tiles (accountant Finance view) -->
+  @if (isMoneyView()) {
+    <div class="row row-cards g-2 g-md-3 mb-3">
+      <div class="col-6 col-md-3">
+        <div class="card stat-accent" style="--accent: #d63939; --accent-soft: #fbe7e7">
+          <div class="card-body">
+            <div class="subheader">Outstanding dues</div>
+            <div class="h1 m-0">{{ inr(totalOutstandingValue()) }}</div>
+            <div class="text-secondary small mt-1">still to collect</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-accent" style="--accent: #f59f00; --accent-soft: #fdf1da">
+          <div class="card-body">
+            <div class="subheader">COD pending (courier)</div>
+            <div class="h1 m-0">{{ inr(codPendingValue()) }}</div>
+            <div class="text-secondary small mt-1">to chase from delivery partner</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
+          <div class="card-body">
+            <div class="subheader">Amount received</div>
+            <div class="h1 m-0">{{ inr(totalReceivedValue()) }}</div>
+            <div class="text-secondary small mt-1">in this period</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-accent" style="--accent: #206bc4; --accent-soft: #e7f0fb">
+          <div class="card-body">
+            <div class="subheader">Total sales</div>
+            <div class="h1 m-0">{{ inr(totalSalesValue()) }}</div>
+            <div class="text-secondary small mt-1">{{ count(r.summary.orderCount) }} orders</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Sales presentation chrome (revenue headline, KPI tiles, trend, top performers).
+       Hidden for per-module operational reports, which are pure tables. -->
+  @if (!isModuleReport()) {
 
   <!-- Total Revenue headline card: big ₹ value + delta + sparkline -->
   <div class="card shifa-revenue-card mb-3">
@@ -260,6 +312,7 @@
       </div>
     </div>
   </div>
+  }
 
   <!-- Results table (kept: exact rows the exports reproduce) -->
   <div class="card">

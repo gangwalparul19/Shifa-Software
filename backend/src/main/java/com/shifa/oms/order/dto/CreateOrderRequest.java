@@ -78,6 +78,13 @@ public record CreateOrderRequest(
         String customerEmail,
 
         @Size(max = 1000, message = "notes must be at most 1000 characters")
-        String notes
+        String notes,
+
+        // Optional alternate contact number (product-audit §4.5). Null/blank is
+        // allowed; when provided it must be exactly 10 digits. The pattern matches
+        // an empty string or 10 digits, and @Pattern treats null as valid, so the
+        // field stays optional whether the client omits it or sends "".
+        @Pattern(regexp = "(\\d{10})?", message = "alternateMobile must be exactly 10 digits")
+        String alternateMobile
 ) {
 }

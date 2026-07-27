@@ -34,6 +34,18 @@ public interface UserRepository extends JpaRepository<User, Long> {
     long countByRoleAndActiveTrue(Role role);
 
     /**
+     * The user ids of the salespeople assigned to a given team lead
+     * ({@code users.team_lead_id = teamLeadId}). Drives team-scoped visibility
+     * (a team lead sees the orders created by these users). Empty when the lead
+     * has no one assigned.
+     */
+    @Query("SELECT u.id FROM User u WHERE u.teamLeadId = :teamLeadId")
+    List<Long> findIdsByTeamLeadId(@Param("teamLeadId") Long teamLeadId);
+
+    /** The salespeople assigned to a team lead, by name — backs the roster/assignment UI. */
+    List<User> findByTeamLeadIdOrderByFullNameAsc(Long teamLeadId);
+
+    /**
      * Case-insensitive search over registered {@link Role#CUSTOMER} accounts by
      * full name or mobile, ordered by name. Backs the admin global search
      * (ROADMAP 2.2 "Wave 2" customers group); the {@link Pageable} caps the

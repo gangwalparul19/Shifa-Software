@@ -37,6 +37,18 @@ public interface LeadRepository extends JpaRepository<LeadEntity, Long> {
     List<LeadEntity> findAllScoped(@Param("ownerUserId") Long ownerUserId);
 
     /**
+     * All leads owned by any of the given users, most recent first — the
+     * team-lead equivalent of {@link #findAllScoped(Long)} for team-scoped
+     * reporting. Callers pass a non-empty set of the team's salesperson ids.
+     */
+    @Query(value = """
+            SELECT l.* FROM leads l
+            WHERE l.owner_user_id IN (:ownerUserIds)
+            ORDER BY l.created_at DESC
+            """, nativeQuery = true)
+    List<LeadEntity> findAllScopedIn(@Param("ownerUserIds") java.util.Collection<Long> ownerUserIds);
+
+    /**
      * Role-scoped search over name / mobile with optional status and source
      * filters (Req 3.4). A blank {@code term} disables the text filter; a
      * {@code null} {@code status} / {@code source} disables that filter. Scoping

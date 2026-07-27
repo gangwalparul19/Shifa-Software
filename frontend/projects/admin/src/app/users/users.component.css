@@ -154,3 +154,6 @@
 .shifa-fab:active {
   transform: scale(0.96);
 }
+
+/* NOTE: the Account/Profile tab strip (.shifa-formtabs/.shifa-formtab) is
+   styled globally in styles.css so it stays a single, non-wrapping row. */

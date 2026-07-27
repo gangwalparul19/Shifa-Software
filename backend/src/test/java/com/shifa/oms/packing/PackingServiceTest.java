@@ -10,6 +10,8 @@ import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderSource;
 import com.shifa.oms.order.OrderWorkflowService;
 import com.shifa.oms.order.domain.PaymentStatus;
+import com.shifa.oms.order.dto.OrderResponse;
+import com.shifa.oms.packing.dto.HandoverRequest;
 import com.shifa.oms.packing.dto.PackingScanResponse;
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
@@ -178,5 +180,61 @@ class PackingServiceTest {
 
         // No COURIER_ASSIGN event is enqueued by the scan anymore.
         assertThat(events).noneMatch(e -> OutboxEvent.EVENT_COURIER_ASSIGN.equals(e.getEventType()));
+    }
+
+    // --- Handover captures who it was handed to (product-audit §4.3) --------
+
+    @Test
+    void handoverCapturesHandoverNameAndPhone() {
+        OrderEntity order = orderIn(OrderStatus.PACKED);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+        OrderResponse response = service.handover(1L, PACKER,
+                new HandoverRequest("Ravi Courier", "9876543210"));
+
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.HANDED_TO_DELIVERY);
+        assertThat(order.getHandoverName()).isEqualTo("Ravi Courier");
+        assertThat(order.getHandoverPhone()).isEqualTo("9876543210");
+        assertThat(response.handoverName()).isEqualTo("Ravi Courier");
+    }
+
+    @Test
+    void handoverWithoutDetailsStillTransitions() {
+        OrderEntity order = orderIn(OrderStatus.PACKED);
+        when(orderRepository.findById(2L)).thenReturn(Optional.of(order));
+
+        service.handover(2L, PACKER, null);
+
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.HANDED_TO_DELIVERY);
+        assertThat(order.getHandoverName()).isNull();
+    }
+
+    @Test
+    void handoverBlankNameIsStoredAsNull() {
+        OrderEntity order = orderIn(OrderStatus.PACKED);
+        when(orderRepository.findById(3L)).thenReturn(Optional.of(order));
+
+        service.handover(3L, PACKER, new HandoverRequest("   ", ""));
+
+        assertThat(order.getHandoverName()).isNull();
+        assertThat(order.getHandoverPhone()).isNull();
+    }
+
+    // --- Multi-pack: package count (product-audit §4.2) ---------------------
+
+    @Test
+    void setPackageCountUpdatesOrder() {
+        OrderEntity order = orderIn(OrderStatus.LABEL_GENERATED);
+        when(orderRepository.findById(9L)).thenReturn(Optional.of(order));
+
+        OrderResponse response = service.setPackageCount(9L, 3);
+
+        assertThat(order.getPackageCount()).isEqualTo(3);
+        assertThat(response.packageCount()).isEqualTo(3);
+    }
+
+    @Test
+    void newOrderDefaultsToSinglePackage() {
+        assertThat(orderIn(OrderStatus.LABEL_GENERATED).getPackageCount()).isEqualTo(1);
     }
 }

@@ -69,6 +69,11 @@ export class CustomersComponent implements OnInit, OnDestroy {
 
   // --- Detail drawer (Customer 360) ---------------------------------------
   protected readonly selectedProfile = signal<CustomerProfile | null>(null);
+  /**
+   * Active tab in the Customer 360 drawer so its (long) content is split into
+   * Overview / CRM / Orders tabs instead of one long scroll.
+   */
+  protected readonly custTab = signal<'overview' | 'crm' | 'orders'>('overview');
   protected readonly detailLoading = signal(false);
   protected readonly detailError = signal<string | null>(null);
 
@@ -183,6 +188,7 @@ export class CustomersComponent implements OnInit, OnDestroy {
   openDetail(customer: CustomerSummary): void {
     this.detailLoading.set(true);
     this.detailError.set(null);
+    this.custTab.set('overview');
     this.selectedProfile.set(null);
     this.historyPage.set(0);
     this.newTag.reset('');

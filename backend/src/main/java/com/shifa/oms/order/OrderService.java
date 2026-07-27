@@ -10,6 +10,7 @@ import com.shifa.oms.order.domain.LineItem;
 import com.shifa.oms.order.domain.Money;
 import com.shifa.oms.order.domain.PaymentCalculation;
 import com.shifa.oms.order.domain.PaymentCalculator;
+import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.order.dto.CreateOrderRequest;
 import com.shifa.oms.order.dto.DuplicateCheckResponse;
 import com.shifa.oms.order.dto.LineItemRequest;
@@ -99,12 +100,24 @@ public class OrderService {
         OrderCreationValidator.validateLeadSourceNote(request.leadSourceNote());
 
         List<PricedLine> priced = priceLines(request.items());
-        Money total = totalOf(priced);
+        // Round the order total to the nearest whole rupee (product-audit §4.6),
+        // e.g. 2679.99 -> 2680.00. With GST-inclusive pricing (the default) the
+        // invoice grand total equals this total, so the tax breakdown stays
+        // reconciled; COD/remaining are derived from the rounded total below.
+        Money total = totalOf(priced).roundToWholeRupees();
         requirePositiveTotal(total);
 
         Money received = Money.of(request.amountReceived());
         // Enforce screenshot-required rule before computing/persisting (Req 7.6).
         PaymentCalculator.requireScreenshotWhenPaid(received, request.paymentScreenshotKey());
+        // A fully-paid amount may have carried paise before the total was rounded
+        // down; absorb ONLY that sub-rupee overage so a valid full payment isn't
+        // rejected. A genuine over-payment (>= ₹1 above the total) still falls
+        // through to classify() and is rejected (Req 7.10).
+        Money overage = received.subtract(total);
+        if (overage.compareTo(Money.ZERO) > 0 && overage.compareTo(Money.of(1L)) < 0) {
+            received = total;
+        }
         // Classify (also rejects amountReceived > total, Req 7.10).
         PaymentCalculation calc = PaymentCalculator.classify(total, received);
 
@@ -124,6 +137,13 @@ public class OrderService {
         order.setLeadSourceNote(request.leadSourceNote());
         order.setCustomerEmail(request.customerEmail());
         order.setNotes(trimToNull(request.notes()));
+        order.setAlternateMobile(trimToNull(request.alternateMobile()));
+
+        // Prepaid / partially-paid orders carry a payment to verify for authenticity
+        // (product-audit §4.4). Pure COD orders have nothing to verify.
+        if (calc.paymentStatus() != PaymentStatus.COD) {
+            order.markPaymentPendingVerification();
+        }
 
         populateAggregate(order, priced, calc, request.paymentScreenshotKey(),
                 actor.username(), SOURCE_SALESPERSON);
@@ -157,10 +177,32 @@ public class OrderService {
      */
     @Transactional(readOnly = true)
     public List<OrderSummaryResponse> search(String term, AuthPrincipal actor) {
-        Long createdBy = scopeResolver.creatorConstraint(actor).orElse(null);
-        List<OrderEntity> results = (term == null || term.isBlank())
-                ? orderRepository.findAllScoped(createdBy)
-                : orderRepository.search(term.trim(), createdBy);
+        String trimmed = (term == null || term.isBlank()) ? null : term.trim();
+        Optional<List<Long>> scope = scopeResolver.creatorScope(actor);
+        List<OrderEntity> results;
+        if (scope.isEmpty()) {
+            // Unscoped (admin / accountant): all orders, optionally searched.
+            results = trimmed == null
+                    ? orderRepository.findAllScoped(null)
+                    : orderRepository.search(trimmed, null);
+        } else {
+            List<Long> ids = scope.get();
+            if (ids.isEmpty()) {
+                // Scoped to nothing (e.g. a team lead with no assigned salespeople).
+                results = List.of();
+            } else if (ids.size() == 1) {
+                // Single creator (a salesperson) — reuse the single-id query.
+                Long only = ids.get(0);
+                results = trimmed == null
+                        ? orderRepository.findAllScoped(only)
+                        : orderRepository.search(trimmed, only);
+            } else {
+                // Multiple creators (a team lead's team) — scope by the id set.
+                results = trimmed == null
+                        ? orderRepository.findAllScopedIn(ids)
+                        : orderRepository.searchIn(trimmed, ids);
+            }
+        }
         return results.stream().map(OrderSummaryResponse::from).toList();
     }
 
@@ -243,12 +285,23 @@ public class OrderService {
 
     // --- Internal helpers ---------------------------------------------------
 
-    /** Loads an order, enforcing salesperson scoping (Req 5.5) with a 404 when out of scope. */
+    /**
+     * Loads an order, enforcing scoping (Req 5.5) with a 404 when out of scope: a
+     * salesperson sees only their own order; a team lead sees an order created by
+     * any of their assigned salespeople; admin/accountant see any order.
+     */
     private OrderEntity loadScoped(Long id, AuthPrincipal actor) {
-        Optional<Long> constraint = scopeResolver.creatorConstraint(actor);
-        if (constraint.isPresent()) {
-            return orderRepository.findByIdAndCreatedBy(id, constraint.get())
-                    .orElseThrow(() -> new ResourceNotFoundException("Order " + id + " does not exist."));
+        Optional<List<Long>> scope = scopeResolver.creatorScope(actor);
+        if (scope.isPresent()) {
+            List<Long> ids = scope.get();
+            if (ids.isEmpty()) {
+                throw new ResourceNotFoundException("Order " + id + " does not exist.");
+            }
+            Optional<OrderEntity> found = ids.size() == 1
+                    ? orderRepository.findByIdAndCreatedBy(id, ids.get(0))
+                    : orderRepository.findByIdAndCreatedByIn(id, ids);
+            return found.orElseThrow(
+                    () -> new ResourceNotFoundException("Order " + id + " does not exist."));
         }
         return orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Order " + id + " does not exist."));

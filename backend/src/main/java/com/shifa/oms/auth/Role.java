@@ -18,8 +18,23 @@ public enum Role {
     /** Order entry and reports scoped to their own orders (Req 5.5). */
     SALESPERSON,
 
+    /**
+     * A sales team lead. Read-only oversight of the salespeople assigned to them
+     * (via {@code users.team_lead_id}): sees the orders punched by their team
+     * (list / search / detail / invoice) and a team-scoped dashboard. Cannot
+     * approve/dispatch/mutate orders or configure the system.
+     */
+    TEAM_LEAD,
+
     /** Packing / barcode-scan functions. */
     PACKING_USER,
+
+    /**
+     * Verifies the authenticity of customer payments (screenshot vs. amount) and
+     * handles customer engagement, via a dedicated Payment dashboard
+     * (product-audit §4.4). Cannot approve/dispatch orders.
+     */
+    PAYMENT_VERIFIER,
 
     /** Storefront customer. */
     CUSTOMER;

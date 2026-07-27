@@ -210,6 +210,97 @@ export class ScanComponent implements OnInit, AfterViewInit {
     });
   }
 
+  // --- Multi-pack: set number of boxes (product-audit §4.2) ---------------
+
+  /**
+   * Set how many boxes an order ships in, then the label print produces one
+   * copy per box. Ignores invalid input and clamps to 1–50.
+   */
+  setBoxes(order: PackingQueueRow, raw: string): void {
+    const count = Math.max(1, Math.min(50, Math.floor(Number(raw) || 1)));
+    this.service.setPackages(order.id, count).subscribe({
+      next: () => this.toasts.success(`${order.orderCode}: ${count} box${count === 1 ? '' : 'es'} — print to get ${count} label${count === 1 ? '' : 's'}`),
+      error: () => this.toasts.error('Could not update the box count. Please try again.'),
+    });
+  }
+
+  // --- Multi-label print (product-audit §4.1) -----------------------------
+
+  /** Order ids selected for batch label printing (from the "to pack" queue). */
+  protected readonly selectedForLabel = signal<Set<number>>(new Set<number>());
+  /** True while the combined bulk-label PDF is being generated. */
+  protected readonly bulkLabelBusy = signal(false);
+
+  /** How many orders are currently selected for batch printing. */
+  protected readonly selectedLabelCount = computed(() => this.selectedForLabel().size);
+
+  isSelectedForLabel(id: number): boolean {
+    return this.selectedForLabel().has(id);
+  }
+
+  /** True when every order in the given queue is selected for label printing. */
+  allSelectedForLabel(rows: PackingQueueRow[]): boolean {
+    if (rows.length === 0) {
+      return false;
+    }
+    const sel = this.selectedForLabel();
+    return rows.every((o) => sel.has(o.id));
+  }
+
+  /**
+   * Header "select all" toggle for the pack queue: if every row is already
+   * selected, clear them; otherwise select them all (for batch label printing).
+   */
+  toggleSelectAllForLabel(rows: PackingQueueRow[]): void {
+    const next = new Set(this.selectedForLabel());
+    const allSelected = rows.length > 0 && rows.every((o) => next.has(o.id));
+    if (allSelected) {
+      rows.forEach((o) => next.delete(o.id));
+    } else {
+      rows.forEach((o) => next.add(o.id));
+    }
+    this.selectedForLabel.set(next);
+  }
+
+  /** Toggle an order's selection for batch label printing. */
+  toggleLabelSelection(id: number): void {
+    const next = new Set(this.selectedForLabel());
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    this.selectedForLabel.set(next);
+  }
+
+  /** Print one combined PDF with a label for every selected order (Req 10.4, §4.1). */
+  printSelectedLabels(): void {
+    const ids = Array.from(this.selectedForLabel());
+    if (ids.length === 0 || this.bulkLabelBusy()) {
+      return;
+    }
+    this.bulkLabelBusy.set(true);
+    this.service.bulkLabels(ids).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        const opened = window.open(url, '_blank');
+        if (!opened) {
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `labels-${ids.length}-orders.pdf`;
+          a.click();
+        }
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        this.bulkLabelBusy.set(false);
+        this.selectedForLabel.set(new Set<number>());
+      },
+      error: () => {
+        this.toasts.error('Could not print the selected labels. Please try again.');
+        this.bulkLabelBusy.set(false);
+      },
+    });
+  }
+
   /** Opens the order detail (via the Orders page filtered to this order code). */
   openOrder(order: PackingQueueRow): void {
     void this.router.navigate(['/orders'], { queryParams: { q: order.orderCode } });
@@ -250,13 +341,50 @@ export class ScanComponent implements OnInit, AfterViewInit {
     });
   }
 
+  /**
+   * The pending handover awaiting the "handed to" popup (product-audit §4.3).
+   * Holds the order code (for the popup title) and a callback that performs the
+   * actual handover with the entered name/phone, so both the queue and the
+   * inline-scan flows share one popup.
+   */
+  protected readonly handoverPrompt = signal<{
+    orderCode: string;
+    run: (name: string, phone: string) => void;
+  } | null>(null);
+
+  /** Opens the "handed to" popup for an order; the callback runs on confirm. */
+  private openHandoverPrompt(orderCode: string, run: (name: string, phone: string) => void): void {
+    if (this.busyOrderId() !== null) {
+      return;
+    }
+    this.handoverPrompt.set({ orderCode, run });
+  }
+
+  /** Confirms the popup with the entered name/phone and runs the handover. */
+  confirmHandover(name: string, phone: string): void {
+    const pending = this.handoverPrompt();
+    this.handoverPrompt.set(null);
+    if (pending) {
+      pending.run(name, phone);
+    }
+  }
+
+  /** Closes the handover popup without acting. */
+  cancelHandover(): void {
+    this.handoverPrompt.set(null);
+  }
+
   /** Hand a packed order over to the courier, straight from the queue. */
   handoverOrder(order: PackingQueueRow): void {
+    this.openHandoverPrompt(order.orderCode, (name, phone) => this.runQueueHandover(order, name, phone));
+  }
+
+  private runQueueHandover(order: PackingQueueRow, name: string, phone: string): void {
     if (this.busyOrderId() !== null) {
       return;
     }
     this.busyOrderId.set(order.id);
-    this.service.handover(order.id).subscribe({
+    this.service.handover(order.id, name, phone).subscribe({
       next: () => {
         this.busyOrderId.set(null);
         this.toasts.success(`Order ${order.orderCode} handed over to delivery`);
@@ -338,11 +466,15 @@ export class ScanComponent implements OnInit, AfterViewInit {
 
   /** Hand a packed order over to the delivery courier (PACKED → HANDED_TO_DELIVERY). */
   handover(item: PackWorkItem): void {
+    this.openHandoverPrompt(item.orderCode, (name, phone) => this.runItemHandover(item, name, phone));
+  }
+
+  private runItemHandover(item: PackWorkItem, name: string, phone: string): void {
     if (item.busy) {
       return;
     }
     this.patchItem(item.id, { busy: true, error: null });
-    this.service.handover(item.id).subscribe({
+    this.service.handover(item.id, name, phone).subscribe({
       next: (order) => {
         this.patchItem(item.id, {
           busy: false,

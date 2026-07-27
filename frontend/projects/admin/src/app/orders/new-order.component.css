@@ -231,3 +231,71 @@
     justify-content: flex-end;
   }
 }
+
+/* Guided New Order wizard (product-audit §3.2) */
+.shifa-wizard-steps {
+  display: flex;
+  gap: 6px;
+}
+.shifa-wizard-step {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 6px 2px;
+  cursor: pointer;
+  color: #6b7b72;
+  border-bottom: 3px solid #e2e8e4;
+}
+.shifa-wizard-step__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #e2e8e4;
+  color: #6b7b72;
+  font-weight: 800;
+  font-size: 14px;
+}
+.shifa-wizard-step__label {
+  font-size: 12px;
+  font-weight: 600;
+}
+.shifa-wizard-step.is-active {
+  color: #0f3d27;
+  border-bottom-color: #1f5d3f;
+}
+.shifa-wizard-step.is-active .shifa-wizard-step__num {
+  background: #1f5d3f;
+  color: #fff;
+}
+.shifa-wizard-step.is-done {
+  color: #1f5d3f;
+  border-bottom-color: #1f7a4d;
+}
+.shifa-wizard-step.is-done .shifa-wizard-step__num {
+  background: #1f7a4d;
+  color: #fff;
+}
+
+/* Review step summary */
+.shifa-review {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px 12px;
+}
+.shifa-review dt {
+  color: #6b7b72;
+  font-weight: 600;
+  font-size: 13px;
+}
+.shifa-review dd {
+  margin: 0;
+  font-size: 14px;
+}

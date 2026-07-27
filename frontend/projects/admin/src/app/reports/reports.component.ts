@@ -32,7 +32,7 @@ interface Toast {
 }
 
 /** The four presentation tabs shown in the mockup, mapped onto our report types. */
-type ReportTab = 'overview' | 'sales' | 'products' | 'customers';
+type ReportTab = 'overview' | 'sales' | 'products' | 'customers' | 'finance';
 
 /** ApexCharts option bundle for the revenue-trend bar chart. */
 interface RevenueBarOptions {
@@ -88,13 +88,42 @@ export class ReportsComponent implements OnInit {
       : false;
 
   protected readonly reportTypes: ReportTypeOption[] = [
-    { value: 'daily', label: 'Daily' },
-    { value: 'monthly', label: 'Monthly' },
-    { value: 'product', label: 'Product-wise' },
-    { value: 'state', label: 'State-wise' },
-    { value: 'customer', label: 'Customer-wise' },
-    { value: 'salesperson', label: 'Salesperson-wise' },
+    // Sales
+    { value: 'daily', label: 'Daily sales', group: 'Sales' },
+    { value: 'monthly', label: 'Monthly sales', group: 'Sales' },
+    { value: 'product', label: 'Product-wise', group: 'Sales' },
+    { value: 'state', label: 'State-wise', group: 'Sales' },
+    { value: 'customer', label: 'Customer-wise', group: 'Sales' },
+    { value: 'salesperson', label: 'Salesperson (detailed)', group: 'Sales' },
+    // Orders
+    { value: 'orders-by-status', label: 'Orders by status', group: 'Orders' },
+    { value: 'orders-by-lead-source', label: 'Orders by lead source', group: 'Orders' },
+    { value: 'orders-by-salesperson', label: 'Orders by salesperson', group: 'Orders' },
+    { value: 'delivery-outcome', label: 'Delivery outcome', group: 'Orders' },
+    // Money & receivables (accountant)
+    { value: 'payments', label: 'Payments (daily money)', group: 'Money & Receivables' },
+    { value: 'outstanding', label: 'Outstanding dues (chase list)', group: 'Money & Receivables' },
+    { value: 'cod-remittance', label: 'COD pending from courier', group: 'Money & Receivables' },
+    // Operations (admin / accountant) — per-module drill-downs
+    { value: 'expenses', label: 'Expenses', group: 'Operations' },
+    { value: 'purchase-orders', label: 'Purchase orders', group: 'Operations' },
+    { value: 'returns', label: 'Returns & refunds', group: 'Operations' },
+    { value: 'stock', label: 'Stock movements', group: 'Operations' },
   ];
+
+  /** The report-type options grouped by category, for optgroup rendering. */
+  protected readonly reportGroups = computed(() => {
+    const groups: { name: string; options: ReportTypeOption[] }[] = [];
+    for (const opt of this.reportTypes) {
+      let group = groups.find((g) => g.name === opt.group);
+      if (!group) {
+        group = { name: opt.group, options: [] };
+        groups.push(group);
+      }
+      group.options.push(opt);
+    }
+    return groups;
+  });
 
   /** The mockup's presentation tabs and the report type each maps onto. */
   protected readonly tabs: { key: ReportTab; label: string; icon: string }[] = [
@@ -102,6 +131,7 @@ export class ReportsComponent implements OnInit {
     { key: 'sales', label: 'Sales', icon: 'ti-chart-line' },
     { key: 'products', label: 'Products', icon: 'ti-leaf' },
     { key: 'customers', label: 'Customers', icon: 'ti-users' },
+    { key: 'finance', label: 'Finance', icon: 'ti-cash' },
   ];
 
   /** The active presentation tab; drives the report type (except Customers). */
@@ -198,6 +228,9 @@ export class ReportsComponent implements OnInit {
         return 'product';
       case 'customers':
         return 'customer';
+      case 'finance':
+        // The accountant's most actionable view — the outstanding-dues chase list.
+        return 'outstanding';
       default:
         return 'daily';
     }
@@ -305,6 +338,42 @@ export class ReportsComponent implements OnInit {
       return 0;
     }
     return this.totalSalesValue() / r.summary.orderCount;
+  }
+
+  /** Whether the current view is a money/receivables report (drives the Finance tiles). */
+  protected isMoneyView(): boolean {
+    const t = this.form.controls.type.value;
+    return (
+      this.activeTab() === 'finance' ||
+      t === 'payments' ||
+      t === 'outstanding' ||
+      t === 'cod-remittance'
+    );
+  }
+
+  /**
+   * Whether the current report is a per-module operational report (expenses /
+   * purchase orders / returns / stock). These are pure tables — no revenue
+   * headline / trend chart applies — so the presentation chrome is hidden.
+   */
+  protected isModuleReport(): boolean {
+    const t = this.form.controls.type.value;
+    return t === 'expenses' || t === 'purchase-orders' || t === 'returns' || t === 'stock';
+  }
+
+  /** Amount received over the window (accountant Finance tile). */
+  protected totalReceivedValue(): number {
+    return this.toNumber(this.report()?.summary.totalReceived);
+  }
+
+  /** Collectible dues still to come in (accountant Finance tile). */
+  protected totalOutstandingValue(): number {
+    return this.toNumber(this.report()?.summary.totalOutstanding);
+  }
+
+  /** COD amount pending remittance from the courier (accountant Finance tile). */
+  protected codPendingValue(): number {
+    return this.toNumber(this.report()?.summary.codPendingFromCourier);
   }
 
   /** The sign of the sales-vs-previous change, for colour/arrow styling. */

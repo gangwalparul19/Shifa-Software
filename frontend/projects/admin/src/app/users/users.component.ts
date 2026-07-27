@@ -5,6 +5,8 @@ import { ApiError, AuthService, Role } from 'core';
 import {
   AdminUser,
   CreateUserRequest,
+  ID_PROOF_TYPES,
+  IdProofType,
   STAFF_ROLES,
   StaffRole,
   UpdateUserRequest,
@@ -50,6 +52,14 @@ export class UsersComponent implements OnInit {
   private readonly auth = inject(AuthService);
 
   protected readonly staffRoles = STAFF_ROLES;
+  protected readonly idProofTypes = ID_PROOF_TYPES;
+
+  /**
+   * Active tab in the edit drawer so the (longer) edit form is split into
+   * "Account" and "Profile" tabs instead of one long scroll — mirroring the
+   * step navigation on the New Order screen. Create mode uses "account" only.
+   */
+  protected readonly formTab = signal<'account' | 'profile'>('account');
 
   protected readonly users = signal<AdminUser[]>([]);
   protected readonly loading = signal(true);
@@ -89,6 +99,14 @@ export class UsersComponent implements OnInit {
     fullName: ['', [Validators.required, Validators.maxLength(120)]],
     role: [Role.SALESPERSON as StaffRole, [Validators.required]],
     active: [true],
+    // Contact + onboarding profile — editable when updating an existing user.
+    email: ['', [Validators.email, Validators.maxLength(150)]],
+    mobile: ['', [Validators.pattern(/^$|^[0-9]{10}$/)]],
+    dateOfBirth: [''],
+    address: ['', [Validators.maxLength(500)]],
+    joinedOn: [''],
+    idProofType: ['' as IdProofType | '', []],
+    idProofNumber: ['', [Validators.maxLength(60)]],
   });
 
   protected readonly resetForm = this.fb.nonNullable.group({
@@ -134,8 +152,12 @@ export class UsersComponent implements OnInit {
         return 'Accountant';
       case Role.SALESPERSON:
         return 'Salesperson';
+      case Role.TEAM_LEAD:
+        return 'Team Lead';
       case Role.PACKING_USER:
         return 'Packing';
+      case Role.PAYMENT_VERIFIER:
+        return 'Payment Verifier';
       case Role.CUSTOMER:
         return 'Customer';
       default:
@@ -152,8 +174,12 @@ export class UsersComponent implements OnInit {
         return 'bg-azure-lt';
       case Role.SALESPERSON:
         return 'bg-purple-lt';
+      case Role.TEAM_LEAD:
+        return 'bg-lime-lt';
       case Role.PACKING_USER:
         return 'bg-orange-lt';
+      case Role.PAYMENT_VERIFIER:
+        return 'bg-teal-lt';
       default:
         return 'bg-secondary-lt';
     }
@@ -162,6 +188,34 @@ export class UsersComponent implements OnInit {
   /** True when the row represents the currently signed-in admin. */
   isSelf(user: AdminUser): boolean {
     return this.currentUsername() === user.username;
+  }
+
+  /** Human label for a verification status pill (read-only on this page). */
+  verificationLabel(status: string | null | undefined): string {
+    switch (status) {
+      case 'VERIFIED':
+        return 'Verified';
+      case 'REJECTED':
+        return 'Rejected';
+      case 'PENDING':
+        return 'Pending';
+      default:
+        return '—';
+    }
+  }
+
+  /** Tabler badge tone for a verification status. */
+  verificationBadgeClass(status: string | null | undefined): string {
+    switch (status) {
+      case 'VERIFIED':
+        return 'bg-green-lt';
+      case 'REJECTED':
+        return 'bg-red-lt';
+      case 'PENDING':
+        return 'bg-yellow-lt';
+      default:
+        return 'bg-secondary-lt';
+    }
   }
 
   /** Up-to-two-letter initials for the mobile card avatar. */
@@ -216,6 +270,7 @@ export class UsersComponent implements OnInit {
 
   openCreate(): void {
     this.formError.set(null);
+    this.formTab.set('account');
     this.editing.set(null);
     this.form.reset({
       username: '',
@@ -223,6 +278,13 @@ export class UsersComponent implements OnInit {
       fullName: '',
       role: Role.SALESPERSON as StaffRole,
       active: true,
+      email: '',
+      mobile: '',
+      dateOfBirth: '',
+      address: '',
+      joinedOn: '',
+      idProofType: '',
+      idProofNumber: '',
     });
     this.form.controls.username.enable();
     this.form.controls.password.enable();
@@ -231,6 +293,7 @@ export class UsersComponent implements OnInit {
 
   openEdit(user: AdminUser): void {
     this.formError.set(null);
+    this.formTab.set('account');
     this.creating.set(false);
     // On edit, username is immutable and password is not changed here (use reset).
     const role = this.staffRoles.includes(user.role as StaffRole)
@@ -242,6 +305,13 @@ export class UsersComponent implements OnInit {
       fullName: user.fullName,
       role,
       active: user.active,
+      email: user.email ?? '',
+      mobile: user.mobile ?? '',
+      dateOfBirth: user.dateOfBirth ?? '',
+      address: user.address ?? '',
+      joinedOn: user.joinedOn ?? '',
+      idProofType: user.idProofType ?? '',
+      idProofNumber: user.idProofNumber ?? '',
     });
     this.form.controls.username.disable();
     this.form.controls.password.disable();
@@ -260,6 +330,12 @@ export class UsersComponent implements OnInit {
     }
     if (this.form.invalid) {
       this.form.markAllAsTouched();
+      // Surface the tab that holds the first invalid control so edit-mode errors
+      // aren't hidden on the other tab.
+      if (this.editing()) {
+        const accountInvalid = ['fullName', 'role'].some((n) => !!this.form.get(n)?.invalid);
+        this.formTab.set(accountInvalid ? 'account' : 'profile');
+      }
       return;
     }
     const raw = this.form.getRawValue();
@@ -272,6 +348,13 @@ export class UsersComponent implements OnInit {
         fullName: raw.fullName.trim(),
         role: raw.role,
         active: raw.active,
+        email: raw.email.trim() || null,
+        mobile: raw.mobile.trim() || null,
+        dateOfBirth: raw.dateOfBirth || null,
+        address: raw.address.trim() || null,
+        joinedOn: raw.joinedOn || null,
+        idProofType: raw.idProofType || null,
+        idProofNumber: raw.idProofNumber.trim() || null,
       };
       this.service.update(editing.id, request).subscribe({
         next: (updated) => {

@@ -284,7 +284,24 @@
           </div>
         }
 
+        <!-- Tabbed navigation so the form doesn't require a long scroll -->
+        <div class="shifa-formtabs mb-3" role="tablist">
+          <button type="button" class="shifa-formtab" [class.is-active]="formTab() === 'basics'"
+            (click)="formTab.set('basics')" role="tab" [attr.aria-selected]="formTab() === 'basics'">
+            <i class="ti ti-file-description me-1"></i> Basics
+          </button>
+          <button type="button" class="shifa-formtab" [class.is-active]="formTab() === 'pricing'"
+            (click)="formTab.set('pricing')" role="tab" [attr.aria-selected]="formTab() === 'pricing'">
+            <i class="ti ti-cash me-1"></i> Pricing
+          </button>
+          <button type="button" class="shifa-formtab" [class.is-active]="formTab() === 'inventory'"
+            (click)="formTab.set('inventory')" role="tab" [attr.aria-selected]="formTab() === 'inventory'">
+            <i class="ti ti-box me-1"></i> Inventory
+          </button>
+        </div>
+
         <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+          @if (formTab() === 'basics') {
           <div class="mb-3">
             <label class="form-label required">Name</label>
             <input type="text" class="form-control" formControlName="name" maxlength="200" autocomplete="off"
@@ -307,7 +324,9 @@
             <label class="form-label">Description</label>
             <textarea class="form-control" formControlName="description" rows="3"></textarea>
           </div>
+          }
 
+          @if (formTab() === 'pricing') {
           <div class="row">
             <div class="col-6 mb-3">
               <label class="form-label required">MRP</label>
@@ -356,7 +375,9 @@
               }
             </div>
           </div>
+          }
 
+          @if (formTab() === 'inventory') {
           <div class="row">
             <div class="col-6 mb-3">
               <label class="form-label">Visibility</label>
@@ -401,6 +422,7 @@
               <span class="form-check-label">Featured (show in the storefront featured collection)</span>
             </label>
           </div>
+          }
 
           <div class="d-flex justify-content-end gap-2">
             <button type="button" class="btn btn-outline-secondary" (click)="closeForm()">Cancel</button>

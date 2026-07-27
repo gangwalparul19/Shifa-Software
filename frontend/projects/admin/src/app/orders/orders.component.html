@@ -75,10 +75,10 @@
         <div class="row g-2 align-items-end">
           <div class="col-6 col-lg-3" [formGroup]="filters">
             <label class="form-label small mb-1">Status</label>
-            <select class="form-select" formControlName="status" aria-label="Filter by order status">
+            <select class="form-select" formControlName="statusGroup" aria-label="Filter by order status">
               <option value="">All statuses</option>
-              @for (s of statusOptions; track s) {
-                <option [value]="s">{{ humanize(s) }}</option>
+              @for (g of statusGroups; track g.key) {
+                <option [value]="g.key">{{ g.label }}</option>
               }
             </select>
           </div>
@@ -165,8 +165,8 @@
       type="button"
       role="tab"
       class="shifa-status-tab"
-      [class.active]="statusGroup() === tab.key"
-      [attr.aria-selected]="statusGroup() === tab.key"
+      [class.active]="activeStatusGroup() === tab.key"
+      [attr.aria-selected]="activeStatusGroup() === tab.key"
       (click)="setStatusGroup(tab.key)"
     >
       {{ tab.label }}
@@ -235,12 +235,19 @@
     icon="ti-receipt-off"
     title="No orders found"
     [message]="
-      statusGroup() !== 'ALL'
-        ? 'No orders in this status group on this page.'
-        : hasFilters()
-          ? 'No orders match your filters.'
-          : 'Orders will appear here as they come in.'
+      search.value
+        ? (activeStatusGroup() !== 'ALL'
+            ? 'No orders in this stage match “' + search.value + '”. Clear filters to search every stage.'
+            : 'No orders match “' + search.value + '”.')
+        : activeStatusGroup() !== 'ALL'
+          ? 'No orders in this stage right now.'
+          : hasFilters()
+            ? 'No orders match your filters.'
+            : 'Orders will appear here as they come in.'
     "
+    [ctaLabel]="hasFilters() ? 'Clear search & filters' : undefined"
+    ctaIcon="ti-filter-off"
+    (cta)="clearFilters()"
   />
 } @else {
   <!-- Mobile: clean tappable order cards (Req 6.1, mockup-faithful) -->
@@ -290,11 +297,11 @@
             <th adminSortHeader field="customerName" [sort]="sort()" (sortChange)="onSort($event)">Customer</th>
             <th class="d-none d-md-table-cell">Mobile</th>
             <th class="text-end" adminSortHeader field="totalAmount" [sort]="sort()" (sortChange)="onSort($event)">Total</th>
-            <th class="text-end d-none d-md-table-cell">COD</th>
+            <th class="text-end d-none d-xl-table-cell">COD</th>
             <th class="d-none d-md-table-cell" adminSortHeader field="paymentStatus" [sort]="sort()" (sortChange)="onSort($event)">Payment</th>
             <th adminSortHeader field="orderStatus" [sort]="sort()" (sortChange)="onSort($event)">Status</th>
-            <th class="d-none d-md-table-cell" adminSortHeader field="createdAt" [sort]="sort()" (sortChange)="onSort($event)">Date</th>
-            <th class="text-end d-none d-md-table-cell">Actions</th>
+            <th class="d-none d-xl-table-cell" adminSortHeader field="createdAt" [sort]="sort()" (sortChange)="onSort($event)">Date</th>
+            <th class="text-end d-none d-xl-table-cell">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -317,11 +324,11 @@
               <td data-label="Customer">{{ order.customerName }}</td>
               <td class="text-secondary d-none d-md-table-cell">{{ order.customerMobile }}</td>
               <td class="text-end" data-label="Total">{{ money(order.totalAmount) }}</td>
-              <td class="text-end d-none d-md-table-cell">{{ money(order.codAmount) }}</td>
+              <td class="text-end d-none d-xl-table-cell">{{ money(order.codAmount) }}</td>
               <td class="d-none d-md-table-cell"><admin-status-badge [status]="order.paymentStatus" kind="payment" /></td>
               <td data-label="Status"><admin-status-badge [status]="order.orderStatus" /></td>
-              <td class="text-secondary d-none d-md-table-cell">{{ order.createdAt ? (order.createdAt | date: 'dd MMM, HH:mm') : '—' }}</td>
-              <td class="text-end d-none d-md-table-cell">
+              <td class="text-secondary d-none d-xl-table-cell">{{ order.createdAt ? (order.createdAt | date: 'dd MMM, HH:mm') : '—' }}</td>
+              <td class="text-end d-none d-xl-table-cell">
                 <button
                   type="button"
                   class="btn btn-sm btn-outline-primary"
@@ -390,6 +397,23 @@
           <span class="shifa-od__code">{{ order.orderCode }}</span>
         </div>
 
+        <!-- Tabbed navigation so the drawer doesn't require a long scroll -->
+        <div class="shifa-formtabs mb-3" role="tablist">
+          <button type="button" class="shifa-formtab" [class.is-active]="detailTab() === 'details'"
+            (click)="detailTab.set('details')" role="tab" [attr.aria-selected]="detailTab() === 'details'">
+            <i class="ti ti-user me-1"></i> Details
+          </button>
+          <button type="button" class="shifa-formtab" [class.is-active]="detailTab() === 'items'"
+            (click)="detailTab.set('items')" role="tab" [attr.aria-selected]="detailTab() === 'items'">
+            <i class="ti ti-package me-1"></i> Items
+          </button>
+          <button type="button" class="shifa-formtab" [class.is-active]="detailTab() === 'payment'"
+            (click)="detailTab.set('payment')" role="tab" [attr.aria-selected]="detailTab() === 'payment'">
+            <i class="ti ti-cash me-1"></i> Payment
+          </button>
+        </div>
+
+        @if (detailTab() === 'details') {
         <!-- (3) Order date -->
         <div class="shifa-od__section">
           <div class="shifa-od__label">Order Date</div>
@@ -405,6 +429,11 @@
             <div class="shifa-od__name">{{ order.customerName }}</div>
             @if (order.customerMobile) {
               <div class="shifa-od__muted">{{ order.customerMobile }}</div>
+            }
+            @if (order.alternateMobile) {
+              <div class="shifa-od__muted">
+                <i class="ti ti-phone-plus me-1"></i>Alt: {{ order.alternateMobile }}
+              </div>
             }
           </div>
           @if (order.customerMobile) {
@@ -447,6 +476,27 @@
           </div>
         }
 
+        <!-- (5c) Fulfilment: who took the parcel at handover + how many boxes -->
+        @if (order.handoverName || (order.packageCount && order.packageCount > 1)) {
+          <div class="shifa-od__card">
+            @if (order.handoverName) {
+              <div class="shifa-od__totline">
+                <span><i class="ti ti-transfer me-1"></i>Handed to</span>
+                <span class="fw-medium">{{ order.handoverName }}</span>
+              </div>
+            }
+            @if (order.packageCount && order.packageCount > 1) {
+              <div class="shifa-od__totline">
+                <span><i class="ti ti-packages me-1"></i>Packages</span>
+                <span class="fw-medium">{{ order.packageCount }} boxes</span>
+              </div>
+            }
+          </div>
+        }
+
+        }
+
+        @if (detailTab() === 'items') {
         <!-- (6) Order items -->
         <div class="shifa-od__section">
           <div class="shifa-od__label mb-2">Order Items</div>
@@ -485,6 +535,9 @@
           </div>
         </div>
 
+        }
+
+        @if (detailTab() === 'payment') {
         <!-- (8) Payment (operational detail folded in) -->
         <div class="shifa-od__section">
           <div class="shifa-od__label mb-2">Payment</div>
@@ -493,6 +546,14 @@
               <span>Payment status</span>
               <admin-status-badge [status]="order.paymentStatus" kind="payment" />
             </div>
+            @if (order.paymentVerificationStatus) {
+              <div class="shifa-od__totline align-items-center">
+                <span>Verification</span>
+                <span class="badge {{ paymentVerificationClass(order.paymentVerificationStatus) }}">
+                  {{ paymentVerificationLabel(order.paymentVerificationStatus) }}
+                </span>
+              </div>
+            }
             <div class="shifa-od__totline"><span>Amount received</span><span>{{ money(order.amountReceived) }}</span></div>
             <div class="shifa-od__totline"><span>Remaining</span><span>{{ money(order.remainingAmount) }}</span></div>
             <div class="shifa-od__totline"><span>COD amount</span><span>{{ money(order.codAmount) }}</span></div>
@@ -539,6 +600,8 @@
               }
             </div>
           </div>
+        }
+
         }
 
         <!-- (10) Primary lifecycle action for pending orders -->

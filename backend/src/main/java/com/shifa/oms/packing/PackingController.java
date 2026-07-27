@@ -3,6 +3,8 @@ package com.shifa.oms.packing;
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.CurrentUserService;
 import com.shifa.oms.order.dto.OrderResponse;
+import com.shifa.oms.packing.dto.HandoverRequest;
+import com.shifa.oms.packing.dto.PackageCountRequest;
 import com.shifa.oms.packing.dto.PackingQueueResponse;
 import com.shifa.oms.packing.dto.PackingScanRequest;
 import com.shifa.oms.packing.dto.PackingScanResponse;
@@ -62,9 +64,10 @@ public class PackingController {
      */
     @PostMapping("/{id}/handover")
     @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
-    public OrderResponse handover(@PathVariable Long id) {
+    public OrderResponse handover(@PathVariable Long id,
+                                  @Valid @RequestBody(required = false) HandoverRequest request) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
-        return packingService.handover(id, actor);
+        return packingService.handover(id, actor, request);
     }
 
     /**
@@ -77,5 +80,16 @@ public class PackingController {
     public OrderResponse dispatch(@PathVariable Long id) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return packingService.dispatch(id, actor);
+    }
+
+    /**
+     * Set how many boxes an order ships in (product-audit §4.2 — multi-pack).
+     * The label print then produces one label copy per box. Returns the updated
+     * order.
+     */
+    @PostMapping("/{id}/packages")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public OrderResponse setPackages(@PathVariable Long id, @Valid @RequestBody PackageCountRequest request) {
+        return packingService.setPackageCount(id, request.packageCount());
     }
 }

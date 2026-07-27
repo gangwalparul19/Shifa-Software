@@ -38,7 +38,7 @@ Shifa-Software/
 │  │  ├─ application.yml              # base config
 │  │  ├─ application-local.yml        # local profile (MySQL localhost, shifa_dashboard)
 │  │  ├─ application-prod.yml         # prod profile (env-driven)
-│  │  └─ db/migration/                # Flyway V1..V29 (see §6)
+│  │  └─ db/migration/                # Flyway V1..V43 (see §6)
 │  └─ pom.xml
 ├─ frontend/                    # Angular 21 workspace
 │  ├─ angular.json                    # projects: admin, core, ui
@@ -111,17 +111,18 @@ Modular monolith — one package per bounded context. Kept modules after the das
 | `statemachine`    | `OrderStatus` lifecycle + legal transitions (INITIAL/PENDING_ADMIN_APPROVAL → … → DELIVERED/COD_COLLECTED/RTO/etc.) |
 | `product`         | Admin product CRUD + categories + CSV import; per-product monthly sales stats. `/api/admin/products` (+ `GET /{id}/stats`), `/api/admin/categories` |
 | `inventory`       | Stock levels + movements (RESTOCK/SALE/RETURN/ADJUSTMENT). `/api/admin/inventory` |
-| `packing`         | Barcode scan / packing confirmation. `/api/packing` |
+| `packing`         | Barcode scan / packing confirmation + handover (name/phone) + multi-pack + bulk labels. `/api/packing` (incl. `/{id}/handover`, `/{id}/packages`) |
+| `payment`         | **Payment verification** (PAYMENT_VERIFIER): review prepaid screenshots, verify/reject. `/api/payments/queue`, `/api/payments/{id}/verify`, `/api/payments/{id}/reject` |
 | `courier`         | Courier assignment (mock), tracking, webhooks, shipping labels. `/api/track`, `/api/webhooks/courier`, `/api/admin/labels/shipping` |
 | `label`           | Internal label PDFs. `/api/admin/labels/internal` |
 | `invoice`         | Per-order invoice PDF (plain + GST tax invoice) + invoice numbering |
 | `reconciliation`  | COD/settlement, receivables. `/api/recon` |
-| `reporting`       | Excel / PDF / Vyapar exports. `/api/reports` |
+| `reporting`       | 17 report views — Sales, Orders, **Money & Receivables** (PAYMENTS, OUTSTANDING dues, COD_REMITTANCE) and **Operations** (EXPENSES, PURCHASE_ORDERS, RETURNS, STOCK; ADMIN/ACCOUNTANT only) — with Excel / PDF / Vyapar exports. `/api/reports/{type}` |
 | `finance`         | Expenses + Profit & Loss. `/api/admin/expenses`, `/api/admin/finance` |
 | `procurement`     | Suppliers + purchase orders. `/api/admin/suppliers`, `/api/admin/purchase-orders` |
 | `returns`         | Order returns/refunds. `/api/admin/returns` |
 | `crm`             | Customer records derived from orders + **Customer 360**: list/detail (`/api/admin/customers`), profile/risk/tags/notes (`/{mobile}/profile`, `/{mobile}/risk`, `/{mobile}/notes`, `/{mobile}/tags`) |
-| `performance`     | **Salesperson 360**: leaderboard + per-salesperson performance detail + monthly sales targets. `/api/admin/salespeople/performance`, `/api/admin/salespeople/{id}/performance`, `/api/admin/salespeople/targets` |
+| `performance`     | **Salesperson 360**: leaderboard + per-salesperson performance detail + monthly sales targets. `/api/admin/salespeople/performance`, `/api/admin/salespeople/{id}/performance`, `/api/admin/salespeople/targets`. **Team-lead performance** (team KPIs + leaderboard + lead-source conversion): `GET /api/team/performance` (TEAM_LEAD+ADMIN) |
 | `analytics`       | Customer **retention** cohorts + revenue/demand **forecast** for admin dashboards. `/api/admin/analytics/retention`, `/api/admin/analytics/forecast` |
 | `announcement`    | Staff announcement banners. `GET /api/announcements` (staff), admin CRUD `/api/admin/announcements` |
 | `push`            | Browser Web Push (VAPID, config-gated). `/api/notifications/push/{public-key,subscribe,unsubscribe}` |
@@ -150,12 +151,27 @@ form is a compact, mobile-first layout (paired fields per row) with a **fuzzy st
 `GET /api/states` (states managed on the Settings "Delivery states" card) and an optional free-text
 **order note** (`orders.notes`, ≤1000 chars) saved with the order and shown on the order detail.
 
+The form is now a **guided 4-step wizard** (Customer → Items → Payment → Review) with a progress
+stepper and per-step validation, plus these order-entry conveniences: an optional **alternate contact
+number** (`orders.alternate_mobile`), **PIN-code auto-fill** (typing a 6-digit pincode pre-fills empty
+City/State from the free key-less India Post API — best-effort, degrades to manual entry when offline),
+and the running/created total **rounded to the nearest whole rupee** (`Money.roundToWholeRupees`, e.g.
+₹2679.99 → ₹2680; GST-safe as prices already include GST).
+
+The Orders **list** filters by a **grouped status selector** (both a quick tab strip and the advanced-panel
+dropdown) instead of the raw ~18 statuses: the `order/OrderStatusGroup` enum clubs them into 9 business
+stages — Pending Approval, Packaging, Label Generated, Awaiting Handover, Awaiting Dispatch, In Transit,
+Completed, Cancelled, Failed/Returned (labels match the Packing queue). Filtering is server-side via
+`GET /api/admin/orders?statusGroup=…` (expands to `orderStatus IN (members)`), so it is correct across
+pagination and search. The exact `?status=` param + saved views still work (mapped onto their group).
+
 ---
 
 ## 5. Admin App Pages (`frontend/projects/admin/src/app`)
 
 Routing in `app.routes.ts`, shell/nav in `shell/admin-shell.component.ts`. Guards enforce roles
-(`staffGuard`, `adminOnlyGuard`, `salespersonGuard`, `accountantGuard`, `packingGuard`).
+(`staffGuard`, `adminOnlyGuard`, `salespersonGuard`, `accountantGuard`, `packingGuard`,
+`paymentVerifierGuard`).
 
 | Route | Page | Access |
 |-------|------|--------|
@@ -170,8 +186,12 @@ Routing in `app.routes.ts`, shell/nav in `shell/admin-shell.component.ts`. Guard
 | `/announcements` | Post/hide/delete staff announcement banners | ADMIN |
 | `/suppliers`, `/purchase-orders` | Procurement | ADMIN |
 | `/expenses`, `/finance/pnl` | Finance | ADMIN+ACCOUNTANT |
-| `/packing` | Barcode scan + handover/dispatch | PACKING_USER+ADMIN |
-| `/reconciliation`, `/reports` | Settlement + exports | ADMIN+ACCOUNTANT |
+| `/packing` | Barcode scan + handover popup (name/phone) + multi-label print + multi-pack | PACKING_USER+ADMIN |
+| `/payments` | Payment verification dashboard — review prepaid screenshots, verify/reject | PAYMENT_VERIFIER+ADMIN |
+| `/team` | Assign salespeople to a team lead (drives team-scoped order visibility) | ADMIN |
+| `/team-performance` | Team performance rollup — KPIs, salesperson leaderboard, lead-source conversion | TEAM_LEAD+ADMIN |
+| `/reconciliation` | COD settlement | ADMIN+ACCOUNTANT |
+| `/reports` | Grouped report catalogue (Sales / Orders / Money & Receivables / **Operations**: expenses, purchase orders, returns, stock) — incl. a **Finance** tab: outstanding dues chase list, COD pending from courier, daily payments; Excel/PDF export | ADMIN+ACCOUNTANT |
 | `/analytics` | Sales targets, retention cohorts, revenue/demand forecast | ADMIN |
 | `/settings`, `/users` | Config + staff users | ADMIN |
 | `/salespeople` | Salesperson onboarding + ID verification directory + **Salesperson 360** performance (leaderboard KPIs, sort, per-person performance drawer, monthly targets) | ADMIN |
@@ -297,6 +317,18 @@ Migration history:
   schema change.
 - `V38__sales_targets.sql` — `sales_targets` (per-salesperson monthly revenue target) behind the
   Analytics **Sales targets** tab + Salesperson 360 progress (FEATURE-ROADMAP §6.1).
+- `V39`..`V42` — **client roadmap wave** (see `docs/PRODUCT-AUDIT-AND-ROADMAP.md`), all additive/nullable:
+  `V39` `orders.alternate_mobile` (optional 2nd contact for failed-delivery follow-up); `V40`
+  `orders.handover_name`/`handover_phone` (who took the parcel, captured via a handover popup); `V41`
+  `orders.package_count` DEFAULT 1 (multi-pack — label prints N copies); `V42`
+  `orders.payment_verification_status`/`_by`/`_at`/`_note` (new **PAYMENT_VERIFIER** role verifies
+  prepaid payment screenshots via a dedicated `/payments` dashboard — an additive layer that does NOT
+  touch the order state machine).
+- `V43__team_lead.sql` — **TEAM_LEAD role**: adds `users.team_lead_id` (nullable self-FK → `users.id`,
+  `ON DELETE SET NULL`, `ix_users_team_lead`) recording a salesperson's team lead. A team lead gets read-only,
+  team-scoped visibility over the orders punched by their assigned salespeople (list/search/detail/invoice +
+  dashboard) via `SalespersonScopeResolver.creatorScope`; admins assign salespeople on the `/team` page
+  (`/api/admin/team`). Additive/nullable. **V43 is the highest migration.**
 
 > Fresh DB required: because V22 seeds with explicit IDs, start against an **empty**
 > `shifa_dashboard`. If a half-migrated DB exists, drop & recreate it before starting.
@@ -333,11 +365,14 @@ is done via the additive `V21` drop migration (never by editing old migrations).
 
 ## 9. Deployment
 
-Target is **OCI Always Free** (A1 VM + self-hosted MySQL 8, Nginx reverse proxy, systemd service).
-Full step-by-step in `DEPLOYMENT.md`. Assets in `deploy/`:
-`nginx-shifa.conf`, `shifa-oms.service`, `shifa.env.example`, `build-and-deploy.sh`,
-`apply-on-vm.sh`, `make-bundle.ps1`, `package-local.ps1`. Prod `apiBaseUrl` is `''` (same-origin
-behind Nginx). Prod DB name defaults to `shifa_dashboard` (override via `DB_NAME`).
+Hosted on **one AWS EC2 instance** (Ubuntu + self-hosted MySQL 8, Nginx reverse proxy, systemd
+service, S3 for file storage). Admin app is served at `/`; API at `/api/` → Spring Boot on :8080.
+**Follow `DEPLOYMENT.md` — it is the single canonical guide.** Routine redeploy is one command:
+`powershell -ExecutionPolicy Bypass -File deploy\push-to-aws.ps1 -KeyPath "<your.pem>"`.
+Assets in `deploy/`: `push-to-aws.ps1` (build + upload + apply), `aws-apply.sh` (server-side
+backup → swap → restart), `nginx-shifa.conf`, `shifa-oms.service`, `shifa.env.example`. Prod
+`apiBaseUrl` is `''` (same-origin behind Nginx). Prod DB name defaults to `shifa_dashboard`
+(override via `DB_NAME`).
 
 ---
 

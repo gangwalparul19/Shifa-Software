@@ -120,7 +120,8 @@ class AdminUserServiceTest {
         currentUserService.setPrincipal(new AuthPrincipal(1L, "admin", Role.ADMIN));
 
         AdminUserResponse response = service.update(5L,
-                new UpdateUserRequest("Packer Renamed", Role.ACCOUNTANT, true));
+                new UpdateUserRequest("Packer Renamed", Role.ACCOUNTANT, true,
+                        null, null, null, null, null, null, null));
 
         assertThat(response.role()).isEqualTo(Role.ACCOUNTANT);
         assertThat(response.fullName()).isEqualTo("Packer Renamed");
@@ -173,7 +174,8 @@ class AdminUserServiceTest {
         currentUserService.setPrincipal(new AuthPrincipal(1L, "admin", Role.ADMIN));
 
         assertThatThrownBy(() -> service.update(1L,
-                new UpdateUserRequest("Admin", Role.SALESPERSON, true)))
+                new UpdateUserRequest("Admin", Role.SALESPERSON, true,
+                        null, null, null, null, null, null, null)))
                 .isInstanceOf(ValidationException.class);
 
         Mockito.verify(userRepository, never()).save(Mockito.any());

@@ -4,6 +4,7 @@ import com.shifa.oms.order.LeadSource;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderSource;
+import com.shifa.oms.order.PaymentVerificationStatus;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.statemachine.OrderStatus;
 
@@ -36,6 +37,7 @@ public record OrderResponse(
         PaymentStatus paymentStatus,
         String customerName,
         String customerMobile,
+        String alternateMobile,
         String addressLine,
         String city,
         String state,
@@ -53,7 +55,10 @@ public record OrderResponse(
         String awb,
         String courierName,
         String trackingUrl,
-        LocalDate estimatedDelivery
+        LocalDate estimatedDelivery,
+        String handoverName,
+        int packageCount,
+        PaymentVerificationStatus paymentVerificationStatus
 ) {
 
     /**
@@ -122,6 +127,7 @@ public record OrderResponse(
                 order.getPaymentStatus(),
                 order.getCustomerName(),
                 order.getCustomerMobile(),
+                order.getAlternateMobile(),
                 order.getAddressLine(),
                 order.getCity(),
                 order.getState(),
@@ -139,7 +145,10 @@ public record OrderResponse(
                 null,
                 null,
                 null,
-                null);
+                null,
+                order.getHandoverName(),
+                order.getPackageCount(),
+                order.getPaymentVerificationStatus());
     }
 
     /**
@@ -160,6 +169,7 @@ public record OrderResponse(
                 paymentStatus,
                 customerName,
                 customerMobile,
+                alternateMobile,
                 addressLine,
                 city,
                 state,
@@ -177,6 +187,9 @@ public record OrderResponse(
                 awb,
                 courierName,
                 trackingUrl,
-                estimatedDelivery);
+                estimatedDelivery,
+                handoverName,
+                packageCount,
+                paymentVerificationStatus);
     }
 }

@@ -129,7 +129,98 @@ class OrderServiceTest {
         // payment/creation edge-case tests use WHATSAPP with no note/email.
         return new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
                 "Pune", "Maharashtra", "411001", items, amountReceived, screenshotKey,
-                LeadSource.WHATSAPP, null, null, null);
+                LeadSource.WHATSAPP, null, null, null, null);
+    }
+
+    // --- Order total round-off to nearest rupee (product-audit §4.6) --------
+
+    @Test
+    void salespersonOrderRoundsTotalUpToNearestRupee() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "2679.99")));
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), BigDecimal.ZERO, null);
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.totalAmount()).isEqualByComparingTo("2680.00");
+        assertThat(response.codAmount()).isEqualByComparingTo("2680.00");
+    }
+
+    @Test
+    void salespersonOrderRoundsTotalDownToNearestRupee() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "100.49")));
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), BigDecimal.ZERO, null);
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.totalAmount()).isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void salespersonFullPaymentOfRoundedDownTotalIsFullyPaidNotExceeding() {
+        // Price 100.49 rounds down to 100.00; a customer who paid the pre-round
+        // 100.49 must classify as FULLY_PAID (the 0.49 overage is absorbed), not rejected.
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "100.49")));
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("100.49"), "payments/x.jpg");
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.totalAmount()).isEqualByComparingTo("100.00");
+        assertThat(response.paymentStatus()).isEqualTo(PaymentStatus.FULLY_PAID);
+        assertThat(response.codAmount()).isEqualByComparingTo("0.00");
+    }
+
+    // --- Payment verification layer (product-audit §4.4) --------------------
+
+    @Test
+    void prepaidOrderStartsPaymentVerificationPending() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "100.00")));
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("100.00"), "payments/x.jpg");
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.paymentVerificationStatus())
+                .isEqualTo(com.shifa.oms.order.PaymentVerificationStatus.PENDING);
+    }
+
+    @Test
+    void codOrderHasNoPaymentVerification() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 2, null)), BigDecimal.ZERO, null);
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.paymentVerificationStatus()).isNull();
+    }
+
+    // --- Alternate contact number (product-audit §4.5) ----------------------
+
+    @Test
+    void salespersonOrderPersistsAlternateMobileWhenProvided() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
+                "Pune", "Maharashtra", "411001",
+                List.of(new LineItemRequest(1L, 1, null)), BigDecimal.ZERO, null,
+                LeadSource.WHATSAPP, null, null, null, "9800011122");
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.alternateMobile()).isEqualTo("9800011122");
+    }
+
+    @Test
+    void salespersonOrderLeavesAlternateMobileNullWhenOmitted() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), BigDecimal.ZERO, null);
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.alternateMobile()).isNull();
     }
 
     // --- Zero-total guard ---------------------------------------------------

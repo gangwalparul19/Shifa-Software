@@ -97,6 +97,8 @@ public class RoleDashboardService {
         return switch (role) {
             case SALESPERSON -> new RoleDashboardSummary(
                     role.name(), salesperson(principal), null, null, null);
+            case TEAM_LEAD -> new RoleDashboardSummary(
+                    role.name(), teamLead(principal), null, null, null);
             case ADMIN -> new RoleDashboardSummary(
                     role.name(), null, admin(principal), null, null);
             case PACKING_USER -> new RoleDashboardSummary(
@@ -130,6 +132,29 @@ public class RoleDashboardService {
         long dueFollowUps = leadService.dueFollowUps(principal).size();
         return new RoleDashboardSummary.Salesperson(
                 byStatus, awaitingApproval, leadPipeline, dueFollowUps);
+    }
+
+    /**
+     * Team-lead dashboard: the same order-status breakdown + awaiting-approval
+     * count as a salesperson, but aggregated over the orders punched by ALL the
+     * salespeople assigned to this lead (team scope). Reuses the Salesperson
+     * section shape (no DTO change); lead-pipeline figures are left empty as
+     * team-scoped lead reporting is not part of this role yet.
+     */
+    private RoleDashboardSummary.Salesperson teamLead(AuthPrincipal principal) {
+        List<Long> memberIds = scopeResolver.creatorScope(principal).orElse(List.of());
+        List<OrderEntity> orders = memberIds.isEmpty()
+                ? List.of()
+                : orderRepository.findAllScopedIn(memberIds);
+
+        Map<String, Long> byStatus = new LinkedHashMap<>();
+        for (OrderEntity o : orders) {
+            String key = o.getOrderStatus() == null ? "" : o.getOrderStatus().name();
+            byStatus.merge(key, 1L, Long::sum);
+        }
+        long awaitingApproval = DashboardQueue.APPROVAL.count(orders, OrderEntity::getOrderStatus);
+        return new RoleDashboardSummary.Salesperson(
+                byStatus, awaitingApproval, new LinkedHashMap<>(), 0L);
     }
 
     private RoleDashboardSummary.Admin admin(AuthPrincipal principal) {

@@ -68,7 +68,7 @@ public class AdminOrderService {
                                                  PaymentStatus paymentStatus,
                                                  LocalDate from, LocalDate to,
                                                  Pageable pageable) {
-        return listOrders(q, status, paymentStatus, from, to, pageable, null);
+        return listOrders(q, status, paymentStatus, from, to, pageable, (Long) null);
     }
 
     /**
@@ -83,8 +83,41 @@ public class AdminOrderService {
                                                  PaymentStatus paymentStatus,
                                                  LocalDate from, LocalDate to,
                                                  Pageable pageable, Long createdBy) {
+        return listOrders(q, status, null, paymentStatus, from, to, pageable, createdBy);
+    }
+
+    /**
+     * As {@link #listOrders(String, OrderStatus, PaymentStatus, LocalDate, LocalDate, Pageable, Long)}
+     * with an additional coarse {@link OrderStatusGroup} filter. When
+     * {@code statusGroup} is non-null the result is restricted to the group's
+     * member statuses ({@code orderStatus IN (...)}), letting the Orders page
+     * offer a small set of business-facing stages instead of the full raw
+     * status list.
+     */
+    @Transactional(readOnly = true)
+    public Page<OrderSummaryResponse> listOrders(String q, OrderStatus status,
+                                                 OrderStatusGroup statusGroup,
+                                                 PaymentStatus paymentStatus,
+                                                 LocalDate from, LocalDate to,
+                                                 Pageable pageable, Long createdBy) {
+        return listOrders(q, status, statusGroup, paymentStatus, from, to, pageable,
+                createdBy == null ? null : java.util.List.of(createdBy));
+    }
+
+    /**
+     * Canonical paged listing scoped to a <em>set</em> of creators (team-aware):
+     * a {@code SALESPERSON} passes a singleton of their own id, a {@code TEAM_LEAD}
+     * passes their team's salesperson ids, and an unscoped admin/accountant passes
+     * {@code null}. A present-but-empty collection matches no rows.
+     */
+    @Transactional(readOnly = true)
+    public Page<OrderSummaryResponse> listOrders(String q, OrderStatus status,
+                                                 OrderStatusGroup statusGroup,
+                                                 PaymentStatus paymentStatus,
+                                                 LocalDate from, LocalDate to,
+                                                 Pageable pageable, java.util.Collection<Long> creatorIds) {
         Specification<OrderEntity> spec =
-                OrderListSpecifications.build(q, status, paymentStatus, from, to, createdBy);
+                OrderListSpecifications.build(q, status, statusGroup, paymentStatus, from, to, creatorIds);
         return orderRepository.findAll(spec, pageable).map(OrderSummaryResponse::from);
     }
 

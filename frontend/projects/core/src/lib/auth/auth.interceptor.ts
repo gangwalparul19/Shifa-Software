@@ -10,11 +10,16 @@ import { Observable, throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { AuthTokenStore } from './auth-token.store';
 import { AuthEventsService } from './auth-events.service';
+import { API_BASE_URL } from '../tokens/api-base-url.token';
+import { isApiRequest } from './auth-request-scope';
 
 /**
  * Functional JWT auth interceptor.
  *
- * - Attaches `Authorization: Bearer <accessToken>` when a token is present.
+ * - Attaches `Authorization: Bearer <accessToken>` when a token is present — but
+ *   ONLY for requests to our own API (relative paths or the configured
+ *   {@link API_BASE_URL}). Calls to third-party absolute URLs (e.g. the India
+ *   Post pincode API) must never receive our JWT, so they are left untouched.
  * - On a 401 response, clears the session and emits an `unauthorized` event
  *   (Req 5.2 — authentication required).
  * - On a 403 response, emits a `forbidden` event so the app can show an
@@ -28,11 +33,13 @@ export const authInterceptor: HttpInterceptorFn = (
 ): Observable<HttpEvent<unknown>> => {
   const tokens = inject(AuthTokenStore);
   const authEvents = inject(AuthEventsService);
+  const apiBaseUrl = inject(API_BASE_URL, { optional: true }) ?? '';
 
   const accessToken = tokens.getAccessToken();
-  const authorizedReq = accessToken
-    ? req.clone({ setHeaders: { Authorization: `Bearer ${accessToken}` } })
-    : req;
+  const authorizedReq =
+    accessToken && isApiRequest(req.url, apiBaseUrl)
+      ? req.clone({ setHeaders: { Authorization: `Bearer ${accessToken}` } })
+      : req;
 
   return next(authorizedReq).pipe(
     catchError((error: unknown) => {

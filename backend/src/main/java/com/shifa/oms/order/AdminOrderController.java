@@ -102,23 +102,26 @@ public class AdminOrderController {
      * @param sort          {@code field,dir} — one of createdAt/orderCode/customerName/totalAmount/orderStatus/paymentStatus
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON')")
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','TEAM_LEAD')")
     public PageResponse<OrderSummaryResponse> list(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false) OrderStatusGroup statusGroup,
             @RequestParam(required = false) PaymentStatus paymentStatus,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
             @RequestParam(required = false) String sort) {
-        // Salespeople see the same paged/filtered table scoped to the orders they
-        // punched (across every status — their history); admin/accountant see all.
+        // Salespeople see only the orders they punched; a team lead sees the orders
+        // punched by their assigned salespeople; admin/accountant see all. The set
+        // is resolved server-side (never from a client filter) so it can't be spoofed.
         AuthPrincipal actor = currentUserService.requireCurrentUser();
-        Long createdBy = scopeResolver.creatorConstraint(actor).orElse(null);
+        java.util.Collection<Long> creatorIds = scopeResolver.creatorScope(actor).orElse(null);
         Pageable pageable = PageRequests.of(page, size, sort, SORT_WHITELIST, DEFAULT_SORT);
         return PageResponse.of(
-                adminOrderService.listOrders(q, status, paymentStatus, from, to, pageable, createdBy));
+                adminOrderService.listOrders(
+                        q, status, statusGroup, paymentStatus, from, to, pageable, creatorIds));
     }
 
     /** The approval queue of pending-approval orders with review details (Req 9.1, 9.2). */

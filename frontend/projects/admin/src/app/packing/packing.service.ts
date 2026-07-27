@@ -36,6 +36,25 @@ export class PackingService {
     });
   }
 
+  /**
+   * Fetch a single combined PDF with one internal-label block per requested order
+   * (product-audit §4.1 — multi-label print). Posts to the existing
+   * {@code POST /api/admin/labels/internal/bulk} (ADMIN + PACKING_USER).
+   */
+  bulkLabels(orderIds: number[]): Observable<Blob> {
+    return this.http.post(this.api.url('/api/admin/labels/internal/bulk'), { orderIds }, {
+      responseType: 'blob',
+    });
+  }
+
+  /**
+   * Set how many boxes an order ships in (product-audit §4.2 — multi-pack). The
+   * label print then produces one copy per box. Returns the updated order.
+   */
+  setPackages(id: number, packageCount: number): Observable<OrderDetail> {
+    return this.api.post<OrderDetail>(`/api/packing/${id}/packages`, { packageCount });
+  }
+
   /** Scan a barcode to mark the matching order Packed (Req 11.1). */
   scan(barcode: string): Observable<PackingScanResponse> {
     return this.api.post<PackingScanResponse>('/api/packing/scan', { barcode });
@@ -46,8 +65,15 @@ export class PackingService {
    * ({@code PACKED → HANDED_TO_DELIVERY}, Req 9.2–9.4). Returns the updated
    * order; a non-{@code PACKED} order surfaces as a 409 {@code HttpErrorResponse}.
    */
-  handover(id: number): Observable<OrderDetail> {
-    return this.api.post<OrderDetail>(`/api/packing/${id}/handover`);
+  handover(id: number, handoverName?: string, handoverPhone?: string): Observable<OrderDetail> {
+    const body: { handoverName?: string; handoverPhone?: string } = {};
+    if (handoverName && handoverName.trim()) {
+      body.handoverName = handoverName.trim();
+    }
+    if (handoverPhone && handoverPhone.trim()) {
+      body.handoverPhone = handoverPhone.trim();
+    }
+    return this.api.post<OrderDetail>(`/api/packing/${id}/handover`, body);
   }
 
   /**

@@ -94,6 +94,20 @@ public class SalespersonPerformanceService {
     /** Headline metrics for every salesperson, best (this month's revenue) first. */
     @Transactional(readOnly = true)
     public List<SalespersonPerformanceSummary> leaderboard() {
+        return leaderboardFor(null);
+    }
+
+    /**
+     * Headline metrics for a specific set of salespeople (a team lead's team),
+     * best (this month's revenue) first. A {@code null} {@code memberIds} means
+     * "all salespeople" (the admin-wide leaderboard); an empty set yields an
+     * empty list (a team lead with no assigned salespeople).
+     */
+    @Transactional(readOnly = true)
+    public List<SalespersonPerformanceSummary> leaderboardFor(java.util.Collection<Long> memberIds) {
+        if (memberIds != null && memberIds.isEmpty()) {
+            return List.of();
+        }
         LocalDate today = LocalDate.now(clock);
         LocalDateTime monthStart = today.withDayOfMonth(1).atStartOfDay();
         LocalDateTime dayStart = today.atStartOfDay();
@@ -106,8 +120,12 @@ public class SalespersonPerformanceService {
             }
         }
 
+        Set<Long> filter = memberIds == null ? null : new java.util.HashSet<>(memberIds);
         List<SalespersonPerformanceSummary> rows = new ArrayList<>();
         for (User u : userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.SALESPERSON)) {
+            if (filter != null && !filter.contains(u.getId())) {
+                continue;
+            }
             rows.add(summaryOf(u, byId.get(u.getId())));
         }
         rows.sort(Comparator

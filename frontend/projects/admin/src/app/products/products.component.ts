@@ -136,6 +136,12 @@ export class ProductsComponent implements OnInit, OnDestroy {
   /** A server-side error (e.g. duplicate SKU) shown at the top of the form. */
   protected readonly formError = signal<string | null>(null);
 
+  /**
+   * Active tab in the product form so it's split into Basics / Pricing &amp; Tax
+   * / Inventory tabs instead of one long scroll.
+   */
+  protected readonly formTab = signal<'basics' | 'pricing' | 'inventory'>('basics');
+
   // --- Categories management panel state ---------------------------------
   protected readonly categoriesOpen = signal(false);
   protected readonly editingCategory = signal<Category | null>(null);
@@ -470,6 +476,7 @@ export class ProductsComponent implements OnInit, OnDestroy {
 
   openCreate(): void {
     this.formError.set(null);
+    this.formTab.set('basics');
     this.editing.set(null);
     this.form.reset({
       sku: '',
@@ -490,6 +497,7 @@ export class ProductsComponent implements OnInit, OnDestroy {
 
   openEdit(product: Product): void {
     this.formError.set(null);
+    this.formTab.set('basics');
     this.creating.set(false);
     this.form.reset({
       sku: product.sku,
@@ -520,6 +528,12 @@ export class ProductsComponent implements OnInit, OnDestroy {
     }
     if (this.form.invalid) {
       this.form.markAllAsTouched();
+      // Surface the tab holding the first invalid control so errors aren't hidden.
+      const basicsInvalid = ['name', 'sku'].some((n) => !!this.form.get(n)?.invalid);
+      const pricingInvalid = ['mrp', 'salePrice', 'hsnCode', 'gstRate'].some(
+        (n) => !!this.form.get(n)?.invalid,
+      );
+      this.formTab.set(basicsInvalid ? 'basics' : pricingInvalid ? 'pricing' : 'inventory');
       return;
     }
     const raw = this.form.getRawValue();

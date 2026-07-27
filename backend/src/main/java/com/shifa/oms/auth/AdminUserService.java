@@ -99,6 +99,16 @@ public class AdminUserService {
         user.setFullName(request.fullName().trim());
         user.setRole(request.role());
         user.setActive(active);
+        // Contact + onboarding profile — the admin can edit every detail here
+        // (blank strings normalised to null; the ID document/photo and the
+        // verification decision keep their dedicated staff endpoints).
+        user.setEmail(blankToNull(request.email()));
+        user.setMobile(blankToNull(request.mobile()));
+        user.setDateOfBirth(request.dateOfBirth());
+        user.setAddress(blankToNull(request.address()));
+        user.setJoinedOn(request.joinedOn());
+        user.setIdProofType(request.idProofType());
+        user.setIdProofNumber(blankToNull(request.idProofNumber()));
         return AdminUserResponse.from(userRepository.save(user));
     }
 
@@ -149,5 +159,14 @@ public class AdminUserService {
 
     private boolean isLastActiveAdmin() {
         return userRepository.countByRoleAndActiveTrue(Role.ADMIN) <= 1;
+    }
+
+    /** Trims a string and maps blank/empty to {@code null} for nullable columns. */
+    private static String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

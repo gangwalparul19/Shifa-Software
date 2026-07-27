@@ -75,7 +75,7 @@ class DeterministicOrderCreationPropertyTest {
         CreateOrderRequest request = new CreateOrderRequest(
                 "Asha", "9812345678", "12 MG Road", "Pune", "Maharashtra", "411001",
                 List.of(new LineItemRequest(1L, quantity, null)),
-                BigDecimal.ZERO, null, leadSource, null, null, null);
+                BigDecimal.ZERO, null, leadSource, null, null, null, null);
 
         OrderResponse response = service.createSalespersonOrder(request, actor);
 

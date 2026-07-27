@@ -166,6 +166,23 @@
       </header>
 
       <div class="shifa-drawer__body cust-dr__body">
+        <!-- Tabbed navigation so the drawer doesn't require a long scroll -->
+        <div class="shifa-formtabs mb-3" role="tablist">
+          <button type="button" class="shifa-formtab" [class.is-active]="custTab() === 'overview'"
+            (click)="custTab.set('overview')" role="tab" [attr.aria-selected]="custTab() === 'overview'">
+            <i class="ti ti-user me-1"></i> Overview
+          </button>
+          <button type="button" class="shifa-formtab" [class.is-active]="custTab() === 'crm'"
+            (click)="custTab.set('crm')" role="tab" [attr.aria-selected]="custTab() === 'crm'">
+            <i class="ti ti-tags me-1"></i> CRM
+          </button>
+          <button type="button" class="shifa-formtab" [class.is-active]="custTab() === 'orders'"
+            (click)="custTab.set('orders')" role="tab" [attr.aria-selected]="custTab() === 'orders'">
+            <i class="ti ti-history me-1"></i> Orders
+          </button>
+        </div>
+
+        @if (custTab() === 'overview') {
         <!-- Risk banner (§1.2) -->
         <div class="cust-dr__risk" [attr.data-level]="profile.risk.level">
           <div class="cust-dr__risk-top">
@@ -210,7 +227,9 @@
             <span class="cust-dr__metric-k">Outstanding</span>
           </div>
         </div>
+        }
 
+        @if (custTab() === 'crm') {
         <!-- Tags (§1.4) -->
         <div class="cust-dr__label"><i class="ti ti-tags me-1"></i>Tags</div>
         <div class="cust-dr__tags">
@@ -238,7 +257,9 @@
             <i class="ti ti-plus"></i>
           </button>
         </form>
+        }
 
+        @if (custTab() === 'orders') {
         <!-- Products bought (§1.1) -->
         @if (profile.topProducts.length > 0) {
           <div class="cust-dr__label"><i class="ti ti-leaf me-1"></i>Products bought</div>
@@ -251,7 +272,9 @@
             }
           </div>
         }
+        }
 
+        @if (custTab() === 'overview') {
         <!-- First / last + account type -->
         <div class="cust-dr__facts">
           <div class="cust-dr__fact">
@@ -267,7 +290,9 @@
             <span class="cust-dr__fact-v">{{ profile.summary.registered ? 'Registered' : 'Guest' }}</span>
           </div>
         </div>
+        }
 
+        @if (custTab() === 'crm') {
         <!-- Notes timeline (§1.1) -->
         <div class="cust-dr__label">
           <i class="ti ti-notes me-1"></i>Notes
@@ -300,6 +325,9 @@
           </div>
         }
 
+        }
+
+        @if (custTab() === 'orders') {
         <!-- Order history (paginated — the list can grow) -->
         <div class="cust-dr__label">
           <i class="ti ti-history me-1"></i>Order history
@@ -336,6 +364,7 @@
               (sizeChange)="setHistorySize($event)"
             />
           }
+        }
         }
       </div>
     }

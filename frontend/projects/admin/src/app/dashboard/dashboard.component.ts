@@ -131,6 +131,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   /** Whether the current user is an ADMIN (gates the rich metrics dashboard + SSE). */
   protected readonly isAdmin = computed(() => this.role() === Role.ADMIN);
 
+  /**
+   * Whether the current user is a TEAM_LEAD. The backend returns their
+   * team-aggregated order summary in the same shape as a salesperson's, so the
+   * salesperson section renders it; this flag hides the salesperson-only actions
+   * (New Order / My Leads) a team lead can't perform and relabels the section.
+   */
+  protected readonly isTeamLead = computed(() => this.role() === Role.TEAM_LEAD);
+
   // --- Configurable dashboard sections (FEATURE-ROADMAP §6.4) --------------
   private static readonly SECTIONS_KEY = 'shifa.dashboardHiddenSections.v1';
   /** The admin dashboard sections a user can show/hide, in display order. */
@@ -547,6 +555,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    // Payment Verifier has no dashboard content (their work lives on the payment
+    // queue) — send them straight to their home so they don't land on an empty
+    // dashboard when '' redirects here or after login.
+    if (this.role() === Role.PAYMENT_VERIFIER) {
+      void this.router.navigate(['/payments']);
+      return;
+    }
     // The role-shaped summary is available to every operational role (Req 3.1).
     this.loadSummary();
     // The rich metrics dashboard + live SSE feed are ADMIN-only endpoints, so

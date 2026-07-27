@@ -123,6 +123,21 @@
       <span class="badge ms-2" [style.background]="section.accentSoft" [style.color]="section.accent">
         {{ section.orders.length }}
       </span>
+      @if (section.kind === 'pack' && selectedLabelCount() > 0) {
+        <button
+          type="button"
+          class="btn btn-sm btn-primary ms-auto"
+          (click)="printSelectedLabels()"
+          [disabled]="bulkLabelBusy()"
+        >
+          @if (bulkLabelBusy()) {
+            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+          } @else {
+            <i class="ti ti-printer me-1"></i>
+          }
+          Print {{ selectedLabelCount() }} label{{ selectedLabelCount() === 1 ? '' : 's' }}
+        </button>
+      }
     </div>
     <div class="card-body p-0">
       @if (section.orders.length === 0) {
@@ -138,6 +153,17 @@
           <table class="table table-vcenter card-table table-hover pk-table mb-0">
             <thead>
               <tr>
+                @if (section.kind === 'pack') {
+                  <th class="w-1" title="Select all for label printing">
+                    <input
+                      class="form-check-input m-0"
+                      type="checkbox"
+                      [checked]="allSelectedForLabel(section.orders)"
+                      (change)="toggleSelectAllForLabel(section.orders)"
+                      aria-label="Select all orders for batch label printing"
+                    />
+                  </th>
+                }
                 <th>Order ID</th>
                 <th>Customer</th>
                 <th class="text-end">Price</th>
@@ -149,6 +175,17 @@
             <tbody>
               @for (o of section.orders; track o.id) {
                 <tr class="clickable" (click)="openOrder(o)">
+                  @if (section.kind === 'pack') {
+                    <td (click)="$event.stopPropagation()">
+                      <input
+                        class="form-check-input m-0"
+                        type="checkbox"
+                        [checked]="isSelectedForLabel(o.id)"
+                        (change)="toggleLabelSelection(o.id)"
+                        aria-label="Select order for batch label printing"
+                      />
+                    </td>
+                  }
                   <td class="shifa-mono fw-bold">{{ o.orderCode }}</td>
                   <td>{{ o.customerName }}</td>
                   <td class="text-end fw-semibold">₹{{ o.totalAmount }}</td>
@@ -156,6 +193,18 @@
                   <td class="text-secondary">{{ o.salespersonName || '—' }}</td>
                   <td class="text-end" (click)="$event.stopPropagation()">
                     <div class="pk-row__actions justify-content-end">
+                      @if (section.kind === 'pack') {
+                        <input
+                          type="number"
+                          min="1"
+                          max="50"
+                          value="1"
+                          class="form-control form-control-sm pk-boxes"
+                          title="Number of boxes (prints one label per box)"
+                          aria-label="Number of boxes"
+                          (change)="setBoxes(o, $any($event.target).value)"
+                        />
+                      }
                       @if (section.kind !== 'dispatch') {
                         <button
                           type="button"
@@ -296,3 +345,52 @@
     </div>
   }
 </div>
+
+<!-- Handover "handed to" popup (product-audit §4.3) -->
+@if (handoverPrompt(); as hp) {
+  <div class="pk-modal-backdrop" (click)="cancelHandover()">
+    <div class="card pk-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+      <div class="card-header py-2">
+        <h3 class="card-title mb-0"><i class="ti ti-truck-loading me-2"></i>Handover — {{ hp.orderCode }}</h3>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">Who are you handing this order to? (courier person or agency)</p>
+        <div class="mb-3">
+          <label class="form-label" for="handoverName">Handed to</label>
+          <input
+            #handoverNameInput
+            id="handoverName"
+            type="text"
+            class="form-control form-control-lg"
+            maxlength="120"
+            placeholder="e.g. Ravi (Delhivery)"
+            autocomplete="off"
+          />
+        </div>
+        <div class="mb-1">
+          <label class="form-label" for="handoverPhone">Phone <span class="text-secondary">(optional)</span></label>
+          <input
+            #handoverPhoneInput
+            id="handoverPhone"
+            type="tel"
+            inputmode="numeric"
+            class="form-control"
+            maxlength="10"
+            placeholder="10-digit mobile"
+            autocomplete="off"
+          />
+        </div>
+      </div>
+      <div class="card-footer d-flex gap-2 justify-content-end py-2">
+        <button type="button" class="btn btn-link" (click)="cancelHandover()">Cancel</button>
+        <button
+          type="button"
+          class="btn btn-primary"
+          (click)="confirmHandover(handoverNameInput.value, handoverPhoneInput.value)"
+        >
+          <i class="ti ti-check me-1"></i> Confirm handover
+        </button>
+      </div>
+    </div>
+  </div>
+}

@@ -7,20 +7,51 @@ import { ApiClient, Role } from 'core';
  * which is only ever created through self-registration on the storefront — staff
  * management never creates or assigns the customer role.
  */
-export type StaffRole = Role.ADMIN | Role.ACCOUNTANT | Role.SALESPERSON | Role.PACKING_USER;
+export type StaffRole =
+  | Role.ADMIN
+  | Role.ACCOUNTANT
+  | Role.SALESPERSON
+  | Role.TEAM_LEAD
+  | Role.PACKING_USER
+  | Role.PAYMENT_VERIFIER;
 
 /** The staff roles offered in the create/edit dropdowns, in display order. */
 export const STAFF_ROLES: readonly StaffRole[] = [
   Role.ADMIN,
   Role.ACCOUNTANT,
   Role.SALESPERSON,
+  Role.TEAM_LEAD,
   Role.PACKING_USER,
+  Role.PAYMENT_VERIFIER,
 ];
+
+/** Government ID document types accepted for a staff member (mirrors backend `IdProofType`). */
+export type IdProofType =
+  | 'AADHAAR'
+  | 'PAN'
+  | 'DRIVING_LICENSE'
+  | 'VOTER_ID'
+  | 'PASSPORT'
+  | 'OTHER';
+
+/** ID proof options for the edit form, with human labels. */
+export const ID_PROOF_TYPES: readonly { value: IdProofType; label: string }[] = [
+  { value: 'AADHAAR', label: 'Aadhaar' },
+  { value: 'PAN', label: 'PAN' },
+  { value: 'DRIVING_LICENSE', label: 'Driving License' },
+  { value: 'VOTER_ID', label: 'Voter ID' },
+  { value: 'PASSPORT', label: 'Passport' },
+  { value: 'OTHER', label: 'Other' },
+];
+
+/** Identity-verification state (read-only on the Users page; managed on Salespeople). */
+export type VerificationStatus = 'PENDING' | 'VERIFIED' | 'REJECTED';
 
 /**
  * Admin view of a user account (mirrors the backend user list DTO). The role may
  * be any platform {@link Role} on read (a CUSTOMER can appear), but only staff
- * roles are ever written back from this screen.
+ * roles are ever written back from this screen. Carries the full editable
+ * profile so the edit form can be pre-filled.
  */
 export interface AdminUser {
   id: number;
@@ -29,6 +60,15 @@ export interface AdminUser {
   role: Role;
   active: boolean;
   createdAt: string;
+  email: string | null;
+  mobile: string | null;
+  dateOfBirth: string | null;
+  address: string | null;
+  joinedOn: string | null;
+  idProofType: IdProofType | null;
+  idProofNumber: string | null;
+  verificationStatus: VerificationStatus | null;
+  teamLeadId: number | null;
 }
 
 /** Payload for creating a staff account ({@code POST /api/admin/users}). */
@@ -40,11 +80,21 @@ export interface CreateUserRequest {
   active: boolean;
 }
 
-/** Payload for editing a staff account ({@code PUT /api/admin/users/{id}}). */
+/**
+ * Payload for editing a staff account ({@code PUT /api/admin/users/{id}}).
+ * The admin can change every detail here; profile fields are optional.
+ */
 export interface UpdateUserRequest {
   fullName: string;
   role: StaffRole;
   active: boolean;
+  email?: string | null;
+  mobile?: string | null;
+  dateOfBirth?: string | null;
+  address?: string | null;
+  joinedOn?: string | null;
+  idProofType?: IdProofType | null;
+  idProofNumber?: string | null;
 }
 
 /**

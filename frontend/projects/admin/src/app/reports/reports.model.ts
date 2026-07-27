@@ -1,5 +1,22 @@
-/** The report views the backend can generate (Req 20.1, 20.3). */
-export type ReportType = 'daily' | 'monthly' | 'product' | 'state' | 'customer' | 'salesperson';
+/** The report views the backend can generate (Req 20.1, 20.3; + money/receivables). */
+export type ReportType =
+  | 'daily'
+  | 'monthly'
+  | 'product'
+  | 'state'
+  | 'customer'
+  | 'salesperson'
+  | 'orders-by-lead-source'
+  | 'orders-by-status'
+  | 'orders-by-salesperson'
+  | 'delivery-outcome'
+  | 'payments'
+  | 'outstanding'
+  | 'cod-remittance'
+  | 'expenses'
+  | 'purchase-orders'
+  | 'returns'
+  | 'stock';
 
 /** Export file formats offered for a report (Req 20.4, 23.1). */
 export type ExportFormat = 'xlsx' | 'pdf';
@@ -20,6 +37,12 @@ export interface ReportSummary {
   topSalespersonName: string | null;
   topProduct: string | null;
   topState: string | null;
+  /** Amount received over the window (excludes cancelled/rejected). */
+  totalReceived: string;
+  /** Collectible dues still to come in = sum(total − received). */
+  totalOutstanding: string;
+  /** COD amount pending remittance from the courier. */
+  codPendingFromCourier: string;
 }
 
 /**
@@ -36,10 +59,12 @@ export interface ReportResponse {
   summary: ReportSummary;
 }
 
-/** A selectable report type with its display label. */
+/** A selectable report type with its display label and category grouping. */
 export interface ReportTypeOption {
   value: ReportType;
   label: string;
+  /** The optgroup this report belongs to (e.g. Sales, Orders, Money & Receivables). */
+  group: string;
 }
 
 /** A quick date-range preset (Req 19.2 / 20.2). */

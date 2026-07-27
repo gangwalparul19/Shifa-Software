@@ -146,7 +146,24 @@
       </button>
     </header>
 
+    <!-- Tabbed navigation so the drawer content doesn't require a long scroll -->
+    <div class="shifa-formtabs sp-dr__tabs" role="tablist">
+      <button type="button" class="shifa-formtab" [class.is-active]="drawerTab() === 'performance'"
+        (click)="drawerTab.set('performance')" role="tab" [attr.aria-selected]="drawerTab() === 'performance'">
+        <i class="ti ti-chart-line me-1"></i> Performance
+      </button>
+      <button type="button" class="shifa-formtab" [class.is-active]="drawerTab() === 'profile'"
+        (click)="drawerTab.set('profile')" role="tab" [attr.aria-selected]="drawerTab() === 'profile'">
+        <i class="ti ti-user me-1"></i> Profile
+      </button>
+      <button type="button" class="shifa-formtab" [class.is-active]="drawerTab() === 'verification'"
+        (click)="drawerTab.set('verification')" role="tab" [attr.aria-selected]="drawerTab() === 'verification'">
+        <i class="ti ti-shield-check me-1"></i> Verify
+      </button>
+    </div>
+
     <div class="shifa-drawer__body sp-dr__body">
+      @if (drawerTab() === 'performance') {
       <!-- Salesperson 360 — performance -->
       <section class="sp-section">
         <h3 class="sp-section__title"><i class="ti ti-chart-line me-1"></i>Performance</h3>
@@ -242,18 +259,9 @@
           <div class="text-secondary small py-2">No performance data available.</div>
         }
       </section>
-
-      @if (member.verifiedAt || member.verificationNote) {
-        <div class="sp-verify-meta">
-          @if (member.verifiedAt) {
-            <span><i class="ti ti-clock me-1"></i>Decision on {{ dateLabel(member.verifiedAt) }}</span>
-          }
-          @if (member.verificationNote) {
-            <div class="mt-1"><i class="ti ti-note me-1"></i>{{ member.verificationNote }}</div>
-          }
-        </div>
       }
 
+      @if (drawerTab() === 'profile') {
       <!-- Profile photo -->
       <section class="sp-section">
         <h3 class="sp-section__title"><i class="ti ti-camera me-1"></i>Profile photo</h3>
@@ -367,6 +375,19 @@
         </label>
         <div class="form-hint">Image or PDF (Aadhaar, PAN, licence, etc.). Uploading a new file resets verification.</div>
       </section>
+      }
+
+      @if (drawerTab() === 'verification') {
+      @if (member.verifiedAt || member.verificationNote) {
+        <div class="sp-verify-meta">
+          @if (member.verifiedAt) {
+            <span><i class="ti ti-clock me-1"></i>Decision on {{ dateLabel(member.verifiedAt) }}</span>
+          }
+          @if (member.verificationNote) {
+            <div class="mt-1"><i class="ti ti-note me-1"></i>{{ member.verificationNote }}</div>
+          }
+        </div>
+      }
 
       <!-- Verification decision -->
       <section class="sp-section">
@@ -397,6 +418,7 @@
         <div class="form-hint mt-1 text-danger">Upload an ID proof document before verifying.</div>
       }
       </section>
+      }
     </div>
   </aside>
 }

@@ -29,8 +29,11 @@ import { LeadsComponent } from './leads/leads.component';
 import { DueFollowUpsComponent } from './leads/due-follow-ups.component';
 import { InsightsComponent } from './insights/insights.component';
 import { BackupsComponent } from './backups/backups.component';
+import { PaymentsComponent } from './payments/payments.component';
 import { AnnouncementsComponent } from './announcements/announcements.component';
 import { AnalyticsComponent } from './analytics/analytics.component';
+import { TeamComponent } from './team/team.component';
+import { TeamPerformanceComponent } from './team/team-performance.component';
 
 const LOGIN_PATH = '/login';
 const FORBIDDEN_PATH = '/forbidden';
@@ -42,7 +45,9 @@ export const staffGuard = createRoleGuard(
   Role.ADMIN,
   Role.ACCOUNTANT,
   Role.SALESPERSON,
+  Role.TEAM_LEAD,
   Role.PACKING_USER,
+  Role.PAYMENT_VERIFIER,
 );
 
 /** Admin-only sections (management/approval/configuration, Req 5.4). */
@@ -83,6 +88,22 @@ export const packingGuard = createRoleGuard(
   FORBIDDEN_PATH,
   Role.ADMIN,
   Role.PACKING_USER,
+);
+
+/** Payment verification dashboard is limited to Payment_Verifier and Admin (product-audit §4.4). */
+export const paymentVerifierGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.PAYMENT_VERIFIER,
+);
+
+/** Team-lead performance dashboard is limited to Team_Lead and Admin. */
+export const teamLeadGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.TEAM_LEAD,
 );
 
 export const routes: Routes = [
@@ -259,6 +280,12 @@ export const routes: Routes = [
         canActivate: [adminOnlyGuard],
       },
       {
+        // Payment verification dashboard (PAYMENT_VERIFIER + ADMIN, product-audit §4.4).
+        path: 'payments',
+        component: PaymentsComponent,
+        canActivate: [paymentVerifierGuard],
+      },
+      {
         // Staff announcement banners (ADMIN only, FEATURE-ROADMAP §8.4).
         path: 'announcements',
         component: AnnouncementsComponent,
@@ -270,6 +297,18 @@ export const routes: Routes = [
         path: 'analytics',
         component: AnalyticsComponent,
         canActivate: [adminOnlyGuard],
+      },
+      {
+        // Team management: assign salespeople to a team lead (ADMIN only).
+        path: 'team',
+        component: TeamComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Team-lead performance dashboard (TEAM_LEAD + ADMIN).
+        path: 'team-performance',
+        component: TeamPerformanceComponent,
+        canActivate: [teamLeadGuard],
       },
     ],
   },

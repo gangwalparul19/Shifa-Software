@@ -168,8 +168,9 @@ apx-chart {
    Sales / Products / Customers all fit on one screen without cutting off.
    ========================================================================== */
 .rpt-tabs {
+  /* Five presentation tabs (Overview / Sales / Products / Customers / Finance). */
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 0.4rem;
 }
 .rpt-tab {

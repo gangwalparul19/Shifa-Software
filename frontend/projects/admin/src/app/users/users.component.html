@@ -145,7 +145,34 @@
           </div>
         }
 
+        <!-- Tabbed navigation (edit mode) so details don't require a long scroll -->
+        @if (editing()) {
+          <div class="shifa-formtabs mb-3" role="tablist">
+            <button
+              type="button"
+              class="shifa-formtab"
+              [class.is-active]="formTab() === 'account'"
+              (click)="formTab.set('account')"
+              role="tab"
+              [attr.aria-selected]="formTab() === 'account'"
+            >
+              <i class="ti ti-user-cog me-1"></i> Account
+            </button>
+            <button
+              type="button"
+              class="shifa-formtab"
+              [class.is-active]="formTab() === 'profile'"
+              (click)="formTab.set('profile')"
+              role="tab"
+              [attr.aria-selected]="formTab() === 'profile'"
+            >
+              <i class="ti ti-id-badge-2 me-1"></i> Profile
+            </button>
+          </div>
+        }
+
         <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+          @if (!editing() || formTab() === 'account') {
           <div class="mb-3">
             <label class="form-label required">Username</label>
             <input type="text" class="form-control shifa-mono" formControlName="username" maxlength="60" autocomplete="off"
@@ -194,6 +221,73 @@
               </label>
             </div>
           </div>
+          }
+
+          @if (editing() && formTab() === 'profile') {
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <h4 class="mb-0">Profile details</h4>
+              <span class="badge" [class]="verificationBadgeClass(editing()?.verificationStatus)">
+                <i class="ti ti-shield-check me-1"></i>{{ verificationLabel(editing()?.verificationStatus) }}
+              </span>
+            </div>
+            <p class="form-hint mt-0">
+              Contact and onboarding details. The ID document/photo and the verify decision are
+              managed on the Salespeople page.
+            </p>
+
+            <div class="row">
+              <div class="col-sm-6 mb-3">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-control" formControlName="email" maxlength="150" autocomplete="off"
+                  [class.is-invalid]="form.controls.email.touched && form.controls.email.invalid" />
+                @if (form.controls.email.touched && form.controls.email.invalid) {
+                  <div class="invalid-feedback">Enter a valid email address.</div>
+                }
+              </div>
+              <div class="col-sm-6 mb-3">
+                <label class="form-label">Mobile</label>
+                <input type="tel" class="form-control" formControlName="mobile" maxlength="10" inputmode="numeric" autocomplete="off"
+                  [class.is-invalid]="form.controls.mobile.touched && form.controls.mobile.invalid" />
+                @if (form.controls.mobile.touched && form.controls.mobile.invalid) {
+                  <div class="invalid-feedback">Mobile must be a 10-digit number.</div>
+                }
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="col-sm-6 mb-3">
+                <label class="form-label">Date of birth</label>
+                <input type="date" class="form-control" formControlName="dateOfBirth" />
+              </div>
+              <div class="col-sm-6 mb-3">
+                <label class="form-label">Joined on</label>
+                <input type="date" class="form-control" formControlName="joinedOn" />
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Address</label>
+              <textarea class="form-control" formControlName="address" rows="2" maxlength="500"
+                [class.is-invalid]="form.controls.address.touched && form.controls.address.invalid"></textarea>
+            </div>
+
+            <div class="row">
+              <div class="col-sm-6 mb-3">
+                <label class="form-label">ID proof type</label>
+                <select class="form-select" formControlName="idProofType">
+                  <option value="">— None —</option>
+                  @for (t of idProofTypes; track t.value) {
+                    <option [value]="t.value">{{ t.label }}</option>
+                  }
+                </select>
+              </div>
+              <div class="col-sm-6 mb-3">
+                <label class="form-label">ID proof number</label>
+                <input type="text" class="form-control" formControlName="idProofNumber" maxlength="60" autocomplete="off"
+                  [class.is-invalid]="form.controls.idProofNumber.touched && form.controls.idProofNumber.invalid" />
+              </div>
+            </div>
+          }
 
           <div class="d-flex justify-content-end gap-2">
             <button type="button" class="btn btn-outline-secondary" (click)="closeForm()">Cancel</button>

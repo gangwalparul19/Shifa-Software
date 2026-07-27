@@ -46,6 +46,14 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     List<OrderEntity> findByOrderStatusOrderByCreatedAtAsc(OrderStatus orderStatus);
 
     /**
+     * All orders in a given payment-verification state, oldest first (FIFO).
+     * Backs the Payment Verifier's queue of prepaid payments awaiting
+     * authenticity checks (product-audit §4.4).
+     */
+    List<OrderEntity> findByPaymentVerificationStatusOrderByCreatedAtAsc(
+            PaymentVerificationStatus paymentVerificationStatus);
+
+    /**
      * All orders in any of the given lifecycle statuses, most recent first. Backs
      * the reconciliation prepaid/COD segregation view over fulfilled orders
      * (Req 18.4).
@@ -79,6 +87,14 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     Optional<OrderEntity> findByIdAndCreatedBy(Long id, Long createdBy);
 
     /**
+     * An order visible to a team lead only when it was created by one of their
+     * assigned salespeople ({@code created_by IN (:createdByIds)}). Backs
+     * team-scoped order detail/invoice access. Callers must not pass an empty
+     * collection (a team lead with no members is short-circuited to "not found").
+     */
+    Optional<OrderEntity> findByIdAndCreatedByIn(Long id, java.util.Collection<Long> createdByIds);
+
+    /**
      * Role-scoped search over name / mobile / order code / id / AWB (Req 22.1).
      * A {@code null} {@code createdBy} disables scoping (admin/accountant); a
      * non-null value restricts to that salesperson's own orders (Req 5.5).
@@ -107,6 +123,38 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             ORDER BY o.created_at DESC
             """, nativeQuery = true)
     List<OrderEntity> findAllScoped(@Param("createdBy") Long createdBy);
+
+    /**
+     * All orders created by any of the given users, most recent first — the
+     * team-lead equivalent of {@link #findAllScoped(Long)}. Callers must pass a
+     * non-empty collection (short-circuit to an empty list when a team lead has
+     * no assigned salespeople).
+     */
+    @Query(value = """
+            SELECT o.* FROM orders o
+            WHERE o.created_by IN (:createdByIds)
+            ORDER BY o.created_at DESC
+            """, nativeQuery = true)
+    List<OrderEntity> findAllScopedIn(@Param("createdByIds") java.util.Collection<Long> createdByIds);
+
+    /**
+     * Role-scoped search restricted to a set of creators (team-lead variant of
+     * {@link #search(String, Long)}). Callers pass a non-empty set of the team's
+     * salesperson ids.
+     */
+    @Query(value = """
+            SELECT DISTINCT o.* FROM orders o
+            LEFT JOIN courier_records cr ON cr.order_id = o.id
+            WHERE o.created_by IN (:createdByIds)
+              AND ( LOWER(o.customer_name)  LIKE CONCAT('%', LOWER(:term), '%')
+                 OR o.customer_mobile       LIKE CONCAT('%', :term, '%')
+                 OR LOWER(o.order_code)     LIKE CONCAT('%', LOWER(:term), '%')
+                 OR CAST(o.id AS CHAR)      LIKE CONCAT('%', :term, '%')
+                 OR LOWER(cr.awb)           LIKE CONCAT('%', LOWER(:term), '%') )
+            ORDER BY o.created_at DESC
+            """, nativeQuery = true)
+    List<OrderEntity> searchIn(@Param("term") String term,
+                               @Param("createdByIds") java.util.Collection<Long> createdByIds);
 
     /**
      * A logged-in customer's order history (Phase B): orders linked to their

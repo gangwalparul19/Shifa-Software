@@ -153,7 +153,18 @@ public class LabelService {
     @Transactional(readOnly = true)
     public byte[] internalLabelPdf(Long orderId) {
         OrderEntity order = requireOrder(orderId);
-        return pdfRenderer.render(contentBuilder.buildInternal(order, company()), logoPng());
+        InternalLabelContent content = contentBuilder.buildInternal(order, company());
+        // Multi-pack (product-audit §4.2): print one label copy per box. Default
+        // package count is 1 → a single label, unchanged from before.
+        int copies = order.getPackageCount();
+        if (copies <= 1) {
+            return pdfRenderer.render(content, logoPng());
+        }
+        List<InternalLabelContent> blocks = new ArrayList<>(copies);
+        for (int i = 0; i < copies; i++) {
+            blocks.add(content);
+        }
+        return pdfRenderer.render(blocks, logoPng());
     }
 
     /**

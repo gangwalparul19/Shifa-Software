@@ -30,6 +30,11 @@ import {
   newViewId,
   persistSavedViews,
 } from './saved-views.util';
+import {
+  ORDER_STATUS_GROUPS,
+  OrderStatusGroupKey,
+  groupForStatus,
+} from './order-status-groups';
 
 /** Sort fields the backend accepts for the admin orders listing. */
 const SORT_FIELDS = new Set([
@@ -44,43 +49,41 @@ const SORT_FIELDS = new Set([
 const TABLE_KEY = 'orders';
 
 /**
- * Coarse lifecycle groups backing the mobile status filter tabs (Req 6.3).
- * These are a presentation-only lens applied client-side over the loaded page;
- * the precise per-status dropdown remains the server-side filter. Pending
- * orders are intentionally triaged on the Approvals screen, so they surface
- * only under "All" here.
+ * A selected status filter: either the "ALL" sentinel or one of the coarse
+ * business-facing lifecycle groups (see {@link OrderStatusGroupKey}). The
+ * grouped status filter is applied SERVER-SIDE (via {@code ?statusGroup=}) so
+ * it is correct across pagination, and it is shared by both the quick tab strip
+ * and the advanced-filter dropdown.
  */
-export type OrderStatusGroup = 'ALL' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
+export type OrderStatusFilter = OrderStatusGroupKey | 'ALL';
 
-/** The order statuses that make up each coarse lifecycle group. */
-const STATUS_GROUP_MEMBERS: Record<Exclude<OrderStatusGroup, 'ALL'>, OrderStatus[]> = {
-  PROCESSING: [
-    OrderStatus.APPROVED,
-    OrderStatus.LABEL_GENERATED,
-    OrderStatus.PACKED,
-    OrderStatus.HANDED_TO_DELIVERY,
-    OrderStatus.COURIER_ASSIGNED,
-    OrderStatus.DISPATCHED,
-    OrderStatus.IN_TRANSIT,
-    OrderStatus.OUT_FOR_DELIVERY,
-  ],
-  COMPLETED: [OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED, OrderStatus.CLOSED],
-  CANCELLED: [
-    OrderStatus.REJECTED,
-    OrderStatus.CANCELLED,
-    OrderStatus.CUSTOMER_REJECTED,
-    OrderStatus.DELIVERY_FAILED,
-    OrderStatus.RTO,
-    OrderStatus.COURIER_LOST,
-  ],
-};
+/**
+ * Colour buckets for the status pill in the detail/mobile views (green =
+ * successful terminal, red = cancelled/failed/returned, amber = everything
+ * still in flight). Distinct from the filter groups — this is display only.
+ */
+const PILL_COMPLETED: OrderStatus[] = [
+  OrderStatus.DELIVERED,
+  OrderStatus.COD_COLLECTED,
+  OrderStatus.CLOSED,
+];
+const PILL_BAD: OrderStatus[] = [
+  OrderStatus.REJECTED,
+  OrderStatus.CANCELLED,
+  OrderStatus.CUSTOMER_REJECTED,
+  OrderStatus.DELIVERY_FAILED,
+  OrderStatus.RTO,
+  OrderStatus.COURIER_LOST,
+];
 
-/** The tabs shown on the orders list, in display order. */
-export const ORDER_STATUS_TABS: { key: OrderStatusGroup; label: string }[] = [
+/**
+ * The quick status tabs shown above the list, in lifecycle order: "All" plus
+ * every business-facing group. Selecting one drives the shared server-side
+ * {@code statusGroup} filter.
+ */
+export const ORDER_STATUS_TABS: { key: OrderStatusFilter; label: string }[] = [
   { key: 'ALL', label: 'All' },
-  { key: 'PROCESSING', label: 'Processing' },
-  { key: 'COMPLETED', label: 'Completed' },
-  { key: 'CANCELLED', label: 'Cancelled' },
+  ...ORDER_STATUS_GROUPS.map((g) => ({ key: g.key as OrderStatusFilter, label: g.label })),
 ];
 
 /**
@@ -138,28 +141,28 @@ export class OrdersComponent implements OnInit, OnDestroy {
   protected readonly OrderStatus = OrderStatus;
   protected readonly PaymentStatus = PaymentStatus;
   protected readonly humanize = humanizeStatus;
-  /** Order-status options for the filter dropdown. */
-  protected readonly statusOptions = Object.values(OrderStatus);
+  /** Grouped status options for the filter dropdown (clubs the raw statuses). */
+  protected readonly statusGroups = ORDER_STATUS_GROUPS;
   protected readonly paymentOptions = Object.values(PaymentStatus);
 
   protected readonly orders = signal<OrderSummary[]>([]);
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
 
-  // --- Mobile status filter tabs (Req 6.3) --------------------------------
+  // --- Status filter tabs (grouped, server-side) --------------------------
   protected readonly statusTabs = ORDER_STATUS_TABS;
-  /** The active coarse lifecycle group; a client-side lens over loaded rows. */
-  protected readonly statusGroup = signal<OrderStatusGroup>('ALL');
-  /** The loaded orders filtered by the active status group (Req 6.1, 6.3). */
-  protected readonly visibleOrders = computed<OrderSummary[]>(() => {
-    const group = this.statusGroup();
-    const rows = this.orders();
-    if (group === 'ALL') {
-      return rows;
-    }
-    const members = new Set<string>(STATUS_GROUP_MEMBERS[group]);
-    return rows.filter((o) => members.has(o.orderStatus));
-  });
+  /**
+   * The currently selected status filter, mirroring the {@code statusGroup}
+   * form control ('' → 'ALL'). Drives the active tab highlight. Filtering itself
+   * is server-side, so the loaded page already only contains matching orders.
+   */
+  protected readonly activeStatusGroup = signal<OrderStatusFilter>('ALL');
+  /**
+   * The orders to render. Filtering is now done server-side (grouped
+   * {@code statusGroup} query param), so this simply surfaces the loaded page —
+   * kept as a named accessor so the template markup is unchanged.
+   */
+  protected readonly visibleOrders = computed<OrderSummary[]>(() => this.orders());
 
   // --- Paging + sort ------------------------------------------------------
   protected readonly page = signal(0);
@@ -171,7 +174,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   // --- Filters ------------------------------------------------------------
   protected readonly search = new FormControl<string>('', { nonNullable: true });
   protected readonly filters = new FormGroup({
-    status: new FormControl<string>('', { nonNullable: true }),
+    statusGroup: new FormControl<string>('', { nonNullable: true }),
     paymentStatus: new FormControl<string>('', { nonNullable: true }),
     from: new FormControl<string>('', { nonNullable: true }),
     to: new FormControl<string>('', { nonNullable: true }),
@@ -205,6 +208,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   // --- Detail drawer ------------------------------------------------------
   protected readonly selectedDetail = signal<OrderDetail | null>(null);
+  /**
+   * Active tab in the order detail drawer so its (long) content is split into
+   * Details / Items / Payment tabs instead of one long scroll. The action
+   * buttons stay pinned below the tabs, visible from any tab.
+   */
+  protected readonly detailTab = signal<'details' | 'items' | 'payment'>('details');
   protected readonly detailLoading = signal(false);
   protected readonly detailError = signal<string | null>(null);
   protected readonly invoiceLoading = signal(false);
@@ -288,20 +297,39 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
     this.search.valueChanges
       .pipe(debounceTime(300), distinctUntilChanged(), takeUntil(this.destroy$))
-      .subscribe(() => this.resetAndLoad());
+      .subscribe((term) => {
+        // A free-text search is global. Don't let an active stage tab hide a
+        // match that lives in another stage (a common trap: searching an order
+        // code while a stage tab is selected shows "no orders in this stage").
+        // Snap the stage filter back to "All" whenever the user is searching.
+        if (term && term.trim() && this.filters.controls.statusGroup.value) {
+          this.filters.controls.statusGroup.setValue('', { emitEvent: false });
+          this.syncActiveStatusGroup();
+          this.updateActiveFilterCount();
+        }
+        this.resetAndLoad();
+      });
 
     this.filters.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => {
+      this.syncActiveStatusGroup();
       this.updateActiveFilterCount();
       this.resetAndLoad();
     });
+    this.syncActiveStatusGroup();
     this.updateActiveFilterCount();
+  }
+
+  /** Mirrors the {@code statusGroup} control into the tab-highlight signal. */
+  private syncActiveStatusGroup(): void {
+    const value = this.filters.controls.statusGroup.value;
+    this.activeStatusGroup.set((value || 'ALL') as OrderStatusFilter);
   }
 
   /** Recomputes how many of the advanced filters (Status/Payment/From/To) are set. */
   private updateActiveFilterCount(): void {
     const f = this.filters.getRawValue();
     this.activeFilterCount.set(
-      [f.status, f.paymentStatus, f.from, f.to].filter((v) => !!v).length,
+      [f.statusGroup, f.paymentStatus, f.from, f.to].filter((v) => !!v).length,
     );
   }
 
@@ -317,12 +345,17 @@ export class OrdersComponent implements OnInit, OnDestroy {
     if (q) {
       this.search.setValue(q, { emitEvent: false });
     }
-    const status = qp.get('status') ?? '';
+    // Accept either the grouped ?statusGroup= or a legacy raw ?status= (mapped
+    // to its group) so dashboard drill-downs and old deep links still land
+    // pre-filtered. But a search deep link (?q=) is global — never pin it to a
+    // single stage, or the searched order (which lives in one stage) would be
+    // hidden under a different stage tab.
+    const statusGroup = q ? '' : (qp.get('statusGroup') ?? groupForStatus(qp.get('status')));
     const paymentStatus = qp.get('paymentStatus') ?? '';
     const from = qp.get('from') ?? '';
     const to = qp.get('to') ?? '';
-    if (status || paymentStatus || from || to) {
-      this.filters.setValue({ status, paymentStatus, from, to }, { emitEvent: false });
+    if (statusGroup || paymentStatus || from || to) {
+      this.filters.setValue({ statusGroup, paymentStatus, from, to }, { emitEvent: false });
     }
   }
 
@@ -340,7 +373,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.service
       .page({
         q: this.search.value,
-        status: f.status || null,
+        statusGroup: f.statusGroup || null,
         paymentStatus: f.paymentStatus || null,
         from: f.from || null,
         to: f.to || null,
@@ -372,9 +405,13 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.load();
   }
 
-  /** Switches the mobile status-group lens (Req 6.3). */
-  setStatusGroup(group: OrderStatusGroup): void {
-    this.statusGroup.set(group);
+  /**
+   * Selects a status group from the quick tab strip. Writes to the shared
+   * {@code statusGroup} filter control ('' for "All"), which triggers a
+   * server-side reload via the filters subscription.
+   */
+  setStatusGroup(group: OrderStatusFilter): void {
+    this.filters.controls.statusGroup.setValue(group === 'ALL' ? '' : group);
   }
 
   goToPage(page: number): void {
@@ -401,13 +438,13 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   clearFilters(): void {
-    this.filters.reset({ status: '', paymentStatus: '', from: '', to: '' });
+    this.filters.reset({ statusGroup: '', paymentStatus: '', from: '', to: '' });
     this.search.setValue('');
   }
 
   hasFilters(): boolean {
     const f = this.filters.getRawValue();
-    return !!(this.search.value || f.status || f.paymentStatus || f.from || f.to);
+    return !!(this.search.value || f.statusGroup || f.paymentStatus || f.from || f.to);
   }
 
   // --- Bulk selection -----------------------------------------------------
@@ -581,15 +618,19 @@ export class OrdersComponent implements OnInit, OnDestroy {
   /** Applies a saved view: sets the filters + sort, then reloads from page 0. */
   applyView(view: SavedView): void {
     this.search.setValue(view.q ?? '', { emitEvent: false });
+    // Prefer a stored group; fall back to mapping a legacy raw status onto its group.
+    const statusGroup = view.statusGroup ?? groupForStatus(view.status);
     this.filters.setValue(
       {
-        status: view.status ?? '',
+        statusGroup,
         paymentStatus: view.paymentStatus ?? '',
         from: view.from ?? '',
         to: view.to ?? '',
       },
       { emitEvent: false },
     );
+    this.syncActiveStatusGroup();
+    this.updateActiveFilterCount();
     this.sort.set(this.parseSort(view.sort));
     this.resetAndLoad();
   }
@@ -617,7 +658,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
       id: newViewId(),
       name,
       q: this.search.value ?? '',
-      status: f.status,
+      status: '',
+      statusGroup: f.statusGroup,
       paymentStatus: f.paymentStatus,
       from: f.from,
       to: f.to,
@@ -660,6 +702,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   openDetail(order: OrderSummary): void {
     this.detailLoading.set(true);
     this.detailError.set(null);
+    this.detailTab.set('details');
     this.selectedDetail.set(null);
     this.revokeScreenshot();
     this.screenshotMissing.set(false);
@@ -748,13 +791,41 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * (processing steps + pending approval).
    */
   statusPillClass(status: OrderStatus): string {
-    if (STATUS_GROUP_MEMBERS.COMPLETED.includes(status)) {
+    if (PILL_COMPLETED.includes(status)) {
       return 'is-green';
     }
-    if (STATUS_GROUP_MEMBERS.CANCELLED.includes(status)) {
+    if (PILL_BAD.includes(status)) {
       return 'is-red';
     }
     return 'is-amber';
+  }
+
+  /** Human label for the payment authenticity-verification pill (product-audit §4.4). */
+  paymentVerificationLabel(status: string | null | undefined): string {
+    switch (status) {
+      case 'VERIFIED':
+        return 'Payment verified';
+      case 'REJECTED':
+        return 'Payment rejected';
+      case 'PENDING':
+        return 'Awaiting verification';
+      default:
+        return '';
+    }
+  }
+
+  /** Tabler badge tone for the payment-verification pill. */
+  paymentVerificationClass(status: string | null | undefined): string {
+    switch (status) {
+      case 'VERIFIED':
+        return 'bg-green-lt';
+      case 'REJECTED':
+        return 'bg-red-lt';
+      case 'PENDING':
+        return 'bg-yellow-lt';
+      default:
+        return 'bg-secondary-lt';
+    }
   }
 
   /** Subtotal = sum of line totals (Money is a decimal string). */

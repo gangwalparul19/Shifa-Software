@@ -15,9 +15,19 @@ describe('core model enums (PBT harness)', () => {
   const orderStatuses = Object.values(OrderStatus);
   const paymentStatuses = Object.values(PaymentStatus);
 
-  it('OrderStatus defines exactly the 15 lifecycle states', () => {
-    expect(orderStatuses).toHaveLength(15);
-    expect(new Set(orderStatuses).size).toBe(15);
+  it('OrderStatus defines exactly the 18 lifecycle states', () => {
+    expect(orderStatuses).toHaveLength(18);
+    expect(new Set(orderStatuses).size).toBe(18);
+  });
+
+  it('every OrderStatus value equals its backend enum name (UPPER_SNAKE wire format)', () => {
+    // The values must match the backend enum name() Jackson serialises, so status
+    // comparisons (colours, return eligibility, grouping) line up with API data.
+    for (const value of orderStatuses) {
+      expect(value).toMatch(/^[A-Z0-9_]+$/);
+    }
+    expect(OrderStatus.PENDING_ADMIN_APPROVAL).toBe('PENDING_ADMIN_APPROVAL');
+    expect(OrderStatus.COD_COLLECTED).toBe('COD_COLLECTED');
   });
 
   it('PaymentStatus defines exactly FULLY_PAID / PARTIALLY_PAID / COD', () => {
