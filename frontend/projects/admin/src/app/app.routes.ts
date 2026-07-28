@@ -33,6 +33,7 @@ import { PaymentsComponent } from './payments/payments.component';
 import { AnnouncementsComponent } from './announcements/announcements.component';
 import { AnalyticsComponent } from './analytics/analytics.component';
 import { TeamComponent } from './team/team.component';
+import { WhatsappTemplatesComponent } from './whatsapp/whatsapp-templates.component';
 import { TeamPerformanceComponent } from './team/team-performance.component';
 import { LeaderboardComponent } from './leaderboard/leaderboard.component';
 
@@ -63,6 +64,20 @@ export const salespersonGuard = createRoleGuard(
 );
 
 /**
+ * Order entry (New Order) — Salesperson, Admin AND Team Lead. A team lead may
+ * punch orders on behalf of their team; the backend attributes the order to the
+ * lead and scopes it back to them. Separate from {@link salespersonGuard} so a
+ * team lead does NOT gain access to the salesperson-only Leads/Products pages.
+ */
+export const orderEntryGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.SALESPERSON,
+  Role.TEAM_LEAD,
+);
+
+/**
  * Reports are open to Admin, Accountant AND Salesperson — the backend scopes a
  * salesperson to their own orders and blocks money/operations reports, so a
  * salesperson sees only their own sales/product/customer reports.
@@ -81,6 +96,18 @@ export const accountantGuard = createRoleGuard(
   FORBIDDEN_PATH,
   Role.ADMIN,
   Role.ACCOUNTANT,
+);
+
+/**
+ * WhatsApp template management (V44) — ADMIN, ACCOUNTANT and TEAM_LEAD may add
+ * and customize the one-tap message templates staff send.
+ */
+export const whatsappTemplatesGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.ACCOUNTANT,
+  Role.TEAM_LEAD,
 );
 
 /**
@@ -139,8 +166,9 @@ export const routes: Routes = [
         // Salesperson/admin order entry (Req 7). Registered before the
         // all-orders view; the server enforces the same role restriction.
         path: 'orders/new',
+        // orderEntryGuard allows Team Lead in addition to Salesperson/Admin.
         component: NewOrderComponent,
-        canActivate: [salespersonGuard],
+        canActivate: [orderEntryGuard],
       },
       {
         // All-orders view; any staff may reach it (the backend scopes a
@@ -304,6 +332,12 @@ export const routes: Routes = [
         path: 'announcements',
         component: AnnouncementsComponent,
         canActivate: [adminOnlyGuard],
+      },
+      {
+        // Customizable WhatsApp message templates (ADMIN / ACCOUNTANT / TEAM_LEAD, V44).
+        path: 'whatsapp-templates',
+        component: WhatsappTemplatesComponent,
+        canActivate: [whatsappTemplatesGuard],
       },
       {
         // Analytics suite: targets & incentives, retention, forecasting

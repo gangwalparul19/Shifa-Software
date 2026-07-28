@@ -73,15 +73,58 @@ public class SalespersonScopeResolver {
      *
      * <ul>
      *   <li>{@code SALESPERSON} → a singleton of their own id (their own orders);</li>
-     *   <li>{@code TEAM_LEAD} → the ids of the salespeople assigned to them (may
-     *       be empty — a lead with no team sees nothing, never everything);</li>
+     *   <li>{@code TEAM_LEAD} → the ids of the salespeople assigned to them PLUS
+     *       their own id (a team lead may also punch orders themselves, and must
+     *       see those). Always at least their own id — a lead is scoped to their
+     *       team + self, never to everything.</li>
      *   <li>every other role → empty {@link Optional} (unscoped).</li>
      * </ul>
      *
      * <p>A present-but-empty list means "scoped to nothing" and callers must
-     * return no rows (NOT treat it as unscoped).
+     * return no rows (NOT treat it as unscoped). A team lead's list is never
+     * empty (it always contains their own id).
      */
     public Optional<List<Long>> creatorScope(AuthPrincipal principal) {
+        Objects.requireNonNull(principal, "principal");
+        return switch (principal.role()) {
+            case SALESPERSON -> Optional.of(List.of(principal.userId()));
+            case TEAM_LEAD -> Optional.of(teamScope(principal.userId()));
+            default -> Optional.empty();
+        };
+    }
+
+    /**
+     * The creator ids a team lead may see: the salespeople assigned to them plus
+     * the lead's own id (so orders the lead punches are visible to them). The own
+     * id is included even when the team is empty or no user lookup is available,
+     * so a team lead is always scoped to at least themselves — never unscoped.
+     */
+    private List<Long> teamScope(Long teamLeadId) {
+        java.util.LinkedHashSet<Long> ids = new java.util.LinkedHashSet<>();
+        if (teamLeadId != null) {
+            ids.add(teamLeadId);
+        }
+        if (userRepository != null && teamLeadId != null) {
+            ids.addAll(userRepository.findIdsByTeamLeadId(teamLeadId));
+        }
+        return List.copyOf(ids);
+    }
+
+    /**
+     * The team a lead <em>manages</em> — the assigned salespeople ONLY, excluding
+     * the lead's own id. Distinct from {@link #creatorScope(AuthPrincipal)} (which
+     * includes the lead's own orders for order-visibility): performance rollups
+     * treat a team lead as the manager of their salespeople, not as a member of
+     * their own team.
+     *
+     * <ul>
+     *   <li>{@code SALESPERSON} → a singleton of their own id;</li>
+     *   <li>{@code TEAM_LEAD} → the ids of the salespeople assigned to them (may
+     *       be empty — a lead with no team manages no one);</li>
+     *   <li>every other role → empty {@link Optional} (unscoped — whole force).</li>
+     * </ul>
+     */
+    public Optional<List<Long>> teamMemberScope(AuthPrincipal principal) {
         Objects.requireNonNull(principal, "principal");
         return switch (principal.role()) {
             case SALESPERSON -> Optional.of(List.of(principal.userId()));

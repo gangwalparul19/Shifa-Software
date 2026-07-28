@@ -8,6 +8,13 @@ spring:
     name: shifa-oms
   profiles:
     default: local
+  datasource:
+    hikari:
+      # Force utf8mb4 on every pooled connection (character_set_client/connection/
+      # results) so 4-byte characters — emoji in WhatsApp templates — read back
+      # intact, independent of the JDBC characterEncoding negotiation. Without this
+      # the value is stored correctly (utf8mb4 column) but returned mangled ("�").
+      connection-init-sql: "SET NAMES utf8mb4"
   servlet:
     multipart:
       # Payment screenshots from phones are commonly 2-5 MB; the Spring default

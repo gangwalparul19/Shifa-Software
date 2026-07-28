@@ -186,9 +186,9 @@
         <!-- One-tap WhatsApp (click-to-chat, message pre-filled) -->
         @if (profile.summary.mobile) {
           <div class="cust-dr__wa mb-3">
-            @for (t of whatsappTemplates; track t.key) {
+            @for (t of whatsappTemplates(); track t.key) {
               <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsApp(profile, t.key)">
-                <i class="ti {{ t.icon }} me-1"></i>{{ t.label }}
+                <i class="ti {{ t.icon }} me-1"></i>{{ t.title }}
               </button>
             }
           </div>

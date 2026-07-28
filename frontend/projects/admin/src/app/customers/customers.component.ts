@@ -16,7 +16,8 @@ import { SortableHeaderComponent } from '../shared/sortable-header.component';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
 import { toggleSort, sortParam } from '../shared/sort.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
-import { WHATSAPP_TEMPLATES, openWhatsApp, whatsAppMessage } from '../shared/whatsapp.util';
+import { WHATSAPP_TEMPLATES, openWhatsApp, renderTemplate, whatsAppMessage } from '../shared/whatsapp.util';
+import { WhatsappTemplate, WhatsappTemplatesService } from '../whatsapp/whatsapp-templates.service';
 
 /** Sort fields the backend accepts for the admin customers listing. */
 const SORT_FIELDS = new Set(['totalSpent', 'orderCount', 'lastOrderAt', 'firstOrderAt', 'mobile']);
@@ -49,13 +50,33 @@ const TABLE_KEY = 'customers';
 export class CustomersComponent implements OnInit, OnDestroy {
   private readonly service = inject(CustomersService);
   private readonly toasts = inject(ToastService);
+  private readonly waTemplates = inject(WhatsappTemplatesService);
 
   // Expose risk badge helpers to the template.
   protected readonly riskPillClass = riskPillClass;
   protected readonly riskLabel = riskLabel;
 
-  /** One-tap WhatsApp templates for the Customer 360 drawer. */
-  protected readonly whatsappTemplates = WHATSAPP_TEMPLATES;
+  /**
+   * One-tap WhatsApp templates for the Customer 360 drawer. Loaded from the
+   * server-managed set (V44); falls back to the built-in defaults.
+   */
+  protected readonly whatsappTemplates = signal<WhatsappTemplate[] | typeof WHATSAPP_TEMPLATES>(
+    WHATSAPP_TEMPLATES,
+  );
+
+  /** Loads the active server-managed WhatsApp templates (non-fatal on error). */
+  private loadWhatsappTemplates(): void {
+    this.waTemplates.active().subscribe({
+      next: (list) => {
+        if (list && list.length > 0) {
+          this.whatsappTemplates.set(list);
+        }
+      },
+      error: () => {
+        /* keep built-in defaults */
+      },
+    });
+  }
 
   /**
    * The most recent order id to reorder from (first history row that carries an
@@ -67,14 +88,14 @@ export class CustomersComponent implements OnInit, OnDestroy {
 
   /** Opens WhatsApp for the open customer with a pre-filled template message. */
   sendWhatsApp(profile: CustomerProfile, key: string): void {
-    const ok = openWhatsApp(
-      profile.summary.mobile,
-      whatsAppMessage(key, {
-        customerName: profile.summary.name,
-        total: profile.summary.totalSpent,
-        remaining: profile.metrics.outstanding,
-      }),
-    );
+    const ctx = {
+      customerName: profile.summary.name,
+      total: profile.summary.totalSpent,
+      remaining: profile.metrics.outstanding,
+    };
+    const tpl = this.whatsappTemplates().find((t) => t.key === key);
+    const message = tpl ? renderTemplate(tpl.body, ctx) : whatsAppMessage(key, ctx);
+    const ok = openWhatsApp(profile.summary.mobile, message);
     if (!ok) {
       this.toasts.error('No valid mobile number to message on WhatsApp.');
     }
@@ -126,6 +147,7 @@ export class CustomersComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.load();
+    this.loadWhatsappTemplates();
     this.search.valueChanges
       .pipe(debounceTime(300), distinctUntilChanged(), takeUntil(this.destroy$))
       .subscribe(() => this.resetAndLoad());

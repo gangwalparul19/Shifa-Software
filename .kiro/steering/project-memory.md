@@ -963,3 +963,108 @@ were missing**, so both roles got 403 on GET `/api/me/profile` (and `/change-req
 class `@PreAuthorize`. Verified: `EndpointRoleGuardIntegrationTest` **15/15 green** on a clean 532-source compile.
 Backend-only, no migration. LESSON: when a role is added (V42 PAYMENT_VERIFIER, V43 TEAM_LEAD), audit EVERY
 `@PreAuthorize` a shell-reachable role hits on login — dashboard summary AND my-profile both missed the new roles.
+
+## Team Lead can now punch orders (order entry) — implemented
+Client: a TEAM_LEAD should also be able to add a new order (not just oversee). Made order entry available to
+team leads; the order is attributed to the lead (createdBy = teamLeadId) and scoped back to them.
+- **Scope semantics split** (`SalespersonScopeResolver`): `creatorScope` now ALSO includes the team lead's OWN id
+  (team members + self) so orders a lead punches are visible in their Orders list/detail/invoice/dashboard — a lead
+  is always scoped to at least themselves, never unscoped. Added a SEPARATE `teamMemberScope` (assigned salespeople
+  ONLY, excludes self) for **team-performance** rollups (a lead is the MANAGER of their team, not a member of it).
+  `TeamPerformanceService.resolveMemberIds` switched to `teamMemberScope` (keeps its 2 tests green unchanged).
+  `TeamScopeResolverTest` updated: team-lead `creatorScope` = [self, ...members]; empty team = [self]; no-arg = [self].
+- **Backend `OrderController`**: added `TEAM_LEAD` to `@PreAuthorize` on POST `` (create), GET `/products`,
+  `/products/top`, `/products/related`, POST `/payment-screenshots`, GET `/duplicate-check`, `/last-by-mobile`
+  (was SALESPERSON,ADMIN). `createSalespersonOrder` already role-agnostic (uses actor.userId()), so no service change.
+- **Frontend**: new `orderEntryGuard` (ADMIN/SALESPERSON/TEAM_LEAD) on `/orders/new` (kept SEPARATE from
+  `salespersonGuard` so a team lead does NOT gain Leads/Products access). `orders.component.canCreateOrder` +
+  shell "New Order" nav link roles + team-lead dashboard now shows a **New Order** primary CTA alongside Team Orders.
+- Verified: TeamScopeResolver 6/6, TeamPerformanceService 2/2, EndpointRoleGuard 15/15, OrderService 22/22 green
+  (clean 532-source compile); admin `build:admin` bundle complete. No migration. Bundle with next deploy.
+
+## Customizable WhatsApp templates (V44) + Orders quick-select by date — implemented
+Two client asks in one batch. Backend clean (538 sources), EndpointRoleGuard 15/15 (V44 applies cleanly via
+Flyway on boot), admin `build:admin` complete. **Highest migration is now V44.** Not yet deployed.
+
+### 1) Customizable WhatsApp message templates (ADMIN / ACCOUNTANT / TEAM_LEAD manage; senders use)
+Previously the 4 quick-message templates were HARD-CODED in `shared/whatsapp.util.ts`. Now server-managed + editable.
+- **Migration V44** (`V44__whatsapp_templates.sql`): `whatsapp_templates` (id, template_key UNIQUE, title, body
+  VARCHAR(2000), icon, active, sort_order, created_by/_name, timestamps), seeded with the 4 built-in defaults
+  (confirm/address/payment/followup) so behaviour is preserved.
+- **Backend `com.shifa.oms.whatsapp`**: `WhatsappTemplate` entity + `WhatsappTemplateRepository`
+  (findByActiveTrueOrderBySortOrderAscIdAsc / findAllByOrderBySortOrderAscIdAsc / existsByTemplateKey) +
+  `WhatsappTemplateService` (list/create/update/delete; auto-generates a unique slug key from the title; audits via
+  new `AuditActions.WHATSAPP_TEMPLATE_*` / `ENTITY_WHATSAPP_TEMPLATE`) + `WhatsappTemplateController`
+  `/api/whatsapp-templates`: `GET ""` active (readers = SALESPERSON/ADMIN/ACCOUNTANT/TEAM_LEAD), `GET "/all"` +
+  `POST ""` + `PUT "/{id}"` + `DELETE "/{id}"` (managers = ADMIN/ACCOUNTANT/TEAM_LEAD). DTOs
+  `WhatsappTemplateResponse`/`WhatsappTemplateRequest`. No SecurityConfig change (`/api/**` authenticated + method
+  security).
+- **Body placeholders** rendered CLIENT-SIDE: `{name}` (first name), `{customerName}`, `{orderCode}`, `{total}`,
+  `{remaining}`, `{brand}`. New pure `renderTemplate(body, ctx)` in `shared/whatsapp.util.ts` (substitutes tokens,
+  collapses spaces left by empty tokens). Kept `whatsAppMessage(key,ctx)` + `WHATSAPP_TEMPLATES` (now carry `title`+
+  `body`) as the built-in FALLBACK (used until the API list loads, and by the dashboard win-back/reorder nudges).
+- **Frontend**: `whatsapp/whatsapp-templates.service.ts` (ApiClient CRUD) + `WhatsappTemplatesComponent`
+  (route `/whatsapp-templates`, new `whatsappTemplatesGuard` = ADMIN/ACCOUNTANT/TEAM_LEAD; nav link "WhatsApp
+  templates" under Account & Settings with matching `roles`). Management page = cards + add/edit drawer (title, icon,
+  body textarea with insertable placeholder chips, active toggle, sort order, LIVE preview via `renderTemplate`).
+  Orders drawer + Customer 360 drawer now LOAD active templates from the API into a signal (`whatsappTemplates()`,
+  fallback to defaults) and render via `renderTemplate(t.body, ctx)`; `t.label`→`t.title` in both HTMLs; their
+  `sendWhatsApp(x, key)` looks the template up by key (falls back to `whatsAppMessage`).
+- NOTE: interface `WhatsAppTemplate` renamed field `label`→`title` and added `body` (aligns with API DTO).
+
+### 2) Orders: bulk "Quick select by date" (Today / Yesterday / This week / This month / All on page)
+The Orders bulk bar (`orders/orders.component.*`) now shows whenever the page has orders (was: only when
+`selectionCount>0`) and carries a **Quick select** button group: `selectByDate(bucket)` adds every LOADED order whose
+`createdAt` falls in the bucket to the selection (client-side over the current page, mirroring select-all-on-page;
+backend still authorises + skips ineligible on the actual bulk approve/pack/label action). New helper
+`matchesDateBucket(iso, bucket)` (local-time day/week[Mon-start]/month). When nothing is selected the bar shows the
+quick-select + a hint; when a selection exists it shows the count + Approve/Mark-packed/Print-labels/Clear as before.
+
+## WhatsApp templates: richer emoji copy + emoji support verified (V45) — implemented
+Client: the seeded WhatsApp messages were too short and had no emoji. Enriched all four defaults with warmer,
+longer, multi-line, emoji-rich copy (🌿🙏📦🚚💚📍🏙️📮🕒💰🧾✨🍃😊). **Highest migration is now V45.**
+- **Emoji support (verified end-to-end)**: the `whatsapp_templates.body` column is `utf8mb4` (V44) and the JDBC URL
+  uses `characterEncoding=UTF-8` → Connector/J 8 negotiates `utf8mb4` on the wire, so 4-byte emoji persist. Proof: the
+  V45 emoji `UPDATE`s applied cleanly on Flyway boot (a 3-byte-`utf8` connection would throw "Incorrect string value").
+- **Migration V45** (`V45__whatsapp_templates_richer_copy.sql`): UPDATEs the 4 built-in templates by `template_key`
+  (did NOT edit the already-applied V44 seed — Flyway rule). Bodies use literal newlines inside the quoted strings for
+  multi-line messages; placeholders unchanged.
+- **Frontend fallback** (`shared/whatsapp.util.ts` `WHATSAPP_TEMPLATES`) updated to the SAME richer emoji bodies (used
+  until the API list loads + by the dashboard win-back/reorder nudges). `renderTemplate` only collapses runs of
+  spaces/tabs, so the intentional `\n\n` line breaks are preserved.
+- Verified: EndpointRoleGuard 15/15 (V45 applied), admin `build:admin` complete. Not yet deployed (bundle with the
+  V44 templates feature + team-lead order entry + dashboard fixes).
+
+## Fix: WhatsApp emoji rendered as "�" (garbled) — JDBC results charset, not storage
+Symptom: a sent WhatsApp message showed `�` where every emoji should be (e.g. "Hi Parul! � Thank you…").
+Diagnosis (don't guess — verified against the live local DB): the `whatsapp_templates.body` column is
+`utf8mb4_unicode_ci` and the stored bytes are CORRECT 4-byte UTF-8 (`HEX(...)` → `...2120F09F8CBF` = "! 🌿"), and the
+V45 migration file itself is valid UTF-8 (`F0 9F 8C BF`). So storage + migration were fine; the corruption was on the
+**READ path** — the JDBC connection returned results in a non-utf8mb4 charset (the URL's `characterEncoding=UTF-8`
+didn't force `character_set_results=utf8mb4`), so 4-byte emoji came back mangled.
+- **Fix**: added `spring.datasource.hikari.connection-init-sql: "SET NAMES utf8mb4"` to base `application.yml` (applies
+  to LOCAL + PROD; merges with prod's existing hikari.maximum-pool-size). `SET NAMES utf8mb4` sets
+  character_set_client/connection/**results** = utf8mb4 on every pooled connection, so 4-byte emoji read back intact.
+- **No data/migration change** — the stored data was already correct. **Requires a backend RESTART** to take effect
+  (config change). Verified: EndpointRoleGuard 15/15 boots cleanly with the init SQL (Hikari accepts it).
+- Lesson: "stored fine but displays as �" = read/results charset, not the column or the write. Check
+  `HEX(column)` before assuming storage corruption.
+
+## WhatsApp emoji "�" ROOT CAUSE = WhatsApp Desktop click-to-chat handoff mangles 4-byte emoji (V46 fix)
+After the SET NAMES utf8mb4 fix, exhaustive tracing PROVED the whole app chain is correct: DB stores 🌿 as
+`F0 9F 8C BF` (verified `HEX()`), the live API returns it correctly (as JSON `\uD83C\uDF3F`, confirmed by an
+authenticated curl of the running backend), the built bundle stores it as `\u{1F33F}`, and a Node replay of the exact
+`renderTemplate`+`encodeURIComponent` produced a correct `wa.me` URL (`%F0%9F%8C%BF`). Yet WhatsApp **Desktop
+(Windows)** still showed `�` in the SENT message. **Root cause: the `wa.me`/`window.open` → WhatsApp Desktop
+click-to-chat handoff on Windows corrupts 4-byte "astral" emoji (U+1Fxxx) into U+FFFD (`�`) — and that garbled text
+is what the CUSTOMER receives.** Tell-tale: in the user's screenshot `₹` (U+20B9) and `—` (U+2014), both **3-byte**
+BMP chars, rendered fine while every 4-byte emoji (🌿🙏📦🚚💚) became `�`.
+- **Fix (V46 + frontend fallback)**: decorate the default templates with **basic-plane (≤3-byte) symbols only**
+  (`☘ ✅ ✨ ❤ ☺ •`) which survive the handoff exactly like `₹` did. `V46__whatsapp_templates_bmp_safe_symbols.sql`
+  UPDATEs the 4 seeds; `shared/whatsapp.util.ts` `WHATSAPP_TEMPLATES` kept in sync. Managers can still add any emoji
+  via the templates editor (they render on mobile; may mangle on WhatsApp Desktop for Windows).
+- Updated `WhatsappTemplateEncodingIT` to assert ☘ (U+2618) round-trips. Verified: encoding IT green (V46 applied),
+  admin `build:admin` complete. **Highest migration is now V46.**
+- LESSON: `�` in a SENT WhatsApp message from a click-to-chat link = the wa.me→Desktop handoff dropping 4-byte
+  emoji, NOT a DB/app bug. Use ≤3-byte BMP symbols for click-to-chat text that must be reliable on WhatsApp Desktop.
+- Leftover regression asset kept: `WhatsappTemplateEncodingIT` (@SpringBootTest, needs local DB + seeded templates).

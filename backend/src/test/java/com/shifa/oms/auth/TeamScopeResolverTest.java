@@ -32,22 +32,21 @@ class TeamScopeResolverTest {
     }
 
     @Test
-    void teamLeadIsScopedToTheirAssignedSalespeople() {
+    void teamLeadIsScopedToTheirAssignedSalespeoplePlusSelf() {
         when(userRepository.findIdsByTeamLeadId(5L)).thenReturn(List.of(11L, 12L, 13L));
 
+        // Own id first (the lead may punch orders themselves), then the team.
         assertThat(resolver.creatorScope(principal(5L, Role.TEAM_LEAD)))
-                .contains(List.of(11L, 12L, 13L));
+                .contains(List.of(5L, 11L, 12L, 13L));
     }
 
     @Test
-    void teamLeadWithNoTeamIsScopedToNothing_notEverything() {
+    void teamLeadWithNoTeamIsScopedToSelfOnly_notEverything() {
         when(userRepository.findIdsByTeamLeadId(5L)).thenReturn(List.of());
 
-        // Present-but-empty: the caller must return no rows (NOT unscoped).
+        // A lead with no team still sees their own orders, but never everything.
         assertThat(resolver.creatorScope(principal(5L, Role.TEAM_LEAD)))
-                .isPresent()
-                .get().asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.list(Long.class))
-                .isEmpty();
+                .contains(List.of(5L));
     }
 
     @Test
@@ -66,13 +65,11 @@ class TeamScopeResolverTest {
     }
 
     @Test
-    void noArgResolverScopesTeamLeadToNothing() {
+    void noArgResolverScopesTeamLeadToSelfOnly() {
         // The no-arg (test/legacy) resolver has no user lookup, so a team lead is
-        // safely scoped to nothing rather than accidentally unscoped.
+        // safely scoped to just their own id rather than accidentally unscoped.
         SalespersonScopeResolver bare = new SalespersonScopeResolver();
         assertThat(bare.creatorScope(principal(5L, Role.TEAM_LEAD)))
-                .isPresent()
-                .get().asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.list(Long.class))
-                .isEmpty();
+                .contains(List.of(5L));
     }
 }

@@ -174,32 +174,50 @@
   }
 </div>
 
-<!-- Bulk actions bar -->
-@if (selectionCount() > 0) {
+<!-- Bulk actions bar (quick-select is always available when there are orders) -->
+@if (orders().length > 0) {
   <div class="card mb-3 shifa-bulkbar anim-fade-up">
     <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
-      <span class="fw-medium">
-        <i class="ti ti-checks me-1"></i>{{ selectionCount() }} selected
-      </span>
-      <div class="btn-list ms-auto flex-wrap">
-        <button type="button" class="btn btn-sm btn-primary" (click)="approveSelected()" [disabled]="bulkBusy()">
-          <i class="ti ti-check me-1"></i> Approve selected
-        </button>
-        <button type="button" class="btn btn-sm btn-outline-primary" (click)="markPackedSelected()" [disabled]="bulkBusy()">
-          <i class="ti ti-package me-1"></i> Mark packed selected
-        </button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" (click)="printLabelsSelected()" [disabled]="bulkBusy()">
-          @if (bulkBusy()) {
-            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-          } @else {
-            <i class="ti ti-printer me-1"></i>
-          }
-          Print labels selected
-        </button>
-        <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="clearSelection()" [disabled]="bulkBusy()">
-          Clear
-        </button>
+      <!-- Quick select by date -->
+      <div class="d-flex align-items-center flex-wrap gap-2">
+        <span class="text-secondary small"><i class="ti ti-calendar-check me-1"></i>Quick select:</span>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Quick select orders by date">
+          <button type="button" class="btn btn-outline-secondary" (click)="selectByDate('today')">Today</button>
+          <button type="button" class="btn btn-outline-secondary" (click)="selectByDate('yesterday')">Yesterday</button>
+          <button type="button" class="btn btn-outline-secondary" (click)="selectByDate('week')">This week</button>
+          <button type="button" class="btn btn-outline-secondary" (click)="selectByDate('month')">This month</button>
+          <button type="button" class="btn btn-outline-secondary" (click)="selectByDate('all')">All on page</button>
+        </div>
       </div>
+
+      @if (selectionCount() > 0) {
+        <span class="fw-medium ms-2">
+          <i class="ti ti-checks me-1"></i>{{ selectionCount() }} selected
+        </span>
+        <div class="btn-list ms-auto flex-wrap">
+          <button type="button" class="btn btn-sm btn-primary" (click)="approveSelected()" [disabled]="bulkBusy()">
+            <i class="ti ti-check me-1"></i> Approve selected
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-primary" (click)="markPackedSelected()" [disabled]="bulkBusy()">
+            <i class="ti ti-package me-1"></i> Mark packed selected
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="printLabelsSelected()" [disabled]="bulkBusy()">
+            @if (bulkBusy()) {
+              <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            } @else {
+              <i class="ti ti-printer me-1"></i>
+            }
+            Print labels selected
+          </button>
+          <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="clearSelection()" [disabled]="bulkBusy()">
+            Clear
+          </button>
+        </div>
+      } @else {
+        <span class="text-secondary small ms-auto d-none d-md-inline">
+          Pick a date range or tick rows, then approve / mark packed / print labels.
+        </span>
+      }
     </div>
   </div>
 }
@@ -462,9 +480,9 @@
           <div class="shifa-od__wa">
             <span class="shifa-od__label mb-1"><i class="ti ti-brand-whatsapp me-1"></i>Quick WhatsApp</span>
             <div class="shifa-od__wa-actions">
-              @for (t of whatsappTemplates; track t.key) {
+              @for (t of whatsappTemplates(); track t.key) {
                 <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsApp(order, t.key)">
-                  <i class="ti {{ t.icon }} me-1"></i>{{ t.label }}
+                  <i class="ti {{ t.icon }} me-1"></i>{{ t.title }}
                 </button>
               }
             </div>

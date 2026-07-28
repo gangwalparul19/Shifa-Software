@@ -24,7 +24,8 @@ import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { toggleSort, sortParam } from '../shared/sort.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
-import { WHATSAPP_TEMPLATES, openWhatsApp, whatsAppMessage } from '../shared/whatsapp.util';
+import { WHATSAPP_TEMPLATES, openWhatsApp, renderTemplate, whatsAppMessage } from '../shared/whatsapp.util';
+import { WhatsappTemplate, WhatsappTemplatesService } from '../whatsapp/whatsapp-templates.service';
 import {
   SavedView,
   loadSavedViews,
@@ -122,10 +123,11 @@ export class OrdersComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly auth = inject(AuthService);
   protected readonly events = inject(AdminEventsService);
+  private readonly waTemplates = inject(WhatsappTemplatesService);
 
-  /** Whether the current user may punch a new order (SALESPERSON + ADMIN, Req 7). */
+  /** Whether the current user may punch a new order (SALESPERSON + ADMIN + TEAM_LEAD, Req 7). */
   protected readonly canCreateOrder = computed(() =>
-    this.auth.hasAnyRole(Role.SALESPERSON, Role.ADMIN),
+    this.auth.hasAnyRole(Role.SALESPERSON, Role.ADMIN, Role.TEAM_LEAD),
   );
 
   /** Creating a return is ADMIN-only (Set B — Feature 2, mutations = ADMIN). */
@@ -207,20 +209,40 @@ export class OrdersComponent implements OnInit, OnDestroy {
     return rows.every((o) => sel.has(o.id));
   });
 
-  /** One-tap WhatsApp message templates for the order detail drawer. */
-  protected readonly whatsappTemplates = WHATSAPP_TEMPLATES;
+  /**
+   * One-tap WhatsApp message templates for the order detail drawer. Loaded from
+   * the server-managed set (V44) on init; falls back to the built-in defaults
+   * until they arrive (or if the request fails).
+   */
+  protected readonly whatsappTemplates = signal<WhatsappTemplate[] | typeof WHATSAPP_TEMPLATES>(
+    WHATSAPP_TEMPLATES,
+  );
+
+  /** Loads the active server-managed WhatsApp templates (non-fatal on error). */
+  private loadWhatsappTemplates(): void {
+    this.waTemplates.active().subscribe({
+      next: (list) => {
+        if (list && list.length > 0) {
+          this.whatsappTemplates.set(list);
+        }
+      },
+      error: () => {
+        /* keep built-in defaults */
+      },
+    });
+  }
 
   /** Opens WhatsApp for the order's customer with a pre-filled template message. */
   sendWhatsApp(order: OrderDetail, key: string): void {
-    const ok = openWhatsApp(
-      order.customerMobile,
-      whatsAppMessage(key, {
-        customerName: order.customerName,
-        orderCode: order.orderCode,
-        total: order.totalAmount,
-        remaining: order.remainingAmount,
-      }),
-    );
+    const ctx = {
+      customerName: order.customerName,
+      orderCode: order.orderCode,
+      total: order.totalAmount,
+      remaining: order.remainingAmount,
+    };
+    const tpl = this.whatsappTemplates().find((t) => t.key === key);
+    const message = tpl ? renderTemplate(tpl.body, ctx) : whatsAppMessage(key, ctx);
+    const ok = openWhatsApp(order.customerMobile, message);
     if (!ok) {
       this.toasts.error('No valid mobile number to message on WhatsApp.');
     }
@@ -312,6 +334,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.initFiltersFromQueryParams();
     this.savedViews.set(loadSavedViews());
     this.load();
+    this.loadWhatsappTemplates();
     // Reuse the shell's singleton SSE stream (idempotent; no second source).
     this.events.connect();
 
@@ -497,6 +520,60 @@ export class OrdersComponent implements OnInit, OnDestroy {
       }
       return next;
     });
+  }
+
+  /**
+   * Adds every currently-loaded order whose {@code createdAt} falls in the given
+   * date bucket to the selection (Today / Yesterday / This week / This month /
+   * All on page). Operates on the loaded page (like select-all-on-page); the
+   * backend authorises + skips ineligible rows when a bulk action runs.
+   */
+  selectByDate(bucket: 'today' | 'yesterday' | 'week' | 'month' | 'all'): void {
+    const rows = this.orders();
+    this.selected.update((set) => {
+      const next = new Set(set);
+      rows.forEach((o) => {
+        if (bucket === 'all' || this.matchesDateBucket(o.createdAt, bucket)) {
+          next.add(o.id);
+        }
+      });
+      return next;
+    });
+  }
+
+  /** Whether an ISO timestamp falls within the named date bucket (local time). */
+  private matchesDateBucket(iso: string | undefined, bucket: string): boolean {
+    if (!iso) {
+      return false;
+    }
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) {
+      return false;
+    }
+    const now = new Date();
+    const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate());
+    const today = startOfDay(now);
+    const dDay = startOfDay(d);
+    switch (bucket) {
+      case 'today':
+        return dDay.getTime() === today.getTime();
+      case 'yesterday': {
+        const y = new Date(today);
+        y.setDate(y.getDate() - 1);
+        return dDay.getTime() === y.getTime();
+      }
+      case 'week': {
+        // Current calendar week starting Monday.
+        const dayFromMon = (today.getDay() + 6) % 7;
+        const monday = new Date(today);
+        monday.setDate(today.getDate() - dayFromMon);
+        return d.getTime() >= monday.getTime();
+      }
+      case 'month':
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      default:
+        return true;
+    }
   }
 
   clearSelection(): void {

@@ -71,7 +71,7 @@ public class OrderController {
      * be able to punch.
      */
     @GetMapping("/products")
-    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN','TEAM_LEAD')")
     public List<ProductResponse> products(@RequestParam(name = "q", required = false) String q) {
         return productService.search(q);
     }
@@ -81,7 +81,7 @@ public class OrderController {
      * SALESPERSON gets their own best-sellers; an ADMIN gets business-wide.
      */
     @GetMapping("/products/top")
-    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN','TEAM_LEAD')")
     public List<ProductResponse> topProducts(@RequestParam(name = "limit", defaultValue = "8") int limit) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         Long createdBy = actor.role() == Role.SALESPERSON ? actor.userId() : null;
@@ -93,7 +93,7 @@ public class OrderController {
      * {@code productIds} is a comma-separated list of the items already added.
      */
     @GetMapping("/products/related")
-    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN','TEAM_LEAD')")
     public List<ProductResponse> relatedProducts(
             @RequestParam(name = "productIds") List<Long> productIds,
             @RequestParam(name = "limit", defaultValue = "3") int limit) {
@@ -103,7 +103,7 @@ public class OrderController {
     /** Punch a new salesperson order (Req 7.1-7.11). */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN','TEAM_LEAD')")
     public OrderResponse create(@Valid @RequestBody CreateOrderRequest request) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return orderService.createSalespersonOrder(request, actor);
@@ -114,7 +114,7 @@ public class OrderController {
      * subsequent order (two-step upload, Req 7.6, 7.11).
      */
     @PostMapping(path = "/payment-screenshots", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN','TEAM_LEAD')")
     public ScreenshotUploadResponse uploadScreenshot(@RequestParam("file") MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new ValidationException("A payment screenshot file is required.");
@@ -139,7 +139,7 @@ public class OrderController {
 
     /** Whether prior orders exist for a mobile number (Req 22.2). */
     @GetMapping("/duplicate-check")
-    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN','TEAM_LEAD')")
     public DuplicateCheckResponse duplicateCheck(@RequestParam("mobile") String mobile) {
         return orderService.duplicateCheck(mobile);
     }
@@ -149,7 +149,7 @@ public class OrderController {
      * pre-fill the New Order form when a known mobile is entered (overridable).
      */
     @GetMapping("/last-by-mobile")
-    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN','TEAM_LEAD')")
     public CustomerPrefillResponse lastCustomerByMobile(@RequestParam("mobile") String mobile) {
         return orderService.lastCustomerByMobile(mobile);
     }

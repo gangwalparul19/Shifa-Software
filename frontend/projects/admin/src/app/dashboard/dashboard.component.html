@@ -824,10 +824,19 @@
 @if (summary()?.salesperson; as sp) {
   <!-- Simplified home: big, obvious actions first (product-audit §3.1) -->
   @if (isTeamLead()) {
-    <!-- Team lead: read-only oversight — a single action into their team's orders. -->
+    <!-- Team lead: punch orders on behalf of the team + oversee team orders. -->
     <div class="row row-cards g-2 g-md-3 mb-3 shifa-home-cta-row">
-      <div class="col-12">
-        <a routerLink="/orders" class="card card-hover shifa-home-cta shifa-home-cta--primary shifa-touch">
+      <div class="col-12 col-md-6">
+        <a routerLink="/orders/new" class="card card-hover shifa-home-cta shifa-home-cta--primary shifa-touch">
+          <span class="shifa-home-cta__icon"><i class="ti ti-plus"></i></span>
+          <span class="shifa-home-cta__text">
+            <span class="shifa-home-cta__title">New Order</span>
+            <span class="shifa-home-cta__sub">Punch a customer order</span>
+          </span>
+        </a>
+      </div>
+      <div class="col-12 col-md-6">
+        <a routerLink="/orders" class="card card-hover shifa-home-cta shifa-touch">
           <span class="shifa-home-cta__icon"><i class="ti ti-receipt"></i></span>
           <span class="shifa-home-cta__text">
             <span class="shifa-home-cta__title">Team Orders</span>

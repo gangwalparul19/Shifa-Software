@@ -126,7 +126,10 @@ public class TeamPerformanceService {
      * or — for an unscoped ADMIN — every salesperson.
      */
     private List<Long> resolveMemberIds(AuthPrincipal actor) {
-        return scopeResolver.creatorScope(actor)
+        // Membership only (excludes the lead's own id) — a team lead is the
+        // MANAGER of their salespeople, not a member of their own team; their own
+        // punched orders are handled by order-visibility (creatorScope), not here.
+        return scopeResolver.teamMemberScope(actor)
                 .orElseGet(() -> userRepository
                         .findByRoleOrderByCreatedAtDescIdDesc(Role.SALESPERSON)
                         .stream().map(User::getId).toList());

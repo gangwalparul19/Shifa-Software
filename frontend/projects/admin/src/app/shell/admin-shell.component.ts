@@ -218,7 +218,7 @@ export class AdminShellComponent {
           label: 'New Order',
           path: '/orders/new',
           icon: 'ti-plus',
-          roles: [Role.SALESPERSON, Role.ADMIN],
+          roles: [Role.SALESPERSON, Role.ADMIN, Role.TEAM_LEAD],
         },
         { kind: 'link', label: 'Approval Queue', path: '/approval-queue', icon: 'ti-checklist', adminOnly: true },
         {
@@ -385,6 +385,13 @@ export class AdminShellComponent {
         { kind: 'link', label: 'Settings', path: '/settings', icon: 'ti-settings', adminOnly: true },
         { kind: 'link', label: 'Notifications', path: '/notifications', icon: 'ti-bell', adminOnly: true },
         { kind: 'link', label: 'Announcements', path: '/announcements', icon: 'ti-speakerphone', adminOnly: true },
+        {
+          kind: 'link',
+          label: 'WhatsApp templates',
+          path: '/whatsapp-templates',
+          icon: 'ti-brand-whatsapp',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.TEAM_LEAD],
+        },
         { kind: 'link', label: 'Audit Log', path: '/audit', icon: 'ti-history', adminOnly: true },
         { kind: 'link', label: 'Backups', path: '/backups', icon: 'ti-database', adminOnly: true },
       ],

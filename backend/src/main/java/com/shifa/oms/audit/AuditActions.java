@@ -89,6 +89,11 @@ public final class AuditActions {
     // Sales targets & incentives (FEATURE-ROADMAP §6.1).
     public static final String SALES_TARGET_SET = "SALES_TARGET_SET";
 
+    // Customizable WhatsApp message templates (V44).
+    public static final String WHATSAPP_TEMPLATE_CREATED = "WHATSAPP_TEMPLATE_CREATED";
+    public static final String WHATSAPP_TEMPLATE_UPDATED = "WHATSAPP_TEMPLATE_UPDATED";
+    public static final String WHATSAPP_TEMPLATE_DELETED = "WHATSAPP_TEMPLATE_DELETED";
+
     // --- Entity types -------------------------------------------------------
 
     public static final String ENTITY_ORDER = "ORDER";
@@ -105,4 +110,5 @@ public final class AuditActions {
     public static final String ENTITY_CUSTOMER = "CUSTOMER";
     public static final String ENTITY_ANNOUNCEMENT = "ANNOUNCEMENT";
     public static final String ENTITY_SALES_TARGET = "SALES_TARGET";
+    public static final String ENTITY_WHATSAPP_TEMPLATE = "WHATSAPP_TEMPLATE";
 }
