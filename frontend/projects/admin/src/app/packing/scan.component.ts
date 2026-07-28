@@ -352,6 +352,14 @@ export class ScanComponent implements OnInit, AfterViewInit {
     run: (name: string, phone: string) => void;
   } | null>(null);
 
+  /** A scanned order awaiting the packer's explicit confirmation. */
+  protected readonly pendingPreview = signal<{
+    message: string;
+    order: PackingScanResponse['order'];
+    nextAction: 'PACK' | 'HANDOVER' | 'DISPATCH' | 'NONE';
+    nextStatus: string | null;
+  } | null>(null);
+
   /** Opens the "handed to" popup for an order; the callback runs on confirm. */
   private openHandoverPrompt(orderCode: string, run: (name: string, phone: string) => void): void {
     if (this.busyOrderId() !== null) {
@@ -528,9 +536,9 @@ export class ScanComponent implements OnInit, AfterViewInit {
     this.workItems.update((items) => items.filter((it) => it.id !== id));
   }
 
-  /** Submit the scanned/typed barcode (Enter or the Scan button). */
+  /** Resolves a typed or handheld-scanned barcode before any status mutation. */
   submit(): void {
-    if (this.submitting()) {
+    if (this.submitting() || this.pendingPreview()) {
       return;
     }
     const barcode = this.form.getRawValue().barcode.trim();
@@ -540,10 +548,127 @@ export class ScanComponent implements OnInit, AfterViewInit {
     }
 
     this.submitting.set(true);
-    this.service.scan(barcode).subscribe({
-      next: (response) => this.onSuccess(barcode, response),
+    this.service.preview(barcode).subscribe({
+      next: (preview) => {
+        this.submitting.set(false);
+        this.pendingPreview.set(preview);
+      },
       error: (err: HttpErrorResponse) => this.onError(barcode, err),
     });
+  }
+
+  /** Cancels a scan preview without changing the order. */
+  cancelPreview(): void {
+    this.pendingPreview.set(null);
+    this.finish();
+  }
+
+  /** Confirms the server-proposed next packing operation. */
+  confirmPreview(): void {
+    const preview = this.pendingPreview();
+    if (!preview || preview.nextAction === 'NONE' || this.submitting()) {
+      return;
+    }
+
+    switch (preview.nextAction) {
+      case 'PACK':
+        this.commitPack(preview);
+        break;
+      case 'HANDOVER':
+        this.pendingPreview.set(null);
+        this.openHandoverPrompt(preview.order.orderCode, (name, phone) =>
+          this.commitHandover(preview, name, phone),
+        );
+        break;
+      case 'DISPATCH':
+        this.commitDispatch(preview);
+        break;
+    }
+  }
+
+  previewActionLabel(action: 'PACK' | 'HANDOVER' | 'DISPATCH' | 'NONE'): string {
+    switch (action) {
+      case 'PACK':
+        return 'Mark packed';
+      case 'HANDOVER':
+        return 'Handover to delivery';
+      case 'DISPATCH':
+        return 'Dispatch for courier assignment';
+      default:
+        return 'No packing move available';
+    }
+  }
+
+  private commitPack(preview: NonNullable<ReturnType<typeof this.pendingPreview>>): void {
+    this.pendingPreview.set(null);
+    this.submitting.set(true);
+    this.service.scan(preview.order.orderCode).subscribe({
+      next: (response) => this.onSuccess(preview.order.orderCode, response),
+      error: (err: HttpErrorResponse) => this.onError(preview.order.orderCode, err),
+    });
+  }
+
+  private commitHandover(
+    preview: NonNullable<ReturnType<typeof this.pendingPreview>>,
+    name: string,
+    phone: string,
+  ): void {
+    this.submitting.set(true);
+    this.service.handover(preview.order.id, name, phone).subscribe({
+      next: (order) => this.onPreviewMoveSuccess(
+        preview,
+        `Order ${preview.order.orderCode} handed over to delivery`,
+        String(order.orderStatus),
+        this.phaseOf(String(order.orderStatus)),
+      ),
+      error: (err: HttpErrorResponse) => this.onError(preview.order.orderCode, err),
+    });
+  }
+
+  private commitDispatch(preview: NonNullable<ReturnType<typeof this.pendingPreview>>): void {
+    this.pendingPreview.set(null);
+    this.submitting.set(true);
+    this.service.dispatch(preview.order.id).subscribe({
+      next: () => this.onPreviewMoveSuccess(
+        preview,
+        `Order ${preview.order.orderCode} dispatched for courier assignment`,
+        String(preview.order.orderStatus),
+        'dispatched',
+      ),
+      error: (err: HttpErrorResponse) => this.onError(preview.order.orderCode, err),
+    });
+  }
+
+  private onPreviewMoveSuccess(
+    preview: NonNullable<ReturnType<typeof this.pendingPreview>>,
+    message: string,
+    status: string,
+    phase: WorkPhase,
+  ): void {
+    this.banner.set({
+      outcome: 'moved',
+      title: message,
+      detail: `${preview.order.customerName} · ${preview.order.customerMobile}`,
+    });
+    this.appendLog({
+      barcode: preview.order.orderCode,
+      outcome: 'moved',
+      message,
+      currentStatus: status,
+      at: new Date(),
+    });
+    this.trackWorkItem({
+      id: preview.order.id,
+      orderCode: preview.order.orderCode,
+      customerName: preview.order.customerName,
+      status,
+      phase,
+      busy: false,
+      error: null,
+    });
+    this.loadQueues();
+    this.loadQueue();
+    this.finish();
   }
 
   /** Clear the running scan log. */
@@ -555,7 +680,9 @@ export class ScanComponent implements OnInit, AfterViewInit {
 
   /** Opens the phone-camera barcode scanner overlay. */
   openCamera(): void {
-    this.cameraOpen.set(true);
+    if (!this.submitting() && !this.pendingPreview()) {
+      this.cameraOpen.set(true);
+    }
   }
 
   /** Closes the camera scanner overlay. */
@@ -563,14 +690,14 @@ export class ScanComponent implements OnInit, AfterViewInit {
     this.cameraOpen.set(false);
   }
 
-  /** A barcode decoded from the camera → feed it into the normal scan flow. */
+  /** A barcode decoded from the camera follows the same preview/confirm flow. */
   onCameraScanned(code: string): void {
     this.cameraOpen.set(false);
     this.form.controls.barcode.setValue(code.trim());
     this.submit();
   }
 
-  formatStatus(status: string | undefined): string {
+  formatStatus(status: string | undefined | null): string {
     return status ? status.replaceAll('_', ' ') : '';
   }
 
@@ -591,7 +718,6 @@ export class ScanComponent implements OnInit, AfterViewInit {
       message: response.message,
       at: new Date(),
     });
-    // Surface the just-packed order for an inline Handover action (Req 9.2–9.4).
     if (response.order) {
       this.trackWorkItem({
         id: response.order.id,
@@ -634,42 +760,42 @@ export class ScanComponent implements OnInit, AfterViewInit {
       const pretty = this.formatStatus(currentStatus);
       this.banner.set({
         outcome: 'wrong-status',
-        title: 'Cannot pack this order',
+        title: 'Order changed before confirmation',
         detail: pretty
-          ? `Order is ${pretty} — only labelled orders can be packed.`
-          : (apiError?.message ?? 'This order cannot be packed.'),
+          ? `Order is now ${pretty}. Scan again to see its current next move.`
+          : (apiError?.message ?? 'This order can no longer be moved as previewed.'),
       });
       this.appendLog({
         barcode,
         outcome: 'wrong-status',
-        message: apiError?.message ?? 'Order cannot be packed.',
+        message: apiError?.message ?? 'Order status changed before confirmation.',
         currentStatus,
         at: new Date(),
       });
     } else {
       this.banner.set({
         outcome: 'error',
-        title: 'Scan failed',
+        title: 'Scan & Move failed',
         detail: apiError?.message ?? 'Something went wrong. Please try again.',
       });
       this.appendLog({
         barcode,
         outcome: 'error',
-        message: apiError?.message ?? 'Scan failed.',
+        message: apiError?.message ?? 'Scan & Move failed.',
         at: new Date(),
       });
     }
+    this.pendingPreview.set(null);
     this.finish();
   }
 
-  /** Pulls "currentStatus: X" out of the error details (Req 11.4). */
+  /** Pulls "currentStatus: X" out of the error details returned by workflow endpoints. */
   private extractCurrentStatus(apiError: ApiError | undefined): string | undefined {
     const detail = apiError?.details?.find((d) => d.startsWith('currentStatus:'));
     return detail?.split(':')[1]?.trim();
   }
 
   private appendLog(entry: ScanLogEntry): void {
-    // Newest first, cap the running list to a sensible length.
     this.log.update((entries) => [entry, ...entries].slice(0, 50));
   }
 
@@ -680,8 +806,6 @@ export class ScanComponent implements OnInit, AfterViewInit {
   }
 
   private focusInput(): void {
-    // Defer so the DOM has settled before focusing the field. `preventScroll`
-    // stops the browser from scrolling the page down to the input on load.
     setTimeout(() => this.barcodeInput?.nativeElement.focus({ preventScroll: true }), 0);
   }
 }

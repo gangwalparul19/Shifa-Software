@@ -1,7 +1,8 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
-import { TeamPerformance, TeamPerformanceService } from './team-performance.service';
+import { TeamMemberDetailComponent } from './team-member-detail.component';
+import { TeamMemberPerformance, TeamPerformance, TeamPerformanceService } from './team-performance.service';
 
 /** Friendly labels for the lead-source enum names. */
 const SOURCE_LABELS: Record<string, string> = {
@@ -21,7 +22,7 @@ const SOURCE_LABELS: Record<string, string> = {
  */
 @Component({
   selector: 'admin-team-performance',
-  imports: [PageHeaderComponent, StatePanelComponent],
+  imports: [PageHeaderComponent, StatePanelComponent, TeamMemberDetailComponent],
   template: `
     <admin-page-header
       title="Team Performance"
@@ -74,11 +75,20 @@ const SOURCE_LABELS: Record<string, string> = {
             </div>
           </div>
           <div class="col-6 col-md-3">
+            <a href="#team-members" class="card stat-accent text-reset text-decoration-none d-block shifa-card-link" style="--accent: #7950f2; --accent-soft: #eeeaff" title="View your salespeople">
+              <div class="card-body">
+                <div class="subheader">Salespeople</div>
+                <div class="h1 m-0">{{ d.memberCount }}</div>
+                <div class="text-secondary small mt-1">View direct reports <i class="ti ti-arrow-down"></i></div>
+              </div>
+            </a>
+          </div>
+          <div class="col-6 col-md-3">
             <div class="card stat-accent" style="--accent: #d63939; --accent-soft: #fbe7e7">
               <div class="card-body">
                 <div class="subheader">COD outstanding</div>
                 <div class="h1 m-0">{{ inr(d.codOutstanding) }}</div>
-                <div class="text-secondary small mt-1">{{ d.memberCount }} in team</div>
+                <div class="text-secondary small mt-1">Across direct-report orders</div>
               </div>
             </div>
           </div>
@@ -111,8 +121,11 @@ const SOURCE_LABELS: Record<string, string> = {
         </div>
 
         <!-- Leaderboard -->
-        <div class="card mb-3">
-          <div class="card-header py-2"><span class="fw-medium">Salesperson leaderboard</span></div>
+        <div id="team-members" class="card mb-3">
+          <div class="card-header py-2 d-flex align-items-center justify-content-between">
+            <span class="fw-medium">Salespeople ({{ d.memberCount }})</span>
+            <span class="text-secondary small">Tap a person for full details</span>
+          </div>
           <div class="table-responsive">
             <table class="table table-vcenter card-table">
               <thead>
@@ -126,7 +139,7 @@ const SOURCE_LABELS: Record<string, string> = {
               </thead>
               <tbody>
                 @for (m of d.leaderboard; track m.id) {
-                  <tr>
+                  <tr class="shifa-card-link" role="button" tabindex="0" (click)="openMember(m)" (keydown.enter)="openMember(m)" (keydown.space)="$event.preventDefault(); openMember(m)" title="View {{ m.fullName }}'s performance detail">
                     <td>
                       <div class="fw-medium">{{ m.fullName }}</div>
                       <div class="text-secondary small">{{ '@' + m.username }}</div>
@@ -178,6 +191,10 @@ const SOURCE_LABELS: Record<string, string> = {
         </div>
       }
     }
+
+    @if (selectedMember(); as member) {
+      <admin-team-member-detail [member]="member" (closed)="closeMember()" />
+    }
   `,
 })
 export class TeamPerformanceComponent implements OnInit {
@@ -186,6 +203,7 @@ export class TeamPerformanceComponent implements OnInit {
   protected readonly data = signal<TeamPerformance | null>(null);
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
+  protected readonly selectedMember = signal<TeamMemberPerformance | null>(null);
 
   ngOnInit(): void {
     this.load();
@@ -204,6 +222,14 @@ export class TeamPerformanceComponent implements OnInit {
         this.loading.set(false);
       },
     });
+  }
+
+  protected openMember(member: TeamMemberPerformance): void {
+    this.selectedMember.set(member);
+  }
+
+  protected closeMember(): void {
+    this.selectedMember.set(null);
   }
 
   /** Friendly label for a lead-source enum name. */

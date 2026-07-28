@@ -5,10 +5,12 @@ import com.shifa.oms.auth.Role;
 import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.auth.User;
 import com.shifa.oms.auth.UserRepository;
+import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.lead.LeadEntity;
 import com.shifa.oms.lead.LeadReportRecord;
 import com.shifa.oms.lead.LeadRepository;
 import com.shifa.oms.lead.LeadStatus;
+import com.shifa.oms.performance.dto.DirectReportPerformanceResponse;
 import com.shifa.oms.performance.dto.SalespersonPerformanceSummary;
 import com.shifa.oms.performance.dto.TeamPerformanceResponse;
 import com.shifa.oms.performance.dto.TeamSourceConversion;
@@ -119,6 +121,29 @@ public class TeamPerformanceService {
                 leadsTotal, leadsWon, pct(leadsWon, leadsTotal),
                 topPerformer, topSource,
                 leaderboard, leadSources);
+    }
+
+    /**
+     * Returns one direct report's profile and full performance detail for the
+     * caller. Team leads are constrained to assigned salespeople only; admins
+     * remain unscoped.
+     */
+    @Transactional(readOnly = true)
+    public DirectReportPerformanceResponse detailForCaller(AuthPrincipal actor,
+                                                            Long salespersonId,
+                                                            Integer days) {
+        if (actor.role() == Role.TEAM_LEAD
+                && !scopeResolver.teamMemberScope(actor).orElse(List.of()).contains(salespersonId)) {
+            // Use the same 404 for an unknown, self, or out-of-team id so the
+            // endpoint cannot be used to enumerate staff outside the team.
+            throw new ResourceNotFoundException("Salesperson " + salespersonId + " does not exist.");
+        }
+
+        User salesperson = userRepository.findById(salespersonId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Salesperson " + salespersonId + " does not exist."));
+        return DirectReportPerformanceResponse.of(
+                salesperson, performanceService.detail(salespersonId, days));
     }
 
     /**

@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
 import { OrderDetail } from '../orders/orders.model';
-import { PackingQueue, PackingScanResponse } from './packing.model';
+import { PackingQueue, PackingScanPreviewResponse, PackingScanResponse } from './packing.model';
 
 /**
  * Data access for the packing barcode-scan workflow (Req 11).
@@ -55,7 +55,12 @@ export class PackingService {
     return this.api.post<OrderDetail>(`/api/packing/${id}/packages`, { packageCount });
   }
 
-  /** Scan a barcode to mark the matching order Packed (Req 11.1). */
+  /** Resolve a barcode and return its current packing action without mutating the order. */
+  preview(barcode: string): Observable<PackingScanPreviewResponse> {
+    return this.api.post<PackingScanPreviewResponse>('/api/packing/scan-preview', { barcode });
+  }
+
+  /** Scan a barcode to mark the matching order Packed after user confirmation. */
   scan(barcode: string): Observable<PackingScanResponse> {
     return this.api.post<PackingScanResponse>('/api/packing/scan', { barcode });
   }

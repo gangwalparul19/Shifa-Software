@@ -22,6 +22,7 @@ import { CountUpDirective } from '../shared/count-up.directive';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { DashboardService } from './dashboard.service';
 import { MyDay, MyDayService, ReorderDueCustomer, WinBackCustomer } from './my-day.service';
+import { TeamPerformance, TeamPerformanceService } from '../team/team-performance.service';
 import { openWhatsApp, whatsAppMessage } from '../shared/whatsapp.util';
 import { ORDER_STATUS_GROUPS } from '../orders/order-status-groups';
 import {
@@ -150,6 +151,7 @@ interface StatusSegment {
 export class DashboardComponent implements OnInit, OnDestroy {
   private readonly service = inject(DashboardService);
   private readonly myDayService = inject(MyDayService);
+  private readonly teamPerformanceService = inject(TeamPerformanceService);
   private readonly router = inject(Router);
   protected readonly events = inject(AdminEventsService);
   protected readonly auth = inject(AuthService);
@@ -178,6 +180,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly myDay = signal<MyDay | null>(null);
   protected readonly winBack = signal<WinBackCustomer[]>([]);
   protected readonly reorderDue = signal<ReorderDueCustomer[]>([]);
+  protected readonly teamPerformance = signal<TeamPerformance | null>(null);
 
   /** Loads the salesperson's My Day snapshot + win-back + reorder-due (non-fatal). */
   private loadMyDay(): void {
@@ -192,6 +195,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.myDayService.reorderDue().subscribe({
       next: (rows) => this.reorderDue.set(rows.slice(0, 6)),
       error: () => this.reorderDue.set([]),
+    });
+  }
+
+  /** Loads the Team Lead's server-scoped direct-report KPI snapshot. */
+  private loadTeamPerformance(): void {
+    this.teamPerformanceService.performance().subscribe({
+      next: (performance) => this.teamPerformance.set(performance),
+      error: () => this.teamPerformance.set(null),
     });
   }
 
@@ -703,6 +714,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // My Day + win-back are salesperson-only self-service widgets.
     if (this.isSalesperson()) {
       this.loadMyDay();
+    }
+    // Team Leads get a server-scoped member count and headline team metrics.
+    if (this.isTeamLead()) {
+      this.loadTeamPerformance();
     }
   }
 

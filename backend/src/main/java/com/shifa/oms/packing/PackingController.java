@@ -6,6 +6,7 @@ import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.packing.dto.HandoverRequest;
 import com.shifa.oms.packing.dto.PackageCountRequest;
 import com.shifa.oms.packing.dto.PackingQueueResponse;
+import com.shifa.oms.packing.dto.PackingScanPreviewResponse;
 import com.shifa.oms.packing.dto.PackingScanRequest;
 import com.shifa.oms.packing.dto.PackingScanResponse;
 import jakarta.validation.Valid;
@@ -49,7 +50,18 @@ public class PackingController {
         return packingService.queue();
     }
 
-    /** Scan a packed order's barcode to mark it Packed (Req 11.1, 11.3, 11.4). */
+    /**
+     * Resolves a scanned internal-label barcode without changing the order. The
+     * response tells the packing UI which authorised operation can be confirmed:
+     * pack, handover, dispatch, or no further packing action.
+     */
+    @PostMapping("/scan-preview")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public PackingScanPreviewResponse preview(@Valid @RequestBody PackingScanRequest request) {
+        return packingService.preview(request.barcode());
+    }
+
+    /** Scan a labelled order's barcode to mark it Packed (Req 11.1, 11.3, 11.4). */
     @PostMapping("/scan")
     @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
     public PackingScanResponse scan(@Valid @RequestBody PackingScanRequest request) {

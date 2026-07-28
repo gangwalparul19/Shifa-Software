@@ -48,10 +48,56 @@ export interface TeamPerformance {
   leadSources: TeamSourceConversion[];
 }
 
+/** Safe, work-relevant profile information for a Team Lead's direct report. */
+export interface DirectReportProfile {
+  id: number;
+  fullName: string;
+  username: string;
+  email: string | null;
+  mobile: string | null;
+  joinedOn: string | null;
+  active: boolean;
+  verificationStatus: string | null;
+}
+
+export interface SalespersonDailyPoint {
+  date: string;
+  orders: number;
+  revenue: string;
+}
+
+export interface SalespersonOrderRow {
+  orderCode: string;
+  customerName: string;
+  totalAmount: string;
+  orderStatus: string;
+  paymentStatus: string | null;
+  createdAt: string;
+}
+
+export interface SalespersonLeadMetrics {
+  total: number;
+  won: number;
+  lost: number;
+  active: number;
+  conversionRate: number;
+  dueFollowUps: number;
+}
+
+/** Complete, team-scoped performance detail for one direct report. */
+export interface DirectReportPerformance {
+  profile: DirectReportProfile;
+  performance: {
+    summary: TeamMemberPerformance;
+    trend: SalespersonDailyPoint[];
+    recentOrders: SalespersonOrderRow[];
+    leads: SalespersonLeadMetrics;
+  };
+}
+
 /**
- * Data access for the team-lead performance dashboard
- * ({@code GET /api/team/performance}). A TEAM_LEAD sees their own team; an ADMIN
- * sees the whole sales force. The team is resolved server-side from the caller.
+ * Data access for the team-lead performance dashboard. A TEAM_LEAD is scoped by
+ * the server to assigned salespeople; an ADMIN sees the whole sales force.
  */
 @Injectable({ providedIn: 'root' })
 export class TeamPerformanceService {
@@ -59,5 +105,12 @@ export class TeamPerformanceService {
 
   performance(): Observable<TeamPerformance> {
     return this.api.get<TeamPerformance>('/api/team/performance');
+  }
+
+  /** Detailed performance for one authorised direct report (max 60 daily points). */
+  detail(salespersonId: number, days = 60): Observable<DirectReportPerformance> {
+    return this.api.get<DirectReportPerformance>(`/api/team/performance/${salespersonId}`, {
+      params: { days },
+    });
   }
 }

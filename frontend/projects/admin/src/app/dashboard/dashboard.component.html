@@ -1,5 +1,10 @@
 <!-- Page header -->
 <admin-page-header title="Dashboard" subtitle="Business performance at a glance.">
+  @if (isTeamLead()) {
+    <a routerLink="/orders/new" class="btn btn-primary shifa-touch">
+      <i class="ti ti-plus me-1"></i> New Order
+    </a>
+  }
   @if (isAdmin()) {
     <div class="shifa-period-select">
       <label for="dashboard-period" class="form-label visually-hidden">Time period</label>
@@ -822,30 +827,9 @@
 
 <!-- Salesperson (Req 3.2) -->
 @if (summary()?.salesperson; as sp) {
-  <!-- Simplified home: big, obvious actions first (product-audit §3.1) -->
-  @if (isTeamLead()) {
-    <!-- Team lead: punch orders on behalf of the team + oversee team orders. -->
-    <div class="row row-cards g-2 g-md-3 mb-3 shifa-home-cta-row">
-      <div class="col-12 col-md-6">
-        <a routerLink="/orders/new" class="card card-hover shifa-home-cta shifa-home-cta--primary shifa-touch">
-          <span class="shifa-home-cta__icon"><i class="ti ti-plus"></i></span>
-          <span class="shifa-home-cta__text">
-            <span class="shifa-home-cta__title">New Order</span>
-            <span class="shifa-home-cta__sub">Punch a customer order</span>
-          </span>
-        </a>
-      </div>
-      <div class="col-12 col-md-6">
-        <a routerLink="/orders" class="card card-hover shifa-home-cta shifa-touch">
-          <span class="shifa-home-cta__icon"><i class="ti ti-receipt"></i></span>
-          <span class="shifa-home-cta__text">
-            <span class="shifa-home-cta__title">Team Orders</span>
-            <span class="shifa-home-cta__sub">Track orders punched by your team</span>
-          </span>
-        </a>
-      </div>
-    </div>
-  } @else {
+  <!-- Simplified home: big, obvious actions first (product-audit §3.1).
+       Team leads use the compact New Order action in the page header instead. -->
+  @if (!isTeamLead()) {
     <div class="row row-cards g-2 g-md-3 mb-3 shifa-home-cta-row">
       <div class="col-12 col-md-6">
         <a routerLink="/orders/new" class="card card-hover shifa-home-cta shifa-home-cta--primary shifa-touch">
@@ -866,6 +850,48 @@
         <a routerLink="/leads" class="card card-hover shifa-home-cta shifa-touch">
           <span class="shifa-home-cta__icon"><i class="ti ti-user-plus"></i></span>
           <span class="shifa-home-cta__title">My Leads</span>
+        </a>
+      </div>
+    </div>
+  }
+
+  @if (isTeamLead()) {
+    <div class="shifa-section-title">Your team</div>
+    <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
+      <div class="col-4 col-md-4">
+        <a [routerLink]="['/team-performance']" fragment="team-members" class="card card-hover stat-accent shifa-card-link text-reset text-decoration-none d-block" style="--accent: #7950f2; --accent-soft: #eeeaff">
+          <div class="card-body d-flex align-items-center justify-content-between">
+            <div>
+              <div class="subheader">Salespeople</div>
+              <div class="h1 m-0">{{ teamPerformance()?.memberCount ?? '—' }}</div>
+              <div class="text-secondary small mt-1">View details</div>
+            </div>
+            <span class="stat-icon" style="--accent: #7950f2; --accent-soft: #eeeaff"><i class="ti ti-users"></i></span>
+          </div>
+        </a>
+      </div>
+      <div class="col-4 col-md-4">
+        <a routerLink="/team-performance" class="card card-hover stat-accent shifa-card-link text-reset text-decoration-none d-block" style="--accent: #206bc4; --accent-soft: #e7f0fb">
+          <div class="card-body d-flex align-items-center justify-content-between">
+            <div>
+              <div class="subheader">Team orders</div>
+              <div class="h1 m-0">{{ teamPerformance()?.ordersTotal ?? '—' }}</div>
+              <div class="text-secondary small mt-1">All time</div>
+            </div>
+            <span class="stat-icon" style="--accent: #206bc4; --accent-soft: #e7f0fb"><i class="ti ti-receipt"></i></span>
+          </div>
+        </a>
+      </div>
+      <div class="col-4 col-md-4">
+        <a routerLink="/team-performance" class="card card-hover stat-accent shifa-card-link text-reset text-decoration-none d-block" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
+          <div class="card-body d-flex align-items-center justify-content-between">
+            <div>
+              <div class="subheader">Revenue (month)</div>
+              <div class="h1 m-0">{{ money(teamPerformance()?.revenueThisMonth) }}</div>
+              <div class="text-secondary small mt-1">{{ teamPerformance()?.ordersThisMonth ?? 0 }} orders</div>
+            </div>
+            <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-chart-line"></i></span>
+          </div>
         </a>
       </div>
     </div>
@@ -976,7 +1002,7 @@
   }
 
   <div class="shifa-section-title">{{ isTeamLead() ? 'Team orders' : 'My orders' }}</div>
-  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
     <div class="col-6 col-md-4 col-xl-3">
       <div class="card card-hover stat-accent" style="--accent: #f59f00; --accent-soft: #fdf1da">
         <div class="card-body d-flex align-items-center justify-content-between">

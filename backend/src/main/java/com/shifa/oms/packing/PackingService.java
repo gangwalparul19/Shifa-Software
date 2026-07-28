@@ -12,6 +12,7 @@ import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.packing.dto.HandoverRequest;
 import com.shifa.oms.packing.dto.PackingQueueResponse;
 import com.shifa.oms.packing.dto.PackingQueueRow;
+import com.shifa.oms.packing.dto.PackingScanPreviewResponse;
 import com.shifa.oms.packing.dto.PackingScanResponse;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.statemachine.OrderStatus;
@@ -125,7 +126,21 @@ public class PackingService {
     }
 
     /**
-     * Scans a barcode and, when valid, moves the matching order to {@code Packed}.
+     * Resolves a scanned internal-label barcode without changing the order. The
+     * caller uses the returned next action to present confirmation before making
+     * the corresponding authorised workflow request.
+     *
+     * @throws BarcodeNotRecognizedException when no order matches the barcode
+     */
+    @Transactional(readOnly = true)
+    public PackingScanPreviewResponse preview(String barcode) {
+        return PackingScanPreviewResponse.from(resolveBarcode(barcode));
+    }
+
+    /**
+     * Scans a barcode and, when valid, moves the matching labelled order to
+     * {@code Packed}. The final mutation deliberately rechecks the current state
+     * because a preview is not a reservation.
      *
      * @param barcode the scanned barcode value (the order's {@code order_code})
      * @param actor   the packing user (or admin) performing the scan (recorded as actor,
@@ -136,12 +151,10 @@ public class PackingService {
      */
     @Transactional
     public PackingScanResponse scan(String barcode, AuthPrincipal actor) {
-        String code = barcode == null ? "" : barcode.trim();
-        OrderEntity order = orderRepository.findByOrderCode(code)
-                .orElseThrow(() -> new BarcodeNotRecognizedException(code));
+        OrderEntity order = resolveBarcode(barcode);
 
         if (order.getOrderStatus() != OrderStatus.LABEL_GENERATED) {
-            // Reject and surface the current status without mutating the order (Req 11.4).
+            // Recheck after preview and surface the current status without mutation.
             throw new OrderNotPackableException(order.getOrderCode(), order.getOrderStatus());
         }
 
@@ -161,6 +174,12 @@ public class PackingService {
         // (from Handed_To_Delivery), not immediately on pack (design §4, §6.3).
         log.debug("Order {} scanned to PACKED by {}", saved.getOrderCode(), actor.username());
         return PackingScanResponse.packed(saved);
+    }
+
+    private OrderEntity resolveBarcode(String barcode) {
+        String code = barcode == null ? "" : barcode.trim();
+        return orderRepository.findByOrderCode(code)
+                .orElseThrow(() -> new BarcodeNotRecognizedException(code));
     }
 
     /**

@@ -15,9 +15,10 @@ removed (store now on **Shopify**). Remaining scope: admin dashboard + salespers
 
 ## Stack
 - Backend: Java 21 (lang level) / Spring Boot 3.3.5 modular monolith; MySQL 8 + Flyway (`ddl-auto: validate`); Spring Security + JWT/RBAC.
-- Frontend: Angular 21 workspace — `admin` app (port 4300) + `core`/`ui` libs. Tabler light theme, brand green `#1F5D3F`, ApexCharts.
+- Frontend: Angular 21 workspace — `admin` app (port 4300) + `core`/`ui` libs. Tabler light theme, brand green `#1F5D3F`, ApexCharts. Team Lead dashboard keeps order entry as a header action, removes duplicate action banners, and uses three KPI cards per mobile row.
 - Deploy target: AWS EC2 (Nginx/systemd, MySQL on-instance, S3 storage; see `DEPLOYMENT.md`). Integrations (courier/WhatsApp) are mock.
 - Auth safety: frontend never attaches a saved JWT to public `/api/auth/{login,refresh,register}` calls, so stale sessions cannot interfere with a fresh login after a domain change. Spring CORS explicitly permits `https://shifa.weblithic.online` alongside localhost development origins.
+- Team Lead 360: dashboard has three compact team KPIs (including clickable direct-report count); `/team-performance` shows authorised direct-report profiles plus lifetime/today/last-week/last-month/current-month orders, revenue, delivery/COD/leads, daily activity, and recent orders. `GET /api/team/performance/{id}` is restricted server-side to a lead's assigned salespeople (ADMIN remains global); no sensitive ID/profile fields are exposed.
 
 ## Run commands (Windows/cmd — use explicit paths, NOT tool cwd)
 - Backend (8080): `mvn -f "backend/pom.xml" -DskipTests spring-boot:run`
@@ -50,6 +51,12 @@ but nothing surfaced them. Added:
   Awaiting dispatch) with per-order **Print label** (opens the barcode PDF via `PackingService.label(id)` blob) + primary action
   (Mark packed = scan by order code / Handover / Dispatch); keeps the scanner box + session "Ready to move" + Recent scans.
   `PackingService.queue()`/`label()` added; `packing.model.ts` `PackingQueue`.
+- **Scan & Move confirmation (no migration):** `POST /api/packing/scan-preview` (`PACKING_USER`/`ADMIN` only) resolves the
+  scanned `order_code` read-only into `PackingScanPreviewResponse {order,current status,nextAction,nextStatus}`. Actions are
+  LABEL_GENERATED→PACK, PACKED→HANDOVER, HANDED_TO_DELIVERY→DISPATCH, otherwise NONE. The Packing page now has one
+  **Scan & Move** camera button plus Enter/manual input; it shows the order/customer/status and requires explicit confirmation
+  before calling the existing transition endpoints. Preview has no save/history/audit/outbox effects; final calls retain the
+  central workflow authority and stale-state 409 protection. Salespeople remain unable to access/move packing stages.
 - Order detail drawer gains an ADMIN **Print Label** button (`OrdersService.label(id)`, `orders.component` `printLabel`/`canPrintLabel`).
 Backend 493 tests still pass (Packing/Label/guard suites green); admin builds clean.
 

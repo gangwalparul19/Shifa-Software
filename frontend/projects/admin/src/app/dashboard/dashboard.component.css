@@ -252,15 +252,14 @@ apx-chart {
   width: 100%;
 }
 
-/* --- KPI tiles: exactly two per row on mobile (mockup layout) ------------ */
-/* Forces the count/money stat cards in a tagged row to 50% width on phones,
-   overriding their bootstrap col-4/col-6 basis so they read two-up like the
-   client mockup. Wider breakpoints keep the responsive bootstrap columns. */
+/* --- KPI tiles: three per row on mobile --------------------------------- */
+/* Keeps operational summaries compact on phones while wider breakpoints use
+   their existing responsive Bootstrap column definitions. */
 @media (max-width: 575.98px) {
   .shifa-kpi-row > [class*='col-'] {
-    flex: 0 0 50%;
-    max-width: 50%;
-    width: 50%;
+    flex: 0 0 33.333333%;
+    max-width: 33.333333%;
+    width: 33.333333%;
   }
 }
 

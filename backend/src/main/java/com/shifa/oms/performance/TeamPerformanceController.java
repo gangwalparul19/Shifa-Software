@@ -2,10 +2,13 @@ package com.shifa.oms.performance;
 
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.CurrentUserService;
+import com.shifa.oms.performance.dto.DirectReportPerformanceResponse;
 import com.shifa.oms.performance.dto.TeamPerformanceResponse;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -34,5 +37,13 @@ public class TeamPerformanceController {
     public TeamPerformanceResponse performance() {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return teamPerformanceService.forCaller(actor);
+    }
+
+    /** An authorised drill-down into one direct report's performance. */
+    @GetMapping("/performance/{salespersonId}")
+    public DirectReportPerformanceResponse detail(@PathVariable Long salespersonId,
+                                                  @RequestParam(required = false) Integer days) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return teamPerformanceService.detailForCaller(actor, salespersonId, days);
     }
 }

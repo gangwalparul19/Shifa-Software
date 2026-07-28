@@ -57,8 +57,23 @@ export interface PackingScanResponse {
   order: ScannedOrderSummary;
 }
 
+/** Server-proposed action after resolving a packing barcode, before confirmation. */
+export type PackingNextAction = 'PACK' | 'HANDOVER' | 'DISPATCH' | 'NONE';
+
+/**
+ * Read-only result of {@code POST /api/packing/scan-preview}. It identifies the
+ * order and current status, then proposes the next valid packing action. The
+ * final action request still checks authorization and state on the server.
+ */
+export interface PackingScanPreviewResponse {
+  message: string;
+  order: ScannedOrderSummary;
+  nextAction: PackingNextAction;
+  nextStatus: OrderStatus | string | null;
+}
+
 /** How a single scan resolved, for the in-session scan log. */
-export type ScanOutcome = 'packed' | 'not-recognized' | 'wrong-status' | 'error';
+export type ScanOutcome = 'packed' | 'moved' | 'not-recognized' | 'wrong-status' | 'error';
 
 /** One entry in the running scan log shown in the UI. */
 export interface ScanLogEntry {

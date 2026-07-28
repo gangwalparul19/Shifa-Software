@@ -111,7 +111,7 @@ Modular monolith — one package per bounded context. Kept modules after the das
 | `statemachine`    | `OrderStatus` lifecycle + legal transitions (INITIAL/PENDING_ADMIN_APPROVAL → … → DELIVERED/COD_COLLECTED/RTO/etc.) |
 | `product`         | Admin product CRUD + categories + CSV import; per-product monthly sales stats. `/api/admin/products` (+ `GET /{id}/stats`), `/api/admin/categories` |
 | `inventory`       | Stock levels + movements (RESTOCK/SALE/RETURN/ADJUSTMENT). `/api/admin/inventory` |
-| `packing`         | Barcode scan / packing confirmation + handover (name/phone) + multi-pack + bulk labels. `/api/packing` (incl. `/{id}/handover`, `/{id}/packages`) |
+| `packing`         | Barcode Scan & Move preview/confirmation + handover (name/phone) + multi-pack + bulk labels. `/api/packing` (incl. `/scan-preview`, `/{id}/handover`, `/{id}/packages`) |
 | `payment`         | **Payment verification** (PAYMENT_VERIFIER): review prepaid screenshots, verify/reject. `/api/payments/queue`, `/api/payments/{id}/verify`, `/api/payments/{id}/reject` |
 | `courier`         | Courier assignment (mock), tracking, webhooks, shipping labels. `/api/track`, `/api/webhooks/courier`, `/api/admin/labels/shipping` |
 | `label`           | Internal label PDFs. `/api/admin/labels/internal` |
@@ -186,10 +186,10 @@ Routing in `app.routes.ts`, shell/nav in `shell/admin-shell.component.ts`. Guard
 | `/announcements` | Post/hide/delete staff announcement banners | ADMIN |
 | `/suppliers`, `/purchase-orders` | Procurement | ADMIN |
 | `/expenses`, `/finance/pnl` | Finance | ADMIN+ACCOUNTANT |
-| `/packing` | Barcode scan + handover popup (name/phone) + multi-label print + multi-pack | PACKING_USER+ADMIN |
+| `/packing` | **Scan & Move** camera/manual barcode preview + explicit Pack/Handover/Dispatch confirmation, handover popup (name/phone), multi-label print, and multi-pack | PACKING_USER+ADMIN |
 | `/payments` | Payment verification dashboard — review prepaid screenshots, verify/reject | PAYMENT_VERIFIER+ADMIN |
 | `/team` | Assign salespeople to a team lead (drives team-scoped order visibility) | ADMIN |
-| `/team-performance` | Team performance rollup — KPIs, salesperson leaderboard, lead-source conversion | TEAM_LEAD+ADMIN |
+| `/team-performance` | Team performance rollup — clickable Salespeople KPI, team-scoped salesperson list, and profile/performance drill-down (lifetime, today, last week/month, delivery/COD/leads, daily activity, recent orders) | TEAM_LEAD+ADMIN |
 | `/reconciliation` | COD settlement | ADMIN+ACCOUNTANT |
 | `/reports` | Grouped report catalogue (Sales / Orders / Money & Receivables / **Operations**: expenses, purchase orders, returns, stock) — incl. a **Finance** tab: outstanding dues chase list, COD pending from courier, daily payments; Excel/PDF export | ADMIN+ACCOUNTANT |
 | `/analytics` | Sales targets, retention cohorts, revenue/demand forecast | ADMIN |
@@ -210,7 +210,7 @@ Customers/Products; Packer: Packing/Handover/Dispatch/Orders; Accountant: Reconc
 Orders; Admin: Approvals/Orders/Products/Reports). Every screen is single-column at 360px, uses
 cards over wide tables below 768px, KPI tiles (green icon chip + value + delta), colored status
 pills, ≥44px touch targets, real product images (served from `admin/public/products/`), and the
-order/product detail + all operational/config/auth pages follow the same language. Presentation-only
+order/product detail + all operational/config/auth pages follow the same language. The Team Lead dashboard keeps **New Order** as a compact header action, removes duplicate Team Orders action banners, and renders KPI cards three-up on mobile. Presentation-only
 — it reuses existing endpoints (plus the additive `GET /api/admin/products/{id}/stats` and the order
 line `imageKey` / `discountAmount` fields).
 
@@ -242,11 +242,14 @@ Salesperson scoping applies throughout (a salesperson only sees customers from t
 
 ### Packing page redesign
 The `/packing` page (the most-used floor screen) was rebuilt to match the rest of the app: KPI tiles
-(awaiting pack / handover / dispatch), a hero scan box (keyboard scanner + phone camera), and the work
-queues rendered as a **table** (Order ID / Customer / Price / Order date / Salesperson) with **clickable
-rows → `/orders?q={code}`** and per-row primary action + Print label. The queue DTO gained salesperson
-name + order date (`PackingQueueRow`), rows are **DESC by order date**, and focus uses `preventScroll`
-so opening the page no longer jumps to the bottom.
+(awaiting pack / handover / dispatch), a hero **Scan & Move** control that opens the phone camera, and a
+manual/handheld input that submits on Enter. `POST /api/packing/scan-preview` resolves the order code without
+mutation and returns the current status plus the server-derived next action (Pack / Handover / Dispatch / none);
+the packer then explicitly confirms the move, while the final request still enforces role/state checks and detects
+concurrent changes. The work queues are rendered as a **table** (Order ID / Customer / Price / Order date / Salesperson)
+with **clickable rows → `/orders?q={code}`** and per-row primary action + Print label. The queue DTO gained salesperson
+name + order date (`PackingQueueRow`), rows are **DESC by order date**, and focus uses `preventScroll` so opening the
+page no longer jumps to the bottom.
 
 ### Analytics, insights & reporting (FEATURE-ROADMAP §6)
 `/analytics` (ADMIN) has three tabs backed by the `performance` + `analytics` modules:

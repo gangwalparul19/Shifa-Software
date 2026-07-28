@@ -63,25 +63,22 @@
         </div>
       </div>
       <div class="pk-hero__btns">
-        <button type="submit" class="btn btn-primary btn-lg pk-hero__scan" [disabled]="submitting()">
-          @if (submitting()) {
-            <span class="spinner-border spinner-border-sm me-2"></span> Scanning…
-          } @else {
-            <i class="ti ti-scan me-1"></i> Scan &amp; pack
-          }
-        </button>
         <button
           type="button"
-          class="btn btn-outline-primary btn-lg pk-hero__cam"
+          class="btn btn-primary btn-lg pk-hero__scan"
           (click)="openCamera()"
-          [disabled]="submitting()"
+          [disabled]="submitting() || pendingPreview() !== null"
         >
-          <i class="ti ti-camera me-1"></i> Use camera
+          @if (submitting()) {
+            <span class="spinner-border spinner-border-sm me-2"></span> Looking up order…
+          } @else {
+            <i class="ti ti-scan me-1"></i> Scan &amp; Move
+          }
         </button>
       </div>
       <p class="text-secondary small m-0 mt-2">
         <i class="ti ti-info-circle me-1"></i>
-        Press Enter to submit — works with a handheld scanner, your phone camera, or manual entry.
+        Tap Scan &amp; Move to use the camera. A handheld scanner or manual entry can use this field, then press Enter.
       </p>
     </form>
   </div>
@@ -91,17 +88,69 @@
   <admin-camera-scanner (scanned)="onCameraScanned($event)" (closed)="closeCamera()" />
 }
 
+@if (pendingPreview(); as preview) {
+  <div class="pk-modal-backdrop" (click)="cancelPreview()">
+    <div class="card pk-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="scanPreviewTitle">
+      <div class="card-header py-2">
+        <h3 id="scanPreviewTitle" class="card-title mb-0"><i class="ti ti-scan me-2"></i>Confirm next move</h3>
+      </div>
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+          <div>
+            <div class="shifa-mono fw-bold">{{ preview.order.orderCode }}</div>
+            <div class="text-secondary small">Order #{{ preview.order.id }} · {{ preview.order.customerName }}</div>
+            <div class="text-secondary small">{{ preview.order.customerMobile }}</div>
+          </div>
+          <admin-status-badge [status]="preview.order.orderStatus" />
+        </div>
+
+        @if (preview.nextAction === 'NONE') {
+          <div class="alert alert-secondary mb-0">
+            <i class="ti ti-info-circle me-2"></i>
+            {{ preview.message }} The order is currently {{ formatStatus(preview.order.orderStatus) }}.
+          </div>
+        } @else {
+          <p class="mb-1">{{ previewActionLabel(preview.nextAction) }}</p>
+          @if (preview.nextAction === 'DISPATCH') {
+            <p class="text-secondary small mb-0">
+              This requests courier assignment. The order will advance to Courier Assigned when the courier request completes.
+            </p>
+          } @else {
+            <p class="text-secondary small mb-0">
+              Current: {{ formatStatus(preview.order.orderStatus) }} · Next: {{ formatStatus(preview.nextStatus) }}
+            </p>
+          }
+        }
+      </div>
+      <div class="card-footer d-flex gap-2 justify-content-end py-2">
+        <button type="button" class="btn btn-link" (click)="cancelPreview()">
+          {{ preview.nextAction === 'NONE' ? 'Close' : 'Cancel' }}
+        </button>
+        @if (preview.nextAction !== 'NONE') {
+          <button type="button" class="btn btn-primary" (click)="confirmPreview()" [disabled]="submitting()">
+            @if (submitting()) {
+              <span class="spinner-border spinner-border-sm me-1"></span> Moving…
+            } @else {
+              <i class="ti ti-check me-1"></i> Confirm {{ previewActionLabel(preview.nextAction) }}
+            }
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+}
+
 @if (banner(); as b) {
   <div
     class="alert d-flex align-items-center anim-pop"
-    [class.alert-success]="b.outcome === 'packed'"
+    [class.alert-success]="b.outcome === 'packed' || b.outcome === 'moved'"
     [class.alert-warning]="b.outcome === 'not-recognized' || b.outcome === 'wrong-status'"
     [class.alert-danger]="b.outcome === 'error'"
     role="status"
     aria-live="polite"
   >
     <i class="ti fs-2 me-3"
-      [class.ti-circle-check]="b.outcome === 'packed'"
+      [class.ti-circle-check]="b.outcome === 'packed' || b.outcome === 'moved'"
       [class.ti-help-circle]="b.outcome === 'not-recognized'"
       [class.ti-alert-triangle]="b.outcome === 'wrong-status'"
       [class.ti-circle-x]="b.outcome === 'error'"></i>
@@ -326,7 +375,7 @@
         <div class="list-group-item feed-item">
           <div class="d-flex align-items-center">
             <span class="shifa-note-dot me-3"
-              [class.bg-success]="entry.outcome === 'packed'"
+              [class.bg-success]="entry.outcome === 'packed' || entry.outcome === 'moved'"
               [class.bg-warning]="entry.outcome === 'not-recognized' || entry.outcome === 'wrong-status'"
               [class.bg-danger]="entry.outcome === 'error'"></span>
             <div class="me-auto">
