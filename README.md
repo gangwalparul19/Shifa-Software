@@ -17,7 +17,7 @@ packing → courier → delivery → settlement) is tracked end to end.
 |------------|----------------------------------------------------------------------------|
 | Backend    | Java 21 (language level), Spring Boot 3.3.5 — modular monolith             |
 | Persistence| MySQL 8, Spring Data JPA (Hibernate), Flyway migrations (`ddl-auto: validate`) |
-| Security   | Spring Security + JWT (access/refresh), role-based (`@PreAuthorize`)        |
+| Security   | Spring Security + JWT (access/refresh), role-based (`@PreAuthorize`); public login/refresh/register calls are deliberately bearer-free |
 | Frontend   | Angular 21 workspace — `admin` app + shared `core` & `ui` libraries         |
 | Admin UI   | Tabler light theme (`@tabler/core`), Inter fonts, brand green `#1F5D3F`, ApexCharts |
 | Docs / PDF | Apache POI (Excel), OpenPDF (invoices/labels), ZXing (barcodes)             |

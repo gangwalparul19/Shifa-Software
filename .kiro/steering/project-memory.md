@@ -16,7 +16,8 @@ removed (store now on **Shopify**). Remaining scope: admin dashboard + salespers
 ## Stack
 - Backend: Java 21 (lang level) / Spring Boot 3.3.5 modular monolith; MySQL 8 + Flyway (`ddl-auto: validate`); Spring Security + JWT/RBAC.
 - Frontend: Angular 21 workspace — `admin` app (port 4300) + `core`/`ui` libs. Tabler light theme, brand green `#1F5D3F`, ApexCharts.
-- Deploy target: OCI Always Free (see `DEPLOYMENT.md`). Integrations (courier/WhatsApp) are mock.
+- Deploy target: AWS EC2 (Nginx/systemd, MySQL on-instance, S3 storage; see `DEPLOYMENT.md`). Integrations (courier/WhatsApp) are mock.
+- Auth safety: frontend never attaches a saved JWT to public `/api/auth/{login,refresh,register}` calls, so stale sessions cannot interfere with a fresh login after a domain change.
 
 ## Run commands (Windows/cmd — use explicit paths, NOT tool cwd)
 - Backend (8080): `mvn -f "backend/pom.xml" -DskipTests spring-boot:run`

@@ -15,3 +15,21 @@ export function isApiRequest(url: string, apiBaseUrl: string): boolean {
   const base = apiBaseUrl.replace(/\/+$/, '');
   return base.length > 0 && url.startsWith(base);
 }
+
+/**
+ * Login, refresh, and registration establish authentication and must never
+ * receive an existing bearer token. This protects a fresh login after a token
+ * has expired or the app has moved to a new domain.
+ */
+export function isPublicAuthRequest(url: string, apiBaseUrl: string): boolean {
+  const path = apiPath(url, apiBaseUrl);
+  return path !== null && /^\/api\/auth\/(login|refresh|register)(?:[/?#]|$)/i.test(path);
+}
+
+function apiPath(url: string, apiBaseUrl: string): string | null {
+  if (!/^https?:\/\//i.test(url)) {
+    return url.startsWith('/') ? url : `/${url}`;
+  }
+  const base = apiBaseUrl.replace(/\/+$/, '');
+  return base.length > 0 && url.startsWith(base) ? url.slice(base.length) || '/' : null;
+}

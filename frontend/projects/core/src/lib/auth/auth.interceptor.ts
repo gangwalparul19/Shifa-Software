@@ -11,7 +11,7 @@ import { catchError } from 'rxjs/operators';
 import { AuthTokenStore } from './auth-token.store';
 import { AuthEventsService } from './auth-events.service';
 import { API_BASE_URL } from '../tokens/api-base-url.token';
-import { isApiRequest } from './auth-request-scope';
+import { isApiRequest, isPublicAuthRequest } from './auth-request-scope';
 
 /**
  * Functional JWT auth interceptor.
@@ -37,7 +37,7 @@ export const authInterceptor: HttpInterceptorFn = (
 
   const accessToken = tokens.getAccessToken();
   const authorizedReq =
-    accessToken && isApiRequest(req.url, apiBaseUrl)
+    accessToken && isApiRequest(req.url, apiBaseUrl) && !isPublicAuthRequest(req.url, apiBaseUrl)
       ? req.clone({ setHeaders: { Authorization: `Bearer ${accessToken}` } })
       : req;
 
