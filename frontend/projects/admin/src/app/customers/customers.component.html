@@ -183,6 +183,16 @@
         </div>
 
         @if (custTab() === 'overview') {
+        <!-- One-tap WhatsApp (click-to-chat, message pre-filled) -->
+        @if (profile.summary.mobile) {
+          <div class="cust-dr__wa mb-3">
+            @for (t of whatsappTemplates; track t.key) {
+              <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsApp(profile, t.key)">
+                <i class="ti {{ t.icon }} me-1"></i>{{ t.label }}
+              </button>
+            }
+          </div>
+        }
         <!-- Risk banner (§1.2) -->
         <div class="cust-dr__risk" [attr.data-level]="profile.risk.level">
           <div class="cust-dr__risk-top">
@@ -328,6 +338,17 @@
         }
 
         @if (custTab() === 'orders') {
+        <!-- One-tap reorder of the customer's most recent order -->
+        @if (lastReorderableId(profile); as oid) {
+          <a
+            class="btn btn-primary btn-sm mb-3"
+            [routerLink]="['/orders/new']"
+            [queryParams]="{ reorderFrom: oid }"
+            (click)="closeDetail()"
+          >
+            <i class="ti ti-repeat me-1"></i> Reorder last order
+          </a>
+        }
         <!-- Order history (paginated — the list can grow) -->
         <div class="cust-dr__label">
           <i class="ti ti-history me-1"></i>Order history

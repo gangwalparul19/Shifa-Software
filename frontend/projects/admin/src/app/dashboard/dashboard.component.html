@@ -862,6 +862,110 @@
     </div>
   }
 
+  <!-- ===== My Day (salesperson only): today + month target + payments to chase ===== -->
+  @if (isSalesperson() && myDay(); as d) {
+    <div class="shifa-section-title">My day</div>
+    <div class="card mb-3 md-card">
+      <div class="card-body">
+        <div class="md-grid">
+          <div class="md-tile">
+            <div class="md-tile__v">{{ d.ordersToday }}</div>
+            <div class="md-tile__k">Orders today</div>
+          </div>
+          <div class="md-tile">
+            <div class="md-tile__v">{{ money(d.revenueToday) }}</div>
+            <div class="md-tile__k">Revenue today</div>
+          </div>
+          <div class="md-tile">
+            <div class="md-tile__v" [class.text-danger]="d.pendingPaymentsCount > 0">{{ money(d.pendingPaymentsAmount) }}</div>
+            <div class="md-tile__k">To collect ({{ d.pendingPaymentsCount }})</div>
+          </div>
+        </div>
+        <!-- Monthly target progress -->
+        <div class="md-target mt-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="text-secondary small">
+              <i class="ti ti-target me-1"></i>This month: {{ money(d.monthRevenue) }}
+              @if (d.monthTarget) { of {{ money(d.monthTarget) }} }
+            </span>
+            @if (d.monthTarget) {
+              <span class="fw-semibold" [class.text-success]="d.targetProgressPct >= 100">{{ d.targetProgressPct }}%</span>
+            } @else {
+              <span class="text-secondary small">No target set</span>
+            }
+          </div>
+          @if (d.monthTarget) {
+            <div class="progress md-progress">
+              <div
+                class="progress-bar"
+                [class.bg-success]="d.targetProgressPct >= 100"
+                [style.width.%]="d.targetProgressPct > 100 ? 100 : d.targetProgressPct"
+              ></div>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ===== Win-back: lapsed customers to call (salesperson only) ===== -->
+  @if (isSalesperson() && winBack().length > 0) {
+    <div class="shifa-section-title d-flex align-items-center justify-content-between">
+      <span><i class="ti ti-phone-call me-1"></i>Win-back list</span>
+      <span class="text-secondary small">No order in a while — call the top spenders</span>
+    </div>
+    <div class="card mb-3">
+      <div class="list-group list-group-flush">
+        @for (c of winBack(); track c.mobile) {
+          <div class="list-group-item d-flex align-items-center gap-2">
+            <div class="flex-fill min-w-0">
+              <div class="fw-medium text-truncate">{{ c.customerName || 'Customer' }}</div>
+              <div class="text-secondary small">
+                {{ c.mobile }} · {{ c.orderCount }} order{{ c.orderCount === 1 ? '' : 's' }} ·
+                {{ money(c.totalValue) }} · {{ c.daysSinceLastOrder }}d ago
+              </div>
+            </div>
+            <a class="btn btn-icon btn-outline-secondary shifa-touch" [href]="'tel:' + c.mobile" title="Call" aria-label="Call">
+              <i class="ti ti-phone"></i>
+            </a>
+            <button type="button" class="btn btn-icon btn-outline-success shifa-touch" (click)="waCustomer(c)" title="WhatsApp" aria-label="WhatsApp">
+              <i class="ti ti-brand-whatsapp"></i>
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- ===== Due for reorder: cadence-predicted repeat purchases (salesperson) ===== -->
+  @if (isSalesperson() && reorderDue().length > 0) {
+    <div class="shifa-section-title d-flex align-items-center justify-content-between">
+      <span><i class="ti ti-rotate-clockwise me-1"></i>Due for reorder</span>
+      <span class="text-secondary small">Based on their buying pattern</span>
+    </div>
+    <div class="card mb-3">
+      <div class="list-group list-group-flush">
+        @for (c of reorderDue(); track c.mobile) {
+          <div class="list-group-item d-flex align-items-center gap-2">
+            <div class="flex-fill min-w-0">
+              <div class="fw-medium text-truncate">{{ c.customerName || 'Customer' }}</div>
+              <div class="text-secondary small">
+                {{ c.mobile }} · every ~{{ c.avgIntervalDays }}d ·
+                {{ c.overdueDays >= 0 ? c.overdueDays + 'd overdue' : 'due in ' + (-c.overdueDays) + 'd' }}
+              </div>
+            </div>
+            <a class="btn btn-icon btn-outline-secondary shifa-touch" [href]="'tel:' + c.mobile" title="Call" aria-label="Call">
+              <i class="ti ti-phone"></i>
+            </a>
+            <button type="button" class="btn btn-icon btn-outline-success shifa-touch" (click)="waReorder(c)" title="WhatsApp" aria-label="WhatsApp">
+              <i class="ti ti-brand-whatsapp"></i>
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
   <div class="shifa-section-title">{{ isTeamLead() ? 'Team orders' : 'My orders' }}</div>
   <div class="row row-cards g-2 g-md-3 mb-3 stagger">
     <div class="col-6 col-md-4 col-xl-3">
@@ -877,8 +981,13 @@
     </div>
   </div>
 
-  <div class="shifa-section-title">By status</div>
-  @if (salespersonStatuses().length === 0) {
+  <div class="shifa-section-title d-flex align-items-center justify-content-between">
+    <span>By status</span>
+    @if (salespersonStageGroups().length > 0) {
+      <span class="text-secondary small">{{ salespersonOrderTotal() }} order{{ salespersonOrderTotal() === 1 ? '' : 's' }}</span>
+    }
+  </div>
+  @if (salespersonStageGroups().length === 0) {
     <div class="empty py-4">
       <div class="empty-icon"><i class="ti ti-inbox"></i></div>
       <p class="empty-title">No orders yet</p>
@@ -891,14 +1000,15 @@
     </div>
   } @else {
     <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
-      @for (s of salespersonStatuses(); track s.key) {
-        <div class="col-4 col-md-3 col-xl-2">
-          <div class="card card-hover stat-accent" style="--accent: #206bc4; --accent-soft: #e7f0fb">
+      @for (s of salespersonStageGroups(); track s.key) {
+        <div class="col-6 col-md-4 col-xl-3">
+          <div class="card card-hover stat-accent" [style.--accent]="s.accent" [style.--accent-soft]="s.accentSoft">
             <div class="card-body d-flex align-items-center justify-content-between">
               <div>
                 <div class="subheader">{{ s.label }}</div>
                 <div class="h1 m-0 count-up" [shifaCountUp]="s.value" countFormat="int"></div>
               </div>
+              <span class="stat-icon" [style.--accent]="s.accent" [style.--accent-soft]="s.accentSoft"><i [class]="s.icon"></i></span>
             </div>
           </div>
         </div>

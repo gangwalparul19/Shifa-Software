@@ -253,6 +253,27 @@ public class ProductService {
     }
 
     /**
+     * Published products for the given ids, in the SAME order as {@code ids}
+     * (so a ranked id list — e.g. best-sellers or co-occurrence — keeps its
+     * order). Hidden/missing ids are dropped. Used by the order-entry
+     * "favorites" and "frequently bought together" suggestions.
+     */
+    @Transactional(readOnly = true)
+    public List<ProductResponse> byIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        java.util.Map<Long, Product> byId = productRepository.findAllById(ids).stream()
+                .filter(p -> p.getVisibility() == ProductVisibility.PUBLISHED)
+                .collect(java.util.stream.Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
+        List<Product> ordered = ids.stream()
+                .map(byId::get)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        return withRatings(ordered);
+    }
+
+    /**
      * Filtered + sorted catalog listing (Catalog &amp; Discovery). Fetches the
      * published products once and applies the pure {@link CatalogFilter} to
      * honour the {@code q}/{@code category}/{@code minPrice}/{@code maxPrice}/

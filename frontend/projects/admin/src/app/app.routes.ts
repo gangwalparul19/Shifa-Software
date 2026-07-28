@@ -34,6 +34,7 @@ import { AnnouncementsComponent } from './announcements/announcements.component'
 import { AnalyticsComponent } from './analytics/analytics.component';
 import { TeamComponent } from './team/team.component';
 import { TeamPerformanceComponent } from './team/team-performance.component';
+import { LeaderboardComponent } from './leaderboard/leaderboard.component';
 
 const LOGIN_PATH = '/login';
 const FORBIDDEN_PATH = '/forbidden';
@@ -58,6 +59,19 @@ export const salespersonGuard = createRoleGuard(
   LOGIN_PATH,
   FORBIDDEN_PATH,
   Role.ADMIN,
+  Role.SALESPERSON,
+);
+
+/**
+ * Reports are open to Admin, Accountant AND Salesperson — the backend scopes a
+ * salesperson to their own orders and blocks money/operations reports, so a
+ * salesperson sees only their own sales/product/customer reports.
+ */
+export const reportsGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.ACCOUNTANT,
   Role.SALESPERSON,
 );
 
@@ -240,7 +254,7 @@ export const routes: Routes = [
         // scopes a salesperson to their own orders if reached directly (Req 20).
         path: 'reports',
         component: ReportsComponent,
-        canActivate: [accountantGuard],
+        canActivate: [reportsGuard],
       },
       {
         // Company + GST configuration (ADMIN only, Req 5.4).
@@ -309,6 +323,12 @@ export const routes: Routes = [
         path: 'team-performance',
         component: TeamPerformanceComponent,
         canActivate: [teamLeadGuard],
+      },
+      {
+        // Sales leaderboard (ADMIN + SALESPERSON) — moved off the dashboard.
+        path: 'leaderboard',
+        component: LeaderboardComponent,
+        canActivate: [salespersonGuard],
       },
     ],
   },

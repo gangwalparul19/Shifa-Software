@@ -21,6 +21,9 @@ import { AdminEventsService } from './admin-events.service';
 import { CountUpDirective } from '../shared/count-up.directive';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { DashboardService } from './dashboard.service';
+import { MyDay, MyDayService, ReorderDueCustomer, WinBackCustomer } from './my-day.service';
+import { openWhatsApp, whatsAppMessage } from '../shared/whatsapp.util';
+import { ORDER_STATUS_GROUPS } from '../orders/order-status-groups';
 import {
   ActivityCards,
   DashboardMetrics,
@@ -37,6 +40,34 @@ interface StatusCount {
   label: string;
   value: number;
 }
+
+/**
+ * A lifecycle-stage-group count for the salesperson/team-lead "By status"
+ * tiles: the many raw statuses folded into the 9 business-facing groups the
+ * Orders page uses, each with a colour accent + icon so the section reads as a
+ * clean, scannable KPI row instead of a flat monochrome list.
+ */
+interface StageGroupCount {
+  key: string;
+  label: string;
+  value: number;
+  accent: string;
+  accentSoft: string;
+  icon: string;
+}
+
+/** Colour accent + icon for each of the 9 lifecycle stage groups. */
+const STAGE_GROUP_STYLE: Record<string, { accent: string; accentSoft: string; icon: string }> = {
+  PENDING_APPROVAL: { accent: '#f59f00', accentSoft: '#fdf1da', icon: 'ti ti-clock' },
+  PACKAGING: { accent: '#0ca678', accentSoft: '#e3f7f0', icon: 'ti ti-box' },
+  LABEL_GENERATED: { accent: '#4263eb', accentSoft: '#e8ecfd', icon: 'ti ti-barcode' },
+  AWAITING_HANDOVER: { accent: '#0ca678', accentSoft: '#e3f7f0', icon: 'ti ti-package' },
+  AWAITING_DISPATCH: { accent: '#4263eb', accentSoft: '#e8ecfd', icon: 'ti ti-truck-delivery' },
+  IN_TRANSIT: { accent: '#206bc4', accentSoft: '#e7f0fb', icon: 'ti ti-truck' },
+  COMPLETED: { accent: '#2fb344', accentSoft: '#e5f6e8', icon: 'ti ti-circle-check' },
+  CANCELLED: { accent: '#868e96', accentSoft: '#f1f3f5', icon: 'ti ti-ban' },
+  FAILED_RETURNED: { accent: '#d63939', accentSoft: '#fbe7e7', icon: 'ti ti-alert-triangle' },
+};
 
 /** A laid-out bar + comparison-point for the hand-rolled SVG sales chart. */
 interface ChartBar {
@@ -118,6 +149,7 @@ interface StatusSegment {
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   private readonly service = inject(DashboardService);
+  private readonly myDayService = inject(MyDayService);
   private readonly router = inject(Router);
   protected readonly events = inject(AdminEventsService);
   protected readonly auth = inject(AuthService);
@@ -138,6 +170,46 @@ export class DashboardComponent implements OnInit, OnDestroy {
    * (New Order / My Leads) a team lead can't perform and relabels the section.
    */
   protected readonly isTeamLead = computed(() => this.role() === Role.TEAM_LEAD);
+
+  /** A true salesperson (not a team lead) — gets the "My Day" + win-back widgets. */
+  protected readonly isSalesperson = computed(() => this.role() === Role.SALESPERSON);
+
+  // --- My Day + Win-back + Reorder-due (salesperson self-service) ---------
+  protected readonly myDay = signal<MyDay | null>(null);
+  protected readonly winBack = signal<WinBackCustomer[]>([]);
+  protected readonly reorderDue = signal<ReorderDueCustomer[]>([]);
+
+  /** Loads the salesperson's My Day snapshot + win-back + reorder-due (non-fatal). */
+  private loadMyDay(): void {
+    this.myDayService.myDay().subscribe({
+      next: (d) => this.myDay.set(d),
+      error: () => this.myDay.set(null),
+    });
+    this.myDayService.winBack().subscribe({
+      next: (rows) => this.winBack.set(rows.slice(0, 6)),
+      error: () => this.winBack.set([]),
+    });
+    this.myDayService.reorderDue().subscribe({
+      next: (rows) => this.reorderDue.set(rows.slice(0, 6)),
+      error: () => this.reorderDue.set([]),
+    });
+  }
+
+  /** Opens WhatsApp for a reorder-due customer with a friendly nudge. */
+  waReorder(c: ReorderDueCustomer): void {
+    openWhatsApp(c.mobile, whatsAppMessage('followup', { customerName: c.customerName }));
+  }
+
+  /** ₹ formatter for the My Day / win-back figures (no decimals for compactness). */
+  money(value: string | number | null | undefined): string {
+    const n = Number(value ?? 0);
+    return '₹' + (Number.isFinite(n) ? Math.round(n).toLocaleString('en-IN') : '0');
+  }
+
+  /** Opens WhatsApp for a lapsed customer with a friendly win-back follow-up. */
+  waCustomer(c: WinBackCustomer): void {
+    openWhatsApp(c.mobile, whatsAppMessage('followup', { customerName: c.customerName }));
+  }
 
   // --- Configurable dashboard sections (FEATURE-ROADMAP §6.4) --------------
   private static readonly SECTIONS_KEY = 'shifa.dashboardHiddenSections.v1';
@@ -193,9 +265,43 @@ export class DashboardComponent implements OnInit, OnDestroy {
   protected readonly summaryLoading = signal(true);
   protected readonly summaryError = signal<string | null>(null);
 
-  /** A salesperson's own orders grouped by status, as sorted labelled counts. */
-  protected readonly salespersonStatuses = computed<StatusCount[]>(() =>
-    this.toStatusCounts(this.summary()?.salesperson?.ordersByStatus),
+  /**
+   * The salesperson/team-lead orders folded into the 9 business-facing
+   * lifecycle stage groups (same partition the Orders page uses), each with a
+   * colour accent + icon. Only non-empty groups are shown, in lifecycle order,
+   * so the "By status" section reads as a clean KPI row rather than a long,
+   * flat list of every raw status.
+   */
+  protected readonly salespersonStageGroups = computed<StageGroupCount[]>(() => {
+    const map = this.summary()?.salesperson?.ordersByStatus;
+    if (!map) {
+      return [];
+    }
+    const result: StageGroupCount[] = [];
+    for (const group of ORDER_STATUS_GROUPS) {
+      let value = 0;
+      for (const status of group.statuses) {
+        value += map[String(status)] ?? 0;
+      }
+      if (value <= 0) {
+        continue;
+      }
+      const style = STAGE_GROUP_STYLE[group.key];
+      result.push({
+        key: group.key,
+        label: group.label,
+        value,
+        accent: style.accent,
+        accentSoft: style.accentSoft,
+        icon: style.icon,
+      });
+    }
+    return result;
+  });
+
+  /** Total orders in scope (sum across all stage groups) for the header count. */
+  protected readonly salespersonOrderTotal = computed<number>(() =>
+    this.salespersonStageGroups().reduce((sum, g) => sum + g.value, 0),
   );
 
   /** The admin per-active-stage counts, as labelled counts. */
@@ -594,6 +700,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.summaryLoading.set(false);
       },
     });
+    // My Day + win-back are salesperson-only self-service widgets.
+    if (this.isSalesperson()) {
+      this.loadMyDay();
+    }
   }
 
   /** Turns a status→count map (keyed by backend status name) into sorted, labelled counts. */

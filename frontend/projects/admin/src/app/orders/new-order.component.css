@@ -299,3 +299,24 @@
   margin: 0;
   font-size: 14px;
 }
+
+/* Quick-add favorites + frequently-bought-together suggestion chips (Tranche 3) */
+.shifa-no__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.shifa-no__chips-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64726b;
+  width: 100%;
+}
+.shifa-chip {
+  border-radius: 999px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

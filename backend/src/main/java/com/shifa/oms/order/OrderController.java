@@ -2,6 +2,7 @@ package com.shifa.oms.order;
 
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.CurrentUserService;
+import com.shifa.oms.auth.Role;
 import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.invoice.InvoiceService;
 import com.shifa.oms.order.dto.CreateOrderRequest;
@@ -49,13 +50,16 @@ public class OrderController {
     private final CurrentUserService currentUserService;
     private final InvoiceService invoiceService;
     private final ProductService productService;
+    private final OrderSuggestionService suggestionService;
 
     public OrderController(OrderService orderService, CurrentUserService currentUserService,
-                           InvoiceService invoiceService, ProductService productService) {
+                           InvoiceService invoiceService, ProductService productService,
+                           OrderSuggestionService suggestionService) {
         this.orderService = orderService;
         this.currentUserService = currentUserService;
         this.invoiceService = invoiceService;
         this.productService = productService;
+        this.suggestionService = suggestionService;
     }
 
     /**
@@ -70,6 +74,30 @@ public class OrderController {
     @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN')")
     public List<ProductResponse> products(@RequestParam(name = "q", required = false) String q) {
         return productService.search(q);
+    }
+
+    /**
+     * Best-selling products for the order-entry "favorites" quick-add. A
+     * SALESPERSON gets their own best-sellers; an ADMIN gets business-wide.
+     */
+    @GetMapping("/products/top")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN')")
+    public List<ProductResponse> topProducts(@RequestParam(name = "limit", defaultValue = "8") int limit) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        Long createdBy = actor.role() == Role.SALESPERSON ? actor.userId() : null;
+        return suggestionService.topProducts(createdBy, limit);
+    }
+
+    /**
+     * Products frequently bought together with the given cart products (upsell).
+     * {@code productIds} is a comma-separated list of the items already added.
+     */
+    @GetMapping("/products/related")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN')")
+    public List<ProductResponse> relatedProducts(
+            @RequestParam(name = "productIds") List<Long> productIds,
+            @RequestParam(name = "limit", defaultValue = "3") int limit) {
+        return suggestionService.relatedProducts(productIds, limit);
     }
 
     /** Punch a new salesperson order (Req 7.1-7.11). */

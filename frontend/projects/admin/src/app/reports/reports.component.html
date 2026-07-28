@@ -7,7 +7,7 @@
 <!-- Presentation tabs (Req 12.1): Overview / Sales / Products / Customers.
      A fixed 4-column grid so all four fit on screen without horizontal scroll. -->
 <div class="rpt-tabs mb-3" role="tablist" aria-label="Report views">
-  @for (t of tabs; track t.key) {
+  @for (t of visibleTabs(); track t.key) {
     <button type="button" role="tab" class="rpt-tab"
       [class.active]="activeTab() === t.key"
       [attr.aria-selected]="activeTab() === t.key"
@@ -100,16 +100,19 @@
           <i class="ti ti-file-type-pdf me-1"></i> PDF
         </button>
       </div>
-      <div class="col-6">
-        <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-nowrap" [disabled]="exporting()" (click)="exportVyapar('csv')">
-          <i class="ti ti-file-text me-1"></i> Vyapar CSV
-        </button>
-      </div>
-      <div class="col-6">
-        <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-nowrap" [disabled]="exporting()" (click)="exportVyapar('xlsx')">
-          <i class="ti ti-file-spreadsheet me-1"></i> Vyapar Excel
-        </button>
-      </div>
+      <!-- Vyapar (billing) export is ADMIN/ACCOUNTANT-only — hidden for salespeople. -->
+      @if (!isSalesperson()) {
+        <div class="col-6">
+          <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-nowrap" [disabled]="exporting()" (click)="exportVyapar('csv')">
+            <i class="ti ti-file-text me-1"></i> Vyapar CSV
+          </button>
+        </div>
+        <div class="col-6">
+          <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-nowrap" [disabled]="exporting()" (click)="exportVyapar('xlsx')">
+            <i class="ti ti-file-spreadsheet me-1"></i> Vyapar Excel
+          </button>
+        </div>
+      }
     </div>
   </div>
 </form>

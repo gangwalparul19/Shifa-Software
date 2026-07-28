@@ -445,8 +445,31 @@
             >
               <i class="ti ti-phone"></i>
             </a>
+            <button
+              type="button"
+              class="shifa-od__round shifa-od__round--wa"
+              (click)="sendWhatsApp(order, 'confirm')"
+              [attr.aria-label]="'WhatsApp ' + order.customerName"
+              title="WhatsApp customer"
+            >
+              <i class="ti ti-brand-whatsapp"></i>
+            </button>
           }
         </div>
+
+        <!-- One-tap WhatsApp templates (click-to-chat, message pre-filled) -->
+        @if (order.customerMobile) {
+          <div class="shifa-od__wa">
+            <span class="shifa-od__label mb-1"><i class="ti ti-brand-whatsapp me-1"></i>Quick WhatsApp</span>
+            <div class="shifa-od__wa-actions">
+              @for (t of whatsappTemplates; track t.key) {
+                <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsApp(order, t.key)">
+                  <i class="ti {{ t.icon }} me-1"></i>{{ t.label }}
+                </button>
+              }
+            </div>
+          </div>
+        }
 
         <!-- (5) Delivery address -->
         <div class="shifa-od__card shifa-od__contact">
@@ -631,6 +654,19 @@
           >
             <i class="ti ti-arrow-back-up me-1"></i> Create return
           </button>
+        }
+
+        <!-- One-tap reorder: clone this order into a fresh New Order draft -->
+        @if (canCreateOrder()) {
+          <a
+            class="btn btn-primary w-100 shifa-od__primary"
+            [routerLink]="['/orders/new']"
+            [queryParams]="{ reorderFrom: order.id }"
+            (click)="closeDetail()"
+            title="Create a new order with these items"
+          >
+            <i class="ti ti-repeat me-1"></i> Reorder
+          </a>
         }
 
         <!-- (9) Full-width outlined green Download Invoice -->

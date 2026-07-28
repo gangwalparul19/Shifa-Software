@@ -373,12 +373,10 @@ export class ProductsComponent implements OnInit, OnDestroy {
     this.heroIndex.set(index);
   }
 
-  /** Navigates to the reports screen from the product detail drawer (Req 9.2). */
+  /** Opens the Reports screen on the product-wise sales report (Req 9.2). */
   viewSalesReport(): void {
-    // TODO: point at a product-scoped sales report once the backend exposes one;
-    // for now the general Reports screen (Products tab) is the closest target.
     this.closeDetail();
-    this.router.navigate(['/reports']);
+    this.router.navigate(['/reports'], { queryParams: { type: 'product' } });
   }
 
   /** Closes the product detail drawer. */

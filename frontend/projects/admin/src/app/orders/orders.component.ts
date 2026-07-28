@@ -24,6 +24,7 @@ import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { toggleSort, sortParam } from '../shared/sort.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
+import { WHATSAPP_TEMPLATES, openWhatsApp, whatsAppMessage } from '../shared/whatsapp.util';
 import {
   SavedView,
   loadSavedViews,
@@ -205,6 +206,25 @@ export class OrdersComponent implements OnInit, OnDestroy {
     const sel = this.selected();
     return rows.every((o) => sel.has(o.id));
   });
+
+  /** One-tap WhatsApp message templates for the order detail drawer. */
+  protected readonly whatsappTemplates = WHATSAPP_TEMPLATES;
+
+  /** Opens WhatsApp for the order's customer with a pre-filled template message. */
+  sendWhatsApp(order: OrderDetail, key: string): void {
+    const ok = openWhatsApp(
+      order.customerMobile,
+      whatsAppMessage(key, {
+        customerName: order.customerName,
+        orderCode: order.orderCode,
+        total: order.totalAmount,
+        remaining: order.remainingAmount,
+      }),
+    );
+    if (!ok) {
+      this.toasts.error('No valid mobile number to message on WhatsApp.');
+    }
+  }
 
   // --- Detail drawer ------------------------------------------------------
   protected readonly selectedDetail = signal<OrderDetail | null>(null);

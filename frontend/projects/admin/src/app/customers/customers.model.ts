@@ -24,6 +24,8 @@ export interface CustomerOrder {
   total: Money;
   orderStatus: OrderStatus | string;
   paymentStatus: PaymentStatus | string;
+  /** Order id (for the one-tap Reorder deep link); present on newer responses. */
+  orderId?: number;
 }
 
 /**

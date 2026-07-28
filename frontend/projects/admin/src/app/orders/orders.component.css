@@ -280,6 +280,27 @@
   background: var(--shifa-green-700, #164632);
   color: #fff;
 }
+/* WhatsApp variant of the round button (brand green), sits next to Call. */
+.shifa-od__round--wa {
+  margin-left: 0.4rem;
+  background: #25d366;
+  cursor: pointer;
+}
+.shifa-od__round--wa:hover {
+  background: #1eb457;
+}
+
+/* One-tap WhatsApp templates row under the customer card. */
+.shifa-od__wa {
+  display: flex;
+  flex-direction: column;
+  margin: 0.25rem 0 0.5rem;
+}
+.shifa-od__wa-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
 
 /* (6) Order items: thumbnail · name/qty · line total. */
 .shifa-od__item {

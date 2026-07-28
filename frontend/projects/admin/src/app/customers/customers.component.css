@@ -454,3 +454,10 @@
   font-size: 0.72rem;
   color: #8a988f;
 }
+
+/* One-tap WhatsApp quick-actions row in the Customer 360 drawer. */
+.cust-dr__wa {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}

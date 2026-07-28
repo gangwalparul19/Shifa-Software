@@ -1,5 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { ApiClient, AuthTokenStore } from 'core';
+import { ApiClient, AuthService, AuthTokenStore, Role } from 'core';
 import {
   ActivityCards,
   AdminEventType,
@@ -36,6 +36,7 @@ const MAX_FEED = 50;
 export class AdminEventsService {
   private readonly api = inject(ApiClient);
   private readonly tokens = inject(AuthTokenStore);
+  private readonly auth = inject(AuthService);
 
   private source: EventSource | null = null;
 
@@ -51,9 +52,17 @@ export class AdminEventsService {
   /** The current SSE connection state. */
   readonly status = signal<SseStatus>('closed');
 
-  /** Opens the stream (idempotent). No-op when not authenticated. */
+  /**
+   * Opens the stream (idempotent). No-op when not authenticated, or when the
+   * user isn't an ADMIN — the {@code /api/admin/events} feed is ADMIN-only
+   * server-side, so non-admin roles (salesperson, team lead, accountant, packing)
+   * must NOT attempt it (it would 403 the text/event-stream request repeatedly).
+   */
   connect(): void {
     if (this.source || typeof EventSource === 'undefined') {
+      return;
+    }
+    if (!this.auth.hasAnyRole(Role.ADMIN)) {
       return;
     }
     const token = this.tokens.getAccessToken();

@@ -1,9 +1,12 @@
 package com.shifa.oms.common;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
@@ -30,6 +33,12 @@ import java.util.Locale;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    private final ObjectMapper objectMapper;
+
+    public GlobalExceptionHandler(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     /** Any domain/application exception carrying its own status and code. */
     @ExceptionHandler(ApiException.class)
@@ -100,28 +109,45 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(body);
     }
 
-    /** Authenticated user lacks the required authority. */
+    /**
+     * Authenticated user lacks the required authority. Written straight to the
+     * response as JSON (bypassing content negotiation) so a 403 on a NON-JSON
+     * request — e.g. the {@code text/event-stream} admin SSE feed or a binary
+     * PDF/image endpoint — renders cleanly instead of failing with
+     * "No acceptable representation".
+     */
     @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
-        ErrorResponse body = ErrorResponse.of(
-                HttpStatus.FORBIDDEN.value(),
-                HttpStatus.FORBIDDEN.getReasonPhrase(),
-                "FORBIDDEN",
-                "You are not authorized to perform this action.",
-                request.getRequestURI());
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    public void handleAccessDenied(AccessDeniedException ex, HttpServletRequest request,
+                                   HttpServletResponse response) throws IOException {
+        writeJsonError(response, request, HttpStatus.FORBIDDEN, "FORBIDDEN",
+                "You are not authorized to perform this action.");
     }
 
-    /** Unauthenticated access to a protected endpoint. */
+    /** Unauthenticated access to a protected endpoint (JSON, negotiation-free). */
     @ExceptionHandler(AuthenticationException.class)
-    public ResponseEntity<ErrorResponse> handleAuthentication(AuthenticationException ex, HttpServletRequest request) {
+    public void handleAuthentication(AuthenticationException ex, HttpServletRequest request,
+                                     HttpServletResponse response) throws IOException {
+        writeJsonError(response, request, HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED",
+                "Authentication is required to access this resource.");
+    }
+
+    /**
+     * Serialises an {@link ErrorResponse} directly to the servlet response as
+     * JSON with the given status. Bypasses Spring's {@code Accept}-header content
+     * negotiation, which would otherwise throw {@code HttpMediaTypeNotAcceptableException}
+     * when the failing request only accepts a non-JSON type (SSE, PDF, image).
+     */
+    private void writeJsonError(HttpServletResponse response, HttpServletRequest request,
+                                HttpStatus status, String code, String message) throws IOException {
+        if (response.isCommitted()) {
+            return;
+        }
+        response.setStatus(status.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
         ErrorResponse body = ErrorResponse.of(
-                HttpStatus.UNAUTHORIZED.value(),
-                HttpStatus.UNAUTHORIZED.getReasonPhrase(),
-                "UNAUTHENTICATED",
-                "Authentication is required to access this resource.",
-                request.getRequestURI());
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
+                status.value(), status.getReasonPhrase(), code, message, request.getRequestURI());
+        objectMapper.writeValue(response.getWriter(), body);
     }
 
     /**

@@ -15,6 +15,25 @@
     subtitle="Punch a new order on behalf of a customer."
     [breadcrumbs]="[{ label: 'Orders', link: '/orders' }, { label: 'New Order' }]"
   />
+  @if (reorderFromCode(); as code) {
+    <div class="alert alert-info anim-fade-up" role="status">
+      <i class="ti ti-repeat me-2"></i>
+      Reordering from <strong>{{ code }}</strong> — customer, address and items were copied in.
+      Review quantities and save.
+    </div>
+  }
+}
+
+@if (draftAvailable()) {
+  <div class="alert alert-warning d-flex align-items-center justify-content-between anim-fade-up" role="status">
+    <span><i class="ti ti-history me-2"></i>You have an unfinished order. Resume it?</span>
+    <span class="btn-list">
+      <button type="button" class="btn btn-sm btn-primary" (click)="resumeDraft()">
+        <i class="ti ti-arrow-back-up me-1"></i>Resume
+      </button>
+      <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="discardDraft()">Discard</button>
+    </span>
+  </div>
 }
 
 @if (serverErrors().length > 0) {
@@ -289,6 +308,18 @@
       </button>
     </div>
 
+    <!-- Favorites: one-tap quick-add of best-sellers (Tranche 3) -->
+    @if (favorites().length > 0) {
+      <div class="shifa-no__chips mb-2">
+        <span class="shifa-no__chips-label"><i class="ti ti-star me-1"></i>Quick add</span>
+        @for (p of favorites(); track p.id) {
+          <button type="button" class="btn btn-sm btn-outline-secondary shifa-chip" (click)="quickAdd(p)">
+            <i class="ti ti-plus me-1"></i>{{ p.name }}
+          </button>
+        }
+      </div>
+    }
+
     @if (productsLoading()) {
       <div class="shifa-no__card">
         <admin-state-panel variant="loading" loadingLabel="Loading products…" />
@@ -379,6 +410,18 @@
           </div>
         }
       </div>
+
+      <!-- Frequently bought together (upsell) -->
+      @if (suggestions().length > 0) {
+        <div class="shifa-no__chips shifa-no__chips--suggest mt-2">
+          <span class="shifa-no__chips-label"><i class="ti ti-bulb me-1"></i>Frequently bought together</span>
+          @for (p of suggestions(); track p.id) {
+            <button type="button" class="btn btn-sm btn-outline-success shifa-chip" (click)="quickAdd(p)">
+              <i class="ti ti-plus me-1"></i>{{ p.name }} <span class="text-secondary ms-1">₹{{ p.salePrice }}</span>
+            </button>
+          }
+        </div>
+      }
 
       <!-- Running totals -->
       <div class="shifa-no__card shifa-no__totals">

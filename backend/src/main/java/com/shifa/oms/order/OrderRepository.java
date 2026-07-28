@@ -1,11 +1,13 @@
 package com.shifa.oms.order;
 
 import com.shifa.oms.statemachine.OrderStatus;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -68,6 +70,54 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
      * New Order form's customer + shipping details from the customer's last order.
      */
     java.util.Optional<OrderEntity> findFirstByCustomerMobileOrderByCreatedAtDescIdDesc(String customerMobile);
+
+    /**
+     * Best-selling product ids across the whole business (by units sold), for the
+     * order-entry "favorites" quick-add. Excludes rejected/cancelled orders.
+     */
+    @Query(value = """
+            SELECT li.product_id
+            FROM line_items li
+            JOIN orders o ON o.id = li.order_id
+            WHERE li.product_id IS NOT NULL
+              AND o.order_status NOT IN ('REJECTED','CANCELLED')
+            GROUP BY li.product_id
+            ORDER BY SUM(li.quantity) DESC
+            """, nativeQuery = true)
+    List<Long> topSoldProductIds(Pageable pageable);
+
+    /** As {@link #topSoldProductIds} but limited to a single salesperson's orders. */
+    @Query(value = """
+            SELECT li.product_id
+            FROM line_items li
+            JOIN orders o ON o.id = li.order_id
+            WHERE li.product_id IS NOT NULL
+              AND o.created_by = :createdBy
+              AND o.order_status NOT IN ('REJECTED','CANCELLED')
+            GROUP BY li.product_id
+            ORDER BY SUM(li.quantity) DESC
+            """, nativeQuery = true)
+    List<Long> topSoldProductIdsByCreator(@Param("createdBy") Long createdBy, Pageable pageable);
+
+    /**
+     * Products frequently bought in the SAME order as any of {@code productIds}
+     * (co-occurrence), ranked by how many orders they co-occur in — powers the
+     * "frequently bought together" upsell. Excludes the input products themselves
+     * and rejected/cancelled orders.
+     */
+    @Query(value = """
+            SELECT li2.product_id
+            FROM line_items li1
+            JOIN line_items li2 ON li2.order_id = li1.order_id AND li2.product_id <> li1.product_id
+            JOIN orders o ON o.id = li1.order_id
+            WHERE li1.product_id IN (:productIds)
+              AND li2.product_id IS NOT NULL
+              AND li2.product_id NOT IN (:productIds)
+              AND o.order_status NOT IN ('REJECTED','CANCELLED')
+            GROUP BY li2.product_id
+            ORDER BY COUNT(DISTINCT o.id) DESC
+            """, nativeQuery = true)
+    List<Long> relatedProductIds(@Param("productIds") Collection<Long> productIds, Pageable pageable);
 
     /**
      * All orders created within an inclusive timestamp window, used by the P&L

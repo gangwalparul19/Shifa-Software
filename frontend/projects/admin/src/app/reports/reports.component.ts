@@ -1,5 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
+import { AuthService, Role } from 'core';
 import {
   ApexAxisChartSeries,
   ApexChart,
@@ -80,6 +82,15 @@ interface SparkOptions {
 export class ReportsComponent implements OnInit {
   private readonly service = inject(ReportsService);
   private readonly fb = inject(FormBuilder);
+  private readonly auth = inject(AuthService);
+  private readonly route = inject(ActivatedRoute);
+
+  /**
+   * A salesperson sees only their OWN sales/product/customer reports: the
+   * Money &amp; Receivables and Operations report groups, the Finance tab, and
+   * the Vyapar (billing) export are hidden and blocked server-side.
+   */
+  protected readonly isSalesperson = computed(() => this.auth.session()?.role === Role.SALESPERSON);
 
   /** Honour reduced-motion by disabling chart animations. */
   private readonly reducedMotion =
@@ -111,10 +122,21 @@ export class ReportsComponent implements OnInit {
     { value: 'stock', label: 'Stock movements', group: 'Operations' },
   ];
 
-  /** The report-type options grouped by category, for optgroup rendering. */
+  /** Report groups a salesperson may NOT see (money + operations are admin/accountant). */
+  private static readonly SALESPERSON_HIDDEN_GROUPS = new Set(['Money & Receivables', 'Operations']);
+
+  /**
+   * The report-type options grouped by category, for optgroup rendering. For a
+   * salesperson the Money &amp; Operations groups are dropped (they only get
+   * Sales + Orders reports, scoped to their own orders).
+   */
   protected readonly reportGroups = computed(() => {
+    const salesperson = this.isSalesperson();
     const groups: { name: string; options: ReportTypeOption[] }[] = [];
     for (const opt of this.reportTypes) {
+      if (salesperson && ReportsComponent.SALESPERSON_HIDDEN_GROUPS.has(opt.group)) {
+        continue;
+      }
       let group = groups.find((g) => g.name === opt.group);
       if (!group) {
         group = { name: opt.group, options: [] };
@@ -133,6 +155,11 @@ export class ReportsComponent implements OnInit {
     { key: 'customers', label: 'Customers', icon: 'ti-users' },
     { key: 'finance', label: 'Finance', icon: 'ti-cash' },
   ];
+
+  /** Presentation tabs the current user may see (salesperson loses Finance). */
+  protected readonly visibleTabs = computed(() =>
+    this.isSalesperson() ? this.tabs.filter((t) => t.key !== 'finance') : this.tabs,
+  );
 
   /** The active presentation tab; drives the report type (except Customers). */
   protected readonly activeTab = signal<ReportTab>('overview');
@@ -190,7 +217,37 @@ export class ReportsComponent implements OnInit {
 
   ngOnInit(): void {
     this.applyPreset('last30');
+    // Deep link: /reports?type=product (e.g. from a product's "View Sales Report")
+    // preselects that report + its matching presentation tab.
+    const requested = this.route.snapshot.queryParamMap.get('type');
+    const match = requested
+      ? this.reportGroups()
+          .flatMap((g) => g.options)
+          .find((o) => o.value === requested)
+      : undefined;
+    if (match) {
+      this.form.controls.type.setValue(match.value);
+      this.activeTab.set(this.tabForType(match.value));
+    }
     this.generate();
+  }
+
+  /** Best presentation tab for a report type (used for deep links). */
+  private tabForType(type: ReportType): ReportTab {
+    switch (type) {
+      case 'product':
+        return 'products';
+      case 'customer':
+        return 'customers';
+      case 'monthly':
+        return 'sales';
+      case 'payments':
+      case 'outstanding':
+      case 'cod-remittance':
+        return 'finance';
+      default:
+        return 'overview';
+    }
   }
 
   /** Whether the custom from/to inputs are active. */

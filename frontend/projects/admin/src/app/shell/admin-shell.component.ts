@@ -220,7 +220,7 @@ export class AdminShellComponent {
           icon: 'ti-plus',
           roles: [Role.SALESPERSON, Role.ADMIN],
         },
-        { kind: 'link', label: 'Approval Queue', path: '/approval-queue', icon: 'ti-checklist' },
+        { kind: 'link', label: 'Approval Queue', path: '/approval-queue', icon: 'ti-checklist', adminOnly: true },
         {
           kind: 'link',
           label: 'Payments',
@@ -228,9 +228,29 @@ export class AdminShellComponent {
           icon: 'ti-shield-check',
           roles: [Role.ADMIN, Role.PAYMENT_VERIFIER],
         },
-        { kind: 'link', label: 'Orders', path: '/orders', icon: 'ti-receipt' },
-        { kind: 'link', label: 'Packing', path: '/packing', icon: 'ti-package' },
-        { kind: 'link', label: 'Reconciliation', path: '/reconciliation', icon: 'ti-cash-register' },
+        {
+          kind: 'link',
+          label: 'Orders',
+          path: '/orders',
+          icon: 'ti-receipt',
+          // All-orders view; any staff may reach it (backend scopes a salesperson
+          // to their own orders). Excludes roles with a dedicated home only.
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON, Role.TEAM_LEAD],
+        },
+        {
+          kind: 'link',
+          label: 'Packing',
+          path: '/packing',
+          icon: 'ti-package',
+          roles: [Role.ADMIN, Role.PACKING_USER],
+        },
+        {
+          kind: 'link',
+          label: 'Reconciliation',
+          path: '/reconciliation',
+          icon: 'ti-cash-register',
+          roles: [Role.ADMIN, Role.ACCOUNTANT],
+        },
         {
           kind: 'link',
           label: 'Returns',
@@ -270,6 +290,14 @@ export class AdminShellComponent {
           roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON],
         },
         {
+          // Sales leaderboard + streak (light gamification), salesperson-facing.
+          kind: 'link',
+          label: 'Leaderboard',
+          path: '/leaderboard',
+          icon: 'ti-trophy',
+          roles: [Role.ADMIN, Role.SALESPERSON],
+        },
+        {
           // Salesperson 360 — directory + performance leaderboard (ADMIN only).
           kind: 'link',
           label: 'Salespeople',
@@ -291,7 +319,14 @@ export class AdminShellComponent {
       label: 'Catalog',
       icon: 'ti-building-store',
       children: [
-        { kind: 'link', label: 'Products', path: '/products', icon: 'ti-leaf' },
+        {
+          kind: 'link',
+          label: 'Products',
+          path: '/products',
+          icon: 'ti-leaf',
+          // Read-only for salespeople (mutations hidden + backend ADMIN-guarded).
+          roles: [Role.ADMIN, Role.SALESPERSON],
+        },
         { kind: 'link', label: 'Inventory', path: '/inventory', icon: 'ti-packages', adminOnly: true },
       ],
     },
@@ -315,7 +350,9 @@ export class AdminShellComponent {
           label: 'Reports',
           path: '/reports',
           icon: 'ti-chart-histogram',
-          roles: [Role.ADMIN, Role.ACCOUNTANT],
+          // Salesperson sees their own sales/product/customer reports (scoped +
+          // money/operations blocked server-side).
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON],
         },
         { kind: 'link', label: 'Analytics', path: '/analytics', icon: 'ti-chart-dots', adminOnly: true },
         { kind: 'link', label: 'Insights', path: '/insights', icon: 'ti-bulb', adminOnly: true },

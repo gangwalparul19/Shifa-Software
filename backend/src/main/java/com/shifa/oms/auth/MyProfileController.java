@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/me/profile")
-@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','PACKING_USER')")
+@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','PACKING_USER','TEAM_LEAD','PAYMENT_VERIFIER')")
 public class MyProfileController {
 
     private final ProfileChangeRequestService changeRequestService;

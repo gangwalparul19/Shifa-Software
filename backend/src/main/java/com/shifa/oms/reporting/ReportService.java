@@ -87,6 +87,11 @@ public class ReportService {
             requireAdminOrAccountant();
             return moduleReportService.generate(type, from, to);
         }
+        // Money/receivables reports stay ADMIN/ACCOUNTANT-only; a salesperson gets
+        // only the sales + orders reports (scoped to their own orders below).
+        if (type.isMoneyReport()) {
+            requireAdminOrAccountant();
+        }
         DateRange window = new DateRange(from, to);
         List<OrderReportRecord> records = loadRecords();
         Map<Long, String> salespersonNames = salespersonNames(records);

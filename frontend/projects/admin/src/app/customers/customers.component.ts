@@ -16,6 +16,7 @@ import { SortableHeaderComponent } from '../shared/sortable-header.component';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
 import { toggleSort, sortParam } from '../shared/sort.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
+import { WHATSAPP_TEMPLATES, openWhatsApp, whatsAppMessage } from '../shared/whatsapp.util';
 
 /** Sort fields the backend accepts for the admin customers listing. */
 const SORT_FIELDS = new Set(['totalSpent', 'orderCount', 'lastOrderAt', 'firstOrderAt', 'mobile']);
@@ -52,6 +53,32 @@ export class CustomersComponent implements OnInit, OnDestroy {
   // Expose risk badge helpers to the template.
   protected readonly riskPillClass = riskPillClass;
   protected readonly riskLabel = riskLabel;
+
+  /** One-tap WhatsApp templates for the Customer 360 drawer. */
+  protected readonly whatsappTemplates = WHATSAPP_TEMPLATES;
+
+  /**
+   * The most recent order id to reorder from (first history row that carries an
+   * id; the list is newest-first). Null when none is available.
+   */
+  lastReorderableId(profile: CustomerProfile): number | null {
+    return profile.orders.find((o) => o.orderId != null)?.orderId ?? null;
+  }
+
+  /** Opens WhatsApp for the open customer with a pre-filled template message. */
+  sendWhatsApp(profile: CustomerProfile, key: string): void {
+    const ok = openWhatsApp(
+      profile.summary.mobile,
+      whatsAppMessage(key, {
+        customerName: profile.summary.name,
+        total: profile.summary.totalSpent,
+        remaining: profile.metrics.outstanding,
+      }),
+    );
+    if (!ok) {
+      this.toasts.error('No valid mobile number to message on WhatsApp.');
+    }
+  }
 
   protected readonly customers = signal<CustomerSummary[]>([]);
   protected readonly loading = signal(true);

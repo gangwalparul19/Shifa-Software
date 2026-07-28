@@ -1260,8 +1260,7 @@ th,
   min-width: 0;
 }
 
-/* Safety net for any component that lays a raw horizontally-wide block inside
-   a card without its own scroller — keep it inside the card, not the page. */
-.card {
-  max-width: 100%;
-}
+/* NOTE: deliberately NO global `.card { max-width: 100% }` — it clamps
+   absolutely/fixed-positioned dropdown cards (e.g. the notifications bell panel,
+   row-action menus) to their narrow positioned container. In-flow cards already
+   can't exceed their column, so the rule was redundant and only caused harm. */

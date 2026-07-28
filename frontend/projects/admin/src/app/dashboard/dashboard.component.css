@@ -383,3 +383,32 @@ apx-chart {
   background: #1f5d3f;
   color: #fff;
 }
+
+/* --- "My Day" salesperson card ---------------------------------------- */
+.md-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+.md-tile {
+  text-align: center;
+  padding: 0.5rem 0.25rem;
+  background: var(--shifa-green-050, #f2f9f5);
+  border-radius: 10px;
+}
+.md-tile__v {
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: #182a21;
+  line-height: 1.2;
+}
+.md-tile__k {
+  font-size: 0.72rem;
+  color: #64726b;
+  margin-top: 0.15rem;
+}
+.md-progress {
+  height: 8px;
+  border-radius: 999px;
+}
+

@@ -777,3 +777,189 @@ details from that customer's LAST order so the salesperson doesn't re-type them 
   script end-to-end): built → uploaded → DB backup (`~/shifa-backup-2026-07-28-*.sql`) → restart. Verified live:
   Flyway "current v43, no migration necessary", "Tomcat started on 8080", `curl localhost/`=200,
   `/api/orders/last-by-mobile`=401 (endpoint wired + auth-enforced). `push-to-aws.ps1` works as the single deploy tool.
+
+## Sales-productivity wave — Tranche 1: Click-to-WhatsApp + One-tap Reorder — implemented
+First batch of the salesperson-productivity features (frontend-mostly, reuse existing data). Backend: only a
+1-field DTO addition. NOT yet deployed.
+- **Click-to-WhatsApp + templates** (`shared/whatsapp.util.ts`): pure `normalizeWhatsAppNumber` (bare 10-digit →
+  `91…`), `whatsAppHref`/`openWhatsApp` (`https://wa.me/<num>?text=<enc>` — works with the mocked WhatsApp), and 4
+  one-tap templates (`WHATSAPP_TEMPLATES` confirm/address/payment/followup) rendered by `whatsAppMessage(key, ctx)`.
+  Wired into: **Order detail drawer** (`orders.component` `sendWhatsApp(order,key)` — a green WhatsApp round button
+  next to Call + a "Quick WhatsApp" template row in the Details tab) and **Customer 360 drawer** (`customers.component`
+  `sendWhatsApp(profile,key)` — template row atop the Overview tab). No backend, no integration change.
+- **One-tap Reorder**: New Order supports **`/orders/new?reorderFrom=<orderId>`** (`new-order.component`
+  `initReorderMode` — mutually exclusive with convert mode; loads `OrdersService.detail`, patches customer/address
+  WITH `emitEvent:false` so the mobile auto-prefill doesn't clobber the cloned address, rebuilds the items FormArray
+  from the source order's lines (productId+quantity+original rate), `model.set(snapshot())`, blue "Reordering from
+  <code>" banner). Entry points: **Reorder** button in the order-detail drawer actions (routerLink, ADMIN/SALESPERSON
+  via `canCreateOrder`), and **"Reorder last order"** in the Customer 360 Orders tab (`lastReorderableId(profile)` =
+  newest history row with an id).
+- Backend (only change): `crm/dto/CustomerOrderRow` gained `Long orderId` (appended; `from` sets `order.getId()`) so
+  Customer 360 history rows expose the id for the reorder deep link; frontend `CustomerOrder.orderId?`. CustomerServiceTest
+  6/6 green (accessors unaffected). Admin `build:admin` complete.
+- **Remaining tranches (requested, not yet built)**: T2 = "My Day" salesperson home + Win-back list + Abandoned/draft
+  recovery; T3 = Product quick-add & favorites (most-sold) + Upsell/frequently-bought-together + Smart reorder reminders
+  (cadence → follow-up tasks) + Leaderboard/streaks. T3 items need backend (co-occurrence / cadence / most-sold queries).
+
+## Sales-productivity wave — Tranche 2: My Day + Win-back + Draft recovery — implemented
+- **Abandoned-order draft recovery** (`orders/new-order.component`, frontend-only): the New Order form auto-saves to
+  `localStorage['shifa:new-order-draft']` (debounced 800ms) whenever it has content — skipped in convert/reorder mode
+  (`reorderActive` flag) and while submitting. A blank New Order offers a **"You have an unfinished order — Resume?"**
+  banner (`draftAvailable`, `resumeDraft()` rebuilds items+patches scalars, `discardDraft()`); the draft is cleared on a
+  successful create / offline-enqueue.
+- **"My Day" + "Win-back"** — new isolated backend module `com.shifa.oms.salesperson` (NO change to existing
+  services/tests): `MyDayService` (own `Clock` field = Asia/Kolkata; scoped via `SalespersonScopeResolver.creatorConstraint`
+  → own orders, ADMIN unscoped) computes from `OrderRepository.findAllScoped` + `SalesTargetRepository`:
+  `MyDayResponse{ordersToday, revenueToday, monthOrders, monthRevenue, monthTarget, targetProgressPct,
+  pendingPaymentsCount, pendingPaymentsAmount}` (revenue excludes REJECTED/CANCELLED; payments-to-chase = active orders
+  with remaining>0), and `winBack(days=60 default)` = customers with no order in N days, aggregated by mobile in-memory,
+  ranked by lifetime value desc (cap 100). `MyDayController` `GET /api/my-day` + `GET /api/my-day/win-back?days=`
+  (`@PreAuthorize hasAnyRole('SALESPERSON','ADMIN')`; caller from `CurrentUserService.requireCurrentUser`). No migration
+  (reuses `sales_targets` V38).
+- **Frontend** (`dashboard/`): `MyDayService` + models `MyDay`/`WinBackCustomer`. Dashboard gains `isSalesperson`
+  computed; `loadMyDay()` (called from `loadSummary` for SALESPERSON only, non-fatal). Salesperson dashboard renders a
+  **"My day"** card (today orders/revenue tiles + monthly target progress bar + "to collect" tile) and a **"Win-back
+  list"** (top 6 lapsed customers, each with tel: call + WhatsApp follow-up via `waCustomer`). Team leads don't see either.
+- Verified: backend EndpointRoleGuard 15 + OrderService 22 + CustomerService 6 green (new module compiles, no
+  regressions); admin `build:admin` complete. NOT yet deployed (bundle with Tranche 1 next deploy).
+- **Remaining**: Tranche 3 = Product quick-add & favorites (most-sold), Upsell/frequently-bought-together, Smart reorder
+  reminders (cadence→follow-up tasks), Leaderboard/streaks.
+
+## Sales-productivity wave — Tranche 3 (3 of 4): favorites, upsell, reorder-due — implemented
+No migration; reuses existing order-line history. NOT yet deployed.
+- **3a Favorites (quick-add) + 3b Frequently-bought-together (upsell)**: new isolated `order/OrderSuggestionService`
+  (injects OrderRepository + ProductService; keeps `OrderService` ctor/tests untouched). New `OrderRepository` native
+  queries (exclude REJECTED/CANCELLED): `topSoldProductIds(Pageable)`, `topSoldProductIdsByCreator(createdBy, Pageable)`
+  (best-sellers by SUM(quantity)), `relatedProductIds(productIds, Pageable)` (co-occurrence: products in the SAME order,
+  ranked by COUNT(DISTINCT order), excludes the input ids). `ProductService.byIds(ids)` maps published products keeping
+  the ranked order (via existing `withRatings`). `OrderController`: `GET /api/orders/products/top?limit=8`
+  (SALESPERSON→own best-sellers via `actor.userId()`, ADMIN→global) + `GET /api/orders/products/related?productIds=..&limit=3`
+  (`hasAnyRole SALESPERSON,ADMIN`). Frontend: `CatalogService.topProducts`/`relatedProducts`; New Order Items step shows
+  a **"Quick add"** chip row (favorites) + a **"Frequently bought together"** chip row (upsell, refreshed via a debounced
+  `items.valueChanges` keyed on the productId set); `quickAdd(product)` bumps qty if present else fills an empty/new line
+  with the product + sale-price rate. `.shifa-no__chips`/`.shifa-chip` CSS.
+- **3c Smart reorder-due list** (cadence-based, explainable — no ML/job): `MyDayService.reorderDue(principal)` groups the
+  caller's own orders by mobile, and for customers with ≥2 orders computes avg interval = span/(count-1), predicted next =
+  lastOrder + avgInterval, includes those within 5 days of / past due, sorted most-overdue-then-value. DTO
+  `ReorderDueCustomer{mobile,name,lastOrderDate,predictedReorderDate,avgIntervalDays,overdueDays,orderCount,totalValue}`;
+  endpoint `GET /api/my-day/reorder-due`. Frontend: `MyDayService.reorderDue`; salesperson dashboard gains a **"Due for
+  reorder"** list (call + WhatsApp per row, "every ~Nd · Xd overdue/due in Xd").
+- Verified: clean `mvn clean test-compile` (531 main + 132 test); EndpointRoleGuard 15 + OrderService 22 + CustomerService
+  6 green; admin `build:admin` complete. (Note: a stale incremental target caused a spurious testCompile failure — `mvn
+  clean` fixed it; lesson reinforced: use `mvn clean` when class files go missing.)
+### 3d Leaderboard + streaks — implemented (Tranche 3 COMPLETE)
+- **Backend**: `MyDayService` now also injects `UserRepository`; `leaderboard(principal)` loads all orders, aggregates
+  THIS-MONTH revenue+orders per `created_by` (excl. REJECTED/CANCELLED), resolves users via `findAllById` and keeps only
+  role SALESPERSON, ranks by revenue desc (orders tiebreak), and computes the caller's consecutive-day **order streak**
+  (`streakDays` — anchored on today or yesterday, counts back while dates present; any-status orders count). DTO
+  `LeaderboardResponse{rows:[LeaderboardRow{rank,salespersonId,name,revenue,orders,isMe}], myRank, myRevenue, myStreakDays}`
+  (top 10 rows; `myRank` computed over the FULL ranked list even if outside top 10). Endpoint `GET /api/my-day/leaderboard`
+  (`hasAnyRole SALESPERSON,ADMIN`). Design choice: team leaderboard is **visible with names** (standard sales gamification).
+- **Frontend**: `MyDayService.leaderboard` + models `Leaderboard`/`LeaderboardRow`; salesperson dashboard renders a
+  **"Leaderboard · this month"** card (top rows w/ rank pill — gold for top 3, own row highlighted `lb-me`) with header
+  badges **"N-day streak"** (flame) + **"You're #R"**. Loaded in `loadMyDay()` (salesperson-only, non-fatal).
+- Verified: `mvn clean test -Dtest=EndpointRoleGuard,OrderService,CustomerService` = **43 green** (new UserRepository dep
+  wires cleanly in full context); admin `build:admin` complete. No migration.
+
+## Sales-productivity wave — STATUS: Tranches 1, 2, 3 ALL COMPLETE (built, NOT yet deployed)
+T1 (Click-to-WhatsApp + templates, One-tap Reorder), T2 (My Day + Win-back + Draft recovery), T3 (Favorites/quick-add,
+Frequently-bought-together upsell, Smart reorder-due, Leaderboard+streaks). All frontend + additive backend, NO migrations.
+Next: deploy the whole wave via `deploy\push-to-aws.ps1` (bundles the earlier prefill/tabs/etc. too).
+
+## Sidebar role-gating fix + Leaderboard moved to its own page — implemented (frontend-only)
+Client: salespeople saw sidebar items they can't access (Approval Queue, Packaging, Reconciliation); and the
+leaderboard was rendered ON the dashboard. Two fixes in `shell/admin-shell.component.ts` + dashboard + a new page.
+- **Sidebar gating**: `navEntries` computed already hides `adminOnly`/`roles`-gated links and drops empty groups, BUT
+  several links had NO gating and defaulted to visible-for-all. Aligned each ungated link to its ROUTE GUARD:
+  Approval Queue → `adminOnly:true` (adminOnlyGuard); Packing → `roles:[ADMIN,PACKING_USER]` (packingGuard);
+  Reconciliation → `roles:[ADMIN,ACCOUNTANT]` (accountantGuard); Products → `roles:[ADMIN,SALESPERSON]` (salespersonGuard,
+  read-only); Orders → `roles:[ADMIN,ACCOUNTANT,SALESPERSON,TEAM_LEAD]` (staffGuard minus packing/payment who have their
+  own home). Result: a SALESPERSON now sees only New Order, Orders, Leads, Due follow-ups, Customers, Leaderboard,
+  Products, My Profile (+ dashboard); empty Procurement/Finance groups auto-hide. Principle going forward: **every nav
+  link must carry `roles`/`adminOnly` matching its route guard** (ungated = visible to everyone — the bug).
+- **Leaderboard page**: new standalone `leaderboard/leaderboard.component.ts` (route `/leaderboard`, `salespersonGuard`
+  = ADMIN+SALESPERSON) — page header + my-rank/streak/revenue badges + ranked list (gold top-3, own row highlighted),
+  loads `MyDayService.leaderboard()`. New nav link "Leaderboard" (icon ti-trophy, `roles:[ADMIN,SALESPERSON]`) in the CRM
+  group. **Removed** the leaderboard block + its signal/load/import + `.lb-*` CSS from the dashboard (My Day / Win-back /
+  Reorder-due stay on the dashboard). Admin `build:admin` clean.
+
+## Fix: notifications bell dropdown squished to a narrow column (regression) — fixed
+Root cause: the app-wide mobile-fit rule **`.card { max-width: 100% }`** (added in the no-horizontal-scroll pass)
+clamped the notification bell's **absolutely-positioned** `.shifa-bell__panel` (a `.card`) to 100% of its ~44px
+positioned `.shifa-bell` container → the panel rendered as a thin icon-only strip. Fix: **removed the global
+`.card { max-width: 100% }`** from `styles.css` (it was redundant for in-flow cards — they already can't exceed their
+column — and broke every positioned dropdown card, e.g. bell panel + row-action kebab menus). Added an explicit
+`max-width: 92vw` on `.shifa-bell__panel` as belt-and-suspenders. Lesson: never apply a global `max-width` to `.card`;
+positioned dropdown panels are cards too. Frontend-only; admin `build:admin` clean.
+
+## Salesperson access to sales reports (items + customers) — implemented
+Client: salespeople should get sales reports for the items they sell + their customers. The backend report
+endpoints ALREADY allowed SALESPERSON and `ReportService.loadRecords()` ALREADY scopes them to their own orders
+(via `creatorConstraint`), and `PRODUCT`/`CUSTOMER` report types already exist — the block was purely frontend
+(route `accountantGuard` + nav roles ADMIN/ACCOUNTANT). Fixes:
+- **Backend (defense-in-depth)**: `ReportType.isMoneyReport()` (PAYMENTS/OUTSTANDING/COD_REMITTANCE); `ReportService.generate`
+  now calls `requireAdminOrAccountant()` for money reports too (module already gated). So a salesperson can only pull
+  sales/orders reports (scoped); money + operations reports → 403.
+- **Frontend**: new `reportsGuard` (ADMIN, ACCOUNTANT, SALESPERSON) on `/reports`; nav Reports link roles add SALESPERSON.
+  `reports.component` role-shaped: `isSalesperson` computed → `reportGroups` drops the **Money & Receivables** and
+  **Operations** optgroups; `visibleTabs` drops the **Finance** tab; the **Vyapar** export buttons hidden. Added `?type=`
+  deep-link support (ngOnInit reads the query param, preselects the report + matching tab). Product detail **"View Sales
+  Report"** now routes to `/reports?type=product` (was `/reports`, which 403'd for salespeople) → opens the Product-wise
+  report scoped to the salesperson's own sales. Customer-wise report likewise available to them.
+- Verified: clean `mvn clean test` of guard + reporting suites = **24 green** (export-fidelity property incl.); admin
+  `build:admin` complete. No migration. Frontend + tiny backend gate; ships with next deploy.
+
+## Fix: Team Lead (and other non-admin) login triggered "No acceptable representation" on SSE 403 — fixed
+Symptom: logging in as TEAM_LEAD spammed `GlobalExceptionHandler#handleAccessDenied ... HttpMediaTypeNotAcceptableException:
+No acceptable representation`. Root cause: the **Orders page** (reachable by TEAM_LEAD/SALESPERSON/ACCOUNTANT) and
+Approval page call `AdminEventsService.connect()` UNCONDITIONALLY, opening the **ADMIN-only** SSE `/api/admin/events`
+(`text/event-stream`). Method security throws `AccessDeniedException`; the handler returns a JSON `ResponseEntity`, but
+Spring negotiates against the request `Accept: text/event-stream` → no JSON match → the handler itself throws. Two fixes:
+- **Frontend root cause**: `AdminEventsService.connect()` now no-ops unless `auth.hasAnyRole(Role.ADMIN)` (injected
+  `AuthService`). Non-admins never open the admin SSE feed, so no 403 storm. Fixes it for salesperson/accountant/packing too.
+- **Backend robustness**: `GlobalExceptionHandler.handleAccessDenied`/`handleAuthentication` now write the `ErrorResponse`
+  JSON **directly to `HttpServletResponse`** (new `writeJsonError` using an injected `ObjectMapper`, sets 403/401 +
+  `application/json`, guards `isCommitted()`) instead of returning a `ResponseEntity`. This bypasses `Accept`-header
+  content negotiation, so a 403/401 on ANY non-JSON request (SSE, PDF invoice, image) renders cleanly. GlobalExceptionHandler
+  gained a constructor (ObjectMapper) — no default-ctor DI issue (single ctor).
+- Verified: `mvn clean test` guard suites = **25 green** (EndpointRoleGuard 15 + LeadEndpointRoleGuard 10; 403/401 bodies
+  still assert fine); admin `build:admin` clean. Frontend + backend; no migration.
+- NOTE: still no seeded TEAM_LEAD users (V43 only added the column) — create via Users page or add a seed. To fully test,
+  create a team lead, assign salespeople on the Teams page, then log in.
+
+## Fix: Team Lead login "Could not load your dashboard" (dashboard-summary 403) — fixed
+Symptom: logging in as a TEAM_LEAD showed "Could not load your dashboard. Please try again." Root cause:
+`RoleDashboardController.summary()` (`GET /api/dashboard/summary`) had
+`@PreAuthorize("hasAnyRole('ADMIN','SALESPERSON','PACKING_USER','ACCOUNTANT')")` — **TEAM_LEAD was missing** →
+method security threw 403 for team leads even though `RoleDashboardService.summary()` already had a `TEAM_LEAD`
+branch (`teamLead(principal)`, team-scoped order breakdown). Fix: added `'TEAM_LEAD'` to the `@PreAuthorize`
+role list. This was a separate bug revealed after the SSE `No acceptable representation` fix. Audited the other
+endpoints the team-lead app hits on login: `/api/notifications` (bell) is `isAuthenticated()` and
+`/api/announcements` is `isAuthenticated()` — both already allow TEAM_LEAD, so no further change. Verified:
+`EndpointRoleGuardIntegrationTest` **15/15 green** (clean build). Frontend-none; no migration.
+
+## Team Lead / Salesperson dashboard "By status" polish — implemented (frontend-only)
+Client: the team-lead dashboard looked bad — the "By status" section was a long, flat, monochrome grid of every
+raw order status (~18 tiles, all the same blue accent, no icons). Fixed by folding the raw statuses into the SAME
+9 business-facing lifecycle stage groups the Orders page uses (`orders/order-status-groups.ts#ORDER_STATUS_GROUPS`),
+each tile now coloured + icon'd and shown only when non-empty, in lifecycle order.
+- `dashboard.component.ts`: new `StageGroupCount` interface + `STAGE_GROUP_STYLE` map (accent/accentSoft/icon per
+  group key), computed `salespersonStageGroups` (folds `summary().salesperson.ordersByStatus` into the 9 groups,
+  drops zero groups) + `salespersonOrderTotal` (sum). Imported `ORDER_STATUS_GROUPS`. Removed now-unused
+  `salespersonStatuses` computed. Applies to BOTH salesperson and team-lead (shared `summary().salesperson` shape) —
+  consistent with the Orders-page grouping.
+- `dashboard.component.html`: "By status" section header gains an order-count badge; tiles switched from the flat
+  `salespersonStatuses` (col-4, hardcoded blue) to `salespersonStageGroups` (col-6/md-4/xl-3, per-group `--accent`/
+  `--accent-soft` + `stat-icon`). Empty-state unchanged.
+- Verified: `get_diagnostics` clean on both files; admin `build:admin` **bundle generation complete**. No migration,
+  no backend. Ships with next deploy (bundled with the dashboard-summary TEAM_LEAD 403 fix + sales-productivity wave).
+
+## Fix: Team Lead "My Profile" → "Could not load your profile" (403) — fixed
+Symptom: a TEAM_LEAD opening `/my-profile` saw "Could not load your profile. Please try again." Root cause (same
+class as the dashboard-summary 403): `MyProfileController` (`/api/me/profile`) had class-level
+`@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','PACKING_USER')")` — **TEAM_LEAD and PAYMENT_VERIFIER
+were missing**, so both roles got 403 on GET `/api/me/profile` (and `/change-request`, `/photo`) even though
+`staffGuard` grants them the shell + a "My Profile" bottom tab. Fix: added `'TEAM_LEAD','PAYMENT_VERIFIER'` to the
+class `@PreAuthorize`. Verified: `EndpointRoleGuardIntegrationTest` **15/15 green** on a clean 532-source compile.
+Backend-only, no migration. LESSON: when a role is added (V42 PAYMENT_VERIFIER, V43 TEAM_LEAD), audit EVERY
+`@PreAuthorize` a shell-reachable role hits on login — dashboard summary AND my-profile both missed the new roles.

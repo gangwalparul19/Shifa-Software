@@ -7,7 +7,7 @@ import {
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms';
-import { debounceTime, distinctUntilChanged } from 'rxjs';
+import { debounceTime, distinctUntilChanged, map } from 'rxjs';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ApiError, Product, paiseToMoney, toPaise } from 'core';
 import { PageHeaderComponent } from '../shared/page-header.component';
@@ -86,10 +86,34 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   protected readonly convertLeadId = signal<number | null>(null);
   protected readonly convertLeadName = signal<string>('');
 
+  /**
+   * Reorder mode: opened as {@code /orders/new?reorderFrom=<orderId>}, it clones
+   * a past order's customer + shipping details and line items into a fresh draft
+   * so a repeat purchase takes seconds. Everything stays editable (unlike convert
+   * mode nothing is locked); this just holds the source order code for the banner.
+   */
+  protected readonly reorderFromCode = signal<string | null>(null);
+  /** True when the form is in reorder mode (set synchronously so autosave/draft logic can skip it). */
+  private reorderActive = false;
+
+  /**
+   * Abandoned-order recovery: the form is auto-saved to localStorage as the
+   * salesperson types, so a half-filled order survives an accidental navigation /
+   * refresh. On a fresh New Order we OFFER to resume it (never auto-apply); the
+   * draft is cleared on a successful save or when discarded.
+   */
+  private readonly DRAFT_KEY = 'shifa:new-order-draft';
+  protected readonly draftAvailable = signal(false);
+
   // --- Product catalog (picker source) ------------------------------------
   protected readonly products = signal<Product[]>([]);
   protected readonly productsLoading = signal(true);
   protected readonly productsError = signal<string | null>(null);
+
+  /** Best-sellers for one-tap quick-add (Tranche 3: favorites). */
+  protected readonly favorites = signal<Product[]>([]);
+  /** "Frequently bought together" suggestions for the current cart (upsell). */
+  protected readonly suggestions = signal<Product[]>([]);
 
   /** Selectable delivery states for the state typeahead (from GET /api/states). */
   protected readonly states = signal<string[]>([]);
@@ -196,7 +220,18 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.loadProducts();
+    this.loadFavorites();
     this.loadStates();
+
+    // Refresh "frequently bought together" suggestions when the set of chosen
+    // products changes (debounced; only when the product id set actually changes).
+    this.form.controls.items.valueChanges
+      .pipe(
+        debounceTime(500),
+        map(() => this.currentProductIds().join(',')),
+        distinctUntilChanged(),
+      )
+      .subscribe(() => this.refreshSuggestions());
     // Keep the totals snapshot in sync with the reactive form.
     this.model.set(this.snapshot());
     this.form.valueChanges.subscribe(() => this.model.set(this.snapshot()));
@@ -219,7 +254,162 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     const leadId = leadIdParam ? Number(leadIdParam) : NaN;
     if (Number.isFinite(leadId) && leadId > 0) {
       this.initConvertMode(leadId);
+      return;
     }
+
+    // One-tap reorder: clone a past order into this draft (mutually exclusive
+    // with convert mode).
+    const reorderParam = this.route.snapshot.queryParamMap.get('reorderFrom');
+    const reorderId = reorderParam ? Number(reorderParam) : NaN;
+    if (Number.isFinite(reorderId) && reorderId > 0) {
+      this.reorderActive = true;
+      this.initReorderMode(reorderId);
+    } else {
+      // Blank New Order: offer to resume an abandoned draft, and auto-save as
+      // the salesperson types.
+      this.maybeOfferDraft();
+    }
+
+    // Autosave the in-progress order (debounced) so it can be recovered.
+    this.form.valueChanges
+      .pipe(debounceTime(800))
+      .subscribe(() => this.saveDraft());
+  }
+
+  // --- Abandoned-order draft recovery -------------------------------------
+
+  /** Whether the form currently holds enough to be worth saving as a draft. */
+  private hasDraftContent(): boolean {
+    const v = this.form.getRawValue();
+    const anyItem = v.items.some((it) => it['productId'] != null);
+    return !!(v.customerName?.trim() || v.customerMobile?.trim() || v.addressLine?.trim() || anyItem);
+  }
+
+  /** Persists the current form to localStorage (skipped in convert/reorder mode). */
+  private saveDraft(): void {
+    if (this.convertMode() || this.reorderActive || this.submitting()) {
+      return;
+    }
+    try {
+      if (!this.hasDraftContent()) {
+        localStorage.removeItem(this.DRAFT_KEY);
+        return;
+      }
+      const draft = { savedAt: Date.now(), value: this.form.getRawValue() };
+      localStorage.setItem(this.DRAFT_KEY, JSON.stringify(draft));
+    } catch {
+      /* storage full / unavailable — non-fatal */
+    }
+  }
+
+  /** Shows the "resume draft?" banner when a saved draft exists. */
+  private maybeOfferDraft(): void {
+    try {
+      this.draftAvailable.set(!!localStorage.getItem(this.DRAFT_KEY));
+    } catch {
+      this.draftAvailable.set(false);
+    }
+  }
+
+  /** Restores the saved draft into the form (customer + items + payment + notes). */
+  resumeDraft(): void {
+    let draft: { value: Record<string, unknown> } | null = null;
+    try {
+      const raw = localStorage.getItem(this.DRAFT_KEY);
+      draft = raw ? JSON.parse(raw) : null;
+    } catch {
+      draft = null;
+    }
+    const v = draft?.value as Record<string, unknown> | undefined;
+    if (!v) {
+      this.draftAvailable.set(false);
+      return;
+    }
+    // Rebuild the items list from the draft.
+    const items = Array.isArray(v['items']) ? (v['items'] as Record<string, unknown>[]) : [];
+    const arr = this.items;
+    while (arr.length) {
+      arr.removeAt(0);
+    }
+    if (items.length === 0) {
+      arr.push(this.newItem());
+    } else {
+      for (const it of items) {
+        const g = this.newItem();
+        g.controls['productId'].setValue((it['productId'] as number | null) ?? null);
+        g.controls['quantity'].setValue(Number(it['quantity']) || 1);
+        g.controls['rate'].setValue(it['rate'] == null ? null : Number(it['rate']));
+        arr.push(g);
+      }
+    }
+    // Patch the scalar fields (ignore the items key — handled above).
+    const { items: _drop, ...scalars } = v as { items?: unknown };
+    this.form.patchValue(scalars as Record<string, unknown>);
+    this.model.set(this.snapshot());
+    this.draftAvailable.set(false);
+    this.toasts.success('Resumed your saved order — review and save.');
+  }
+
+  /** Discards the saved draft and hides the banner. */
+  discardDraft(): void {
+    this.clearDraft();
+    this.draftAvailable.set(false);
+  }
+
+  /** Removes any saved draft (called on a successful save). */
+  private clearDraft(): void {
+    try {
+      localStorage.removeItem(this.DRAFT_KEY);
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  /**
+   * Loads a past order and clones its customer + shipping details and line items
+   * into the form (One-tap reorder). Fields are patched WITHOUT emitting so the
+   * mobile auto-prefill doesn't overwrite the cloned address with the customer's
+   * latest order; everything remains editable and the salesperson just reviews
+   * quantities and saves.
+   */
+  private initReorderMode(orderId: number): void {
+    this.orders.detail(orderId).subscribe({
+      next: (o) => {
+        this.reorderFromCode.set(o.orderCode);
+        this.form.patchValue(
+          {
+            customerName: o.customerName ?? '',
+            customerMobile: o.customerMobile ?? '',
+            alternateMobile: o.alternateMobile ?? '',
+            addressLine: o.addressLine ?? '',
+            city: o.city ?? '',
+            state: o.state ?? '',
+            postalCode: o.postalCode ?? '',
+          },
+          { emitEvent: false },
+        );
+        // Rebuild the items list from the source order's lines.
+        const arr = this.items;
+        while (arr.length) {
+          arr.removeAt(0);
+        }
+        const lines = (o.items ?? []).filter((li) => li.productId != null);
+        if (lines.length === 0) {
+          arr.push(this.newItem());
+        } else {
+          for (const li of lines) {
+            const g = this.newItem();
+            g.controls['productId'].setValue(li.productId as number);
+            g.controls['quantity'].setValue(Math.min(999, Math.max(1, li.quantity || 1)));
+            g.controls['rate'].setValue(li.rate != null ? Number(li.rate) : null);
+            arr.push(g);
+          }
+        }
+        this.model.set(this.snapshot());
+        this.toasts.success(`Loaded ${lines.length} item(s) from ${o.orderCode} — review and save.`);
+      },
+      error: () => this.toasts.error('Could not load that order to reorder.'),
+    });
   }
 
   /**
@@ -409,6 +599,76 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   addItem(): void {
     this.items.push(this.newItem());
+  }
+
+  // --- Favorites (quick-add) + frequently-bought-together (Tranche 3) ------
+
+  /** Loads the salesperson's best-sellers for one-tap quick-add (non-fatal). */
+  private loadFavorites(): void {
+    this.catalog.topProducts(8).subscribe({
+      next: (rows) => this.favorites.set(rows),
+      error: () => this.favorites.set([]),
+    });
+  }
+
+  /** The product ids currently chosen across the line items. */
+  private currentProductIds(): number[] {
+    const ids: number[] = [];
+    for (let i = 0; i < this.items.length; i++) {
+      const pid = this.items.at(i).controls['productId'].value as number | null;
+      if (pid != null) {
+        ids.push(pid);
+      }
+    }
+    return ids;
+  }
+
+  /** Fetches upsell suggestions for the current cart (excludes items already added). */
+  private refreshSuggestions(): void {
+    const ids = this.currentProductIds();
+    if (ids.length === 0) {
+      this.suggestions.set([]);
+      return;
+    }
+    this.catalog.relatedProducts(ids, 3).subscribe({
+      next: (rows) => this.suggestions.set(rows.filter((r) => !ids.includes(r.id))),
+      error: () => this.suggestions.set([]),
+    });
+  }
+
+  /**
+   * Adds a product to the order in one tap: bumps the quantity if it's already a
+   * line, else fills the first empty line (or appends a new one), pre-filling the
+   * rate from the product's sale price.
+   */
+  quickAdd(product: Product): void {
+    // Already in the cart → increment quantity (clamped to 999).
+    for (let i = 0; i < this.items.length; i++) {
+      const g = this.items.at(i);
+      if ((g.controls['productId'].value as number | null) === product.id) {
+        const qty = Number(g.controls['quantity'].value) || 0;
+        g.controls['quantity'].setValue(Math.min(999, qty + 1));
+        this.model.set(this.snapshot());
+        return;
+      }
+    }
+    // Otherwise reuse an empty line or append a new one.
+    let target: FormGroup | null = null;
+    for (let i = 0; i < this.items.length; i++) {
+      const g = this.items.at(i);
+      if ((g.controls['productId'].value as number | null) == null) {
+        target = g;
+        break;
+      }
+    }
+    if (!target) {
+      this.addItem();
+      target = this.items.at(this.items.length - 1);
+    }
+    target.controls['productId'].setValue(product.id);
+    target.controls['quantity'].setValue(1);
+    target.controls['rate'].setValue(Number(product.salePrice));
+    this.model.set(this.snapshot());
   }
 
   removeItem(index: number): void {
@@ -654,6 +914,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
         return;
       }
       this.offlineQueue.enqueue(payload, this.orderTotalPaise());
+      this.clearDraft();
       this.toasts.success(
         `Saved offline for ${payload.customerName} — it will sync automatically when you reconnect.`,
       );
@@ -665,6 +926,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     this.orders.createOrder(payload).subscribe({
       next: (order) => {
         this.submitting.set(false);
+        this.clearDraft();
         this.toasts.success(`Order ${order.orderCode} created`);
         void this.router.navigate(['/orders'], { queryParams: { q: order.orderCode } });
       },

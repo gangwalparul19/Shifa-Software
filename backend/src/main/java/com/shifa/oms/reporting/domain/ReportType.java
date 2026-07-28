@@ -63,6 +63,15 @@ public enum ReportType {
         return this == EXPENSES || this == PURCHASE_ORDERS || this == RETURNS || this == STOCK;
     }
 
+    /**
+     * Whether this is a money/receivables report (payments, outstanding dues, COD
+     * remittance). These are restricted to ADMIN / ACCOUNTANT — a salesperson gets
+     * only the sales/orders reports (scoped to their own orders).
+     */
+    public boolean isMoneyReport() {
+        return this == PAYMENTS || this == OUTSTANDING || this == COD_REMITTANCE;
+    }
+
     /** Case-insensitive parse of a report type from a request path/param value. */
     public static ReportType from(String value) {
         if (value == null) {

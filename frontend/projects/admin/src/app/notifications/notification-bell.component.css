@@ -28,6 +28,9 @@
   top: calc(100% + 0.5rem);
   right: 0;
   width: min(24rem, 92vw);
+  /* Explicit max-width so a global `.card` max-width can never clamp this
+     absolutely-positioned panel to its narrow bell container. */
+  max-width: 92vw;
   z-index: 1050;
   box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.15);
 }
