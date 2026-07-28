@@ -93,7 +93,7 @@ app:
     brand:
       brand-name: ${MAIL_BRAND_NAME:Shifa Herbal Remedies}
       tagline: ${MAIL_BRAND_TAGLINE:Pure herbal wellness, delivered.}
-      site-url: ${MAIL_SITE_URL:https://www.shifaherbals.com}
+      site-url: ${MAIL_SITE_URL:https://shifainfinity.com/}
       # Blank => a styled text wordmark is rendered instead of an <img> logo.
       logo-url: ${MAIL_LOGO_URL:}
       support-email: ${MAIL_SUPPORT_EMAIL:support@shifaherbals.com}

@@ -21,7 +21,7 @@ packing → courier → delivery → settlement) is tracked end to end.
 | Frontend   | Angular 21 workspace — `admin` app + shared `core` & `ui` libraries         |
 | Admin UI   | Tabler light theme (`@tabler/core`), Inter fonts, brand green `#1F5D3F`, ApexCharts |
 | Docs / PDF | Apache POI (Excel), OpenPDF (invoices/labels), ZXing (barcodes)             |
-| Cloud      | OCI Always Free tier (A1 VM + self-hosted MySQL), OCI Object Storage SDK    |
+| Cloud      | AWS EC2 (Ubuntu + self-hosted MySQL 8), Nginx/systemd, Amazon S3 file storage |
 
 Integrations (courier, WhatsApp, online payments) were **sandbox/mock** and payment/coupon flows
 have been removed in the dashboard-only pivot (see §7).
@@ -38,7 +38,7 @@ Shifa-Software/
 │  │  ├─ application.yml              # base config
 │  │  ├─ application-local.yml        # local profile (MySQL localhost, shifa_dashboard)
 │  │  ├─ application-prod.yml         # prod profile (env-driven)
-│  │  └─ db/migration/                # Flyway V1..V43 (see §6)
+│  │  └─ db/migration/                # Flyway V1..V47 (see §6)
 │  └─ pom.xml
 ├─ frontend/                    # Angular 21 workspace
 │  ├─ angular.json                    # projects: admin, core, ui
@@ -47,8 +47,8 @@ Shifa-Software/
 │     ├─ admin/                       # the admin dashboard app (port 4300)
 │     ├─ core/                        # shared services/models (ApiClient, guards, Role)
 │     └─ ui/                          # shared UI component library
-├─ deploy/                      # OCI deployment assets (nginx, systemd, env example, scripts)
-├─ DEPLOYMENT.md                # step-by-step OCI Always Free deployment guide
+├─ deploy/                      # AWS deployment assets (nginx, systemd, env example, scripts)
+├─ DEPLOYMENT.md                # canonical AWS EC2 deployment guide
 ├─ ROADMAP.md                   # feature backlog / future enhancements
 └─ README.md                    # you are here
 ```
@@ -325,10 +325,15 @@ Migration history:
   prepaid payment screenshots via a dedicated `/payments` dashboard — an additive layer that does NOT
   touch the order state machine).
 - `V43__team_lead.sql` — **TEAM_LEAD role**: adds `users.team_lead_id` (nullable self-FK → `users.id`,
-  `ON DELETE SET NULL`, `ix_users_team_lead`) recording a salesperson's team lead. A team lead gets read-only,
-  team-scoped visibility over the orders punched by their assigned salespeople (list/search/detail/invoice +
-  dashboard) via `SalespersonScopeResolver.creatorScope`; admins assign salespeople on the `/team` page
-  (`/api/admin/team`). Additive/nullable. **V43 is the highest migration.**
+  `ON DELETE SET NULL`, `ix_users_team_lead`) recording a salesperson's team lead. A team lead gets team-scoped
+  order visibility, can punch orders themselves, and admins assign salespeople on `/team` (`/api/admin/team`).
+  Additive/nullable.
+- `V44__whatsapp_templates.sql` — `whatsapp_templates` (active, ordered, customizable one-tap customer-message
+  templates). **ADMIN / ACCOUNTANT / TEAM_LEAD** manage templates at `/whatsapp-templates`; staff use active
+  templates from order/customer screens. `V45` enriches initial copy, `V46` replaces unreliable 4-byte emoji with
+  WhatsApp-Desktop-safe basic-plane symbols, and `V47__whatsapp_confirm_order_summary.sql` adds `{orderSummary}` to
+  the confirmation template — itemized lines, order total, amount paid, and any COD balance. **V47 is the highest
+  migration.**
 
 > Fresh DB required: because V22 seeds with explicit IDs, start against an **empty**
 > `shifa_dashboard`. If a half-migrated DB exists, drop & recreate it before starting.

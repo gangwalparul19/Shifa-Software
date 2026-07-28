@@ -1068,3 +1068,47 @@ BMP chars, rendered fine while every 4-byte emoji (🌿🙏📦🚚💚) became 
 - LESSON: `�` in a SENT WhatsApp message from a click-to-chat link = the wa.me→Desktop handoff dropping 4-byte
   emoji, NOT a DB/app bug. Use ≤3-byte BMP symbols for click-to-chat text that must be reliable on WhatsApp Desktop.
 - Leftover regression asset kept: `WhatsappTemplateEncodingIT` (@SpringBootTest, needs local DB + seeded templates).
+
+## DEPLOYED to AWS (2026-07-28, evening) — batch: team-lead order entry + WhatsApp templates + fixes
+Pushed the full pending batch to prod (http://13.234.22.207/) via `deploy\push-to-aws.ps1 -KeyPath ...shifa-admin.pem`.
+Contents deployed:
+- Team Lead order entry (creatorScope self-inclusive + teamMemberScope; OrderController TEAM_LEAD; orderEntryGuard).
+- Team-lead dashboard "By status" stage-group polish + dashboard-summary/My-Profile TEAM_LEAD/PAYMENT_VERIFIER 403 fixes.
+- Customizable WhatsApp templates (V44) + richer copy (V45) + BMP-safe symbols (V46) + `SET NAMES utf8mb4` Hikari
+  connection-init (emoji read-back fix, now live in prod).
+- Orders bulk "Quick select by date"; plus the earlier sales-productivity wave (T1/T2/T3), prefill, tabs, mobile-fit, etc.
+- **Verified live**: Flyway "Successfully applied 3 migrations … now at version v46" (V44/45/46), "Tomcat started on
+  8080", "Started Application", `curl localhost/`=200, `/api/whatsapp-templates`=401 (wired + auth). DB backup written
+  `~/shifa-backup-2026-07-28-185616.sql`. Harmless noise unchanged (`-Xmx…: command not found`, unit-file-changed
+  daemon-reload warning). **Highest migration in prod is now V46.**
+
+## WhatsApp confirm message: itemized order summary + paid + COD balance (V47) — implemented
+Client: the WhatsApp message per order should include what was ordered, what's paid, and what's pending on COD.
+- **Renderer** (`shared/whatsapp.util.ts`): `WhatsAppContext` gained `items: WhatsAppLineItem[]` (name/quantity/
+  lineTotal) + `paid`. New tokens in `renderTemplate`: `{items}` (bulleted list "• Name x Qty — ₹total"), `{paid}`,
+  and `{orderSummary}` (ready-made block: "Your order:" + item list + Order total + Paid + "Balance to pay on
+  delivery (COD)" OR "Payment: received in full ✅"). `orderSummaryBlock` returns '' when there are no items (e.g. a
+  customer-level message), and `renderTemplate` now also collapses 3+ newlines → 2 so an empty `{orderSummary}`
+  leaves no gap. All decorations stay BMP-safe (✅), no astral emoji.
+- **Order drawer** (`orders/orders.component.ts` `sendWhatsApp`): ctx now passes `paid: order.amountReceived` +
+  `items` mapped from `order.items` (productName/quantity/lineTotal). Customer 360 sends no items → summary omitted.
+- **Migration V47** (`V47__whatsapp_confirm_order_summary.sql`): UPDATEs the seeded `confirm` template body to embed
+  `{orderSummary}`. Frontend fallback `WHATSAPP_TEMPLATES` confirm body kept in sync. Managers can add {items}/
+  {orderSummary}/{paid} to any template via the editor (placeholder chips list them — NOTE: the editor's chip list
+  in `whatsapp-templates.component.ts` still shows the original 6 tokens; {items}/{paid}/{orderSummary} work but
+  aren't yet chips — minor follow-up if desired).
+- Verified: `WhatsappTemplateEncodingIT` green (V47 applied, ☘ round-trips), admin `build:admin` complete. **Highest
+  migration is now V47.** Built, NOT yet deployed.
+
+## DEPLOYED to AWS (2026-07-28, 21:06 IST) — V47 WhatsApp itemized confirmation
+Deployed `V47__whatsapp_confirm_order_summary.sql` via the canonical `deploy\push-to-aws.ps1` flow; DB backup:
+`~/shifa-backup-2026-07-28-210600.sql`. Live verification: Flyway validated 47 migrations, applied V47 (v46→v47),
+Tomcat started on 8080, app started clean, `curl localhost/`=200, `/api/me/profile` unauthenticated=401 (endpoint
+wired/auth-enforced). The new confirmation text includes `{orderSummary}` (items + total + paid + COD balance).
+
+**Important testing clue from user screenshots**: the displayed URL is `localhost:4300/my-profile` and the shell says
+**Offline**; it is a LOCAL dev-server view that cannot reach a local backend, NOT the deployed AWS app. It also renders
+the old raw-status dashboard and old WhatsApp copy — clear signs that its local dev bundle/backend is stale/offline.
+Test the deployed build at `http://13.234.22.207/` after Ctrl+Shift+R (or a private window), not localhost:4300. For
+local testing, start/restart BOTH backend (`mvn -f "backend/pom.xml" -DskipTests spring-boot:run`) and frontend dev
+server, then hard-refresh; "Offline" must disappear before profile/WhatsApp results are meaningful.

@@ -239,6 +239,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
       orderCode: order.orderCode,
       total: order.totalAmount,
       remaining: order.remainingAmount,
+      paid: order.amountReceived,
+      items: (order.items ?? []).map((li) => ({
+        name: li.productName,
+        quantity: li.quantity,
+        lineTotal: li.lineTotal,
+      })),
     };
     const tpl = this.whatsappTemplates().find((t) => t.key === key);
     const message = tpl ? renderTemplate(tpl.body, ctx) : whatsAppMessage(key, ctx);

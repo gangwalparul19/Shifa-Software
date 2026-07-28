@@ -211,7 +211,17 @@ export class WhatsappTemplatesComponent implements OnInit {
   protected readonly editing = computed(() => this.editingId() != null);
 
   /** Placeholder tokens offered as insertable chips. */
-  protected readonly placeholders = ['name', 'customerName', 'orderCode', 'total', 'remaining', 'brand'];
+  protected readonly placeholders = [
+    'name',
+    'customerName',
+    'orderCode',
+    'total',
+    'paid',
+    'remaining',
+    'items',
+    'orderSummary',
+    'brand',
+  ];
 
   protected readonly form = this.fb.nonNullable.group({
     title: ['', [Validators.required, Validators.maxLength(120)]],
@@ -228,7 +238,12 @@ export class WhatsappTemplatesComponent implements OnInit {
       customerName: 'Rahul Sharma',
       orderCode: 'SHR-1024',
       total: 1499,
+      paid: 1000,
       remaining: 499,
+      items: [
+        { name: 'Ashwagandha Capsules', quantity: 2, lineTotal: 998 },
+        { name: 'Herbal Immunity Tonic', quantity: 1, lineTotal: 501 },
+      ],
     }),
   );
 

@@ -55,12 +55,23 @@ export interface WhatsAppTemplate {
   body: string;
 }
 
+/** A single ordered line used to render the {items}/{orderSummary} tokens. */
+export interface WhatsAppLineItem {
+  name: string;
+  quantity: number;
+  lineTotal?: string | number | null;
+}
+
 /** Context used to render a template's message body. */
 export interface WhatsAppContext {
   customerName?: string | null;
   orderCode?: string | null;
   total?: string | number | null;
   remaining?: string | number | null;
+  /** Amount already paid (prepaid/partial); used by the {paid} token. */
+  paid?: string | number | null;
+  /** Ordered line items; used by the {items} and {orderSummary} tokens. */
+  items?: WhatsAppLineItem[] | null;
   brand?: string;
 }
 
@@ -92,7 +103,8 @@ export const WHATSAPP_TEMPLATES: WhatsAppTemplate[] = [
     icon: 'ti-checkbox',
     body:
       'Hi {name}! ☘ Thank you for your order {orderCode} with {brand}. ✅\n\n' +
-      'Your order total is {total}. We are packing it with care and will keep you posted at every step — from packing to dispatch. ✨\n\n' +
+      '{orderSummary}\n\n' +
+      'We are packing it with care and will keep you posted at every step — from packing to dispatch. ✨\n\n' +
       'Have a question? Just reply here, we are happy to help! ❤',
   },
   {
@@ -126,11 +138,52 @@ export const WHATSAPP_TEMPLATES: WhatsAppTemplate[] = [
   },
 ];
 
+/** A bulleted list of the ordered items ("• Ashwagandha x 2 — ₹300"), or '' if none. */
+function itemsList(ctx: WhatsAppContext): string {
+  const items = ctx.items ?? [];
+  if (items.length === 0) {
+    return '';
+  }
+  return items
+    .map((it) => {
+      const qty = it.quantity ?? 1;
+      const price = it.lineTotal != null && it.lineTotal !== '' ? ` — ${money(it.lineTotal)}` : '';
+      return `• ${(it.name ?? 'Item').trim()} x ${qty}${price}`;
+    })
+    .join('\n');
+}
+
+/**
+ * A ready-made order summary block: the item list, order total, amount paid, and
+ * the balance to collect on delivery (COD). Returns '' when there are no items
+ * (e.g. a customer-level message), so templates using {orderSummary} collapse
+ * cleanly. Adapts to the payment state (fully paid vs balance due).
+ */
+function orderSummaryBlock(ctx: WhatsAppContext): string {
+  const list = itemsList(ctx);
+  if (!list) {
+    return '';
+  }
+  const paid = Number(ctx.paid ?? 0);
+  const pending = Number(ctx.remaining ?? 0);
+  const lines = [`Your order:`, list, ``, `Order total: ${money(ctx.total)}`];
+  if (paid > 0) {
+    lines.push(`Paid: ${money(paid)}`);
+  }
+  if (pending > 0) {
+    lines.push(`Balance to pay on delivery (COD): ${money(pending)}`);
+  } else if (paid > 0) {
+    lines.push(`Payment: received in full ✅`);
+  }
+  return lines.join('\n');
+}
+
 /**
  * Renders a free-text template body by substituting {placeholder} tokens against
- * the given context. Unknown / empty tokens collapse to nothing (and any doubled
- * spaces they leave are tidied). Supported tokens: {name} (first name),
- * {customerName} (full), {orderCode}, {total}, {remaining}, {brand}.
+ * the given context. Unknown / empty tokens collapse to nothing (blank lines left
+ * behind are tidied). Supported tokens: {name} (first name), {customerName}
+ * (full), {orderCode}, {total}, {remaining}, {paid}, {brand}, {items} (bulleted
+ * list) and {orderSummary} (items + total + paid + COD balance).
  */
 export function renderTemplate(body: string, ctx: WhatsAppContext): string {
   const map: Record<string, string> = {
@@ -139,12 +192,16 @@ export function renderTemplate(body: string, ctx: WhatsAppContext): string {
     orderCode: (ctx.orderCode ?? '').toString().trim(),
     total: money(ctx.total),
     remaining: money(ctx.remaining ?? ctx.total),
+    paid: money(ctx.paid),
     brand: ctx.brand || BRAND,
+    items: itemsList(ctx),
+    orderSummary: orderSummaryBlock(ctx),
   };
   return (body ?? '')
     .replace(/\{(\w+)\}/g, (_, k: string) => (k in map ? map[k] : ''))
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/ +([.,!?])/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
