@@ -64,6 +64,12 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     long countByCustomerMobile(String customerMobile);
 
     /**
+     * The most recent order for a customer mobile number, used to pre-fill the
+     * New Order form's customer + shipping details from the customer's last order.
+     */
+    java.util.Optional<OrderEntity> findFirstByCustomerMobileOrderByCreatedAtDescIdDesc(String customerMobile);
+
+    /**
      * All orders created within an inclusive timestamp window, used by the P&L
      * report (Feature C3) to sum revenue. The finance service filters out
      * REJECTED / CANCELLED orders when summing revenue.

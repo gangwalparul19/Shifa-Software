@@ -5,6 +5,7 @@ import com.shifa.oms.auth.CurrentUserService;
 import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.invoice.InvoiceService;
 import com.shifa.oms.order.dto.CreateOrderRequest;
+import com.shifa.oms.order.dto.CustomerPrefillResponse;
 import com.shifa.oms.order.dto.DuplicateCheckResponse;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
@@ -113,6 +114,16 @@ public class OrderController {
     @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN')")
     public DuplicateCheckResponse duplicateCheck(@RequestParam("mobile") String mobile) {
         return orderService.duplicateCheck(mobile);
+    }
+
+    /**
+     * Customer + shipping details from the customer's most recent order, to
+     * pre-fill the New Order form when a known mobile is entered (overridable).
+     */
+    @GetMapping("/last-by-mobile")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN')")
+    public CustomerPrefillResponse lastCustomerByMobile(@RequestParam("mobile") String mobile) {
+        return orderService.lastCustomerByMobile(mobile);
     }
 
     /** Order detail with payment tracking fields, role-scoped (Req 21.1, 5.5). */

@@ -119,6 +119,13 @@ export class NewOrderComponent implements OnInit, OnDestroy {
    */
   protected readonly customerRisk = signal<CustomerRisk | null>(null);
 
+  /**
+   * When a known mobile is entered, the customer + shipping fields are pre-filled
+   * from that customer's LAST order (overridable). This holds the customer name
+   * (or a generic label) for the "Filled from … last order" banner; null hides it.
+   */
+  protected readonly prefilledFromLast = signal<string | null>(null);
+
   // Risk badge helpers for the template.
   protected readonly riskPillClass = riskPillClass;
   protected readonly riskLabel = riskLabel;
@@ -291,6 +298,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     if (!mobile || !/^\d{10}$/.test(mobile)) {
       this.priorOrderCount.set(null);
       this.customerRisk.set(null);
+      this.prefilledFromLast.set(null);
       return;
     }
     this.orders.duplicateCheck(mobile).subscribe({
@@ -301,6 +309,47 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     this.customers.risk(mobile).subscribe({
       next: (risk) => this.customerRisk.set(risk),
       error: () => this.customerRisk.set(null),
+    });
+    // Prefill customer + shipping details from the customer's last order.
+    this.prefillFromLastOrder(mobile);
+  }
+
+  /**
+   * Pre-fills the customer + shipping fields from the customer's most recent
+   * order when a known mobile is entered, so a repeat customer's details aren't
+   * re-typed. Everything stays editable — the salesperson can override any field
+   * and proceed. Skipped in convert-from-lead mode (those fields are locked from
+   * the lead). Best-effort: a not-found / failed lookup just leaves the form.
+   *
+   * <p>It runs only when the mobile CHANGES (the field is debounced +
+   * distinctUntilChanged), so edits made after a prefill are never clobbered;
+   * switching to a different known mobile re-fills from that customer.
+   */
+  private prefillFromLastOrder(mobile: string): void {
+    if (this.convertMode()) {
+      return;
+    }
+    this.orders.lastCustomerByMobile(mobile).subscribe({
+      next: (p) => {
+        if (!p.found) {
+          this.prefilledFromLast.set(null);
+          return;
+        }
+        const c = this.form.controls;
+        if (p.customerName) c.customerName.setValue(p.customerName);
+        if (p.customerEmail) c.customerEmail.setValue(p.customerEmail);
+        if (p.alternateMobile) c.alternateMobile.setValue(p.alternateMobile);
+        if (p.addressLine) c.addressLine.setValue(p.addressLine);
+        if (p.city) c.city.setValue(p.city);
+        if (p.state) c.state.setValue(p.state);
+        if (p.postalCode) c.postalCode.setValue(p.postalCode);
+        if (p.leadSource && this.leadSourceOptions.some((o) => o.value === p.leadSource)) {
+          c.leadSource.setValue(p.leadSource as LeadSource);
+        }
+        if (p.leadSourceNote) c.leadSourceNote.setValue(p.leadSourceNote);
+        this.prefilledFromLast.set(p.customerName || 'a previous order');
+      },
+      error: () => this.prefilledFromLast.set(null),
     });
   }
 

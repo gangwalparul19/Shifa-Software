@@ -12,6 +12,7 @@ import com.shifa.oms.order.domain.PaymentCalculation;
 import com.shifa.oms.order.domain.PaymentCalculator;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.order.dto.CreateOrderRequest;
+import com.shifa.oms.order.dto.CustomerPrefillResponse;
 import com.shifa.oms.order.dto.DuplicateCheckResponse;
 import com.shifa.oms.order.dto.LineItemRequest;
 import com.shifa.oms.order.dto.OrderResponse;
@@ -218,6 +219,23 @@ public class OrderService {
         }
         long count = orderRepository.countByCustomerMobile(mobile.trim());
         return new DuplicateCheckResponse(mobile.trim(), count > 0, count);
+    }
+
+    /**
+     * Customer + shipping details from the customer's MOST RECENT order, to
+     * pre-fill the New Order form when a known mobile is entered (so a repeat
+     * customer's details aren't re-typed). Looks across all salespeople like the
+     * duplicate check; returns an empty (found=false) result when there is no
+     * prior order. Order-specific data (items, payment, notes) is never returned.
+     */
+    @Transactional(readOnly = true)
+    public CustomerPrefillResponse lastCustomerByMobile(String mobile) {
+        if (mobile == null || mobile.isBlank()) {
+            throw new ValidationException("A mobile number is required to look up a customer.");
+        }
+        return orderRepository.findFirstByCustomerMobileOrderByCreatedAtDescIdDesc(mobile.trim())
+                .map(CustomerPrefillResponse::from)
+                .orElseGet(CustomerPrefillResponse::empty);
     }
 
     // --- Payment tracking views (Req 21) ------------------------------------

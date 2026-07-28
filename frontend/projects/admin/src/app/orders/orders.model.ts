@@ -85,6 +85,26 @@ export interface DuplicateCheckResponse {
 }
 
 /**
+ * Customer + shipping details from a customer's most recent order, from
+ * {@code GET /api/orders/last-by-mobile?mobile=} (mirrors the backend
+ * {@code CustomerPrefillResponse}). Used to pre-fill the New Order form when a
+ * known mobile is entered; `found=false` means no prior order. All values are
+ * suggestions the salesperson can override.
+ */
+export interface CustomerPrefillResponse {
+  found: boolean;
+  customerName: string | null;
+  customerEmail: string | null;
+  alternateMobile: string | null;
+  addressLine: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  leadSource: string | null;
+  leadSourceNote: string | null;
+}
+
+/**
  * Compact order row returned by the search endpoint
  * {@code GET /api/orders?search=} (Req 22.1). Mirrors the backend
  * {@code OrderSummaryResponse}.

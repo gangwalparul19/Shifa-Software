@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import { ApiClient, OrderStatus, PageResponse, PaymentStatus } from 'core';
 import {
   CreateOrderRequest,
+  CustomerPrefillResponse,
   DuplicateCheckResponse,
   OrderDetail,
   OrderSummary,
@@ -86,6 +87,17 @@ export class OrdersService {
    */
   duplicateCheck(mobile: string): Observable<DuplicateCheckResponse> {
     return this.api.get<DuplicateCheckResponse>('/api/orders/duplicate-check', {
+      params: { mobile },
+    });
+  }
+
+  /**
+   * Customer + shipping details from the customer's most recent order
+   * ({@code GET /api/orders/last-by-mobile?mobile=}, SALESPERSON + ADMIN), to
+   * pre-fill the New Order form when a known mobile is entered.
+   */
+  lastCustomerByMobile(mobile: string): Observable<CustomerPrefillResponse> {
+    return this.api.get<CustomerPrefillResponse>('/api/orders/last-by-mobile', {
       params: { mobile },
     });
   }

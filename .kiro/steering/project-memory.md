@@ -756,3 +756,24 @@ Client finalized on AWS EC2 (dropped Oracle Cloud). Cleaned up and made ONE guid
   `shifa.env.example`. NOTE (not changed): several client-facing pricing/hosting docs
   (`docs/Shifa-Pricing-Proposal.html`, `Shifa-Hosting-Cost-Guide.html`, `Sales-Enablement-and-AI-Insights.md`)
   still MENTION Oracle/OCI as a cost option — left as-is (client content); update if desired.
+
+## New Order: prefill customer details from their last order (mobile-first) — implemented
+Client ask: on New Order, entering a mobile that already exists should pre-fill the customer + shipping
+details from that customer's LAST order so the salesperson doesn't re-type them (overridable, then proceed).
+- **Backend** (`order`): `OrderRepository.findFirstByCustomerMobileOrderByCreatedAtDescIdDesc(mobile)`; new DTO
+  `CustomerPrefillResponse{found, customerName, customerEmail, alternateMobile, addressLine, city, state,
+  postalCode, leadSource, leadSourceNote}` (`.from(order)` / `.empty()`); `OrderService.lastCustomerByMobile(mobile)`
+  (latest order across all salespeople, like duplicateCheck; empty when none; NO items/payment/notes carried over);
+  `OrderController` `GET /api/orders/last-by-mobile?mobile=` (`@PreAuthorize hasAnyRole('SALESPERSON','ADMIN')`, no
+  SecurityConfig change — `/api/**` authenticated + method security).
+- **Frontend** (`orders/new-order`): `OrdersService.lastCustomerByMobile`; model `CustomerPrefillResponse`. The
+  existing debounced (400ms, distinctUntilChanged) `customerMobile` handler `checkDuplicateCustomer` now also calls
+  `prefillFromLastOrder(mobile)` → overwrites customer/shipping fields from the last order (skipped in convert-from-lead
+  mode). Because it only fires when the mobile CHANGES, edits made after a prefill are never clobbered; switching to a
+  different known mobile re-fills. Green **"Filled in details from <name>'s last order — review and edit anything"**
+  banner (`prefilledFromLast` signal) under the phone field, alongside the existing repeat-customer + risk hints.
+- Verified: backend OrderServiceTest 22 + EndpointRoleGuardIntegrationTest 15 green; admin `build:admin` complete.
+  No migration. **DEPLOYED to AWS 2026-07-28** via `deploy\push-to-aws.ps1` (validated the finalized one-command
+  script end-to-end): built → uploaded → DB backup (`~/shifa-backup-2026-07-28-*.sql`) → restart. Verified live:
+  Flyway "current v43, no migration necessary", "Tomcat started on 8080", `curl localhost/`=200,
+  `/api/orders/last-by-mobile`=401 (endpoint wired + auth-enforced). `push-to-aws.ps1` works as the single deploy tool.

@@ -106,6 +106,15 @@
               Repeat customer — {{ prior }} previous order{{ prior === 1 ? '' : 's' }} on this number.
             </small>
           }
+          <!-- Prefill-from-last-order banner: details were auto-filled and can be edited. -->
+          @if (prefilledFromLast(); as who) {
+            <div class="alert alert-success py-1 px-2 mt-2 mb-0 d-flex align-items-start">
+              <i class="ti ti-wand me-1 mt-1"></i>
+              <div class="small">
+                Filled in details from <strong>{{ who }}</strong>'s last order — review and edit anything before saving.
+              </div>
+            </div>
+          }
           <!-- Delivery-reliability nudge (FEATURE-ROADMAP §1.2): only when there is risk. -->
           @if (customerRisk(); as risk) {
             @if (risk.level !== 'LOW') {
