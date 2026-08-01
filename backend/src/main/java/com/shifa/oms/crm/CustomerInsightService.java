@@ -57,7 +57,7 @@ public class CustomerInsightService {
     /** Concluded failed deliveries (the ones that drive risk). */
     private static final Set<OrderStatus> FAILED_STATUSES =
             EnumSet.of(OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED,
-                    OrderStatus.RTO, OrderStatus.COURIER_LOST);
+                    OrderStatus.RTO, OrderStatus.REDISPATCH);
 
     /** Orders that never shipped (rejected at approval / cancelled). */
     private static final Set<OrderStatus> CANCELLED_STATUSES =

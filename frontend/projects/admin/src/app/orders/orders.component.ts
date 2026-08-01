@@ -75,7 +75,7 @@ const PILL_BAD: OrderStatus[] = [
   OrderStatus.CUSTOMER_REJECTED,
   OrderStatus.DELIVERY_FAILED,
   OrderStatus.RTO,
-  OrderStatus.COURIER_LOST,
+  OrderStatus.REDISPATCH,
 ];
 
 /**

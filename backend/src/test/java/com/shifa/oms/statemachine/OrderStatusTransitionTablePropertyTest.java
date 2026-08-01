@@ -49,7 +49,7 @@ class OrderStatusTransitionTablePropertyTest {
     private static final Set<OrderStatus> TERMINAL = EnumSet.of(
             OrderStatus.REJECTED, OrderStatus.CANCELLED,
             OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED,
-            OrderStatus.RTO, OrderStatus.COURIER_LOST,
+            OrderStatus.RTO, OrderStatus.REDISPATCH,
             OrderStatus.COD_COLLECTED, OrderStatus.CLOSED);
 
     private static Map<OrderStatus, Set<OrderStatus>> expectedTable() {
@@ -63,12 +63,12 @@ class OrderStatusTransitionTablePropertyTest {
                 EnumSet.of(OrderStatus.COURIER_ASSIGNED, OrderStatus.HANDED_TO_DELIVERY));
         t.put(OrderStatus.COURIER_ASSIGNED, EnumSet.of(OrderStatus.DISPATCHED));
         t.put(OrderStatus.DISPATCHED, EnumSet.of(OrderStatus.IN_TRANSIT,
-                OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO, OrderStatus.COURIER_LOST));
+                OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO, OrderStatus.REDISPATCH));
         t.put(OrderStatus.IN_TRANSIT, EnumSet.of(OrderStatus.OUT_FOR_DELIVERY,
-                OrderStatus.DELIVERED, OrderStatus.RTO, OrderStatus.COURIER_LOST));
+                OrderStatus.DELIVERED, OrderStatus.RTO, OrderStatus.REDISPATCH));
         t.put(OrderStatus.OUT_FOR_DELIVERY, EnumSet.of(OrderStatus.DELIVERED,
                 OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED,
-                OrderStatus.RTO, OrderStatus.COURIER_LOST));
+                OrderStatus.RTO, OrderStatus.REDISPATCH));
         t.put(OrderStatus.DELIVERED, EnumSet.of(OrderStatus.CLOSED, OrderStatus.COD_COLLECTED));
         // Terminal states.
         t.put(OrderStatus.REJECTED, EnumSet.noneOf(OrderStatus.class));
@@ -76,7 +76,7 @@ class OrderStatusTransitionTablePropertyTest {
         t.put(OrderStatus.CUSTOMER_REJECTED, EnumSet.noneOf(OrderStatus.class));
         t.put(OrderStatus.DELIVERY_FAILED, EnumSet.noneOf(OrderStatus.class));
         t.put(OrderStatus.RTO, EnumSet.noneOf(OrderStatus.class));
-        t.put(OrderStatus.COURIER_LOST, EnumSet.noneOf(OrderStatus.class));
+        t.put(OrderStatus.REDISPATCH, EnumSet.noneOf(OrderStatus.class));
         t.put(OrderStatus.COD_COLLECTED, EnumSet.noneOf(OrderStatus.class));
         t.put(OrderStatus.CLOSED, EnumSet.noneOf(OrderStatus.class));
         return t;

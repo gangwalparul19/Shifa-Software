@@ -38,7 +38,7 @@ Shifa-Software/
 │  │  ├─ application.yml              # base config
 │  │  ├─ application-local.yml        # local profile (MySQL localhost, shifa_dashboard)
 │  │  ├─ application-prod.yml         # prod profile (env-driven)
-│  │  └─ db/migration/                # Flyway V1..V47 (see §6)
+│  │  └─ db/migration/                # Flyway V1..V48 (see §6)
 │  └─ pom.xml
 ├─ frontend/                    # Angular 21 workspace
 │  ├─ angular.json                    # projects: admin, core, ui
@@ -335,8 +335,12 @@ Migration history:
   templates). **ADMIN / ACCOUNTANT / TEAM_LEAD** manage templates at `/whatsapp-templates`; staff use active
   templates from order/customer screens. `V45` enriches initial copy, `V46` replaces unreliable 4-byte emoji with
   WhatsApp-Desktop-safe basic-plane symbols, and `V47__whatsapp_confirm_order_summary.sql` adds `{orderSummary}` to
-  the confirmation template — itemized lines, order total, amount paid, and any COD balance. **V47 is the highest
-  migration.**
+  the confirmation template — itemized lines, order total, amount paid, and any COD balance.
+- `V48__rename_courier_lost_to_redispatch.sql` — terminology/status migration: converts historic order and status-
+  history values to `REDISPATCH`, updates known user-facing admin-notification text and JSON outbox status/template
+  payloads, and ensures the immutable V22/V27 seed values also end as `REDISPATCH`. The existing
+  `CLAIM_RECEIVABLE`, cleared customer outstanding, and claim-required alert semantics are unchanged. **V48 is the
+  highest migration.**
 
 > Fresh DB required: because V22 seeds with explicit IDs, start against an **empty**
 > `shifa_dashboard`. If a half-migrated DB exists, drop & recreate it before starting.
@@ -380,7 +384,10 @@ service, S3 for file storage). Admin app is served at `/`; API at `/api/` → Sp
 Assets in `deploy/`: `push-to-aws.ps1` (build + upload + apply), `aws-apply.sh` (server-side
 backup → swap → restart), `nginx-shifa.conf`, `shifa-oms.service`, `shifa.env.example`. Prod
 `apiBaseUrl` is `''` (same-origin behind Nginx). Prod DB name defaults to `shifa_dashboard`
-(override via `DB_NAME`).
+(override via `DB_NAME`). **Last verified deployment: 2026-07-30** — production backup
+`~/shifa-backup-2026-07-30-143710.sql`; Flyway applied V48 (renaming persisted `COURIER_LOST`
+values to `REDISPATCH`), Spring Boot started on `:8080`, `https://shifa.weblithic.online/` returned
+`200`, and unauthenticated `/api/states` correctly returned `401`.
 
 ---
 

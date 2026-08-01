@@ -61,7 +61,7 @@ This all status, Admin dashboard will display on real-time. Customer will also s
       - COD Orders -  Once the Status is set as Delivered, Once the status is changed to "Delivered" from Courier Service API, our system will change then order status to "COD Collected". Customer outstanding will be set as NIL and for us, status will be changed to "Courier Company Receivable" as this amount we need to collect from Courier company.
       - COD Orders - If the Order is Returned or Not delivered, Status will be "RTO" Once it is RTO COD amount automatically will be cancel. Customer outstanding will be set as NIL
       - Shipment Loss/Damage by Courier: If courier company API set staus as  "Lost", "Damaged" or "Missing", our system automatically:
-          - Order status "Courier Lost"
+          - Order status "Redispatch"
           - Net Order Amount will be settled by courier company so status will be set as "Claim Receivable"
           - Admin will get notification that AWB# claim need to be filed.
           - Customer outstanding for that order would be cleared as the liability is of courier company
@@ -79,7 +79,7 @@ This all status, Admin dashboard will display on real-time. Customer will also s
 Manage products, SKU, MRP, and sale prices.
 
 4. Order Status  
-New Order → Pending Admin Approval → Approved → Label Generated → Packed → Courier Assigned → Dispatched → In Transit → Out for Delivery → Delivered → COD Collected / Closed / RTO / Courier Lost / Cancelled
+New Order → Pending Admin Approval → Approved → Label Generated → Packed → Courier Assigned → Dispatched → In Transit → Out for Delivery → Delivered → COD Collected / Closed / RTO / Redispatch / Cancelled
 
 5. Dispatch Labels  
 Single/Bulk label printing and PDF generation. Includes:
@@ -88,7 +88,7 @@ Single/Bulk label printing and PDF generation. Includes:
 
 6. Admin Dashboard  
 Main Admin should have Shopify kind of graphical dashboard with:
-- Key Metrics Cards: Total Sales, Total Orders, Pending Orders, Packed Orders, Dispatched Orders, Delivered Orders, RTO Count, Courier Lost Count, Total COD Pending from Courier, Total Loss Claim Pending from Courier, Conversion Rate
+- Key Metrics Cards: Total Sales, Total Orders, Pending Orders, Packed Orders, Dispatched Orders, Delivered Orders, RTO Count, Redispatch Count, Total COD Pending from Courier, Total Loss Claim Pending from Courier, Conversion Rate
 - Time Period Filters: Today, Yesterday, Last 7 Days, Last 30 Days, This Month, Last Month, Quarterly, Yearly, Custom Date Range
 - Sales Graph: Day-wise, Week-wise, Monthly view with comparison line. Previous period se % growth/decline should be shown
 - Live Stats: Real-time order count, Today's collection, Total COD Amount to Collect from Courier, Total Loss Amount to Claim from Courier
@@ -136,7 +136,7 @@ Web Application, MySQL, Laravel/Node.js, React, WhatsApp Business API Integratio
 
 12. WhatsApp Integration  
 - Once the Order is dispatched auto WhatsApp with tracking details
-- Status updates: Out for Delivery, Delivered, RTO, Courier Lost
+- Status updates: Out for Delivery, Delivered, RTO, Redispatch
 - For Customer query, order status check via a live agent from our webiste which can query database and give result for order.
 - Template messages will be pre-approved from Meta.
 

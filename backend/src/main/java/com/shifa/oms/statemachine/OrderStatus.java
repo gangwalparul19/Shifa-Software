@@ -26,7 +26,7 @@ import java.util.Set;
  * <p>This enum only encodes transition <em>legality</em>. Per-transition role
  * authorization lives in {@link TransitionAuthority}; settlement and receivable
  * side effects that accompany certain transitions ({@code Delivered},
- * {@code RTO}, {@code Courier_Lost}) are implemented separately.
+ * {@code RTO}, {@code Redispatch}) are implemented separately.
  */
 public enum OrderStatus {
 
@@ -46,7 +46,7 @@ public enum OrderStatus {
     COD_COLLECTED,
     CLOSED,
     RTO,
-    COURIER_LOST,
+    REDISPATCH,
     CANCELLED;
 
     /** The status assigned to every newly created order (Requirement 8.2). */
@@ -76,11 +76,11 @@ public enum OrderStatus {
         // Pickup (Req 10.2).
         table.put(COURIER_ASSIGNED, EnumSet.of(DISPATCHED));
         // Courier webhook progressions (Req 10.3).
-        table.put(DISPATCHED, EnumSet.of(IN_TRANSIT, OUT_FOR_DELIVERY, RTO, COURIER_LOST));
-        table.put(IN_TRANSIT, EnumSet.of(OUT_FOR_DELIVERY, DELIVERED, RTO, COURIER_LOST));
+        table.put(DISPATCHED, EnumSet.of(IN_TRANSIT, OUT_FOR_DELIVERY, RTO, REDISPATCH));
+        table.put(IN_TRANSIT, EnumSet.of(OUT_FOR_DELIVERY, DELIVERED, RTO, REDISPATCH));
         // New delivery outcomes Customer_Rejected / Delivery_Failed (Req 11.1, 11.2).
         table.put(OUT_FOR_DELIVERY,
-                EnumSet.of(DELIVERED, CUSTOMER_REJECTED, DELIVERY_FAILED, RTO, COURIER_LOST));
+                EnumSet.of(DELIVERED, CUSTOMER_REJECTED, DELIVERY_FAILED, RTO, REDISPATCH));
         // Settlement outcomes (Req 16.1, 16.2).
         table.put(DELIVERED, EnumSet.of(CLOSED, COD_COLLECTED));
 
@@ -92,7 +92,7 @@ public enum OrderStatus {
         table.put(CUSTOMER_REJECTED, EnumSet.noneOf(OrderStatus.class));
         table.put(DELIVERY_FAILED, EnumSet.noneOf(OrderStatus.class));
         table.put(RTO, EnumSet.noneOf(OrderStatus.class));
-        table.put(COURIER_LOST, EnumSet.noneOf(OrderStatus.class));
+        table.put(REDISPATCH, EnumSet.noneOf(OrderStatus.class));
 
         // Freeze the table so it cannot be mutated at runtime.
         Map<OrderStatus, Set<OrderStatus>> frozen = new EnumMap<>(OrderStatus.class);

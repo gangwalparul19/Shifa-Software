@@ -28,7 +28,7 @@ experience**, not on adding more admin features.
 
 - **Order lifecycle:** PENDING_ADMIN_APPROVAL → APPROVED → LABEL_GENERATED → PACKED → HANDED_TO_DELIVERY
   → COURIER_ASSIGNED → DISPATCHED → IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED/COD_COLLECTED/CLOSED, plus
-  CUSTOMER_REJECTED, DELIVERY_FAILED, RTO, COURIER_LOST, REJECTED, CANCELLED.
+  CUSTOMER_REJECTED, DELIVERY_FAILED, RTO, REDISPATCH, REJECTED, CANCELLED.
 - **Salesperson pages:** New Order, Orders (own), Leads (+ due follow-ups), Customers (own), Products (read), My Profile, dashboard widget.
 - **Packing page:** work queues (to pack / awaiting handover / awaiting dispatch), barcode scan, per-order label print, handover, dispatch.
 - **Accountant pages:** Reconciliation, Reports, Expenses, P&L, Returns, Customers.

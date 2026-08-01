@@ -91,17 +91,17 @@ public final class TransitionAuthority {
         put(t, OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT, true);
         put(t, OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY, true);
         put(t, OrderStatus.DISPATCHED, OrderStatus.RTO, true);
-        put(t, OrderStatus.DISPATCHED, OrderStatus.COURIER_LOST, true);
+        put(t, OrderStatus.DISPATCHED, OrderStatus.REDISPATCH, true);
         put(t, OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, true);
         put(t, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED, true);
         put(t, OrderStatus.IN_TRANSIT, OrderStatus.RTO, true);
-        put(t, OrderStatus.IN_TRANSIT, OrderStatus.COURIER_LOST, true);
+        put(t, OrderStatus.IN_TRANSIT, OrderStatus.REDISPATCH, true);
         // New delivery outcomes (Req 11.1, 11.2) — SYSTEM only.
         put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED, true);
         put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CUSTOMER_REJECTED, true);
         put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERY_FAILED, true);
         put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO, true);
-        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.COURIER_LOST, true);
+        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.REDISPATCH, true);
 
         // Settlement — ACCOUNTANT/ADMIN or SYSTEM (Req 16.1, 16.2).
         put(t, OrderStatus.DELIVERED, OrderStatus.CLOSED, true, Role.ACCOUNTANT, Role.ADMIN);

@@ -573,7 +573,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       { label: 'Dispatched', value: c.dispatchedOrders, color: '#4263eb', status: OrderStatus.DISPATCHED },
       { label: 'Delivered', value: c.deliveredOrders, color: '#2fb344', status: OrderStatus.DELIVERED },
       { label: 'RTO', value: c.rtoCount, color: '#f76707', status: OrderStatus.RTO },
-      { label: 'Courier Lost', value: c.courierLostCount, color: '#d63939', status: OrderStatus.COURIER_LOST },
+      { label: 'Redispatch', value: c.redispatchCount, color: '#d63939', status: OrderStatus.REDISPATCH },
     ];
     return all.filter((s) => s.value > 0);
   });

@@ -109,7 +109,7 @@ public class InsightComputationService {
     /** Terminal delivery-failure outcomes used for the historical state failure rate + prior-failed count. */
     private static final Set<OrderStatus> FAILED_TERMINAL = EnumSet.of(
             OrderStatus.RTO, OrderStatus.DELIVERY_FAILED, OrderStatus.CUSTOMER_REJECTED,
-            OrderStatus.COURIER_LOST);
+            OrderStatus.REDISPATCH);
 
     /** Terminal statuses that count as a successful delivery for scorecards/returns. */
     private static final Set<OrderStatus> DELIVERED_TERMINAL = EnumSet.of(

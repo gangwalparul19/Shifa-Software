@@ -36,7 +36,7 @@ import java.util.Optional;
  *   <li><b>Delivered</b>: {@code →Delivered}, then {@code →Closed} (prepaid) or
  *       {@code →COD_Collected} with a COD receivable (Req 16.1, 16.2);</li>
  *   <li><b>RTO</b>: {@code →RTO}, COD cancelled, outstanding 0 (Req 16.3);</li>
- *   <li><b>Courier_Lost</b>: {@code →Courier_Lost}, a claim receivable for the
+ *   <li><b>Redispatch</b>: {@code →Redispatch}, a claim receivable for the
  *       net amount, outstanding 0, and a claim-filing admin notification
  *       (Req 17.2, 17.3, 17.4).</li>
  * </ul>
@@ -122,7 +122,7 @@ public class CourierStatusApplier {
         switch (target) {
             case DELIVERED -> applyDelivered(order, record, courierContext);
             case RTO -> applyRto(order, courierContext);
-            case COURIER_LOST -> applyCourierLost(order, record, courierContext);
+            case REDISPATCH -> applyRedispatch(order, record, courierContext);
             case CUSTOMER_REJECTED, DELIVERY_FAILED -> applyFailedOutcome(order, target, courierContext);
             // Dispatched / In_Transit / Out_For_Delivery
             default -> transition(order, target, courierContext);
@@ -177,7 +177,7 @@ public class CourierStatusApplier {
     /**
      * Applies a terminal delivery-failure outcome — {@code CUSTOMER_REJECTED}
      * (customer refused at the door, Req 11.1) or {@code DELIVERY_FAILED} (a
-     * failed attempt, Req 11.2). Unlike {@code Delivered}/{@code Courier_Lost}
+     * failed attempt, Req 11.2). Unlike {@code Delivered}/{@code Redispatch}
      * these carry no settlement receivable: nothing was delivered or collected,
      * so — consistent with the RTO handling — the customer outstanding is cleared
      * to zero. The transition itself fires the matrix notification for the entered
@@ -189,8 +189,8 @@ public class CourierStatusApplier {
         order.setCustomerOutstanding(BigDecimal.ZERO);
     }
 
-    private void applyCourierLost(OrderEntity order, CourierRecord record, NotificationContext ctx) {
-        transition(order, OrderStatus.COURIER_LOST, ctx);
+    private void applyRedispatch(OrderEntity order, CourierRecord record, NotificationContext ctx) {
+        transition(order, OrderStatus.REDISPATCH, ctx);
         order.setCustomerOutstanding(BigDecimal.ZERO);
         ReceivableEntity claim = recordReceivable(
                 order, record, ReceivableType.CLAIM_RECEIVABLE, order.getTotalAmount());

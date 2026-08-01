@@ -60,7 +60,7 @@ export const ORDER_STATUS_GROUPS: readonly OrderStatusGroupDef[] = [
       OrderStatus.CUSTOMER_REJECTED,
       OrderStatus.DELIVERY_FAILED,
       OrderStatus.RTO,
-      OrderStatus.COURIER_LOST,
+      OrderStatus.REDISPATCH,
     ],
   },
 ];

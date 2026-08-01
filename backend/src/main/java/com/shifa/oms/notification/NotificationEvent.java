@@ -14,7 +14,7 @@ import java.util.Optional;
  *   <li>{@link #DISPATCHED} — the full tracking payload incl. COD when
  *       applicable (Req 14.1);</li>
  *   <li>{@link #OUT_FOR_DELIVERY}, {@link #DELIVERED}, {@link #RTO},
- *       {@link #COURIER_LOST} — a status-update message reflecting the new state
+ *       {@link #REDISPATCH} — a status-update message reflecting the new state
  *       (Req 14.2).</li>
  * </ul>
  * {@link #fromOrderStatus(OrderStatus)} returns empty for statuses that do not
@@ -38,7 +38,7 @@ public enum NotificationEvent {
     OUT_FOR_DELIVERY,
     DELIVERED,
     RTO,
-    COURIER_LOST;
+    REDISPATCH;
 
     /**
      * The notification event for a courier-driven order status, if that status
@@ -58,7 +58,7 @@ public enum NotificationEvent {
             case OUT_FOR_DELIVERY -> Optional.of(OUT_FOR_DELIVERY);
             case DELIVERED -> Optional.of(DELIVERED);
             case RTO -> Optional.of(RTO);
-            case COURIER_LOST -> Optional.of(COURIER_LOST);
+            case REDISPATCH -> Optional.of(REDISPATCH);
             default -> Optional.empty();
         };
     }

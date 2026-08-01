@@ -20,7 +20,7 @@ export function orderStatusTone(status: OrderStatus | string): StatusTone {
     case OrderStatus.REJECTED:
     case OrderStatus.CANCELLED:
     case OrderStatus.RTO:
-    case OrderStatus.COURIER_LOST:
+    case OrderStatus.REDISPATCH:
     case OrderStatus.CUSTOMER_REJECTED:
     case OrderStatus.DELIVERY_FAILED:
       return 'bad';

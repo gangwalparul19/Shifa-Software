@@ -58,7 +58,7 @@ public class OutboxEvent {
     public static final String EVENT_COURIER_ASSIGN_FAILED = "COURIER_ASSIGN_FAILED";
 
     /**
-     * Event type emitted when an order becomes {@code Courier_Lost} and a claim
+     * Event type emitted when an order becomes {@code Redispatch} and a claim
      * receivable is recorded, so the admin is told to file a claim (Req 17.4).
      */
     public static final String EVENT_CLAIM_FILED_REQUIRED = "CLAIM_FILED_REQUIRED";
@@ -68,7 +68,7 @@ public class OutboxEvent {
 
     /**
      * Event type emitted when an order reaches a customer-facing lifecycle state
-     * (Dispatched / Out_For_Delivery / Delivered / RTO / Courier_Lost) so the
+     * (Dispatched / Out_For_Delivery / Delivered / RTO / Redispatch) so the
      * WhatsApp drainer can send the pre-approved template message out-of-band
      * (Req 14.1, 14.2). Its payload carries the resolved template name and
      * ordered parameters, so the drainer never re-loads the aggregate.

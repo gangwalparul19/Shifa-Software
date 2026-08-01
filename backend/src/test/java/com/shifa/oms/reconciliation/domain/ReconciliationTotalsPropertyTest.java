@@ -42,7 +42,7 @@ class ReconciliationTotalsPropertyTest {
             SettlementResult result = switch (so.outcome()) {
                 case DELIVERED -> processor.onDelivered(so.view());
                 case RTO -> processor.onReturnToOrigin(so.view());
-                case LOST -> processor.onCourierLost(so.view());
+                case LOST -> processor.onRedispatch(so.view());
                 case IN_FLIGHT -> null; // not yet terminal: no settlement, no receivable
             };
             if (result != null) {

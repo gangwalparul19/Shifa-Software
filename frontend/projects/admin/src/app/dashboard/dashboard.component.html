@@ -462,15 +462,15 @@
         style="--accent: #d63939; --accent-soft: #fbe7e7"
         role="button"
         tabindex="0"
-        title="View courier-lost orders"
-        (click)="drillDown(OrderStatus.COURIER_LOST)"
-        (keydown.enter)="drillDown(OrderStatus.COURIER_LOST)"
-        (keydown.space)="$event.preventDefault(); drillDown(OrderStatus.COURIER_LOST)"
+        title="View redispatch orders"
+        (click)="drillDown(OrderStatus.REDISPATCH)"
+        (keydown.enter)="drillDown(OrderStatus.REDISPATCH)"
+        (keydown.space)="$event.preventDefault(); drillDown(OrderStatus.REDISPATCH)"
       >
         <div class="card-body d-flex align-items-center justify-content-between">
           <div>
-            <div class="subheader">Courier Lost</div>
-            <div class="h1 m-0 count-up" [shifaCountUp]="m.cards.courierLostCount" countFormat="int"></div>
+            <div class="subheader">Redispatch</div>
+            <div class="h1 m-0 count-up" [shifaCountUp]="m.cards.redispatchCount" countFormat="int"></div>
           </div>
           <span class="stat-icon" style="--accent: #d63939; --accent-soft: #fbe7e7"><i class="ti ti-alert-octagon"></i></span>
         </div>

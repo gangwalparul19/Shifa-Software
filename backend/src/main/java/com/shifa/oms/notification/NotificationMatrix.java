@@ -38,7 +38,7 @@ import static com.shifa.oms.notification.NotificationChannel.WHATSAPP;
  * DELIVERY_FAILED     —         —          ADMIN + PACKING_USER
  * CANCELLED           —         —          ADMIN + salesperson-creator
  * RTO                 customer  —          ADMIN
- * COURIER_LOST        customer  —          ADMIN
+ * REDISPATCH        customer  —          ADMIN
  * </pre>
  *
  * <p>* Email is present <b>iff</b> the event is a key milestone — exactly
@@ -124,8 +124,8 @@ public class NotificationMatrix {
                 customerWhatsApp(),
                 inAppRole(Role.ADMIN)));
 
-        // COURIER_LOST — existing customer WhatsApp + ADMIN in-app (claim alert).
-        m.put(OrderStatus.COURIER_LOST, specs(
+        // REDISPATCH — existing customer WhatsApp + ADMIN in-app (claim alert).
+        m.put(OrderStatus.REDISPATCH, specs(
                 customerWhatsApp(),
                 inAppRole(Role.ADMIN)));
 

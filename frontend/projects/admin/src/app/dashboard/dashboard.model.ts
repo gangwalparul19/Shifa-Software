@@ -34,7 +34,7 @@ export interface MetricCards {
   dispatchedOrders: number;
   deliveredOrders: number;
   rtoCount: number;
-  courierLostCount: number;
+  redispatchCount: number;
   totalCodPendingFromCourier: number;
   totalLossClaimPendingFromCourier: number;
   conversionRate: number;

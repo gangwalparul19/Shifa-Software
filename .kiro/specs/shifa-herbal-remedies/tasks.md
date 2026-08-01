@@ -87,9 +87,9 @@ Property-based tests use **jqwik** (backend) and **fast-check** (frontend), each
     - **Validates: Requirements 8.4**
 
 - [x] 5. Implement domain core: settlement and receivables ledger
-  - [x] 5.1 Implement settlement side effects on Delivered/RTO/Courier_Lost
+  - [x] 5.1 Implement settlement side effects on Delivered/RTO/Redispatch
     - Delivered + Fully_Paid → Closed, outstanding=0; Delivered + COD_Amount>0 → COD_Collected, outstanding=0, create COD_RECEIVABLE=COD_Amount
-    - RTO → cancel COD_Amount (0), outstanding=0; Courier_Lost → create CLAIM_RECEIVABLE=net amount, outstanding=0
+    - RTO → cancel COD_Amount (0), outstanding=0; Redispatch → create CLAIM_RECEIVABLE=net amount, outstanding=0
     - _Requirements: 16.1, 16.2, 16.3, 17.2, 17.3_
 
   - [x] 5.2 Implement receivable aggregation and settlement operations
@@ -239,7 +239,7 @@ Property-based tests use **jqwik** (backend) and **fast-check** (frontend), each
     - _Requirements: 12.1, 12.2, 12.3, 12.4_
 
   - [x] 14.3 Implement courier tracking webhook and status mapping
-    - `POST /api/webhooks/courier` (HMAC-validated, idempotent): map pickup→Dispatched, in-transit→In_Transit, out-for-delivery→Out_For_Delivery, delivered→Delivered, return→RTO, lost/damaged→Courier_Lost; apply only when legal; trigger settlement side effects
+    - `POST /api/webhooks/courier` (HMAC-validated, idempotent): map pickup→Dispatched, in-transit→In_Transit, out-for-delivery→Out_For_Delivery, delivered→Delivered, return→RTO, lost/damaged→Redispatch; apply only when legal; trigger settlement side effects
     - Scheduled poll reconciles missed webhooks
     - _Requirements: 13.1, 13.2, 17.1_
 
@@ -261,7 +261,7 @@ Property-based tests use **jqwik** (backend) and **fast-check** (frontend), each
 
 - [x] 15. Implement Notification Service (WhatsApp)
   - [x] 15.1 Implement WhatsApp template registry and send-on-status
-    - Registry mapping event → pre-approved Meta template + parameter mapping; send on Dispatched (order id, courier name, AWB, tracking link, ETA, COD_Amount when COD/Partially_Paid) and on Out_For_Delivery/Delivered/RTO/Courier_Lost; sends run via outbox
+    - Registry mapping event → pre-approved Meta template + parameter mapping; send on Dispatched (order id, courier name, AWB, tracking link, ETA, COD_Amount when COD/Partially_Paid) and on Out_For_Delivery/Delivered/RTO/Redispatch; sends run via outbox
     - On failure, record it and flag order for Admin review
     - _Requirements: 14.1, 14.2, 14.3, 14.4_
 
@@ -283,7 +283,7 @@ Property-based tests use **jqwik** (backend) and **fast-check** (frontend), each
 
 - [x] 16. Implement Reconciliation endpoints and UI
   - [x] 16.1 Implement reconciliation API
-    - `GET /api/recon/receivables?courier=&type=`, `GET /api/recon/cod/unsettled`, `POST /api/recon/receivables/{id}/settle` (ACCOUNTANT/ADMIN) using ledger logic from task 5; claim-filed Admin notification on Courier_Lost
+    - `GET /api/recon/receivables?courier=&type=`, `GET /api/recon/cod/unsettled`, `POST /api/recon/receivables/{id}/settle` (ACCOUNTANT/ADMIN) using ledger logic from task 5; claim-filed Admin notification on Redispatch
     - _Requirements: 17.4, 18.1, 18.2, 18.3, 18.4, 18.5, 18.6_
 
   - [x] 16.2 Implement reconciliation dashboard UI in Admin app
@@ -320,7 +320,7 @@ Property-based tests use **jqwik** (backend) and **fast-check** (frontend), each
 
 - [x] 19. Implement Admin Dashboard metrics and SSE
   - [x] 19.1 Implement metrics aggregation endpoint
-    - `GET /api/admin/metrics?period=`: metric cards (sales, orders, pending/packed/dispatched/delivered, RTO, Courier Lost, COD pending, claim pending, conversion rate); time-period filters; sales graph with previous-period comparison and % change; top performers
+    - `GET /api/admin/metrics?period=`: metric cards (sales, orders, pending/packed/dispatched/delivered, RTO, Redispatch, COD pending, claim pending, conversion rate); time-period filters; sales graph with previous-period comparison and % change; top performers
     - _Requirements: 19.1, 19.2, 19.3, 19.4, 19.7_
 
   - [x] 19.2 Implement SSE event stream and post-commit publishing

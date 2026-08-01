@@ -142,7 +142,7 @@ public class OutboxEventPublisher {
 
     /**
      * Enqueues a {@code CLAIM_FILED_REQUIRED} admin notification when an order
-     * becomes {@code Courier_Lost} and a claim receivable is recorded (Req 17.4).
+     * becomes {@code Redispatch} and a claim receivable is recorded (Req 17.4).
      *
      * @param orderId the lost order's id
      * @param orderCode the order code, for display

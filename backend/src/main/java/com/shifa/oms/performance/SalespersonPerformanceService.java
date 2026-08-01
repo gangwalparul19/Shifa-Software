@@ -60,7 +60,7 @@ public class SalespersonPerformanceService {
     /** Concluded failed deliveries. */
     private static final Set<OrderStatus> FAILED =
             EnumSet.of(OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED,
-                    OrderStatus.RTO, OrderStatus.COURIER_LOST);
+                    OrderStatus.RTO, OrderStatus.REDISPATCH);
 
     private static final int DEFAULT_TREND_DAYS = 14;
     private static final int MAX_TREND_DAYS = 60;

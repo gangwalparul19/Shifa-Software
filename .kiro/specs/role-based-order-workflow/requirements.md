@@ -193,7 +193,7 @@ wiring, notification templates, API shapes, and UI layouts belong to the design 
 
 #### Acceptance Criteria
 
-1. THE State_Machine SHALL support the downstream outcomes Delivered, Customer-Rejected, Failed-to-Deliver, and Cancelled, reconciled with the existing `DELIVERED`, `RTO`, `COURIER_LOST`, and `CANCELLED` states.
+1. THE State_Machine SHALL support the downstream outcomes Delivered, Customer-Rejected, Failed-to-Deliver, and Cancelled, reconciled with the existing `DELIVERED`, `RTO`, `REDISPATCH`, and `CANCELLED` states.
 2. THE State_Machine SHALL define distinct statuses for a customer refusal and for a failed delivery attempt so the two outcomes are reportable separately.
 3. WHEN an order transitions to `OUT_FOR_DELIVERY`, THE Notification_Service SHALL enqueue a WhatsApp message to the customer stating the order is out for delivery.
 4. WHEN an order transitions to `DELIVERED`, THE Notification_Service SHALL enqueue a WhatsApp message to the customer, enqueue an email to the customer because `DELIVERED` is a Key_Milestone, and create in-app notifications addressed to the Admin role and the Salesperson who created the order.

@@ -57,7 +57,7 @@ public enum OrderStatusGroup {
             OrderStatus.CUSTOMER_REJECTED,
             OrderStatus.DELIVERY_FAILED,
             OrderStatus.RTO,
-            OrderStatus.COURIER_LOST);
+            OrderStatus.REDISPATCH);
 
     private final List<OrderStatus> statuses;
 

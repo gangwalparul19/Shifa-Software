@@ -60,7 +60,7 @@ public class ReconciliationService {
             OrderStatus.COD_COLLECTED,
             OrderStatus.CLOSED,
             OrderStatus.RTO,
-            OrderStatus.COURIER_LOST);
+            OrderStatus.REDISPATCH);
 
     private final ReceivableRepository receivableRepository;
     private final OrderRepository orderRepository;

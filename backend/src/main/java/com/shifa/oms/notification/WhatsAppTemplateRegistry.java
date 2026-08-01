@@ -97,8 +97,8 @@ public class WhatsAppTemplateRegistry {
         map.put(NotificationEvent.RTO, new WhatsAppTemplate(
                 NotificationEvent.RTO, "order_rto",
                 List.of(PARAM_ORDER_ID, PARAM_ORDER_STATUS)));
-        map.put(NotificationEvent.COURIER_LOST, new WhatsAppTemplate(
-                NotificationEvent.COURIER_LOST, "order_courier_lost",
+        map.put(NotificationEvent.REDISPATCH, new WhatsAppTemplate(
+                NotificationEvent.REDISPATCH, "order_redispatch",
                 List.of(PARAM_ORDER_ID, PARAM_ORDER_STATUS)));
 
         return map;

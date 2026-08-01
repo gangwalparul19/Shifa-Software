@@ -31,7 +31,7 @@ removed (store now on **Shopify**). Remaining scope: admin dashboard + salespers
 V27 test seed adds `sales01`..`sales20`, `accountant2`, `packer2`, `admin2` — **all `admin123`** (see `docs/test-data-guide.html`).
 
 ## Order lifecycle (role-based workflow — implemented)
-Flow: PENDING_ADMIN_APPROVAL → APPROVED → LABEL_GENERATED → PACKED → **HANDED_TO_DELIVERY** → COURIER_ASSIGNED → DISPATCHED → IN_TRANSIT → OUT_FOR_DELIVERY → {DELIVERED→(CLOSED|COD_COLLECTED), **CUSTOMER_REJECTED**, **DELIVERY_FAILED**, RTO, COURIER_LOST} (+ REJECTED/CANCELLED). Roles: ADMIN/SALESPERSON/PACKING_USER/ACCOUNTANT (no shipping role; packer+admin do handover/dispatch).
+Flow: PENDING_ADMIN_APPROVAL → APPROVED → LABEL_GENERATED → PACKED → **HANDED_TO_DELIVERY** → COURIER_ASSIGNED → DISPATCHED → IN_TRANSIT → OUT_FOR_DELIVERY → {DELIVERED→(CLOSED|COD_COLLECTED), **CUSTOMER_REJECTED**, **DELIVERY_FAILED**, RTO, REDISPATCH} (+ REJECTED/CANCELLED). Roles: ADMIN/SALESPERSON/PACKING_USER/ACCOUNTANT (no shipping role; packer+admin do handover/dispatch).
 - Central `order/OrderWorkflowService.applyTransition(order,target,Actor)` = authorize (`statemachine/TransitionAuthority`, 403) → legality (`OrderStatusStateMachine`, 409) → status + one history row → audit → `notification/NotificationMatrix` fan-out. Actor = human role or SYSTEM (courier).
 - Endpoints: `POST /api/packing/{id}/handover`, `POST /api/packing/{id}/dispatch` (PACKING_USER/ADMIN); `GET /api/dashboard/summary` (role-shaped, all staff); `GET /api/notifications` (staff, per-user/role); reports ORDERS_BY_LEAD_SOURCE/STATUS/SALESPERSON, DELIVERY_OUTCOME.
 - NotificationMatrix = single source (WhatsApp per-step to customer, email ONLY on APPROVED/DISPATCHED/DELIVERED, in-app to roles/creator) via outbox; `mail/EmailOutboxDrainer` mirrors WhatsApp drainer. Courier tokens customer_rejected/refused→CUSTOMER_REJECTED, delivery_failed/failed/undelivered→DELIVERY_FAILED.
@@ -197,7 +197,7 @@ Routes: `frontend/projects/admin/src/app/app.routes.ts`; nav: `shell/admin-shell
 - `V38` (analytics §6.1) creates `sales_targets` (per-salesperson monthly revenue target).
 - **Highest migration is now V38.** V31/V32/V33 (staff profiles/photo/change-requests) sit between V29 and V34.
 - `V28` (payment-screenshot storage) adds `stored_files` (id, `storage_key` UNIQUE, filename, content_type, byte_size, `content` LONGBLOB, created_at) — DB-backed binary store so payment screenshots are durable/backed-up records, not fragile server files. New `platform/storage/DatabaseStorageService` (`@Primary @ConditionalOnProperty app.storage.provider=DB`) + `StoredFileEntity`/`StoredFileRepository`; `LocalStorageService` now `@ConditionalOnProperty(...=LOCAL, matchIfMissing=true)` so exactly one bean is active. **Prod uses `app.storage.provider=DB`** (application-prod.yml; env `STORAGE_PROVIDER`). Also added `spring.servlet.multipart.max-file-size=10MB`/`max-request-size=12MB` (default 1MB was 500ing phone screenshots) + a `MaxUploadSizeExceededException`→413 handler in `GlobalExceptionHandler`.
-- `V27__seed_test_data.sql` — **large NOW()-relative TEST/DEMO seed** layered additively on top of V22 (plain SQL, runs in ALL profiles, auto-applies on deploy/restart). Non-colliding explicit IDs: users 101–123, orders 1000–1119 (codes `SHR-5001`..`SHR-5120`), courier_companies 2–4, suppliers 10–14, purchase_orders 10–14 (`PO-0006`..`PO-0010`); child tables use AUTO_INCREMENT. Seeds 23 new users (20 salespersons `sales01`..`sales20` + `accountant2`/`packer2`/`admin2`) — **all logins share password `admin123`** (same bcrypt hash as V22 admin). Volumes: 120 orders across the full lifecycle (~56 customers, repeat buyers), 240 line_items, ~926 status_history rows (first row NULL→PENDING, last == order_status), 72 payments, 91 courier_records, 37 receivables (COD outstanding unsettled + a COURIER_LOST claim), 142 stock_movements (many SALE rows in the last 30 days for insights), 9 order_returns, 21 monthly expenses, 50 leads (+124 lead_status_history, due/overdue follow-ups, some WON→converted_order_id), 13 admin_notifications (role- & user-addressed), 18 audit_events. Bumps `invoice_sequence` (next_value 69) and `purchase_order_sequence` (next_value 11). Money math mirrors V22. **Guide: `docs/test-data-guide.html`** (full login list + per-role tour). Validated: V1..V27 apply 100% clean into a throwaway scratch DB (never touch `shifa_dashboard`).
+- `V27__seed_test_data.sql` — **large NOW()-relative TEST/DEMO seed** layered additively on top of V22 (plain SQL, runs in ALL profiles, auto-applies on deploy/restart). Non-colliding explicit IDs: users 101–123, orders 1000–1119 (codes `SHR-5001`..`SHR-5120`), courier_companies 2–4, suppliers 10–14, purchase_orders 10–14 (`PO-0006`..`PO-0010`); child tables use AUTO_INCREMENT. Seeds 23 new users (20 salespersons `sales01`..`sales20` + `accountant2`/`packer2`/`admin2`) — **all logins share password `admin123`** (same bcrypt hash as V22 admin). Volumes: 120 orders across the full lifecycle (~56 customers, repeat buyers), 240 line_items, ~926 status_history rows (first row NULL→PENDING, last == order_status), 72 payments, 91 courier_records, 37 receivables (COD outstanding unsettled + a REDISPATCH claim), 142 stock_movements (many SALE rows in the last 30 days for insights), 9 order_returns, 21 monthly expenses, 50 leads (+124 lead_status_history, due/overdue follow-ups, some WON→converted_order_id), 13 admin_notifications (role- & user-addressed), 18 audit_events. Bumps `invoice_sequence` (next_value 69) and `purchase_order_sequence` (next_value 11). Money math mirrors V22. **Guide: `docs/test-data-guide.html`** (full login list + per-role tour). Validated: V1..V27 apply 100% clean into a throwaway scratch DB (never touch `shifa_dashboard`).
 - Start against an **empty** `shifa_dashboard` (V22 uses explicit IDs). If half-migrated, drop & recreate the DB first.
 - Storefront-added columns on orders/products/users are intentionally kept (still mapped by entities).
 
@@ -296,7 +296,7 @@ Customers remain **derived data keyed by `customer_mobile`** (no customer master
 `POST /{mobile}/tags`, `DELETE /{mobile}/tags/{tag}`. Class `@PreAuthorize hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON')`;
 same `SalespersonScopeResolver` scoping (salesperson sees only their own-order customers; out-of-scope → 404).
 - Pure `crm/domain/CustomerRiskCalculator` + `CustomerRiskLevel` (LOW/MEDIUM/HIGH): failed deliveries
-  (CUSTOMER_REJECTED/DELIVERY_FAILED/RTO/COURIER_LOST) vs delivered (DELIVERED/COD_COLLECTED/CLOSED); HIGH when
+  (CUSTOMER_REJECTED/DELIVERY_FAILED/RTO/REDISPATCH) vs delivered (DELIVERED/COD_COLLECTED/CLOSED); HIGH when
   ≥2 failures AND failure-rate ≥0.4, MEDIUM when ≥1 failure, else LOW. Profile also has metrics (delivered/failed/
   in-flight/cancelled/successRate/outstanding), top products bought (excl. cancelled), status breakdown, tags, notes.
 - **Migration V34** (`customer_tags`, `customer_notes`, keyed by mobile) — first persisted per-customer data. New audit
@@ -390,7 +390,7 @@ so Orders + Packing pages speak the same language.
   **Awaiting Dispatch=`HANDED_TO_DELIVERY`** (these two mirror the packing queue: PACKED="awaiting handover",
   HANDED_TO_DELIVERY="awaiting dispatch"); In Transit=`COURIER_ASSIGNED,DISPATCHED,IN_TRANSIT,OUT_FOR_DELIVERY`;
   Completed=`DELIVERED,COD_COLLECTED,CLOSED`; Cancelled=`REJECTED,CANCELLED`;
-  Failed/Returned=`CUSTOMER_REJECTED,DELIVERY_FAILED,RTO,COURIER_LOST`.
+  Failed/Returned=`CUSTOMER_REJECTED,DELIVERY_FAILED,RTO,REDISPATCH`.
 - **Backend**: new `order/OrderStatusGroup` enum (`statuses()` per group). `OrderListSpecifications.build`
   gained an `OrderStatusGroup statusGroup` overload → `orderStatus IN (members)` (old overloads delegate with
   null; AND-combined with the exact `status` if both set). `AdminOrderService.listOrders` canonical method +
@@ -1120,3 +1120,17 @@ the old raw-status dashboard and old WhatsApp copy — clear signs that its loca
 Test the deployed build at `http://13.234.22.207/` after Ctrl+Shift+R (or a private window), not localhost:4300. For
 local testing, start/restart BOTH backend (`mvn -f "backend/pom.xml" -DskipTests spring-boot:run`) and frontend dev
 server, then hard-refresh; "Offline" must disappear before profile/WhatsApp results are meaningful.
+
+## DEPLOYED to AWS (2026-07-28, 23:14 IST) — Scan & Move release
+Deployed the latest local state through `deploy\push-to-aws.ps1`: packing Scan & Move preview/confirmation,
+Team Lead 360/dashboard refinements, CORS/auth hardening, and all current frontend/backend changes. Backup:
+`~/shifa-backup-2026-07-28-231405.sql`. Production boot verified: Flyway validated 47 migrations (v47, no new
+migration), Spring Boot started on `:8080` in 20.5s, and `GET /api/states` unauthenticated returns 401. Nginx
+validated/reloaded; HTTP with the production host redirects to HTTPS (301). The `-Xmx512m: command not found`
+message while the backup script sources `shifa.env`, old-JVM Logback shutdown noise, and systemd daemon-reload
+warnings are pre-existing/non-blocking.
+
+## Redispatch terminology/status migration (V48) — implemented
+- `OrderStatus.REDISPATCH` is the terminal courier-exception outcome. Courier raw tokens `lost`, `damaged`, and `missing` map to it; it remains system-only from dispatched/in-transit/out-for-delivery, and is terminal.
+- Semantics are unchanged: the customer outstanding is cleared, exactly one `CLAIM_RECEIVABLE` for the full order amount is created, and the existing `CLAIM_FILED_REQUIRED` admin alert remains. Notification matrix/event/template/dispatcher, dashboard metrics (`redispatchCount`), order groups, CRM/performance/insights, reconciliation, raw SQL, and frontend status/card/chart/filter/badge all use Redispatch.
+- `V48__rename_courier_lost_to_redispatch.sql` is the highest migration. It upgrades persisted `orders.order_status` and `status_history.from_status`/`to_status`, safely rewrites known historic admin-notification text and JSON outbox status/template payloads, and ensures the immutable V22/V27 seed values finish as `REDISPATCH`. No earlier migration was edited. **Deployed to AWS on 2026-07-30**: MySQL backup `~/shifa-backup-2026-07-30-143710.sql`; Flyway applied V48 cleanly and the production HTTPS site/API checks returned 200/expected-401.

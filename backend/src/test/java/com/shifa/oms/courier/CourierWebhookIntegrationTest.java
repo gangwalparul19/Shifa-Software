@@ -118,13 +118,13 @@ class CourierWebhookIntegrationTest {
     }
 
     @Test
-    void lostShipmentRecordsClaimAndNotifiesAdmin() {
+    void redispatchShipmentRecordsClaimAndNotifiesAdmin() {
         OrderEntity order = order(OrderStatus.IN_TRANSIT, PaymentStatus.FULLY_PAID, "0.00");
         stubAwb("AWB-4", order, 8L);
 
         Optional<OrderStatus> result = applier.applyByAwb("AWB-4", "lost");
 
-        assertThat(result).contains(OrderStatus.COURIER_LOST);
+        assertThat(result).contains(OrderStatus.REDISPATCH);
         assertThat(savedReceivables).hasSize(1);
         assertThat(savedReceivables.get(0).getType()).isEqualTo(ReceivableType.CLAIM_RECEIVABLE);
         assertThat(savedEvents).anyMatch(e ->

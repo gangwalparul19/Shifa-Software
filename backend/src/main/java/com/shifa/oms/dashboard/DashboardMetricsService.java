@@ -191,7 +191,7 @@ public class DashboardMetricsService {
                 delivered++;
             } else if (s == OrderStatus.RTO) {
                 rto++;
-            } else if (s == OrderStatus.COURIER_LOST) {
+            } else if (s == OrderStatus.REDISPATCH) {
                 lost++;
             }
         }

@@ -22,7 +22,7 @@ What actually changes:
 1. **Three new lifecycle states** on `OrderStatus`: `HANDED_TO_DELIVERY` (between `PACKED` and
    `COURIER_ASSIGNED`), and two distinct downstream outcomes — `CUSTOMER_REJECTED` (customer
    refusal) and `DELIVERY_FAILED` (failed delivery attempt) — reconciled with the existing `RTO`
-   and `COURIER_LOST` exception states.
+   and `REDISPATCH` exception states.
 2. **Per-transition role authorization** made explicit and enforced by the state machine layer,
    rather than only implied by which controller/service triggers a transition.
 3. **A `lead_source` field** (plus an optional free-text note) on the order, distinct from the
@@ -106,16 +106,16 @@ stateDiagram-v2
     DISPATCHED --> IN_TRANSIT: webhook · SYSTEM
     DISPATCHED --> OUT_FOR_DELIVERY: webhook · SYSTEM
     DISPATCHED --> RTO: webhook · SYSTEM
-    DISPATCHED --> COURIER_LOST: webhook · SYSTEM
+    DISPATCHED --> REDISPATCH: webhook · SYSTEM
     IN_TRANSIT --> OUT_FOR_DELIVERY: webhook · SYSTEM
     IN_TRANSIT --> DELIVERED: webhook · SYSTEM
     IN_TRANSIT --> RTO: webhook · SYSTEM
-    IN_TRANSIT --> COURIER_LOST: webhook · SYSTEM
+    IN_TRANSIT --> REDISPATCH: webhook · SYSTEM
     OUT_FOR_DELIVERY --> DELIVERED: webhook · SYSTEM
     OUT_FOR_DELIVERY --> CUSTOMER_REJECTED: webhook · SYSTEM
     OUT_FOR_DELIVERY --> DELIVERY_FAILED: webhook · SYSTEM
     OUT_FOR_DELIVERY --> RTO: webhook · SYSTEM
-    OUT_FOR_DELIVERY --> COURIER_LOST: webhook · SYSTEM
+    OUT_FOR_DELIVERY --> REDISPATCH: webhook · SYSTEM
 
     DELIVERED --> CLOSED: settle prepaid · ACCOUNTANT/ADMIN/SYSTEM
     DELIVERED --> COD_COLLECTED: settle COD · ACCOUNTANT/ADMIN/SYSTEM
@@ -125,7 +125,7 @@ stateDiagram-v2
     CUSTOMER_REJECTED --> [*]
     DELIVERY_FAILED --> [*]
     RTO --> [*]
-    COURIER_LOST --> [*]
+    REDISPATCH --> [*]
     COD_COLLECTED --> [*]
     CLOSED --> [*]
 ```
@@ -339,11 +339,11 @@ built in `OrderStatus.buildTransitions()`.
 | `HANDED_TO_DELIVERY` | `COURIER_ASSIGNED` | PACKING_USER, ADMIN (dispatch) → SYSTEM (assign) | **New**; dispatch enqueues courier assignment (Req 9.5, 10.1). |
 | `HANDED_TO_DELIVERY` | `HANDED_TO_DELIVERY` | SYSTEM | Self-retain when courier assignment fails/retries (replaces old `PACKED→PACKED`, Req 10.4). |
 | `COURIER_ASSIGNED` | `DISPATCHED` | SYSTEM | Courier pickup (Req 10.2). |
-| `DISPATCHED` | `IN_TRANSIT`, `OUT_FOR_DELIVERY`, `RTO`, `COURIER_LOST` | SYSTEM | Courier webhook (Req 10.3). |
-| `IN_TRANSIT` | `OUT_FOR_DELIVERY`, `DELIVERED`, `RTO`, `COURIER_LOST` | SYSTEM | Courier webhook. |
-| `OUT_FOR_DELIVERY` | `DELIVERED`, `CUSTOMER_REJECTED`, `DELIVERY_FAILED`, `RTO`, `COURIER_LOST` | SYSTEM | **New** outcomes added (Req 11.1, 11.2). |
+| `DISPATCHED` | `IN_TRANSIT`, `OUT_FOR_DELIVERY`, `RTO`, `REDISPATCH` | SYSTEM | Courier webhook (Req 10.3). |
+| `IN_TRANSIT` | `OUT_FOR_DELIVERY`, `DELIVERED`, `RTO`, `REDISPATCH` | SYSTEM | Courier webhook. |
+| `OUT_FOR_DELIVERY` | `DELIVERED`, `CUSTOMER_REJECTED`, `DELIVERY_FAILED`, `RTO`, `REDISPATCH` | SYSTEM | **New** outcomes added (Req 11.1, 11.2). |
 | `DELIVERED` | `CLOSED`, `COD_COLLECTED` | ACCOUNTANT, ADMIN, SYSTEM | Settlement (existing). |
-| `REJECTED`, `CANCELLED`, `CUSTOMER_REJECTED`, `DELIVERY_FAILED`, `RTO`, `COURIER_LOST`, `COD_COLLECTED`, `CLOSED` | — | — | Terminal, no outgoing transitions (Req 12.7). |
+| `REJECTED`, `CANCELLED`, `CUSTOMER_REJECTED`, `DELIVERY_FAILED`, `RTO`, `REDISPATCH`, `COD_COLLECTED`, `CLOSED` | — | — | Terminal, no outgoing transitions (Req 12.7). |
 
 **Reconciliation of downstream outcomes (Req 11.1, 11.2).** The four business outcomes map to
 states as follows, keeping the two pre-existing exception states distinct and reportable:
@@ -355,7 +355,7 @@ states as follows, keeping the two pre-existing exception states distinct and re
 | Failed-to-Deliver (attempt failed, not reachable) | `DELIVERY_FAILED` | **new** |
 | Cancelled | `CANCELLED` | existing |
 | Returned to origin (logistics return) | `RTO` | existing, retained distinct |
-| Lost/damaged by courier | `COURIER_LOST` | existing, retained distinct |
+| Lost/damaged by courier | `REDISPATCH` | existing, retained distinct |
 
 ### 4.2 Role authorization
 
@@ -405,7 +405,7 @@ or to the specific creating salesperson.
 | `DELIVERY_FAILED` | — | — | ADMIN role + PACKING_USER role (Req 11.6) |
 | `CANCELLED` | — | — | ADMIN role + Salesperson-creator (Req 11.7) |
 | `RTO` | ✅ (existing) | — | ADMIN role |
-| `COURIER_LOST` | ✅ (existing) | — | ADMIN role (existing claim-required alert) |
+| `REDISPATCH` | ✅ (existing) | — | ADMIN role (existing claim-required alert) |
 | Notification delivery permanently failed | — | — | ADMIN role (Req 14.5, existing `WHATSAPP_FAILED`) |
 
 **Email is enqueued iff the transition is a Key_Milestone** — exactly `APPROVED`, `DISPATCHED`,
@@ -623,7 +623,7 @@ human user.
 ### Property 6: Terminal states have no outgoing transitions
 
 *For any* status classified terminal (`REJECTED`, `CANCELLED`, `CUSTOMER_REJECTED`,
-`DELIVERY_FAILED`, `RTO`, `COURIER_LOST`, `COD_COLLECTED`, `CLOSED`), `allowedTargets()` is empty
+`DELIVERY_FAILED`, `RTO`, `REDISPATCH`, `COD_COLLECTED`, `CLOSED`), `allowedTargets()` is empty
 and every attempted transition out of it is rejected.
 
 **Validates: Requirements 12.7**

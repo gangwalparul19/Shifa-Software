@@ -145,7 +145,7 @@ The system supports five user roles (Admin, Accountant, Salesperson, Packing Dep
 
 #### Acceptance Criteria
 
-1. THE Order_Management_System SHALL represent Order_Status as exactly one of: Pending_Admin_Approval, Approved, Rejected, Label_Generated, Packed, Courier_Assigned, Dispatched, In_Transit, Out_For_Delivery, Delivered, COD_Collected, Closed, RTO, Courier_Lost, Cancelled.
+1. THE Order_Management_System SHALL represent Order_Status as exactly one of: Pending_Admin_Approval, Approved, Rejected, Label_Generated, Packed, Courier_Assigned, Dispatched, In_Transit, Out_For_Delivery, Delivered, COD_Collected, Closed, RTO, Redispatch, Cancelled.
 2. WHEN an Order is created, THE Order_Management_System SHALL set its initial Order_Status to Pending_Admin_Approval.
 3. IF a status transition is requested that is not permitted from the current Order_Status, THEN THE Order_Management_System SHALL reject the transition and retain the current Order_Status.
 4. WHEN an Order_Status changes, THE Order_Management_System SHALL record the new status, the timestamp, and the actor or source that caused the change.
@@ -202,7 +202,7 @@ The system supports five user roles (Admin, Accountant, Salesperson, Packing Dep
 #### Acceptance Criteria
 
 1. WHEN the Courier API reports that a parcel has been picked up, THE Order_Management_System SHALL set the Order_Status to Dispatched.
-2. WHEN the Courier API reports a delivery status update, THE Order_Management_System SHALL set the Order_Status to the corresponding state among In_Transit, Out_For_Delivery, Delivered, RTO, and Courier_Lost.
+2. WHEN the Courier API reports a delivery status update, THE Order_Management_System SHALL set the Order_Status to the corresponding state among In_Transit, Out_For_Delivery, Delivered, RTO, and Redispatch.
 3. WHEN an Order_Status changes from a Courier API update, THE Admin_Dashboard SHALL reflect the updated status in real time.
 4. THE Storefront SHALL allow a Customer to view the current Order_Status, AWB, and courier tracking link for the Customer's own Order.
 
@@ -213,7 +213,7 @@ The system supports five user roles (Admin, Accountant, Salesperson, Packing Dep
 #### Acceptance Criteria
 
 1. WHEN an Order_Status becomes Dispatched, THE Notification_Service SHALL send the Customer a WhatsApp message containing the Order identifier, courier company name, AWB, courier tracking link, estimated delivery date, and, where the Order is COD or Partially_Paid, the COD_Amount to be paid.
-2. WHEN an Order_Status becomes Out_For_Delivery, Delivered, RTO, or Courier_Lost, THE Notification_Service SHALL send the Customer a WhatsApp message stating the updated Order_Status.
+2. WHEN an Order_Status becomes Out_For_Delivery, Delivered, RTO, or Redispatch, THE Notification_Service SHALL send the Customer a WhatsApp message stating the updated Order_Status.
 3. THE Notification_Service SHALL send WhatsApp messages using message templates that have been pre-approved through Meta.
 4. IF the WhatsApp Business API rejects or fails to deliver a message, THEN THE Notification_Service SHALL record the failure and flag the Order for Admin review.
 
@@ -242,9 +242,9 @@ The system supports five user roles (Admin, Accountant, Salesperson, Packing Dep
 
 #### Acceptance Criteria
 
-1. WHEN the Courier API reports an Order as lost, damaged, or missing, THE Order_Management_System SHALL set the Order_Status to Courier_Lost.
-2. WHEN an Order_Status becomes Courier_Lost, THE Reconciliation_Service SHALL record a Claim_Receivable equal to the net Order amount, regardless of whether the Order is prepaid or COD.
-3. WHEN an Order_Status becomes Courier_Lost, THE Order_Management_System SHALL set the customer outstanding amount for that Order to 0.
+1. WHEN the Courier API reports an Order as lost, damaged, or missing, THE Order_Management_System SHALL set the Order_Status to Redispatch.
+2. WHEN an Order_Status becomes Redispatch, THE Reconciliation_Service SHALL record a Claim_Receivable equal to the net Order amount, regardless of whether the Order is prepaid or COD.
+3. WHEN an Order_Status becomes Redispatch, THE Order_Management_System SHALL set the customer outstanding amount for that Order to 0.
 4. WHEN a Claim_Receivable is recorded, THE Admin_Dashboard SHALL notify the Admin that a claim needs to be filed for the associated AWB.
 
 ### Requirement 18: COD and Loss Reconciliation Dashboard
@@ -266,7 +266,7 @@ The system supports five user roles (Admin, Accountant, Salesperson, Packing Dep
 
 #### Acceptance Criteria
 
-1. THE Admin_Dashboard SHALL display metric cards for Total Sales, Total Orders, Pending Orders, Packed Orders, Dispatched Orders, Delivered Orders, RTO Count, Courier Lost Count, Total COD Pending from Courier, Total Loss Claim Pending from Courier, and Conversion Rate.
+1. THE Admin_Dashboard SHALL display metric cards for Total Sales, Total Orders, Pending Orders, Packed Orders, Dispatched Orders, Delivered Orders, RTO Count, Redispatch Count, Total COD Pending from Courier, Total Loss Claim Pending from Courier, and Conversion Rate.
 2. THE Admin_Dashboard SHALL provide time-period filters for Today, Yesterday, Last 7 Days, Last 30 Days, This Month, Last Month, Quarterly, Yearly, and a custom date range.
 3. WHEN an Admin selects a time-period filter, THE Admin_Dashboard SHALL recalculate and display all metric cards for the selected period.
 4. THE Admin_Dashboard SHALL display a sales graph with day-wise, week-wise, and monthly views including a comparison line against the previous period and the percentage change relative to the previous period.

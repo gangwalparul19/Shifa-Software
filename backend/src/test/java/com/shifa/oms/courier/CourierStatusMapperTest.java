@@ -20,9 +20,9 @@ class CourierStatusMapperTest {
         assertThat(CourierStatusMapper.toInternal("delivered")).contains(OrderStatus.DELIVERED);
         assertThat(CourierStatusMapper.toInternal("rto")).contains(OrderStatus.RTO);
         assertThat(CourierStatusMapper.toInternal("return")).contains(OrderStatus.RTO);
-        assertThat(CourierStatusMapper.toInternal("lost")).contains(OrderStatus.COURIER_LOST);
-        assertThat(CourierStatusMapper.toInternal("damaged")).contains(OrderStatus.COURIER_LOST);
-        assertThat(CourierStatusMapper.toInternal("missing")).contains(OrderStatus.COURIER_LOST);
+        assertThat(CourierStatusMapper.toInternal("lost")).contains(OrderStatus.REDISPATCH);
+        assertThat(CourierStatusMapper.toInternal("damaged")).contains(OrderStatus.REDISPATCH);
+        assertThat(CourierStatusMapper.toInternal("missing")).contains(OrderStatus.REDISPATCH);
     }
 
     @Test

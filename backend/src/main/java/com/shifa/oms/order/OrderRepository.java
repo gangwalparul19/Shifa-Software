@@ -315,7 +315,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
                                      THEN o.total_amount ELSE 0 END), 0) AS revenueThisMonth,
                    SUM(CASE WHEN o.order_status IN ('DELIVERED','COD_COLLECTED','CLOSED')
                             THEN 1 ELSE 0 END) AS deliveredCount,
-                   SUM(CASE WHEN o.order_status IN ('CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','COURIER_LOST')
+                   SUM(CASE WHEN o.order_status IN ('CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH')
                             THEN 1 ELSE 0 END) AS failedCount,
                    COALESCE(SUM(o.customer_outstanding), 0) AS codOutstanding
             FROM orders o
@@ -436,7 +436,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             SELECT COALESCE(SUM(o.customer_outstanding), 0) FROM orders o
             WHERE o.order_status NOT IN
               ('CLOSED','COD_COLLECTED','REJECTED','CANCELLED',
-               'DELIVERY_FAILED','CUSTOMER_REJECTED','RTO','COURIER_LOST')
+               'DELIVERY_FAILED','CUSTOMER_REJECTED','RTO','REDISPATCH')
             """, nativeQuery = true)
     java.math.BigDecimal sumOutstandingCodActive();
 

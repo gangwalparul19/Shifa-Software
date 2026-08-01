@@ -52,9 +52,9 @@ class CourierStatusMappingPropertyTest {
         v.put("return", OrderStatus.RTO);
         v.put("returned", OrderStatus.RTO);
         v.put("rto", OrderStatus.RTO);
-        v.put("lost", OrderStatus.COURIER_LOST);
-        v.put("damaged", OrderStatus.COURIER_LOST);
-        v.put("missing", OrderStatus.COURIER_LOST);
+        v.put("lost", OrderStatus.REDISPATCH);
+        v.put("damaged", OrderStatus.REDISPATCH);
+        v.put("missing", OrderStatus.REDISPATCH);
         // New delivery-failure outcomes (Req 11.1, 11.2).
         v.put("customer_rejected", OrderStatus.CUSTOMER_REJECTED);
         v.put("refused", OrderStatus.CUSTOMER_REJECTED);

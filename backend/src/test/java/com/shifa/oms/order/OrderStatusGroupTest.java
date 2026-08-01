@@ -95,7 +95,7 @@ class OrderStatusGroupTest {
                         OrderStatus.CUSTOMER_REJECTED,
                         OrderStatus.DELIVERY_FAILED,
                         OrderStatus.RTO,
-                        OrderStatus.COURIER_LOST);
+                        OrderStatus.REDISPATCH);
     }
 
     // --- The set a group filter expands to ----------------------------------

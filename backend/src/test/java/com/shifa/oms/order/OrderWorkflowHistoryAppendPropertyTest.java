@@ -112,16 +112,16 @@ class OrderWorkflowHistoryAppendPropertyTest {
         addSystem(cases, OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT);
         addSystem(cases, OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY);
         addSystem(cases, OrderStatus.DISPATCHED, OrderStatus.RTO);
-        addSystem(cases, OrderStatus.DISPATCHED, OrderStatus.COURIER_LOST);
+        addSystem(cases, OrderStatus.DISPATCHED, OrderStatus.REDISPATCH);
         addSystem(cases, OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY);
         addSystem(cases, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED);
         addSystem(cases, OrderStatus.IN_TRANSIT, OrderStatus.RTO);
-        addSystem(cases, OrderStatus.IN_TRANSIT, OrderStatus.COURIER_LOST);
+        addSystem(cases, OrderStatus.IN_TRANSIT, OrderStatus.REDISPATCH);
         addSystem(cases, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED);
         addSystem(cases, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CUSTOMER_REJECTED);
         addSystem(cases, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERY_FAILED);
         addSystem(cases, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO);
-        addSystem(cases, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.COURIER_LOST);
+        addSystem(cases, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.REDISPATCH);
         // Settlement — ACCOUNTANT/ADMIN or SYSTEM.
         addStaff(cases, OrderStatus.DELIVERED, OrderStatus.CLOSED, Role.ACCOUNTANT, Role.ADMIN);
         addStaff(cases, OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED, Role.ACCOUNTANT, Role.ADMIN);

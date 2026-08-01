@@ -54,16 +54,16 @@ class TransitionAuthorityPropertyTest {
         r.add(rule(OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT, true));
         r.add(rule(OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY, true));
         r.add(rule(OrderStatus.DISPATCHED, OrderStatus.RTO, true));
-        r.add(rule(OrderStatus.DISPATCHED, OrderStatus.COURIER_LOST, true));
+        r.add(rule(OrderStatus.DISPATCHED, OrderStatus.REDISPATCH, true));
         r.add(rule(OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, true));
         r.add(rule(OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED, true));
         r.add(rule(OrderStatus.IN_TRANSIT, OrderStatus.RTO, true));
-        r.add(rule(OrderStatus.IN_TRANSIT, OrderStatus.COURIER_LOST, true));
+        r.add(rule(OrderStatus.IN_TRANSIT, OrderStatus.REDISPATCH, true));
         r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED, true));
         r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CUSTOMER_REJECTED, true));
         r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERY_FAILED, true));
         r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO, true));
-        r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.COURIER_LOST, true));
+        r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.REDISPATCH, true));
         r.add(rule(OrderStatus.DELIVERED, OrderStatus.CLOSED, true,
                 Role.ACCOUNTANT, Role.ADMIN));
         r.add(rule(OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED, true,

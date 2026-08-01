@@ -169,12 +169,12 @@ A dedicated component validating every transition (Req 8.3). See the state machi
 ### Courier Integration
 
 - On `Packed`, requests AWB + shipping label with order details and COD amount (Req 12.1); on success stores AWB and sets `Courier_Assigned` (Req 12.2). On error/timeout, keeps `Packed` and notifies Admin (Req 12.4).
-- Receives tracking webhooks and maps courier states → internal states: pickup→`Dispatched` (Req 13.1); `In_Transit`/`Out_For_Delivery`/`Delivered`/`RTO`/`Courier_Lost` (Req 13.2, 17.1).
+- Receives tracking webhooks and maps courier states → internal states: pickup→`Dispatched` (Req 13.1); `In_Transit`/`Out_For_Delivery`/`Delivered`/`RTO`/`Redispatch` (Req 13.2, 17.1).
 - All outbound courier calls go through the outbox with retry + timeout; a scheduled poll reconciles any missed webhooks. Webhooks validated by HMAC signature.
 
 ### Notification Service (WhatsApp)
 
-- Sends templated WhatsApp messages via Meta Cloud API on `Dispatched` (full tracking payload incl. COD when applicable) (Req 14.1) and on `Out_For_Delivery`/`Delivered`/`RTO`/`Courier_Lost` (Req 14.2).
+- Sends templated WhatsApp messages via Meta Cloud API on `Dispatched` (full tracking payload incl. COD when applicable) (Req 14.1) and on `Out_For_Delivery`/`Delivered`/`RTO`/`Redispatch` (Req 14.2).
 - Only **pre-approved Meta templates** are used; a `whatsapp_template` registry maps event → template name + parameter mapping (Req 14.3).
 - Failures recorded and the Order flagged for Admin review (Req 14.4). Sends are outbox-driven with retry.
 
@@ -402,15 +402,15 @@ stateDiagram-v2
     In_Transit --> RTO
     Out_For_Delivery --> RTO
     Dispatched --> RTO
-    Dispatched --> Courier_Lost
-    In_Transit --> Courier_Lost
-    Out_For_Delivery --> Courier_Lost
+    Dispatched --> Redispatch
+    In_Transit --> Redispatch
+    Out_For_Delivery --> Redispatch
     Delivered --> Closed: prepaid settle
     Delivered --> COD_Collected: COD settle
     COD_Collected --> [*]
     Closed --> [*]
     RTO --> [*]
-    Courier_Lost --> Claim_Filed_State
+    Redispatch --> Claim_Filed_State
     Rejected --> [*]
     Cancelled --> [*]
 ```
@@ -424,18 +424,18 @@ Transition table (allowed source → targets):
 | Label_Generated | Packed | Packing scan (Req 11.1) |
 | Packed | Courier_Assigned, Packed | Courier ok / error-retain (Req 12.2, 12.4) |
 | Courier_Assigned | Dispatched | Pickup (Req 13.1) |
-| Dispatched | In_Transit, Out_For_Delivery, RTO, Courier_Lost | Courier webhook (Req 13.2, 17.1) |
-| In_Transit | Out_For_Delivery, Delivered, RTO, Courier_Lost | Courier webhook |
-| Out_For_Delivery | Delivered, RTO, Courier_Lost | Courier webhook |
+| Dispatched | In_Transit, Out_For_Delivery, RTO, Redispatch | Courier webhook (Req 13.2, 17.1) |
+| In_Transit | Out_For_Delivery, Delivered, RTO, Redispatch | Courier webhook |
+| Out_For_Delivery | Delivered, RTO, Redispatch | Courier webhook |
 | Delivered | Closed (prepaid), COD_Collected (COD) | Settlement (Req 16.1, 16.2) |
 | COD_Collected, Closed, Rejected, Cancelled, RTO | (terminal) | — |
-| Courier_Lost | (terminal; triggers Claim_Receivable) | Req 17.2 |
+| Redispatch | (terminal; triggers Claim_Receivable) | Req 17.2 |
 
 Settlement side effects on entering a state:
 - `Delivered` + `payment_status=FULLY_PAID` → auto `Closed`, `customer_outstanding=0` (Req 16.1).
 - `Delivered` + `cod_amount>0` → auto `COD_Collected`, `customer_outstanding=0`, create `COD_RECEIVABLE = cod_amount` (Req 16.2).
 - `RTO` → cancel `cod_amount` (set 0), `customer_outstanding=0`, excluded from COD totals (Req 16.3, 18.6).
-- `Courier_Lost` → create `CLAIM_RECEIVABLE = net order amount` (prepaid or COD), `customer_outstanding=0`, Admin claim notification (Req 17.2, 17.3, 17.4).
+- `Redispatch` → create `CLAIM_RECEIVABLE = net order amount` (prepaid or COD), `customer_outstanding=0`, Admin claim notification (Req 17.2, 17.3, 17.4).
 
 ## API Surface (summary)
 
@@ -515,7 +515,7 @@ The following properties target the parts of the system that are pure logic and 
 
 ### Property 7: Courier status mapping
 
-*For any* courier status update, the update maps to the correct internal `Order_Status` (pickup → `Dispatched`; in-transit → `In_Transit`; out-for-delivery → `Out_For_Delivery`; delivered → `Delivered`; return → `RTO`; lost/damaged/missing → `Courier_Lost`), and is applied only when that transition is legal from the current status.
+*For any* courier status update, the update maps to the correct internal `Order_Status` (pickup → `Dispatched`; in-transit → `In_Transit`; out-for-delivery → `Out_For_Delivery`; delivered → `Delivered`; return → `RTO`; lost/damaged/missing → `Redispatch`), and is applied only when that transition is legal from the current status.
 
 **Validates: Requirements 13.1, 13.2, 17.1**
 
@@ -527,7 +527,7 @@ The following properties target the parts of the system that are pure logic and 
 
 ### Property 9: Loss produces a claim for the full net amount
 
-*For any* Order that becomes `Courier_Lost`, regardless of whether it is prepaid or COD, a `Claim_Receivable` equal to the net Order amount is recorded and the customer outstanding for that Order is set to 0.
+*For any* Order that becomes `Redispatch`, regardless of whether it is prepaid or COD, a `Claim_Receivable` equal to the net Order amount is recorded and the customer outstanding for that Order is set to 0.
 
 **Validates: Requirements 17.2, 17.3**
 
@@ -593,7 +593,7 @@ The following properties target the parts of the system that are pure logic and 
 
 ### Property 20: WhatsApp notification content and template use
 
-*For any* Order reaching `Dispatched`, the outgoing WhatsApp message parameters include the Order identifier, courier company name, AWB, courier tracking link, estimated delivery date, and the `COD_Amount` if and only if the Order is COD or Partially_Paid; *for any* Order reaching `Out_For_Delivery`, `Delivered`, `RTO`, or `Courier_Lost`, the message reflects that status; and every message sent references a registered, pre-approved Meta template.
+*For any* Order reaching `Dispatched`, the outgoing WhatsApp message parameters include the Order identifier, courier company name, AWB, courier tracking link, estimated delivery date, and the `COD_Amount` if and only if the Order is COD or Partially_Paid; *for any* Order reaching `Out_For_Delivery`, `Delivered`, `RTO`, or `Redispatch`, the message reflects that status; and every message sent references a registered, pre-approved Meta template.
 
 **Validates: Requirements 14.1, 14.2, 14.3**
 
