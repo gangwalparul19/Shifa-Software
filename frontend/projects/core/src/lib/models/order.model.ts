@@ -49,10 +49,19 @@ export enum OrderStatus {
   CLOSED = 'CLOSED',
 }
 
-/** Origin of the order. */
+/**
+ * Origin channel of the order (mirrors the backend {@code OrderSource}).
+ *
+ * <p>{@code SHOPIFY_API} orders are ingested from the Shopify storefront and are read-only
+ * in the admin app; {@code SHIFA_ADMIN} orders are punched in this portal. {@code STOREFRONT}
+ * and {@code SALESPERSON} are legacy values kept for historic rows — the backend folds them
+ * onto {@code SHIFA_ADMIN}.
+ */
 export enum OrderSource {
   STOREFRONT = 'STOREFRONT',
   SALESPERSON = 'SALESPERSON',
+  SHOPIFY_API = 'SHOPIFY_API',
+  SHIFA_ADMIN = 'SHIFA_ADMIN',
 }
 
 /** Mirrors the backend Order DTO (`orders` table + line items). */

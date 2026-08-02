@@ -110,6 +110,7 @@ public class AdminOrderController {
             @RequestParam(required = false) PaymentStatus paymentStatus,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) OrderSource channel,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
             @RequestParam(required = false) String sort) {
@@ -121,7 +122,24 @@ public class AdminOrderController {
         Pageable pageable = PageRequests.of(page, size, sort, SORT_WHITELIST, DEFAULT_SORT);
         return PageResponse.of(
                 adminOrderService.listOrders(
-                        q, status, statusGroup, paymentStatus, from, to, pageable, creatorIds));
+                        q, status, statusGroup, paymentStatus, from, to, pageable, creatorIds,
+                        effectiveChannel(actor, channel)));
+    }
+
+    /**
+     * The channel filter actually applied (spec {@code shopify-quikshipx-order-sync},
+     * Req 11.6, 11.7).
+     *
+     * <p>A {@code SALESPERSON} or {@code TEAM_LEAD} is pinned to {@code SHIFA_ADMIN}
+     * whatever they ask for. Creator scoping alone would already hide Shopify orders,
+     * since those carry no {@code created_by} — but relying on that would make the
+     * confidentiality rule an accident of another rule. Pinning it here states the rule
+     * once, and keeps holding if creator scoping ever changes.
+     */
+    static OrderSource effectiveChannel(AuthPrincipal actor, OrderSource requested) {
+        boolean shifaOnly = actor.role() == com.shifa.oms.auth.Role.SALESPERSON
+                || actor.role() == com.shifa.oms.auth.Role.TEAM_LEAD;
+        return shifaOnly ? OrderSource.SHIFA_ADMIN : requested;
     }
 
     /** The approval queue of pending-approval orders with review details (Req 9.1, 9.2). */

@@ -141,6 +141,71 @@ public class OutboxEventPublisher {
     }
 
     /**
+     * Queues publication of an approved {@code SHIFA_ADMIN} order to QuikShipX
+     * (Req 5.1). Written in the same transaction as the approval transition, so an
+     * approval cannot commit without its publication being queued.
+     *
+     * @param orderId   the order to publish
+     * @param orderCode the order code, carried so a failure notification can name it
+     *                  without reloading the aggregate
+     * @return the persisted event row
+     */
+    public OutboxEvent publishQuikShipXPublish(Long orderId, String orderCode) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("orderId", orderId);
+        payload.put("orderCode", orderCode);
+        return publish(OutboxEvent.AGGREGATE_ORDER, orderId,
+                OutboxEvent.EVENT_QUIKSHIPX_PUBLISH, payload);
+    }
+
+    /**
+     * Records that publication to QuikShipX failed terminally, driving an in-app ADMIN
+     * notification (Req 5.7, 5.11). The order retains {@code Approved}.
+     *
+     * @param error the failure reason, already free of credentials
+     * @return the persisted event row
+     */
+    public OutboxEvent publishQuikShipXPublishFailed(Long orderId, String orderCode, String error) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("orderId", orderId);
+        payload.put("orderCode", orderCode);
+        payload.put("error", error);
+        return publish(OutboxEvent.AGGREGATE_ORDER, orderId,
+                OutboxEvent.EVENT_QUIKSHIPX_PUBLISH_FAILED, payload);
+    }
+
+    /**
+     * Queues ingestion of a stored Shopify order webhook (Req 2.5).
+     *
+     * <p>The aggregate is the integration event rather than an order, because at this point
+     * no order exists yet — that is what ingestion will decide.
+     *
+     * @param integrationEventId the stored {@code integration_events} row holding the raw body
+     * @param shopifyOrderId     Shopify's order id, carried for log and failure context
+     */
+    public OutboxEvent publishShopifyOrderIngest(Long integrationEventId, String shopifyOrderId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("integrationEventId", integrationEventId);
+        payload.put("shopifyOrderId", shopifyOrderId);
+        return publish(OutboxEvent.AGGREGATE_ORDER, integrationEventId,
+                OutboxEvent.EVENT_SHOPIFY_ORDER_INGEST, payload);
+    }
+
+    /**
+     * Records that Shopify ingestion failed terminally, driving an in-app ADMIN
+     * notification (Req 2.10). The stored payload remains replayable.
+     */
+    public OutboxEvent publishShopifyIngestFailed(Long integrationEventId, String shopifyOrderId,
+                                                  String error) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("integrationEventId", integrationEventId);
+        payload.put("shopifyOrderId", shopifyOrderId);
+        payload.put("error", error);
+        return publish(OutboxEvent.AGGREGATE_ORDER, integrationEventId,
+                OutboxEvent.EVENT_SHOPIFY_INGEST_FAILED, payload);
+    }
+
+    /**
      * Enqueues a {@code CLAIM_FILED_REQUIRED} admin notification when an order
      * becomes {@code Redispatch} and a claim receivable is recorded (Req 17.4).
      *

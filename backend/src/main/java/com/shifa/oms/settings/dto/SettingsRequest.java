@@ -100,5 +100,51 @@ public record SettingsRequest(
          * {@code SettingsService}.
          */
         @Size(max = 100, message = "gstSlabs must be at most 100 characters")
-        String gstSlabs) {
+        String gstSlabs,
+
+        // ------------------------------------------------------------------
+        // Shipment defaults (V49) — the parcel logistics the QuikShipX
+        // create-order body requires but Shifa OMS does not hold per order.
+        //
+        // Every field is optional: null leaves the stored value unchanged, so an
+        // older client that does not send them cannot wipe the configuration.
+        // Range and enumerated-value checks live in SettingsService rather than
+        // here, deliberately in ONE place, because they are property-tested
+        // directly against the service and duplicating them would invite drift.
+        // ------------------------------------------------------------------
+
+        /** QuikShipX pickup warehouse id, from the QuikShipX dashboard (Req 16.1). */
+        @Size(max = 40, message = "shipPickupWarehouseId must be at most 40 characters")
+        String shipPickupWarehouseId,
+
+        /** {@code "1"} flyer or {@code "2"} cardboard (Req 16.4). */
+        @Size(max = 1, message = "shipPackageType must be a single character")
+        String shipPackageType,
+
+        /** {@code "1"} surface or {@code "2"} express (Req 16.4). */
+        @Size(max = 1, message = "shipShippingMode must be a single character")
+        String shipShippingMode,
+
+        /** Default parcel dead weight in grams, 1..50000 (Req 16.4). */
+        Integer shipDeadWeightGrams,
+
+        /** Default parcel length in cm, 1..200 (Req 16.4). */
+        Integer shipLengthCm,
+
+        /** Default parcel width in cm, 1..200 (Req 16.4). */
+        Integer shipWidthCm,
+
+        /** Default parcel height in cm, 1..200 (Req 16.4). */
+        Integer shipHeightCm,
+
+        /** Delivery charge levied by the seller, 0.00..99999.99 (Req 16.4). */
+        BigDecimal shipShippingAmount,
+
+        /** Fallback {@code product_category} for a product with no category. */
+        @Size(max = 120, message = "shipDefaultCategory must be at most 120 characters")
+        String shipDefaultCategory,
+
+        /** Fallback HSN code (V50) for a product line with no HSN; QuikShipX needs &gt;1 char. */
+        @Size(max = 20, message = "shipDefaultHsn must be at most 20 characters")
+        String shipDefaultHsn) {
 }

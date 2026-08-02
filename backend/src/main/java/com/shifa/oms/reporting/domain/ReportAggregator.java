@@ -1,6 +1,7 @@
 package com.shifa.oms.reporting.domain;
 
 import com.shifa.oms.order.LeadSource;
+import com.shifa.oms.order.OrderSource;
 import com.shifa.oms.reporting.domain.ReportRows.DailyRow;
 import com.shifa.oms.reporting.domain.ReportRows.DeliveryOutcome;
 import com.shifa.oms.reporting.domain.ReportRows.MonthlyRow;
@@ -194,6 +195,57 @@ public class ReportAggregator {
             counts.computeIfAbsent(key, k -> new long[1])[0]++;
         }
         return toSortedCountRows(counts);
+    }
+
+    /**
+     * Orders grouped by order channel over the window (spec
+     * {@code shopify-quikshipx-order-sync}, Req 12.1, 12.6, 12.7).
+     *
+     * <p>Grouped on {@link OrderReportRecord#canonicalChannel()}, so the legacy
+     * {@code SALESPERSON} and {@code STOREFRONT} values and an absent channel all count as
+     * {@code SHIFA_ADMIN}. That makes the two buckets a partition: the row counts sum to the
+     * number of orders in the window, with nothing falling into an "unknown" bucket.
+     */
+    public List<ReportRows.ChannelRow> ordersByChannel(List<OrderReportRecord> orders, DateRange window) {
+        // Both channels always appear, so a channel with no orders reads as a real zero
+        // rather than vanishing from the report (Req 12.5).
+        Map<String, long[]> counts = new LinkedHashMap<>();
+        Map<String, BigDecimal> revenue = new LinkedHashMap<>();
+        for (OrderSource channel : List.of(OrderSource.SHOPIFY_API, OrderSource.SHIFA_ADMIN)) {
+            counts.put(channel.name(), new long[2]);
+            revenue.put(channel.name(), BigDecimal.ZERO);
+        }
+
+        for (OrderReportRecord o : within(orders, window)) {
+            String key = o.canonicalChannel().name();
+            long[] tally = counts.get(key);
+            tally[0]++;
+            if (isDelivered(o.orderStatus())) {
+                tally[1]++;
+            }
+            if (!isExcludedFromRevenue(o.orderStatus())) {
+                revenue.merge(key, o.totalAmount(), BigDecimal::add);
+            }
+        }
+
+        List<ReportRows.ChannelRow> rows = new ArrayList<>(counts.size());
+        for (Map.Entry<String, long[]> entry : counts.entrySet()) {
+            rows.add(new ReportRows.ChannelRow(entry.getKey(), entry.getValue()[0],
+                    revenue.get(entry.getKey()), entry.getValue()[1]));
+        }
+        return rows;
+    }
+
+    /** Delivered for channel-report purposes: the parcel reached the customer (Req 12.6). */
+    private static boolean isDelivered(OrderStatus status) {
+        return status == OrderStatus.DELIVERED
+                || status == OrderStatus.COD_COLLECTED
+                || status == OrderStatus.CLOSED;
+    }
+
+    /** Revenue excludes written-off orders, matching the existing rule (Req 12.6). */
+    private static boolean isExcludedFromRevenue(OrderStatus status) {
+        return status == OrderStatus.REJECTED || status == OrderStatus.CANCELLED;
     }
 
     /**

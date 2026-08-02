@@ -92,6 +92,14 @@ public class ReportService {
         if (type.isMoneyReport()) {
             requireAdminOrAccountant();
         }
+        // The channel report compares the whole business's two sales channels, so it is
+        // ADMIN/ACCOUNTANT-only (Req 12.2, 12.8). Serving a salesperson-scoped version
+        // would be worse than refusing: every row would read SHIFA_ADMIN and invite the
+        // conclusion that Shopify sells nothing.
+        if (type == ReportType.ORDERS_BY_CHANNEL) {
+            requireAdminOrAccountant();
+            requireBoundedWindow(from, to);
+        }
         DateRange window = new DateRange(from, to);
         List<OrderReportRecord> records = loadRecords();
         Map<Long, String> salespersonNames = salespersonNames(records);
@@ -105,6 +113,12 @@ public class ReportService {
     /** The displayed table for a report type over the window (backs the exports). */
     @Transactional(readOnly = true)
     public TabularData reportTable(ReportType type, LocalDate from, LocalDate to) {
+        // The export path must enforce the same authorisation as the JSON path, or the
+        // channel figures leak to a salesperson through the Excel/PDF button (Req 12.3, 12.8).
+        if (type == ReportType.ORDERS_BY_CHANNEL) {
+            requireAdminOrAccountant();
+            requireBoundedWindow(from, to);
+        }
         DateRange window = new DateRange(from, to);
         return tableBuilder.build(type, loadRecords(), window);
     }
@@ -135,6 +149,34 @@ public class ReportService {
                 aggregator.topProduct(records, window).orElse(null),
                 aggregator.topState(records, window).orElse(null),
                 money.received, money.outstanding, money.codPending);
+    }
+
+    /** Longest channel-report window, so a year-plus scan cannot be requested (Req 12.9). */
+    private static final long MAX_CHANNEL_WINDOW_DAYS = 366;
+
+    /**
+     * Requires an explicit, ordered window of at most a year for the channel report
+     * (Req 12.9).
+     *
+     * <p>Stricter than the other reports on purpose: this one is a whole-business
+     * comparison, so an unbounded window would scan every order ever placed and the answer
+     * would not mean anything anyway — "Shopify versus Shifa, all time" spans a period when
+     * one channel did not exist.
+     */
+    private static void requireBoundedWindow(LocalDate from, LocalDate to) {
+        if (from == null || to == null) {
+            throw new com.shifa.oms.common.ValidationException(
+                    "The channel report needs both a start and an end date.");
+        }
+        if (to.isBefore(from)) {
+            throw new com.shifa.oms.common.ValidationException(
+                    "The channel report window ends before it starts: " + from + " to " + to + ".");
+        }
+        if (java.time.temporal.ChronoUnit.DAYS.between(from, to) > MAX_CHANNEL_WINDOW_DAYS) {
+            throw new com.shifa.oms.common.ValidationException(
+                    "The channel report window " + from + " to " + to + " spans more than "
+                            + MAX_CHANNEL_WINDOW_DAYS + " days.");
+        }
     }
 
     /** Restricts per-module reports to ADMIN / ACCOUNTANT (403 otherwise). */
@@ -265,7 +307,11 @@ public class ReportService {
                 codStatus,
                 claimStatus,
                 awb,
-                o.getLeadSource());
+                o.getLeadSource(),
+                // Channel carried onto the projection so ORDERS_BY_CHANNEL and the channel
+                // column are computed from the same windowed records as every other report
+                // (spec shopify-quikshipx-order-sync, Req 12.1).
+                o.getSource());
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.shifa.oms.order.dto;
 
 import com.shifa.oms.order.OrderEntity;
+import com.shifa.oms.order.OrderSource;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.statemachine.OrderStatus;
 
@@ -21,7 +22,8 @@ public record OrderSummaryResponse(
         PaymentStatus paymentStatus,
         BigDecimal totalAmount,
         BigDecimal codAmount,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        OrderSource channel
 ) {
 
     public static OrderSummaryResponse from(OrderEntity order) {
@@ -34,6 +36,13 @@ public record OrderSummaryResponse(
                 order.getPaymentStatus(),
                 order.getTotalAmount(),
                 order.getCodAmount(),
-                order.getCreatedAt());
+                order.getCreatedAt(),
+                // The channel as stored, not canonicalised (spec
+                // shopify-quikshipx-order-sync, Req 1.5), matching what OrderResponse
+                // already returns for the detail view. Folding the legacy SALESPERSON and
+                // STOREFRONT values is the presentation layer's job, so the API stays an
+                // honest report of what is on the row. Appended LAST so no existing
+                // positional construction breaks.
+                order.getSource());
     }
 }

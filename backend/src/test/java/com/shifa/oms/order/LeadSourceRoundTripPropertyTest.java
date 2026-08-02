@@ -79,8 +79,9 @@ class LeadSourceRoundTripPropertyTest {
         assertThat(response.leadSource()).isEqualTo(leadSource);
         assertThat(response.leadSourceNote()).isEqualTo(note);
         assertThat(response.customerEmail()).isEqualTo(customerEmail);
-        // Provenance is unchanged and never aliased with the lead source.
-        assertThat(response.source()).isEqualTo(OrderSource.SALESPERSON);
+        // Provenance is the order CHANNEL and is never aliased with the marketing
+        // lead source. Portal-punched orders carry SHIFA_ADMIN (Req 1.3).
+        assertThat(response.source()).isEqualTo(OrderSource.SHIFA_ADMIN);
 
         // Round-trip: reprojecting the persisted entity yields the same values.
         OrderEntity persisted = saved.get();
@@ -88,13 +89,13 @@ class LeadSourceRoundTripPropertyTest {
         assertThat(persisted.getLeadSource()).isEqualTo(leadSource);
         assertThat(persisted.getLeadSourceNote()).isEqualTo(note);
         assertThat(persisted.getCustomerEmail()).isEqualTo(customerEmail);
-        assertThat(persisted.getSource()).isEqualTo(OrderSource.SALESPERSON);
+        assertThat(persisted.getSource()).isEqualTo(OrderSource.SHIFA_ADMIN);
 
         OrderResponse reloaded = OrderResponse.from(persisted);
         assertThat(reloaded.leadSource()).isEqualTo(leadSource);
         assertThat(reloaded.leadSourceNote()).isEqualTo(note);
         assertThat(reloaded.customerEmail()).isEqualTo(customerEmail);
-        assertThat(reloaded.source()).isEqualTo(OrderSource.SALESPERSON);
+        assertThat(reloaded.source()).isEqualTo(OrderSource.SHIFA_ADMIN);
     }
 
     @Provide

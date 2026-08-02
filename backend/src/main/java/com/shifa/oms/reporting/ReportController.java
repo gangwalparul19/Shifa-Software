@@ -151,6 +151,7 @@ public class ReportController {
             case ORDERS_BY_STATUS -> "Orders by Status";
             case ORDERS_BY_SALESPERSON -> "Orders by Salesperson";
             case DELIVERY_OUTCOME -> "Delivery Outcome Report";
+            case ORDERS_BY_CHANNEL -> "Orders by Channel";
             case PAYMENTS -> "Daily Payments Report";
             case OUTSTANDING -> "Outstanding Dues Report";
             case COD_REMITTANCE -> "COD Pending from Courier";

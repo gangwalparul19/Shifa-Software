@@ -82,8 +82,42 @@ public final class OrderListSpecifications {
                                                    PaymentStatus paymentStatus,
                                                    LocalDate from, LocalDate to,
                                                    Collection<Long> creatorIds) {
+        return build(q, status, statusGroup, paymentStatus, from, to, creatorIds, null);
+    }
+
+    /**
+     * Canonical builder, additionally filtering by {@link OrderSource order channel}
+     * (spec {@code shopify-quikshipx-order-sync}, Req 11.2&ndash;11.5).
+     *
+     * <p>The channel filter expands to {@link OrderSource#storedEquivalents()} rather than
+     * matching the enum directly. That is not a nicety: the {@code source} column still
+     * holds the legacy {@code SALESPERSON} and {@code STOREFRONT} values, so an equality
+     * test against {@code SHIFA_ADMIN} would silently hide every order punched before this
+     * feature shipped.
+     *
+     * <p>A {@code null} channel contributes nothing, so every pre-existing overload
+     * delegates here and keeps behaving identically.
+     */
+    public static Specification<OrderEntity> build(String q, OrderStatus status,
+                                                   OrderStatusGroup statusGroup,
+                                                   PaymentStatus paymentStatus,
+                                                   LocalDate from, LocalDate to,
+                                                   Collection<Long> creatorIds,
+                                                   OrderSource channel) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+
+            if (channel != null) {
+                List<OrderSource> stored = channel.storedEquivalents();
+                Predicate matches = root.get("source").in(stored);
+                if (channel.canonical() == OrderSource.SHIFA_ADMIN) {
+                    // A row with no recorded source is Shifa's by elimination — it predates
+                    // the Shopify channel entirely. Counting it here keeps the two channel
+                    // filters a partition of the table rather than losing rows between them.
+                    matches = cb.or(matches, cb.isNull(root.get("source")));
+                }
+                predicates.add(matches);
+            }
 
             if (creatorIds != null) {
                 if (creatorIds.isEmpty()) {

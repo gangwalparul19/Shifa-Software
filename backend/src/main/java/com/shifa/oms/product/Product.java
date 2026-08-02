@@ -101,6 +101,16 @@ public class Product {
     private boolean featured = false;
 
     /**
+     * Optional per-product dead weight in grams (V49), used to compute the parcel
+     * weight sent to QuikShipX as {@code SUM(weight * line quantity)} across the
+     * order. {@code null} falls back to the settings-level default
+     * ({@code app_settings.ship_dead_weight_grams}), keeping existing products
+     * backward compatible (Req 16.7).
+     */
+    @Column(name = "dead_weight_grams")
+    private Integer deadWeightGrams;
+
+    /**
      * Product images, read-only from the product aggregate. Ordered by
      * {@code sort_order} so the primary image is first (Req 1.4).
      */
@@ -239,6 +249,14 @@ public class Product {
 
     public void setFeatured(boolean featured) {
         this.featured = featured;
+    }
+
+    public Integer getDeadWeightGrams() {
+        return deadWeightGrams;
+    }
+
+    public void setDeadWeightGrams(Integer deadWeightGrams) {
+        this.deadWeightGrams = deadWeightGrams;
     }
 
     /** Derived stock status from the inventory flag + on-hand quantity. */

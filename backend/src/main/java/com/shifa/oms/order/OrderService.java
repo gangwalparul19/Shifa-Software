@@ -124,7 +124,11 @@ public class OrderService {
 
         OrderEntity order = new OrderEntity(
                 orderCodeGenerator.generate(orderRepository::existsByOrderCode),
-                OrderSource.SALESPERSON,
+                // Orders punched in the Shifa Admin Portal (ADMIN / SALESPERSON /
+                // TEAM_LEAD) carry the SHIFA_ADMIN channel; the request never
+                // supplies it (Req 1.3). Historic rows keep the legacy
+                // SALESPERSON value, which OrderSource.canonical() folds to this.
+                OrderSource.SHIFA_ADMIN,
                 actor.userId(),
                 request.customerName(),
                 request.customerMobile(),

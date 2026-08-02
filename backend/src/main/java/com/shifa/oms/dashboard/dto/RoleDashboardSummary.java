@@ -42,7 +42,39 @@ public record RoleDashboardSummary(
             long packedAwaitingHandover,
             long handedOverAwaitingDispatch,
             Leads leads,
-            Insights insights) {
+            Insights insights,
+            Channels channels,
+            Integrations integrations) {
+    }
+
+    /**
+     * The per-channel split of the dashboard's reporting period (spec
+     * {@code shopify-quikshipx-order-sync}, Req 12.5): exactly one order count and one
+     * revenue figure per channel, zero for a channel with no orders in the period.
+     *
+     * <p>Two named fields rather than a map, because there are exactly two channels and
+     * naming them makes a missing one a compile error instead of a silently absent tile.
+     * Legacy {@code SALESPERSON}/{@code STOREFRONT} rows count as Shifa Admin.
+     */
+    public record Channels(
+            long shopifyOrders,
+            BigDecimal shopifyRevenue,
+            long shifaAdminOrders,
+            BigDecimal shifaAdminRevenue) {
+    }
+
+    /**
+     * The integration health headline (spec {@code shopify-quikshipx-order-sync},
+     * Req 14.7): how many integration deliveries or publications are in an unresolved
+     * failure state inside the retention window, and how many ingested Shopify orders are
+     * waiting in the review queue.
+     *
+     * <p>Both are counts, not lists: the dashboard's job is to say "something needs you",
+     * and the health console at {@code /api/admin/integrations} is where the detail lives.
+     */
+    public record Integrations(
+            long unresolvedFailures,
+            long ordersAwaitingReview) {
     }
 
     /**

@@ -69,6 +69,7 @@ public class ReportTableBuilder {
             case ORDERS_BY_SALESPERSON -> countTable(
                     "Salesperson", aggregator.ordersBySalesperson(orders, window));
             case DELIVERY_OUTCOME -> deliveryOutcome(orders, window);
+            case ORDERS_BY_CHANNEL -> channel(orders, window);
             case PAYMENTS -> payments(orders, window);
             case OUTSTANDING -> outstanding(orders, window);
             case COD_REMITTANCE -> codRemittance(orders, window);
@@ -281,6 +282,26 @@ public class ReportTableBuilder {
         List<List<String>> cells = new ArrayList<>();
         for (CountRow r : rows) {
             cells.add(List.of(r.key(), Long.toString(r.orderCount())));
+        }
+        return new TabularData(headers, cells);
+    }
+
+    /**
+     * The channel table (spec {@code shopify-quikshipx-order-sync}, Req 12.1): one row per
+     * order channel with its order count, revenue and delivered count.
+     *
+     * <p>Both channels always appear, including one with no orders, so an empty channel
+     * reads as a zero rather than as a missing row an admin has to interpret.
+     */
+    private TabularData channel(List<OrderReportRecord> orders, DateRange window) {
+        List<String> headers = List.of("Channel", "Orders", "Revenue", "Delivered");
+        List<List<String>> cells = new ArrayList<>();
+        for (ReportRows.ChannelRow r : aggregator.ordersByChannel(orders, window)) {
+            cells.add(List.of(
+                    r.channel(),
+                    Long.toString(r.orderCount()),
+                    money(r.revenue()),
+                    Long.toString(r.deliveredCount())));
         }
         return new TabularData(headers, cells);
     }

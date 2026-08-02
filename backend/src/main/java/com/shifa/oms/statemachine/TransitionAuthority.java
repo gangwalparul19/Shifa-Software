@@ -170,4 +170,91 @@ public final class TransitionAuthority {
         }
         return table.get(new Edge(from, to));
     }
+
+    // ------------------------------------------------------------------
+    // Context-aware overloads (spec shopify-quikshipx-order-sync, Req 9).
+    //
+    // Strictly ADDITIVE: the edge table and the four methods above are untouched.
+    // Under TransitionContext.LEGACY every method below delegates to its
+    // context-free counterpart, which is what keeps the pre-existing behaviour —
+    // and the existing test suite — provably intact.
+    // ------------------------------------------------------------------
+
+    /**
+     * Whether {@code role} may trigger {@code from -> to} given what else is known
+     * about the order.
+     *
+     * <p>The one new rule: while an external courier owns an order's fulfilment, no
+     * human may move it, whatever their role. Otherwise the Shifa status and the
+     * courier portal's status would drift apart, and the courier's is the one the
+     * parcel actually follows (Req 9.1).
+     */
+    public boolean permits(OrderStatus from, OrderStatus to, Role role, TransitionContext context) {
+        TransitionContext ctx = context == null ? TransitionContext.LEGACY : context;
+        if (ctx.courierManaged()) {
+            return false;
+        }
+        // Not managed (including fallback mode) — the pre-existing role rules apply
+        // verbatim (Req 9.3, 9.10).
+        return permits(from, to, role);
+    }
+
+    /**
+     * Whether the automatic {@code SYSTEM} actor may trigger {@code from -> to} given
+     * what else is known about the order.
+     *
+     * <p>Two additions on top of the pre-existing table:
+     * <ul>
+     *   <li>a courier-managed order may be advanced into any {@linkplain ManagedStages
+     *       managed stage}, because the courier is reporting where the parcel actually
+     *       is and Shifa is mirroring it (Req 9.2);</li>
+     *   <li>an order from an external storefront may be auto-approved, because the
+     *       storefront already committed it and an internal approval gate would only
+     *       stall a shipment the courier is already moving (Req 4.5). Never granted to
+     *       an internal order, which must be approved by a human ADMIN (Req 4.7).</li>
+     * </ul>
+     */
+    public boolean permitsSystem(OrderStatus from, OrderStatus to, TransitionContext context) {
+        TransitionContext ctx = context == null ? TransitionContext.LEGACY : context;
+
+        if (ctx.courierManaged() && ManagedStages.contains(to)) {
+            return true;
+        }
+        if (ctx.isExternalStorefront()
+                && from == OrderStatus.PENDING_ADMIN_APPROVAL
+                && to == OrderStatus.APPROVED) {
+            return true;
+        }
+        return permitsSystem(from, to);
+    }
+
+    /**
+     * Asserts that {@code role} may trigger {@code from -> to} in this context,
+     * throwing {@link UnauthorizedTransitionException} (HTTP 403) otherwise.
+     */
+    public void assertAuthorized(OrderStatus from, OrderStatus to, Role role, TransitionContext context) {
+        if (!permits(from, to, role, context)) {
+            TransitionContext ctx = context == null ? TransitionContext.LEGACY : context;
+            if (ctx.courierManaged()) {
+                throw new UnauthorizedTransitionException(
+                        "This shipment is handled by the courier portal, so its status cannot be "
+                                + "changed in Shifa (order is " + from + ").");
+            }
+            throw new UnauthorizedTransitionException(
+                    "Role " + role + " is not permitted to transition an order from "
+                            + from + " to " + to + ".");
+        }
+    }
+
+    /**
+     * Asserts that the automatic {@code SYSTEM} actor may trigger {@code from -> to}
+     * in this context, throwing {@link UnauthorizedTransitionException} otherwise.
+     */
+    public void assertSystemAuthorized(OrderStatus from, OrderStatus to, TransitionContext context) {
+        if (!permitsSystem(from, to, context)) {
+            throw new UnauthorizedTransitionException(
+                    "SYSTEM is not permitted to transition an order from "
+                            + from + " to " + to + ".");
+        }
+    }
 }

@@ -1,6 +1,6 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, catchError, of, throwError } from 'rxjs';
 import { ApiClient, OrderStatus, PageResponse, PaymentStatus } from 'core';
 import {
   CreateOrderRequest,
@@ -8,7 +8,9 @@ import {
   DuplicateCheckResponse,
   OrderDetail,
   OrderSummary,
+  PublishNowResponse,
   ScreenshotUploadResponse,
+  ShipmentInfo,
 } from './orders.model';
 
 /** Filters + paging for the admin all-orders page (server-side, Wave 2). */
@@ -147,6 +149,34 @@ export class OrdersService {
   bulkApprove(ids: number[]): Observable<BulkResult> {
     return this.api.post<BulkResult>('/api/admin/orders/bulk-approve', { ids });
   }
+
+  /**
+   * Send an already-approved order to QuikShipX now (ADMIN), without re-approving or
+   * waiting for the drainer ({@code POST /api/admin/orders/{id}/publish-quikshipx}).
+   * Idempotent server-side: a second call on a published order returns
+   * {@code ALREADY_PUBLISHED} rather than creating a duplicate shipment.
+   */
+  publishToQuikShipX(id: number): Observable<PublishNowResponse> {
+    return this.api.post<PublishNowResponse>(`/api/admin/orders/${id}/publish-quikshipx`, {});
+  }
+
+  /**
+   * The order's QuikShipX shipment ({@code GET /api/orders/{id}/shipment}), or {@code null}
+   * when the order has not been published yet (the endpoint 404s). Used to hide the manual
+   * "Send to QuikShipX" action and show the shipment reference/AWB once it exists.
+   */
+  shipment(id: number): Observable<ShipmentInfo | null> {
+    return this.api.get<ShipmentInfo>(`/api/orders/${id}/shipment`).pipe(
+      catchError((err: HttpErrorResponse) => {
+        if (err.status === 404) {
+          return of(null);
+        }
+        return throwError(() => err);
+      }),
+    );
+  }
+
+
 
   /** Bulk-mark the given orders as packed; returns a partial-result summary. */
   bulkMarkPacked(ids: number[]): Observable<BulkResult> {

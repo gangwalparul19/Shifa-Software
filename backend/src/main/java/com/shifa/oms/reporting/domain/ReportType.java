@@ -29,6 +29,12 @@ public enum ReportType {
     ORDERS_BY_STATUS,
     ORDERS_BY_SALESPERSON,
     DELIVERY_OUTCOME,
+    /**
+     * Order counts grouped by order channel — Shopify versus Shifa Admin (spec
+     * {@code shopify-quikshipx-order-sync}, Req 12.1). Legacy source values fold onto
+     * {@code SHIFA_ADMIN}, so the buckets partition the window.
+     */
+    ORDERS_BY_CHANNEL,
 
     // --- Money / receivables (accountant) ---
     /** Daily money view: orders, total sales, amount received, COD, and outstanding. */
@@ -90,6 +96,8 @@ public enum ReportType {
             case "orders-by-salesperson", "orders_by_salesperson", "by-salesperson" ->
                     ORDERS_BY_SALESPERSON;
             case "delivery-outcome", "delivery_outcome", "outcome" -> DELIVERY_OUTCOME;
+            case "orders-by-channel", "orders_by_channel", "by-channel", "channel" ->
+                    ORDERS_BY_CHANNEL;
             case "payments", "payment", "money" -> PAYMENTS;
             case "outstanding", "dues", "pending" -> OUTSTANDING;
             case "cod-remittance", "cod_remittance", "cod-pending", "cod" -> COD_REMITTANCE;

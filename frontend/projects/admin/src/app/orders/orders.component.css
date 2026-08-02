@@ -467,3 +467,71 @@
   background: #fde4e2;
   color: #b42318;
 }
+
+/* (11) QuikShipX shipment block — shown once the order is on the portal. */
+.shifa-od__ship {
+  background: var(--shifa-green-050, #f2f9f5);
+  border: 1px solid rgba(15, 51, 36, 0.1);
+  border-radius: 12px;
+  padding: 0.85rem;
+}
+.shifa-od__ship-head {
+  font-weight: 700;
+  color: var(--shifa-green-700, #1a4f38);
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.shifa-od__ship-rows {
+  margin: 0;
+}
+.shifa-od__ship-rows > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.15rem 0;
+}
+.shifa-od__ship-rows dt {
+  font-weight: 500;
+  color: #5f6f67;
+  margin: 0;
+}
+.shifa-od__ship-rows dd {
+  margin: 0;
+  font-weight: 600;
+  color: #1c2b24;
+  text-align: right;
+  word-break: break-all;
+}
+.shifa-od__ship-note {
+  margin: 0.5rem 0 0.6rem;
+  font-size: 0.85rem;
+  color: #64726b;
+}
+.shifa-od__ship-pending {
+  color: #96650a;
+  font-style: italic;
+  font-weight: 500;
+}
+.shifa-od__ship-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+.shifa-od__ship-status-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #5f6f67;
+}
+.shifa-od__ship-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  background: var(--shifa-green-100, #e4f2ea);
+  color: var(--shifa-green-700, #1a4f38);
+}

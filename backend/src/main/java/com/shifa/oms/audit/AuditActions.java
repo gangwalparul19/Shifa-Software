@@ -94,6 +94,23 @@ public final class AuditActions {
     public static final String WHATSAPP_TEMPLATE_UPDATED = "WHATSAPP_TEMPLATE_UPDATED";
     public static final String WHATSAPP_TEMPLATE_DELETED = "WHATSAPP_TEMPLATE_DELETED";
 
+    // Shopify ingestion + QuikShipX fulfilment (V49).
+
+    /** An order was submitted to QuikShipX and a shipment record persisted (Req 15.4). */
+    public static final String QUIKSHIPX_PUBLISHED = "QUIKSHIPX_PUBLISHED";
+
+    /** A QuikShipX status update was mirrored onto an order's shipment. */
+    public static final String QUIKSHIPX_STATUS_MIRRORED = "QUIKSHIPX_STATUS_MIRRORED";
+
+    /** An order was ingested from a Shopify order webhook (Req 15.3). */
+    public static final String SHOPIFY_ORDER_INGESTED = "SHOPIFY_ORDER_INGESTED";
+
+    /** An ADMIN returned fulfilment authority for one order to Shifa OMS (Req 13.5). */
+    public static final String ORDER_FALLBACK_MODE_ENABLED = "ORDER_FALLBACK_MODE_ENABLED";
+
+    /** An ADMIN replayed a stored integration event (Req 14.4). */
+    public static final String INTEGRATION_EVENT_REPLAYED = "INTEGRATION_EVENT_REPLAYED";
+
     // --- Entity types -------------------------------------------------------
 
     public static final String ENTITY_ORDER = "ORDER";

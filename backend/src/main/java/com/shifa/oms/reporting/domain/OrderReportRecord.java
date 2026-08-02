@@ -1,6 +1,7 @@
 package com.shifa.oms.reporting.domain;
 
 import com.shifa.oms.order.LeadSource;
+import com.shifa.oms.order.OrderSource;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.statemachine.OrderStatus;
 
@@ -39,13 +40,52 @@ public record OrderReportRecord(
         String codSettlementStatus,
         String claimStatus,
         String awb,
-        LeadSource leadSource) {
+        LeadSource leadSource,
+        OrderSource channel) {
 
     public OrderReportRecord {
         products = products == null ? List.of() : List.copyOf(products);
         totalAmount = nz(totalAmount);
         amountReceived = nz(amountReceived);
         codAmount = nz(codAmount);
+    }
+
+    /**
+     * Backwards-compatible constructor for callers that do not track the order channel
+     * (spec {@code shopify-quikshipx-order-sync}). A {@code null} channel is reported as
+     * {@code SHIFA_ADMIN}, because every order that existed before the Shopify channel
+     * was Shifa's.
+     */
+    public OrderReportRecord(
+            Long orderId,
+            String orderCode,
+            LocalDate orderDate,
+            Long salespersonId,
+            String customerName,
+            String customerMobile,
+            String state,
+            List<ProductLine> products,
+            BigDecimal totalAmount,
+            BigDecimal amountReceived,
+            BigDecimal codAmount,
+            PaymentStatus paymentStatus,
+            OrderStatus orderStatus,
+            String codSettlementStatus,
+            String claimStatus,
+            String awb,
+            LeadSource leadSource) {
+        this(orderId, orderCode, orderDate, salespersonId, customerName, customerMobile, state,
+                products, totalAmount, amountReceived, codAmount, paymentStatus, orderStatus,
+                codSettlementStatus, claimStatus, awb, leadSource, null);
+    }
+
+    /**
+     * The channel this order counts as, folding the legacy {@code SALESPERSON} and
+     * {@code STOREFRONT} values and an absent channel onto {@code SHIFA_ADMIN} (Req 12.6).
+     * Never null, so the channel report is a partition of the window with no lost rows.
+     */
+    public OrderSource canonicalChannel() {
+        return channel == null ? OrderSource.SHIFA_ADMIN : channel.canonical();
     }
 
     /**

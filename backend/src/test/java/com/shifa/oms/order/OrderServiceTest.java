@@ -277,7 +277,8 @@ class OrderServiceTest {
         assertThat(response.paymentStatus()).isEqualTo(PaymentStatus.COD);
         assertThat(response.totalAmount()).isEqualByComparingTo("240.00");
         assertThat(response.codAmount()).isEqualByComparingTo("240.00");
-        assertThat(response.source()).isEqualTo(OrderSource.SALESPERSON);
+        // Portal-punched orders carry the SHIFA_ADMIN channel (Req 1.3).
+        assertThat(response.source()).isEqualTo(OrderSource.SHIFA_ADMIN);
         assertThat(response.items()).hasSize(1);
         assertThat(response.orderCode()).startsWith("SHR-");
     }

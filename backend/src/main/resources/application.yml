@@ -130,6 +130,74 @@ app:
     # Scheduler intervals (ms): outbox drain and missed-webhook poll fallback.
     drain-interval-ms: ${COURIER_DRAIN_INTERVAL_MS:15000}
     poll-interval-ms: ${COURIER_POLL_INTERVAL_MS:300000}
+  shopify:
+    # Shopify order ingestion (spec: shopify-quikshipx-order-sync, Req 2/3/4).
+    #
+    # Master switch. OFF by default: with this false the webhook still verifies and
+    # STORES each delivery (so setup can be inspected and later replayed) but creates
+    # no order. Flip it on once the Shopify app's webhook is confirmed working.
+    enabled: ${SHOPIFY_ENABLED:false}
+    # The Shopify app's webhook signing secret. Shopify sends a BASE64 HMAC-SHA256 of
+    # the raw body in X-Shopify-Hmac-Sha256. Blank here; supplied via
+    # /etc/shifa/shifa.env in production. A blank secret REJECTS every delivery (401):
+    # order creation must never be an unauthenticated endpoint.
+    webhook-secret: ${SHOPIFY_WEBHOOK_SECRET:}
+    # Shop domain, for log and audit context only.
+    shop-domain: ${SHOPIFY_SHOP_DOMAIN:}
+    # Largest accepted webhook body, checked BEFORE the HMAC. Clamped to 256KB..8MB.
+    max-payload-bytes: ${SHOPIFY_MAX_PAYLOAD_BYTES:1048576}
+    # Ingestion retry policy: 1 attempt + 3 retries at 30/60/120s.
+    max-attempts: ${SHOPIFY_MAX_ATTEMPTS:4}
+    retry-backoff: PT30S
+    retry-max-backoff: PT15M
+    ingest-drain-interval-ms: ${SHOPIFY_INGEST_DRAIN_INTERVAL_MS:15000}
+    # Shopify already emails the buyer, so Shifa stays quiet by default rather than
+    # double-messaging the customer about the same order.
+    suppress-customer-messaging: ${SHOPIFY_SUPPRESS_CUSTOMER_MESSAGING:true}
+  quikshipx:
+    # QuikShipX courier aggregator (spec: shopify-quikshipx-order-sync).
+    # Contract: docs/QUIKSHIPX-API-V1.md - ONE operation, POST /api/create-order-v1.
+    #
+    # Master switch. OFF by default: with this false, approval generates the internal
+    # Code128 label and the packing queue behaves exactly as it did before the feature.
+    enabled: ${QUIKSHIPX_ENABLED:false}
+    # Client backend: MOCK (default, deterministic, no network) or HTTP (live API).
+    mode: ${QUIKSHIPX_MODE:MOCK}
+    base-url: ${QUIKSHIPX_BASE_URL:https://head.quikshipx.com}
+    # Credentials travel in the request BODY (shipper_details), not in a header.
+    # Blank in the repo; supplied via /etc/shifa/shifa.env in production.
+    client-code: ${QUIKSHIPX_CLIENT_CODE:SHR083}
+    user-id: ${QUIKSHIPX_USER_ID:86}
+    user-secret: ${QUIKSHIPX_USER_SECRET:bb6943106483b4ca9bfe7a44243f8724a8de818423ff38253357c18aa01f943d}
+    # TEST files the order under QuikShipX's "Test" section, LIVE under "Pending".
+    # Defaults to TEST so a misconfiguration cannot dispatch a real parcel.
+    secret-mode: ${QUIKSHIPX_SECRET_MODE:TEST}
+    # The API has NO channel/source field, so the order channel rides in
+    # customer_order_id as <prefix><orderCode>, e.g. SHIFA-SHR-1001. This value is
+    # also the correlation key back to the Shifa order.
+    order-reference-prefix: ${QUIKSHIPX_ORDER_REFERENCE_PREFIX:SHIFA-}
+    # Status mirroring. QuikShipX documents NO status webhook and NO status query, so
+    # this stays false and the status webhook + poller beans are not created at all.
+    # Flip it only once QuikShipX confirms a status feed.
+    status-feed-available: ${QUIKSHIPX_STATUS_FEED_AVAILABLE:false}
+    webhook-secret: ${QUIKSHIPX_WEBHOOK_SECRET:}
+    request-timeout: PT15S
+    # Publication retry policy: 1 attempt + 5 retries at 30/60/120/240/480s.
+    max-attempts: ${QUIKSHIPX_MAX_ATTEMPTS:6}
+    retry-backoff: PT30S
+    retry-max-backoff: PT15M
+    # The create-order RESPONSE is undocumented, so identifier extraction tries these
+    # candidate keys in order. Pin the real names here once seen in production traffic
+    # (the raw response is stored on order_shipments.raw_acceptance).
+    response-keys:
+      # 'id' is QuikShipX's shipment/tracking id; their own order id is captured
+      # separately via order-id below, so it is NOT listed here.
+      shipment-id: ${QUIKSHIPX_KEYS_SHIPMENT_ID:shipment_id,shipmentId,id}
+      order-id: ${QUIKSHIPX_KEYS_ORDER_ID:order_id,orderId,order_number,orderNumber}
+      awb: ${QUIKSHIPX_KEYS_AWB:awb,awb_number,awbNumber,waybill,waybill_number,tracking_number,trackingNumber}
+      courier-name: ${QUIKSHIPX_KEYS_COURIER:courier,courier_name,courierName,carrier,carrier_name}
+      tracking-url: ${QUIKSHIPX_KEYS_TRACKING_URL:tracking_url,trackingUrl,track_url,trackUrl}
+      label-url: ${QUIKSHIPX_KEYS_LABEL_URL:label_url,labelUrl,label,shipping_label_url,shippingLabelUrl}
   payment:
     # Online payment gateway (Phase E). Swappable behind the PaymentGateway
     # interface and selected by `mode`:

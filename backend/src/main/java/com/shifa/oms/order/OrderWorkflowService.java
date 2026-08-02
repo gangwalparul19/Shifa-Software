@@ -11,6 +11,7 @@ import com.shifa.oms.statemachine.OrderStatusLifecycle;
 import com.shifa.oms.statemachine.OrderStatusStateMachine;
 import com.shifa.oms.statemachine.StatusHistoryEntry;
 import com.shifa.oms.statemachine.TransitionAuthority;
+import com.shifa.oms.statemachine.TransitionContext;
 import com.shifa.oms.statemachine.UnauthorizedTransitionException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -67,9 +68,17 @@ public class OrderWorkflowService {
      */
     private final NotificationDispatcher notificationDispatcher;
 
+    /**
+     * Whether an external courier owns an order's fulfilment (Req 9.1). {@code null}
+     * in the pure unit/property tests and whenever the courier integration is absent,
+     * in which case no order is managed and authorization is exactly the pre-existing
+     * role-based behaviour.
+     */
+    private final OrderFulfilmentOwnership fulfilmentOwnership;
+
     /** Test constructor: no notification fan-out, system clock. */
     public OrderWorkflowService(AuditService auditService) {
-        this(auditService, Clock.systemUTC(), null);
+        this(auditService, Clock.systemUTC(), null, null);
     }
 
     /**
@@ -77,25 +86,43 @@ public class OrderWorkflowService {
      * timestamps) and no notification fan-out.
      */
     public OrderWorkflowService(AuditService auditService, Clock clock) {
-        this(auditService, clock, null);
+        this(auditService, clock, null, null);
     }
 
     /**
-     * Production constructor (Spring): wires the {@link NotificationDispatcher} so
-     * every successful transition enqueues exactly the matrix's notification set
-     * in the same transaction as the status change (Req 13.2, 14.1).
+     * Test / legacy constructor: wires the {@link NotificationDispatcher} but no
+     * fulfilment ownership, so no order is courier-managed and authorization behaves
+     * exactly as it did before the courier integration.
+     */
+    public OrderWorkflowService(AuditService auditService, NotificationDispatcher notificationDispatcher) {
+        this(auditService, Clock.systemUTC(), notificationDispatcher, null);
+    }
+
+    /**
+     * Production constructor (Spring): additionally wires
+     * {@link OrderFulfilmentOwnership} so a courier-managed order denies human
+     * transitions (Req 9.1).
+     *
+     * <p>This is the ONLY constructor carrying {@code @Autowired}. A service with
+     * several constructors and no annotation on the primary one fails the entire
+     * application context at startup — exactly how {@code PaymentVerificationService}
+     * took production down once.
      */
     @Autowired
-    public OrderWorkflowService(AuditService auditService, NotificationDispatcher notificationDispatcher) {
-        this(auditService, Clock.systemUTC(), notificationDispatcher);
+    public OrderWorkflowService(AuditService auditService,
+                                NotificationDispatcher notificationDispatcher,
+                                @Autowired(required = false) OrderFulfilmentOwnership fulfilmentOwnership) {
+        this(auditService, Clock.systemUTC(), notificationDispatcher, fulfilmentOwnership);
     }
 
     private OrderWorkflowService(AuditService auditService, Clock clock,
-                                 NotificationDispatcher notificationDispatcher) {
+                                 NotificationDispatcher notificationDispatcher,
+                                 OrderFulfilmentOwnership fulfilmentOwnership) {
         this.auditService = Objects.requireNonNull(auditService, "auditService");
         this.transitionAuthority = new TransitionAuthority();
         this.stateMachine = new OrderStatusStateMachine(Objects.requireNonNull(clock, "clock"));
         this.notificationDispatcher = notificationDispatcher;
+        this.fulfilmentOwnership = fulfilmentOwnership;
     }
 
     /**
@@ -133,10 +160,11 @@ public class OrderWorkflowService {
         // (a) Authorize the actor — but only when the edge is legal, so an illegal
         // transition still surfaces as the existing 409 below (not a 403).
         if (stateMachine.isLegal(from, target)) {
+            TransitionContext context = contextOf(order);
             if (actor.isSystem()) {
-                transitionAuthority.assertSystemAuthorized(from, target);
+                transitionAuthority.assertSystemAuthorized(from, target, context);
             } else {
-                transitionAuthority.assertAuthorized(from, target, actor.role());
+                transitionAuthority.assertAuthorized(from, target, actor.role(), context);
             }
         }
 
@@ -161,6 +189,24 @@ public class OrderWorkflowService {
         }
 
         return entry;
+    }
+
+    /**
+     * Assembles the extra facts the authority needs about this order (Req 9).
+     *
+     * <p>With no {@link OrderFulfilmentOwnership} wired — every pure test, and any
+     * deployment without the courier integration — this yields
+     * {@link TransitionContext#LEGACY}, under which the authority's decisions are
+     * definitionally identical to the pre-existing ones.
+     */
+    private TransitionContext contextOf(OrderEntity order) {
+        boolean managed = fulfilmentOwnership != null && fulfilmentOwnership.isCourierManaged(order);
+        OrderSource source = order.getSource();
+        TransitionContext.ChannelView channel =
+                source != null && source.isShopify()
+                        ? TransitionContext.ChannelView.EXTERNAL_STOREFRONT
+                        : TransitionContext.ChannelView.INTERNAL;
+        return new TransitionContext(channel, managed, order.isFallbackMode());
     }
 
     /** Assembles the notification facts for an order from the aggregate. */

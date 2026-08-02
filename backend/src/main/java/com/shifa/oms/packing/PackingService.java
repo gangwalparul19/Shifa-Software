@@ -82,9 +82,17 @@ public class PackingService {
      */
     @Transactional(readOnly = true)
     public PackingQueueResponse queue() {
-        List<OrderEntity> pack = orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.LABEL_GENERATED);
-        List<OrderEntity> handover = orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.PACKED);
-        List<OrderEntity> dispatch = orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.HANDED_TO_DELIVERY);
+        // Courier-managed orders are excluded: their label is printed and their status
+        // advanced in the courier's own portal, so leaving them here would have the
+        // packer work the same parcel twice (Req 9.6). Orders in fallback mode stay
+        // (Req 9.7). With the integration off, order_shipments is empty and this
+        // returns exactly what the plain status finder returned.
+        List<OrderEntity> pack =
+                orderRepository.findPackingQueueByStatus(OrderStatus.LABEL_GENERATED.name());
+        List<OrderEntity> handover =
+                orderRepository.findPackingQueueByStatus(OrderStatus.PACKED.name());
+        List<OrderEntity> dispatch =
+                orderRepository.findPackingQueueByStatus(OrderStatus.HANDED_TO_DELIVERY.name());
         // Batch-resolve salesperson (created_by) names once for all three queues,
         // mirroring the reporting module's name resolution (full name, else username).
         Map<Long, String> names = resolveSalespersonNames(pack, handover, dispatch);

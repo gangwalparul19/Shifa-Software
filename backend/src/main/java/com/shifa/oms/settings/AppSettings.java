@@ -120,6 +120,61 @@ public class AppSettings {
     @Column(name = "gst_slabs", length = 100)
     private String gstSlabs;
 
+    // ------------------------------------------------------------------
+    // Shipment defaults (V49). The QuikShipX create-order body requires parcel
+    // logistics Shifa OMS has never stored per order; these supply them once so a
+    // salesperson never types shipping details. See docs/QUIKSHIPX-API-V1.md.
+    // ------------------------------------------------------------------
+
+    /**
+     * QuikShipX pickup warehouse id, taken from the QuikShipX dashboard.
+     * Deliberately nullable and unset by default: publication is blocked with an
+     * admin alert until it is configured, rather than sending a body QuikShipX
+     * would reject (Req 16.6).
+     */
+    @Column(name = "ship_pickup_warehouse_id", length = 40)
+    private String shipPickupWarehouseId;
+
+    /** QuikShipX package type: {@code "1"} flyer, {@code "2"} cardboard (Req 16.4). */
+    @Column(name = "ship_package_type", nullable = false, length = 1)
+    private String shipPackageType = "1";
+
+    /** QuikShipX shipping mode: {@code "1"} surface, {@code "2"} express (Req 16.4). */
+    @Column(name = "ship_shipping_mode", nullable = false, length = 1)
+    private String shipShippingMode = "1";
+
+    /**
+     * Default parcel dead weight in grams, used when no product on the order
+     * carries its own weight (Req 16.7).
+     */
+    @Column(name = "ship_dead_weight_grams", nullable = false)
+    private int shipDeadWeightGrams = 500;
+
+    @Column(name = "ship_length_cm", nullable = false)
+    private int shipLengthCm = 10;
+
+    @Column(name = "ship_width_cm", nullable = false)
+    private int shipWidthCm = 10;
+
+    @Column(name = "ship_height_cm", nullable = false)
+    private int shipHeightCm = 10;
+
+    /** Delivery charge levied by the seller; zero when delivery is free. */
+    @Column(name = "ship_shipping_amount", nullable = false, precision = 10, scale = 2)
+    private BigDecimal shipShippingAmount = BigDecimal.ZERO;
+
+    /** Fallback {@code product_category} for a product with no category. */
+    @Column(name = "ship_default_category", length = 120)
+    private String shipDefaultCategory;
+
+    /**
+     * Fallback HSN code (V50) for a product line with no HSN. QuikShipX rejects an HSN
+     * shorter than 2 characters, and many products are not yet HSN-coded, so this stands in
+     * when neither the order line nor the product carries one.
+     */
+    @Column(name = "ship_default_hsn", length = 20)
+    private String shipDefaultHsn;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -321,6 +376,95 @@ public class AppSettings {
 
     public void setGstSlabs(String gstSlabs) {
         this.gstSlabs = gstSlabs;
+    }
+
+    public String getShipPickupWarehouseId() {
+        return shipPickupWarehouseId;
+    }
+
+    public void setShipPickupWarehouseId(String shipPickupWarehouseId) {
+        this.shipPickupWarehouseId = shipPickupWarehouseId;
+    }
+
+    public String getShipPackageType() {
+        return shipPackageType;
+    }
+
+    public void setShipPackageType(String shipPackageType) {
+        this.shipPackageType = shipPackageType;
+    }
+
+    public String getShipShippingMode() {
+        return shipShippingMode;
+    }
+
+    public void setShipShippingMode(String shipShippingMode) {
+        this.shipShippingMode = shipShippingMode;
+    }
+
+    public int getShipDeadWeightGrams() {
+        return shipDeadWeightGrams;
+    }
+
+    public void setShipDeadWeightGrams(int shipDeadWeightGrams) {
+        this.shipDeadWeightGrams = shipDeadWeightGrams;
+    }
+
+    public int getShipLengthCm() {
+        return shipLengthCm;
+    }
+
+    public void setShipLengthCm(int shipLengthCm) {
+        this.shipLengthCm = shipLengthCm;
+    }
+
+    public int getShipWidthCm() {
+        return shipWidthCm;
+    }
+
+    public void setShipWidthCm(int shipWidthCm) {
+        this.shipWidthCm = shipWidthCm;
+    }
+
+    public int getShipHeightCm() {
+        return shipHeightCm;
+    }
+
+    public void setShipHeightCm(int shipHeightCm) {
+        this.shipHeightCm = shipHeightCm;
+    }
+
+    public BigDecimal getShipShippingAmount() {
+        return shipShippingAmount;
+    }
+
+    public void setShipShippingAmount(BigDecimal shipShippingAmount) {
+        this.shipShippingAmount = shipShippingAmount;
+    }
+
+    public String getShipDefaultCategory() {
+        return shipDefaultCategory;
+    }
+
+    public void setShipDefaultCategory(String shipDefaultCategory) {
+        this.shipDefaultCategory = shipDefaultCategory;
+    }
+
+    public String getShipDefaultHsn() {
+        return shipDefaultHsn;
+    }
+
+    public void setShipDefaultHsn(String shipDefaultHsn) {
+        this.shipDefaultHsn = shipDefaultHsn;
+    }
+
+    /**
+     * Whether the shipment defaults are complete enough to publish an order.
+     * Only the pickup warehouse id has no safe fallback, so it alone gates
+     * publication (Req 16.2, 16.6).
+     */
+    public boolean shipmentDefaultsComplete() {
+        return shipPickupWarehouseId != null && !shipPickupWarehouseId.isBlank();
     }
 
     public LocalDateTime getCreatedAt() {

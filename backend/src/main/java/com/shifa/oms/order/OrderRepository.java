@@ -35,6 +35,17 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     Optional<OrderEntity> findByOrderCode(String orderCode);
 
     /**
+     * The order already created from a given Shopify order, or empty when none exists
+     * (spec {@code shopify-quikshipx-order-sync}, Req 3.10).
+     *
+     * <p>This is what makes re-processing a Shopify delivery resolve to the existing
+     * order instead of creating a second one. It backs idempotence at the <em>order</em>
+     * level, complementing the event store's idempotence at the <em>delivery</em> level:
+     * a webhook replayed under a fresh event id must still not duplicate the order.
+     */
+    Optional<OrderEntity> findByShopifyOrderId(String shopifyOrderId);
+
+    /**
      * All orders in a given lifecycle status, most recent first. Used to build
      * the admin approval queue of {@code Pending_Admin_Approval} orders (Req 9.1).
      */
@@ -46,6 +57,33 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
      * clears the oldest orders first.
      */
     List<OrderEntity> findByOrderStatusOrderByCreatedAtAsc(OrderStatus orderStatus);
+
+    /**
+     * Orders at {@code status} that the Shifa packing floor still owns
+     * (spec {@code shopify-quikshipx-order-sync}, Req 9.6, 9.7).
+     *
+     * <p>Excludes orders an external courier manages, because their label is printed
+     * and their status advanced in the courier's own portal — leaving them in the Shifa
+     * queue would have the packer work the same parcel twice.
+     *
+     * <p>An order in fallback mode is included even when a shipment exists: an admin has
+     * deliberately taken it back.
+     *
+     * <p>When the integration is disabled {@code order_shipments} is empty, so the
+     * {@code NOT EXISTS} is vacuously true and this returns exactly what
+     * {@link #findByOrderStatusOrderByCreatedAtDesc(OrderStatus)} returns.
+     *
+     * @param status the {@code OrderStatus} name, e.g. {@code "LABEL_GENERATED"}
+     */
+    @org.springframework.data.jpa.repository.Query(value = """
+            SELECT o.* FROM orders o
+             WHERE o.order_status = :status
+               AND (o.fallback_mode = TRUE
+                    OR NOT EXISTS (SELECT 1 FROM order_shipments s WHERE s.order_id = o.id))
+             ORDER BY o.created_at DESC, o.id DESC
+            """, nativeQuery = true)
+    List<OrderEntity> findPackingQueueByStatus(
+            @org.springframework.data.repository.query.Param("status") String status);
 
     /**
      * All orders in a given payment-verification state, oldest first (FIFO).
@@ -158,16 +196,26 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
      * <p>Implemented as a native query with a {@code LEFT JOIN} to
      * {@code courier_records} so the AWB is searchable before the courier module
      * (task 14) introduces its own entity.
+     *
+     * <p>A second {@code LEFT JOIN} to {@code order_shipments} makes the QuikShipX AWB and
+     * the QuikShipX_Order_Reference searchable too (spec
+     * {@code shopify-quikshipx-order-sync}, Req 10.9). Both joins are needed, not one:
+     * {@code courier_records} holds the in-house courier module's AWBs and
+     * {@code order_shipments} holds QuikShipX's, and staff paste whichever tracking number
+     * a customer quotes them without knowing which system produced it.
      */
     @Query(value = """
             SELECT DISTINCT o.* FROM orders o
             LEFT JOIN courier_records cr ON cr.order_id = o.id
+            LEFT JOIN order_shipments os ON os.order_id = o.id
             WHERE (:createdBy IS NULL OR o.created_by = :createdBy)
               AND ( LOWER(o.customer_name)  LIKE CONCAT('%', LOWER(:term), '%')
                  OR o.customer_mobile       LIKE CONCAT('%', :term, '%')
                  OR LOWER(o.order_code)     LIKE CONCAT('%', LOWER(:term), '%')
                  OR CAST(o.id AS CHAR)      LIKE CONCAT('%', :term, '%')
-                 OR LOWER(cr.awb)           LIKE CONCAT('%', LOWER(:term), '%') )
+                 OR LOWER(cr.awb)           LIKE CONCAT('%', LOWER(:term), '%')
+                 OR LOWER(os.awb)           LIKE CONCAT('%', LOWER(:term), '%')
+                 OR LOWER(os.order_reference) LIKE CONCAT('%', LOWER(:term), '%') )
             ORDER BY o.created_at DESC
             """, nativeQuery = true)
     List<OrderEntity> search(@Param("term") String term, @Param("createdBy") Long createdBy);
@@ -201,12 +249,15 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     @Query(value = """
             SELECT DISTINCT o.* FROM orders o
             LEFT JOIN courier_records cr ON cr.order_id = o.id
+            LEFT JOIN order_shipments os ON os.order_id = o.id
             WHERE o.created_by IN (:createdByIds)
               AND ( LOWER(o.customer_name)  LIKE CONCAT('%', LOWER(:term), '%')
                  OR o.customer_mobile       LIKE CONCAT('%', :term, '%')
                  OR LOWER(o.order_code)     LIKE CONCAT('%', LOWER(:term), '%')
                  OR CAST(o.id AS CHAR)      LIKE CONCAT('%', :term, '%')
-                 OR LOWER(cr.awb)           LIKE CONCAT('%', LOWER(:term), '%') )
+                 OR LOWER(cr.awb)           LIKE CONCAT('%', LOWER(:term), '%')
+                 OR LOWER(os.awb)           LIKE CONCAT('%', LOWER(:term), '%')
+                 OR LOWER(os.order_reference) LIKE CONCAT('%', LOWER(:term), '%') )
             ORDER BY o.created_at DESC
             """, nativeQuery = true)
     List<OrderEntity> searchIn(@Param("term") String term,

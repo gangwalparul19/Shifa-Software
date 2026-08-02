@@ -208,6 +208,27 @@ public class OrderEntity {
     @Column(name = "payment_screenshot_key", length = 512)
     private String paymentScreenshotKey;
 
+    /**
+     * The Shopify order identifier for a {@link OrderSource#SHOPIFY_API} order
+     * (V49). Unique when present, so a repeat Shopify webhook resolves to this
+     * existing row rather than creating a duplicate (Req 3.8, 3.10).
+     */
+    @Column(name = "shopify_order_id", length = 64)
+    private String shopifyOrderId;
+
+    /** The human-facing Shopify order number, shown in the review queue (Req 3.8). */
+    @Column(name = "shopify_order_number", length = 40)
+    private String shopifyOrderNumber;
+
+    /**
+     * Per-order escape hatch returning fulfilment authority to Shifa OMS (V49).
+     * When true the internal label and the packing queue apply to this order even
+     * though QuikShipX integration is enabled, and QuikShipX status events for it
+     * are ignored (Req 13.3, 13.6, 9.3).
+     */
+    @Column(name = "fallback_mode", nullable = false)
+    private boolean fallbackMode = false;
+
     @Version
     @Column(name = "version", nullable = false)
     private Long version;
@@ -493,6 +514,36 @@ public class OrderEntity {
 
     public String getPaymentScreenshotKey() {
         return paymentScreenshotKey;
+    }
+
+    public String getShopifyOrderId() {
+        return shopifyOrderId;
+    }
+
+    public String getShopifyOrderNumber() {
+        return shopifyOrderNumber;
+    }
+
+    /**
+     * Records the Shopify identifiers on an ingested order (V49, Req 3.8).
+     * Set once at ingestion; a repeat webhook resolves to the existing row instead
+     * of rewriting these.
+     */
+    public void setShopifyIdentifiers(String shopifyOrderId, String shopifyOrderNumber) {
+        this.shopifyOrderId = shopifyOrderId;
+        this.shopifyOrderNumber = shopifyOrderNumber;
+    }
+
+    public boolean isFallbackMode() {
+        return fallbackMode;
+    }
+
+    /**
+     * Returns fulfilment authority for this order to Shifa OMS (V49, Req 13.3).
+     * ADMIN-only at the service layer; audited by the caller.
+     */
+    public void setFallbackMode(boolean fallbackMode) {
+        this.fallbackMode = fallbackMode;
     }
 
     public Long getVersion() {

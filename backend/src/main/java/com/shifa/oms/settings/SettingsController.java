@@ -60,9 +60,16 @@ public class SettingsController {
     /** Updates the company + GST settings; GSTIN is required when GST is enabled. */
     @PutMapping
     public SettingsResponse update(@Valid @RequestBody SettingsRequest request) {
-        SettingsResponse response = SettingsResponse.from(settingsService.update(request));
+        SettingsService.UpdateResult result = settingsService.updateWithChanges(request);
+        SettingsResponse response = SettingsResponse.from(result.settings());
+        // Exactly one audit event, naming each changed shipment default so an admin
+        // can see who changed the pickup warehouse or parcel size (Req 16.3).
+        String detail = result.shipmentDefaultChanges().isEmpty()
+                ? "Updated company / GST settings"
+                : "Updated company / GST settings; shipment defaults: "
+                        + String.join(", ", result.shipmentDefaultChanges());
         auditService.record(AuditActions.SETTINGS_UPDATED, AuditActions.ENTITY_SETTINGS,
-                null, "Updated company / GST settings");
+                null, detail);
         return response;
     }
 

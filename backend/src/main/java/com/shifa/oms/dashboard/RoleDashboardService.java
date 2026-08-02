@@ -6,6 +6,9 @@ import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.dashboard.domain.DashboardQueue;
 import com.shifa.oms.dashboard.dto.RoleDashboardSummary;
 import com.shifa.oms.insights.InsightRepository;
+import com.shifa.oms.integration.IntegrationEventRepository;
+import com.shifa.oms.integration.IntegrationOutcome;
+import com.shifa.oms.integration.shopify.OrderReviewReasonRepository;
 import com.shifa.oms.lead.LeadReportAggregator;
 import com.shifa.oms.lead.LeadService;
 import com.shifa.oms.lead.LeadStatus;
@@ -15,6 +18,7 @@ import com.shifa.oms.lead.dto.LeadReports.PipelineCount;
 import com.shifa.oms.lead.dto.LeadReports.PipelineReport;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
+import com.shifa.oms.order.OrderSource;
 import com.shifa.oms.reconciliation.ReceivableEntity;
 import com.shifa.oms.reconciliation.ReceivableRepository;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
@@ -58,11 +62,26 @@ public class RoleDashboardService {
             OrderStatus.REJECTED, OrderStatus.CANCELLED, OrderStatus.CUSTOMER_REJECTED,
             OrderStatus.DELIVERY_FAILED, OrderStatus.RTO, OrderStatus.REDISPATCH);
 
+    /**
+     * How far back the unresolved-failure count looks (Req 14.7). Matched to the health
+     * console's retention window so the tile and the list can never disagree.
+     */
+    private static final long INTEGRATION_RETENTION_DAYS = 30;
+
     private final OrderRepository orderRepository;
     private final ReceivableRepository receivableRepository;
     private final SalespersonScopeResolver scopeResolver;
     private final LeadService leadService;
     private final InsightRepository insightRepository;
+
+    /**
+     * Integration health sources, both nullable (spec {@code shopify-quikshipx-order-sync},
+     * Req 12.5, 14.7). Only the production constructor supplies them, so every existing test
+     * call site keeps working unchanged and simply reports zeros.
+     */
+    private final IntegrationEventRepository integrationEventRepository;
+    private final OrderReviewReasonRepository reviewReasonRepository;
+
     private final Clock clock;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -70,9 +89,25 @@ public class RoleDashboardService {
                                 ReceivableRepository receivableRepository,
                                 SalespersonScopeResolver scopeResolver,
                                 LeadService leadService,
+                                InsightRepository insightRepository,
+                                IntegrationEventRepository integrationEventRepository,
+                                OrderReviewReasonRepository reviewReasonRepository) {
+        this(orderRepository, receivableRepository, scopeResolver, leadService, insightRepository,
+                integrationEventRepository, reviewReasonRepository, Clock.systemDefaultZone());
+    }
+
+    /**
+     * Legacy constructor without the integration health sources, retained so existing
+     * callers and test doubles compile unchanged. A service built this way reports zero
+     * integration failures and an empty review queue.
+     */
+    public RoleDashboardService(OrderRepository orderRepository,
+                                ReceivableRepository receivableRepository,
+                                SalespersonScopeResolver scopeResolver,
+                                LeadService leadService,
                                 InsightRepository insightRepository) {
         this(orderRepository, receivableRepository, scopeResolver, leadService, insightRepository,
-                Clock.systemDefaultZone());
+                null, null, Clock.systemDefaultZone());
     }
 
     /** Package-visible constructor allowing a fixed clock in tests. */
@@ -82,11 +117,25 @@ public class RoleDashboardService {
                          LeadService leadService,
                          InsightRepository insightRepository,
                          Clock clock) {
+        this(orderRepository, receivableRepository, scopeResolver, leadService, insightRepository,
+                null, null, clock);
+    }
+
+    private RoleDashboardService(OrderRepository orderRepository,
+                                 ReceivableRepository receivableRepository,
+                                 SalespersonScopeResolver scopeResolver,
+                                 LeadService leadService,
+                                 InsightRepository insightRepository,
+                                 IntegrationEventRepository integrationEventRepository,
+                                 OrderReviewReasonRepository reviewReasonRepository,
+                                 Clock clock) {
         this.orderRepository = orderRepository;
         this.receivableRepository = receivableRepository;
         this.scopeResolver = scopeResolver;
         this.leadService = leadService;
         this.insightRepository = insightRepository;
+        this.integrationEventRepository = integrationEventRepository;
+        this.reviewReasonRepository = reviewReasonRepository;
         this.clock = clock;
     }
 
@@ -181,7 +230,64 @@ public class RoleDashboardService {
         long awaitingDispatch = DashboardQueue.AWAITING_DISPATCH.count(orders, OrderEntity::getOrderStatus);
         return new RoleDashboardSummary.Admin(
                 pendingApproval, perActiveStage, exceptionStates, awaitingHandover, awaitingDispatch,
-                adminLeads(principal), adminInsights());
+                adminLeads(principal), adminInsights(), channels(orders), integrations());
+    }
+
+    /**
+     * The per-channel order count and revenue (spec {@code shopify-quikshipx-order-sync},
+     * Req 12.5).
+     *
+     * <p>Computed from the orders already loaded for the rest of the admin section, so the
+     * split cannot disagree with the totals beside it. Revenue excludes {@code REJECTED} and
+     * {@code CANCELLED} orders, matching the rule used by the reports; the order counts do
+     * not, so "orders taken" and "revenue earned" stay distinguishable.
+     */
+    private RoleDashboardSummary.Channels channels(List<OrderEntity> orders) {
+        long shopifyOrders = 0;
+        long shifaOrders = 0;
+        BigDecimal shopifyRevenue = BigDecimal.ZERO;
+        BigDecimal shifaRevenue = BigDecimal.ZERO;
+
+        for (OrderEntity o : orders) {
+            OrderSource source = o.getSource();
+            // A null source predates the Shopify channel entirely, so it is Shifa's.
+            boolean shopify = source != null && source.isShopify();
+            boolean earnsRevenue = o.getOrderStatus() != OrderStatus.REJECTED
+                    && o.getOrderStatus() != OrderStatus.CANCELLED;
+            BigDecimal total = o.getTotalAmount() == null ? BigDecimal.ZERO : o.getTotalAmount();
+            if (shopify) {
+                shopifyOrders++;
+                if (earnsRevenue) {
+                    shopifyRevenue = shopifyRevenue.add(total);
+                }
+            } else {
+                shifaOrders++;
+                if (earnsRevenue) {
+                    shifaRevenue = shifaRevenue.add(total);
+                }
+            }
+        }
+        return new RoleDashboardSummary.Channels(
+                shopifyOrders, shopifyRevenue, shifaOrders, shifaRevenue);
+    }
+
+    /**
+     * The integration health headline (spec {@code shopify-quikshipx-order-sync}, Req 14.7).
+     *
+     * <p>Reports zeros when the integration repositories are absent, which is the case in
+     * every pre-existing unit test and in any deployment without the feature — so the tile
+     * says "nothing wrong" rather than failing the whole dashboard.
+     */
+    private RoleDashboardSummary.Integrations integrations() {
+        long failures = 0;
+        if (integrationEventRepository != null) {
+            failures = integrationEventRepository.countByOutcomeInAndReceivedAtGreaterThanEqual(
+                    IntegrationOutcome.unresolvedFailures(),
+                    LocalDate.now(clock).minusDays(INTEGRATION_RETENTION_DAYS).atStartOfDay());
+        }
+        long awaitingReview = reviewReasonRepository == null
+                ? 0 : reviewReasonRepository.findDistinctOrderIds().size();
+        return new RoleDashboardSummary.Integrations(failures, awaitingReview);
     }
 
     /**

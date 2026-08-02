@@ -718,6 +718,82 @@
             Print Label
           </button>
         }
+
+        <!-- (11) QuikShipX shipment: the send button until it's on the portal, then details -->
+        @if (canManageQuikShipX(order)) {
+          @if (shipment(); as ship) {
+            <div class="shifa-od__ship mt-2">
+              <div class="shifa-od__ship-head">
+                <i class="ti ti-truck-delivery me-1"></i>
+                On QuikShipX
+                @if (ship.test) {
+                  <span class="badge bg-yellow-lt ms-1">TEST</span>
+                }
+              </div>
+              @if (ship.lastStatusToken) {
+                <div class="shifa-od__ship-status">
+                  <span class="shifa-od__ship-status-label">QuikShipX status</span>
+                  <span class="shifa-od__ship-status-pill">{{ ship.lastStatusToken }}</span>
+                </div>
+              }
+              <dl class="shifa-od__ship-rows">
+                <div>
+                  <dt>Our reference</dt>
+                  <dd class="shifa-mono">{{ ship.orderReference }}</dd>
+                </div>
+                @if (ship.quikshipxOrderId) {
+                  <div>
+                    <dt>QuikShipX order ID</dt>
+                    <dd class="shifa-mono">{{ ship.quikshipxOrderId }}</dd>
+                  </div>
+                }
+                @if (ship.quikshipxShipmentId) {
+                  <div>
+                    <dt>Shipment ID</dt>
+                    <dd class="shifa-mono">{{ ship.quikshipxShipmentId }}</dd>
+                  </div>
+                }
+                <div>
+                  <dt>AWB</dt>
+                  @if (ship.awb) {
+                    <dd class="shifa-mono">{{ ship.awb }}</dd>
+                  } @else {
+                    <dd class="shifa-od__ship-pending">Pending from QuikShipX</dd>
+                  }
+                </div>
+                @if (ship.courierName) {
+                  <div>
+                    <dt>Courier</dt>
+                    <dd>{{ ship.courierName }}</dd>
+                  </div>
+                }
+              </dl>
+              <p class="shifa-od__ship-note">
+                Label and status are managed in the QuikShipX portal.
+              </p>
+              @if (ship.trackingUrl) {
+                <a class="btn btn-sm btn-outline-secondary w-100" [href]="ship.trackingUrl" target="_blank" rel="noopener">
+                  <i class="ti ti-map-pin me-1"></i> Track shipment
+                </a>
+              }
+            </div>
+          } @else {
+            <button
+              type="button"
+              class="btn btn-outline-primary w-100 mt-2"
+              (click)="publishToQuikShipX(order)"
+              [disabled]="publishBusy()"
+              title="Send this order to QuikShipX now"
+            >
+              @if (publishBusy()) {
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+              } @else {
+                <i class="ti ti-truck-delivery me-1"></i>
+              }
+              Send to QuikShipX
+            </button>
+          }
+        }
       </div>
     }
   </aside>

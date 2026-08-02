@@ -4,9 +4,9 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { ActivatedRoute } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { RouterLink } from '@angular/router';
-import { AuthService, Money, OrderStatus, PaymentStatus, Role, SortDir, SortState } from 'core';
+import { AuthService, Money, OrderSource, OrderStatus, PaymentStatus, Role, SortDir, SortState } from 'core';
 import { OrdersService } from './orders.service';
-import { OrderDetail, OrderDetailLine, OrderSummary } from './orders.model';
+import { OrderDetail, OrderDetailLine, OrderSummary, ShipmentInfo } from './orders.model';
 import { ReturnsService } from '../returns/returns.service';
 import {
   PLACEHOLDER_PRODUCT_IMAGE,
@@ -269,6 +269,14 @@ export class OrdersComponent implements OnInit, OnDestroy {
   protected readonly labelLoading = signal(false);
   /** Busy flag for single-order lifecycle actions in the detail drawer. */
   protected readonly detailBusy = signal(false);
+  /** Busy flag for the manual "Send to QuikShipX now" action (ADMIN). */
+  protected readonly publishBusy = signal(false);
+  /**
+   * The open order's QuikShipX shipment, or null when it has not been published. Loaded
+   * when the drawer opens; drives hiding the "Send to QuikShipX" button once the order is
+   * already on the portal, and showing its reference/AWB instead.
+   */
+  protected readonly shipment = signal<ShipmentInfo | null>(null);
 
   // --- Payment screenshot (admin/accountant review) -----------------------
   /** Object URL of the fetched payment screenshot for the open order, if any. */
@@ -807,6 +815,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.detailError.set(null);
     this.detailTab.set('details');
     this.selectedDetail.set(null);
+    this.shipment.set(null);
     this.revokeScreenshot();
     this.screenshotMissing.set(false);
     this.service.detail(order.id).subscribe({
@@ -814,6 +823,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
         this.selectedDetail.set(detail);
         this.detailLoading.set(false);
         this.loadScreenshot(detail);
+        this.loadShipment(detail);
       },
       error: () => {
         this.detailError.set('Could not load this order.');
@@ -824,9 +834,27 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   closeDetail(): void {
     this.selectedDetail.set(null);
+    this.shipment.set(null);
     this.detailError.set(null);
     this.revokeScreenshot();
     this.screenshotMissing.set(false);
+  }
+
+  /**
+   * Loads the order's QuikShipX shipment (if any) so the drawer can hide the manual send
+   * action once the order is already on the portal. Only meaningful for a Shifa-punched
+   * order the admin can publish; skipped otherwise. Best-effort — a lookup failure just
+   * leaves the button visible rather than breaking the drawer.
+   */
+  private loadShipment(detail: OrderDetail): void {
+    if (!this.canManageQuikShipX(detail)) {
+      this.shipment.set(null);
+      return;
+    }
+    this.service.shipment(detail.id).subscribe({
+      next: (shipment) => this.shipment.set(shipment),
+      error: () => this.shipment.set(null),
+    });
   }
 
   /**
@@ -1013,6 +1041,83 @@ export class OrdersComponent implements OnInit, OnDestroy {
       error: () => {
         this.toasts.error('Could not open the label. Please try again.');
         this.labelLoading.set(false);
+      },
+    });
+  }
+
+  // --- Manual QuikShipX publish (spec shopify-quikshipx-order-sync) -------
+
+  /**
+   * Whether the "Send to QuikShipX now" action is available. ADMIN only, and only for a
+   * Shifa-punched order (a Shopify order already reaches QuikShipX from the storefront, so
+   * re-sending it would duplicate the shipment). The server re-checks every rule; this just
+   * hides a button that could only ever be declined.
+   */
+  /**
+   * Whether this order is one an ADMIN could ever publish to QuikShipX: a Shifa-punched
+   * order (a Shopify order already reaches QuikShipX from the storefront). This is the
+   * role/channel eligibility only — it says nothing about whether it has been sent yet.
+   */
+  canManageQuikShipX(order: OrderDetail | null): boolean {
+    return (
+      !!order &&
+      this.auth.hasAnyRole(Role.ADMIN) &&
+      order.source !== OrderSource.SHOPIFY_API
+    );
+  }
+
+  /**
+   * Whether to show the "Send to QuikShipX" button: an eligible order that is NOT already
+   * on the portal. Once a shipment exists (auto-published on approval, or a manual send),
+   * the button is hidden and the shipment details are shown instead.
+   */
+  canPublishToQuikShipX(order: OrderDetail | null): boolean {
+    return this.canManageQuikShipX(order) && this.shipment() === null;
+  }
+
+  /**
+   * Sends the open order to QuikShipX now, without re-approving or waiting for the drainer.
+   * Idempotent server-side, so a double click cannot create two shipments. The outcome —
+   * the AWB, a skip reason, or a QuikShipX rejection — is surfaced as a toast, and the
+   * drawer is refreshed so a newly created shipment shows immediately.
+   */
+  async publishToQuikShipX(order: OrderDetail): Promise<void> {
+    if (!this.canPublishToQuikShipX(order) || this.publishBusy()) {
+      return;
+    }
+    const confirmed = await this.confirm.confirm({
+      title: 'Send to QuikShipX',
+      message: `Send order ${order.orderCode} to QuikShipX now?`,
+      confirmLabel: 'Send',
+      icon: 'ti-send',
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.publishBusy.set(true);
+    this.service.publishToQuikShipX(order.id).subscribe({
+      next: (res) => {
+        this.publishBusy.set(false);
+        if (res.published) {
+          const awb = res.awb ? ` — AWB ${res.awb}` : '';
+          this.toasts.success(`Sent ${order.orderCode} to QuikShipX${awb}.`);
+          // Reload the shipment so the button hides and its reference/AWB shows.
+          this.service.shipment(order.id).subscribe((s) => this.shipment.set(s));
+        } else if (res.outcome === 'ALREADY_PUBLISHED') {
+          // Already on QuikShipX (auto-publish on approval, or a previous send). Benign —
+          // reload so the existing shipment is shown and the button hides.
+          this.toasts.info(`${order.orderCode} is already on QuikShipX.`);
+          this.service.shipment(order.id).subscribe((s) => this.shipment.set(s));
+        } else if (res.outcome === 'PUBLICATION_FAILED') {
+          this.toasts.error(res.detail || 'QuikShipX rejected the order. Please try again.');
+        } else {
+          // A skip: credentials missing, defaults incomplete, not admin-approved, etc.
+          this.toasts.info(res.detail || `Not sent: ${res.outcome}.`);
+        }
+      },
+      error: () => {
+        this.publishBusy.set(false);
+        this.toasts.error('Could not reach the server. Please try again.');
       },
     });
   }

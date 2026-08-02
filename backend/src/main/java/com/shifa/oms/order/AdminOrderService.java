@@ -42,11 +42,39 @@ public class AdminOrderService {
     private final LabelService labelService;
     private final OrderWorkflowService orderWorkflowService;
 
+    /**
+     * Decides whether an external courier takes over fulfilment on approval. Null when
+     * the integration module is absent, which means "internal fulfilment", i.e. exactly
+     * the behaviour that predates this feature.
+     */
+    private final OrderFulfilmentPublisher fulfilmentPublisher;
+
+    /**
+     * Legacy constructor retained for tests that predate the QuikShipX integration.
+     * A null publisher keeps internal label generation on approval.
+     */
     public AdminOrderService(OrderRepository orderRepository, LabelService labelService,
                              OrderWorkflowService orderWorkflowService) {
+        this(orderRepository, labelService, orderWorkflowService, null);
+    }
+
+    /**
+     * Primary constructor.
+     *
+     * <p>This is the ONLY constructor carrying {@code @Autowired}: a service with two
+     * constructors and no annotation on the primary one fails the whole application
+     * context at startup, which is exactly how {@code PaymentVerificationService} took
+     * production down once.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    public AdminOrderService(OrderRepository orderRepository, LabelService labelService,
+                             OrderWorkflowService orderWorkflowService,
+                             @org.springframework.beans.factory.annotation.Autowired(required = false)
+                             OrderFulfilmentPublisher fulfilmentPublisher) {
         this.orderRepository = orderRepository;
         this.labelService = labelService;
         this.orderWorkflowService = orderWorkflowService;
+        this.fulfilmentPublisher = fulfilmentPublisher;
     }
 
     /**
@@ -116,8 +144,27 @@ public class AdminOrderService {
                                                  PaymentStatus paymentStatus,
                                                  LocalDate from, LocalDate to,
                                                  Pageable pageable, java.util.Collection<Long> creatorIds) {
-        Specification<OrderEntity> spec =
-                OrderListSpecifications.build(q, status, statusGroup, paymentStatus, from, to, creatorIds);
+        return listOrders(q, status, statusGroup, paymentStatus, from, to, pageable, creatorIds, null);
+    }
+
+    /**
+     * Canonical paged listing, additionally filtered by {@link OrderSource order channel}
+     * (spec {@code shopify-quikshipx-order-sync}, Req 11.2&ndash;11.5).
+     *
+     * <p>A {@code null} channel means "both channels", so every overload above delegates
+     * here unchanged. The channel is matched through {@link OrderSource#storedEquivalents()}
+     * inside the specification, which is what makes {@code SHIFA_ADMIN} include the legacy
+     * {@code SALESPERSON}/{@code STOREFRONT} rows rather than hiding them.
+     */
+    @Transactional(readOnly = true)
+    public Page<OrderSummaryResponse> listOrders(String q, OrderStatus status,
+                                                 OrderStatusGroup statusGroup,
+                                                 PaymentStatus paymentStatus,
+                                                 LocalDate from, LocalDate to,
+                                                 Pageable pageable, java.util.Collection<Long> creatorIds,
+                                                 OrderSource channel) {
+        Specification<OrderEntity> spec = OrderListSpecifications.build(
+                q, status, statusGroup, paymentStatus, from, to, creatorIds, channel);
         return orderRepository.findAll(spec, pageable).map(OrderSummaryResponse::from);
     }
 
@@ -147,8 +194,21 @@ public class AdminOrderService {
         OrderEntity order = requireOrder(id);
         orderWorkflowService.applyTransition(
                 order, OrderStatus.APPROVED, Actor.user(admin, SOURCE_ADMIN));
-        // Req 10.1-10.3: generate the internal label and move to Label_Generated.
-        labelService.generateInternalLabelOnApproval(order, admin.username());
+
+        // Exactly one of the two fulfilment paths runs. Queuing publication in the SAME
+        // transaction as the approval means an approval can never commit without its
+        // publication being queued alongside it.
+        boolean publishedExternally =
+                fulfilmentPublisher != null && fulfilmentPublisher.publishOnApproval(order);
+
+        if (!publishedExternally) {
+            // Req 10.1-10.3: generate the internal label and move to Label_Generated.
+            labelService.generateInternalLabelOnApproval(order, admin.username());
+        }
+        // When QuikShipX owns fulfilment the order stays at APPROVED and produces no
+        // internal label: QuikShipX generates it, and two labels on one parcel is worse
+        // than none. The order advances to LABEL_GENERATED when QuikShipX reports it.
+
         return OrderResponse.from(orderRepository.save(order));
     }
 
@@ -164,6 +224,9 @@ public class AdminOrderService {
             throw new ValidationException("A rejection reason is required.");
         }
         OrderEntity order = requireOrder(id);
+        // A Shopify order was already committed and paid for on the storefront, so
+        // refusing it here would leave Shopify believing it is live. Req 9.5.
+        ExternalOrderGuard.requireCancellable(order, Actor.user(admin, SOURCE_ADMIN));
         orderWorkflowService.applyTransition(
                 order, OrderStatus.REJECTED, Actor.user(admin, SOURCE_ADMIN));
         order.setRejectionReason(reason.trim());

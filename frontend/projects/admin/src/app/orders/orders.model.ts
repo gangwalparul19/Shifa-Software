@@ -199,3 +199,46 @@ export interface OrderDetail {
   /** Estimated delivery date (ISO yyyy-MM-dd), when available. */
   estimatedDelivery?: string;
 }
+
+/**
+ * Result of the admin "Send to QuikShipX now" action
+ * ({@code POST /api/admin/orders/{id}/publish-quikshipx}). Mirrors the backend
+ * {@code PublishNowResponse}.
+ *
+ * <p>{@link outcome} is either {@code PUBLISHED}, a skip reason (e.g.
+ * {@code CREDENTIALS_MISSING}, {@code ALREADY_PUBLISHED},
+ * {@code SHIPMENT_DEFAULTS_INCOMPLETE}), or {@code PUBLICATION_FAILED} when QuikShipX
+ * rejected the call. The UI shows {@link detail} to the admin either way.
+ */
+export interface PublishNowResponse {
+  published: boolean;
+  outcome: string;
+  detail?: string | null;
+  orderReference?: string | null;
+  awb?: string | null;
+  shipmentId?: string | null;
+  test: boolean;
+}
+
+/**
+ * An order's QuikShipX shipment ({@code GET /api/orders/{id}/shipment}). Mirrors the backend
+ * {@code ShipmentResponse}. Present only once the order has been published to QuikShipX; the
+ * endpoint returns 404 (mapped to {@code null} in the service) when it has not.
+ */
+export interface ShipmentInfo {
+  orderReference: string;
+  quikshipxShipmentId?: string | null;
+  /** QuikShipX's own order id (their {@code order_id}, e.g. "177286") for portal tracking. */
+  quikshipxOrderId?: string | null;
+  awb?: string | null;
+  courierName?: string | null;
+  trackingUrl?: string | null;
+  labelUrl?: string | null;
+  /** QuikShipX's own status for the order (e.g. "Pending", "Label Printed", "Delivered"). */
+  lastStatusToken?: string | null;
+  /** When that QuikShipX status occurred (ISO). */
+  lastStatusAt?: string | null;
+  test: boolean;
+  statusMirroringActive: boolean;
+  labelFromPortal: boolean;
+}

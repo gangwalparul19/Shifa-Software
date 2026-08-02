@@ -30,7 +30,26 @@ public record SettingsResponse(
         String bankAccountNumber,
         String bankIfsc,
         String bankBranch,
-        String gstSlabs) {
+        String gstSlabs,
+
+        // --- Shipment defaults (V49, Req 16.2) ---
+        String shipPickupWarehouseId,
+        String shipPackageType,
+        String shipShippingMode,
+        int shipDeadWeightGrams,
+        int shipLengthCm,
+        int shipWidthCm,
+        int shipHeightCm,
+        BigDecimal shipShippingAmount,
+        String shipDefaultCategory,
+        String shipDefaultHsn,
+
+        /**
+         * Whether the shipment defaults are complete enough to publish an order to
+         * QuikShipX. False means the pickup warehouse id is unset and publication is
+         * blocked, which the Settings page surfaces as a warning (Req 16.2, 16.6).
+         */
+        boolean shipmentDefaultsComplete) {
 
     public static SettingsResponse from(AppSettings s) {
         return new SettingsResponse(
@@ -55,6 +74,17 @@ public record SettingsResponse(
                 s.getBankAccountNumber(),
                 s.getBankIfsc(),
                 s.getBankBranch(),
-                s.getGstSlabs());
+                s.getGstSlabs(),
+                s.getShipPickupWarehouseId(),
+                s.getShipPackageType(),
+                s.getShipShippingMode(),
+                s.getShipDeadWeightGrams(),
+                s.getShipLengthCm(),
+                s.getShipWidthCm(),
+                s.getShipHeightCm(),
+                s.getShipShippingAmount(),
+                s.getShipDefaultCategory(),
+                s.getShipDefaultHsn(),
+                s.shipmentDefaultsComplete());
     }
 }

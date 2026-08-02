@@ -149,6 +149,41 @@ public class OutboxEvent {
      */
     public static final String EVENT_INSIGHT_ALERT = "INSIGHT_ALERT";
 
+    /**
+     * Event type emitted when a {@code SHIFA_ADMIN} order reaches {@code Approved}
+     * and QuikShipX owns fulfilment, so the order must be created in QuikShipX
+     * (spec {@code shopify-quikshipx-order-sync}, Req 5.1).
+     *
+     * <p>Written in the same transaction as the approval transition, so an approval
+     * can never commit without its publication being queued. The payload carries the
+     * order id and code; the drainer reloads the aggregate.
+     */
+    public static final String EVENT_QUIKSHIPX_PUBLISH = "QUIKSHIPX_PUBLISH";
+
+    /**
+     * Event type emitted when publication to QuikShipX has exhausted its retries or
+     * was permanently rejected, so an admin must intervene (Req 5.7, 5.11). Drives an
+     * in-app ADMIN notification; the order retains {@code Approved}.
+     */
+    public static final String EVENT_QUIKSHIPX_PUBLISH_FAILED = "QUIKSHIPX_PUBLISH_FAILED";
+
+    /**
+     * Event type emitted when a signature-verified Shopify order webhook has been stored
+     * and must be turned into a Shifa order (Req 2.5).
+     *
+     * <p>Written in the same transaction as the {@code integration_events} row, so a
+     * delivery we have acknowledged with 200 can never be left unprocessed. The payload
+     * carries the integration event id; the drainer reloads the raw body from there rather
+     * than duplicating it.
+     */
+    public static final String EVENT_SHOPIFY_ORDER_INGEST = "SHOPIFY_ORDER_INGEST";
+
+    /**
+     * Event type emitted when Shopify order ingestion has exhausted its retries, so an
+     * admin must look at the stored payload (Req 2.10). Drives an in-app ADMIN notification.
+     */
+    public static final String EVENT_SHOPIFY_INGEST_FAILED = "SHOPIFY_INGEST_FAILED";
+
     /** Delivery status for a freshly written, not-yet-consumed event. */
     public static final String STATUS_PENDING = "PENDING";
 

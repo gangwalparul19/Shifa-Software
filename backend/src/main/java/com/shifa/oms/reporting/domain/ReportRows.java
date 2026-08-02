@@ -43,6 +43,24 @@ public final class ReportRows {
     }
 
     /**
+     * One row of the channel report (spec {@code shopify-quikshipx-order-sync}, Req 12.1):
+     * the order channel, how many orders it produced in the window, the revenue it earned
+     * and how many of its orders were delivered.
+     *
+     * <p>Three measures rather than a plain count, because the point of the report is to
+     * compare the channels on value and reliability, not just volume: Shopify could be half
+     * the orders and a fifth of the revenue, and a count alone would hide that.
+     *
+     * @param channel        the canonical channel name, {@code SHOPIFY_API} or {@code SHIFA_ADMIN}
+     * @param orderCount     every order in the window, including rejected and cancelled ones
+     * @param revenue        the order totals excluding {@code REJECTED} and {@code CANCELLED},
+     *                       matching the revenue rule used everywhere else (Req 12.6)
+     * @param deliveredCount orders at {@code DELIVERED}, {@code COD_COLLECTED} or {@code CLOSED}
+     */
+    public record ChannelRow(String channel, long orderCount, BigDecimal revenue, long deliveredCount) {
+    }
+
+    /**
      * The delivery-outcome summary over a range (Req 16.4): the counts of the
      * four terminal outcomes (kept separate) plus the delivery success rate,
      * expressed as a percentage {@code DELIVERED / (DELIVERED + CUSTOMER_REJECTED
