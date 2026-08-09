@@ -15,5 +15,12 @@ public enum IntegrationSource {
     SHOPIFY,
 
     /** Outbound publications to, and (once available) status events from, QuikShipX. */
-    QUIKSHIPX
+    QUIKSHIPX,
+
+    /**
+     * Inbound Lead Ads webhooks from Meta (Facebook/Instagram). The
+     * {@code external_event_id} is Meta's {@code leadgen_id}, so a redelivered
+     * notification for the same submission is a no-op (spec {@code meta-lead-sync}).
+     */
+    META
 }

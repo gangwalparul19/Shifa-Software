@@ -114,6 +114,30 @@ public class OutboxEvent {
     public static final String AGGREGATE_LEAD = "LEAD";
 
     /**
+     * Aggregate type discriminator for Meta lead-ingest events. The aggregate id is
+     * the {@code integration_events} row holding the stored Meta notification
+     * (spec {@code meta-lead-sync}).
+     */
+    public static final String AGGREGATE_META = "META";
+
+    /**
+     * Event type emitted when a signature-verified Meta {@code leadgen} notification
+     * has been stored and must be fetched from the Graph API and captured as a lead.
+     * Written in the same transaction as the {@code integration_events} row, so a
+     * delivery we acknowledged with 200 can never be left unprocessed. The payload
+     * carries the integration event id + {@code leadgen_id}; the drainer reloads the
+     * stored notification from there.
+     */
+    public static final String EVENT_META_LEAD_INGEST = "META_LEAD_INGEST";
+
+    /**
+     * Event type emitted when Meta lead ingestion has exhausted its retries or failed
+     * permanently (invalid token, capture rejection), so an admin is notified. Drives
+     * an in-app ADMIN notification; the stored notification remains for inspection.
+     */
+    public static final String EVENT_META_LEAD_INGEST_FAILED = "META_LEAD_INGEST_FAILED";
+
+    /**
      * Event type emitted by the {@code FollowUpReminderJob} when a non-terminal
      * lead's follow-up date is due, so an in-app reminder is delivered to the
      * lead owner (design &sect;Follow-up Reminders). Its aggregate is

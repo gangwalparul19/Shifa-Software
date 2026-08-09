@@ -451,4 +451,38 @@ public class OutboxEventPublisher {
         return publish(OutboxEvent.AGGREGATE_LEAD, leadId,
                 OutboxEvent.EVENT_LEAD_FOLLOW_UP_DUE, payload);
     }
+
+    /**
+     * Queues ingestion of a stored Meta {@code leadgen} notification (spec
+     * {@code meta-lead-sync}, Req 3.3, 4.1). The aggregate is the
+     * {@code integration_events} row rather than a lead, because at this point no
+     * lead exists yet — that is what ingestion will create. Written in the same
+     * transaction as the stored notification, so an acknowledged delivery can never
+     * be left unprocessed.
+     *
+     * @param integrationEventId the stored {@code integration_events} row id
+     * @param leadgenId          Meta's lead id, carried for log/failure context
+     */
+    public OutboxEvent publishMetaLeadIngest(Long integrationEventId, String leadgenId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("integrationEventId", integrationEventId);
+        payload.put("leadgenId", leadgenId);
+        return publish(OutboxEvent.AGGREGATE_META, integrationEventId,
+                OutboxEvent.EVENT_META_LEAD_INGEST, payload);
+    }
+
+    /**
+     * Records that Meta lead ingestion failed terminally (retries exhausted, invalid
+     * token, or capture rejection), driving an in-app ADMIN notification (Req 5.4,
+     * 7.5, 8.3). The stored notification remains for inspection.
+     */
+    public OutboxEvent publishMetaLeadIngestFailed(Long integrationEventId, String leadgenId,
+                                                   String error) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("integrationEventId", integrationEventId);
+        payload.put("leadgenId", leadgenId);
+        payload.put("error", error);
+        return publish(OutboxEvent.AGGREGATE_META, integrationEventId,
+                OutboxEvent.EVENT_META_LEAD_INGEST_FAILED, payload);
+    }
 }

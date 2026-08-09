@@ -275,6 +275,38 @@ app:
       secret-key: ${STORAGE_S3_SECRET_KEY:}
       # Optional S3-compatible endpoint (MinIO/LocalStack); blank = real AWS S3.
       endpoint: ${STORAGE_S3_ENDPOINT:}
+  meta:
+    # Meta (Facebook/Instagram) Lead Ads ingestion (spec: meta-lead-sync).
+    #
+    # Master switch. OFF by default: with this false the webhook still verifies and
+    # STORES each delivery (so setup can be inspected/replayed) but captures no lead.
+    # Flip it on once the Meta app's webhook subscription is confirmed working.
+    enabled: ${META_ENABLED:false}
+    # Graph client backend: MOCK (local dev/demo, deterministic, no network/token) or
+    # HTTP (real Meta Graph API). Defaults to MOCK so the pipeline is demonstrable
+    # locally; production sets HTTP.
+    mode: ${META_MODE:MOCK}
+    # The Meta App secret. Meta sends a HEX HMAC-SHA256 of the raw body in
+    # X-Hub-Signature-256 as "sha256=<hex>". Blank REJECTS every delivery (401):
+    # lead creation must never be an unauthenticated endpoint. Supplied via
+    # local-secrets.properties (dev) or /etc/shifa/shifa.env (prod).
+    app-secret: ${META_APP_SECRET:}
+    # Long-lived (system-user) Page access token used for Graph API lead fetches.
+    page-access-token: ${META_PAGE_ACCESS_TOKEN:}
+    # The shared secret echoed during the GET subscription verification handshake.
+    verify-token: ${META_VERIFY_TOKEN:}
+    # The business Page id running the lead ads; falls back to the local default.
+    page-id: ${META_PAGE_ID:105357624712950}
+    graph-api-base-url: ${META_GRAPH_BASE_URL:https://graph.facebook.com}
+    graph-api-version: ${META_GRAPH_VERSION:v21.0}
+    request-timeout: PT10S
+    # Largest accepted webhook body, checked BEFORE the HMAC. Clamped to 256KB..8MB.
+    max-payload-bytes: ${META_MAX_PAYLOAD_BYTES:1048576}
+    # Ingestion retry policy: 1 attempt + 3 retries at 30/60/120s.
+    max-attempts: ${META_MAX_ATTEMPTS:4}
+    retry-backoff: PT30S
+    retry-max-backoff: PT15M
+    ingest-drain-interval-ms: ${META_INGEST_DRAIN_INTERVAL_MS:15000}
   push:
     # Browser Web Push (VAPID) for staff notifications (FEATURE-ROADMAP §8.3).
     # Leave the keys BLANK to disable push entirely (default) — the in-app bell is
