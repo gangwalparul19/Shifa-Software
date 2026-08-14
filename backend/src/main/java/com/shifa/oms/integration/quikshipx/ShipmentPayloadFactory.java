@@ -41,6 +41,15 @@ public final class ShipmentPayloadFactory {
                                            QuikShipXProperties properties) {
         String reference = OrderReference.of(properties.orderReferencePrefix(), order.getOrderCode());
         BigDecimal toCollect = amountToCollect(order);
+        // QuikShipX independently sums the product lines and rejects the order unless that
+        // sum equals order_amount ("Calculated Products and Order Amount Not Matched"). Shifa
+        // prices are GST-exclusive (Model A: GST is added on top and the grand total is
+        // rounded), so the grand total can never equal the raw line sum. We therefore send
+        // order_amount = commodity_amount = the exact product-line sum, and neutralise the two
+        // terms that would otherwise skew QuikShipX's calculation: order/product discount is
+        // sent as 0 (the real net is already carried by cod_amount) and product_tax_rate is 0
+        // (matching the contract's own sample and preventing QuikShipX from adding tax on top).
+        BigDecimal productsAmount = productsAmount(order);
 
         return new ShipmentSubmission(
                 new ShipmentSubmission.CustomerDetails(
@@ -67,13 +76,16 @@ public final class ShipmentPayloadFactory {
                         QuikShipXValueFormat.text(settings.getShipPickupWarehouseId()),
                         QuikShipXValueFormat.text(settings.getShipShippingMode()),
                         QuikShipXValueFormat.payMode(toCollect),
-                        QuikShipXValueFormat.money(order.getTotalAmount()),
+                        // order_amount must equal the product-line sum QuikShipX recomputes.
+                        QuikShipXValueFormat.money(productsAmount),
                         QuikShipXValueFormat.codAmount(toCollect),
-                        // commodity_amount is the pre-discount value QuikShipX refunds if the
-                        // parcel is lost, so it must NOT be the discounted total.
-                        QuikShipXValueFormat.money(commodityAmount(order)),
+                        // commodity_amount (insurable value) is the same product-line sum; it is
+                        // pre-discount because the discount is sent as 0 below.
+                        QuikShipXValueFormat.money(productsAmount),
                         QuikShipXValueFormat.money(settings.getShipShippingAmount()),
-                        QuikShipXValueFormat.money(order.getDiscountAmount()),
+                        // Discount is folded into cod_amount, not declared separately, so the
+                        // products/order reconciliation stays exact regardless of QuikShipX's rule.
+                        "0",
                         QuikShipXValueFormat.text(order.getCouponCode())),
                 products(order, settings, productsById),
                 new ShipmentSubmission.ShipperDetails(
@@ -92,13 +104,24 @@ public final class ShipmentPayloadFactory {
     }
 
     /**
-     * The insurable value: the order total with any discount added back, since
-     * {@code totalAmount} already has the discount applied.
+     * The exact sum of the product lines as QuikShipX recomputes it:
+     * {@code Σ (round(unit_rate, 2) × quantity)}. This is what {@code order_amount} and
+     * {@code commodity_amount} must equal, because QuikShipX rejects the order when its
+     * own line sum does not match {@code order_amount} ("Calculated Products and Order
+     * Amount Not Matched"). Rounding each unit rate to two places first mirrors the
+     * {@code product_amount} string we actually put on the wire, so the reconciliation is
+     * byte-exact rather than merely close.
      */
-    private static BigDecimal commodityAmount(OrderEntity order) {
-        BigDecimal total = order.getTotalAmount() == null ? BigDecimal.ZERO : order.getTotalAmount();
-        BigDecimal discount = order.getDiscountAmount() == null ? BigDecimal.ZERO : order.getDiscountAmount();
-        return total.add(discount);
+    static BigDecimal productsAmount(OrderEntity order) {
+        BigDecimal sum = BigDecimal.ZERO;
+        for (OrderLineItem line : order.getLineItems()) {
+            BigDecimal unit = line.getRate() == null
+                    ? BigDecimal.ZERO
+                    : line.getRate().setScale(2, java.math.RoundingMode.HALF_UP);
+            int quantity = Math.max(0, line.getQuantity());
+            sum = sum.add(unit.multiply(BigDecimal.valueOf(quantity)));
+        }
+        return sum;
     }
 
     /**
@@ -134,9 +157,11 @@ public final class ShipmentPayloadFactory {
                             QuikShipXValueFormat.text(line.getProductName()),
                             category(product, settings),
                             QuikShipXValueFormat.text(product == null ? null : product.getSku()),
-                            // The line's tax rate and HSN are snapshots taken at order time,
-                            // so a later product edit cannot rewrite a historic shipment.
-                            QuikShipXValueFormat.money(line.getGstRate()),
+                            // Tax is sent as 0 so QuikShipX's "Calculated Products" check equals
+                            // the raw line sum (= order_amount). Shifa still issues the real GST
+                            // invoice; the courier body carries GST-exclusive product values, and
+                            // the HSN snapshot is kept for the e-way bill.
+                            "0",
                             hsn(line, product, settings),
                             QuikShipXValueFormat.money(line.getRate()),
                             // Discounts are applied at order level, not per line.

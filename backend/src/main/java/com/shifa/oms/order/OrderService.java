@@ -24,9 +24,15 @@ import com.shifa.oms.product.ProductImageRepository;
 import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.Nullable;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.shifa.oms.settings.AppSettings;
+import com.shifa.oms.settings.SettingsService;
+
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -64,6 +70,17 @@ public class OrderService {
     private final StockService stockService;
     private final ProductImageRepository productImageRepository;
 
+    /**
+     * Settings source for GST at order time (price-list feature: GST added on top
+     * of the discounted base). Nullable so the legacy constructor — used by unit
+     * tests — behaves exactly as before (no GST added); production injects it via
+     * the {@code @Autowired} constructor and GST is added when
+     * {@link AppSettings#isGstEnabled()}.
+     */
+    @Nullable
+    private final SettingsService settingsService;
+
+    /** Legacy constructor (no GST settings): GST is never added. Used by unit tests. */
     public OrderService(OrderRepository orderRepository,
                         ProductRepository productRepository,
                         OrderCodeGenerator orderCodeGenerator,
@@ -72,6 +89,20 @@ public class OrderService {
                         TrackingService trackingService,
                         StockService stockService,
                         ProductImageRepository productImageRepository) {
+        this(orderRepository, productRepository, orderCodeGenerator, storageService, scopeResolver,
+                trackingService, stockService, productImageRepository, null);
+    }
+
+    @Autowired
+    public OrderService(OrderRepository orderRepository,
+                        ProductRepository productRepository,
+                        OrderCodeGenerator orderCodeGenerator,
+                        StorageService storageService,
+                        SalespersonScopeResolver scopeResolver,
+                        TrackingService trackingService,
+                        StockService stockService,
+                        ProductImageRepository productImageRepository,
+                        @Nullable SettingsService settingsService) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.orderCodeGenerator = orderCodeGenerator;
@@ -80,6 +111,7 @@ public class OrderService {
         this.trackingService = trackingService;
         this.stockService = stockService;
         this.productImageRepository = productImageRepository;
+        this.settingsService = settingsService;
     }
 
     // --- Creation: salesperson order entry (Req 7) --------------------------
@@ -101,11 +133,20 @@ public class OrderService {
         OrderCreationValidator.validateLeadSourceNote(request.leadSourceNote());
 
         List<PricedLine> priced = priceLines(request.items());
-        // Round the order total to the nearest whole rupee (product-audit §4.6),
-        // e.g. 2679.99 -> 2680.00. With GST-inclusive pricing (the default) the
-        // invoice grand total equals this total, so the tax breakdown stays
-        // reconciled; COD/remaining are derived from the rounded total below.
-        Money total = totalOf(priced).roundToWholeRupees();
+        // Prices are GST-inclusive, so the subtotal already includes GST. The
+        // optional salesperson discount (flat ₹ or % of subtotal) is applied to
+        // this GST-inclusive subtotal, so the payable total stays GST-inclusive.
+        Money subtotal = totalOf(priced);
+        Money discount = computeDiscount(subtotal, request.discountType(), request.discountValue());
+        // Model A pricing (client-confirmed): the price-list rates are the TAXABLE
+        // base. Apply the discount FIRST, then ADD GST on top of the discounted
+        // base (per each product's GST rate), and round the grand total to the
+        // nearest whole rupee. So bill = round((subtotal − discount) + GST). GST is
+        // added only when enabled in settings; otherwise the total is just the
+        // rounded discounted base (legacy behaviour, and the unit-test path).
+        BigDecimal taxable = subtotal.subtract(discount).toBigDecimal();
+        BigDecimal gstAdded = computeGstAdded(priced, subtotal.toBigDecimal(), discount.toBigDecimal());
+        Money total = Money.of(taxable.add(gstAdded)).roundToWholeRupees();
         requirePositiveTotal(total);
 
         Money received = Money.of(request.amountReceived());
@@ -152,6 +193,10 @@ public class OrderService {
 
         populateAggregate(order, priced, calc, request.paymentScreenshotKey(),
                 actor.username(), SOURCE_SALESPERSON);
+        // Persist the applied discount amount (GST-inclusive) for display + invoicing.
+        if (discount.compareTo(Money.ZERO) > 0) {
+            order.applyDiscount(null, discount.toBigDecimal());
+        }
 
         // Reserve stock for tracked products within this transaction (Feature 1):
         // decrements on_hand + records a SALE movement, rejecting insufficient stock.
@@ -352,9 +397,34 @@ public class OrderService {
         for (LineItemRequest item : items) {
             Product product = requireProduct(item.productId());
             BigDecimal rate = item.rate() != null ? item.rate() : product.getSalePrice();
+            enforcePriceBand(product, rate);
             priced.add(new PricedLine(product, product.getName(), item.quantity(), Money.of(rate)));
         }
         return priced;
+    }
+
+    /**
+     * Enforces the per-product price band on a line's rate (price-list feature):
+     * when the product carries a {@code min_price}, the charged rate must be at
+     * least the minimum, and — when a positive {@code mrp} (maximum) is set — at
+     * most the MRP. This is the server-side guard behind the order-entry UI so a
+     * salesperson cannot bypass the min/max by crafting a request. Products with no
+     * {@code min_price} (legacy) are not band-checked, preserving prior behaviour.
+     */
+    private void enforcePriceBand(Product product, BigDecimal rate) {
+        BigDecimal min = product.getMinPrice();
+        if (min == null) {
+            return;
+        }
+        if (rate.compareTo(min) < 0) {
+            throw new ValidationException("Price for " + product.getName()
+                    + " cannot be below the minimum of \u20b9" + min.stripTrailingZeros().toPlainString() + ".");
+        }
+        BigDecimal max = product.getMrp();
+        if (max != null && max.signum() > 0 && rate.compareTo(max) > 0) {
+            throw new ValidationException("Price for " + product.getName()
+                    + " cannot exceed the maximum (MRP) of \u20b9" + max.stripTrailingZeros().toPlainString() + ".");
+        }
     }
 
     /**
@@ -378,6 +448,73 @@ public class OrderService {
 
     private Money totalOf(List<PricedLine> priced) {
         return PaymentCalculator.totalAmount(priced.stream().map(PricedLine::toDomain).toList());
+    }
+
+    /**
+     * Computes the money discount from the salesperson's requested type/value
+     * against the GST-inclusive subtotal (price-list feature). {@code null}
+     * type/value ⇒ no discount. A FLAT value is taken as rupees; a PERCENT value
+     * (0–100) is applied to the subtotal. Rejected (400) when negative, when a
+     * percentage exceeds 100, or when the resulting amount exceeds the subtotal.
+     */
+    private Money computeDiscount(Money subtotal, DiscountType type, BigDecimal value) {
+        if (type == null || value == null) {
+            return Money.ZERO;
+        }
+        if (value.signum() < 0) {
+            throw new ValidationException("Discount value must not be negative.");
+        }
+        BigDecimal sub = subtotal.toBigDecimal();
+        BigDecimal amount;
+        if (type == DiscountType.PERCENT) {
+            if (value.compareTo(BigDecimal.valueOf(100)) > 0) {
+                throw new ValidationException("A percentage discount cannot exceed 100%.");
+            }
+            amount = sub.multiply(value).movePointLeft(2).setScale(2, RoundingMode.HALF_UP);
+        } else {
+            amount = value.setScale(2, RoundingMode.HALF_UP);
+        }
+        if (amount.compareTo(sub) > 0) {
+            throw new ValidationException("The discount cannot exceed the order subtotal of \u20b9"
+                    + sub.stripTrailingZeros().toPlainString() + ".");
+        }
+        return Money.of(amount);
+    }
+
+    /**
+     * The GST to ADD on top of the discounted base (Model A, discount-before-tax).
+     * Zero when settings are absent (unit-test path) or GST is disabled. Otherwise
+     * the order discount is allocated across lines pro-rata by line amount, and
+     * each line's discounted-taxable is taxed at that product's GST rate (falling
+     * back to the settings default rate when a line has none). The result is the
+     * summed GST at 2 decimals; the caller adds it to the taxable base and rounds
+     * the grand total to the nearest rupee.
+     */
+    private BigDecimal computeGstAdded(List<PricedLine> priced, BigDecimal subtotal,
+                                       BigDecimal discount) {
+        if (settingsService == null) {
+            return BigDecimal.ZERO;
+        }
+        AppSettings settings = settingsService.getSettings();
+        if (settings == null || !settings.isGstEnabled()) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal defaultRate =
+                settings.getGstRatePercent() != null ? settings.getGstRatePercent() : BigDecimal.ZERO;
+        BigDecimal hundred = new BigDecimal("100");
+        BigDecimal gst = BigDecimal.ZERO;
+        for (PricedLine line : priced) {
+            BigDecimal lineBase = line.rate().toBigDecimal()
+                    .multiply(BigDecimal.valueOf(line.quantity()));
+            BigDecimal share = subtotal.signum() == 0
+                    ? BigDecimal.ZERO
+                    : discount.multiply(lineBase).divide(subtotal, 2, RoundingMode.HALF_UP);
+            BigDecimal lineTaxable = lineBase.subtract(share);
+            BigDecimal rate = line.product().getGstRate() != null
+                    ? line.product().getGstRate() : defaultRate;
+            gst = gst.add(lineTaxable.multiply(rate).divide(hundred, 2, RoundingMode.HALF_UP));
+        }
+        return gst;
     }
 
     private static String trimToNull(String value) {

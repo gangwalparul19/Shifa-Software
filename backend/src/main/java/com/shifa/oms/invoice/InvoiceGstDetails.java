@@ -21,7 +21,11 @@ import java.util.Objects;
  * @param contactPhone optional contact phone
  * @param contactEmail optional contact email
  * @param footerNote   optional invoice footer note
- * @param computation  the GST tax breakdown (taxable value, CGST/SGST or IGST, totals)
+ * @param computation  the aggregate GST breakdown (total taxable value + grand total)
+ * @param rateGroups   the per-rate GST buckets (one per distinct product GST rate),
+ *                     so a mixed-rate basket shows tax broken out per rate
+ * @param roundOff     the rounding adjustment so taxable + tax + roundOff == grand total
+ *                     (the grand total was rounded to the nearest rupee at order time)
  */
 public record InvoiceGstDetails(
         String legalName,
@@ -33,9 +37,18 @@ public record InvoiceGstDetails(
         String contactPhone,
         String contactEmail,
         String footerNote,
-        GstComputation computation) {
+        GstComputation computation,
+        java.util.List<GstRateGroup> rateGroups,
+        java.math.BigDecimal roundOff) {
 
     public InvoiceGstDetails {
         Objects.requireNonNull(computation, "computation");
+        rateGroups = rateGroups == null ? java.util.List.of() : java.util.List.copyOf(rateGroups);
+        roundOff = roundOff == null ? java.math.BigDecimal.ZERO : roundOff;
+    }
+
+    /** Whether a non-zero rounding adjustment should be shown. */
+    public boolean hasRoundOff() {
+        return roundOff.signum() != 0;
     }
 }

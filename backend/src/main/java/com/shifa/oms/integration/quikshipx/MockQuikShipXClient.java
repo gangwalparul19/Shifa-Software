@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -67,13 +68,17 @@ public class MockQuikShipXClient implements QuikShipXClient {
     }
 
     @Override
-    public QuikShipXStatusEvent fetchStatus(String shipmentReference) throws QuikShipXClientException {
-        // Even the mock refuses: pretending to return a status would make the status
-        // path look implemented when QuikShipX exposes no such endpoint.
-        throw new QuikShipXClientException(
-                "QuikShipX exposes no documented status-query operation; "
-                        + "status mirroring stays disabled until one is confirmed.",
-                false);
+    public QuikShipXStatusEvent fetchStatus(String trackingNo, String trackingType) {
+        // Deterministic mock status so the tracking pipeline (manual "Track now" + the
+        // poller) can be exercised end to end with no network. A stable pseudo-status
+        // is derived from the tracking number so repeated calls are idempotent.
+        String[] flow = {"Pending", "Manifested", "In Transit", "Out For Delivery", "Delivered"};
+        int idx = trackingNo == null ? 0 : Math.abs(trackingNo.hashCode()) % flow.length;
+        String status = flow[idx];
+        String awb = QuikShipXTrackingCodec.TYPE_ORDER_ID.equalsIgnoreCase(trackingType) ? null : trackingNo;
+        log.info("MOCK QuikShipX track-order trackingNo={} type={} -> {}", trackingNo, trackingType, status);
+        return new QuikShipXStatusEvent(null, null, null, awb, status, LocalDateTime.now(), null,
+                "{\"mock\":true,\"status\":\"" + status + "\"}");
     }
 
     /** The submissions this mock has received, oldest first. */

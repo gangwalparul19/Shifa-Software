@@ -39,7 +39,7 @@ class ProductServiceTest {
 
     private ProductRequest request(String sku, ProductVisibility visibility) {
         return new ProductRequest(sku, "Ashwagandha", "desc",
-                new BigDecimal("199.00"), new BigDecimal("149.00"), null, null, visibility,
+                new BigDecimal("199.00"), new BigDecimal("149.00"), null, null, null, null, visibility,
                 null, null, null, null, null);
     }
 

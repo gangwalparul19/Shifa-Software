@@ -2,6 +2,7 @@ package com.shifa.oms.product;
 
 import com.shifa.oms.common.DuplicateResourceException;
 import com.shifa.oms.common.ResourceNotFoundException;
+import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.product.dto.ProductRequest;
 import com.shifa.oms.product.dto.ProductResponse;
 import com.shifa.oms.product.dto.ProductSalesStatsResponse;
@@ -69,6 +70,7 @@ public class ProductService {
         if (productRepository.existsBySku(request.sku())) {
             throw duplicateSku(request.sku());
         }
+        validatePriceBand(request);
         Product product = new Product(
                 request.sku(),
                 request.name(),
@@ -76,7 +78,9 @@ public class ProductService {
                 request.mrp(),
                 request.salePrice(),
                 request.visibility());
+        product.setMinPrice(request.minPrice());
         product.setHsnCode(normalizeHsn(request.hsnCode()));
+        product.setPackSize(normalizePackSize(request.packSize()));
         product.setGstRate(request.gstRate());
         applyCatalogFields(product, request);
         return ProductResponse.from(productRepository.save(product));
@@ -97,13 +101,16 @@ public class ProductService {
                 && productRepository.existsBySku(request.sku())) {
             throw duplicateSku(request.sku());
         }
+        validatePriceBand(request);
 
         product.setSku(request.sku());
         product.setName(request.name());
         product.setDescription(request.description());
         product.setMrp(request.mrp());
         product.setSalePrice(request.salePrice());
+        product.setMinPrice(request.minPrice());
         product.setHsnCode(normalizeHsn(request.hsnCode()));
+        product.setPackSize(normalizePackSize(request.packSize()));
         product.setGstRate(request.gstRate());
         product.setVisibility(request.visibility());
         applyCatalogFields(product, request);
@@ -139,6 +146,40 @@ public class ProductService {
         }
         String trimmed = hsnCode.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /** Trims the optional pack-size label to {@code null} when blank. */
+    private String normalizePackSize(String packSize) {
+        if (packSize == null) {
+            return null;
+        }
+        String trimmed = packSize.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /**
+     * Validates the optional price band (price-list feature). When a
+     * {@code minPrice} is supplied it must not exceed the MRP, and the auto-fetch
+     * {@code salePrice} must fall within {@code [minPrice, mrp]} so a salesperson's
+     * default and enforced range are always consistent. A blank {@code minPrice}
+     * leaves the product bandless (legacy behaviour). Rejected as a 400.
+     */
+    private void validatePriceBand(ProductRequest request) {
+        BigDecimal min = request.minPrice();
+        if (min == null) {
+            return;
+        }
+        BigDecimal mrp = request.mrp();
+        BigDecimal sale = request.salePrice();
+        if (mrp != null && min.compareTo(mrp) > 0) {
+            throw new ValidationException("minPrice must not exceed mrp (the maximum price).");
+        }
+        if (sale != null && sale.compareTo(min) < 0) {
+            throw new ValidationException("salePrice (auto-fetch) must not be below minPrice.");
+        }
+        if (mrp != null && sale != null && sale.compareTo(mrp) > 0) {
+            throw new ValidationException("salePrice (auto-fetch) must not exceed mrp.");
+        }
     }
 
     /**

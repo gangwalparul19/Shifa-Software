@@ -176,10 +176,14 @@ app:
     # customer_order_id as <prefix><orderCode>, e.g. SHIFA-SHR-1001. This value is
     # also the correlation key back to the Shifa order.
     order-reference-prefix: ${QUIKSHIPX_ORDER_REFERENCE_PREFIX:SHIFA-}
-    # Status mirroring. QuikShipX documents NO status webhook and NO status query, so
-    # this stays false and the status webhook + poller beans are not created at all.
-    # Flip it only once QuikShipX confirms a status feed.
+    # Status mirroring. QuikShipX now exposes a track-order API (POST /api/track-order-v1).
+    # This flag gates the scheduled tracking POLLER: false = the manual admin
+    # "Track now" still works (POST /api/admin/orders/{id}/track-quikshipx), but nothing
+    # is polled automatically. Flip to true once the track-order RESPONSE field names are
+    # confirmed (via a manual track) and pinned in response-keys.status-token below.
     status-feed-available: ${QUIKSHIPX_STATUS_FEED_AVAILABLE:false}
+    # How often (ms) the poller queries active shipments' status. Default 30 min.
+    track-poll-interval-ms: ${QUIKSHIPX_TRACK_POLL_INTERVAL_MS:1800000}
     webhook-secret: ${QUIKSHIPX_WEBHOOK_SECRET:}
     request-timeout: PT15S
     # Publication retry policy: 1 attempt + 5 retries at 30/60/120/240/480s.
@@ -194,10 +198,16 @@ app:
       # separately via order-id below, so it is NOT listed here.
       shipment-id: ${QUIKSHIPX_KEYS_SHIPMENT_ID:shipment_id,shipmentId,id}
       order-id: ${QUIKSHIPX_KEYS_ORDER_ID:order_id,orderId,order_number,orderNumber}
-      awb: ${QUIKSHIPX_KEYS_AWB:awb,awb_number,awbNumber,waybill,waybill_number,tracking_number,trackingNumber}
+      # 'tracking_no' is the AWB in the confirmed track-order response
+      # (shipment_details.tracking_no) — listed first so the AWB auto-captures.
+      awb: ${QUIKSHIPX_KEYS_AWB:tracking_no,trackingNo,awb,awb_number,awbNumber,waybill,waybill_number,tracking_number,trackingNumber}
       courier-name: ${QUIKSHIPX_KEYS_COURIER:courier,courier_name,courierName,carrier,carrier_name}
       tracking-url: ${QUIKSHIPX_KEYS_TRACKING_URL:tracking_url,trackingUrl,track_url,trackUrl}
       label-url: ${QUIKSHIPX_KEYS_LABEL_URL:label_url,labelUrl,label,shipping_label_url,shippingLabelUrl}
+      # The current status field in the track-order RESPONSE. Confirm + pin the real
+      # name here once a live track-order response has been seen.
+      status-token: ${QUIKSHIPX_KEYS_STATUS:status,current_status,currentStatus,order_status,orderStatus,tracking_status,trackingStatus,shipment_status,shipmentStatus,status_name,statusName}
+      status-at: ${QUIKSHIPX_KEYS_STATUS_AT:status_date,statusDate,status_time,statusTime,updated_at,updatedAt,event_date,eventDate,timestamp}
   payment:
     # Online payment gateway (Phase E). Swappable behind the PaymentGateway
     # interface and selected by `mode`:

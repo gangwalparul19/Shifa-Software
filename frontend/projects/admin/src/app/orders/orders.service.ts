@@ -11,6 +11,7 @@ import {
   PublishNowResponse,
   ScreenshotUploadResponse,
   ShipmentInfo,
+  TrackResult,
 } from './orders.model';
 
 /** Filters + paging for the admin all-orders page (server-side, Wave 2). */
@@ -174,6 +175,25 @@ export class OrdersService {
         return throwError(() => err);
       }),
     );
+  }
+
+  /**
+   * Queries QuikShipX now for the order's live status and mirrors it
+   * ({@code POST /api/admin/orders/{id}/track-quikshipx}, ADMIN). Returns the outcome
+   * (incl. the raw QuikShipX response) so the drawer can refresh the shipment status.
+   */
+  trackQuikShipX(id: number): Observable<TrackResult> {
+    return this.api.post<TrackResult>(`/api/admin/orders/${id}/track-quikshipx`, {});
+  }
+
+  /**
+   * Records an AWB copied from the QuikShipX portal and tracks by it
+   * ({@code POST /api/admin/orders/{id}/quikshipx-awb}, ADMIN). Needed because the
+   * QuikShipX create-order response often carries no AWB, so tracking by our order
+   * reference returns "Shipment Not Found"; the AWB is the key QuikShipX resolves.
+   */
+  setQuikShipXAwb(id: number, awb: string): Observable<TrackResult> {
+    return this.api.post<TrackResult>(`/api/admin/orders/${id}/quikshipx-awb`, { awb });
   }
 
 

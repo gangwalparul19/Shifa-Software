@@ -33,7 +33,7 @@ class QuikShipXCodecPropertyTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final QuikShipXProperties.ResponseKeys KEYS =
-            new QuikShipXProperties.ResponseKeys(null, null, null, null, null, null);
+            new QuikShipXProperties.ResponseKeys(null, null, null, null, null, null, null, null);
 
     // --- Property 13: round trip -------------------------------------------
 

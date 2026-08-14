@@ -27,6 +27,8 @@ import java.util.Optional;
 public record QuikShipXStatusEvent(
         String shipmentId,
         String orderReference,
+        String quikshipxOrderId,
+        String awb,
         String statusToken,
         LocalDateTime statusAt,
         String eventId,

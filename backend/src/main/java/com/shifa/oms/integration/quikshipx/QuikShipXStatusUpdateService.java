@@ -108,7 +108,13 @@ public class QuikShipXStatusUpdateService {
 
         OrderShipment shipment = found.get();
         LocalDateTime when = at == null ? LocalDateTime.now() : at;
-        boolean statusAdvanced = !trimmedStatus.isEmpty() && shipment.advanceStatus(trimmedStatus, when);
+        // The track-order response carries no per-status timestamp, so 'when' defaults to
+        // now(); without this guard an unchanged status would "advance" (now is always newer)
+        // and re-audit on every poll. Skip when the token is unchanged so polling is quiet.
+        boolean sameToken = !trimmedStatus.isEmpty()
+                && trimmedStatus.equalsIgnoreCase(shipment.getLastStatusToken());
+        boolean statusAdvanced = !trimmedStatus.isEmpty() && !sameToken
+                && shipment.advanceStatus(trimmedStatus, when);
         boolean awbAssigned = hasAwb && shipment.assignAwb(awb);
 
         if (!statusAdvanced && !awbAssigned) {

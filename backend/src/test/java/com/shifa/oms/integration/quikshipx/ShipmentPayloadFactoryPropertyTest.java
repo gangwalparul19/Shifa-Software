@@ -35,7 +35,7 @@ class ShipmentPayloadFactoryPropertyTest {
 
     private static final QuikShipXProperties PROPERTIES = new QuikShipXProperties(
             true, "MOCK", "https://head.quikshipx.com", "CLIENT", "USER", "SECRET",
-            "TEST", "SHIFA-", false, null, null, null, null, null, null);
+            "TEST", "SHIFA-", false, null, null, null, null, null, null, null);
 
     // --- Pay mode / COD consistency ----------------------------------------
 
@@ -171,17 +171,24 @@ class ShipmentPayloadFactoryPropertyTest {
     }
 
     @Test
-    void commodityAmountAddsBackTheDiscountSoTheInsuredValueIsPreDiscount() {
-        // totalAmount is already net of the discount, so sending it as commodity_amount
-        // would under-insure the parcel against loss.
+    void orderAndCommodityAmountEqualTheProductLineSumSoQuikShipXReconciles() {
+        // QuikShipX recomputes the product-line sum and rejects the order unless it equals
+        // order_amount. Shifa's GST-exclusive, discount-then-GST, rounded grand total can
+        // never equal that sum, so order_amount = commodity_amount = the raw line sum, and
+        // the discount is sent as 0 (already carried by cod_amount).
         OrderEntity order = order(BigDecimal.ZERO, new BigDecimal("900.00"), new BigDecimal("100.00"));
+        // Two units at ₹199.00 each -> the line sum QuikShipX will recompute is 398.00.
+        order.addLineItem(line(1L, 2));
 
         ShipmentSubmission body = ShipmentPayloadFactory.build(
-                order, settings(), Map.of(), PROPERTIES);
+                order, settings(), Map.of(1L, product(1L, null)), PROPERTIES);
 
-        assertThat(body.shipmentDetails().orderAmount()).isEqualTo("900.00");
-        assertThat(body.shipmentDetails().commodityAmount()).isEqualTo("1000.00");
-        assertThat(body.shipmentDetails().discountAmount()).isEqualTo("100.00");
+        assertThat(body.shipmentDetails().orderAmount()).isEqualTo("398.00");
+        assertThat(body.shipmentDetails().commodityAmount()).isEqualTo("398.00");
+        assertThat(body.shipmentDetails().discountAmount()).isEqualTo("0");
+        // The single line's tax rate is neutralised so the reconciliation stays exact.
+        assertThat(body.productDetails().get(0).productTaxRate()).isEqualTo("0");
+        assertThat(body.productDetails().get(0).productAmount()).isEqualTo("199.00");
     }
 
     @Test

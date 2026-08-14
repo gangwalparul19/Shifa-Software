@@ -46,6 +46,27 @@ function gstSlabsValidator(control: AbstractControl): ValidationErrors | null {
   return null;
 }
 
+/** A whole-number setting as a form string; 0 / null render as blank. */
+function numToStr(value: number | null | undefined): string {
+  return value == null || value === 0 ? '' : String(value);
+}
+
+/** A form string back to a number for the request; blank becomes null (leave unchanged). */
+function strToNum(value: string): number | null {
+  const trimmed = (value ?? '').trim();
+  return trimmed === '' ? null : Number(trimmed);
+}
+
+/**
+ * Coerces a value to a trimmed string. The backend serialises {@code BigDecimal}
+ * fields (gstRatePercent, shipShippingAmount) as JSON *numbers*, so the loaded
+ * form value can be a number; calling {@code .trim()} on it would throw and
+ * silently abort the whole save. This makes the conversion safe.
+ */
+function asStr(value: unknown): string {
+  return value == null ? '' : String(value).trim();
+}
+
 /**
  * Admin company + GST settings page (Tabler light theme).
  *
@@ -83,14 +104,18 @@ export class SettingsComponent implements OnInit, OnDestroy {
     { key: 'gst', label: 'GST & Invoice', icon: 'ti-receipt-tax' },
     { key: 'company', label: 'Company', icon: 'ti-building-store' },
     { key: 'bank', label: 'Bank', icon: 'ti-building-bank' },
+    { key: 'shipping', label: 'Shipping', icon: 'ti-truck-delivery' },
     { key: 'states', label: 'States', icon: 'ti-map-pin' },
   ] as const;
 
   /** Which settings category is currently shown. */
-  protected readonly activeTab = signal<'gst' | 'company' | 'bank' | 'states'>('gst');
+  protected readonly activeTab = signal<'gst' | 'company' | 'bank' | 'shipping' | 'states'>('gst');
+
+  /** Whether the QuikShipX pickup warehouse is configured (drives the blocked-publish warning). */
+  protected readonly shipmentDefaultsComplete = signal(false);
 
   /** Switch the visible settings category. */
-  setTab(key: 'gst' | 'company' | 'bank' | 'states'): void {
+  setTab(key: 'gst' | 'company' | 'bank' | 'shipping' | 'states'): void {
     this.activeTab.set(key);
   }
 
@@ -138,6 +163,17 @@ export class SettingsComponent implements OnInit, OnDestroy {
     bankAccountNumber: ['', [Validators.maxLength(40)]],
     bankIfsc: ['', [Validators.maxLength(20), Validators.pattern(IFSC_PATTERN)]],
     bankBranch: ['', [Validators.maxLength(120)]],
+    // --- Shipment defaults for QuikShipX -----------------------------------
+    shipPickupWarehouseId: ['', [Validators.maxLength(40)]],
+    shipPackageType: ['', [Validators.maxLength(1)]],
+    shipShippingMode: ['', [Validators.maxLength(1)]],
+    shipDeadWeightGrams: ['', [Validators.pattern(/^\d{1,7}$/)]],
+    shipLengthCm: ['', [Validators.pattern(/^\d{1,4}$/)]],
+    shipWidthCm: ['', [Validators.pattern(/^\d{1,4}$/)]],
+    shipHeightCm: ['', [Validators.pattern(/^\d{1,4}$/)]],
+    shipShippingAmount: ['', [Validators.pattern(/^\d{1,7}(\.\d{1,2})?$/)]],
+    shipDefaultCategory: ['', [Validators.maxLength(60)]],
+    shipDefaultHsn: ['', [Validators.maxLength(20)]],
   });
 
   ngOnInit(): void {
@@ -279,7 +315,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
           city: s.city ?? '',
           state: s.state ?? '',
           stateCode: s.stateCode ?? '',
-          gstRatePercent: s.gstRatePercent ?? '5.00',
+          gstRatePercent: s.gstRatePercent != null ? String(s.gstRatePercent) : '5.00',
           pricesIncludeGst: s.pricesIncludeGst,
           invoiceFooterNote: s.invoiceFooterNote ?? '',
           contactPhone: s.contactPhone ?? '',
@@ -292,7 +328,18 @@ export class SettingsComponent implements OnInit, OnDestroy {
           bankAccountNumber: s.bankAccountNumber ?? '',
           bankIfsc: s.bankIfsc ?? '',
           bankBranch: s.bankBranch ?? '',
+          shipPickupWarehouseId: s.shipPickupWarehouseId ?? '',
+          shipPackageType: s.shipPackageType ?? '',
+          shipShippingMode: s.shipShippingMode ?? '',
+          shipDeadWeightGrams: numToStr(s.shipDeadWeightGrams),
+          shipLengthCm: numToStr(s.shipLengthCm),
+          shipWidthCm: numToStr(s.shipWidthCm),
+          shipHeightCm: numToStr(s.shipHeightCm),
+          shipShippingAmount: s.shipShippingAmount != null ? String(s.shipShippingAmount) : '',
+          shipDefaultCategory: s.shipDefaultCategory ?? '',
+          shipDefaultHsn: s.shipDefaultHsn ?? '',
         });
+        this.shipmentDefaultsComplete.set(!!s.shipmentDefaultsComplete);
         this.applyGstinValidators(s.gstEnabled);
         this.loading.set(false);
         this.applyLogoState(s);
@@ -321,7 +368,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
       city: raw.city.trim() || null,
       state: raw.state.trim() || null,
       stateCode: raw.stateCode.trim() || null,
-      gstRatePercent: raw.gstRatePercent.trim(),
+      gstRatePercent: asStr(raw.gstRatePercent),
       pricesIncludeGst: raw.pricesIncludeGst,
       invoiceFooterNote: raw.invoiceFooterNote.trim() || null,
       contactPhone: raw.contactPhone.trim() || null,
@@ -334,6 +381,16 @@ export class SettingsComponent implements OnInit, OnDestroy {
       bankAccountNumber: raw.bankAccountNumber.trim() || null,
       bankIfsc: raw.bankIfsc.trim().toUpperCase() || null,
       bankBranch: raw.bankBranch.trim() || null,
+      shipPickupWarehouseId: raw.shipPickupWarehouseId.trim() || null,
+      shipPackageType: raw.shipPackageType.trim() || null,
+      shipShippingMode: raw.shipShippingMode.trim() || null,
+      shipDeadWeightGrams: strToNum(raw.shipDeadWeightGrams),
+      shipLengthCm: strToNum(raw.shipLengthCm),
+      shipWidthCm: strToNum(raw.shipWidthCm),
+      shipHeightCm: strToNum(raw.shipHeightCm),
+      shipShippingAmount: asStr(raw.shipShippingAmount) || null,
+      shipDefaultCategory: raw.shipDefaultCategory.trim() || null,
+      shipDefaultHsn: raw.shipDefaultHsn.trim() || null,
     };
 
     this.saving.set(true);
@@ -343,6 +400,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
         this.saving.set(false);
         this.toasts.success('Settings saved.');
         this.applyGstinValidators(saved.gstEnabled);
+        this.shipmentDefaultsComplete.set(!!saved.shipmentDefaultsComplete);
       },
       error: (err: HttpErrorResponse) => {
         this.saving.set(false);

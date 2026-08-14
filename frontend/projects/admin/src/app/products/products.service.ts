@@ -36,9 +36,18 @@ export interface ProductRequest {
   sku: string;
   name: string;
   description?: string;
+  /** MRP — the maximum price a salesperson may charge on order entry. */
   mrp: string;
+  /** Auto-Fetch Rate — the default price filled on the order. */
   salePrice: string;
+  /**
+   * Optional MINIMUM sale price (order-entry floor). Omitted/null disables the
+   * price band. When set, the backend enforces minPrice <= salePrice <= mrp.
+   */
+  minPrice?: string | null;
   hsnCode?: string;
+  /** Optional pack size / weight label (e.g. "100ML", "350gm", "Combo"). */
+  packSize?: string | null;
   /**
    * Optional per-product GST rate percent (e.g. "12" or "18.00"); null/omitted
    * falls back to the settings default rate.

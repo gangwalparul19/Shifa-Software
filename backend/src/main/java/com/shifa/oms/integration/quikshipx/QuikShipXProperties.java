@@ -59,10 +59,14 @@ public record QuikShipXProperties(
         Integer maxAttempts,
         Duration retryBackoff,
         Duration retryMaxBackoff,
+        Long trackPollIntervalMs,
         ResponseKeys responseKeys) {
 
     /** The confirmed create-order path, appended to {@link #baseUrl()}. */
     public static final String CREATE_ORDER_PATH = "/api/create-order-v1";
+
+    /** The status/tracking query path (QuikShipX track-order API), appended to {@link #baseUrl()}. */
+    public static final String TRACK_ORDER_PATH = "/api/track-order-v1";
 
     public QuikShipXProperties {
         if (enabled == null) {
@@ -97,8 +101,13 @@ public record QuikShipXProperties(
         if (retryMaxBackoff == null) {
             retryMaxBackoff = Duration.ofMinutes(15);
         }
+        if (trackPollIntervalMs == null || trackPollIntervalMs < 60000) {
+            // Default: poll active shipments every 30 minutes. Courier statuses move
+            // slowly, so a tight interval only wastes API calls.
+            trackPollIntervalMs = 1800000L;
+        }
         if (responseKeys == null) {
-            responseKeys = new ResponseKeys(null, null, null, null, null, null);
+            responseKeys = new ResponseKeys(null, null, null, null, null, null, null, null);
         }
     }
 
@@ -115,9 +124,21 @@ public record QuikShipXProperties(
             String awb,
             String courierName,
             String trackingUrl,
-            String labelUrl) {
+            String labelUrl,
+            String statusToken,
+            String statusAt) {
 
         public ResponseKeys {
+            if (statusToken == null || statusToken.isBlank()) {
+                // The current shipment status from the track-order response. Candidate
+                // names, most likely first — pinned once a real response is seen.
+                statusToken = "status,current_status,currentStatus,order_status,orderStatus,"
+                        + "tracking_status,trackingStatus,shipment_status,shipmentStatus,status_name,statusName";
+            }
+            if (statusAt == null || statusAt.isBlank()) {
+                statusAt = "status_date,statusDate,status_time,statusTime,updated_at,updatedAt,"
+                        + "event_date,eventDate,timestamp";
+            }
             if (shipmentId == null || shipmentId.isBlank()) {
                 // 'id' is QuikShipX's shipment/tracking id (e.g. 65580852235). Their own
                 // order id lives under 'order_id' and is captured separately below, so it
@@ -130,7 +151,10 @@ public record QuikShipXProperties(
                 orderId = "order_id,orderId,order_number,orderNumber";
             }
             if (awb == null || awb.isBlank()) {
-                awb = "awb,awb_number,awbNumber,waybill,waybill_number,tracking_number,trackingNumber";
+                // 'tracking_no' is the AWB in the confirmed track-order response
+                // (shipment_details.tracking_no); listed first so the AWB auto-captures.
+                awb = "tracking_no,trackingNo,awb,awb_number,awbNumber,waybill,waybill_number,"
+                        + "tracking_number,trackingNumber";
             }
             if (courierName == null || courierName.isBlank()) {
                 courierName = "courier,courier_name,courierName,carrier,carrier_name";
@@ -167,6 +191,14 @@ public record QuikShipXProperties(
             return split(labelUrl);
         }
 
+        public List<String> statusTokenKeys() {
+            return split(statusToken);
+        }
+
+        public List<String> statusAtKeys() {
+            return split(statusAt);
+        }
+
         private static List<String> split(String csv) {
             return Arrays.stream(csv.split(","))
                     .map(String::trim)
@@ -199,8 +231,16 @@ public record QuikShipXProperties(
 
     /** The full create-order endpoint. */
     public String createOrderUrl() {
-        String host = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
-        return host + CREATE_ORDER_PATH;
+        return host() + CREATE_ORDER_PATH;
+    }
+
+    /** The full track-order (status query) endpoint. */
+    public String trackOrderUrl() {
+        return host() + TRACK_ORDER_PATH;
+    }
+
+    private String host() {
+        return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
     }
 
     /**

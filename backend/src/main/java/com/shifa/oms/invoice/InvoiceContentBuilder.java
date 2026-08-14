@@ -54,7 +54,7 @@ public class InvoiceContentBuilder {
      */
     public InvoiceContent build(OrderEntity order) {
         Objects.requireNonNull(order, "order");
-        return assemble(order, order.getOrderCode(), Map.of(), null, null, null, false);
+        return assemble(order, order.getOrderCode(), Map.of(), null, null, null, false, Map.of(), null);
     }
 
     /**
@@ -123,13 +123,16 @@ public class InvoiceContentBuilder {
         // On a GST tax invoice HSN can come from the line snapshot too, even when
         // the caller passed no product map.
         boolean taxInvoice = gst != null;
-        return assemble(order, number, hsn, gst, terms, bank, taxInvoice);
+        BigDecimal defaultRate = settings != null ? settings.getGstRatePercent() : null;
+        Map<Long, BigDecimal> rateMap = gstRateByProductId != null ? gstRateByProductId : Map.of();
+        return assemble(order, number, hsn, gst, terms, bank, taxInvoice, rateMap, defaultRate);
     }
 
     private InvoiceContent assemble(OrderEntity order, String invoiceNumber,
                                     Map<Long, String> hsnByProductId, InvoiceGstDetails gst,
                                     String invoiceTerms, InvoiceContent.BankDetails bankDetails,
-                                    boolean taxInvoice) {
+                                    boolean taxInvoice, Map<Long, BigDecimal> gstRateByProductId,
+                                    BigDecimal defaultRate) {
         List<InvoiceContent.InvoiceLineItem> items = new ArrayList<>();
         int position = 1;
         for (OrderLineItem line : order.getLineItems()) {
@@ -142,13 +145,26 @@ public class InvoiceContentBuilder {
                     hsn = hsnByProductId.get(line.getProductId());
                 }
             }
+            // Per-line GST rate (Feature: show GST% per product): prefer the line's
+            // own snapshot, then the current product map, then the settings default.
+            BigDecimal lineGstRate = null;
+            if (taxInvoice) {
+                lineGstRate = line.getGstRate();
+                if (lineGstRate == null && line.getProductId() != null) {
+                    lineGstRate = gstRateByProductId.get(line.getProductId());
+                }
+                if (lineGstRate == null) {
+                    lineGstRate = defaultRate;
+                }
+            }
             items.add(new InvoiceContent.InvoiceLineItem(
                     position++,
                     line.getProductName(),
                     line.getQuantity(),
                     line.getRate(),
                     line.getLineTotal(),
-                    hsn));
+                    hsn,
+                    lineGstRate));
         }
 
         boolean codApplicable = isCodApplicable(order.getPaymentStatus());
@@ -226,11 +242,32 @@ public class InvoiceContentBuilder {
                                        Map<Long, BigDecimal> gstRateByProductId) {
         boolean intraState = isIntraState(order.getState(), settings.getState());
         BigDecimal rate = resolveGstRate(order, gstRateByProductId, settings.getGstRatePercent());
-        GstComputation computation = gstCalculator.calculate(
-                order.getTotalAmount(),
-                rate,
-                settings.isPricesIncludeGst(),
-                intraState);
+        // GST is ADDED on top of the discounted base (discount-before-tax): the
+        // taxable value is the line subtotal minus the order discount, and the tax
+        // is the difference up to the stored grand total, so the invoice always
+        // reconciles with the order's Total_Amount (which already includes the
+        // added GST, rounded to the nearest rupee at order creation).
+        BigDecimal gross = grossLineTotal(order);
+        BigDecimal discount = order.getDiscountAmount() != null
+                ? order.getDiscountAmount() : BigDecimal.ZERO;
+        BigDecimal taxable = gross.subtract(discount);
+        BigDecimal grand = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+        GstComputation computation = gstCalculator.ofTaxableAndTotal(taxable, grand, rate, intraState);
+
+        // Per-rate breakdown so a mixed-rate basket (e.g. some 5%, some 18%) shows
+        // the tax split by rate. Each group's tax is its taxable × rate; the last
+        // group absorbs pro-rata rounding so Σ group taxable == the total taxable.
+        BigDecimal defaultRate = settings.getGstRatePercent();
+        List<GstRateGroup> rateGroups = buildRateGroups(
+                order, gstRateByProductId, defaultRate, gross, taxable, intraState);
+        BigDecimal groupTaxSum = BigDecimal.ZERO;
+        for (GstRateGroup g : rateGroups) {
+            groupTaxSum = groupTaxSum.add(g.totalTax());
+        }
+        // Rounding adjustment so taxable + tax + roundOff == the stored grand total.
+        BigDecimal roundOff = grand.subtract(taxable.add(groupTaxSum))
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+
         return new InvoiceGstDetails(
                 settings.getLegalName(),
                 settings.getGstin(),
@@ -241,7 +278,81 @@ public class InvoiceContentBuilder {
                 settings.getContactPhone(),
                 settings.getContactEmail(),
                 settings.getInvoiceFooterNote(),
-                computation);
+                computation,
+                rateGroups,
+                roundOff);
+    }
+
+    /**
+     * Groups the order's lines by GST rate and computes each group's taxable
+     * (its pro-rata share of the post-discount taxable base) and tax
+     * (taxable × rate). Groups are ordered by rate ascending; the last group
+     * absorbs any pro-rata rounding so the group taxables sum exactly to
+     * {@code totalTaxable}.
+     */
+    private List<GstRateGroup> buildRateGroups(OrderEntity order,
+                                               Map<Long, BigDecimal> gstRateByProductId,
+                                               BigDecimal defaultRate, BigDecimal gross,
+                                               BigDecimal totalTaxable, boolean intraState) {
+        BigDecimal hundred = new BigDecimal("100");
+        BigDecimal two = new BigDecimal("2");
+        Map<Long, BigDecimal> rateMap = gstRateByProductId != null ? gstRateByProductId : Map.of();
+        // Sum gross line amount per rate, ordered by rate ascending.
+        java.util.TreeMap<BigDecimal, BigDecimal> grossByRate = new java.util.TreeMap<>();
+        for (OrderLineItem line : order.getLineItems()) {
+            BigDecimal r = line.getGstRate();
+            if (r == null && line.getProductId() != null) {
+                r = rateMap.get(line.getProductId());
+            }
+            if (r == null) {
+                r = defaultRate != null ? defaultRate : BigDecimal.ZERO;
+            }
+            r = r.setScale(2, java.math.RoundingMode.HALF_UP);
+            BigDecimal amount = line.getLineTotal() != null ? line.getLineTotal() : BigDecimal.ZERO;
+            grossByRate.merge(r, amount, BigDecimal::add);
+        }
+
+        List<GstRateGroup> groups = new ArrayList<>();
+        int total = grossByRate.size();
+        int index = 0;
+        BigDecimal allocated = BigDecimal.ZERO;
+        for (Map.Entry<BigDecimal, BigDecimal> entry : grossByRate.entrySet()) {
+            index++;
+            BigDecimal rate = entry.getKey();
+            BigDecimal groupGross = entry.getValue();
+            BigDecimal groupTaxable;
+            if (index == total) {
+                groupTaxable = totalTaxable.subtract(allocated).setScale(2, java.math.RoundingMode.HALF_UP);
+            } else {
+                groupTaxable = gross.signum() == 0
+                        ? BigDecimal.ZERO.setScale(2)
+                        : totalTaxable.multiply(groupGross).divide(gross, 2, java.math.RoundingMode.HALF_UP);
+                allocated = allocated.add(groupTaxable);
+            }
+            BigDecimal groupTax = groupTaxable.multiply(rate)
+                    .divide(hundred, 2, java.math.RoundingMode.HALF_UP);
+            BigDecimal scaledRate = rate.setScale(2, java.math.RoundingMode.HALF_UP);
+            BigDecimal zero = BigDecimal.ZERO.setScale(2);
+            if (intraState) {
+                BigDecimal cgst = groupTax.divide(two, 2, java.math.RoundingMode.HALF_UP);
+                BigDecimal sgst = groupTax.subtract(cgst);
+                groups.add(new GstRateGroup(scaledRate, true, groupTaxable, cgst, sgst, zero, groupTax));
+            } else {
+                groups.add(new GstRateGroup(scaledRate, false, groupTaxable, zero, zero, groupTax, groupTax));
+            }
+        }
+        return groups;
+    }
+
+    /** The gross line subtotal (sum of line amounts, before discount). */
+    private BigDecimal grossLineTotal(OrderEntity order) {
+        BigDecimal sum = BigDecimal.ZERO;
+        for (OrderLineItem line : order.getLineItems()) {
+            if (line.getLineTotal() != null) {
+                sum = sum.add(line.getLineTotal());
+            }
+        }
+        return sum;
     }
 
     /**

@@ -5,13 +5,16 @@ import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.auth.CurrentUserService;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.integration.quikshipx.dto.PublishNowResponse;
+import com.shifa.oms.integration.quikshipx.dto.SetAwbRequest;
 import com.shifa.oms.integration.quikshipx.dto.ShipmentResponse;
+import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -36,19 +39,22 @@ public class ShipmentController {
     private final QuikShipXProperties properties;
     private final CurrentUserService currentUserService;
     private final AuditService auditService;
+    private final QuikShipXTrackingService trackingService;
 
     public ShipmentController(OrderShipmentRepository shipmentRepository,
                               FallbackModeService fallbackModeService,
                               QuikShipXPublisher publisher,
                               QuikShipXProperties properties,
                               CurrentUserService currentUserService,
-                              AuditService auditService) {
+                              AuditService auditService,
+                              QuikShipXTrackingService trackingService) {
         this.shipmentRepository = shipmentRepository;
         this.fallbackModeService = fallbackModeService;
         this.publisher = publisher;
         this.properties = properties;
         this.currentUserService = currentUserService;
         this.auditService = auditService;
+        this.trackingService = trackingService;
     }
 
     /**
@@ -69,6 +75,48 @@ public class ShipmentController {
                         shipment.getLastStatusToken() != null || properties.isStatusFeedAvailable()))
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Order " + id + " has no courier shipment."));
+    }
+
+    /**
+     * Queries QuikShipX now for the order's live status via the track-order API and
+     * mirrors it onto the shipment (returns the raw QuikShipX response too, so the
+     * exact field names can be confirmed on first use). ADMIN-only and audited.
+     *
+     * <p>Works immediately per order; the scheduled poller does the same for all
+     * active shipments once {@code app.quikshipx.status-feed-available} is on.
+     */
+    @PostMapping("/admin/orders/{id}/track-quikshipx")
+    @PreAuthorize("hasRole('ADMIN')")
+    public QuikShipXTrackingService.TrackResult trackNow(@PathVariable Long id) {
+        String actor = currentUserService.requireCurrentUser().username();
+        QuikShipXTrackingService.TrackResult result = trackingService.trackByOrderId(id);
+        auditService.record(AuditActions.QUIKSHIPX_STATUS_MIRRORED, AuditActions.ENTITY_ORDER,
+                String.valueOf(id),
+                "Manual QuikShipX track by " + actor + ": "
+                        + (result.ok() ? result.status() : "failed — " + result.detail()));
+        return result;
+    }
+
+    /**
+     * Records an AWB an admin copied from the QuikShipX portal and immediately tracks the
+     * shipment by it (ADMIN-only, audited).
+     *
+     * <p>QuikShipX's create-order response is undocumented and frequently returns no AWB,
+     * so tracking falls back to our order reference, which QuikShipX does not recognise
+     * ("Shipment Not Found"). Entering the portal AWB here lets us track by the key
+     * QuikShipX actually resolves (tracking_type {@code awb}).
+     */
+    @PostMapping("/admin/orders/{id}/quikshipx-awb")
+    @PreAuthorize("hasRole('ADMIN')")
+    public QuikShipXTrackingService.TrackResult setAwbAndTrack(@PathVariable Long id,
+                                                               @Valid @RequestBody SetAwbRequest request) {
+        String actor = currentUserService.requireCurrentUser().username();
+        QuikShipXTrackingService.TrackResult result = trackingService.setAwbAndTrack(id, request.awb());
+        auditService.record(AuditActions.QUIKSHIPX_STATUS_MIRRORED, AuditActions.ENTITY_ORDER,
+                String.valueOf(id),
+                "AWB set to " + request.awb() + " by " + actor + "; track: "
+                        + (result.ok() ? result.status() : "failed — " + result.detail()));
+        return result;
     }
 
     /**

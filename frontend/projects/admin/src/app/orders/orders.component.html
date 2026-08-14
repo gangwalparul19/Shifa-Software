@@ -553,7 +553,11 @@
                 />
                 <div class="shifa-od__item-main">
                   <div class="shifa-od__item-name">{{ li.productName }}</div>
-                  <div class="shifa-od__muted">Qty: {{ li.quantity }}</div>
+                  <div class="shifa-od__muted">
+                    Qty: {{ li.quantity }} · {{ money(li.rate) }} ea
+                    @if (gstPct(li.gstRate); as g) { · GST {{ g }} }
+                    @if (li.hsnCode) { · HSN {{ li.hsnCode }} }
+                  </div>
                 </div>
                 <div class="shifa-od__item-total">{{ money(li.lineTotal) }}</div>
               </div>
@@ -571,8 +575,16 @@
               <span>Discount</span><span>{{ discountDisplay(order) }}</span>
             </div>
           }
+          @if (gstApplied(order)) {
+            <div class="shifa-od__totline">
+              <span>Taxable value</span><span>{{ gstTaxableDisplay(order) }}</span>
+            </div>
+            <div class="shifa-od__totline">
+              <span>GST</span><span>{{ gstAddedDisplay(order) }}</span>
+            </div>
+          }
           <div class="shifa-od__totline shifa-od__grand">
-            <span>Total Amount</span><span>{{ money(order.totalAmount) }}</span>
+            <span>Grand Total</span><span>{{ money(order.totalAmount) }}</span>
           </div>
         </div>
 
@@ -771,8 +783,56 @@
               <p class="shifa-od__ship-note">
                 Label and status are managed in the QuikShipX portal.
               </p>
+              @if (ship.lastStatusAt) {
+                <div class="shifa-od__ship-updated">Updated {{ ship.lastStatusAt | date: 'dd MMM, HH:mm' }}</div>
+              }
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-primary w-100 mt-2"
+                (click)="trackNow(order)"
+                [disabled]="trackBusy()"
+                title="Fetch the latest status from QuikShipX now"
+              >
+                @if (trackBusy()) {
+                  <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                } @else {
+                  <i class="ti ti-refresh me-1"></i>
+                }
+                Track now
+              </button>
+              <!-- Manual AWB entry: QuikShipX's create response often carries no AWB, so
+                   tracking by our reference fails. Enter the portal AWB to track reliably. -->
+              <div class="mt-2">
+                <label class="form-label small mb-1">AWB from QuikShipX portal</label>
+                <div class="input-group input-group-sm">
+                  <input
+                    type="text"
+                    class="form-control shifa-mono"
+                    placeholder="e.g. 2525261531512"
+                    [value]="awbInput()"
+                    (input)="awbInput.set($any($event.target).value)"
+                    [disabled]="awbBusy()"
+                  />
+                  <button
+                    type="button"
+                    class="btn btn-outline-primary"
+                    (click)="saveAwbAndTrack(order)"
+                    [disabled]="awbBusy() || !awbInput().trim()"
+                    title="Save the AWB and track the shipment by it"
+                  >
+                    @if (awbBusy()) {
+                      <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    } @else {
+                      Save &amp; track
+                    }
+                  </button>
+                </div>
+                <div class="form-hint mt-1">
+                  Copy the AWB from the QuikShipX portal to track this shipment by AWB.
+                </div>
+              </div>
               @if (ship.trackingUrl) {
-                <a class="btn btn-sm btn-outline-secondary w-100" [href]="ship.trackingUrl" target="_blank" rel="noopener">
+                <a class="btn btn-sm btn-outline-secondary w-100 mt-2" [href]="ship.trackingUrl" target="_blank" rel="noopener">
                   <i class="ti ti-map-pin me-1"></i> Track shipment
                 </a>
               }

@@ -179,7 +179,7 @@ public class ProductImportService {
                                               Long categoryId, Integer stockQuantity,
                                               Boolean trackInventory) {
         return new ProductRequest(
-                sku, name, description, mrp, salePrice, hsnCode, gstRate,
+                sku, name, description, mrp, salePrice, null, hsnCode, null, gstRate,
                 visibility != null ? visibility : ProductVisibility.PUBLISHED,
                 categoryId, stockQuantity, trackInventory, null, null);
     }
@@ -205,7 +205,9 @@ public class ProductImportService {
                 columns.containsKey(COL_DESCRIPTION) ? description : existing.getDescription(),
                 mrp,
                 salePrice,
+                existing.getMinPrice(),
                 columns.containsKey(COL_HSN) ? hsnCode : existing.getHsnCode(),
+                existing.getPackSize(),
                 columns.containsKey(COL_GST) ? gstRate : existing.getGstRate(),
                 visibility != null ? visibility : existing.getVisibility(),
                 resolvedCategory,

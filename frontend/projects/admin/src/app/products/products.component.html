@@ -327,21 +327,49 @@
           }
 
           @if (formTab() === 'pricing') {
+          <p class="form-hint mb-2">
+            Order-entry price band: a salesperson's price is auto-filled to the <strong>Auto-fetch</strong>
+            rate and cannot go below <strong>Min price</strong> or above <strong>MRP</strong>. Leave Min
+            price blank to allow any price.
+          </p>
           <div class="row">
-            <div class="col-6 mb-3">
-              <label class="form-label required">MRP</label>
-              <input type="text" inputmode="decimal" class="form-control" formControlName="mrp" placeholder="0.00"
-                [class.is-invalid]="form.controls.mrp.touched && form.controls.mrp.invalid" />
-              @if (form.controls.mrp.touched && form.controls.mrp.invalid) {
-                <div class="invalid-feedback">Enter a valid amount (e.g. 199.00).</div>
+            <div class="col-6 col-md-4 mb-3">
+              <label class="form-label">Min price <span class="text-secondary">(floor)</span></label>
+              <input type="text" inputmode="decimal" class="form-control" formControlName="minPrice" placeholder="0.00"
+                [class.is-invalid]="form.controls.minPrice.touched && form.controls.minPrice.invalid" />
+              <small class="form-hint">Lowest a salesperson may charge.</small>
+              @if (form.controls.minPrice.touched && form.controls.minPrice.invalid) {
+                <div class="invalid-feedback">Enter a valid amount (e.g. 600.00).</div>
               }
             </div>
-            <div class="col-6 mb-3">
-              <label class="form-label required">Sale price</label>
+            <div class="col-6 col-md-4 mb-3">
+              <label class="form-label required">Auto-fetch rate</label>
               <input type="text" inputmode="decimal" class="form-control" formControlName="salePrice" placeholder="0.00"
                 [class.is-invalid]="form.controls.salePrice.touched && form.controls.salePrice.invalid" />
+              <small class="form-hint">Default filled on the order.</small>
               @if (form.controls.salePrice.touched && form.controls.salePrice.invalid) {
-                <div class="invalid-feedback">Enter a valid amount (e.g. 149.00).</div>
+                <div class="invalid-feedback">Enter a valid amount (e.g. 800.00).</div>
+              }
+            </div>
+            <div class="col-6 col-md-4 mb-3">
+              <label class="form-label required">MRP <span class="text-secondary">(max)</span></label>
+              <input type="text" inputmode="decimal" class="form-control" formControlName="mrp" placeholder="0.00"
+                [class.is-invalid]="form.controls.mrp.touched && form.controls.mrp.invalid" />
+              <small class="form-hint">Highest a salesperson may charge.</small>
+              @if (form.controls.mrp.touched && form.controls.mrp.invalid) {
+                <div class="invalid-feedback">Enter a valid amount (e.g. 1200.00).</div>
+              }
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-6 mb-3">
+              <label class="form-label">Pack size <span class="text-secondary">(optional)</span></label>
+              <input type="text" class="form-control" formControlName="packSize" maxlength="40" autocomplete="off"
+                placeholder="e.g. 100ML, 350gm, Combo"
+                [class.is-invalid]="form.controls.packSize.touched && form.controls.packSize.invalid" />
+              @if (form.controls.packSize.touched && form.controls.packSize.invalid) {
+                <div class="invalid-feedback">Pack size must be at most 40 characters.</div>
               }
             </div>
           </div>

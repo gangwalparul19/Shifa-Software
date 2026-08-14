@@ -185,6 +185,82 @@
       </div>
     </div>
 
+    <!-- Shipping (QuikShipX) section -->
+    <div class="card mb-3" [hidden]="activeTab() !== 'shipping'">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-truck-delivery me-2"></i>Shipping (QuikShipX)</h3>
+      </div>
+      <div class="card-body">
+        @if (!shipmentDefaultsComplete()) {
+          <div class="alert alert-warning py-2 mb-3">
+            <i class="ti ti-alert-triangle me-1"></i>
+            The <strong>pickup warehouse id</strong> is not set, so orders cannot be sent to
+            QuikShipX. Enter it below (from your QuikShipX account) and save.
+          </div>
+        }
+        <p class="text-secondary small mb-3">
+          <i class="ti ti-info-circle me-1"></i>
+          Defaults used when an approved order is sent to QuikShipX. Only the pickup warehouse id
+          is required; the rest have sensible defaults you can override.
+        </p>
+        <div class="row g-2">
+          <div class="col-12 col-md-6 mb-2">
+            <label class="form-label required">Pickup warehouse id</label>
+            <input type="text" class="form-control shifa-mono" formControlName="shipPickupWarehouseId"
+              maxlength="40" autocomplete="off" placeholder="e.g. 65"
+              [class.is-invalid]="form.controls.shipPickupWarehouseId.touched && form.controls.shipPickupWarehouseId.invalid" />
+            <small class="form-hint">From your QuikShipX account. Required to send orders.</small>
+          </div>
+          <div class="col-6 col-md-3 mb-2">
+            <label class="form-label">Package type</label>
+            <input type="text" class="form-control" formControlName="shipPackageType" maxlength="20"
+              autocomplete="off" placeholder="e.g. 2" />
+          </div>
+          <div class="col-6 col-md-3 mb-2">
+            <label class="form-label">Shipping mode</label>
+            <input type="text" class="form-control" formControlName="shipShippingMode" maxlength="20"
+              autocomplete="off" placeholder="e.g. 2" />
+          </div>
+          <div class="col-6 col-md-3 mb-2">
+            <label class="form-label">Dead weight (g)</label>
+            <input type="text" inputmode="numeric" class="form-control" formControlName="shipDeadWeightGrams"
+              autocomplete="off" placeholder="e.g. 500"
+              [class.is-invalid]="form.controls.shipDeadWeightGrams.touched && form.controls.shipDeadWeightGrams.invalid" />
+          </div>
+          <div class="col-6 col-md-3 mb-2">
+            <label class="form-label">Length (cm)</label>
+            <input type="text" inputmode="numeric" class="form-control" formControlName="shipLengthCm"
+              autocomplete="off" placeholder="e.g. 15" />
+          </div>
+          <div class="col-6 col-md-3 mb-2">
+            <label class="form-label">Width (cm)</label>
+            <input type="text" inputmode="numeric" class="form-control" formControlName="shipWidthCm"
+              autocomplete="off" placeholder="e.g. 10" />
+          </div>
+          <div class="col-6 col-md-3 mb-2">
+            <label class="form-label">Height (cm)</label>
+            <input type="text" inputmode="numeric" class="form-control" formControlName="shipHeightCm"
+              autocomplete="off" placeholder="e.g. 8" />
+          </div>
+          <div class="col-6 col-md-4 mb-2">
+            <label class="form-label">Shipping amount (₹)</label>
+            <input type="text" inputmode="decimal" class="form-control" formControlName="shipShippingAmount"
+              autocomplete="off" placeholder="e.g. 60.00" />
+          </div>
+          <div class="col-6 col-md-4 mb-2">
+            <label class="form-label">Default category</label>
+            <input type="text" class="form-control" formControlName="shipDefaultCategory" maxlength="60"
+              autocomplete="off" placeholder="e.g. Herbal" />
+          </div>
+          <div class="col-6 col-md-4 mb-2">
+            <label class="form-label">Default HSN</label>
+            <input type="text" class="form-control" formControlName="shipDefaultHsn" maxlength="20"
+              autocomplete="off" placeholder="e.g. 3004" />
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Company logo section -->
     <div class="card mb-3" [hidden]="activeTab() !== 'company'">
       <div class="card-header">

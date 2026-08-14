@@ -167,7 +167,9 @@ export class ProductsComponent implements OnInit, OnDestroy {
     description: [''],
     mrp: ['', [Validators.required, Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
     salePrice: ['', [Validators.required, Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
+    minPrice: ['', [Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
     hsnCode: ['', [Validators.maxLength(20)]],
+    packSize: ['', [Validators.maxLength(40)]],
     gstRate: ['', [Validators.pattern(/^\d{1,3}(\.\d{1,2})?$/)]],
     visibility: [ProductVisibility.PUBLISHED, [Validators.required]],
     categoryId: [''],
@@ -482,7 +484,9 @@ export class ProductsComponent implements OnInit, OnDestroy {
       description: '',
       mrp: '',
       salePrice: '',
+      minPrice: '',
       hsnCode: '',
+      packSize: '',
       gstRate: '',
       visibility: ProductVisibility.PUBLISHED,
       categoryId: '',
@@ -503,7 +507,9 @@ export class ProductsComponent implements OnInit, OnDestroy {
       description: product.description ?? '',
       mrp: product.mrp,
       salePrice: product.salePrice,
+      minPrice: product.minPrice ?? '',
       hsnCode: product.hsnCode ?? '',
+      packSize: product.packSize ?? '',
       gstRate: product.gstRate ?? '',
       visibility: product.visibility,
       categoryId: product.category ? String(product.category.id) : '',
@@ -528,7 +534,7 @@ export class ProductsComponent implements OnInit, OnDestroy {
       this.form.markAllAsTouched();
       // Surface the tab holding the first invalid control so errors aren't hidden.
       const basicsInvalid = ['name', 'sku'].some((n) => !!this.form.get(n)?.invalid);
-      const pricingInvalid = ['mrp', 'salePrice', 'hsnCode', 'gstRate'].some(
+      const pricingInvalid = ['mrp', 'salePrice', 'minPrice', 'hsnCode', 'packSize', 'gstRate'].some(
         (n) => !!this.form.get(n)?.invalid,
       );
       this.formTab.set(basicsInvalid ? 'basics' : pricingInvalid ? 'pricing' : 'inventory');
@@ -541,7 +547,9 @@ export class ProductsComponent implements OnInit, OnDestroy {
       description: raw.description.trim() || undefined,
       mrp: raw.mrp.trim(),
       salePrice: raw.salePrice.trim(),
+      minPrice: raw.minPrice.trim() || null,
       hsnCode: raw.hsnCode.trim() || undefined,
+      packSize: raw.packSize.trim() || null,
       gstRate: raw.gstRate.trim() || null,
       visibility: raw.visibility,
       categoryId: raw.categoryId ? Number(raw.categoryId) : null,
@@ -629,7 +637,9 @@ export class ProductsComponent implements OnInit, OnDestroy {
       description: product.description ?? undefined,
       mrp: product.mrp,
       salePrice: product.salePrice,
+      minPrice: product.minPrice ?? null,
       hsnCode: product.hsnCode ?? undefined,
+      packSize: product.packSize ?? null,
       gstRate: product.gstRate ?? null,
       visibility: next,
       categoryId: product.category?.id ?? null,

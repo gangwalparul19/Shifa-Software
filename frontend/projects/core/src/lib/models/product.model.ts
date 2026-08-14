@@ -51,10 +51,19 @@ export interface Product {
   sku: string;
   name: string;
   description?: string;
+  /** MRP — the MAXIMUM price a salesperson may charge on order entry (price band). */
   mrp: Money;
+  /** Auto-Fetch Rate — the default price filled on the order (price band). */
   salePrice: Money;
+  /**
+   * Optional MINIMUM sale price — the floor a salesperson may charge on order
+   * entry. null/undefined means no price band is enforced for this product.
+   */
+  minPrice?: Money | null;
   /** Optional HSN code, surfaced on GST tax invoices (backend: GST feature). */
   hsnCode?: string;
+  /** Optional pack size / weight label (e.g. "100ML", "350gm", "Combo"); display-only. */
+  packSize?: string | null;
   /**
    * Optional per-product GST rate percent (DECIMAL(5,2) as a string, e.g.
    * "12.00"); null/undefined falls back to the settings default rate.

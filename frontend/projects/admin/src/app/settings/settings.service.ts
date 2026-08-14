@@ -39,6 +39,33 @@ export interface AppSettings {
   bankIfsc?: string | null;
   /** Bank branch. */
   bankBranch?: string | null;
+
+  // --- Shipment defaults for QuikShipX (create-order body) ----------------
+  /**
+   * QuikShipX pickup warehouse id (from your QuikShipX account). Publication to
+   * QuikShipX is BLOCKED until this is set — it's the one required shipment default.
+   */
+  shipPickupWarehouseId?: string | null;
+  /** QuikShipX package type code. */
+  shipPackageType?: string | null;
+  /** QuikShipX shipping mode code. */
+  shipShippingMode?: string | null;
+  /** Default parcel dead weight in grams. */
+  shipDeadWeightGrams?: number | null;
+  /** Default parcel length (cm). */
+  shipLengthCm?: number | null;
+  /** Default parcel width (cm). */
+  shipWidthCm?: number | null;
+  /** Default parcel height (cm). */
+  shipHeightCm?: number | null;
+  /** Default seller-levied shipping amount (decimal string). */
+  shipShippingAmount?: string | null;
+  /** Default product category sent to QuikShipX. */
+  shipDefaultCategory?: string | null;
+  /** Default HSN sent to QuikShipX when a product has none. */
+  shipDefaultHsn?: string | null;
+  /** Read-only: whether the defaults are complete enough to publish (warehouse set). */
+  shipmentDefaultsComplete?: boolean;
 }
 
 /**

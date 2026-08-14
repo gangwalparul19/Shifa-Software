@@ -167,6 +167,23 @@ public class OrderShipment {
         return true;
     }
 
+    /**
+     * Sets (or corrects) the AWB from an admin who read it off the QuikShipX portal.
+     * Unlike {@link #assignAwb(String)} this overwrites an existing value, because the
+     * QuikShipX create-order response is undocumented and often carries no AWB, so the
+     * admin is the source of truth here. A blank value is ignored so a stray empty save
+     * cannot wipe a known AWB.
+     *
+     * @return true when a non-blank AWB was applied
+     */
+    public boolean overwriteAwb(String newAwb) {
+        if (newAwb == null || newAwb.isBlank()) {
+            return false;
+        }
+        this.awb = newAwb.trim();
+        return true;
+    }
+
     public Long getId() {
         return id;
     }

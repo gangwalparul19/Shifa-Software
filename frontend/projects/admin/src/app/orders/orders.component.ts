@@ -271,6 +271,13 @@ export class OrdersComponent implements OnInit, OnDestroy {
   protected readonly detailBusy = signal(false);
   /** Busy flag for the manual "Send to QuikShipX now" action (ADMIN). */
   protected readonly publishBusy = signal(false);
+  /** True while a manual QuikShipX "Track now" request is in flight. */
+  protected readonly trackBusy = signal(false);
+
+  /** Admin-entered AWB (copied from the QuikShipX portal) for the open order. */
+  protected readonly awbInput = signal('');
+  /** True while saving the manually-entered AWB and tracking by it. */
+  protected readonly awbBusy = signal(false);
   /**
    * The open order's QuikShipX shipment, or null when it has not been published. Loaded
    * when the drawer opens; drives hiding the "Send to QuikShipX" button once the order is
@@ -852,8 +859,15 @@ export class OrdersComponent implements OnInit, OnDestroy {
       return;
     }
     this.service.shipment(detail.id).subscribe({
-      next: (shipment) => this.shipment.set(shipment),
-      error: () => this.shipment.set(null),
+      next: (shipment) => {
+        this.shipment.set(shipment);
+        // Prefill the AWB field with any AWB we already hold, so the admin sees/corrects it.
+        this.awbInput.set(shipment?.awb ?? '');
+      },
+      error: () => {
+        this.shipment.set(null);
+        this.awbInput.set('');
+      },
     });
   }
 
@@ -984,6 +998,43 @@ export class OrdersComponent implements OnInit, OnDestroy {
   /** The discount formatted as a "- ₹X" reduction for the totals breakdown. */
   discountDisplay(order: OrderDetail): string {
     return `- ₹${Number(order.discountAmount ?? 0).toFixed(2)}`;
+  }
+
+  /** A line's GST rate as a compact label (e.g. "5%"), or null when none/zero. */
+  gstPct(rate?: string | null): string | null {
+    if (rate == null || rate === '') {
+      return null;
+    }
+    const n = Number(rate);
+    return isNaN(n) || n === 0 ? null : `${n}%`;
+  }
+
+  /** The order's gross line subtotal (before discount), in rupees. */
+  private orderSubtotalNum(order: OrderDetail): number {
+    return (order.items ?? []).reduce((s, li) => s + (Number(li.lineTotal) || 0), 0);
+  }
+
+  /** The GST added on top (Model A) = grand total − taxable (taxable = subtotal − discount). */
+  private orderGstNum(order: OrderDetail): number {
+    const taxable = this.orderSubtotalNum(order) - Number(order.discountAmount ?? 0);
+    const total = Number(order.totalAmount) || 0;
+    return Math.max(0, total - taxable);
+  }
+
+  /** Whether the order has GST added on top (drives the Taxable/GST totals rows). */
+  gstApplied(order: OrderDetail): boolean {
+    return this.orderGstNum(order) > 0.005;
+  }
+
+  /** Taxable value (subtotal − discount) formatted for the totals breakdown. */
+  gstTaxableDisplay(order: OrderDetail): string {
+    const taxable = this.orderSubtotalNum(order) - Number(order.discountAmount ?? 0);
+    return `₹${taxable.toFixed(2)}`;
+  }
+
+  /** GST amount added on top, formatted as "+ ₹X" for the totals breakdown. */
+  gstAddedDisplay(order: OrderDetail): string {
+    return `+ ₹${this.orderGstNum(order).toFixed(2)}`;
   }
 
   /** Google Maps search deep link for the order's delivery address. */
@@ -1117,6 +1168,66 @@ export class OrdersComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.publishBusy.set(false);
+        this.toasts.error('Could not reach the server. Please try again.');
+      },
+    });
+  }
+
+  /**
+   * Queries QuikShipX now for the order's live status and refreshes the drawer with
+   * the mirrored status. ADMIN-only (the button lives inside the admin QuikShipX block).
+   */
+  trackNow(order: OrderDetail): void {
+    if (this.trackBusy()) {
+      return;
+    }
+    this.trackBusy.set(true);
+    this.service.trackQuikShipX(order.id).subscribe({
+      next: (res) => {
+        this.trackBusy.set(false);
+        if (res.ok) {
+          this.toasts.success(
+            res.status ? `QuikShipX status: ${res.status}` : 'Tracked — no status returned yet.',
+          );
+        } else {
+          this.toasts.error(res.detail || 'Could not fetch status from QuikShipX.');
+        }
+        // Reload the shipment so the mirrored status/AWB shows immediately.
+        this.service.shipment(order.id).subscribe((s) => this.shipment.set(s));
+      },
+      error: () => {
+        this.trackBusy.set(false);
+        this.toasts.error('Could not reach the server. Please try again.');
+      },
+    });
+  }
+
+  /**
+   * Saves the admin-entered AWB (from the QuikShipX portal) and tracks by it. This is the
+   * reliable path when QuikShipX's create-order response carried no AWB and tracking by our
+   * order reference returns "Shipment Not Found". ADMIN-only.
+   */
+  saveAwbAndTrack(order: OrderDetail): void {
+    const awb = this.awbInput().trim();
+    if (!awb || this.awbBusy()) {
+      return;
+    }
+    this.awbBusy.set(true);
+    this.service.setQuikShipXAwb(order.id, awb).subscribe({
+      next: (res) => {
+        this.awbBusy.set(false);
+        if (res.ok) {
+          this.toasts.success(
+            res.status ? `Saved AWB — QuikShipX status: ${res.status}` : 'AWB saved and tracked.',
+          );
+        } else {
+          this.toasts.error(res.detail || 'AWB saved, but QuikShipX could not be tracked.');
+        }
+        // Reload the shipment so the saved AWB / mirrored status shows immediately.
+        this.service.shipment(order.id).subscribe((s) => this.shipment.set(s));
+      },
+      error: () => {
+        this.awbBusy.set(false);
         this.toasts.error('Could not reach the server. Please try again.');
       },
     });

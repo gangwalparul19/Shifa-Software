@@ -51,9 +51,26 @@ public class Product {
     @Column(name = "sale_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal salePrice = BigDecimal.ZERO;
 
+    /**
+     * Optional per-product MINIMUM sale price — the floor a salesperson may charge
+     * on order entry (price-list feature). {@code null} means "no minimum" (legacy
+     * products), in which case the order-entry band is not enforced. When set, the
+     * effective band is {@code [min_price, mrp]} with {@link #salePrice} as the
+     * auto-fetched default.
+     */
+    @Column(name = "min_price", precision = 12, scale = 2)
+    private BigDecimal minPrice;
+
     /** Optional HSN code, surfaced on GST tax invoices when present (Req: GST). */
     @Column(name = "hsn_code", length = 20)
     private String hsnCode;
+
+    /**
+     * Optional pack size / net weight label from the price list (e.g. {@code 100ML},
+     * {@code 350gm}, {@code 60 Pc cpsl}, {@code Combo}); display-only.
+     */
+    @Column(name = "pack_size", length = 40)
+    private String packSize;
 
     /**
      * Optional per-product GST rate percent (e.g. 5.00 / 12.00 / 18.00) used on
@@ -183,12 +200,28 @@ public class Product {
         this.salePrice = salePrice;
     }
 
+    public BigDecimal getMinPrice() {
+        return minPrice;
+    }
+
+    public void setMinPrice(BigDecimal minPrice) {
+        this.minPrice = minPrice;
+    }
+
     public String getHsnCode() {
         return hsnCode;
     }
 
     public void setHsnCode(String hsnCode) {
         this.hsnCode = hsnCode;
+    }
+
+    public String getPackSize() {
+        return packSize;
+    }
+
+    public void setPackSize(String packSize) {
+        this.packSize = packSize;
     }
 
     public BigDecimal getGstRate() {

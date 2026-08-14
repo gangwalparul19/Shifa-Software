@@ -132,7 +132,9 @@ public record InvoiceContent(
      * @param quantity   the ordered quantity
      * @param rate       the applied unit rate
      * @param amount     the line total (rate × quantity)
-     * @param hsnCode    the product HSN code for GST invoices, or {@code null}/blank when unknown
+     * @param hsnCode    the product HSN code (retained for records; not shown on the PDF)
+     * @param gstRate    the product's GST rate percent for this line (e.g. 5.00 / 18.00),
+     *                   shown per line on a tax invoice; {@code null} when GST is off/unknown
      */
     public record InvoiceLineItem(
             int position,
@@ -140,7 +142,8 @@ public record InvoiceContent(
             int quantity,
             BigDecimal rate,
             BigDecimal amount,
-            String hsnCode) {
+            String hsnCode,
+            BigDecimal gstRate) {
 
         public InvoiceLineItem {
             Objects.requireNonNull(productName, "productName");

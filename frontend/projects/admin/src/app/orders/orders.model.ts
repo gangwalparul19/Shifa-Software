@@ -61,7 +61,14 @@ export interface CreateOrderRequest {
   leadSourceNote?: string;
   /** Optional free-text order note captured at order entry (≤1000 chars). */
   notes?: string;
+  /** Optional discount type — flat rupees or percent of the (GST-inclusive) subtotal. */
+  discountType?: DiscountType | null;
+  /** Discount magnitude: rupees when FLAT, percent (0–100) when PERCENT. */
+  discountValue?: number | null;
 }
+
+/** How a salesperson discount is expressed (mirrors backend {@code DiscountType}). */
+export type DiscountType = 'FLAT' | 'PERCENT';
 
 /**
  * Result of {@code POST /api/orders/payment-screenshots} (mirrors the backend
@@ -241,4 +248,17 @@ export interface ShipmentInfo {
   test: boolean;
   statusMirroringActive: boolean;
   labelFromPortal: boolean;
+}
+
+/**
+ * Result of the admin "Track now" action ({@code POST /api/admin/orders/{id}/track-quikshipx}),
+ * mirroring the backend {@code QuikShipXTrackingService.TrackResult}. {@code ok} is false when
+ * QuikShipX could not be reached / returned an error; {@code detail} explains either way.
+ */
+export interface TrackResult {
+  ok: boolean;
+  status?: string | null;
+  awb?: string | null;
+  detail?: string | null;
+  rawResponse?: string | null;
 }

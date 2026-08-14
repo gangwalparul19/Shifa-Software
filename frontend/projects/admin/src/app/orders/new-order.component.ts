@@ -13,6 +13,7 @@ import { ApiError, Product, paiseToMoney, toPaise } from 'core';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { StateTypeaheadComponent } from '../shared/state-typeahead.component';
+import { ProductTypeaheadComponent } from '../shared/product-typeahead.component';
 import { StatesService } from '../shared/states.service';
 import { PincodeService } from '../shared/pincode.service';
 import { ConfirmService } from '../shared/confirm.service';
@@ -27,6 +28,7 @@ import { LeadConvertRequest } from '../leads/leads.model';
 import {
   CreateOrderLineItem,
   CreateOrderRequest,
+  DiscountType,
   LEAD_SOURCE_OPTIONS,
   LeadSource,
 } from './orders.model';
@@ -57,6 +59,7 @@ type UploadState = 'idle' | 'uploading' | 'done' | 'error';
     PageHeaderComponent,
     StatePanelComponent,
     StateTypeaheadComponent,
+    ProductTypeaheadComponent,
   ],
   templateUrl: './new-order.component.html',
   styleUrl: './new-order.component.css',
@@ -168,6 +171,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     items: [],
     amountReceived: 0,
     leadSource: '',
+    discountType: '',
+    discountValue: null,
   });
 
   /** Selectable lead-source options for the origin picker (Req 4.1). */
@@ -187,6 +192,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     items: this.fb.array([this.newItem()]),
     amountReceived: [0, [Validators.required, Validators.min(0)]],
     notes: ['', [Validators.maxLength(1000)]],
+    discountType: ['' as '' | DiscountType],
+    discountValue: [null as number | null, [Validators.min(0)]],
   });
 
   /** Whether the form is converting a lead (drives titles, locked fields, submit path). */
@@ -203,14 +210,94 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     this.model().items.map((it) => toPaise(it.rate ?? 0) * (it.quantity || 0)),
   );
 
+  /** Sum of the line totals in paise, BEFORE any discount (GST-inclusive). */
+  protected readonly subtotalPaise = computed(() =>
+    this.lineTotals().reduce((sum, cents) => sum + cents, 0),
+  );
+
   /**
-   * The running order total in paise, rounded to the nearest whole rupee so the
-   * figure the salesperson sees matches what the backend will charge
-   * (product-audit §4.6, e.g. ₹2679.99 shown as ₹2680).
+   * The discount in paise derived from the chosen type + value, clamped to the
+   * subtotal. FLAT is taken as rupees; PERCENT as a share of the subtotal.
+   */
+  protected readonly discountPaise = computed(() => {
+    const sub = this.subtotalPaise();
+    const type = this.model().discountType;
+    const value = this.model().discountValue;
+    if (!type || value == null || value <= 0 || sub <= 0) {
+      return 0;
+    }
+    const raw = type === 'PERCENT' ? Math.round((sub * value) / 100) : toPaise(value);
+    return Math.max(0, Math.min(raw, sub));
+  });
+
+  /** Taxable base in paise = subtotal − discount (the amount GST is charged on). */
+  protected readonly taxablePaise = computed(() =>
+    Math.max(0, this.subtotalPaise() - this.discountPaise()),
+  );
+
+  /**
+   * GST ADDED on top of the discounted base (Model A, discount-before-tax): the
+   * order discount is allocated across lines pro-rata by amount, and each line's
+   * discounted-taxable is taxed at that product's GST rate. Mirrors the backend.
+   */
+  protected readonly gstAddedPaise = computed(() => {
+    const sub = this.subtotalPaise();
+    if (sub <= 0) {
+      return 0;
+    }
+    const disc = this.discountPaise();
+    let gst = 0;
+    for (const it of this.model().items) {
+      const product = this.products().find((p) => p.id === it.productId);
+      const rate = product?.gstRate != null ? Number(product.gstRate) : 0;
+      if (!rate) {
+        continue;
+      }
+      const lineBase = toPaise(it.rate ?? 0) * (it.quantity || 0);
+      const share = Math.round((disc * lineBase) / sub);
+      const lineTaxable = lineBase - share;
+      gst += Math.round((lineTaxable * rate) / 100);
+    }
+    return gst;
+  });
+
+  /**
+   * The running order total (payable) in paise = (subtotal − discount) + GST,
+   * rounded to the nearest whole rupee so the figure the salesperson sees matches
+   * what the backend charges. Prices are pre-GST; GST is added on top.
    */
   protected readonly orderTotalPaise = computed(() => {
-    const raw = this.lineTotals().reduce((sum, cents) => sum + cents, 0);
-    return Math.round(raw / 100) * 100;
+    const gross = this.taxablePaise() + this.gstAddedPaise();
+    return Math.max(0, Math.round(gross / 100) * 100);
+  });
+
+  /** Whether any line product carries a GST rate (drives the GST total line). */
+  protected readonly hasGst = computed(() => this.gstAddedPaise() > 0);
+
+  /**
+   * The GST-rate label shown in brackets on the GST totals line. When every
+   * taxed line shares one rate it reads e.g. "(5%)"; with different rates across
+   * products it reads "(mixed)". Empty when no line carries GST.
+   */
+  protected readonly gstRateLabel = computed(() => {
+    const rates = new Set<number>();
+    for (const it of this.model().items) {
+      if (it.productId == null) {
+        continue;
+      }
+      const product = this.products().find((p) => p.id === it.productId);
+      const rate = product?.gstRate != null ? Number(product.gstRate) : 0;
+      if (rate > 0) {
+        rates.add(rate);
+      }
+    }
+    if (rates.size === 0) {
+      return '';
+    }
+    if (rates.size === 1) {
+      return `(${[...rates][0]}%)`;
+    }
+    return '(mixed)';
   });
 
   /** Remaining balance after the amount received (may be negative if overpaid). */
@@ -462,6 +549,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       next: (rows) => {
         this.products.set(rows);
         this.productsLoading.set(false);
+        // Apply price-band validators to any lines already prefilled
+        // (reorder / draft / lead convert) now that product bands are known.
+        this.applyAllRateBands();
       },
       error: () => {
         this.productsError.set('Could not load products. Please try again.');
@@ -668,6 +758,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     target.controls['productId'].setValue(product.id);
     target.controls['quantity'].setValue(1);
     target.controls['rate'].setValue(Number(product.salePrice));
+    this.applyRateBand(target, product);
     this.model.set(this.snapshot());
   }
 
@@ -693,7 +784,11 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     control.markAsTouched();
   }
 
-  /** When a product is chosen, pre-fill the rate with its sale price (Req 7.2). */
+  /**
+   * When a product is chosen, auto-fetch the price (its sale price) and apply the
+   * product's min/max price band so the salesperson cannot go below the minimum
+   * or above the MRP (price-list feature; also enforced on the backend).
+   */
   onProductChange(index: number): void {
     const group = this.items.at(index);
     const productId = group.controls['productId'].value as number | null;
@@ -701,11 +796,82 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     if (product) {
       group.controls['rate'].setValue(Number(product.salePrice));
     }
+    this.applyRateBand(group, product);
   }
 
   productName(index: number): string {
     const productId = this.items.at(index).controls['productId'].value as number | null;
     return this.products().find((p) => p.id === productId)?.name ?? '';
+  }
+
+  /**
+   * Handles a pick from the product autocomplete on a line: sets the line's
+   * {@code productId} (the shared source of truth, so the dropdown updates too)
+   * and runs the same auto-fetch price + band logic as the dropdown.
+   */
+  onProductPicked(index: number, product: Product): void {
+    this.items.at(index).controls['productId'].setValue(product.id);
+    this.onProductChange(index);
+    this.model.set(this.snapshot());
+  }
+
+  // --- Price band (min / auto-fetch / max) --------------------------------
+
+  /** The picker product currently selected on a line, if any. */
+  private productForLine(index: number): Product | undefined {
+    const productId = this.items.at(index).controls['productId'].value as number | null;
+    return this.products().find((p) => p.id === productId);
+  }
+
+  /**
+   * The enforced price band for a line, or null when the selected product has no
+   * minimum configured (legacy product → free price). Drives the UI hint, the
+   * input min/max attributes, and the validation message.
+   */
+  lineBand(index: number): { min: number; max: number; auto: number } | null {
+    const p = this.productForLine(index);
+    if (!p || p.minPrice == null) {
+      return null;
+    }
+    return { min: Number(p.minPrice), max: Number(p.mrp), auto: Number(p.salePrice) };
+  }
+
+  lineMin(index: number): number {
+    return this.lineBand(index)?.min ?? 0;
+  }
+
+  lineMax(index: number): number | null {
+    return this.lineBand(index)?.max ?? null;
+  }
+
+  /** The out-of-range message shown under the price input. */
+  rateError(index: number): string {
+    const band = this.lineBand(index);
+    return band
+      ? `Price must be between ₹${band.min} and ₹${band.max}.`
+      : 'Enter a valid price.';
+  }
+
+  /** Sets the rate control's validators from a product's price band. */
+  private applyRateBand(group: FormGroup, product: Product | undefined): void {
+    const rate = group.controls['rate'];
+    if (product && product.minPrice != null) {
+      rate.setValidators([
+        Validators.required,
+        Validators.min(Number(product.minPrice)),
+        Validators.max(Number(product.mrp)),
+      ]);
+    } else {
+      rate.setValidators([Validators.min(0)]);
+    }
+    rate.updateValueAndValidity({ emitEvent: false });
+  }
+
+  /** Re-applies the price band to every line (after products load / a bulk build). */
+  private applyAllRateBands(): void {
+    for (let i = 0; i < this.items.length; i++) {
+      this.applyRateBand(this.items.at(i), this.productForLine(i));
+    }
   }
 
   // --- Payment screenshot -------------------------------------------------
@@ -901,6 +1067,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       // Only send the note when OTHER is chosen (it's meaningless otherwise, Req 4.5).
       ...(isOther && note ? { leadSourceNote: note } : {}),
       ...(orderNotes ? { notes: orderNotes } : {}),
+      ...(raw.discountType && raw.discountValue != null && raw.discountValue > 0
+        ? { discountType: raw.discountType as DiscountType, discountValue: raw.discountValue }
+        : {}),
     };
 
     // Offline capture (FEATURE-ROADMAP §8.1): a COD order (no money collected) is
@@ -1025,6 +1194,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     items: { productId: number | null; quantity: number; rate: number | null }[];
     amountReceived: number;
     leadSource: '' | LeadSource;
+    discountType: '' | DiscountType;
+    discountValue: number | null;
   } {
     const raw = this.form.getRawValue();
     return {
@@ -1035,6 +1206,11 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       })),
       amountReceived: Number(raw.amountReceived) || 0,
       leadSource: raw.leadSource,
+      discountType: (raw.discountType ?? '') as '' | DiscountType,
+      discountValue:
+        raw.discountValue === null || raw.discountValue === undefined
+          ? null
+          : Number(raw.discountValue),
     };
   }
 }

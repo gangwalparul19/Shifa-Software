@@ -166,8 +166,11 @@ class InvoiceContentBuilderTest {
 
     @Test
     void gstEnabledIntraStateProducesCgstAndSgstWithHsnAndConsistentTotal() {
+        // Model A (GST added on top): line subtotal 240 is the taxable base; the
+        // stored grand total already includes the +5% GST → 252. The invoice
+        // reconstructs taxable=240, tax=12 from (grand − taxable).
         OrderEntity order = order(PaymentStatus.FULLY_PAID,
-                new BigDecimal("240.00"), new BigDecimal("240.00"),
+                new BigDecimal("252.00"), new BigDecimal("252.00"),
                 BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2));
         // Seller in Maharashtra == order's Maharashtra -> intra-state.
         AppSettings settings = gstSettings("Maharashtra", new BigDecimal("5.00"), true);
@@ -180,16 +183,21 @@ class InvoiceContentBuilderTest {
         assertThat(gst.intraState()).isTrue();
         assertThat(gst.cgstRate()).isEqualByComparingTo("2.50");
         assertThat(gst.sgstRate()).isEqualByComparingTo("2.50");
+        assertThat(gst.taxableValue()).isEqualByComparingTo("240.00");
+        assertThat(gst.totalTax()).isEqualByComparingTo("12.00");
+        assertThat(gst.cgstAmount()).isEqualByComparingTo("6.00");
+        assertThat(gst.sgstAmount()).isEqualByComparingTo("6.00");
         assertThat(gst.cgstAmount().add(gst.sgstAmount())).isEqualByComparingTo(gst.totalTax());
-        // Prices-inclusive: grand total equals the order total.
-        assertThat(gst.grandTotal()).isEqualByComparingTo("240.00");
+        // GST added on top: grand total = taxable + tax = the stored order total.
+        assertThat(gst.grandTotal()).isEqualByComparingTo("252.00");
         assertThat(content.gst().gstin()).isEqualTo("23ABCDE1234F1Z5");
     }
 
     @Test
     void gstEnabledInterStateProducesIgst() {
+        // Model A: taxable base 240, grand total 252 (240 + 5% IGST).
         OrderEntity order = order(PaymentStatus.FULLY_PAID,
-                new BigDecimal("240.00"), new BigDecimal("240.00"),
+                new BigDecimal("252.00"), new BigDecimal("252.00"),
                 BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2));
         // Seller in Madhya Pradesh, order ships to Maharashtra -> inter-state.
         AppSettings settings = gstSettings("Madhya Pradesh", new BigDecimal("5.00"), true);
@@ -199,9 +207,12 @@ class InvoiceContentBuilderTest {
         GstComputation gst = content.gst().computation();
         assertThat(gst.intraState()).isFalse();
         assertThat(gst.igstRate()).isEqualByComparingTo("5.00");
+        assertThat(gst.taxableValue()).isEqualByComparingTo("240.00");
+        assertThat(gst.totalTax()).isEqualByComparingTo("12.00");
+        assertThat(gst.igstAmount()).isEqualByComparingTo("12.00");
         assertThat(gst.igstAmount()).isEqualByComparingTo(gst.totalTax());
         assertThat(gst.cgstAmount()).isEqualByComparingTo("0.00");
-        assertThat(gst.grandTotal()).isEqualByComparingTo("240.00");
+        assertThat(gst.grandTotal()).isEqualByComparingTo("252.00");
     }
 
     @Test
@@ -236,6 +247,44 @@ class InvoiceContentBuilderTest {
         InvoiceContent withDefault = builder.build(order, settings,
                 Map.of(1L, "3004"), Map.of());
         assertThat(withDefault.gst().computation().ratePercent()).isEqualByComparingTo("5.00");
+    }
+
+    // --- Mixed per-product GST rates (5% + 18%) -----------------------------
+
+    @Test
+    void gstMixedRatesProducePerRateGroupsAndPerLineRate() {
+        OrderEntity order = new OrderEntity(
+                "SHR-000124", OrderSource.SALESPERSON, 7L,
+                "Asha", "9812345678", "12 MG Road", "Pune", "Maharashtra", "411001");
+        // Two products at different rates, GST added on top: 5% on 1000 = 50,
+        // 18% on 1000 = 180, taxable 2000, grand 2230.
+        order.addLineItem(new OrderLineItem(1L, "Joint Heal Oil", "3004",
+                new BigDecimal("5.00"), 1, new BigDecimal("1000.00"), new BigDecimal("1000.00")));
+        order.addLineItem(new OrderLineItem(2L, "Face Cream", "3304",
+                new BigDecimal("18.00"), 1, new BigDecimal("1000.00"), new BigDecimal("1000.00")));
+        order.applyAmounts(new BigDecimal("2230.00"), BigDecimal.ZERO,
+                BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), PaymentStatus.COD);
+        order.setOrderStatus(com.shifa.oms.statemachine.OrderStatus.APPROVED);
+        // Inter-state so each group is a single IGST line.
+        AppSettings settings = gstSettings("Madhya Pradesh", new BigDecimal("5.00"), true);
+
+        InvoiceContent content = builder.build(order, settings, Map.of());
+
+        // Per-line GST rate is exposed (shown in the PDF's GST% column).
+        assertThat(content.lineItems().get(0).gstRate()).isEqualByComparingTo("5.00");
+        assertThat(content.lineItems().get(1).gstRate()).isEqualByComparingTo("18.00");
+
+        // Two per-rate groups, ordered by rate ascending.
+        var groups = content.gst().rateGroups();
+        assertThat(groups).hasSize(2);
+        assertThat(groups.get(0).ratePercent()).isEqualByComparingTo("5.00");
+        assertThat(groups.get(0).taxableValue()).isEqualByComparingTo("1000.00");
+        assertThat(groups.get(0).igstAmount()).isEqualByComparingTo("50.00");
+        assertThat(groups.get(1).ratePercent()).isEqualByComparingTo("18.00");
+        assertThat(groups.get(1).igstAmount()).isEqualByComparingTo("180.00");
+        // Reconciles to the stored grand total with no rounding needed.
+        assertThat(content.gst().roundOff()).isEqualByComparingTo("0.00");
+        assertThat(content.gst().computation().grandTotal()).isEqualByComparingTo("2230.00");
     }
 
     // --- Helper -------------------------------------------------------------

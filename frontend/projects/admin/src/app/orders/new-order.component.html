@@ -348,6 +348,13 @@
 
             <div class="mb-2">
               <label class="form-label" [for]="'product-' + i">Product</label>
+              <admin-product-typeahead
+                class="mb-2 d-block"
+                [products]="products()"
+                [selectedId]="items.at(i).controls['productId'].value"
+                [invalid]="itemInvalid(i, 'productId')"
+                (picked)="onProductPicked(i, $event)"
+              />
               <select
                 [id]="'product-' + i"
                 class="form-select"
@@ -395,11 +402,20 @@
                   type="number"
                   class="form-control text-end"
                   formControlName="rate"
-                  min="0"
+                  [attr.min]="lineMin(i)"
+                  [attr.max]="lineMax(i)"
                   step="0.01"
                   [class.is-invalid]="itemInvalid(i, 'rate')"
                   aria-label="Price"
                 />
+                @if (lineBand(i); as band) {
+                  <div class="form-hint small mt-1">
+                    Allowed ₹{{ band.min }} – ₹{{ band.max }} · auto ₹{{ band.auto }}
+                  </div>
+                }
+                @if (itemInvalid(i, 'rate')) {
+                  <div class="text-danger small mt-1">{{ rateError(i) }}</div>
+                }
               </div>
             </div>
 
@@ -423,10 +439,53 @@
         </div>
       }
 
+      <!-- Discount (salesperson) -->
+      <div class="shifa-no__card">
+        <label class="form-label">Discount <span class="text-secondary">(optional)</span></label>
+        <div class="input-group">
+          <select class="form-select" formControlName="discountType" aria-label="Discount type" style="max-width: 9rem">
+            <option value="">No discount</option>
+            <option value="FLAT">Flat ₹</option>
+            <option value="PERCENT">Percent %</option>
+          </select>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            class="form-control text-end"
+            formControlName="discountValue"
+            [attr.max]="form.controls.discountType.value === 'PERCENT' ? 100 : null"
+            [placeholder]="form.controls.discountType.value === 'PERCENT' ? '% off' : '₹ off'"
+            aria-label="Discount value"
+          />
+        </div>
+        <small class="form-hint">Applied to the subtotal (before GST). GST is then added on top.</small>
+      </div>
+
       <!-- Running totals -->
       <div class="shifa-no__card shifa-no__totals">
         <div class="shifa-no__totline">
-          <span>Order total</span>
+          <span class="text-secondary">Subtotal</span>
+          <span>{{ formatMoney(subtotalPaise()) }}</span>
+        </div>
+        @if (discountPaise() > 0) {
+          <div class="shifa-no__totline">
+            <span class="text-secondary">Discount</span>
+            <span class="text-danger">− {{ formatMoney(discountPaise()) }}</span>
+          </div>
+        }
+        @if (hasGst()) {
+          <div class="shifa-no__totline">
+            <span class="text-secondary">Taxable value</span>
+            <span>{{ formatMoney(taxablePaise()) }}</span>
+          </div>
+          <div class="shifa-no__totline">
+            <span class="text-secondary">GST {{ gstRateLabel() }}</span>
+            <span>+ {{ formatMoney(gstAddedPaise()) }}</span>
+          </div>
+        }
+        <div class="shifa-no__totline">
+          <span class="fw-bold">Grand total</span>
           <span class="fw-bold">{{ formatMoney(orderTotalPaise()) }}</span>
         </div>
         <div class="shifa-no__totline">

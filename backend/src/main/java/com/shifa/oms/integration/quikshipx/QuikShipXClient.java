@@ -31,12 +31,15 @@ public interface QuikShipXClient {
     ShipmentAcceptance createShipment(ShipmentSubmission submission) throws QuikShipXClientException;
 
     /**
-     * The current status of a shipment.
+     * The current status of a shipment via the QuikShipX track-order API
+     * ({@code POST /api/track-order-v1}).
      *
-     * <p>SPECULATIVE: no status-query operation is documented. Callers must check
-     * {@code app.quikshipx.status-feed-available} first.
-     *
-     * @param shipmentReference the QuikShipX shipment id when known, else the order reference
+     * @param trackingNo   the AWB (when {@code trackingType} is {@code awb}) or the
+     *                     order id (when {@code order_id})
+     * @param trackingType {@code "awb"} or {@code "order_id"}
+     * @throws QuikShipXClientException on transport failure, timeout, or a non-2xx
+     *         response; the exception says whether retrying could help
      */
-    QuikShipXStatusEvent fetchStatus(String shipmentReference) throws QuikShipXClientException;
+    QuikShipXStatusEvent fetchStatus(String trackingNo, String trackingType)
+            throws QuikShipXClientException;
 }

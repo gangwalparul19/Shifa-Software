@@ -460,4 +460,71 @@ class OrderServiceTest {
 
         assertThat(response.discountAmount()).isEqualByComparingTo("0.00");
     }
+
+    // --- Model A: discount before tax, GST added on top, rounded -----------
+
+    @Test
+    void salespersonOrderDeductsDiscountThenAddsGstRoundedToNearestRupee() {
+        // Product ₹1500 @ 5% GST; flat ₹200 off → taxable 1300, +5% = 65,
+        // grand ₹1365 (client's example). GST is enabled in settings.
+        AppSettings gstOn = new AppSettings();
+        gstOn.setGstEnabled(true);
+        gstOn.setGstRatePercent(new BigDecimal("5.00"));
+        when(appSettingsRepository.findById(AppSettings.SINGLETON_ID))
+                .thenReturn(Optional.of(gstOn));
+        com.shifa.oms.settings.SettingsService gstSettings =
+                new com.shifa.oms.settings.SettingsService(appSettingsRepository);
+        OrderService gstService = new OrderService(
+                orderRepository, productRepository, new OrderCodeGenerator(), storageService,
+                new SalespersonScopeResolver(), new TrackingService(
+                        orderRepository, courierRecordRepository, courierCompanyRepository),
+                new com.shifa.oms.inventory.StockService(productRepository, stockMovementRepository,
+                        new OutboxEventPublisher(outboxEventRepository), gstSettings),
+                productImageRepository, gstSettings);
+
+        Product p = product(1L, "1500.00");
+        p.setGstRate(new BigDecimal("5.00"));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(p));
+
+        CreateOrderRequest request = new CreateOrderRequest(
+                "Asha", "9812345678", "12 MG Road", "Pune", "Maharashtra", "411001",
+                List.of(new LineItemRequest(1L, 1, null)), BigDecimal.ZERO, null,
+                LeadSource.WHATSAPP, null, null, null, null,
+                DiscountType.FLAT, new BigDecimal("200.00"));
+
+        OrderResponse response = gstService.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.totalAmount()).isEqualByComparingTo("1365.00");
+        assertThat(response.discountAmount()).isEqualByComparingTo("200.00");
+    }
+
+    @Test
+    void salespersonOrderAddsGstWhenNoDiscount() {
+        // Same product, no discount → 1500 + 5% = ₹1575 (GST added on top).
+        AppSettings gstOn = new AppSettings();
+        gstOn.setGstEnabled(true);
+        gstOn.setGstRatePercent(new BigDecimal("5.00"));
+        when(appSettingsRepository.findById(AppSettings.SINGLETON_ID))
+                .thenReturn(Optional.of(gstOn));
+        com.shifa.oms.settings.SettingsService gstSettings =
+                new com.shifa.oms.settings.SettingsService(appSettingsRepository);
+        OrderService gstService = new OrderService(
+                orderRepository, productRepository, new OrderCodeGenerator(), storageService,
+                new SalespersonScopeResolver(), new TrackingService(
+                        orderRepository, courierRecordRepository, courierCompanyRepository),
+                new com.shifa.oms.inventory.StockService(productRepository, stockMovementRepository,
+                        new OutboxEventPublisher(outboxEventRepository), gstSettings),
+                productImageRepository, gstSettings);
+
+        Product p = product(1L, "1500.00");
+        p.setGstRate(new BigDecimal("5.00"));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(p));
+
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), BigDecimal.ZERO, null);
+
+        OrderResponse response = gstService.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.totalAmount()).isEqualByComparingTo("1575.00");
+    }
 }

@@ -1,5 +1,6 @@
 package com.shifa.oms.order.dto;
 
+import com.shifa.oms.order.DiscountType;
 import com.shifa.oms.order.LeadSource;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -85,6 +86,38 @@ public record CreateOrderRequest(
         // an empty string or 10 digits, and @Pattern treats null as valid, so the
         // field stays optional whether the client omits it or sends "".
         @Pattern(regexp = "(\\d{10})?", message = "alternateMobile must be exactly 10 digits")
-        String alternateMobile
+        String alternateMobile,
+
+        /**
+         * Optional salesperson discount type (FLAT rupees or PERCENT of subtotal).
+         * {@code null} means no discount. Applied to the GST-inclusive subtotal so
+         * the payable total stays GST-inclusive (price-list feature).
+         */
+        DiscountType discountType,
+
+        /**
+         * The discount magnitude: rupees when {@link #discountType} is FLAT, a
+         * percentage (0–100) when PERCENT. Ignored when {@code discountType} is
+         * null. Validated in the service (non-negative; ≤100 for PERCENT; the
+         * resulting amount may not exceed the subtotal).
+         */
+        @DecimalMin(value = "0.00", message = "discountValue must not be negative")
+        @Digits(integer = 10, fraction = 2, message = "discountValue must be a DECIMAL(12,2) value")
+        BigDecimal discountValue
 ) {
+
+    /**
+     * Backward-compatible constructor (pre-discount call sites): builds a request
+     * with no discount. Keeps existing callers/tests compiling while the canonical
+     * constructor (used by Jackson) carries the new discount fields.
+     */
+    public CreateOrderRequest(
+            String customerName, String customerMobile, String addressLine, String city,
+            String state, String postalCode, List<LineItemRequest> items, BigDecimal amountReceived,
+            String paymentScreenshotKey, LeadSource leadSource, String leadSourceNote,
+            String customerEmail, String notes, String alternateMobile) {
+        this(customerName, customerMobile, addressLine, city, state, postalCode, items,
+                amountReceived, paymentScreenshotKey, leadSource, leadSourceNote, customerEmail,
+                notes, alternateMobile, null, null);
+    }
 }

@@ -109,4 +109,34 @@ class GstCalculatorTest {
         assertThat(gst.taxableValue()).isEqualByComparingTo("500.00");
         assertThat(gst.grandTotal()).isEqualByComparingTo("500.00");
     }
+
+    // --- Model A: GST added on top, tax derived from taxable + grand total ----
+
+    @Test
+    void ofTaxableAndTotalDerivesInterStateTaxFromTheDifference() {
+        // Client example: ₹1500 − ₹200 discount = ₹1300 taxable, +5% IGST = ₹65,
+        // grand ₹1365. Inter-state (IGST).
+        GstComputation gst = calculator.ofTaxableAndTotal(
+                new BigDecimal("1300.00"), new BigDecimal("1365.00"),
+                new BigDecimal("5.00"), false);
+
+        assertThat(gst.intraState()).isFalse();
+        assertThat(gst.taxableValue()).isEqualByComparingTo("1300.00");
+        assertThat(gst.totalTax()).isEqualByComparingTo("65.00");
+        assertThat(gst.igstAmount()).isEqualByComparingTo("65.00");
+        assertThat(gst.igstRate()).isEqualByComparingTo("5.00");
+        assertThat(gst.grandTotal()).isEqualByComparingTo("1365.00");
+    }
+
+    @Test
+    void ofTaxableAndTotalSplitsIntraStateAndReconcilesToGrand() {
+        GstComputation gst = calculator.ofTaxableAndTotal(
+                new BigDecimal("1300.00"), new BigDecimal("1365.00"),
+                new BigDecimal("5.00"), true);
+
+        assertThat(gst.intraState()).isTrue();
+        assertThat(gst.cgstAmount().add(gst.sgstAmount())).isEqualByComparingTo("65.00");
+        // taxable + tax always equals the supplied grand total (the order total).
+        assertThat(gst.taxableValue().add(gst.totalTax())).isEqualByComparingTo(gst.grandTotal());
+    }
 }

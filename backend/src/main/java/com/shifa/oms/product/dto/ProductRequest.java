@@ -39,8 +39,21 @@ public record ProductRequest(
         @Digits(integer = 10, fraction = 2, message = "salePrice must be a DECIMAL(12,2) value")
         BigDecimal salePrice,
 
+        /**
+         * Optional per-product MINIMUM sale price (order-entry floor). {@code null}
+         * disables the price band for this product. When set, the service enforces
+         * {@code minPrice <= salePrice <= mrp}.
+         */
+        @DecimalMin(value = "0.00", message = "minPrice must not be negative")
+        @Digits(integer = 10, fraction = 2, message = "minPrice must be a DECIMAL(12,2) value")
+        BigDecimal minPrice,
+
         @Size(max = 20, message = "hsnCode must be at most 20 characters")
         String hsnCode,
+
+        /** Optional pack size / weight label (e.g. 100ML, 350gm, Combo). */
+        @Size(max = 40, message = "packSize must be at most 40 characters")
+        String packSize,
 
         /** Optional per-product GST rate percent; null falls back to the settings default. */
         @DecimalMin(value = "0.00", message = "gstRate must not be negative")

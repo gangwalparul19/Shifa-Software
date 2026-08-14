@@ -22,6 +22,16 @@ public interface OrderShipmentRepository extends JpaRepository<OrderShipment, Lo
     Optional<OrderShipment> findByQuikshipxOrderId(String quikshipxOrderId);
 
     /**
+     * Shipments that can be tracked against QuikShipX — those carrying an AWB or a
+     * QuikShipX order id. The poller filters out terminal statuses in code. Oldest
+     * first so a large backlog is worked fairly.
+     */
+    @org.springframework.data.jpa.repository.Query(
+            "SELECT s FROM OrderShipment s WHERE s.awb IS NOT NULL OR s.quikshipxOrderId IS NOT NULL "
+                    + "ORDER BY s.updatedAt ASC")
+    java.util.List<OrderShipment> findTrackable();
+
+    /**
      * Resolves a status event that carries only the order reference we sent — the
      * fallback that matters, because the create response may never have given us a
      * shipment id (Req 6.15).

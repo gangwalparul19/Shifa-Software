@@ -99,6 +99,40 @@ public class GstCalculator {
                 grandTotal);
     }
 
+    /**
+     * Builds a GST breakdown from a KNOWN taxable value and grand total (GST added
+     * on top, discount-before-tax model). The total tax is exactly
+     * {@code grandTotal − taxableValue}, so the invoice always reconciles with the
+     * order's stored Total_Amount regardless of how the total was rounded. The
+     * {@code ratePercent} is used only for the displayed rate label + the
+     * CGST/SGST vs IGST split.
+     *
+     * @param taxableValue the net taxable base (e.g. subtotal − discount)
+     * @param grandTotal   the order grand total (taxable + GST), the source of truth
+     * @param ratePercent  the GST rate percent for display (e.g. 5.00); null ⇒ 0
+     * @param intraState   {@code true} for CGST+SGST, {@code false} for IGST
+     */
+    public GstComputation ofTaxableAndTotal(BigDecimal taxableValue, BigDecimal grandTotal,
+                                            BigDecimal ratePercent, boolean intraState) {
+        BigDecimal taxable = money(taxableValue != null ? taxableValue : BigDecimal.ZERO);
+        BigDecimal grand = money(grandTotal != null ? grandTotal : BigDecimal.ZERO);
+        BigDecimal rate = ratePercent != null ? ratePercent : BigDecimal.ZERO;
+        BigDecimal totalTax = grand.subtract(taxable);
+        if (totalTax.signum() < 0) {
+            totalTax = zeroMoney();
+        }
+        BigDecimal halfRate = rate.divide(TWO, RATE_SCALE, RoundingMode.HALF_UP);
+        if (intraState) {
+            BigDecimal cgst = totalTax.divide(TWO, MONEY_SCALE, RoundingMode.HALF_UP);
+            BigDecimal sgst = totalTax.subtract(cgst);
+            return new GstComputation(true, scaleRate(rate), taxable,
+                    halfRate, cgst, halfRate, sgst, zeroRate(), zeroMoney(), totalTax, grand);
+        }
+        return new GstComputation(false, scaleRate(rate), taxable,
+                zeroRate(), zeroMoney(), zeroRate(), zeroMoney(),
+                scaleRate(rate), totalTax, totalTax, grand);
+    }
+
     private BigDecimal money(BigDecimal value) {
         return value.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
     }

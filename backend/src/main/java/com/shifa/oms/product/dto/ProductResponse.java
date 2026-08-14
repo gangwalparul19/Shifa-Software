@@ -25,7 +25,9 @@ public record ProductResponse(
         String description,
         BigDecimal mrp,
         BigDecimal salePrice,
+        BigDecimal minPrice,
         String hsnCode,
+        String packSize,
         BigDecimal gstRate,
         ProductVisibility visibility,
         CategoryRef category,
@@ -58,7 +60,9 @@ public record ProductResponse(
                 product.getDescription(),
                 product.getMrp(),
                 product.getSalePrice(),
+                product.getMinPrice(),
                 product.getHsnCode(),
+                product.getPackSize(),
                 product.getGstRate(),
                 product.getVisibility(),
                 CategoryRef.from(product.getCategory()),
@@ -81,8 +85,8 @@ public record ProductResponse(
      */
     public ProductResponse withRating(Double averageRating, long reviewCount) {
         return new ProductResponse(
-                id, sku, name, description, mrp, salePrice, hsnCode, gstRate, visibility,
-                category, stockStatus, stockQuantity, trackInventory, lowStockThreshold, featured,
-                images, createdAt, updatedAt, averageRating, reviewCount);
+                id, sku, name, description, mrp, salePrice, minPrice, hsnCode, packSize, gstRate,
+                visibility, category, stockStatus, stockQuantity, trackInventory, lowStockThreshold,
+                featured, images, createdAt, updatedAt, averageRating, reviewCount);
     }
 }

@@ -131,14 +131,64 @@ public class HttpQuikShipXClient implements QuikShipXClient {
     }
 
     @Override
-    public QuikShipXStatusEvent fetchStatus(String shipmentReference) throws QuikShipXClientException {
-        // Intentionally unimplemented: the supplied contract defines no status-query
-        // operation. Filling in a guessed path would produce silent wrong statuses,
-        // which is worse than not mirroring status at all.
+    public QuikShipXStatusEvent fetchStatus(String trackingNo, String trackingType)
+            throws QuikShipXClientException {
+        String url = properties.trackOrderUrl();
+        String body = QuikShipXTrackingCodec.buildRequestBody(
+                properties.clientCode(), properties.userId(), properties.userSecret(),
+                trackingNo, trackingType);
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .timeout(properties.requestTimeout())
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                .build();
+
+        HttpResponse<String> response;
+        try {
+            response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        } catch (HttpTimeoutException e) {
+            throw new QuikShipXClientException(
+                    "QuikShipX track-order timed out after " + properties.requestTimeout(), true, e);
+        } catch (IOException e) {
+            throw new QuikShipXClientException(
+                    "QuikShipX track-order failed to connect: " + e.getMessage(), true, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new QuikShipXClientException("QuikShipX track-order was interrupted", true, e);
+        }
+
+        int status = response.statusCode();
+        String responseBody = response.body();
+        if (status >= 200 && status < 300) {
+            // QuikShipX returns 200 with {"response":[{"errors":["Error : Shipment Not
+            // Found"],"status":"failure"}]} when the shipment is not (yet) trackable — for
+            // example in the minutes between booking and the courier assigning a tracking id.
+            // Detect that soft failure so we surface it as a clean "not trackable yet" rather
+            // than mirroring the literal word "failure" as the order's status.
+            List<String> softErrors = QuikShipXAcceptanceCodec.detectFailure(responseBody);
+            if (!softErrors.isEmpty()) {
+                log.info("QuikShipX track-order soft-failure trackingNo={} type={}: {}",
+                        trackingNo, QuikShipXTrackingCodec.normalizeType(trackingType), softErrors);
+                throw new QuikShipXClientException(
+                        String.join("; ", softErrors), false, status, softErrors, null);
+            }
+            // Note: NOT logging the request body — it carries the user secret.
+            log.info("QuikShipX track-order ok trackingNo={} type={} status={}",
+                    trackingNo, QuikShipXTrackingCodec.normalizeType(trackingType), status);
+            try {
+                return QuikShipXTrackingCodec.parse(responseBody, properties.responseKeys(), null);
+            } catch (QuikShipXTrackingCodec.MalformedTrackingResponse malformed) {
+                // A body we cannot read will read identically next time — not retryable.
+                throw new QuikShipXClientException(malformed.getMessage(), false, malformed);
+            }
+        }
+
+        boolean retryable = status == 408 || status == 429 || status >= 500;
+        log.warn("QuikShipX track-order rejected trackingNo={} status={} retryable={}",
+                trackingNo, status, retryable);
         throw new QuikShipXClientException(
-                "QuikShipX exposes no documented status-query operation; "
-                        + "supply the endpoint before enabling app.quikshipx.status-feed-available.",
-                false);
+                "QuikShipX track-order returned HTTP " + status, retryable, status, List.of(), null);
     }
 
     /**

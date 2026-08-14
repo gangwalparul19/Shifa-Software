@@ -37,8 +37,9 @@ import java.util.Objects;
  *       lines: identical to the pre-GST invoice.</li>
  *   <li><strong>GST tax invoice</strong> (when {@code isTaxInvoice()} is
  *       {@code true}) — title "TAX INVOICE", the seller GSTIN + address/state from
- *       settings in the header, a per-line HSN column, and a GST summary
- *       (Taxable Value, CGST+SGST or IGST, Grand Total).</li>
+ *       settings in the header, a per-line <strong>GST %</strong> column, and a
+ *       GST summary broken out per rate (Taxable Value, CGST+SGST or IGST per
+ *       rate, optional Round Off, Grand Total).</li>
  * </ul>
  *
  * <p><strong>Currency (₹).</strong> The rupee sign ₹ (U+20B9) is not in the
@@ -271,7 +272,7 @@ public class InvoicePdfRenderer {
         table.addCell(headerCell("#", Element.ALIGN_CENTER));
         table.addCell(headerCell("Item", Element.ALIGN_LEFT));
         if (tax) {
-            table.addCell(headerCell("HSN", Element.ALIGN_CENTER));
+            table.addCell(headerCell("GST %", Element.ALIGN_CENTER));
         }
         table.addCell(headerCell("Qty", Element.ALIGN_CENTER));
         table.addCell(headerCell("Rate", Element.ALIGN_RIGHT));
@@ -283,8 +284,8 @@ public class InvoicePdfRenderer {
             table.addCell(bodyCell(Integer.toString(item.position()), Element.ALIGN_CENTER, even));
             table.addCell(bodyCell(item.productName(), Element.ALIGN_LEFT, even));
             if (tax) {
-                String hsn = item.hsnCode() != null ? item.hsnCode() : "";
-                table.addCell(bodyCell(hsn, Element.ALIGN_CENTER, even));
+                String gstLabel = item.gstRate() != null ? rate(item.gstRate()) + "%" : "-";
+                table.addCell(bodyCell(gstLabel, Element.ALIGN_CENTER, even));
             }
             table.addCell(bodyCell(Integer.toString(item.quantity()), Element.ALIGN_CENTER, even));
             table.addCell(moneyCell(money(item.rate()), Element.ALIGN_RIGHT, even));
@@ -318,14 +319,30 @@ public class InvoicePdfRenderer {
             }
             totals.addCell(totalsLabel("Taxable Value"));
             totals.addCell(totalsMoneyValue(money(gst.taxableValue())));
-            if (gst.intraState()) {
-                totals.addCell(totalsLabel("CGST @ " + rate(gst.cgstRate()) + "%"));
-                totals.addCell(totalsMoneyValue(money(gst.cgstAmount())));
-                totals.addCell(totalsLabel("SGST @ " + rate(gst.sgstRate()) + "%"));
-                totals.addCell(totalsMoneyValue(money(gst.sgstAmount())));
-            } else {
-                totals.addCell(totalsLabel("IGST @ " + rate(gst.igstRate()) + "%"));
-                totals.addCell(totalsMoneyValue(money(gst.igstAmount())));
+            // Per-rate GST rows so a mixed-rate basket shows tax broken out per
+            // rate (e.g. CGST/SGST @ 2.5% for the 5% lines and @ 9% for the 18%).
+            BigDecimal two = new BigDecimal("2");
+            for (GstRateGroup grp : content.gst().rateGroups()) {
+                if (grp.totalTax().signum() == 0) {
+                    continue;
+                }
+                if (grp.intraState()) {
+                    String halfRate = rate(grp.ratePercent().divide(two));
+                    totals.addCell(totalsLabel("CGST @ " + halfRate + "%"));
+                    totals.addCell(totalsMoneyValue(money(grp.cgstAmount())));
+                    totals.addCell(totalsLabel("SGST @ " + halfRate + "%"));
+                    totals.addCell(totalsMoneyValue(money(grp.sgstAmount())));
+                } else {
+                    totals.addCell(totalsLabel("IGST @ " + rate(grp.ratePercent()) + "%"));
+                    totals.addCell(totalsMoneyValue(money(grp.igstAmount())));
+                }
+            }
+            // Rounding adjustment so taxable + tax + round-off == the grand total.
+            if (content.gst().hasRoundOff()) {
+                BigDecimal ro = content.gst().roundOff();
+                String sign = ro.signum() >= 0 ? "+ " : "- ";
+                totals.addCell(totalsLabel("Round Off"));
+                totals.addCell(totalsMoneyValue(sign + money(ro.abs())));
             }
             // Grand Total is the headline figure on a tax invoice — highlight it.
             totals.addCell(totalsLabelHighlight("Grand Total"));
