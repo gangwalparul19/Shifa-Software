@@ -92,6 +92,14 @@ public class OrderShipment {
     @Column(name = "raw_acceptance", columnDefinition = "TEXT")
     private String rawAcceptance;
 
+    /**
+     * The latest QuikShipX track-order response verbatim (V54). Kept so the order drawer
+     * can render the full courier lifecycle timeline + latest scan from our own portal,
+     * refreshed by the tracking poller rather than fetched live.
+     */
+    @Column(name = "last_track_response", columnDefinition = "TEXT")
+    private String lastTrackResponse;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -210,6 +218,21 @@ public class OrderShipment {
 
     public String getCourierName() {
         return courierName;
+    }
+
+    /** Records the delivering carrier learned from a track-order response. */
+    public void setCourierName(String courierName) {
+        if (courierName != null && !courierName.isBlank()) {
+            this.courierName = courierName.trim();
+        }
+    }
+
+    public String getLastTrackResponse() {
+        return lastTrackResponse;
+    }
+
+    public void setLastTrackResponse(String lastTrackResponse) {
+        this.lastTrackResponse = lastTrackResponse;
     }
 
     public String getTrackingUrl() {

@@ -92,6 +92,22 @@ public class QuikShipXStatusUpdateService {
     @Transactional
     public Result apply(String quikshipxOrderId, String quikshipxShipmentId,
                         String orderReference, String status, String awb, LocalDateTime at) {
+        return apply(quikshipxOrderId, quikshipxShipmentId, orderReference, status, awb, at, null, null);
+    }
+
+    /**
+     * Mirrors a QuikShipX status/AWB and also stores the delivering carrier and the raw
+     * track-order response, so the order drawer can render the full courier lifecycle
+     * timeline + scans from our own portal (V54).
+     *
+     * <p>The carrier and raw response are refreshed even when the status/AWB did not change,
+     * so the timeline stays current; that refresh alone does not create an audit entry
+     * (only a genuine status advance or a first AWB does), keeping polling quiet.
+     */
+    @Transactional
+    public Result apply(String quikshipxOrderId, String quikshipxShipmentId,
+                        String orderReference, String status, String awb, LocalDateTime at,
+                        String courierName, String rawTrackResponse) {
         String trimmedStatus = status == null ? "" : status.trim();
         boolean hasAwb = awb != null && !awb.isBlank();
         if (trimmedStatus.isEmpty() && !hasAwb) {
@@ -117,10 +133,27 @@ public class QuikShipXStatusUpdateService {
                 && shipment.advanceStatus(trimmedStatus, when);
         boolean awbAssigned = hasAwb && shipment.assignAwb(awb);
 
-        if (!statusAdvanced && !awbAssigned) {
+        // Refresh carrier + raw timeline regardless of a status change (quietly).
+        boolean detailChanged = false;
+        if (courierName != null && !courierName.isBlank()
+                && !courierName.trim().equals(shipment.getCourierName())) {
+            shipment.setCourierName(courierName);
+            detailChanged = true;
+        }
+        if (rawTrackResponse != null && !rawTrackResponse.isBlank()
+                && !rawTrackResponse.equals(shipment.getLastTrackResponse())) {
+            shipment.setLastTrackResponse(rawTrackResponse);
+            detailChanged = true;
+        }
+
+        if (!statusAdvanced && !awbAssigned && !detailChanged) {
             return new Result(Outcome.SUPERSEDED, shipment.getOrderId(), shipment.getLastStatusToken());
         }
         shipmentRepository.save(shipment);
+        if (!statusAdvanced && !awbAssigned) {
+            // Only the timeline/carrier snapshot was refreshed — persist it, but do not audit.
+            return new Result(Outcome.SUPERSEDED, shipment.getOrderId(), shipment.getLastStatusToken());
+        }
 
         String detail = "QuikShipX update for " + shipment.getOrderReference()
                 + (statusAdvanced ? " status -> " + trimmedStatus : "")

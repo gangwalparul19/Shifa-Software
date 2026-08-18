@@ -535,3 +535,57 @@
   background: var(--shifa-green-100, #e4f2ea);
   color: var(--shifa-green-700, #1a4f38);
 }
+
+/* (11b) QuikShipX lifecycle timeline + latest scan (shown from our own portal). */
+.shifa-od__ship-timeline {
+  border-top: 1px dashed rgba(15, 51, 36, 0.15);
+  padding-top: 0.6rem;
+}
+.shifa-od__ship-step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.18rem 0;
+  position: relative;
+}
+.shifa-od__ship-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--shifa-green-600, #1f5d3f);
+  flex: 0 0 auto;
+}
+.shifa-od__ship-step-label {
+  font-weight: 600;
+  color: var(--shifa-green-700, #1a4f38);
+}
+.shifa-od__ship-step-at {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: #5f6f67;
+  white-space: nowrap;
+}
+.shifa-od__ship-scan {
+  border-top: 1px dashed rgba(15, 51, 36, 0.15);
+  padding-top: 0.6rem;
+}
+.shifa-od__ship-scan-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.shifa-od__ship-scan-status {
+  font-weight: 600;
+}
+.shifa-od__ship-scan-at {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: #5f6f67;
+  white-space: nowrap;
+}
+.shifa-od__ship-scan-loc,
+.shifa-od__ship-scan-note {
+  font-size: 0.85rem;
+  color: #5f6f67;
+  margin-top: 0.1rem;
+}

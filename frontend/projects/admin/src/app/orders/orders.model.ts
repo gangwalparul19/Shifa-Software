@@ -248,6 +248,24 @@ export interface ShipmentInfo {
   test: boolean;
   statusMirroringActive: boolean;
   labelFromPortal: boolean;
+  /** The QuikShipX lifecycle stages that have occurred, in order (Pending → … → Delivered). */
+  timeline?: ShipmentStage[];
+  /** Courier scan history, most recent first. */
+  scans?: ShipmentScan[];
+}
+
+/** One QuikShipX lifecycle stage (e.g. "Confirmed", "Tracking ID Assigned"). */
+export interface ShipmentStage {
+  label: string;
+  at?: string | null;
+}
+
+/** One courier scan event from QuikShipX. */
+export interface ShipmentScan {
+  at?: string | null;
+  status?: string | null;
+  location?: string | null;
+  instructions?: string | null;
 }
 
 /**

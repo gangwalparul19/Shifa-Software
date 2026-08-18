@@ -1,6 +1,7 @@
 package com.shifa.oms.integration.quikshipx.dto;
 
 import com.shifa.oms.integration.quikshipx.OrderShipment;
+import com.shifa.oms.integration.quikshipx.QuikShipXTrackDetails;
 
 import java.time.LocalDateTime;
 
@@ -39,9 +40,26 @@ public record ShipmentResponse(
         LocalDateTime lastStatusAt,
         boolean test,
         boolean statusMirroringActive,
-        boolean labelFromPortal) {
+        boolean labelFromPortal,
+        java.util.List<Stage> timeline,
+        java.util.List<Scan> scans) {
+
+    /** One QuikShipX lifecycle stage that has occurred (e.g. Confirmed, Tracking ID Assigned). */
+    public record Stage(String label, LocalDateTime at) {
+    }
+
+    /** One courier scan event (most recent first). */
+    public record Scan(LocalDateTime at, String status, String location, String instructions) {
+    }
 
     public static ShipmentResponse from(OrderShipment shipment, boolean statusMirroringActive) {
+        QuikShipXTrackDetails details = QuikShipXTrackDetails.parse(shipment.getLastTrackResponse());
+        java.util.List<Stage> timeline = details.timeline().stream()
+                .map(s -> new Stage(s.label(), s.at()))
+                .toList();
+        java.util.List<Scan> scans = details.scans().stream()
+                .map(s -> new Scan(s.at(), s.status(), s.location(), s.instructions()))
+                .toList();
         return new ShipmentResponse(
                 shipment.getOrderReference(),
                 shipment.getQuikshipxShipmentId(),
@@ -54,6 +72,8 @@ public record ShipmentResponse(
                 shipment.getLastStatusAt(),
                 shipment.isTest(),
                 statusMirroringActive,
-                shipment.getLabelUrl() == null || shipment.getLabelUrl().isBlank());
+                shipment.getLabelUrl() == null || shipment.getLabelUrl().isBlank(),
+                timeline,
+                scans);
     }
 }

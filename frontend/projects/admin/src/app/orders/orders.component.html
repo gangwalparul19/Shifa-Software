@@ -780,8 +780,41 @@
                   </div>
                 }
               </dl>
+              <!-- Full QuikShipX lifecycle timeline (from our side, refreshed by the poller) -->
+              @if (ship.timeline?.length) {
+                <div class="shifa-od__ship-timeline mt-2">
+                  <div class="shifa-od__label mb-1">Courier progress</div>
+                  @for (stage of ship.timeline; track stage.label) {
+                    <div class="shifa-od__ship-step">
+                      <span class="shifa-od__ship-dot"></span>
+                      <span class="shifa-od__ship-step-label">{{ stage.label }}</span>
+                      @if (stage.at) {
+                        <span class="shifa-od__ship-step-at">{{ stage.at | date: 'dd MMM, HH:mm' }}</span>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+              <!-- Latest courier scan (location + note), so the portal isn't needed -->
+              @if (ship.scans?.length) {
+                <div class="shifa-od__ship-scan mt-2">
+                  <div class="shifa-od__label mb-1">Latest scan</div>
+                  <div class="shifa-od__ship-scan-line">
+                    <span class="shifa-od__ship-scan-status">{{ ship.scans![0].status }}</span>
+                    @if (ship.scans![0].at) {
+                      <span class="shifa-od__ship-scan-at">{{ ship.scans![0].at | date: 'dd MMM, HH:mm' }}</span>
+                    }
+                  </div>
+                  @if (ship.scans![0].location) {
+                    <div class="shifa-od__ship-scan-loc"><i class="ti ti-map-pin me-1"></i>{{ ship.scans![0].location }}</div>
+                  }
+                  @if (ship.scans![0].instructions) {
+                    <div class="shifa-od__ship-scan-note">{{ ship.scans![0].instructions }}</div>
+                  }
+                </div>
+              }
               <p class="shifa-od__ship-note">
-                Label and status are managed in the QuikShipX portal.
+                Label is generated in the QuikShipX portal; status here updates automatically.
               </p>
               @if (ship.lastStatusAt) {
                 <div class="shifa-od__ship-updated">Updated {{ ship.lastStatusAt | date: 'dd MMM, HH:mm' }}</div>

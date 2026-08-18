@@ -118,13 +118,18 @@ public class QuikShipXTrackingService {
             return new TrackResult(false, shipment.getLastStatusToken(), awb, e.getMessage(), null);
         }
 
+        // Parse the carrier from the raw response and store the whole response, so the
+        // order drawer can show the full lifecycle timeline + scans from our own portal.
+        QuikShipXTrackDetails details = QuikShipXTrackDetails.parse(event.rawPayload());
         QuikShipXStatusUpdateService.Result result = statusUpdateService.apply(
                 shipment.getQuikshipxOrderId(),
                 shipment.getQuikshipxShipmentId(),
                 shipment.getOrderReference(),
                 event.statusToken(),
                 event.awb(),
-                event.statusAt());
+                event.statusAt(),
+                details.courierName(),
+                event.rawPayload());
 
         return new TrackResult(true, result.status(), event.awb(),
                 "QuikShipX status: " + result.outcome(), event.rawPayload());
