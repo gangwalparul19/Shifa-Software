@@ -1,4 +1,4 @@
-import { Component, HostListener, computed, inject, signal } from '@angular/core';
+import { Component, HostListener, computed, effect, inject, signal, untracked } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import {
   NavigationEnd,
@@ -147,6 +147,24 @@ export class AdminShellComponent {
         },
       });
     }
+
+    // Keep the desktop sidebar's active section expanded: whenever the route
+    // changes, ensure the group that owns the current page is open (other groups
+    // stay as the user left them). Depends only on the URL (untracked writes).
+    effect(() => {
+      const url = this.currentUrl().split('?')[0];
+      const label = this.groupLabelForUrl(url);
+      if (!label) {
+        return;
+      }
+      untracked(() => {
+        if (!this.sidebarOpenGroups().has(label)) {
+          const next = new Set(this.sidebarOpenGroups());
+          next.add(label);
+          this.sidebarOpenGroups.set(next);
+        }
+      });
+    });
   }
 
   /** Dismisses an announcement banner for this user (remembered locally). */
@@ -192,6 +210,44 @@ export class AdminShellComponent {
       next.add(label);
     }
     this.openGroups.set(next);
+  }
+
+  /**
+   * Desktop sidebar group open-state (separate from the drawer's {@link openGroups}
+   * so the persistent rail keeps its own expansion). Collapsed by default; the
+   * group containing the active route is auto-expanded (see the constructor
+   * effect) so the user always sees where they are without expanding everything.
+   */
+  private readonly sidebarOpenGroups = signal<Set<string>>(new Set());
+
+  /** Whether a sidebar nav group is expanded. */
+  isSidebarGroupOpen(label: string): boolean {
+    return this.sidebarOpenGroups().has(label);
+  }
+
+  /** Expands/collapses a sidebar nav group (accordion; collapsed by default). */
+  toggleSidebarGroup(label: string): void {
+    const next = new Set(this.sidebarOpenGroups());
+    if (next.has(label)) {
+      next.delete(label);
+    } else {
+      next.add(label);
+    }
+    this.sidebarOpenGroups.set(next);
+  }
+
+  /** The group label whose child matches the given URL, or null for a standalone/link. */
+  private groupLabelForUrl(url: string): string | null {
+    const full = `/${url.replace(/^\//, '')}`;
+    for (const entry of this.allNav) {
+      if (entry.kind !== 'group') {
+        continue;
+      }
+      if (entry.children.some((c) => full === c.path || full.startsWith(`${c.path}/`))) {
+        return entry.label;
+      }
+    }
+    return null;
   }
 
   /**

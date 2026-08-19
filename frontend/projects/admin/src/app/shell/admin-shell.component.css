@@ -473,6 +473,8 @@
     margin-inline: 0;
     border-inline: 0;
     box-shadow: none;
+    /* Reserve the left gutter for the fixed desktop sidebar. */
+    padding-left: var(--shifa-sidebar-w);
   }
 
   /* The shell's own content containers (top bar inner + page body) span the
@@ -482,6 +484,152 @@
     padding-inline: 1.5rem;
   }
 
-  /* Bottom tab bar: keep it a contained, centered floating pill (it's a
-     secondary nav on desktop; the hamburger drawer is the primary nav). */
+  /* The persistent sidebar replaces the mobile hamburger + bottom tab bar on
+     desktop, so hide both there. */
+  .shifa-appbar__burger {
+    display: none;
+  }
+  .shifa-bottomnav {
+    display: none !important;
+  }
+
+  /* No bottom-tab-bar clearance needed on desktop. */
+  .shifa-appshell__body {
+    padding-bottom: 1.5rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Persistent DESKTOP sidebar (≥992px). Hidden below that width, where the
+   hamburger off-canvas drawer + bottom tab bar remain the navigation. Reuses
+   the same role-filtered navEntries() the drawer renders, presented as an
+   always-visible left rail so the desktop layout reads like a desktop admin
+   app rather than a stretched phone screen.
+   --------------------------------------------------------------------------- */
+:host {
+  --shifa-sidebar-w: 250px;
+}
+
+.shifa-sidebar {
+  display: none;
+}
+
+@media (min-width: 992px) {
+  .shifa-sidebar {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: var(--shifa-sidebar-w);
+    background: #ffffff;
+    border-right: 1px solid rgba(4, 32, 69, 0.08);
+    z-index: 1031; /* above the sticky top bar's default stacking */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .shifa-sidebar__brand {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.85rem 1rem;
+    background: #ffffff;
+    border-bottom: 1px solid rgba(4, 32, 69, 0.06);
+  }
+
+  .shifa-sidebar__nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.08rem;
+    padding: 0.6rem 0.55rem 1.75rem;
+  }
+
+  .shifa-sidebar__group {
+    margin-top: 0.35rem;
+  }
+
+  .shifa-sidebar__grouplabel {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.6rem;
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: #8a97a0;
+  }
+  .shifa-sidebar__grouplabel i {
+    font-size: 0.95rem;
+    color: var(--shifa-green-500, #2b7a52);
+  }
+
+  /* Group header is a full-width toggle button (accordion). */
+  .shifa-sidebar__grouptoggle {
+    width: 100%;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    border-radius: 0.55rem;
+    transition: background-color 0.14s ease, color 0.14s ease;
+  }
+  .shifa-sidebar__grouptoggle:hover {
+    background: var(--shifa-green-050, #f2f9f5);
+    color: var(--shifa-green-700, #1a4f38);
+  }
+  .shifa-sidebar__chev {
+    margin-left: auto;
+    font-size: 0.9rem !important;
+    color: #9aa7a0 !important;
+    transition: transform 0.18s ease;
+  }
+  .shifa-sidebar__group.is-open > .shifa-sidebar__grouptoggle .shifa-sidebar__chev {
+    transform: rotate(180deg);
+  }
+
+  .shifa-sidebar__item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: 0.55rem;
+    color: #3a4a42;
+    font-weight: 500;
+    font-size: 0.9rem;
+    line-height: 1.2;
+    transition: background-color 0.14s ease, color 0.14s ease;
+  }
+  .shifa-sidebar__item i {
+    flex: 0 0 auto;
+    font-size: 1.15rem;
+    color: #67736c;
+  }
+  .shifa-sidebar__item--child {
+    padding-left: 0.95rem;
+  }
+  .shifa-sidebar__text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .shifa-sidebar__item:hover {
+    background: var(--shifa-green-050, #f2f9f5);
+    color: var(--shifa-green-700, #1a4f38);
+  }
+  .shifa-sidebar__item:hover i {
+    color: var(--shifa-green-600, #1f5d3f);
+  }
+  .shifa-sidebar__item.active {
+    background: var(--shifa-green-100, #e4f2ea);
+    color: var(--shifa-green-700, #1a4f38);
+    font-weight: 600;
+  }
+  .shifa-sidebar__item.active i {
+    color: var(--shifa-green-600, #1f5d3f);
+  }
 }

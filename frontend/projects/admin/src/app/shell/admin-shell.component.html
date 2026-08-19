@@ -1,4 +1,61 @@
 <div class="page shifa-appshell">
+  <!-- ===================== Desktop sidebar (≥992px only) =====================
+       A persistent left navigation for laptop/desktop, giving the admin a true
+       desktop layout instead of the mobile hamburger + bottom-tab paradigm.
+       It reuses the SAME role-filtered navEntries() as the drawer; on mobile it
+       is hidden via CSS (the hamburger drawer + bottom tabs stay). -->
+  @if (auth.session()) {
+    <aside class="shifa-sidebar d-print-none" aria-label="Primary navigation">
+      <a routerLink="/dashboard" class="shifa-brand shifa-sidebar__brand" aria-label="Shifa Herbal Remedies">
+        <span class="shifa-brand__mark"><i class="ti ti-leaf"></i></span>
+        <span class="shifa-brand__text">
+          <span class="shifa-brand__title">Shifa</span>
+          <span class="shifa-brand__subtitle">Herbal Remedies</span>
+        </span>
+      </a>
+      <nav class="shifa-sidebar__nav" aria-label="All destinations">
+        @for (entry of navEntries(); track entry.label) {
+          @if (entry.kind === 'link') {
+            <a
+              class="shifa-sidebar__item"
+              [routerLink]="entry.path"
+              routerLinkActive="active"
+              [routerLinkActiveOptions]="{ exact: entry.path === '/dashboard' }"
+            >
+              <i class="ti {{ entry.icon }}" aria-hidden="true"></i>
+              <span class="shifa-sidebar__text">{{ entry.label }}</span>
+            </a>
+          } @else {
+            <div class="shifa-sidebar__group" [class.is-open]="isSidebarGroupOpen(entry.label)">
+              <button
+                type="button"
+                class="shifa-sidebar__grouplabel shifa-sidebar__grouptoggle"
+                (click)="toggleSidebarGroup(entry.label)"
+                [attr.aria-expanded]="isSidebarGroupOpen(entry.label)"
+              >
+                <i class="ti {{ entry.icon }}" aria-hidden="true"></i>
+                <span>{{ entry.label }}</span>
+                <i class="ti ti-chevron-down shifa-sidebar__chev" aria-hidden="true"></i>
+              </button>
+              @if (isSidebarGroupOpen(entry.label)) {
+                @for (child of entry.children; track child.path) {
+                  <a
+                    class="shifa-sidebar__item shifa-sidebar__item--child"
+                    [routerLink]="child.path"
+                    routerLinkActive="active"
+                  >
+                    <i class="ti {{ child.icon }}" aria-hidden="true"></i>
+                    <span class="shifa-sidebar__text">{{ child.label }}</span>
+                  </a>
+                }
+              }
+            </div>
+          }
+        }
+      </nav>
+    </aside>
+  }
+
   <!-- ===================== Top app bar ===================== -->
   <header class="navbar d-print-none sticky-top shifa-navbar shifa-appbar">
     <div class="container-xl shifa-appbar__inner">

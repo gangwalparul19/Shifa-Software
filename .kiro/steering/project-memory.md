@@ -1346,3 +1346,38 @@ GST pricing-mode (inclusive/exclusive) toggle via `deploy\push-to-aws.ps1`. DB b
   `powershell -ExecutionPolicy Bypass -NonInteractive -File "deploy\push-to-aws.ps1" -KeyPath "..." -Ip 13.234.22.207 > deploy\run.log 2>&1`
   — then read the log file with the file reader (get_process_output/`type` render garbled). First stop ALL stale
   background terminals (18 had accumulated) so none can hijack stdin.
+
+## Distinct desktop layout — persistent left sidebar (≥992px) vs mobile hamburger+tabs — implemented (frontend-only)
+Client: on laptop/desktop the app looked like a stretched phone (same UI as mobile). Root cause: the shell used the
+mobile paradigm everywhere — hamburger off-canvas drawer + bottom tab bar — even on desktop (list pages already switch
+mobile-cards↔desktop-tables via `d-md-none`/`d-none d-md-block`, and the dashboard already packs 6 KPIs/row at xl, so
+the "same UI" feeling came from the NAV chrome, not the grids). Added a real desktop navigation rail:
+- **`shell/admin-shell.component.html`**: new `<aside class="shifa-sidebar">` (rendered only when signed in) that reuses
+  the SAME role-filtered `navEntries()` the drawer uses — brand at top, then standalone links + grouped sections
+  (group label + children), each `routerLinkActive="active"` (Dashboard uses `exact`). No new TS/logic; pure reuse.
+- **`shell/admin-shell.component.css`**: `.shifa-sidebar { display:none }` by default; at **≥992px** it becomes a
+  `position:fixed` 250px left rail (`--shifa-sidebar-w`, scrollable, sticky brand), and `.shifa-appshell` gets
+  `padding-left:250px` so the sticky top bar + content shift right into the remaining full width. On desktop the
+  hamburger button (`.shifa-appbar__burger`) and the bottom tab bar (`.shifa-bottomnav`) are hidden — the sidebar
+  replaces them. Active/hover use the brand-green ramp. **Mobile/tablet (<992px) is completely unchanged** (hamburger
+  drawer + bottom tabs remain; sidebar stays `display:none`).
+- Net effect: desktop = fixed sidebar + full-width multi-column content (denser, KPI rows already responsive); mobile =
+  unchanged compact single-column with bottom tabs. Fully responsive at the 992px breakpoint; reversible (CSS-gated).
+- Verified: `get_diagnostics` clean on shell HTML/CSS + settings HTML; admin `build:admin` bundle generation complete
+  (`main-GYSGGTV2.js`). Frontend-only, no backend/migration. **Built, NOT yet deployed** (bundle with next deploy).
+- **Collapsible sidebar groups (follow-up):** groups in the desktop rail are now an **accordion** (collapsed by
+  default) instead of all-expanded. Own state signal `sidebarOpenGroups` + `isSidebarGroupOpen`/`toggleSidebarGroup`
+  (separate from the drawer's `openGroups`); group header is a full-width toggle button with a rotating chevron
+  (`.shifa-sidebar__grouptoggle`/`.shifa-sidebar__chev`, `.is-open` rotates 180°). A constructor `effect` watches
+  `currentUrl` and auto-expands the group that owns the active route (via `groupLabelForUrl`, `untracked` writes so it
+  depends only on the URL) — so the user's current section is open, others stay collapsed until clicked. Rebuilt clean
+  (`main-MHKKSCQG.js`).
+
+## DEPLOYED to AWS (2026-08-19, 18:09 IST) — desktop sidebar (collapsible groups) + invoice rework + GST toggle
+Frontend-only redeploy via `push-to-aws.ps1 -SkipBuild` (backend JAR unchanged since the 16:44 invoice deploy; reused
+the freshly built admin bundle `main-MHKKSCQG.js`). Backup `~/shifa-backup-2026-08-19-180929.sql`. Verified live:
+service active, `https://shifa.weblithic.online/`=200, `/api/states`=401, and the served index references
+`main-MHKKSCQG.js` (confirms the new bundle is live). Contents now live: persistent desktop left sidebar (≥992px) with
+collapsible accordion groups + active-group auto-expand, the CA per-rate invoice rework, and the Settings GST
+inclusive/exclusive toggle. Highest migration in prod remains V51 (no DB change; the -SkipBuild path still took the
+routine pre-restart mysqldump backup).
