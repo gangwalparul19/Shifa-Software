@@ -151,7 +151,7 @@ export class ProductsComponent implements OnInit, OnDestroy {
   // --- CSV import state (Set B — Feature 5) ------------------------------
   /** The expected CSV columns, shown as a hint (sku/name/mrp/salePrice required). */
   protected readonly importColumns =
-    'sku,name,mrp,salePrice,hsnCode,gstRate,stockQuantity,trackInventory,category,visibility,description';
+    'sku,name,mrp,salePrice,minimumRate,hsnCode,wtMl,gstRate,stockQuantity,trackInventory,category,visibility,description';
   protected readonly importOpen = signal(false);
   protected readonly importFile = signal<File | null>(null);
   protected readonly importBusy = signal(false);
@@ -167,8 +167,10 @@ export class ProductsComponent implements OnInit, OnDestroy {
     description: [''],
     mrp: ['', [Validators.required, Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
     salePrice: ['', [Validators.required, Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
+    minimumRate: ['', [Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
     hsnCode: ['', [Validators.maxLength(20)]],
     gstRate: ['', [Validators.pattern(/^\d{1,3}(\.\d{1,2})?$/)]],
+    wtMl: ['', [Validators.maxLength(32)]],
     visibility: [ProductVisibility.PUBLISHED, [Validators.required]],
     categoryId: [''],
     stockQuantity: ['0', [Validators.pattern(/^\d{1,7}$/)]],
@@ -482,8 +484,10 @@ export class ProductsComponent implements OnInit, OnDestroy {
       description: '',
       mrp: '',
       salePrice: '',
+      minimumRate: '',
       hsnCode: '',
       gstRate: '',
+      wtMl: '',
       visibility: ProductVisibility.PUBLISHED,
       categoryId: '',
       stockQuantity: '0',
@@ -503,8 +507,10 @@ export class ProductsComponent implements OnInit, OnDestroy {
       description: product.description ?? '',
       mrp: product.mrp,
       salePrice: product.salePrice,
+      minimumRate: product.minimumRate ?? '',
       hsnCode: product.hsnCode ?? '',
       gstRate: product.gstRate ?? '',
+      wtMl: product.wtMl ?? '',
       visibility: product.visibility,
       categoryId: product.category ? String(product.category.id) : '',
       stockQuantity: String(product.stockQuantity ?? 0),
@@ -528,7 +534,7 @@ export class ProductsComponent implements OnInit, OnDestroy {
       this.form.markAllAsTouched();
       // Surface the tab holding the first invalid control so errors aren't hidden.
       const basicsInvalid = ['name', 'sku'].some((n) => !!this.form.get(n)?.invalid);
-      const pricingInvalid = ['mrp', 'salePrice', 'hsnCode', 'gstRate'].some(
+      const pricingInvalid = ['mrp', 'salePrice', 'minimumRate', 'hsnCode', 'gstRate', 'wtMl'].some(
         (n) => !!this.form.get(n)?.invalid,
       );
       this.formTab.set(basicsInvalid ? 'basics' : pricingInvalid ? 'pricing' : 'inventory');
@@ -541,8 +547,10 @@ export class ProductsComponent implements OnInit, OnDestroy {
       description: raw.description.trim() || undefined,
       mrp: raw.mrp.trim(),
       salePrice: raw.salePrice.trim(),
+      minimumRate: raw.minimumRate.trim() || null,
       hsnCode: raw.hsnCode.trim() || undefined,
       gstRate: raw.gstRate.trim() || null,
+      wtMl: raw.wtMl.trim() || null,
       visibility: raw.visibility,
       categoryId: raw.categoryId ? Number(raw.categoryId) : null,
       stockQuantity: raw.stockQuantity ? Number(raw.stockQuantity) : 0,
@@ -629,8 +637,10 @@ export class ProductsComponent implements OnInit, OnDestroy {
       description: product.description ?? undefined,
       mrp: product.mrp,
       salePrice: product.salePrice,
+      minimumRate: product.minimumRate ?? null,
       hsnCode: product.hsnCode ?? undefined,
       gstRate: product.gstRate ?? null,
+      wtMl: product.wtMl ?? null,
       visibility: next,
       categoryId: product.category?.id ?? null,
       stockQuantity: product.stockQuantity ?? 0,

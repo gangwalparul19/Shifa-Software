@@ -38,12 +38,16 @@ export interface ProductRequest {
   description?: string;
   mrp: string;
   salePrice: string;
+  /** Optional minimum selling price (per-line floor); must be ≤ salePrice ≤ mrp. */
+  minimumRate?: string | null;
   hsnCode?: string;
   /**
    * Optional per-product GST rate percent (e.g. "12" or "18.00"); null/omitted
    * falls back to the settings default rate.
    */
   gstRate?: string | null;
+  /** Optional pack size / weight / volume descriptor, e.g. "100ML". */
+  wtMl?: string | null;
   visibility: ProductVisibility;
   /** Optional category id; null/undefined leaves the product uncategorised. */
   categoryId?: number | null;

@@ -66,6 +66,19 @@ public record ProductRequest(
         Integer lowStockThreshold,
 
         /** When true the product joins the storefront featured collection. */
-        Boolean featured
+        Boolean featured,
+
+        /**
+         * Optional minimum selling price (per-line floor). When present it must be
+         * ≤ salePrice ≤ mrp (validated in the service). Null keeps the existing
+         * minimum / defaults to the sale price (product-catalog-pricing-gst Req 1.1, 1.2).
+         */
+        @DecimalMin(value = "0.00", message = "minimumRate must not be negative")
+        @Digits(integer = 10, fraction = 2, message = "minimumRate must be a DECIMAL(12,2) value")
+        BigDecimal minimumRate,
+
+        /** Optional pack size / weight / volume descriptor, e.g. "100ML" (Req 1.4). */
+        @Size(max = 32, message = "wtMl must be at most 32 characters")
+        String wtMl
 ) {
 }

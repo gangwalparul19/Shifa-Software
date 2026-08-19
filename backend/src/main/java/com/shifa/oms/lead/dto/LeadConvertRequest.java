@@ -59,6 +59,16 @@ public record LeadConvertRequest(
         String paymentScreenshotKey,
 
         @Size(max = 1000, message = "notes must be at most 1000 characters")
-        String notes
+        String notes,
+
+        // Optional order-level discount carried through to the created order
+        // (product-catalog-pricing-gst Req 6): type is "FLAT" or "PERCENT"
+        // (null/blank = none), value is the entered amount/percent.
+        @Pattern(regexp = "(?i)(FLAT|PERCENT)?", message = "discountType must be FLAT or PERCENT")
+        String discountType,
+
+        @DecimalMin(value = "0.00", message = "discountValue must not be negative")
+        @Digits(integer = 10, fraction = 2, message = "discountValue must be a DECIMAL(12,2) value")
+        BigDecimal discountValue
 ) {
 }

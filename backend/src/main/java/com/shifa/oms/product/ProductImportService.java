@@ -25,8 +25,8 @@ import java.util.Set;
  *
  * <p>Parses and validates every row of an uploaded CSV, producing a per-row
  * outcome ({@link ImportRowResult}). The header row names the columns
- * (case-insensitive): {@code sku,name,mrp,salePrice,hsnCode,gstRate,
- * stockQuantity,trackInventory,category,visibility,description}. {@code sku},
+ * (case-insensitive): {@code sku,name,mrp,salePrice,minimumRate,hsnCode,wtMl,
+ * gstRate,stockQuantity,trackInventory,category,visibility,description}. {@code sku},
  * {@code name}, {@code mrp} and {@code salePrice} are required; the rest are
  * optional. Existing products are matched by SKU and updated; otherwise a new
  * product is created — reusing {@link ProductService#create}/{@link
@@ -45,8 +45,10 @@ public class ProductImportService {
     private static final String COL_NAME = "name";
     private static final String COL_MRP = "mrp";
     private static final String COL_SALE_PRICE = "saleprice";
+    private static final String COL_MINIMUM = "minimumrate";
     private static final String COL_HSN = "hsncode";
     private static final String COL_GST = "gstrate";
+    private static final String COL_WT = "wtml";
     private static final String COL_STOCK = "stockquantity";
     private static final String COL_TRACK = "trackinventory";
     private static final String COL_CATEGORY = "category";
@@ -130,10 +132,12 @@ public class ProductImportService {
             BigDecimal mrp = parseRequiredDecimal(value(row, columns, COL_MRP), "mrp");
             BigDecimal salePrice = parseRequiredDecimal(value(row, columns, COL_SALE_PRICE), "salePrice");
             BigDecimal gstRate = parseOptionalDecimal(value(row, columns, COL_GST), "gstRate");
+            BigDecimal minimumRate = parseOptionalDecimal(value(row, columns, COL_MINIMUM), "minimumRate");
             Integer stockQuantity = parseOptionalInt(value(row, columns, COL_STOCK), "stockQuantity");
             Boolean trackInventory = parseOptionalBoolean(value(row, columns, COL_TRACK), "trackInventory");
             ProductVisibility visibility = parseVisibility(value(row, columns, COL_VISIBILITY));
             String hsnCode = trimToNull(value(row, columns, COL_HSN));
+            String wtMl = trimToNull(value(row, columns, COL_WT));
             String description = trimToNull(value(row, columns, COL_DESCRIPTION));
 
             // Resolve category (by slug or name); unknown/blank → no category (not an error).
@@ -152,9 +156,10 @@ public class ProductImportService {
 
             ProductRequest request = isUpdate
                     ? buildUpdateRequest(existing.get(), columns, row, name, description, mrp, salePrice,
-                            hsnCode, gstRate, visibility, categoryId, categoryRaw, stockQuantity, trackInventory)
+                            hsnCode, gstRate, visibility, categoryId, categoryRaw, stockQuantity, trackInventory,
+                            minimumRate, wtMl)
                     : buildCreateRequest(sku, name, description, mrp, salePrice, hsnCode, gstRate,
-                            visibility, categoryId, stockQuantity, trackInventory);
+                            visibility, categoryId, stockQuantity, trackInventory, minimumRate, wtMl);
 
             if (isUpdate) {
                 if (!dryRun) {
@@ -177,11 +182,13 @@ public class ProductImportService {
                                               BigDecimal mrp, BigDecimal salePrice, String hsnCode,
                                               BigDecimal gstRate, ProductVisibility visibility,
                                               Long categoryId, Integer stockQuantity,
-                                              Boolean trackInventory) {
+                                              Boolean trackInventory,
+                                              BigDecimal minimumRate, String wtMl) {
         return new ProductRequest(
                 sku, name, description, mrp, salePrice, hsnCode, gstRate,
                 visibility != null ? visibility : ProductVisibility.PUBLISHED,
-                categoryId, stockQuantity, trackInventory, null, null);
+                categoryId, stockQuantity, trackInventory, null, null,
+                minimumRate, wtMl);
     }
 
     /**
@@ -194,7 +201,8 @@ public class ProductImportService {
                                               BigDecimal mrp, BigDecimal salePrice, String hsnCode,
                                               BigDecimal gstRate, ProductVisibility visibility,
                                               Long categoryId, String categoryRaw,
-                                              Integer stockQuantity, Boolean trackInventory) {
+                                              Integer stockQuantity, Boolean trackInventory,
+                                              BigDecimal minimumRate, String wtMl) {
         Long resolvedCategory = existing.getCategory() != null ? existing.getCategory().getId() : null;
         if (columns.containsKey(COL_CATEGORY) && categoryRaw != null && categoryId != null) {
             resolvedCategory = categoryId;
@@ -212,7 +220,9 @@ public class ProductImportService {
                 columns.containsKey(COL_STOCK) ? stockQuantity : existing.getStockQuantity(),
                 columns.containsKey(COL_TRACK) ? trackInventory : existing.isTrackInventory(),
                 existing.getLowStockThreshold(),
-                existing.isFeatured());
+                existing.isFeatured(),
+                columns.containsKey(COL_MINIMUM) ? minimumRate : existing.getMinimumRate(),
+                columns.containsKey(COL_WT) ? wtMl : existing.getWtMl());
     }
 
     // --- Parsing helpers ----------------------------------------------------

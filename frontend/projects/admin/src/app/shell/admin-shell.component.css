@@ -454,3 +454,34 @@
 .shifa-navdrawer__group.is-open .shifa-navdrawer__chev {
   transform: rotate(180deg);
 }
+
+/* ---------------------------------------------------------------------------
+   Laptop / desktop (≥992px): use the FULL screen width instead of the framed
+   ~900px phone-style column, so the admin can work comfortably. Mobile and
+   small tablets keep the framed mobile-first layout above. This only removes
+   the frame + lets the content container span the viewport; no page markup
+   changes, so nothing else breaks. Applies app-wide and going forward.
+   --------------------------------------------------------------------------- */
+@media (min-width: 992px) {
+  :host {
+    /* No "desk" backdrop when the app fills the screen. */
+    background: var(--tblr-body-bg, #ffffff);
+  }
+
+  .shifa-appshell {
+    max-width: 100%;
+    margin-inline: 0;
+    border-inline: 0;
+    box-shadow: none;
+  }
+
+  /* The shell's own content containers (top bar inner + page body) span the
+     full width with comfortable side padding, so pages use the whole screen. */
+  .shifa-appshell .container-xl {
+    max-width: 100%;
+    padding-inline: 1.5rem;
+  }
+
+  /* Bottom tab bar: keep it a contained, centered floating pill (it's a
+     secondary nav on desktop; the hamburger drawer is the primary nav). */
+}

@@ -571,6 +571,11 @@
               <span>Discount</span><span>{{ discountDisplay(order) }}</span>
             </div>
           }
+          @if (order.gstAmount) {
+            <div class="shifa-od__totline">
+              <span class="text-secondary">GST (incl.)</span><span class="text-secondary">{{ money(order.gstAmount) }}</span>
+            </div>
+          }
           <div class="shifa-od__totline shifa-od__grand">
             <span>Total Amount</span><span>{{ money(order.totalAmount) }}</span>
           </div>

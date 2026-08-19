@@ -1134,3 +1134,77 @@ warnings are pre-existing/non-blocking.
 - `OrderStatus.REDISPATCH` is the terminal courier-exception outcome. Courier raw tokens `lost`, `damaged`, and `missing` map to it; it remains system-only from dispatched/in-transit/out-for-delivery, and is terminal.
 - Semantics are unchanged: the customer outstanding is cleared, exactly one `CLAIM_RECEIVABLE` for the full order amount is created, and the existing `CLAIM_FILED_REQUIRED` admin alert remains. Notification matrix/event/template/dispatcher, dashboard metrics (`redispatchCount`), order groups, CRM/performance/insights, reconciliation, raw SQL, and frontend status/card/chart/filter/badge all use Redispatch.
 - `V48__rename_courier_lost_to_redispatch.sql` is the highest migration. It upgrades persisted `orders.order_status` and `status_history.from_status`/`to_status`, safely rewrites known historic admin-notification text and JSON outbox status/template payloads, and ensures the immutable V22/V27 seed values finish as `REDISPATCH`. No earlier migration was edited. **Deployed to AWS on 2026-07-30**: MySQL backup `~/shifa-backup-2026-07-30-143710.sql`; Flyway applied V48 cleanly and the production HTTPS site/API checks returned 200/expected-401.
+
+## ROLLED BACK prod to V48 (branch `Oracle_Deployment`) — 2026-08-18
+Client asked to roll the live EC2 box back to the `Oracle_Deployment` branch (HEAD "Courier Changes",
+migrations only through **V48**). The live DB had drifted ahead to **v54** (v49 shopify quikshipx order
+sync, v50 ship default hsn, v51 order shipment quikshipx order id, v52 meta leads system user, v53 product
+price band catalog, v54 order shipment track response — a NEWER branch deployed Aug 8–14 with QuikShipX/
+Shopify courier integration). Deploying the V48 JAR onto a v54 DB would crash Flyway (`Detected applied
+migration not resolved locally`), so a **DB rollback was required alongside the code rollback**.
+- **Procedure run** (destructive, user-confirmed): (1) fresh safety backup of the live v54 DB →
+  `~/shifa-backup-preRollback-2026-08-18-221645.sql` (790 KB — the ONLY snapshot of the v54 data; all prior
+  backups were pre-v54); (2) `systemctl stop shifa-oms`; (3) dropped ALL tables (clean slate, app user has
+  DDL rights via Flyway); (4) restored the V48-state snapshot `~/shifa-backup-2026-08-08-122503.sql` (taken
+  12:25:03, 13 s before v49 applied → genuinely at v48); (5) built + deployed `Oracle_Deployment` via
+  `deploy\push-to-aws.ps1`. Post-restore: flyway max = 48, 37 tables, 150 orders.
+- **Data loss (accepted by client)**: all production data written 2026-08-08 → 2026-08-18 (~10 days, under
+  the v54 schema) is discarded. Recoverable only from `shifa-backup-preRollback-2026-08-18-221645.sql` if a
+  roll-forward is ever wanted.
+- **Verified live**: new PID 146199 started 22:30:24 IST; Flyway "Schema `shifa_dashboard` is up to date. No
+  migration necessary." (v48 == JAR); Tomcat on 8080; `https://shifa.weblithic.online/` = 200,
+  `/api/states` = 401. Highest migration in prod is now **V48** again.
+- **Lesson/gotcha**: `deploy\push-to-aws.ps1` builds+deploys but does NOT roll the DB back — a code rollback
+  to an older branch requires a matching DB restore FIRST (older JAR + newer DB = Flyway boot failure).
+  Also: the background-process runner can REUSE a prior identical terminal and replay STALE output — verify a
+  deploy by the SERVER's `ExecMainStartTimestamp`/`NRestarts` + fresh journal, not the console echo.
+
+
+## Product catalog, price bands, per-product GST & order discounts (V49/V50) — implemented (spec `product-catalog-pricing-gst`)
+Client price list (30 products) + three-tier pricing + per-product GST/HSN + weight + order discounts, built on
+the V48 `Oracle_Deployment` base. Spec: `.kiro/specs/product-catalog-pricing-gst/` (requirements/design/tasks).
+NOT yet deployed (V49/V50 apply on next restart).
+- **Model/migrations**: `V49` adds `products.minimum_rate DECIMAL(12,2)` + `products.wt_ml VARCHAR(32)` (backfills
+  `minimum_rate = sale_price`) and `orders.discount_type VARCHAR(10)` + `orders.discount_value DECIMAL(12,2)`
+  (existing `discount_amount` stays = resolved reduction). `V50` seeds the 30 products by deterministic SKU
+  `SHIFA-001..030` (`INSERT ... ON DUPLICATE KEY UPDATE`, visibility PUBLISHED) then `UPDATE ... SET visibility='HIDDEN'`
+  for every other SKU (kept, not deleted, so history resolves). Idempotent. **Highest migration is now V50.**
+  Mapping: MRP→`mrp`(ceiling), Auto-Fetch→`sale_price`(default line rate), Minimum→`minimum_rate`(floor),
+  GST%→`gst_rate`, HSN→`hsn_code`, Wt/ml→`wt_ml`. Prices are GST-INCLUSIVE ([D1]).
+- **Pricing engine** (pure, new `order/domain/OrderPricing` + `DiscountType`): subtotal = Σ line totals;
+  discount FLAT|PERCENT (validated 0–100 / ≤ subtotal); largest-remainder apportionment so shares sum EXACTLY to the
+  discount; per-line GST EXTRACTED from the discounted GST-inclusive net (`gst = net − net/(1+rate/100)`); aggregate
+  gstTotal + gstByRate; total = round(subtotal − discount) to whole rupee. Tests `OrderPricingTest` (10) +
+  `OrderPricingPropertyTest` (jqwik: discount conservation, GST aggregation, extraction bound, total identity).
+- **Order creation** (`OrderService`): `priceLines` now enforces per-line band `[minimum_rate, mrp]` (floor falls back
+  to sale_price when minimum null) → 400 naming the range; builds `DiscountSpec` from `CreateOrderRequest.discountType/
+  discountValue`, runs `OrderPricing.compute`, persists discount type/value/amount + uses computed total for payment
+  classification. `CreateOrderRequest` gained `discountType`+`discountValue` (appended last; threaded through
+  `LeadService.convert` as nulls — convert has no discount UI). `OrderEntity.applyOrderDiscount(...)` added.
+- **Product service**: `ProductRequest`/`ProductResponse` gained `minimumRate`+`wtMl` (appended last); `ProductService`
+  validates `minimumRate ≤ salePrice ≤ mrp` and `gstRate ∈ {0,5,18}`. `Product` entity gained `minimumRate`+`wtMl`.
+  `ProductImportService` passes them through (create=null, update=preserve).
+- **OrderResponse**: gained `subtotalAmount`,`gstAmount`,`discountType`,`discountValue` (+ `LineItemResponse.gstAmount`),
+  computed at READ time via `OrderPricing.compute` over persisted lines + `discount_amount` reused as a FLAT discount
+  (clamped to subtotal so reads never throw). Single source of truth so list/detail/invoice agree. Historical orders
+  untouched (rate/gstRate/discount all snapshotted per line — [D2]).
+- **Frontend**: core `Product` model + admin `ProductRequest` gained `minimumRate`,`wtMl`; products form Pricing tab
+  shows Minimum/Sale(auto-fetch)/MRP + HSN + GST + Wt/ml with validation (visibility-toggle path preserves them). New
+  Order: `CreateOrderRequest`/`OrderDetail` models gained discount + subtotal/gst; discount control (Flat/Percent) +
+  live breakdown (subtotal − discount, incl-GST total); payload sends `discountType`/`discountValue`. Order-detail
+  drawer shows a "GST (incl.)" line. `orderTotalPaise` now nets the discount.
+- **Verified**: backend `mvn clean test` = **542 tests, 0 failures**; admin `build:admin` bundle complete.
+- **Test-safe changes**: bumped test product helpers' mrp to `max(999, salePrice)` so the new band ceiling doesn't
+  reject existing pricing/rounding tests; updated the 6 `CreateOrderRequest` + 1 `ProductRequest` test call sites.
+- **Open/decisions**: [D1] GST-inclusive, [D2] history immutable, [D3] old products hidden not deleted, [D4] order-level
+  discount, [D5] band hard-enforced (all confirmed defaults).
+- **Follow-ups now DONE** (2nd pass, before local testing): (a) **Convert-from-lead discount** — `LeadConvertRequest`
+  gained `discountType`/`discountValue`, threaded through `LeadService.convert` into the `CreateOrderRequest`; frontend
+  `LeadConvertRequest` model + New Order `submitConvert` send them. (b) **CSV import** — `ProductImportService` accepts
+  optional `minimumRate` + `wtMl` columns (create sets them; update overrides only when the column is present, else
+  preserves), header hint updated in `products.component`. (c) **Client-side band on New Order** — picker returns
+  `ProductResponse` (min/mrp/wtMl present); line rate defaults to auto-fetch and shows the allowed range + Wt/ml, with an
+  inline "Below minimum/Above MRP" error; `hasBandErrors()` blocks the step-2 advance, mirroring the server 400.
+  Re-verified: backend clean compile + affected suites (`OrderPricing*`, `OrderService`, `Product*`, `LeadConvert`,
+  `EndpointRoleGuard`) = **63 tests, 0 failures**; admin `build:admin` complete. Updated the extra test call sites
+  (`LeadConvertPropertyTest`).

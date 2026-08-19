@@ -6,8 +6,9 @@ import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.courier.TrackingService;
 import com.shifa.oms.inventory.StockService;
-import com.shifa.oms.order.domain.LineItem;
+import com.shifa.oms.order.domain.DiscountType;
 import com.shifa.oms.order.domain.Money;
+import com.shifa.oms.order.domain.OrderPricing;
 import com.shifa.oms.order.domain.PaymentCalculation;
 import com.shifa.oms.order.domain.PaymentCalculator;
 import com.shifa.oms.order.domain.PaymentStatus;
@@ -101,11 +102,16 @@ public class OrderService {
         OrderCreationValidator.validateLeadSourceNote(request.leadSourceNote());
 
         List<PricedLine> priced = priceLines(request.items());
-        // Round the order total to the nearest whole rupee (product-audit §4.6),
-        // e.g. 2679.99 -> 2680.00. With GST-inclusive pricing (the default) the
-        // invoice grand total equals this total, so the tax breakdown stays
-        // reconciled; COD/remaining are derived from the rounded total below.
-        Money total = totalOf(priced).roundToWholeRupees();
+        // Price the order through the pure engine (product-catalog-pricing-gst
+        // Req 6-8): resolve the order-level discount (FLAT/PERCENT), apportion it,
+        // extract per-line GST from the GST-inclusive amounts, and round the
+        // payable total to the nearest whole rupee. The total is the NET payable
+        // (subtotal - discount), so COD/remaining below already reflect the
+        // discount and the invoice grand total stays reconciled.
+        OrderPricing.DiscountSpec discountSpec = OrderPricing.DiscountSpec.of(
+                DiscountType.from(request.discountType()), request.discountValue());
+        OrderPricing.PricedOrder pricedOrder = OrderPricing.compute(toPricingLines(priced), discountSpec);
+        Money total = Money.of(pricedOrder.total());
         requirePositiveTotal(total);
 
         Money received = Money.of(request.amountReceived());
@@ -148,6 +154,14 @@ public class OrderService {
 
         populateAggregate(order, priced, calc, request.paymentScreenshotKey(),
                 actor.username(), SOURCE_SALESPERSON);
+
+        // Snapshot the order-level discount (type + raw value + resolved amount)
+        // so history and the response reflect it (Req 6.4). No-op amount when none.
+        DiscountType discountType = discountSpec.type();
+        order.applyOrderDiscount(
+                discountType == DiscountType.NONE ? null : discountType.name(),
+                discountType == DiscountType.NONE ? null : discountSpec.value(),
+                pricedOrder.discount());
 
         // Reserve stock for tracked products within this transaction (Feature 1):
         // decrements on_hand + records a SALE movement, rejecting insufficient stock.
@@ -327,10 +341,6 @@ public class OrderService {
 
     /** A line with its resolved product, applied rate, and computed total. */
     private record PricedLine(Product product, String productName, int quantity, Money rate) {
-        LineItem toDomain() {
-            return new LineItem(productName, quantity, rate);
-        }
-
         OrderLineItem toEntity() {
             Money lineTotal = rate.multiply(quantity);
             // Snapshot the product's HSN + GST rate at order time (Feature 2) so a
@@ -342,15 +352,54 @@ public class OrderService {
         }
     }
 
-    /** Prices salesperson lines: rate = override when supplied, else product sale price (Req 7.2, 7.3). */
+    /**
+     * Prices salesperson lines: rate = override when supplied, else product sale
+     * (auto-fetch) price (Req 7.2, 7.3), then enforces the per-line price band
+     * {@code [minimum_rate, mrp]} (product-catalog-pricing-gst Req 5.2). Legacy
+     * products with a null minimum use the sale price as the floor.
+     */
     private List<PricedLine> priceLines(List<LineItemRequest> items) {
         List<PricedLine> priced = new ArrayList<>(items.size());
         for (LineItemRequest item : items) {
             Product product = requireProduct(item.productId());
             BigDecimal rate = item.rate() != null ? item.rate() : product.getSalePrice();
+            requireRateWithinBand(product, rate);
             priced.add(new PricedLine(product, product.getName(), item.quantity(), Money.of(rate)));
         }
         return priced;
+    }
+
+    /**
+     * Rejects a per-line selling rate outside the product's price band
+     * {@code [minimum_rate, mrp]} with a message naming the allowed range
+     * (Req 5.2). Floor falls back to the sale price when no minimum is set.
+     */
+    private void requireRateWithinBand(Product product, BigDecimal rate) {
+        BigDecimal floor = product.getMinimumRate() != null
+                ? product.getMinimumRate() : product.getSalePrice();
+        BigDecimal ceiling = product.getMrp();
+        if (floor != null && rate.compareTo(floor) < 0) {
+            throw new ValidationException("The price for '" + product.getName()
+                    + "' must be at least " + floor.toPlainString()
+                    + " (allowed range " + floor.toPlainString() + "–"
+                    + (ceiling != null ? ceiling.toPlainString() : "") + ").");
+        }
+        if (ceiling != null && rate.compareTo(ceiling) > 0) {
+            throw new ValidationException("The price for '" + product.getName()
+                    + "' must not exceed the MRP " + ceiling.toPlainString()
+                    + " (allowed range " + (floor != null ? floor.toPlainString() : "0") + "–"
+                    + ceiling.toPlainString() + ").");
+        }
+    }
+
+    /** Maps priced lines to the pure pricing engine's inputs (quantity, rate, product GST rate). */
+    private static List<OrderPricing.LineInput> toPricingLines(List<PricedLine> priced) {
+        List<OrderPricing.LineInput> inputs = new ArrayList<>(priced.size());
+        for (PricedLine line : priced) {
+            inputs.add(new OrderPricing.LineInput(
+                    line.quantity(), line.rate().toBigDecimal(), line.product().getGstRate()));
+        }
+        return inputs;
     }
 
     /**
@@ -370,10 +419,6 @@ public class OrderService {
     private Product requireProduct(Long productId) {
         return productRepository.findById(productId)
                 .orElseThrow(() -> new ValidationException("Product " + productId + " does not exist."));
-    }
-
-    private Money totalOf(List<PricedLine> priced) {
-        return PaymentCalculator.totalAmount(priced.stream().map(PricedLine::toDomain).toList());
     }
 
     private static String trimToNull(String value) {

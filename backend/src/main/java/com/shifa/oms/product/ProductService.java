@@ -2,6 +2,7 @@ package com.shifa.oms.product;
 
 import com.shifa.oms.common.DuplicateResourceException;
 import com.shifa.oms.common.ResourceNotFoundException;
+import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.product.dto.ProductRequest;
 import com.shifa.oms.product.dto.ProductResponse;
 import com.shifa.oms.product.dto.ProductSalesStatsResponse;
@@ -30,6 +31,10 @@ public class ProductService {
 
     /** Stable error code for a duplicate-SKU conflict (409). */
     static final String DUPLICATE_SKU_CODE = "DUPLICATE_SKU";
+
+    /** The GST rates the catalog permits (percent): 0, 5, 18 (Req 1.3). */
+    private static final List<BigDecimal> ALLOWED_GST_RATES =
+            List.of(new BigDecimal("0"), new BigDecimal("5"), new BigDecimal("18"));
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
@@ -69,6 +74,7 @@ public class ProductService {
         if (productRepository.existsBySku(request.sku())) {
             throw duplicateSku(request.sku());
         }
+        validatePricingAndTax(request);
         Product product = new Product(
                 request.sku(),
                 request.name(),
@@ -76,8 +82,10 @@ public class ProductService {
                 request.mrp(),
                 request.salePrice(),
                 request.visibility());
+        product.setMinimumRate(request.minimumRate());
         product.setHsnCode(normalizeHsn(request.hsnCode()));
         product.setGstRate(request.gstRate());
+        product.setWtMl(normalizeWtMl(request.wtMl()));
         applyCatalogFields(product, request);
         return ProductResponse.from(productRepository.save(product));
     }
@@ -97,14 +105,17 @@ public class ProductService {
                 && productRepository.existsBySku(request.sku())) {
             throw duplicateSku(request.sku());
         }
+        validatePricingAndTax(request);
 
         product.setSku(request.sku());
         product.setName(request.name());
         product.setDescription(request.description());
         product.setMrp(request.mrp());
         product.setSalePrice(request.salePrice());
+        product.setMinimumRate(request.minimumRate());
         product.setHsnCode(normalizeHsn(request.hsnCode()));
         product.setGstRate(request.gstRate());
+        product.setWtMl(normalizeWtMl(request.wtMl()));
         product.setVisibility(request.visibility());
         applyCatalogFields(product, request);
         return ProductResponse.from(productRepository.save(product));
@@ -139,6 +150,44 @@ public class ProductService {
         }
         String trimmed = hsnCode.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /** Trims the optional Wt/ml descriptor to {@code null} when blank. */
+    private String normalizeWtMl(String wtMl) {
+        if (wtMl == null) {
+            return null;
+        }
+        String trimmed = wtMl.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /**
+     * Enforces the price band ordering {@code minimumRate ≤ salePrice ≤ mrp} and
+     * the allowed GST-rate set {0, 5, 18} when a rate is present
+     * (product-catalog-pricing-gst Req 1.2, 1.3). Throws {@link ValidationException}
+     * (HTTP 400) on violation. A null minimumRate is allowed (no floor set).
+     */
+    private void validatePricingAndTax(ProductRequest request) {
+        BigDecimal mrp = request.mrp();
+        BigDecimal salePrice = request.salePrice();
+        BigDecimal minimum = request.minimumRate();
+        if (salePrice != null && mrp != null && salePrice.compareTo(mrp) > 0) {
+            throw new ValidationException(
+                    "The auto-fetch (sale) price must not exceed the MRP.");
+        }
+        if (minimum != null) {
+            if (salePrice != null && minimum.compareTo(salePrice) > 0) {
+                throw new ValidationException(
+                        "The minimum rate must not exceed the auto-fetch (sale) price.");
+            }
+            if (mrp != null && minimum.compareTo(mrp) > 0) {
+                throw new ValidationException("The minimum rate must not exceed the MRP.");
+            }
+        }
+        BigDecimal gstRate = request.gstRate();
+        if (gstRate != null && !ALLOWED_GST_RATES.stream().anyMatch(r -> r.compareTo(gstRate) == 0)) {
+            throw new ValidationException("The GST rate must be one of 0, 5, or 18 percent.");
+        }
     }
 
     /**

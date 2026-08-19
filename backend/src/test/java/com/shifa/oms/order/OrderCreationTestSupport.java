@@ -35,8 +35,10 @@ final class OrderCreationTestSupport {
 
     /** A published product with a positive sale price and inventory tracking off. */
     static Product publishedProduct(long id, String salePrice) {
+        BigDecimal sp = new BigDecimal(salePrice);
+        // MRP is the price-band ceiling; keep it >= sale price so the default rate is in band.
         return new Product("SKU-" + id, "Product " + id, "desc",
-                new BigDecimal("999.00"), new BigDecimal(salePrice), ProductVisibility.PUBLISHED);
+                sp.max(new BigDecimal("999.00")), sp, ProductVisibility.PUBLISHED);
     }
 
     /** A real {@link OrderService} wired over the caller's stubbed repositories. */

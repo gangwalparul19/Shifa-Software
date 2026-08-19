@@ -343,6 +343,28 @@
               @if (form.controls.salePrice.touched && form.controls.salePrice.invalid) {
                 <div class="invalid-feedback">Enter a valid amount (e.g. 149.00).</div>
               }
+              <small class="form-hint">Auto-fetch (default) selling price on new orders.</small>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-6 mb-3">
+              <label class="form-label">Minimum rate <span class="text-secondary">(optional)</span></label>
+              <input type="text" inputmode="decimal" class="form-control" formControlName="minimumRate" placeholder="0.00"
+                [class.is-invalid]="form.controls.minimumRate.touched && form.controls.minimumRate.invalid" />
+              <small class="form-hint">Per-line floor. Must be ≤ sale price ≤ MRP.</small>
+              @if (form.controls.minimumRate.touched && form.controls.minimumRate.invalid) {
+                <div class="invalid-feedback">Enter a valid amount (e.g. 600.00).</div>
+              }
+            </div>
+            <div class="col-6 mb-3">
+              <label class="form-label">Weight / volume <span class="text-secondary">(optional)</span></label>
+              <input type="text" class="form-control" formControlName="wtMl" maxlength="32" autocomplete="off"
+                placeholder="e.g. 100ML, 60 TB PP, Combo"
+                [class.is-invalid]="form.controls.wtMl.touched && form.controls.wtMl.invalid" />
+              @if (form.controls.wtMl.touched && form.controls.wtMl.invalid) {
+                <div class="invalid-feedback">At most 32 characters.</div>
+              }
             </div>
           </div>
 

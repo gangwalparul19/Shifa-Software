@@ -53,8 +53,15 @@ export interface Product {
   description?: string;
   mrp: Money;
   salePrice: Money;
+  /**
+   * Optional minimum selling price (per-line floor). When set, an order line's
+   * price must be within [minimumRate, mrp] (product-catalog-pricing-gst).
+   */
+  minimumRate?: Money | null;
   /** Optional HSN code, surfaced on GST tax invoices (backend: GST feature). */
   hsnCode?: string;
+  /** Optional pack size / weight / volume descriptor, e.g. "100ML", "60 TB PP". */
+  wtMl?: string | null;
   /**
    * Optional per-product GST rate percent (DECIMAL(5,2) as a string, e.g.
    * "12.00"); null/undefined falls back to the settings default rate.

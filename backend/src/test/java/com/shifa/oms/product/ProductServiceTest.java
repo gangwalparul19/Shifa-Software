@@ -40,7 +40,7 @@ class ProductServiceTest {
     private ProductRequest request(String sku, ProductVisibility visibility) {
         return new ProductRequest(sku, "Ashwagandha", "desc",
                 new BigDecimal("199.00"), new BigDecimal("149.00"), null, null, visibility,
-                null, null, null, null, null);
+                null, null, null, null, null, null, null);
     }
 
     // --- Duplicate SKU (Req 6.2) -------------------------------------------

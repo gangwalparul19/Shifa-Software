@@ -165,6 +165,19 @@ public class OrderEntity {
     @Column(name = "discount_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal discountAmount = BigDecimal.ZERO;
 
+    /**
+     * The order-level discount kind entered at order entry — "FLAT" or "PERCENT"
+     * — or null when none (product-catalog-pricing-gst Req 6.1, 6.4). The raw
+     * entered value is {@link #discountValue}; the resolved rupee reduction is
+     * {@link #discountAmount}.
+     */
+    @Column(name = "discount_type", length = 10)
+    private String discountType;
+
+    /** The raw discount value as entered (a rupee amount for FLAT, a percent for PERCENT); null when none. */
+    @Column(name = "discount_value", precision = 12, scale = 2)
+    private BigDecimal discountValue;
+
     @Column(name = "rejection_reason", length = 500)
     private String rejectionReason;
 
@@ -283,6 +296,18 @@ public class OrderEntity {
     /** Records the coupon code + money discount applied at checkout (Phase D). */
     public void applyDiscount(String couponCode, BigDecimal discountAmount) {
         this.couponCode = couponCode;
+        this.discountAmount = discountAmount != null ? discountAmount : BigDecimal.ZERO;
+    }
+
+    /**
+     * Records an order-level discount entered at order entry: its type
+     * ("FLAT"/"PERCENT"), the raw entered value, and the resolved rupee reduction
+     * (product-catalog-pricing-gst Req 6). {@link #totalAmount} stores the NET
+     * payable, so COD / remaining already reflect the discount.
+     */
+    public void applyOrderDiscount(String discountType, BigDecimal discountValue, BigDecimal discountAmount) {
+        this.discountType = discountType;
+        this.discountValue = discountValue;
         this.discountAmount = discountAmount != null ? discountAmount : BigDecimal.ZERO;
     }
 
@@ -489,6 +514,14 @@ public class OrderEntity {
 
     public BigDecimal getDiscountAmount() {
         return discountAmount;
+    }
+
+    public String getDiscountType() {
+        return discountType;
+    }
+
+    public BigDecimal getDiscountValue() {
+        return discountValue;
     }
 
     public String getPaymentScreenshotKey() {

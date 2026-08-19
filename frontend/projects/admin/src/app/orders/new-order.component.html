@@ -86,24 +86,9 @@
     <h2 class="shifa-no__title">Customer Details</h2>
     <div class="shifa-no__card">
       <div class="row g-2 g-md-3">
+        <!-- Phone number FIRST: entering a known number auto-fills the rest so
+             the salesperson can jump straight to the next step. -->
         <div class="col-12">
-          <label class="form-label required" for="customerName">Customer name</label>
-          <input
-            id="customerName"
-            type="text"
-            class="form-control"
-            formControlName="customerName"
-            maxlength="100"
-            autocomplete="off"
-            [class.is-invalid]="invalid('customerName')"
-          />
-          @if (invalid('customerName')) {
-            <div class="invalid-feedback">A customer name (max 100 chars) is required.</div>
-          }
-        </div>
-
-        <!-- Phone + Lead source share a row (both compact) to cut scrolling. -->
-        <div class="col-6">
           <label class="form-label required" for="customerMobile">Phone number</label>
           <input
             id="customerMobile"
@@ -116,6 +101,7 @@
             autocomplete="off"
             [class.is-invalid]="invalid('customerMobile')"
           />
+          <small class="form-hint">Enter the phone number first — if they've ordered before, we'll fill in the rest.</small>
           @if (invalid('customerMobile')) {
             <div class="invalid-feedback">Enter exactly 10 digits.</div>
           }
@@ -144,6 +130,23 @@
                 </div>
               </div>
             }
+          }
+        </div>
+
+        <!-- Customer name (auto-filled from a known number, still editable) -->
+        <div class="col-6">
+          <label class="form-label required" for="customerName">Customer name</label>
+          <input
+            id="customerName"
+            type="text"
+            class="form-control"
+            formControlName="customerName"
+            maxlength="100"
+            autocomplete="off"
+            [class.is-invalid]="invalid('customerName')"
+          />
+          @if (invalid('customerName')) {
+            <div class="invalid-feedback">A customer name (max 100 chars) is required.</div>
           }
         </div>
 
@@ -348,19 +351,12 @@
 
             <div class="mb-2">
               <label class="form-label" [for]="'product-' + i">Product</label>
-              <select
-                [id]="'product-' + i"
-                class="form-select"
+              <admin-product-typeahead
+                [products]="products()"
+                [invalid]="itemInvalid(i, 'productId')"
                 formControlName="productId"
-                (change)="onProductChange(i)"
-                [class.is-invalid]="itemInvalid(i, 'productId')"
-                aria-label="Product"
-              >
-                <option [ngValue]="null" disabled>Select a product…</option>
-                @for (p of products(); track p.id) {
-                  <option [ngValue]="p.id">{{ p.name }} — ₹{{ p.salePrice }} ({{ p.sku }})</option>
-                }
-              </select>
+                (selected)="onProductChange(i)"
+              />
               @if (itemInvalid(i, 'productId')) {
                 <div class="text-danger small mt-1">Choose a product.</div>
               }
@@ -397,9 +393,18 @@
                   formControlName="rate"
                   min="0"
                   step="0.01"
-                  [class.is-invalid]="itemInvalid(i, 'rate')"
+                  [class.is-invalid]="itemInvalid(i, 'rate') || !!lineRateError(i)"
                   aria-label="Price"
                 />
+                @if (lineBand(i); as band) {
+                  @if (lineRateError(i); as err) {
+                    <div class="text-danger small mt-1">{{ err }} (allowed ₹{{ band.min }}–₹{{ band.max }}).</div>
+                  } @else {
+                    <div class="form-hint">
+                      Range ₹{{ band.min }}–₹{{ band.max }}@if (band.wtMl) { · {{ band.wtMl }} }
+                    </div>
+                  }
+                }
               </div>
             </div>
 
@@ -423,10 +428,48 @@
         </div>
       }
 
+      <!-- Discount (order-level: flat or percent) -->
+      <div class="shifa-no__card">
+        <label class="form-label">Discount <span class="text-secondary">(optional)</span></label>
+        <div class="row g-2">
+          <div class="col-5">
+            <select class="form-select" formControlName="discountType">
+              <option value="">No discount</option>
+              <option value="FLAT">Flat (₹)</option>
+              <option value="PERCENT">Percent (%)</option>
+            </select>
+          </div>
+          <div class="col-7">
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              class="form-control"
+              formControlName="discountValue"
+              placeholder="0"
+              [attr.disabled]="!form.controls.discountType.value ? true : null"
+            />
+          </div>
+        </div>
+        @if (form.controls.discountType.value === 'PERCENT' && (form.controls.discountValue.value || 0) > 100) {
+          <div class="text-danger small mt-1">A percentage discount cannot exceed 100%.</div>
+        }
+      </div>
+
       <!-- Running totals -->
       <div class="shifa-no__card shifa-no__totals">
+        @if (discountPaise() > 0) {
+          <div class="shifa-no__totline">
+            <span class="text-secondary">Subtotal</span>
+            <span>{{ formatMoney(subtotalPaise()) }}</span>
+          </div>
+          <div class="shifa-no__totline">
+            <span class="text-secondary">Discount</span>
+            <span class="text-danger">− {{ formatMoney(discountPaise()) }}</span>
+          </div>
+        }
         <div class="shifa-no__totline">
-          <span>Order total</span>
+          <span>Order total <span class="text-secondary">(incl. GST)</span></span>
           <span class="fw-bold">{{ formatMoney(orderTotalPaise()) }}</span>
         </div>
         <div class="shifa-no__totline">

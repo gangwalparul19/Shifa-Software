@@ -135,6 +135,10 @@ export interface LeadConvertRequest {
   paymentScreenshotKey?: string;
   /** Optional free-text order note captured at conversion (≤1000 chars). */
   notes?: string;
+  /** Optional order-level discount carried to the created order (Flat/Percent). */
+  discountType?: 'FLAT' | 'PERCENT';
+  /** The raw discount value entered (rupee amount for FLAT, percent for PERCENT). */
+  discountValue?: number;
 }
 
 /** Filters for the scoped lead list (`GET /api/leads`). */

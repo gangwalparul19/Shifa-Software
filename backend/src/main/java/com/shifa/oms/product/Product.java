@@ -51,9 +51,22 @@ public class Product {
     @Column(name = "sale_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal salePrice = BigDecimal.ZERO;
 
+    /**
+     * Optional minimum selling price (per-line floor). When present, an order
+     * line's rate must be within {@code [minimumRate, mrp]} (price band). Null on
+     * legacy rows is treated as a floor equal to {@link #salePrice}
+     * (product-catalog-pricing-gst Req 1.1, 1.5, 5.2).
+     */
+    @Column(name = "minimum_rate", precision = 12, scale = 2)
+    private BigDecimal minimumRate;
+
     /** Optional HSN code, surfaced on GST tax invoices when present (Req: GST). */
     @Column(name = "hsn_code", length = 20)
     private String hsnCode;
+
+    /** Human-readable pack size / weight / volume descriptor (e.g. "100ML", "60 TB PP", "Combo"). */
+    @Column(name = "wt_ml", length = 32)
+    private String wtMl;
 
     /**
      * Optional per-product GST rate percent (e.g. 5.00 / 12.00 / 18.00) used on
@@ -173,12 +186,28 @@ public class Product {
         this.salePrice = salePrice;
     }
 
+    public BigDecimal getMinimumRate() {
+        return minimumRate;
+    }
+
+    public void setMinimumRate(BigDecimal minimumRate) {
+        this.minimumRate = minimumRate;
+    }
+
     public String getHsnCode() {
         return hsnCode;
     }
 
     public void setHsnCode(String hsnCode) {
         this.hsnCode = hsnCode;
+    }
+
+    public String getWtMl() {
+        return wtMl;
+    }
+
+    public void setWtMl(String wtMl) {
+        this.wtMl = wtMl;
     }
 
     public BigDecimal getGstRate() {

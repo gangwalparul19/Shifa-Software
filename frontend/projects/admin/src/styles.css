@@ -1264,3 +1264,21 @@ th,
    absolutely/fixed-positioned dropdown cards (e.g. the notifications bell panel,
    row-action menus) to their narrow positioned container. In-flow cards already
    can't exceed their column, so the rule was redundant and only caused harm. */
+
+/* ---------------------------------------------------------------------------
+   Desktop full-width (≥992px) — app-wide, applies to every page and any added
+   later. On laptops/desktops the content containers span the full viewport
+   (with comfortable side padding) instead of the mobile-first ~900px framed
+   column, so the admin can work at full screen. Mobile/tablet are untouched
+   (this only widens at the lg breakpoint). Elements with their own max-width
+   (e.g. the auth card, dropdown panels) are unaffected. This is a global rule
+   so it reaches page components rendered inside the shell's `.page-body`.
+   --------------------------------------------------------------------------- */
+@media (min-width: 992px) {
+  .page-body .container-xl,
+  .page-body .container-lg,
+  .page-body .container-md,
+  .page-body .container {
+    max-width: 100%;
+  }
+}

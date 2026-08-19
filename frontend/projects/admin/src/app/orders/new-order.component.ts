@@ -13,6 +13,7 @@ import { ApiError, Product, paiseToMoney, toPaise } from 'core';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { StateTypeaheadComponent } from '../shared/state-typeahead.component';
+import { ProductTypeaheadComponent } from '../shared/product-typeahead.component';
 import { StatesService } from '../shared/states.service';
 import { PincodeService } from '../shared/pincode.service';
 import { ConfirmService } from '../shared/confirm.service';
@@ -29,6 +30,7 @@ import {
   CreateOrderRequest,
   LEAD_SOURCE_OPTIONS,
   LeadSource,
+  OrderDiscountType,
 } from './orders.model';
 
 /** The three phases the payment-screenshot upload can be in. */
@@ -57,6 +59,7 @@ type UploadState = 'idle' | 'uploading' | 'done' | 'error';
     PageHeaderComponent,
     StatePanelComponent,
     StateTypeaheadComponent,
+    ProductTypeaheadComponent,
   ],
   templateUrl: './new-order.component.html',
   styleUrl: './new-order.component.css',
@@ -168,6 +171,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     items: [],
     amountReceived: 0,
     leadSource: '',
+    discountType: '',
+    discountValue: 0,
   });
 
   /** Selectable lead-source options for the origin picker (Req 4.1). */
@@ -186,6 +191,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     leadSourceNote: ['', [Validators.maxLength(200)]],
     items: this.fb.array([this.newItem()]),
     amountReceived: [0, [Validators.required, Validators.min(0)]],
+    // Optional order-level discount (product-catalog-pricing-gst Req 6).
+    discountType: ['' as '' | OrderDiscountType],
+    discountValue: [0, [Validators.min(0)]],
     notes: ['', [Validators.maxLength(1000)]],
   });
 
@@ -203,14 +211,36 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     this.model().items.map((it) => toPaise(it.rate ?? 0) * (it.quantity || 0)),
   );
 
+  /** The (unrounded) subtotal in paise: Σ line totals before any discount. */
+  protected readonly subtotalPaise = computed(() =>
+    this.lineTotals().reduce((sum, cents) => sum + cents, 0),
+  );
+
   /**
-   * The running order total in paise, rounded to the nearest whole rupee so the
-   * figure the salesperson sees matches what the backend will charge
-   * (product-audit §4.6, e.g. ₹2679.99 shown as ₹2680).
+   * The order-level discount in paise (product-catalog-pricing-gst Req 6):
+   * PERCENT of the subtotal or a FLAT amount, clamped to [0, subtotal].
+   */
+  protected readonly discountPaise = computed(() => {
+    const sub = this.subtotalPaise();
+    const m = this.model();
+    let d = 0;
+    if (m.discountType === 'PERCENT') {
+      const pct = Math.max(0, Math.min(100, m.discountValue || 0));
+      d = Math.round((sub * pct) / 100);
+    } else if (m.discountType === 'FLAT') {
+      d = toPaise(m.discountValue || 0);
+    }
+    return Math.max(0, Math.min(sub, d));
+  });
+
+  /**
+   * The running order total in paise = (subtotal − discount) rounded to the
+   * nearest whole rupee so the figure matches what the backend will charge
+   * (product-audit §4.6; product-catalog-pricing-gst Req 6, 8).
    */
   protected readonly orderTotalPaise = computed(() => {
-    const raw = this.lineTotals().reduce((sum, cents) => sum + cents, 0);
-    return Math.round(raw / 100) * 100;
+    const net = this.subtotalPaise() - this.discountPaise();
+    return Math.round(net / 100) * 100;
   });
 
   /** Remaining balance after the amount received (may be negative if overpaid). */
@@ -693,14 +723,67 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     control.markAsTouched();
   }
 
-  /** When a product is chosen, pre-fill the rate with its sale price (Req 7.2). */
+  /** When a product is chosen, pre-fill the rate with its sale (auto-fetch) price (Req 7.2, 5.1). */
   onProductChange(index: number): void {
     const group = this.items.at(index);
     const productId = group.controls['productId'].value as number | null;
     const product = this.products().find((p) => p.id === productId);
     if (product) {
       group.controls['rate'].setValue(Number(product.salePrice));
+      this.model.set(this.snapshot());
     }
+  }
+
+  /** The product selected on a line, or undefined when none is chosen. */
+  productForLine(index: number): Product | undefined {
+    const id = this.items.at(index).controls['productId'].value as number | null;
+    return id == null ? undefined : this.products().find((p) => p.id === id);
+  }
+
+  /**
+   * The price band {min, max} + pack size for a line's product
+   * (product-catalog-pricing-gst Req 5.2, 10.1). The floor falls back to the
+   * sale price when no explicit minimum is set; null when no product is chosen.
+   */
+  lineBand(index: number): { min: number; max: number; wtMl: string | null } | null {
+    const p = this.productForLine(index);
+    if (!p) {
+      return null;
+    }
+    const min = Number(p.minimumRate ?? p.salePrice);
+    const max = Number(p.mrp);
+    return { min, max, wtMl: p.wtMl ?? null };
+  }
+
+  /**
+   * A validation message when a line's rate is outside its product's band
+   * (mirrors the server rule so the salesperson sees it before submit), else null.
+   */
+  lineRateError(index: number): string | null {
+    const band = this.lineBand(index);
+    if (!band) {
+      return null;
+    }
+    const raw = this.items.at(index).controls['rate'].value as number | null;
+    if (raw === null || raw === undefined || (raw as unknown) === '') {
+      return null;
+    }
+    const rate = Number(raw);
+    if (Number.isNaN(rate)) {
+      return null;
+    }
+    if (rate < band.min) {
+      return `Below minimum ₹${band.min}`;
+    }
+    if (band.max && rate > band.max) {
+      return `Above MRP ₹${band.max}`;
+    }
+    return null;
+  }
+
+  /** True when any line's rate is outside its product's price band. */
+  hasBandErrors(): boolean {
+    return this.items.controls.some((_, i) => this.lineRateError(i) !== null);
   }
 
   productName(index: number): string {
@@ -819,7 +902,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     }
     if (step === 2) {
       this.items.controls.forEach((group) => group.markAllAsTouched());
-      if (this.items.invalid || this.orderTotalPaise() <= 0) {
+      // Block advancing when a line's price is outside its product band (Req 5.2),
+      // mirroring the server rule so the salesperson fixes it here.
+      if (this.items.invalid || this.orderTotalPaise() <= 0 || this.hasBandErrors()) {
         ok = false;
       }
     }
@@ -901,6 +986,10 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       // Only send the note when OTHER is chosen (it's meaningless otherwise, Req 4.5).
       ...(isOther && note ? { leadSourceNote: note } : {}),
       ...(orderNotes ? { notes: orderNotes } : {}),
+      // Order-level discount (product-catalog-pricing-gst Req 6), only when set.
+      ...(raw.discountType
+        ? { discountType: raw.discountType as OrderDiscountType, discountValue: raw.discountValue || 0 }
+        : {}),
     };
 
     // Offline capture (FEATURE-ROADMAP §8.1): a COD order (no money collected) is
@@ -974,6 +1063,10 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       ...(this.form.controls.notes.value.trim()
         ? { notes: this.form.controls.notes.value.trim() }
         : {}),
+      // Order-level discount (product-catalog-pricing-gst Req 6), only when set.
+      ...(raw.discountType
+        ? { discountType: raw.discountType as OrderDiscountType, discountValue: raw.discountValue || 0 }
+        : {}),
     };
 
     this.submitting.set(true);
@@ -1025,6 +1118,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     items: { productId: number | null; quantity: number; rate: number | null }[];
     amountReceived: number;
     leadSource: '' | LeadSource;
+    discountType: '' | OrderDiscountType;
+    discountValue: number;
   } {
     const raw = this.form.getRawValue();
     return {
@@ -1035,6 +1130,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       })),
       amountReceived: Number(raw.amountReceived) || 0,
       leadSource: raw.leadSource,
+      discountType: (raw.discountType ?? '') as '' | OrderDiscountType,
+      discountValue: Number(raw.discountValue) || 0,
     };
   }
 }

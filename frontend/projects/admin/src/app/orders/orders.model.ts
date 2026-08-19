@@ -61,7 +61,14 @@ export interface CreateOrderRequest {
   leadSourceNote?: string;
   /** Optional free-text order note captured at order entry (≤1000 chars). */
   notes?: string;
+  /** Optional order-level discount kind (product-catalog-pricing-gst Req 6). */
+  discountType?: OrderDiscountType;
+  /** The raw discount value entered (rupee amount for FLAT, percent for PERCENT). */
+  discountValue?: number;
 }
+
+/** The kind of order-level discount (mirrors the backend). */
+export type OrderDiscountType = 'FLAT' | 'PERCENT';
 
 /**
  * Result of {@code POST /api/orders/payment-screenshots} (mirrors the backend
@@ -138,6 +145,8 @@ export interface OrderDetailLine {
   quantity: number;
   rate: Money;
   lineTotal: Money;
+  /** Per-line GST amount extracted from the GST-inclusive net (Money string). */
+  gstAmount?: Money | null;
   /**
    * Storage key of the line product's primary (first published) image, or
    * null/absent when the product has no published image. Populated only on the
@@ -176,6 +185,14 @@ export interface OrderDetail {
    * The order-detail totals show a "- ₹X" discount line only when this is > 0.
    */
   discountAmount?: Money;
+  /** The order-level discount kind, when one was applied (else null). */
+  discountType?: OrderDiscountType | null;
+  /** The raw discount value as entered (rupee amount for FLAT, percent for PERCENT). */
+  discountValue?: Money | null;
+  /** GST-inclusive subtotal (Σ line totals) before discount (Money string). */
+  subtotalAmount?: Money;
+  /** Aggregate GST contained within the total (Money string). */
+  gstAmount?: Money;
   paymentScreenshotAvailable: boolean;
   /** Optional free-text order note captured at order entry. */
   notes?: string | null;

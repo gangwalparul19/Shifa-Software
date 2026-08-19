@@ -85,6 +85,16 @@ public record CreateOrderRequest(
         // an empty string or 10 digits, and @Pattern treats null as valid, so the
         // field stays optional whether the client omits it or sends "".
         @Pattern(regexp = "(\\d{10})?", message = "alternateMobile must be exactly 10 digits")
-        String alternateMobile
+        String alternateMobile,
+
+        // Optional order-level discount (product-catalog-pricing-gst Req 6): type is
+        // "FLAT" or "PERCENT" (null/blank = none), value is the entered amount/percent.
+        // Bounds are validated during pricing so the specific message is returned.
+        @Pattern(regexp = "(?i)(FLAT|PERCENT)?", message = "discountType must be FLAT or PERCENT")
+        String discountType,
+
+        @DecimalMin(value = "0.00", message = "discountValue must not be negative")
+        @Digits(integer = 10, fraction = 2, message = "discountValue must be a DECIMAL(12,2) value")
+        BigDecimal discountValue
 ) {
 }

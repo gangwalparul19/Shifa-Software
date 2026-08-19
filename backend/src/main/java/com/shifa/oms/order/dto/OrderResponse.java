@@ -5,12 +5,15 @@ import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderSource;
 import com.shifa.oms.order.PaymentVerificationStatus;
+import com.shifa.oms.order.domain.DiscountType;
+import com.shifa.oms.order.domain.OrderPricing;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.statemachine.OrderStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -58,7 +61,15 @@ public record OrderResponse(
         LocalDate estimatedDelivery,
         String handoverName,
         int packageCount,
-        PaymentVerificationStatus paymentVerificationStatus
+        PaymentVerificationStatus paymentVerificationStatus,
+        // product-catalog-pricing-gst Req 8: GST-inclusive subtotal (Σ line totals),
+        // the aggregate GST contained within the total, and the order-level discount
+        // type/value as entered. Computed at read time from the persisted lines +
+        // discount, so list/detail/invoice agree.
+        BigDecimal subtotalAmount,
+        BigDecimal gstAmount,
+        String discountType,
+        BigDecimal discountValue
 ) {
 
     /**
@@ -78,13 +89,12 @@ public record OrderResponse(
             int quantity,
             BigDecimal rate,
             BigDecimal lineTotal,
-            String imageKey
+            String imageKey,
+            // Per-line GST amount extracted from the GST-inclusive, post-discount
+            // line net (product-catalog-pricing-gst Req 7). Computed at read time.
+            BigDecimal gstAmount
     ) {
-        static LineItemResponse from(OrderLineItem item) {
-            return from(item, null);
-        }
-
-        static LineItemResponse from(OrderLineItem item, String imageKey) {
+        static LineItemResponse from(OrderLineItem item, String imageKey, BigDecimal gstAmount) {
             return new LineItemResponse(
                     item.getProductId(),
                     item.getProductName(),
@@ -93,7 +103,8 @@ public record OrderResponse(
                     item.getQuantity(),
                     item.getRate(),
                     item.getLineTotal(),
-                    imageKey);
+                    imageKey,
+                    gstAmount);
         }
     }
 
@@ -110,11 +121,40 @@ public record OrderResponse(
      */
     public static OrderResponse from(OrderEntity order, Map<Long, String> imageKeysByProductId) {
         Map<Long, String> imageKeys = imageKeysByProductId != null ? imageKeysByProductId : Map.of();
-        List<LineItemResponse> items = order.getLineItems().stream()
-                .map(item -> LineItemResponse.from(
-                        item,
-                        item.getProductId() != null ? imageKeys.get(item.getProductId()) : null))
-                .toList();
+        List<OrderLineItem> lineItems = order.getLineItems();
+
+        // Re-price the persisted lines through the pure engine to derive the
+        // GST-inclusive subtotal, per-line GST, and aggregate GST (Req 7, 8). The
+        // resolved discount_amount is reused as a FLAT discount so apportionment
+        // reproduces exactly what was captured at creation (the type only affects
+        // how the amount is derived, not how it is split across lines).
+        List<OrderPricing.LineInput> pricingLines = new ArrayList<>(lineItems.size());
+        BigDecimal grossSubtotal = BigDecimal.ZERO;
+        for (OrderLineItem item : lineItems) {
+            OrderPricing.LineInput input =
+                    new OrderPricing.LineInput(item.getQuantity(), item.getRate(), item.getGstRate());
+            pricingLines.add(input);
+            grossSubtotal = grossSubtotal.add(input.lineTotal());
+        }
+        // Reuse the resolved discount_amount as a FLAT discount, clamped to the
+        // subtotal so read-time repricing never fails on edge/legacy data.
+        BigDecimal discountAmount = order.getDiscountAmount();
+        BigDecimal effective = discountAmount == null ? BigDecimal.ZERO : discountAmount;
+        if (effective.compareTo(grossSubtotal) > 0) {
+            effective = grossSubtotal;
+        }
+        OrderPricing.DiscountSpec spec = effective.signum() > 0
+                ? OrderPricing.DiscountSpec.of(DiscountType.FLAT, effective)
+                : OrderPricing.DiscountSpec.NONE;
+        OrderPricing.PricedOrder priced = OrderPricing.compute(pricingLines, spec);
+
+        List<LineItemResponse> items = new ArrayList<>(lineItems.size());
+        for (int i = 0; i < lineItems.size(); i++) {
+            OrderLineItem item = lineItems.get(i);
+            String imageKey = item.getProductId() != null ? imageKeys.get(item.getProductId()) : null;
+            BigDecimal lineGst = priced.lines().get(i).gstAmount();
+            items.add(LineItemResponse.from(item, imageKey, lineGst));
+        }
         return new OrderResponse(
                 order.getId(),
                 order.getOrderCode(),
@@ -148,7 +188,11 @@ public record OrderResponse(
                 null,
                 order.getHandoverName(),
                 order.getPackageCount(),
-                order.getPaymentVerificationStatus());
+                order.getPaymentVerificationStatus(),
+                priced.subtotal(),
+                priced.gstTotal(),
+                order.getDiscountType(),
+                order.getDiscountValue());
     }
 
     /**
@@ -190,6 +234,10 @@ public record OrderResponse(
                 estimatedDelivery,
                 handoverName,
                 packageCount,
-                paymentVerificationStatus);
+                paymentVerificationStatus,
+                subtotalAmount,
+                gstAmount,
+                discountType,
+                discountValue);
     }
 }
