@@ -1,0 +1,192 @@
+:host {
+  --gst-green: #1f5d3f;
+  --gst-green-050: #f1f8f4;
+  --gst-ink: #21372c;
+  --gst-muted: #6b7b72;
+  --gst-line: #e6efe9;
+  display: block;
+}
+
+.cursor-pointer { cursor: pointer; }
+
+/* ---- Toolbar (period + actions) --------------------------------------- */
+.gst-toolbar {
+  background: #fff;
+  border: 1px solid var(--gst-line);
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 2px 10px rgba(15, 51, 36, 0.05);
+  margin-bottom: 1rem;
+}
+.gst-toolbar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.gst-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.gst-chip {
+  border: 1px solid var(--gst-line);
+  background: #fff;
+  color: var(--gst-ink);
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.gst-chip:hover { background: var(--gst-green-050); border-color: #cfe3d7; }
+.gst-chip.is-active {
+  background: var(--gst-green);
+  border-color: var(--gst-green);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(31, 93, 63, 0.25);
+}
+.gst-dates {
+  display: flex;
+  align-items: end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.gst-dates .form-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--gst-muted); margin-bottom: 0.15rem; }
+.gst-dates input { min-width: 9.5rem; }
+.gst-spacer { flex: 1 1 auto; }
+
+/* ---- KPI cards --------------------------------------------------------- */
+.gst-section-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gst-muted);
+  font-weight: 700;
+  margin: 0.75rem 0 0.5rem;
+}
+.gst-kpi {
+  position: relative;
+  background: #fff;
+  border: 1px solid var(--gst-line);
+  border-radius: 14px;
+  padding: 0.85rem 0.95rem 0.85rem 1.1rem;
+  height: 100%;
+  overflow: hidden;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.gst-kpi::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: var(--accent, var(--gst-green));
+}
+.gst-kpi.is-clickable { cursor: pointer; }
+.gst-kpi.is-clickable:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(15, 51, 36, 0.1); }
+.gst-kpi__head { display: flex; align-items: center; gap: 0.4rem; }
+.gst-kpi__icon {
+  width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  background: var(--accent-soft, var(--gst-green-050));
+  color: var(--accent, var(--gst-green));
+  font-size: 1rem;
+  flex: 0 0 auto;
+}
+.gst-kpi__label { font-size: 0.78rem; color: var(--gst-muted); font-weight: 600; }
+.gst-kpi__value { font-size: 1.35rem; font-weight: 700; color: var(--gst-ink); margin-top: 0.35rem; line-height: 1.1; }
+.gst-kpi__sub { font-size: 0.72rem; color: var(--gst-muted); }
+.gst-kpi__link { position: absolute; top: 0.7rem; right: 0.8rem; color: var(--gst-muted); font-size: 0.9rem; }
+
+/* accent variants */
+.acc-green { --accent: #1f5d3f; --accent-soft: #eaf5ef; }
+.acc-blue { --accent: #2563eb; --accent-soft: #eaf1fe; }
+.acc-orange { --accent: #d97706; --accent-soft: #fef3e6; }
+.acc-red { --accent: #dc2626; --accent-soft: #fdecec; }
+.acc-teal { --accent: #0d9488; --accent-soft: #e6f6f4; }
+.acc-violet { --accent: #7c3aed; --accent-soft: #f2ecfe; }
+.acc-slate { --accent: #64748b; --accent-soft: #eef1f5; }
+
+/* ---- Summary / net card ------------------------------------------------ */
+.gst-card {
+  background: #fff;
+  border: 1px solid var(--gst-line);
+  border-radius: 14px;
+  box-shadow: 0 2px 10px rgba(15, 51, 36, 0.04);
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+.gst-card__head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.85rem 1.1rem;
+  border-bottom: 1px solid var(--gst-line);
+}
+.gst-card__title { font-size: 1rem; font-weight: 700; color: var(--gst-ink); margin: 0; }
+.gst-card__body { padding: 1.1rem; }
+
+.gst-3b {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+.gst-3b__cell { background: var(--gst-green-050); border-radius: 10px; padding: 0.6rem 0.75rem; }
+.gst-3b__cell .lbl { font-size: 0.72rem; color: var(--gst-muted); font-weight: 600; }
+.gst-3b__cell .val { font-size: 1.05rem; font-weight: 700; color: var(--gst-ink); }
+
+.gst-net {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 1rem;
+  background: linear-gradient(135deg, #1f5d3f, #14432f);
+  color: #fff;
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+  margin-top: 1rem;
+}
+.gst-net__itc { display: flex; flex-direction: column; gap: 0.2rem; }
+.gst-net__itc input { max-width: 10rem; }
+.gst-net__payable { margin-left: auto; text-align: right; }
+.gst-net__payable .lbl { font-size: 0.78rem; opacity: 0.85; }
+.gst-net__payable .val { font-size: 1.8rem; font-weight: 800; }
+
+/* ---- Tables ------------------------------------------------------------ */
+.gst-table { width: 100%; border-collapse: collapse; }
+.gst-table thead th {
+  background: var(--gst-green-050);
+  color: var(--gst-ink);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  border-bottom: 1px solid var(--gst-line);
+}
+.gst-table tbody td { padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--gst-line); color: var(--gst-ink); font-size: 0.9rem; }
+.gst-table tbody tr:last-child td { border-bottom: 0; }
+.gst-table tbody tr.is-clickable { cursor: pointer; }
+.gst-table tbody tr.is-clickable:hover { background: var(--gst-green-050); }
+.gst-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.gst-rate-badge {
+  display: inline-block; min-width: 2.6rem; text-align: center;
+  background: var(--gst-green-050); color: var(--gst-green);
+  border-radius: 6px; padding: 0.1rem 0.45rem; font-weight: 700; font-size: 0.82rem;
+}
+.gst-type-badge { border-radius: 6px; padding: 0.12rem 0.5rem; font-size: 0.76rem; font-weight: 600; }
+.gst-type-badge.intra { background: #eaf1fe; color: #2563eb; }
+.gst-type-badge.inter { background: #fef3e6; color: #d97706; }
+
+.gst-empty { text-align: center; color: var(--gst-muted); padding: 2rem 1rem; }
+
+/* ---- Drill-down drawer ------------------------------------------------- */
+.shifa-drawer-backdrop { position: fixed; inset: 0; background: rgba(15, 51, 36, 0.4); z-index: 1055; }
+.shifa-drawer--wide { z-index: 1056; width: min(960px, 97vw); }
+.gst-due-strip {
+  display: flex; flex-wrap: wrap; gap: 0.75rem;
+  background: var(--gst-green-050);
+  border: 1px solid var(--gst-line);
+  border-radius: 10px; padding: 0.6rem 0.9rem; margin-bottom: 0.9rem;
+}
+.gst-due-strip .pill { display: flex; flex-direction: column; }
+.gst-due-strip .pill .lbl { font-size: 0.72rem; color: var(--gst-muted); }
+.gst-due-strip .pill .val { font-weight: 700; color: var(--gst-ink); }

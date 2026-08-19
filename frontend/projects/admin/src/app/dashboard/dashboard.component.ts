@@ -679,6 +679,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
       void this.router.navigate(['/payments']);
       return;
     }
+    // A CA works from the dedicated GST/accounting dashboard — send them there
+    // rather than the empty role-less operational dashboard (CA GST dashboard, Req 1.4).
+    if (this.role() === Role.CA) {
+      void this.router.navigate(['/ca/gst']);
+      return;
+    }
     // The role-shaped summary is available to every operational role (Req 3.1).
     this.loadSummary();
     // The rich metrics dashboard + live SSE feed are ADMIN-only endpoints, so

@@ -34,6 +34,7 @@ import { AnnouncementsComponent } from './announcements/announcements.component'
 import { AnalyticsComponent } from './analytics/analytics.component';
 import { TeamComponent } from './team/team.component';
 import { WhatsappTemplatesComponent } from './whatsapp/whatsapp-templates.component';
+import { CaGstDashboardComponent } from './ca-gst/ca-gst-dashboard.component';
 import { TeamPerformanceComponent } from './team/team-performance.component';
 import { LeaderboardComponent } from './leaderboard/leaderboard.component';
 
@@ -50,10 +51,14 @@ export const staffGuard = createRoleGuard(
   Role.TEAM_LEAD,
   Role.PACKING_USER,
   Role.PAYMENT_VERIFIER,
+  Role.CA,
 );
 
 /** Admin-only sections (management/approval/configuration, Req 5.4). */
 export const adminOnlyGuard = createRoleGuard(LOGIN_PATH, FORBIDDEN_PATH, Role.ADMIN);
+
+/** CA (GST/accounting) dashboard is limited to CA and Admin (CA GST dashboard, Req 1). */
+export const adminOrCaGuard = createRoleGuard(LOGIN_PATH, FORBIDDEN_PATH, Role.ADMIN, Role.CA);
 
 /** Order entry (New Order) is limited to Salesperson and Admin (Req 7). */
 export const salespersonGuard = createRoleGuard(
@@ -88,14 +93,16 @@ export const reportsGuard = createRoleGuard(
   Role.ADMIN,
   Role.ACCOUNTANT,
   Role.SALESPERSON,
+  Role.CA,
 );
 
-/** Reconciliation/settlement sections are limited to Accountant and Admin. */
+/** Reconciliation/settlement + finance sections are limited to Accountant, CA and Admin. */
 export const accountantGuard = createRoleGuard(
   LOGIN_PATH,
   FORBIDDEN_PATH,
   Role.ADMIN,
   Role.ACCOUNTANT,
+  Role.CA,
 );
 
 /**
@@ -345,6 +352,12 @@ export const routes: Routes = [
         path: 'analytics',
         component: AnalyticsComponent,
         canActivate: [adminOnlyGuard],
+      },
+      {
+        // CA (Chartered Accountant) GST & accounting dashboard (ADMIN + CA).
+        path: 'ca/gst',
+        component: CaGstDashboardComponent,
+        canActivate: [adminOrCaGuard],
       },
       {
         // Team management: assign salespeople to a team lead (ADMIN only).

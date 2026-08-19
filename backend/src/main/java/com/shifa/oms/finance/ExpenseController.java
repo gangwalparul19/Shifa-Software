@@ -29,7 +29,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/admin/expenses")
-@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT')")
+@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','CA')")
 public class ExpenseController {
 
     /** Whitelist of API sort fields → JPA properties for the expenses table. */
@@ -89,3 +89,4 @@ public class ExpenseController {
         expenseService.delete(id);
     }
 }
+

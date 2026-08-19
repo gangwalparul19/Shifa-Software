@@ -140,8 +140,8 @@ public class ReportService {
     /** Restricts per-module reports to ADMIN / ACCOUNTANT (403 otherwise). */
     private void requireAdminOrAccountant() {
         Role role = currentUserService.currentUser().map(p -> p.role()).orElse(null);
-        if (role != Role.ADMIN && role != Role.ACCOUNTANT) {
-            throw new AccessDeniedException("This report is restricted to admin and accountant.");
+        if (role != Role.ADMIN && role != Role.ACCOUNTANT && role != Role.CA) {
+            throw new AccessDeniedException("This report is restricted to admin, accountant and CA.");
         }
     }
 

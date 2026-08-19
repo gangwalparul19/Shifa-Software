@@ -130,7 +130,7 @@ public class OrderController {
 
     /** Search orders by name / mobile / order code / id / AWB, role-scoped (Req 22.1). */
     @GetMapping
-    @PreAuthorize("hasAnyRole('SALESPERSON','ACCOUNTANT','ADMIN','TEAM_LEAD')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ACCOUNTANT','ADMIN','TEAM_LEAD','CA')")
     public List<OrderSummaryResponse> search(
             @RequestParam(name = "search", required = false) String search) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
@@ -156,7 +156,7 @@ public class OrderController {
 
     /** Order detail with payment tracking fields, role-scoped (Req 21.1, 5.5). */
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SALESPERSON','ACCOUNTANT','ADMIN','TEAM_LEAD')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ACCOUNTANT','ADMIN','TEAM_LEAD','CA')")
     public OrderResponse detail(@PathVariable Long id) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return orderService.getOrder(id, actor);
@@ -169,7 +169,7 @@ public class OrderController {
      * PDF is streamed inline as {@code application/pdf}.
      */
     @GetMapping("/{id}/invoice")
-    @PreAuthorize("hasAnyRole('SALESPERSON','ACCOUNTANT','ADMIN','TEAM_LEAD')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ACCOUNTANT','ADMIN','TEAM_LEAD','CA')")
     public ResponseEntity<byte[]> invoice(@PathVariable Long id) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         InvoiceService.InvoiceDocument invoice = invoiceService.invoicePdf(id, actor);
@@ -182,7 +182,7 @@ public class OrderController {
 
     /** View/download the payment screenshot for an order (Req 21.2), gated to ACCOUNTANT/ADMIN. */
     @GetMapping("/{id}/payment-screenshot")
-    @PreAuthorize("hasAnyRole('ACCOUNTANT','ADMIN','PAYMENT_VERIFIER')")
+    @PreAuthorize("hasAnyRole('ACCOUNTANT','ADMIN','PAYMENT_VERIFIER','CA')")
     public ResponseEntity<Resource> paymentScreenshot(@PathVariable Long id) {
         StorageService.StoredObject object = orderService.getPaymentScreenshot(id);
         MediaType mediaType = object.contentType() != null

@@ -40,7 +40,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/admin/returns")
-@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT')")
+@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','CA')")
 public class AdminReturnController {
 
     /** Whitelist of API sort fields → JPA properties for the returns table. */
@@ -124,3 +124,4 @@ public class AdminReturnController {
         return returnService.markRefunded(id, request.refundAmount());
     }
 }
+

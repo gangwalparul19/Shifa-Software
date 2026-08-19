@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/api/admin/search")
-@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','PACKING_USER')")
+@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','PACKING_USER','CA')")
 public class AdminSearchController {
 
     private final GlobalSearchService globalSearchService;

@@ -158,6 +158,8 @@ export class UsersComponent implements OnInit {
         return 'Packing';
       case Role.PAYMENT_VERIFIER:
         return 'Payment Verifier';
+      case Role.CA:
+        return 'CA (Accountant)';
       case Role.CUSTOMER:
         return 'Customer';
       default:
@@ -180,6 +182,8 @@ export class UsersComponent implements OnInit {
         return 'bg-orange-lt';
       case Role.PAYMENT_VERIFIER:
         return 'bg-teal-lt';
+      case Role.CA:
+        return 'bg-cyan-lt';
       default:
         return 'bg-secondary-lt';
     }

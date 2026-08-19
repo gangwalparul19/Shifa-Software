@@ -15,6 +15,15 @@ public enum Role {
     /** Payment reconciliation and settlement functions. */
     ACCOUNTANT,
 
+    /**
+     * Chartered Accountant — accounting, taxation, and GST compliance. Read-only
+     * access to the financial data (orders, reports, finance/P&L, expenses,
+     * procurement, returns, reconciliation) plus the dedicated GST dashboard and
+     * filing-ready GST report. Cannot approve orders, run fulfilment, or mutate
+     * catalog/customer/order data beyond finance/GST (CA GST dashboard, Req 1).
+     */
+    CA,
+
     /** Order entry and reports scoped to their own orders (Req 5.5). */
     SALESPERSON,
 

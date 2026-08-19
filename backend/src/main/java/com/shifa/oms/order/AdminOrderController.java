@@ -102,7 +102,7 @@ public class AdminOrderController {
      * @param sort          {@code field,dir} — one of createdAt/orderCode/customerName/totalAmount/orderStatus/paymentStatus
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','TEAM_LEAD')")
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','TEAM_LEAD','CA')")
     public PageResponse<OrderSummaryResponse> list(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) OrderStatus status,

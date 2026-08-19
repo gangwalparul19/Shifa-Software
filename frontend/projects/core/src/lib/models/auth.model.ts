@@ -9,6 +9,8 @@ export enum Role {
   TEAM_LEAD = 'TEAM_LEAD',
   PACKING_USER = 'PACKING_USER',
   PAYMENT_VERIFIER = 'PAYMENT_VERIFIER',
+  /** Chartered Accountant — accounting, taxation, GST dashboard/report (read-only finance). */
+  CA = 'CA',
   CUSTOMER = 'CUSTOMER',
 }
 

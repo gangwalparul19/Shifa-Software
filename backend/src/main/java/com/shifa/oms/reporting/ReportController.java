@@ -64,7 +64,7 @@ public class ReportController {
 
     /** A report as JSON, restricted to the optional date window (Req 20.1&ndash;20.3). */
     @GetMapping("/{type}")
-    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON')")
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','CA')")
     public ReportResponse report(
             @PathVariable String type,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -74,7 +74,7 @@ public class ReportController {
 
     /** The current report exported as an Excel or PDF file (Req 20.4). */
     @GetMapping("/export")
-    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON')")
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','CA')")
     public ResponseEntity<byte[]> export(
             @RequestParam String type,
             @RequestParam(defaultValue = "xlsx") String format,
@@ -100,7 +100,7 @@ public class ReportController {
 
     /** The Vyapar billing export for a date range (Req 23.1, 23.2). */
     @GetMapping("/vyapar")
-    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT')")
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','CA')")
     public ResponseEntity<byte[]> vyapar(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
@@ -174,3 +174,4 @@ public class ReportController {
         return from != null ? "From " + from.format(RANGE_FMT) : "Up to " + to.format(RANGE_FMT);
     }
 }
+

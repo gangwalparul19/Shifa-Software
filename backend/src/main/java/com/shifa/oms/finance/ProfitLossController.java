@@ -16,7 +16,7 @@ import java.time.LocalDate;
  */
 @RestController
 @RequestMapping("/api/admin/finance")
-@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT')")
+@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','CA')")
 public class ProfitLossController {
 
     private final ProfitLossService profitLossService;
@@ -38,3 +38,4 @@ public class ProfitLossController {
         return profitLossService.report(from, to);
     }
 }
+

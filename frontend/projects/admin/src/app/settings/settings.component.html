@@ -98,11 +98,23 @@
               <div class="invalid-feedback">Enter a valid rate (e.g. 5 or 18.00).</div>
             }
           </div>
-          <div class="col-6 col-md-3 mb-2 d-flex align-items-end">
-            <label class="form-check form-switch mb-2">
+          <div class="col-12 mb-2">
+            <label class="form-label">GST pricing mode</label>
+            <label class="form-check form-switch mb-1">
               <input class="form-check-input" type="checkbox" formControlName="pricesIncludeGst" />
-              <span class="form-check-label">Prices include GST</span>
+              <span class="form-check-label">
+                {{ form.controls.pricesIncludeGst.value ? 'Inclusive — tax is within the price' : 'Exclusive — tax is added on top of the price' }}
+              </span>
             </label>
+            <div class="form-hint">
+              @if (form.controls.pricesIncludeGst.value) {
+                <strong>Inclusive:</strong> product prices already contain GST. Invoices show the taxable value
+                and CGST/SGST or IGST extracted from the price, and the grand total equals the order total.
+              } @else {
+                <strong>Exclusive:</strong> GST is added on top of the price. Invoices show the taxable value,
+                the GST added per rate, and a grand total higher than the pre-tax subtotal.
+              }
+            </div>
           </div>
         </div>
       </div>

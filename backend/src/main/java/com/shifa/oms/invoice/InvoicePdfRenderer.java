@@ -262,7 +262,7 @@ public class InvoicePdfRenderer {
     private void writeLineItems(Document document, InvoiceContent content) throws DocumentException {
         boolean tax = content.isTaxInvoice();
         PdfPTable table = tax
-                ? new PdfPTable(new float[] {0.7f, 4.3f, 1.5f, 1.1f, 2f, 2f})
+                ? new PdfPTable(new float[] {0.6f, 3.1f, 1.3f, 0.9f, 1.6f, 1.5f, 1.0f, 1.7f})
                 : new PdfPTable(new float[] {0.8f, 5f, 1.2f, 2f, 2f});
         table.setWidthPercentage(100);
         table.setSpacingBefore(6f);
@@ -275,6 +275,10 @@ public class InvoicePdfRenderer {
         }
         table.addCell(headerCell("Qty", Element.ALIGN_CENTER));
         table.addCell(headerCell("Rate", Element.ALIGN_RIGHT));
+        if (tax) {
+            table.addCell(headerCell("Discount", Element.ALIGN_RIGHT));
+            table.addCell(headerCell("GST%", Element.ALIGN_CENTER));
+        }
         table.addCell(headerCell("Amount", Element.ALIGN_RIGHT));
 
         int rowIndex = 0;
@@ -288,6 +292,13 @@ public class InvoicePdfRenderer {
             }
             table.addCell(bodyCell(Integer.toString(item.quantity()), Element.ALIGN_CENTER, even));
             table.addCell(moneyCell(money(item.rate()), Element.ALIGN_RIGHT, even));
+            if (tax) {
+                String disc = item.discount() != null && item.discount().signum() > 0
+                        ? money(item.discount()) : "-";
+                table.addCell(moneyCell(disc, Element.ALIGN_RIGHT, even));
+                String gp = item.gstRatePercent() != null ? rate(item.gstRatePercent()) + "%" : "-";
+                table.addCell(bodyCell(gp, Element.ALIGN_CENTER, even));
+            }
             table.addCell(moneyCell(money(item.amount()), Element.ALIGN_RIGHT, even));
             rowIndex++;
         }
@@ -308,25 +319,38 @@ public class InvoicePdfRenderer {
         totals.setWidthPercentage(100);
 
         if (content.isTaxInvoice()) {
-            GstComputation gst = content.gst().computation();
-            // Show the pre-discount subtotal + discount when a coupon was applied.
+            InvoiceGstDetails gstDetails = content.gst();
+            GstComputation gst = gstDetails.computation();
+            // Always show the gross subtotal; show discount when applied (GST is
+            // computed AFTER discount, per the CA's requirement).
+            totals.addCell(totalsLabel("Subtotal"));
+            totals.addCell(totalsMoneyValue(money(content.subtotal())));
             if (content.hasDiscount()) {
-                totals.addCell(totalsLabel("Subtotal"));
-                totals.addCell(totalsMoneyValue(money(content.subtotal())));
                 totals.addCell(totalsLabel(discountLabel(content)));
                 totals.addCell(totalsMoneyValue("- " + money(content.discountAmount())));
             }
             totals.addCell(totalsLabel("Taxable Value"));
             totals.addCell(totalsMoneyValue(money(gst.taxableValue())));
-            if (gst.intraState()) {
-                totals.addCell(totalsLabel("CGST @ " + rate(gst.cgstRate()) + "%"));
-                totals.addCell(totalsMoneyValue(money(gst.cgstAmount())));
-                totals.addCell(totalsLabel("SGST @ " + rate(gst.sgstRate()) + "%"));
-                totals.addCell(totalsMoneyValue(money(gst.sgstAmount())));
-            } else {
-                totals.addCell(totalsLabel("IGST @ " + rate(gst.igstRate()) + "%"));
-                totals.addCell(totalsMoneyValue(money(gst.igstAmount())));
+            // Per-rate GST breakup (CGST+SGST intra / IGST inter), one pair of rows
+            // per distinct GST rate — the CA's requested breakup.
+            for (GstRateLine r : gstDetails.rateBreakup()) {
+                if (r.totalTax().signum() == 0) {
+                    continue; // skip 0% (exempt) rate groups in the tax breakup
+                }
+                if (gst.intraState()) {
+                    String half = rate(r.ratePercent().divide(new BigDecimal("2"),
+                            2, java.math.RoundingMode.HALF_UP));
+                    totals.addCell(totalsLabel("CGST @ " + half + "%"));
+                    totals.addCell(totalsMoneyValue(money(r.cgstAmount())));
+                    totals.addCell(totalsLabel("SGST @ " + half + "%"));
+                    totals.addCell(totalsMoneyValue(money(r.sgstAmount())));
+                } else {
+                    totals.addCell(totalsLabel("IGST @ " + rate(r.ratePercent()) + "%"));
+                    totals.addCell(totalsMoneyValue(money(r.igstAmount())));
+                }
             }
+            totals.addCell(totalsLabel("Total GST"));
+            totals.addCell(totalsMoneyValue(money(gst.totalTax())));
             // Grand Total is the headline figure on a tax invoice — highlight it.
             totals.addCell(totalsLabelHighlight("Grand Total"));
             totals.addCell(totalsMoneyValueHighlight(money(gst.grandTotal())));

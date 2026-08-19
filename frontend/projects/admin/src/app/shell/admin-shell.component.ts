@@ -352,7 +352,14 @@ export class AdminShellComponent {
           icon: 'ti-chart-histogram',
           // Salesperson sees their own sales/product/customer reports (scoped +
           // money/operations blocked server-side).
-          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON],
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'GST & Accounting',
+          path: '/ca/gst',
+          icon: 'ti-receipt-tax',
+          roles: [Role.ADMIN, Role.CA],
         },
         { kind: 'link', label: 'Analytics', path: '/analytics', icon: 'ti-chart-dots', adminOnly: true },
         { kind: 'link', label: 'Insights', path: '/insights', icon: 'ti-bulb', adminOnly: true },
@@ -370,8 +377,8 @@ export class AdminShellComponent {
       label: 'Finance',
       icon: 'ti-report-money',
       children: [
-        { kind: 'link', label: 'Expenses', path: '/expenses', icon: 'ti-cash', roles: [Role.ADMIN, Role.ACCOUNTANT] },
-        { kind: 'link', label: 'Profit & Loss', path: '/finance/pnl', icon: 'ti-chart-pie', roles: [Role.ADMIN, Role.ACCOUNTANT] },
+        { kind: 'link', label: 'Expenses', path: '/expenses', icon: 'ti-cash', roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA] },
+        { kind: 'link', label: 'Profit & Loss', path: '/finance/pnl', icon: 'ti-chart-pie', roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA] },
       ],
     },
     {
@@ -440,6 +447,14 @@ export class AdminShellComponent {
     [Role.PAYMENT_VERIFIER]: [
       { label: 'Payments', path: '/payments', icon: 'ti-shield-check' },
       { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
+    ],
+    // CA (Chartered Accountant): the GST dashboard is their home; plus reports,
+    // finance, and their profile.
+    [Role.CA]: [
+      { label: 'GST', path: '/ca/gst', icon: 'ti-receipt-tax' },
+      { label: 'Reports', path: '/reports', icon: 'ti-chart-histogram' },
+      { label: 'Finance', path: '/finance/pnl', icon: 'ti-cash' },
+      { label: 'My Profile', path: '/my-profile', icon: 'ti-user-circle' },
     ],
     // Team Lead: read-only oversight — Dashboard, team-scoped Orders, and the
     // team Performance rollup are their day-to-day, plus their own profile.

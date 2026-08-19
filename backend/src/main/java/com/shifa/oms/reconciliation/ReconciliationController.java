@@ -49,7 +49,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/recon")
-@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT')")
+@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','CA')")
 public class ReconciliationController {
 
     /** Whitelist of API sort fields → JPA properties for the receivables table. */
@@ -143,3 +143,4 @@ public class ReconciliationController {
         return reconciliationService.settle(id, request != null ? request.date() : null);
     }
 }
+

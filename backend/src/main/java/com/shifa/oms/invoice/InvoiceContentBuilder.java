@@ -130,9 +130,11 @@ public class InvoiceContentBuilder {
                                     Map<Long, String> hsnByProductId, InvoiceGstDetails gst,
                                     String invoiceTerms, InvoiceContent.BankDetails bankDetails,
                                     boolean taxInvoice) {
+        List<OrderLineItem> orderLines = order.getLineItems();
+        List<BigDecimal> shares = discountShares(order);
         List<InvoiceContent.InvoiceLineItem> items = new ArrayList<>();
-        int position = 1;
-        for (OrderLineItem line : order.getLineItems()) {
+        for (int i = 0; i < orderLines.size(); i++) {
+            OrderLineItem line = orderLines.get(i);
             // Prefer the per-line HSN snapshot (Feature 2); fall back to the current
             // product map for legacy lines. HSN is only surfaced on tax invoices.
             String hsn = null;
@@ -143,12 +145,14 @@ public class InvoiceContentBuilder {
                 }
             }
             items.add(new InvoiceContent.InvoiceLineItem(
-                    position++,
+                    i + 1,
                     line.getProductName(),
                     line.getQuantity(),
                     line.getRate(),
                     line.getLineTotal(),
-                    hsn));
+                    hsn,
+                    shares.get(i),
+                    line.getGstRate()));
         }
 
         boolean codApplicable = isCodApplicable(order.getPaymentStatus());
@@ -221,16 +225,65 @@ public class InvoiceContentBuilder {
         return sum;
     }
 
-    /** Computes the GST tax block from the order total and the seller settings. */
+    /**
+     * Computes the GST tax block: the order-level discount is apportioned across
+     * lines FIRST, lines are grouped by their GST rate, and each rate group's
+     * discounted net is passed to {@link GstCalculator} (inclusive → extract,
+     * exclusive → add on top). The per-rate rows are the CA's breakup; the
+     * aggregate {@link GstComputation} sums them (single-rate baskets keep the
+     * exact previous values). Intra-state → CGST+SGST, inter-state → IGST.
+     */
     private InvoiceGstDetails buildGst(OrderEntity order, AppSettings settings,
                                        Map<Long, BigDecimal> gstRateByProductId) {
         boolean intraState = isIntraState(order.getState(), settings.getState());
-        BigDecimal rate = resolveGstRate(order, gstRateByProductId, settings.getGstRatePercent());
-        GstComputation computation = gstCalculator.calculate(
-                order.getTotalAmount(),
-                rate,
-                settings.isPricesIncludeGst(),
-                intraState);
+        boolean inclusive = settings.isPricesIncludeGst();
+        BigDecimal defaultRate = settings.getGstRatePercent();
+
+        List<OrderLineItem> lines = order.getLineItems();
+        List<BigDecimal> shares = discountShares(order);
+
+        // Group the discounted net by GST rate, preserving first-seen order.
+        java.util.LinkedHashMap<BigDecimal, BigDecimal> netByRate = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < lines.size(); i++) {
+            BigDecimal rate = resolveLineRate(lines.get(i), gstRateByProductId, defaultRate);
+            BigDecimal base = lines.get(i).getLineTotal() != null
+                    ? lines.get(i).getLineTotal() : BigDecimal.ZERO;
+            BigDecimal net = base.subtract(shares.get(i));
+            netByRate.merge(rate, net, BigDecimal::add);
+        }
+
+        List<GstRateLine> breakup = new ArrayList<>();
+        BigDecimal taxable = BigDecimal.ZERO.setScale(2);
+        BigDecimal cgst = BigDecimal.ZERO.setScale(2);
+        BigDecimal sgst = BigDecimal.ZERO.setScale(2);
+        BigDecimal igst = BigDecimal.ZERO.setScale(2);
+        BigDecimal tax = BigDecimal.ZERO.setScale(2);
+        BigDecimal grand = BigDecimal.ZERO.setScale(2);
+        for (Map.Entry<BigDecimal, BigDecimal> e : netByRate.entrySet()) {
+            GstComputation g = gstCalculator.calculate(e.getValue(), e.getKey(), inclusive, intraState);
+            breakup.add(new GstRateLine(e.getKey().setScale(2), g.taxableValue(),
+                    g.cgstAmount(), g.sgstAmount(), g.igstAmount(), g.totalTax()));
+            taxable = taxable.add(g.taxableValue());
+            cgst = cgst.add(g.cgstAmount());
+            sgst = sgst.add(g.sgstAmount());
+            igst = igst.add(g.igstAmount());
+            tax = tax.add(g.totalTax());
+            grand = grand.add(g.grandTotal());
+        }
+
+        // Aggregate: a single rate keeps its exact rates; a mixed basket reports 0
+        // at the aggregate level (the per-rate breakup carries the detail).
+        BigDecimal aggRate = netByRate.size() == 1
+                ? netByRate.keySet().iterator().next().setScale(2) : BigDecimal.ZERO.setScale(2);
+        BigDecimal half = aggRate.divide(new BigDecimal("2"), 2, java.math.RoundingMode.HALF_UP);
+        GstComputation aggregate = intraState
+                ? new GstComputation(true, aggRate, taxable, half, cgst, half, sgst,
+                        BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), tax, grand)
+                : new GstComputation(false, aggRate, taxable,
+                        BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2),
+                        BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2),
+                        aggRate, igst, tax, grand);
+
         return new InvoiceGstDetails(
                 settings.getLegalName(),
                 settings.getGstin(),
@@ -241,39 +294,75 @@ public class InvoiceContentBuilder {
                 settings.getContactPhone(),
                 settings.getContactEmail(),
                 settings.getInvoiceFooterNote(),
-                computation);
+                aggregate,
+                breakup,
+                inclusive);
     }
 
     /**
-     * Resolves the order-level GST rate to apply: each line product's own rate
-     * when present, else the settings-level default. When all line products
-     * resolve to the same rate it is used; a mixed-rate basket falls back to the
-     * settings default so the single-rate GST computation stays consistent.
+     * Apportions the order-level discount across lines proportionally to each
+     * line total, using largest-remainder so the shares sum EXACTLY to the
+     * discount (no rupee created/lost). Zero discount / zero subtotal → all zero.
      */
-    private BigDecimal resolveGstRate(OrderEntity order, Map<Long, BigDecimal> gstRateByProductId,
-                                      BigDecimal defaultRate) {
+    private List<BigDecimal> discountShares(OrderEntity order) {
+        List<OrderLineItem> lines = order.getLineItems();
+        int n = lines.size();
+        BigDecimal zero = BigDecimal.ZERO.setScale(2);
+        List<BigDecimal> shares = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            shares.add(zero);
+        }
+        BigDecimal discount = order.getDiscountAmount() != null ? order.getDiscountAmount() : zero;
+        BigDecimal subtotal = BigDecimal.ZERO;
+        for (OrderLineItem line : lines) {
+            subtotal = subtotal.add(line.getLineTotal() != null ? line.getLineTotal() : BigDecimal.ZERO);
+        }
+        if (discount.signum() <= 0 || subtotal.signum() <= 0 || n == 0) {
+            return shares;
+        }
+        BigDecimal allocated = BigDecimal.ZERO;
+        List<BigDecimal> remainders = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            BigDecimal base = lines.get(i).getLineTotal() != null ? lines.get(i).getLineTotal() : BigDecimal.ZERO;
+            BigDecimal exact = discount.multiply(base).divide(subtotal, 6, java.math.RoundingMode.HALF_UP);
+            BigDecimal floor = exact.setScale(2, java.math.RoundingMode.DOWN);
+            shares.set(i, floor);
+            remainders.add(exact.subtract(floor));
+            allocated = allocated.add(floor);
+        }
+        int leftoverPaise = discount.subtract(allocated).movePointRight(2)
+                .setScale(0, java.math.RoundingMode.HALF_UP).intValue();
+        List<Integer> order2 = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            order2.add(i);
+        }
+        order2.sort((a, b) -> remainders.get(b).compareTo(remainders.get(a)));
+        BigDecimal onePaise = new BigDecimal("0.01");
+        for (int k = 0; k < leftoverPaise && k < n * 1000; k++) {
+            int idx = order2.get(k % n);
+            shares.set(idx, shares.get(idx).add(onePaise));
+        }
+        return shares;
+    }
+
+    /**
+     * Resolves a single line's GST rate: the line's own snapshot, else the
+     * current product map, else the settings-level default.
+     */
+    private BigDecimal resolveLineRate(OrderLineItem line, Map<Long, BigDecimal> gstRateByProductId,
+                                       BigDecimal defaultRate) {
         BigDecimal fallback = defaultRate != null ? defaultRate : BigDecimal.ZERO;
+        if (line.getGstRate() != null) {
+            return line.getGstRate();
+        }
         Map<Long, BigDecimal> rateMap = gstRateByProductId != null ? gstRateByProductId : Map.of();
-        BigDecimal common = null;
-        for (com.shifa.oms.order.OrderLineItem line : order.getLineItems()) {
-            BigDecimal lineRate = fallback;
-            // Prefer the per-line GST-rate snapshot (Feature 2); fall back to the
-            // current product map, then the settings default.
-            if (line.getGstRate() != null) {
-                lineRate = line.getGstRate();
-            } else if (line.getProductId() != null) {
-                BigDecimal productRate = rateMap.get(line.getProductId());
-                if (productRate != null) {
-                    lineRate = productRate;
-                }
-            }
-            if (common == null) {
-                common = lineRate;
-            } else if (common.compareTo(lineRate) != 0) {
-                return fallback; // mixed rates → use the settings default
+        if (line.getProductId() != null) {
+            BigDecimal productRate = rateMap.get(line.getProductId());
+            if (productRate != null) {
+                return productRate;
             }
         }
-        return common != null ? common : fallback;
+        return fallback;
     }
 
     /**

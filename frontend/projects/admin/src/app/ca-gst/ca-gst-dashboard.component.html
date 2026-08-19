@@ -1,0 +1,289 @@
+<admin-page-header
+  title="GST & Accounting"
+  [subtitle]="periodLabel() + ' · ' + from() + ' to ' + to()"
+  [breadcrumbs]="[{ label: 'GST & Accounting' }]"
+>
+  <button type="button" class="btn btn-outline-primary" (click)="export('csv')" [disabled]="exporting() || loading()">
+    <i class="ti ti-file-spreadsheet me-1"></i>CSV
+  </button>
+  <button type="button" class="btn btn-primary" (click)="export('pdf')" [disabled]="exporting() || loading()">
+    <i class="ti ti-file-type-pdf me-1"></i>{{ exporting() ? 'Exporting…' : 'PDF' }}
+  </button>
+</admin-page-header>
+
+<!-- ================= Period toolbar ================= -->
+<div class="gst-toolbar">
+  <div class="gst-toolbar__row">
+    <div class="gst-presets">
+      <button type="button" class="gst-chip" [class.is-active]="activePreset() === 'this-month'" (click)="setThisMonth()">This month</button>
+      <button type="button" class="gst-chip" [class.is-active]="activePreset() === 'last-month'" (click)="setLastMonth()">Last month</button>
+      <button type="button" class="gst-chip" [class.is-active]="activePreset() === 'this-quarter'" (click)="setThisQuarter()">This quarter</button>
+      <button type="button" class="gst-chip" [class.is-active]="activePreset() === 'this-fy'" (click)="setThisFy()">This FY</button>
+      <button type="button" class="gst-chip" [class.is-active]="activePreset() === 'last-fy'" (click)="setLastFy()">Last FY</button>
+    </div>
+    <div class="gst-spacer"></div>
+    <div class="gst-dates">
+      <div>
+        <label class="form-label">From</label>
+        <input type="date" class="form-control" [value]="from()" (change)="onDateEdited('from', $any($event.target).value)" />
+      </div>
+      <div>
+        <label class="form-label">To</label>
+        <input type="date" class="form-control" [value]="to()" (change)="onDateEdited('to', $any($event.target).value)" />
+      </div>
+      <button type="button" class="btn btn-primary" (click)="load()" [disabled]="loading()">
+        <i class="ti ti-refresh me-1"></i>Apply
+      </button>
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <div class="gst-card"><div class="gst-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading GST data…</div></div>
+} @else if (error()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+} @else if (data(); as d) {
+
+  @if (!d.report.sellerStateConfigured) {
+    <div class="alert alert-warning d-flex align-items-start">
+      <i class="ti ti-alert-triangle me-2 mt-1"></i>
+      <div>Seller state is not set in Settings — supplies are classified as <strong>inter-state (IGST)</strong>.
+        Set the business state &amp; GSTIN for correct CGST/SGST vs IGST splits.</div>
+    </div>
+  }
+
+  <!-- ============ Money In ============ -->
+  <div class="gst-section-label"><i class="ti ti-arrow-down-left me-1"></i>Money in</div>
+  <div class="row g-2 g-md-3">
+    <div class="col-6 col-md-3">
+      <div class="gst-kpi acc-green is-clickable" (click)="drillAll('All orders in period')">
+        <i class="ti ti-external-link gst-kpi__link"></i>
+        <div class="gst-kpi__head"><span class="gst-kpi__icon"><i class="ti ti-receipt"></i></span><span class="gst-kpi__label">Gross sales (incl. GST)</span></div>
+        <div class="gst-kpi__value">{{ money(d.money.grossSales) }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="gst-kpi acc-slate">
+        <div class="gst-kpi__head"><span class="gst-kpi__icon"><i class="ti ti-cash"></i></span><span class="gst-kpi__label">Taxable sales</span></div>
+        <div class="gst-kpi__value">{{ money(d.money.taxableSales) }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="gst-kpi acc-green">
+        <div class="gst-kpi__head"><span class="gst-kpi__icon"><i class="ti ti-receipt-tax"></i></span><span class="gst-kpi__label">Output GST</span></div>
+        <div class="gst-kpi__value">{{ money(d.money.outputGst) }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="gst-kpi acc-teal">
+        <div class="gst-kpi__head"><span class="gst-kpi__icon"><i class="ti ti-wallet"></i></span><span class="gst-kpi__label">Amount received</span></div>
+        <div class="gst-kpi__value">{{ money(d.money.amountReceived) }}</div>
+        <div class="gst-kpi__sub">COD collected: {{ money(d.money.codCollected) }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Money out & receivables ============ -->
+  <div class="gst-section-label"><i class="ti ti-arrow-up-right me-1"></i>Money out &amp; receivables</div>
+  <div class="row g-2 g-md-3">
+    <div class="col-6 col-md-3">
+      <div class="gst-kpi acc-red">
+        <div class="gst-kpi__head"><span class="gst-kpi__icon"><i class="ti ti-truck-loading"></i></span><span class="gst-kpi__label">Purchases</span></div>
+        <div class="gst-kpi__value">{{ money(d.money.purchases) }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="gst-kpi acc-orange">
+        <div class="gst-kpi__head"><span class="gst-kpi__icon"><i class="ti ti-cash-banknote"></i></span><span class="gst-kpi__label">Expenses</span></div>
+        <div class="gst-kpi__value">{{ money(d.money.expenses) }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="gst-kpi acc-violet">
+        <div class="gst-kpi__head"><span class="gst-kpi__icon"><i class="ti ti-arrow-back-up"></i></span><span class="gst-kpi__label">Refunds</span></div>
+        <div class="gst-kpi__value">{{ money(d.money.refunds) }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="gst-kpi acc-orange is-clickable" (click)="drillAll('Orders — outstanding dues')">
+        <i class="ti ti-external-link gst-kpi__link"></i>
+        <div class="gst-kpi__head"><span class="gst-kpi__icon"><i class="ti ti-clock-dollar"></i></span><span class="gst-kpi__label">Outstanding COD</span></div>
+        <div class="gst-kpi__value">{{ money(d.money.outstandingCod) }}</div>
+        <div class="gst-kpi__sub">Net cash: {{ money(d.money.netCash) }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Intra vs Inter taxable ============ -->
+  <div class="gst-section-label"><i class="ti ti-map-pin me-1"></i>Taxable by supply type</div>
+  <div class="row g-2 g-md-3">
+    <div class="col-6 col-md-6">
+      <div class="gst-kpi acc-blue">
+        <div class="gst-kpi__head"><span class="gst-kpi__icon"><i class="ti ti-building-store"></i></span><span class="gst-kpi__label">Intra-state taxable (CGST + SGST)</span></div>
+        <div class="gst-kpi__value">{{ money(intraTaxable()) }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-6">
+      <div class="gst-kpi acc-orange">
+        <div class="gst-kpi__head"><span class="gst-kpi__icon"><i class="ti ti-truck-delivery"></i></span><span class="gst-kpi__label">Inter-state taxable (IGST)</span></div>
+        <div class="gst-kpi__value">{{ money(interTaxable()) }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ GSTR-3B summary + net ============ -->
+  <div class="gst-card" style="margin-top: 1rem;">
+    <div class="gst-card__head"><h3 class="gst-card__title">GSTR-3B Summary</h3><span class="text-secondary small">{{ periodLabel() }}</span></div>
+    <div class="gst-card__body">
+      <div class="gst-3b">
+        <div class="gst-3b__cell"><div class="lbl">Taxable value</div><div class="val">{{ money(d.report.summary.taxableOutward) }}</div></div>
+        <div class="gst-3b__cell"><div class="lbl">CGST</div><div class="val">{{ money(d.report.summary.outputCgst) }}</div></div>
+        <div class="gst-3b__cell"><div class="lbl">SGST</div><div class="val">{{ money(d.report.summary.outputSgst) }}</div></div>
+        <div class="gst-3b__cell"><div class="lbl">IGST</div><div class="val">{{ money(d.report.summary.outputIgst) }}</div></div>
+        <div class="gst-3b__cell"><div class="lbl">Total output tax</div><div class="val">{{ money(d.report.summary.outputTotal) }}</div></div>
+        <div class="gst-3b__cell"><div class="lbl">Invoice value</div><div class="val">{{ money(d.report.summary.invoiceValue) }}</div></div>
+      </div>
+      <div class="gst-net">
+        <div class="gst-net__itc">
+          <label class="form-label m-0" style="color: rgba(255,255,255,0.85); font-size: 0.75rem;">Input Tax Credit (manual)</label>
+          <input type="number" min="0" step="0.01" class="form-control form-control-sm"
+                 [value]="manualItc()" (input)="manualItc.set(+$any($event.target).value)" />
+          <span style="font-size: 0.7rem; opacity: 0.8;">ITC isn't auto-captured yet — enter it here.</span>
+        </div>
+        <div class="gst-net__payable">
+          <div class="lbl">Net GST payable (est.)</div>
+          <div class="val">{{ money(netPayable()) }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Rate-wise ============ -->
+  <div class="gst-card">
+    <div class="gst-card__head"><h3 class="gst-card__title">Rate-wise summary</h3><span class="text-secondary small">Tap a row to see orders</span></div>
+    <div class="table-responsive">
+      <table class="gst-table">
+        <thead><tr><th>Rate</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th><th class="num">Invoice value</th></tr></thead>
+        <tbody>
+          @for (r of d.report.rateWise; track $index) {
+            <tr class="is-clickable" (click)="drillByRate(r.rate)">
+              <td><span class="gst-rate-badge">{{ n(r.rate) }}%</span></td>
+              <td class="num">{{ money(r.taxable) }}</td>
+              <td class="num">{{ money(r.cgst) }}</td>
+              <td class="num">{{ money(r.sgst) }}</td>
+              <td class="num">{{ money(r.igst) }}</td>
+              <td class="num">{{ money(r.invoiceValue) }}</td>
+            </tr>
+          } @empty { <tr><td colspan="6" class="gst-empty">No sales in this period.</td></tr> }
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============ HSN-wise ============ -->
+  <div class="gst-card">
+    <div class="gst-card__head"><h3 class="gst-card__title">HSN-wise summary</h3><span class="text-secondary small">Tap a row to see orders</span></div>
+    <div class="table-responsive">
+      <table class="gst-table">
+        <thead><tr><th>HSN</th><th>Description</th><th class="num">Qty</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
+        <tbody>
+          @for (h of d.report.hsn; track $index) {
+            <tr class="is-clickable" (click)="drillByHsn(h.hsn)">
+              <td class="fw-bold">{{ h.hsn }}</td>
+              <td>{{ h.description }}</td>
+              <td class="num">{{ n(h.quantity) }}</td>
+              <td class="num">{{ money(h.taxable) }}</td>
+              <td class="num">{{ money(h.cgst) }}</td>
+              <td class="num">{{ money(h.sgst) }}</td>
+              <td class="num">{{ money(h.igst) }}</td>
+            </tr>
+          } @empty { <tr><td colspan="7" class="gst-empty">No sales in this period.</td></tr> }
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============ State-wise ============ -->
+  <div class="gst-card">
+    <div class="gst-card__head"><h3 class="gst-card__title">State-wise summary</h3><span class="text-secondary small">Place of supply · tap to see orders</span></div>
+    <div class="table-responsive">
+      <table class="gst-table">
+        <thead><tr><th>State</th><th>Type</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
+        <tbody>
+          @for (s of d.report.stateWise; track $index) {
+            <tr class="is-clickable" (click)="drillByState(s.state)">
+              <td class="fw-bold">{{ s.state }}</td>
+              <td><span class="gst-type-badge" [class.intra]="s.type === 'INTRA'" [class.inter]="s.type === 'INTER'">{{ s.type === 'INTRA' ? 'Intra' : 'Inter' }}</span></td>
+              <td class="num">{{ money(s.taxable) }}</td>
+              <td class="num">{{ money(s.cgst) }}</td>
+              <td class="num">{{ money(s.sgst) }}</td>
+              <td class="num">{{ money(s.igst) }}</td>
+            </tr>
+          } @empty { <tr><td colspan="6" class="gst-empty">No sales in this period.</td></tr> }
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============ Expenses by category ============ -->
+  @if (d.money.expensesByCategory.length) {
+    <div class="gst-card">
+      <div class="gst-card__head"><h3 class="gst-card__title">Expenses by category</h3></div>
+      <div class="table-responsive">
+        <table class="gst-table">
+          <thead><tr><th>Category</th><th class="num">Amount</th></tr></thead>
+          <tbody>
+            @for (c of d.money.expensesByCategory; track $index) {
+              <tr><td>{{ c.category }}</td><td class="num">{{ money(c.amount) }}</td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  }
+}
+
+<!-- ================= Drill-down drawer ================= -->
+@if (drillOpen()) {
+  <div class="shifa-drawer-backdrop" (click)="closeDrill()"></div>
+  <aside class="shifa-drawer shifa-drawer--wide" role="dialog" aria-modal="true">
+    <div class="shifa-drawer__head d-flex align-items-center justify-content-between">
+      <h2 class="m-0 h4">{{ drillTitle() }}</h2>
+      <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeDrill()" aria-label="Close"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="shifa-drawer__body">
+      @if (drillLoading()) {
+        <div class="gst-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading orders…</div>
+      } @else if (drillOrders().length === 0) {
+        <div class="gst-empty">No orders found for this selection.</div>
+      } @else {
+        <div class="gst-due-strip">
+          <div class="pill"><span class="lbl">Orders</span><span class="val">{{ drillOrders().length }}</span></div>
+          <div class="pill"><span class="lbl">Customer due</span><span class="val text-danger">{{ money(drillCustomerRemaining()) }}</span></div>
+          <div class="pill"><span class="lbl">COD pending (courier)</span><span class="val text-warning">{{ money(drillCodPending()) }}</span></div>
+        </div>
+        <div class="table-responsive">
+          <table class="gst-table">
+            <thead>
+              <tr><th>Order</th><th>Date</th><th>Customer</th><th>State</th><th class="num">Total</th><th class="num">Customer due</th><th class="num">COD (courier)</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              @for (o of drillOrders(); track o.orderId) {
+                <tr>
+                  <td><a [routerLink]="['/orders']" [queryParams]="{ q: o.orderCode }" (click)="closeDrill()">{{ o.orderCode }}</a></td>
+                  <td class="text-secondary">{{ o.orderDate }}</td>
+                  <td>{{ o.customerName }}<div class="text-secondary small">{{ o.customerMobile }}</div></td>
+                  <td>{{ o.state }}</td>
+                  <td class="num">{{ money(o.total) }}</td>
+                  <td class="num" [class.text-danger]="n(o.customerRemaining) > 0" [class.fw-bold]="n(o.customerRemaining) > 0">{{ money(o.customerRemaining) }}</td>
+                  <td class="num" [class.text-warning]="n(o.codPending) > 0" [class.fw-bold]="n(o.codPending) > 0">{{ money(o.codPending) }}</td>
+                  <td><span class="badge bg-secondary-lt">{{ o.orderStatus }}</span></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  </aside>
+}

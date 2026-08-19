@@ -13,7 +13,8 @@ export type StaffRole =
   | Role.SALESPERSON
   | Role.TEAM_LEAD
   | Role.PACKING_USER
-  | Role.PAYMENT_VERIFIER;
+  | Role.PAYMENT_VERIFIER
+  | Role.CA;
 
 /** The staff roles offered in the create/edit dropdowns, in display order. */
 export const STAFF_ROLES: readonly StaffRole[] = [
@@ -23,6 +24,7 @@ export const STAFF_ROLES: readonly StaffRole[] = [
   Role.TEAM_LEAD,
   Role.PACKING_USER,
   Role.PAYMENT_VERIFIER,
+  Role.CA,
 ];
 
 /** Government ID document types accepted for a staff member (mirrors backend `IdProofType`). */

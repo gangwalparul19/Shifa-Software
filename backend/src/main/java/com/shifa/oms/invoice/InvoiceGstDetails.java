@@ -21,7 +21,9 @@ import java.util.Objects;
  * @param contactPhone optional contact phone
  * @param contactEmail optional contact email
  * @param footerNote   optional invoice footer note
- * @param computation  the GST tax breakdown (taxable value, CGST/SGST or IGST, totals)
+ * @param computation  the aggregate GST tax breakdown (total taxable, CGST/SGST or IGST, totals)
+ * @param rateBreakup  the per-rate breakup rows (GST @5%, @18%, …); reconciles to {@code computation}
+ * @param pricesIncludeGst whether prices are GST-inclusive (tax within) vs added on top
  */
 public record InvoiceGstDetails(
         String legalName,
@@ -33,9 +35,12 @@ public record InvoiceGstDetails(
         String contactPhone,
         String contactEmail,
         String footerNote,
-        GstComputation computation) {
+        GstComputation computation,
+        java.util.List<GstRateLine> rateBreakup,
+        boolean pricesIncludeGst) {
 
     public InvoiceGstDetails {
         Objects.requireNonNull(computation, "computation");
+        rateBreakup = rateBreakup == null ? java.util.List.of() : java.util.List.copyOf(rateBreakup);
     }
 }

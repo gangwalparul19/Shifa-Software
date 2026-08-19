@@ -1208,3 +1208,141 @@ NOT yet deployed (V49/V50 apply on next restart).
   Re-verified: backend clean compile + affected suites (`OrderPricing*`, `OrderService`, `Product*`, `LeadConvert`,
   `EndpointRoleGuard`) = **63 tests, 0 failures**; admin `build:admin` complete. Updated the extra test call sites
   (`LeadConvertPropertyTest`).
+
+
+## CA (Chartered Accountant) role + GST/accounting dashboard — implemented (spec `ca-gst-accounting-dashboard`)
+New read-only finance/tax role **CA** + a GST dashboard and filing-ready outward GST report, built on the
+existing order line tax snapshots (hsn/gstRate/rate/lineTotal), order `state` (place of supply), and the
+seller `gstin`/`state`/`stateCode` already in `app_settings`. **No migration** (CA is an enum value; all
+figures derive from existing data). NOT yet deployed. Spec: `.kiro/specs/ca-gst-accounting-dashboard/`.
+- **Pure engine** `gst/domain/GstEngine` (+`SupplyType`): GST-inclusive extraction (`taxable=lineTotal/(1+
+  rate/100)`), intra-state → equal CGST/SGST (halves define the line tax so cgst==sgst exactly), inter-state →
+  IGST; aggregates rate-wise / HSN-wise / state-wise + a GSTR-3B summary that all reconcile. Unit +
+  jqwik property tests (`GstEngineTest`, `GstEnginePropertyTest`).
+- **Service** `gst/GstAccountingService` (read-only, Clock dual-ctor +@Autowired): loads window orders
+  (`OrderRepository.findByCreatedAtBetween`, excl. CANCELLED/REJECTED)→`GstOrder`s, seller from
+  `SettingsService`, runs the engine; money in/out (received/COD-collected/purchases/expenses+by-category/
+  refunds/outstanding-COD/net cash). `GstController` `/api/ca/gst` (`hasAnyRole ADMIN,CA,ACCOUNTANT`):
+  `/dashboard`, `/report`, `/report/export` (CSV via pure `GstReportExporter`; default period = current month).
+- **Role `CA`**: added to backend `Role` enum + granted alongside ACCOUNTANT on the shared finance/report/order-
+  read endpoints (Report/Reconciliation/AdminReturn/ProfitLoss/Expense controllers; OrderController search/
+  detail/invoice/payment-screenshot; AdminOrderController list; AdminSearchController; MyProfileController) and
+  `ReportService.requireAdminOrAccountant`. `SalespersonScopeResolver.creatorScope` already returns unscoped
+  (empty) for CA (default branch) → CA sees all financial data like ACCOUNTANT.
+- **Frontend**: core `Role.CA`; `StaffRole`/`STAFF_ROLES` + users role label ("CA (Accountant)")/badge;
+  `staffGuard`+`reportsGuard`+`accountantGuard` include CA; new `adminOrCaGuard`; route `/ca/gst`; CA login
+  redirect → `/ca/gst`; CA bottom tabs (GST/Reports/Finance/My Profile); hamburger "GST & Accounting" link
+  (ADMIN+CA) + Expenses/P&L/Reports links include CA. New `ca-gst/` feature: `GstService`, `gst.model.ts`,
+  `CaGstDashboardComponent` (period picker month/last-month/quarter, in/out KPI tiles, GSTR-3B card w/ manual
+  ITC + net payable, rate/HSN/state tables, CSV export, missing-seller-state warning, empty states).
+- **Deferred (Req 9 / Task 10, separable)**: purchases/expenses don't capture GST, so **ITC is manual** on the
+  dashboard (not auto-computed). Add nullable gst fields to purchase_orders/expenses later to auto-feed ITC.
+  Procurement page stays ADMIN-only (CA sees PO totals via the dashboard aggregate, not the raw page).
+- **Verified**: backend `mvn clean test` = **549 tests, 0 failures** (7 new GST tests); admin `build:admin` clean.
+- **⚠️ TOOLING LESSON (bit us hard)**: a batch `powershell ... (Get-Content).Replace(...) | Set-Content` used to
+  add 'CA' to several controllers **corrupted 4 files — every lowercase `h`→`a`** (`com.shifa`→`com.saifa`,
+  `Auth`→`Auta`, `this`→`tais`), breaking compile. Root cause unclear (shell/encoding mangling) but the fix was
+  `git checkout -- <files>` then re-applying with the `str_replace` tool. **Do NOT use PowerShell
+  `.Replace`+`Set-Content` to edit source files — use the str_replace tool.** Only these 4 were hit; batch-1
+  files (Report/Recon/Return/PnL/Expense controllers) were fine.
+
+
+## CA GST dashboard — drill-down + Intra/Inter KPIs + PDF + GST demo reset (V51) — implemented
+Enhancements to the CA GST dashboard after review, plus a fresh GST-ready dataset.
+- **Drill-down**: clicking any Rate-wise / HSN-wise / State-wise row (or the Outstanding-COD / All-orders cards)
+  opens a drawer listing the contributing orders with **Customer due** (non-COD prepaid balance) vs **COD (courier)**
+  pending split, each order linking to `/orders?q=code`. Backend `GET /api/ca/gst/orders?from&to&state&rate&hsn` →
+  `GstOrderRow` (taxable/tax/total/received/remaining + `customerRemaining` + `codPending`; codPending=cod_amount unless
+  status COD_COLLECTED/CLOSED; customerRemaining=remaining−cod, floored). Sorted dues-first.
+- **KPIs**: added Intra-state taxable (CGST+SGST) and Inter-state taxable (IGST) tiles (computed frontend from stateWise).
+- **PDF**: `GstPdfExporter` (OpenPDF/com.lowagie) renders a branded multi-section PDF (seller header + GSTIN/state/period,
+  GSTR-3B summary, rate/HSN/state tables). Export endpoint gained `?format=csv|pdf`; dashboard has CSV + PDF buttons.
+  (Multi-catch gotcha: OpenPDF `DocumentException` is treated as a RuntimeException subtype → use a single `catch (Exception)`.)
+- Backend `mvn clean test` = **549 tests, 0 failures**; admin `build:admin` clean.
+
+### Migration V51 — RESET all orders + seed ~200 GST demo orders (Aug 2025→Aug 2026)
+Client asked to wipe all orders and seed ~200 realistic orders across **FY2025-26 + FY2026-27** so the CA GST report is
+meaningful, applied via Flyway so it also runs on the server. **`V51__reset_orders_and_seed_gst_demo.sql` is the highest
+migration.** ⚠️ **DESTRUCTIVE + runs in ALL envs**: deploying it to AWS will DELETE all production orders and reseed 200
+(the pre-restart mysqldump backup in `aws-apply.sh` is the safety net).
+- Sets seller GST identity so intra/inter works: `app_settings` state='Madhya Pradesh', state_code='23',
+  gst_enabled=1, gstin placeholder '23AABCS1234F1Z5' (COALESCE keeps an existing non-blank gstin).
+- Clears order data children-first (`line_items`,`payments`,`status_history`,`receivables`,`courier_records`,
+  `order_returns`, then `orders`; `leads.converted_order_id` nulled). **Fully set-based** (numbers via a digit
+  cross-join — NO stored proc / DELIMITER, so Flyway parses it as plain statements). Line items snapshot the SHIFA
+  product's hsn_code/gst_rate/sale_price (GST-inclusive) — looked up by SKU so it's env-independent.
+- 200 orders: dates spread 2025-08-01→2026-08-17; 7 states (Madhya Pradesh intra + 6 inter); ~60 repeat customers;
+  payment/status mix by n%10 → prepaid FULLY_PAID (CLOSED/DELIVERED), COD_COLLECTED, COD-pending (OUT_FOR_DELIVERY),
+  partial-prepaid (APPROVED). Verified: 200 orders, 334 line items, FY25-26=127 (₹3.74L) / FY26-27=73 (₹2.19L),
+  COD pending ₹53,550. Flyway applied v51 clean; app boots.
+- NOTE: re-running V51 is convergent (deletes SHR-GST-% + reseeds) but Flyway won't re-run an applied version; to reseed
+  locally, run the SQL manually via mysql. **Local + server both get 200 fresh orders on deploy** (server applies V49,V50,V51
+  together since it's at V48).
+
+
+## CA GST dashboard — period presets fix + UI/UX overhaul — implemented & DEPLOYED (2026-08-19)
+Client: preset buttons (This Month/This Quarter) weren't working well, wanted **This FY / Last FY** too, and the UI was
+"too poor". Reworked `ca-gst/ca-gst-dashboard.component.*`:
+- **Presets**: `applyPreset(key,from,to)` sets an `activePreset` signal (chip highlight) + dates + reloads. Added
+  **This FY** (Apr 1→today) and **Last FY** (prev Apr 1→Mar 31) via `fyStart(d)` (Indian FY: month≥Apr → that year else
+  prev). **This quarter** fixed to the Indian FY quarter (Q1 Apr-Jun…Q4 Jan-Mar). All buttons `type="button"`; manual
+  date edit switches to `custom`. Header subtitle shows the active period label + range.
+- **UI overhaul** (scoped `ca-gst-dashboard.component.css`, replaced inline styles → `styleUrl`): rounded toolbar with
+  pill preset chips (active = brand-green), grouped KPI sections (Money in / Money out & receivables / Taxable by supply
+  type) as accent-bordered icon tiles, a polished GSTR-3B card with a gradient "Net GST payable" band + inline manual ITC,
+  and restyled `.gst-table`s (uppercase heads, tabular-nums, rate/type badges, hover rows). Drill-down drawer restyled
+  with a customer-due vs COD-pending strip.
+- Date inputs use `[value]`+`(change)`/`(input)` (not ngModel) so presets reliably drive them.
+- Deployed via `push-to-aws.ps1 -SkipBuild` (frontend-only; bundle `main-PXJ32FDY.js`). Verified live: Flyway
+  "**No migration necessary**" (V51 NOT re-run → data safe), Tomcat up, `https://shifa.weblithic.online/`=200, orders=201
+  (200 seed + 1 live order created since — preserved). Backup `~/shifa-backup-2026-08-19-143638.sql`.
+- **Reminder (bit us again)**: `control_pwsh_process start` REUSES a finished terminal with the same command+cwd and
+  replays its OLD output (stale backup timestamp) WITHOUT re-running. Stop the terminal first, or run one-shot deploys via
+  the foreground `execute_pwsh` — that's how this deploy was actually run.
+
+## Invoice rework per CA — per-line Discount/GST% columns + per-rate GST breakup, discount-first (no migration) — implemented
+The CA reviewed the order invoice PDF and asked for a proper GST tax-invoice layout: per-line **Discount** + **GST%**
+columns and a **per-rate GST breakup** (e.g. GST @5%, @18%), with the **discount applied FIRST, then GST computed per
+rate group**. Chose the **per-rate-group** approach (group lines by rate, extract/add once per group) — matches the
+GSTR-1 rate summary and keeps all existing single-rate invoice tests passing. Prices are **GST-inclusive by default**
+with a **Settings toggle** to switch to exclusive (see below). No migration (all derived from existing line snapshots
+`hsn/gstRate/rate/lineTotal` + order `discount_amount` + seller state/GSTIN in `app_settings`).
+- **New** `invoice/GstRateLine` record (ratePercent, taxableValue, cgst, sgst, igst, totalTax) = one breakup row per rate.
+- `InvoiceGstDetails` gained `List<GstRateLine> rateBreakup` + `boolean pricesIncludeGst` (null-safe compact ctor).
+- `InvoiceContent.InvoiceLineItem` gained `discount` + `gstRatePercent` (kept the 6-arg backward-compat ctor; compact
+  ctor defaults discount to ZERO).
+- `InvoiceContentBuilder`: `assemble` sets each line's discount via `discountShares(order)` (largest-remainder
+  apportionment of `order.discount_amount` across lines proportional to line total — sums EXACTLY to the discount) and
+  passes `line.getGstRate()`. `buildGst` now groups the **discounted** net by GST rate (LinkedHashMap, first-seen order),
+  calls `GstCalculator.calculate(net, rate, inclusive, intra)` per group → builds `rateBreakup` + an aggregate
+  `GstComputation` (single-rate basket keeps exact rate values; mixed basket reports aggRate 0, per-rate detail carries
+  the split). `inclusive` comes from `settings.isPricesIncludeGst()`. Removed old `resolveGstRate`; added `discountShares`
+  + `resolveLineRate` (line snapshot → product map → settings default).
+- `InvoicePdfRenderer`: tax-invoice line table is now 8 cols `#/Item/HSN/Qty/Rate/Discount/GST%/Amount`; `writeTotals`
+  tax branch shows **Subtotal → Discount (if any) → Taxable Value → per-rate CGST/SGST (intra) or IGST (inter), skipping
+  0% groups → Total GST → Grand Total**. Plain (non-GST) invoice unchanged.
+- **Settings toggle (inclusive/exclusive)**: backend `AppSettings.pricesIncludeGst` + `SettingsRequest/Response`
+  (@NotNull) already existed; frontend Settings GST tab now has a clear **"GST pricing mode"** switch — label + dynamic
+  hint explain Inclusive (tax within price, grand total == order total) vs Exclusive (tax added on top). Default inclusive.
+- **Test**: added `mixedRatesWithDiscountApplyDiscountFirstThenGstPerRateAndReconcile` to `InvoiceContentBuilderTest`
+  (3 lines @5%/18%/0% + flat 23 discount on 323 → net 300; asserts 3 breakup rows in first-seen order, per-rate rows
+  reconcile to the aggregate taxable/tax, grand total == 300 (inclusive, proves discount applied before GST), 0% row
+  carries no tax, cgst+sgst == totalTax intra-state).
+- Verified: backend `mvn clean test` = **550 tests, 0 failures**; admin `build:admin` bundle complete. No migration
+  (V51 remains highest — a restart re-runs Flyway = "no migration necessary", data safe). Frontend + backend; ships
+  with next deploy.
+
+## DEPLOYED to AWS (2026-08-19, 16:44 IST) — CA invoice rework + inclusive/exclusive toggle
+Deployed the invoice rework (per-line Discount/GST% columns + per-rate GST breakup, discount-first) and the Settings
+GST pricing-mode (inclusive/exclusive) toggle via `deploy\push-to-aws.ps1`. DB backup `~/shifa-backup-2026-08-19-164443.sql`
+(564K). Verified live: Flyway "Successfully validated 51 migrations … Schema up to date. **No migration necessary**"
+(V51 unchanged → data safe), Tomcat on 8080, "Started Application in 22.213s", `https://shifa.weblithic.online/`=200,
+`/api/states`=401 (auth enforced), HTTP→HTTPS 301. Highest migration in prod remains **V51**.
+- **DEPLOY GOTCHA (bit us this run)**: running `push-to-aws.ps1` via `execute_pwsh` foreground got its keystrokes fed
+  into a stray interactive `ng serve` (port-4300 "use a different port?" prompt) that shared the console — the deploy
+  never ran. Also, launching it as a background process with a PowerShell-style `*>`/`;` redirect FAILED because the
+  background runner uses **cmd**, which passed `*` and `;` as args to the ps1 ("positional parameter cannot be found").
+  **Working recipe**: start it as a background process with **cmd-valid** redirection only —
+  `powershell -ExecutionPolicy Bypass -NonInteractive -File "deploy\push-to-aws.ps1" -KeyPath "..." -Ip 13.234.22.207 > deploy\run.log 2>&1`
+  — then read the log file with the file reader (get_process_output/`type` render garbled). First stop ALL stale
+  background terminals (18 had accumulated) so none can hijack stdin.
