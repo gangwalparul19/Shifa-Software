@@ -69,7 +69,10 @@ public record OrderResponse(
         BigDecimal subtotalAmount,
         BigDecimal gstAmount,
         String discountType,
-        BigDecimal discountValue
+        BigDecimal discountValue,
+        // Optional buyer GSTIN captured at order entry (gst-filing-compliance
+        // Req 1.1); null when the buyer is unregistered.
+        String buyerGstin
 ) {
 
     /**
@@ -192,7 +195,8 @@ public record OrderResponse(
                 priced.subtotal(),
                 priced.gstTotal(),
                 order.getDiscountType(),
-                order.getDiscountValue());
+                order.getDiscountValue(),
+                order.getBuyerGstin());
     }
 
     /**
@@ -238,6 +242,7 @@ public record OrderResponse(
                 subtotalAmount,
                 gstAmount,
                 discountType,
-                discountValue);
+                discountValue,
+                buyerGstin);
     }
 }

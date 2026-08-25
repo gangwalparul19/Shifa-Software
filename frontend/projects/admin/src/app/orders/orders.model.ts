@@ -61,6 +61,11 @@ export interface CreateOrderRequest {
   leadSourceNote?: string;
   /** Optional free-text order note captured at order entry (≤1000 chars). */
   notes?: string;
+  /**
+   * Optional buyer GSTIN (gst-filing-compliance Req 1). When present it must be a
+   * valid 15-char GSTIN and classifies the sale as B2B for GSTR-1.
+   */
+  buyerGstin?: string;
   /** Optional order-level discount kind (product-catalog-pricing-gst Req 6). */
   discountType?: OrderDiscountType;
   /** The raw discount value entered (rupee amount for FLAT, percent for PERCENT). */
@@ -196,6 +201,12 @@ export interface OrderDetail {
   paymentScreenshotAvailable: boolean;
   /** Optional free-text order note captured at order entry. */
   notes?: string | null;
+  /**
+   * Optional buyer GSTIN captured at order entry (gst-filing-compliance Req 1);
+   * present only for registered-business (B2B) buyers. Surfaced read-only on the
+   * order-detail drawer.
+   */
+  buyerGstin?: string | null;
   /** Who the order was handed to at handover (product-audit §4.3), when captured. */
   handoverName?: string | null;
   /** Number of boxes the order ships in (product-audit §4.2); defaults to 1. */

@@ -224,6 +224,28 @@
           </div>
         }
 
+        <!-- Buyer GSTIN (gst-filing-compliance Req 1) — optional; when present it
+             classifies the sale as B2B for GSTR-1. -->
+        <div class="col-12">
+          <label class="form-label" for="buyerGstin">Buyer GSTIN <span class="text-secondary">(optional)</span></label>
+          <input
+            id="buyerGstin"
+            type="text"
+            class="form-control text-uppercase"
+            formControlName="buyerGstin"
+            maxlength="15"
+            autocomplete="off"
+            placeholder="15-char GSTIN (e.g. 27ABCDE1234F1Z5)"
+            (input)="onGstinInput($event)"
+            [class.is-invalid]="invalid('buyerGstin')"
+          />
+          @if (invalid('buyerGstin')) {
+            <div class="invalid-feedback">Enter a valid 15-character GSTIN, or leave blank.</div>
+          } @else {
+            <small class="form-hint">Fill in for a registered business buyer (B2B). Leave blank for regular customers.</small>
+          }
+        </div>
+
         <!-- Delivery address (required by the create-order API) -->
         <div class="col-12">
           <label class="form-label required" for="addressLine">Delivery address</label>

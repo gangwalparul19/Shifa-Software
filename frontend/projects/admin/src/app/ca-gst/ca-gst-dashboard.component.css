@@ -166,7 +166,7 @@
 .gst-table tbody tr:last-child td { border-bottom: 0; }
 .gst-table tbody tr.is-clickable { cursor: pointer; }
 .gst-table tbody tr.is-clickable:hover { background: var(--gst-green-050); }
-.gst-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.gst-table .num { text-align: left; font-variant-numeric: tabular-nums; }
 .gst-rate-badge {
   display: inline-block; min-width: 2.6rem; text-align: center;
   background: var(--gst-green-050); color: var(--gst-green);
@@ -190,3 +190,45 @@
 .gst-due-strip .pill { display: flex; flex-direction: column; }
 .gst-due-strip .pill .lbl { font-size: 0.72rem; color: var(--gst-muted); }
 .gst-due-strip .pill .val { font-weight: 700; color: var(--gst-ink); }
+
+/* ---- GSTR-1 view ------------------------------------------------------- */
+/* Reconciliation banner (sections reconcile to the dashboard GSTR-3B totals). */
+.g1-recon {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  background: var(--gst-green-050);
+  border: 1px solid #cfe3d7;
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+  margin-bottom: 1rem;
+  color: var(--gst-ink);
+}
+.g1-recon > .ti { color: var(--gst-green); font-size: 1.15rem; margin-top: 0.1rem; }
+.g1-recon__title { font-weight: 700; }
+.g1-recon__sub { font-size: 0.82rem; color: var(--gst-muted); }
+.g1-recon__sub strong { color: var(--gst-ink); }
+
+/* Per-section count pill + totals summary in the card head. */
+.g1-count {
+  display: inline-block;
+  min-width: 1.6rem;
+  text-align: center;
+  background: var(--gst-green);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
+.g1-totals {
+  font-size: 0.8rem;
+  color: var(--gst-muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* A non-compliant HSN row is subtly highlighted. */
+.gst-table tbody tr.g1-flag td { background: #fff8ec; }

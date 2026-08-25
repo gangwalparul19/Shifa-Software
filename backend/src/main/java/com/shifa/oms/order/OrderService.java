@@ -5,6 +5,7 @@ import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.courier.TrackingService;
+import com.shifa.oms.gst.domain.Gstin;
 import com.shifa.oms.inventory.StockService;
 import com.shifa.oms.order.domain.DiscountType;
 import com.shifa.oms.order.domain.Money;
@@ -145,6 +146,18 @@ public class OrderService {
         order.setCustomerEmail(request.customerEmail());
         order.setNotes(trimToNull(request.notes()));
         order.setAlternateMobile(trimToNull(request.alternateMobile()));
+        // Optional buyer GSTIN for GSTR-1 classification (gst-filing-compliance
+        // Req 1.1). When non-blank it must match the standard 15-character GSTIN
+        // format; a blank/null value is allowed (unregistered buyer). An invalid
+        // GSTIN is rejected with a 400 via the global handler (Req 1.3).
+        String buyerGstin = trimToNull(request.buyerGstin());
+        if (buyerGstin != null && !Gstin.isValid(buyerGstin)) {
+            throw new ValidationException(
+                    "buyerGstin must be a valid 15-character GSTIN "
+                            + "(2-digit state code, 10-character PAN, 1 entity digit, the letter Z, "
+                            + "and 1 checksum character).");
+        }
+        order.setBuyerGstin(buyerGstin);
 
         // Prepaid / partially-paid orders carry a payment to verify for authenticity
         // (product-audit §4.4). Pure COD orders have nothing to verify.

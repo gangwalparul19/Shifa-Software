@@ -5,10 +5,13 @@ import { RouterLink } from '@angular/router';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { ToastService } from '../shared/toast.service';
 import { GstService } from './gst.service';
-import { GstDashboard, GstOrderRow } from './gst.model';
+import { GstDashboard, GstOrderRow, Gstr1ReturnResponse } from './gst.model';
 
 /** The quick period presets available on the dashboard. */
 type PresetKey = 'this-month' | 'last-month' | 'this-quarter' | 'this-fy' | 'last-fy' | 'custom';
+
+/** The top-level view: the accounting dashboard or the portal-ready GSTR-1 return. */
+type MainTab = 'dashboard' | 'gstr1';
 
 /**
  * CA (Chartered Accountant) GST & accounting dashboard (CA GST dashboard,
@@ -31,6 +34,20 @@ export class CaGstDashboardComponent implements OnInit {
   protected readonly error = signal<string | null>(null);
   protected readonly data = signal<GstDashboard | null>(null);
   protected readonly exporting = signal(false);
+
+  /** Which top-level view is showing (accounting dashboard vs GSTR-1). */
+  protected readonly mainTab = signal<MainTab>('dashboard');
+
+  // --- GSTR-1 (portal-ready outward return, Reqs 3.4, 5.5, 6.3) -----------
+  protected readonly gstr1Loading = signal(false);
+  protected readonly gstr1Error = signal<string | null>(null);
+  protected readonly gstr1Data = signal<Gstr1ReturnResponse | null>(null);
+  protected readonly gstr1Exporting = signal(false);
+
+  /** HSN rows flagged as non-compliant (short HSN code, Req 3.4). */
+  protected readonly hsnNonCompliant = computed(() =>
+    (this.gstr1Data()?.hsn ?? []).filter((h) => !h.compliant),
+  );
 
   /** Selected period (ISO yyyy-MM-dd); defaults set in ngOnInit to the current month. */
   protected readonly from = signal('');
@@ -117,6 +134,65 @@ export class CaGstDashboardComponent implements OnInit {
         this.loading.set(false);
       },
     });
+    // Keep the GSTR-1 view in sync when the period changes while it is showing.
+    if (this.mainTab() === 'gstr1') {
+      this.loadGstr1();
+    }
+  }
+
+  /** Switch the top-level view; lazy-load GSTR-1 the first time it is shown. */
+  setTab(tab: MainTab): void {
+    this.mainTab.set(tab);
+    if (tab === 'gstr1' && this.gstr1Data() === null && !this.gstr1Loading()) {
+      this.loadGstr1();
+    }
+  }
+
+  /** Load the portal-ready GSTR-1 return for the selected period. */
+  loadGstr1(): void {
+    this.gstr1Loading.set(true);
+    this.gstr1Error.set(null);
+    this.gst.gstr1(this.from(), this.to()).subscribe({
+      next: (r) => {
+        this.gstr1Data.set(r);
+        this.gstr1Loading.set(false);
+      },
+      error: () => {
+        this.gstr1Error.set('Could not load the GSTR-1 return. Please check the dates and try again.');
+        this.gstr1Loading.set(false);
+      },
+    });
+  }
+
+  /** Download the GSTR-1 export: {@code csv} = ZIP of section CSVs, {@code json} = portal JSON. */
+  downloadGstr1(format: 'csv' | 'json'): void {
+    this.gstr1Exporting.set(true);
+    this.gst.exportGstr1(this.from(), this.to(), format).subscribe({
+      next: (blob) => {
+        this.gstr1Exporting.set(false);
+        const ext = format === 'csv' ? 'zip' : 'json';
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `gstr1-${this.from()}-to-${this.to()}.${ext}`;
+        a.click();
+        URL.revokeObjectURL(url);
+      },
+      error: () => {
+        this.gstr1Exporting.set(false);
+        this.toasts.error('Could not export GSTR-1. Please try again.');
+      },
+    });
+  }
+
+  /** Sum the taxable value across a set of section rows. */
+  sumTaxable(rows: ReadonlyArray<{ taxable: number | string }>): number {
+    return rows.reduce((sum, r) => sum + this.n(r.taxable), 0);
+  }
+
+  /** Sum the total tax (CGST + SGST + IGST) across a set of section rows. */
+  sumTax(rows: ReadonlyArray<{ cgst?: number | string; sgst?: number | string; igst?: number | string }>): number {
+    return rows.reduce((sum, r) => sum + this.n(r.cgst) + this.n(r.sgst) + this.n(r.igst), 0);
   }
 
   /** April 1 of the Indian financial year that contains {@code d}. */

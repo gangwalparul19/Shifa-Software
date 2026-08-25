@@ -132,7 +132,7 @@ class OrderServiceTest {
         // payment/creation edge-case tests use WHATSAPP with no note/email.
         return new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
                 "Pune", "Maharashtra", "411001", items, amountReceived, screenshotKey,
-                LeadSource.WHATSAPP, null, null, null, null, null, null);
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null);
     }
 
     // --- Order total round-off to nearest rupee (product-audit §4.6) --------
@@ -208,7 +208,7 @@ class OrderServiceTest {
         CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
                 "Pune", "Maharashtra", "411001",
                 List.of(new LineItemRequest(1L, 1, null)), BigDecimal.ZERO, null,
-                LeadSource.WHATSAPP, null, null, null, "9800011122", null, null);
+                LeadSource.WHATSAPP, null, null, null, "9800011122", null, null, null);
 
         OrderResponse response = service.createSalespersonOrder(request, salesperson);
 

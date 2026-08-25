@@ -3,13 +3,34 @@
   [subtitle]="periodLabel() + ' · ' + from() + ' to ' + to()"
   [breadcrumbs]="[{ label: 'GST & Accounting' }]"
 >
-  <button type="button" class="btn btn-outline-primary" (click)="export('csv')" [disabled]="exporting() || loading()">
-    <i class="ti ti-file-spreadsheet me-1"></i>CSV
-  </button>
-  <button type="button" class="btn btn-primary" (click)="export('pdf')" [disabled]="exporting() || loading()">
-    <i class="ti ti-file-type-pdf me-1"></i>{{ exporting() ? 'Exporting…' : 'PDF' }}
-  </button>
+  @if (mainTab() === 'dashboard') {
+    <button type="button" class="btn btn-outline-primary" (click)="export('csv')" [disabled]="exporting() || loading()">
+      <i class="ti ti-file-spreadsheet me-1"></i>CSV
+    </button>
+    <button type="button" class="btn btn-primary" (click)="export('pdf')" [disabled]="exporting() || loading()">
+      <i class="ti ti-file-type-pdf me-1"></i>{{ exporting() ? 'Exporting…' : 'PDF' }}
+    </button>
+  } @else {
+    <button type="button" class="btn btn-outline-primary" (click)="downloadGstr1('csv')" [disabled]="gstr1Exporting() || gstr1Loading()">
+      <i class="ti ti-file-zip me-1"></i>Download CSV (ZIP)
+    </button>
+    <button type="button" class="btn btn-primary" (click)="downloadGstr1('json')" [disabled]="gstr1Exporting() || gstr1Loading()">
+      <i class="ti ti-file-code me-1"></i>{{ gstr1Exporting() ? 'Exporting…' : 'Download JSON' }}
+    </button>
+  }
 </admin-page-header>
+
+<!-- ================= View tabs (Dashboard | GSTR-1) ================= -->
+<div class="shifa-formtabs mb-3" role="tablist">
+  <button type="button" class="shifa-formtab" [class.is-active]="mainTab() === 'dashboard'"
+    (click)="setTab('dashboard')" role="tab" [attr.aria-selected]="mainTab() === 'dashboard'">
+    <i class="ti ti-layout-dashboard me-1"></i> Dashboard
+  </button>
+  <button type="button" class="shifa-formtab" [class.is-active]="mainTab() === 'gstr1'"
+    (click)="setTab('gstr1')" role="tab" [attr.aria-selected]="mainTab() === 'gstr1'">
+    <i class="ti ti-file-invoice me-1"></i> GSTR-1
+  </button>
+</div>
 
 <!-- ================= Period toolbar ================= -->
 <div class="gst-toolbar">
@@ -38,6 +59,7 @@
   </div>
 </div>
 
+@if (mainTab() === 'dashboard') {
 @if (loading()) {
   <div class="gst-card"><div class="gst-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading GST data…</div></div>
 } @else if (error()) {
@@ -236,6 +258,256 @@
             @for (c of d.money.expensesByCategory; track $index) {
               <tr><td>{{ c.category }}</td><td class="num">{{ money(c.amount) }}</td></tr>
             }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  }
+}
+
+}
+
+<!-- ================= GSTR-1 (portal-ready outward return) ================= -->
+@if (mainTab() === 'gstr1') {
+  @if (gstr1Loading()) {
+    <div class="gst-card"><div class="gst-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading GSTR-1…</div></div>
+  } @else if (gstr1Error()) {
+    <div class="alert alert-danger">{{ gstr1Error() }}</div>
+  } @else if (gstr1Data(); as g) {
+
+    <!-- Reconciliation banner (sections reconcile to the dashboard GSTR-3B figures, Req 5.5) -->
+    <div class="g1-recon">
+      <i class="ti ti-circle-check me-2"></i>
+      <div>
+        <div class="g1-recon__title">Sections reconcile to the dashboard totals</div>
+        <div class="g1-recon__sub">
+          Return period <strong>{{ g.period }}</strong>
+          @if (g.sellerGstin) { · GSTIN <strong>{{ g.sellerGstin }}</strong> }
+          · Taxable <strong>{{ money(g.reconciliation.taxableOutward) }}</strong>
+          · Output tax <strong>{{ money(g.reconciliation.outputTotal) }}</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Unresolved place-of-supply state codes (Req 6.3) -->
+    @if (g.unresolvedStates.length) {
+      <div class="alert alert-warning d-flex align-items-start">
+        <i class="ti ti-map-pin-off me-2 mt-1"></i>
+        <div>
+          <strong>{{ g.unresolvedStates.length }} place-of-supply state(s) need a GST state-code mapping.</strong>
+          These rows will not carry a 2-digit state code on the portal until the state name is corrected.
+          <ul class="mb-0 mt-1">
+            @for (u of g.unresolvedStates; track $index) {
+              <li>{{ u.stateName || '(blank)' }} <span class="text-secondary">— {{ u.context }}</span></li>
+            }
+          </ul>
+        </div>
+      </div>
+    }
+
+    <!-- HSN non-compliance flags (short HSN code, Req 3.4) -->
+    @if (hsnNonCompliant().length) {
+      <div class="alert alert-warning d-flex align-items-start">
+        <i class="ti ti-alert-triangle me-2 mt-1"></i>
+        <div>
+          <strong>{{ hsnNonCompliant().length }} HSN row(s) are non-compliant.</strong>
+          <ul class="mb-0 mt-1">
+            @for (h of hsnNonCompliant(); track $index) {
+              <li>HSN <strong>{{ h.hsn || '(blank)' }}</strong> @ {{ n(h.rate) }}% — {{ h.complianceNote }}</li>
+            }
+          </ul>
+        </div>
+      </div>
+    }
+
+    <!-- ===== B2B ===== -->
+    <div class="gst-card">
+      <div class="gst-card__head">
+        <h3 class="gst-card__title">B2B <span class="g1-count">{{ g.b2b.length }}</span></h3>
+        <span class="g1-totals">Taxable {{ money(sumTaxable(g.b2b)) }} · Tax {{ money(sumTax(g.b2b)) }}</span>
+      </div>
+      <div class="table-responsive">
+        <table class="gst-table">
+          <thead><tr><th>GSTIN</th><th>Order</th><th>Date</th><th>Place of supply</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
+          <tbody>
+            @for (r of g.b2b; track $index) {
+              <tr>
+                <td class="shifa-mono">{{ r.buyerGstin }}</td>
+                <td><a [routerLink]="['/orders']" [queryParams]="{ q: r.orderCode }">{{ r.orderCode }}</a></td>
+                <td class="text-secondary">{{ r.date }}</td>
+                <td>{{ r.placeOfSupply }} <span class="text-secondary">({{ r.stateCode }})</span></td>
+                <td class="num"><span class="gst-rate-badge">{{ n(r.rate) }}%</span></td>
+                <td class="num">{{ money(r.taxable) }}</td>
+                <td class="num">{{ money(r.cgst) }}</td>
+                <td class="num">{{ money(r.sgst) }}</td>
+                <td class="num">{{ money(r.igst) }}</td>
+              </tr>
+            } @empty { <tr><td colspan="9" class="gst-empty">No B2B (registered-buyer) supplies in this period.</td></tr> }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== B2CL ===== -->
+    <div class="gst-card">
+      <div class="gst-card__head">
+        <h3 class="gst-card__title">B2CL <span class="g1-count">{{ g.b2cl.length }}</span></h3>
+        <span class="g1-totals">Taxable {{ money(sumTaxable(g.b2cl)) }} · Tax {{ money(sumTax(g.b2cl)) }}</span>
+      </div>
+      <div class="table-responsive">
+        <table class="gst-table">
+          <thead><tr><th>Order</th><th>Date</th><th class="num">Invoice value</th><th>Place of supply</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">IGST</th></tr></thead>
+          <tbody>
+            @for (r of g.b2cl; track $index) {
+              <tr>
+                <td><a [routerLink]="['/orders']" [queryParams]="{ q: r.orderCode }">{{ r.orderCode }}</a></td>
+                <td class="text-secondary">{{ r.date }}</td>
+                <td class="num">{{ money(r.invoiceValue) }}</td>
+                <td>{{ r.placeOfSupply }} <span class="text-secondary">({{ r.stateCode }})</span></td>
+                <td class="num"><span class="gst-rate-badge">{{ n(r.rate) }}%</span></td>
+                <td class="num">{{ money(r.taxable) }}</td>
+                <td class="num">{{ money(r.igst) }}</td>
+              </tr>
+            } @empty { <tr><td colspan="7" class="gst-empty">No B2C-large (inter-state &gt; ₹2,50,000) supplies in this period.</td></tr> }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== B2CS ===== -->
+    <div class="gst-card">
+      <div class="gst-card__head">
+        <h3 class="gst-card__title">B2CS <span class="g1-count">{{ g.b2cs.length }}</span></h3>
+        <span class="g1-totals">Taxable {{ money(sumTaxable(g.b2cs)) }} · Tax {{ money(sumTax(g.b2cs)) }}</span>
+      </div>
+      <div class="table-responsive">
+        <table class="gst-table">
+          <thead><tr><th>Type</th><th>Place of supply</th><th>Supply</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
+          <tbody>
+            @for (r of g.b2cs; track $index) {
+              <tr>
+                <td>{{ r.type }}</td>
+                <td>{{ r.placeOfSupply }} <span class="text-secondary">({{ r.stateCode }})</span></td>
+                <td><span class="gst-type-badge" [class.intra]="r.supplyType === 'INTRA'" [class.inter]="r.supplyType === 'INTER'">{{ r.supplyType === 'INTRA' ? 'Intra' : 'Inter' }}</span></td>
+                <td class="num"><span class="gst-rate-badge">{{ n(r.rate) }}%</span></td>
+                <td class="num">{{ money(r.taxable) }}</td>
+                <td class="num">{{ money(r.cgst) }}</td>
+                <td class="num">{{ money(r.sgst) }}</td>
+                <td class="num">{{ money(r.igst) }}</td>
+              </tr>
+            } @empty { <tr><td colspan="8" class="gst-empty">No B2C-small supplies in this period.</td></tr> }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== CDNR ===== -->
+    <div class="gst-card">
+      <div class="gst-card__head">
+        <h3 class="gst-card__title">CDNR <span class="g1-count">{{ g.cdnr.length }}</span></h3>
+        <span class="g1-totals">Taxable {{ money(sumTaxable(g.cdnr)) }} · Tax {{ money(sumTax(g.cdnr)) }}</span>
+      </div>
+      <div class="table-responsive">
+        <table class="gst-table">
+          <thead><tr><th>GSTIN</th><th>Note #</th><th>Date</th><th>Original order</th><th>Place of supply</th><th class="num">Note value</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
+          <tbody>
+            @for (r of g.cdnr; track $index) {
+              <tr>
+                <td class="shifa-mono">{{ r.buyerGstin }}</td>
+                <td>{{ r.noteNumber }}</td>
+                <td class="text-secondary">{{ r.noteDate }}</td>
+                <td><a [routerLink]="['/orders']" [queryParams]="{ q: r.originalOrderCode }">{{ r.originalOrderCode }}</a></td>
+                <td>{{ r.placeOfSupply }} <span class="text-secondary">({{ r.stateCode }})</span></td>
+                <td class="num">{{ money(r.noteValue) }}</td>
+                <td class="num"><span class="gst-rate-badge">{{ n(r.rate) }}%</span></td>
+                <td class="num">{{ money(r.taxable) }}</td>
+                <td class="num">{{ money(r.cgst) }}</td>
+                <td class="num">{{ money(r.sgst) }}</td>
+                <td class="num">{{ money(r.igst) }}</td>
+              </tr>
+            } @empty { <tr><td colspan="11" class="gst-empty">No credit/debit notes against B2B supplies in this period.</td></tr> }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== CDNUR ===== -->
+    <div class="gst-card">
+      <div class="gst-card__head">
+        <h3 class="gst-card__title">CDNUR <span class="g1-count">{{ g.cdnur.length }}</span></h3>
+        <span class="g1-totals">Taxable {{ money(sumTaxable(g.cdnur)) }} · Tax {{ money(sumTax(g.cdnur)) }}</span>
+      </div>
+      <div class="table-responsive">
+        <table class="gst-table">
+          <thead><tr><th>Note #</th><th>Date</th><th>Original order</th><th>Place of supply</th><th class="num">Note value</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
+          <tbody>
+            @for (r of g.cdnur; track $index) {
+              <tr>
+                <td>{{ r.noteNumber }}</td>
+                <td class="text-secondary">{{ r.noteDate }}</td>
+                <td><a [routerLink]="['/orders']" [queryParams]="{ q: r.originalOrderCode }">{{ r.originalOrderCode }}</a></td>
+                <td>{{ r.placeOfSupply }} <span class="text-secondary">({{ r.stateCode }})</span></td>
+                <td class="num">{{ money(r.noteValue) }}</td>
+                <td class="num"><span class="gst-rate-badge">{{ n(r.rate) }}%</span></td>
+                <td class="num">{{ money(r.taxable) }}</td>
+                <td class="num">{{ money(r.cgst) }}</td>
+                <td class="num">{{ money(r.sgst) }}</td>
+                <td class="num">{{ money(r.igst) }}</td>
+              </tr>
+            } @empty { <tr><td colspan="10" class="gst-empty">No credit/debit notes against B2C supplies in this period.</td></tr> }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== HSN (Table 12) ===== -->
+    <div class="gst-card">
+      <div class="gst-card__head">
+        <h3 class="gst-card__title">HSN summary <span class="g1-count">{{ g.hsn.length }}</span></h3>
+        <span class="g1-totals">Taxable {{ money(sumTaxable(g.hsn)) }} · Tax {{ money(sumTax(g.hsn)) }}</span>
+      </div>
+      <div class="table-responsive">
+        <table class="gst-table">
+          <thead><tr><th>HSN</th><th>UQC</th><th class="num">Rate</th><th class="num">Qty</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
+          <tbody>
+            @for (h of g.hsn; track $index) {
+              <tr [class.g1-flag]="!h.compliant">
+                <td class="fw-bold">
+                  {{ h.hsn }}
+                  @if (!h.compliant) { <i class="ti ti-alert-triangle text-warning ms-1" [title]="h.complianceNote"></i> }
+                </td>
+                <td>{{ h.uqc }}</td>
+                <td class="num"><span class="gst-rate-badge">{{ n(h.rate) }}%</span></td>
+                <td class="num">{{ n(h.quantity) }}</td>
+                <td class="num">{{ money(h.taxable) }}</td>
+                <td class="num">{{ money(h.cgst) }}</td>
+                <td class="num">{{ money(h.sgst) }}</td>
+                <td class="num">{{ money(h.igst) }}</td>
+              </tr>
+            } @empty { <tr><td colspan="8" class="gst-empty">No HSN rows in this period.</td></tr> }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== Docs issued (Table 13) ===== -->
+    <div class="gst-card">
+      <div class="gst-card__head">
+        <h3 class="gst-card__title">Documents issued <span class="g1-count">{{ g.docs.length }}</span></h3>
+      </div>
+      <div class="table-responsive">
+        <table class="gst-table">
+          <thead><tr><th>Nature of document</th><th>From</th><th>To</th><th class="num">Issued</th><th class="num">Cancelled</th></tr></thead>
+          <tbody>
+            @for (d of g.docs; track $index) {
+              <tr>
+                <td>{{ d.natureOfDocument }}</td>
+                <td class="shifa-mono">{{ d.fromNumber }}</td>
+                <td class="shifa-mono">{{ d.toNumber }}</td>
+                <td class="num">{{ d.totalCount }}</td>
+                <td class="num">{{ d.cancelledCount }}</td>
+              </tr>
+            } @empty { <tr><td colspan="5" class="gst-empty">No invoices issued in this period.</td></tr> }
           </tbody>
         </table>
       </div>

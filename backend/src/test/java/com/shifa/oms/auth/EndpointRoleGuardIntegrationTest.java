@@ -1,5 +1,7 @@
 package com.shifa.oms.auth;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.common.PageResponse;
 import com.shifa.oms.dashboard.RoleDashboardController;
@@ -17,6 +19,18 @@ import com.shifa.oms.crm.CustomerController;
 import com.shifa.oms.crm.CustomerService;
 import com.shifa.oms.crm.dto.CustomerDetailResponse;
 import com.shifa.oms.crm.dto.CustomerSummaryResponse;
+import com.shifa.oms.gst.GstAccountingService;
+import com.shifa.oms.gst.GstController;
+import com.shifa.oms.gst.GstPdfExporter;
+import com.shifa.oms.gst.Gstr1Exporter;
+import com.shifa.oms.gst.Gstr1ReturnService;
+import com.shifa.oms.gst.domain.B2bRow;
+import com.shifa.oms.gst.domain.B2csRow;
+import com.shifa.oms.gst.domain.DocRow;
+import com.shifa.oms.gst.domain.GstEngine.Gstr3bSummary;
+import com.shifa.oms.gst.domain.Gstr1Return;
+import com.shifa.oms.gst.domain.HsnRow;
+import com.shifa.oms.gst.domain.SupplyType;
 import com.shifa.oms.packing.PackingController;
 import com.shifa.oms.packing.PackingService;
 import com.shifa.oms.packing.dto.PackingScanResponse;
@@ -55,9 +69,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -89,7 +105,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         RoleDashboardController.class,
         ReportController.class,
         AdminProductController.class,
-        CustomerController.class},
+        CustomerController.class,
+        GstController.class},
         // The production JWT filter (a Filter @Component pulled into the web slice) needs
         // JwtService, which is irrelevant here — callers are authenticated directly via the
         // security-test post-processor. Exclude it so the slice does not wire its dependency chain.
@@ -224,6 +241,79 @@ class EndpointRoleGuardIntegrationTest {
                 List.of(Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON));
     }
 
+    // --- GSTR-1 filing endpoints: ADMIN + CA + ACCOUNTANT (GST filing compliance, Req 13.1) ----
+
+    /**
+     * The finance/tax role set the GSTR-1 endpoints are guarded against: the three roles allowed by
+     * the class-level {@code @PreAuthorize hasAnyRole('ADMIN','CA','ACCOUNTANT')} on {@code GstController},
+     * plus the four non-finance roles (SALESPERSON, PACKING_USER, TEAM_LEAD, PAYMENT_VERIFIER) that must
+     * be rejected with 403. CA / TEAM_LEAD / PAYMENT_VERIFIER are not in {@link #OPERATIONAL_ROLES}, so
+     * these endpoints get their own matrix.
+     */
+    private static final List<Role> GST_ROLES = List.of(
+            Role.ADMIN, Role.CA, Role.ACCOUNTANT,
+            Role.SALESPERSON, Role.PACKING_USER, Role.TEAM_LEAD, Role.PAYMENT_VERIFIER);
+
+    @Test
+    void gstr1ReturnIsAdminCaOrAccountant() throws Exception {
+        assertGstRoleMatrix(get("/api/ca/gst/gstr1"),
+                List.of(Role.ADMIN, Role.CA, Role.ACCOUNTANT));
+    }
+
+    @Test
+    void gstr1ExportIsAdminCaOrAccountant() throws Exception {
+        assertGstRoleMatrix(get("/api/ca/gst/gstr1/export"),
+                List.of(Role.ADMIN, Role.CA, Role.ACCOUNTANT));
+    }
+
+    @Test
+    void gstr1JsonExportIsAdminCaOrAccountant() throws Exception {
+        assertGstRoleMatrix(get("/api/ca/gst/gstr1/export").param("format", "json"),
+                List.of(Role.ADMIN, Role.CA, Role.ACCOUNTANT));
+    }
+
+    /**
+     * Export fidelity: the taxable-value totals in the {@code /gstr1/export} portal JSON reproduce,
+     * section for section, the taxable-value totals of the {@code /gstr1} JSON response — so the export
+     * the CA imports into the portal carries exactly the figures shown in the dashboard view (Req 5.3, 5.5).
+     */
+    @Test
+    void gstr1ExportTotalsEqualGstr1ResponseTotals() throws Exception {
+        ObjectMapper om = new ObjectMapper();
+
+        String responseBody = mvc.perform(get("/api/ca/gst/gstr1").with(authFor(Role.CA)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String exportBody = mvc.perform(get("/api/ca/gst/gstr1/export").param("format", "json")
+                        .with(authFor(Role.CA)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        JsonNode response = om.readTree(responseBody);
+        JsonNode export = om.readTree(exportBody);
+
+        // Each section's taxable total on the response ("taxable") equals the export's ("txval").
+        for (String section : List.of("b2b", "b2cs", "hsn")) {
+            assertEquals(sumField(response.get(section), "taxable"),
+                    sumField(export.get(section), "txval"), 0.001,
+                    "section '" + section + "' taxable total must reconcile between /gstr1 and its export");
+        }
+    }
+
+    /** Sums a decimal {@code field} across a (possibly null/missing) JSON array node. */
+    private static double sumField(JsonNode array, String field) {
+        double total = 0.0;
+        if (array != null && array.isArray()) {
+            for (JsonNode row : array) {
+                JsonNode value = row.get(field);
+                if (value != null) {
+                    total += value.asDouble();
+                }
+            }
+        }
+        return total;
+    }
+
     // --- Harness ------------------------------------------------------------
 
     /**
@@ -234,6 +324,24 @@ class EndpointRoleGuardIntegrationTest {
     private void assertRoleMatrix(MockHttpServletRequestBuilder request, List<Role> allowed)
             throws Exception {
         for (Role role : OPERATIONAL_ROLES) {
+            if (allowed.contains(role)) {
+                mvc.perform(request.with(authFor(role)))
+                        .andExpect(status().is2xxSuccessful());
+            } else {
+                mvc.perform(request.with(authFor(role)))
+                        .andExpect(status().isForbidden());
+            }
+        }
+    }
+
+    /**
+     * As {@link #assertRoleMatrix} but over the finance-role set {@link #GST_ROLES} — so the GSTR-1
+     * endpoints are asserted allowed for ADMIN/CA/ACCOUNTANT and forbidden (403) for SALESPERSON,
+     * PACKING_USER, TEAM_LEAD, and PAYMENT_VERIFIER (Req 13.1).
+     */
+    private void assertGstRoleMatrix(MockHttpServletRequestBuilder request, List<Role> allowed)
+            throws Exception {
+        for (Role role : GST_ROLES) {
             if (allowed.contains(role)) {
                 mvc.perform(request.with(authFor(role)))
                         .andExpect(status().is2xxSuccessful());
@@ -331,6 +439,27 @@ class EndpointRoleGuardIntegrationTest {
         @Bean
         CustomerService customerService() {
             return new StubCustomerService();
+        }
+
+        @Bean
+        GstAccountingService gstAccountingService() {
+            return new StubGstAccountingService();
+        }
+
+        @Bean
+        GstPdfExporter gstPdfExporter() {
+            return new GstPdfExporter();
+        }
+
+        @Bean
+        Gstr1ReturnService gstr1ReturnService() {
+            return new StubGstr1ReturnService();
+        }
+
+        /** The real exporter renders the stub return so the export-fidelity assertion is meaningful. */
+        @Bean
+        Gstr1Exporter gstr1Exporter() {
+            return new Gstr1Exporter(new ObjectMapper());
         }
 
         @Bean
@@ -464,5 +593,53 @@ class EndpointRoleGuardIntegrationTest {
         public CustomerDetailResponse get(String mobile) {
             return null;
         }
+    }
+
+    /** Canned GST accounting service so the guarded GstController bean wires without a database. */
+    static class StubGstAccountingService extends GstAccountingService {
+        StubGstAccountingService() {
+            super(null, null, null, null, null);
+        }
+    }
+
+    /**
+     * Returns a fixed, non-trivial {@link Gstr1Return} for every period so the guard calls yield 2xx
+     * and the export-fidelity test has real section figures to reconcile. The real {@link Gstr1Exporter}
+     * renders this same return, so its exported totals must equal the {@code /gstr1} response totals.
+     */
+    static class StubGstr1ReturnService extends Gstr1ReturnService {
+        StubGstr1ReturnService() {
+            super(null, null, null, null);
+        }
+
+        @Override
+        public Gstr1Return build(LocalDate from, LocalDate to) {
+            return sampleGstr1Return();
+        }
+    }
+
+    /** A deterministic GSTR-1 return with B2B, B2CS, HSN, and docs rows carrying clean 2-decimal figures. */
+    private static Gstr1Return sampleGstr1Return() {
+        B2bRow b2b = new B2bRow(
+                "29ABCDE1234F1Z5", "SHR-B2B01", LocalDate.of(2026, 1, 10),
+                new BigDecimal("1180.00"), "Karnataka", "29", new BigDecimal("18"),
+                new BigDecimal("1000.00"), new BigDecimal("0.00"), new BigDecimal("0.00"),
+                new BigDecimal("180.00"));
+        B2csRow b2cs = new B2csRow(
+                "OE", "Madhya Pradesh", "23", SupplyType.INTRA, new BigDecimal("5"),
+                new BigDecimal("500.00"), new BigDecimal("12.50"), new BigDecimal("12.50"),
+                new BigDecimal("0.00"));
+        HsnRow hsn = new HsnRow(
+                "30049011", "NOS", new BigDecimal("18"), new BigDecimal("2"),
+                new BigDecimal("1500.00"), new BigDecimal("6.25"), new BigDecimal("6.25"),
+                new BigDecimal("180.00"), true, null);
+        DocRow doc = new DocRow("Invoices for outward supply", "INV-1", "INV-9", 9, 1);
+        Gstr3bSummary reconciliation = new Gstr3bSummary(
+                new BigDecimal("1500.00"), new BigDecimal("12.50"), new BigDecimal("12.50"),
+                new BigDecimal("180.00"), new BigDecimal("205.00"), new BigDecimal("1680.00"));
+        return new Gstr1Return(
+                "23AABCS1234F1Z5", 1, 2026,
+                List.of(b2b), List.of(), List.of(b2cs), List.of(), List.of(),
+                List.of(hsn), List.of(doc), List.of(), reconciliation);
     }
 }

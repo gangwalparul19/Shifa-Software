@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
-import { GstDashboard, GstOrderFilter, GstOrderRow, GstReport } from './gst.model';
+import { Gstr1ReturnResponse, GstDashboard, GstOrderFilter, GstOrderRow, GstReport } from './gst.model';
 
 /**
  * Data access for the CA GST/accounting dashboard ({@code /api/ca/gst},
@@ -35,6 +35,30 @@ export class GstService {
       params = params.set('to', to);
     }
     return this.http.get(this.api.url('/api/ca/gst/report/export'), {
+      params,
+      responseType: 'blob',
+    });
+  }
+
+  /** The portal-ready GSTR-1 return for the period (defaults to current month). */
+  gstr1(from?: string | null, to?: string | null): Observable<Gstr1ReturnResponse> {
+    return this.api.get<Gstr1ReturnResponse>('/api/ca/gst/gstr1', { params: this.range(from, to) });
+  }
+
+  /**
+   * The GSTR-1 export for the period: {@code csv} downloads the ZIP of section CSVs,
+   * {@code json} downloads the portal JSON. Fetched as a Blob so the auth interceptor
+   * attaches the bearer token.
+   */
+  exportGstr1(from: string | null, to: string | null, format: 'csv' | 'json'): Observable<Blob> {
+    let params = new HttpParams().set('format', format);
+    if (from) {
+      params = params.set('from', from);
+    }
+    if (to) {
+      params = params.set('to', to);
+    }
+    return this.http.get(this.api.url('/api/ca/gst/gstr1/export'), {
       params,
       responseType: 'blob',
     });

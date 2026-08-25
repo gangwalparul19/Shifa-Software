@@ -189,6 +189,18 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     postalCode: ['', [Validators.required, Validators.pattern(/^\d{6}$/)]],
     leadSource: ['' as '' | LeadSource, [Validators.required]],
     leadSourceNote: ['', [Validators.maxLength(200)]],
+    // Optional buyer GSTIN (gst-filing-compliance Req 1): blank is valid; when
+    // present it must match the standard 15-char GSTIN format (2 digits, 5
+    // letters, 4 digits, 1 letter, 1 entity char, the fixed letter Z, 1 checksum
+    // char). Mirrors the server's Gstin.isValid gate so a registered-buyer sale
+    // classifies as B2B for GSTR-1.
+    buyerGstin: [
+      '',
+      [
+        Validators.maxLength(15),
+        Validators.pattern(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/),
+      ],
+    ],
     items: this.fb.array([this.newItem()]),
     amountReceived: [0, [Validators.required, Validators.min(0)]],
     // Optional order-level discount (product-catalog-pricing-gst Req 6).
@@ -852,7 +864,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private readonly stepControlNames: Record<number, string[]> = {
     1: [
       'customerName', 'customerMobile', 'alternateMobile', 'customerEmail',
-      'leadSource', 'leadSourceNote', 'addressLine', 'city', 'postalCode', 'state',
+      'leadSource', 'leadSourceNote', 'buyerGstin', 'addressLine', 'city', 'postalCode', 'state',
     ],
     2: [],
     3: ['amountReceived'],
@@ -965,6 +977,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     const altMobile = this.form.controls.alternateMobile.value.trim();
     const note = this.form.controls.leadSourceNote.value.trim();
     const orderNotes = this.form.controls.notes.value.trim();
+    const buyerGstin = this.form.controls.buyerGstin.value.trim().toUpperCase();
     const isOther = raw.leadSource === 'OTHER';
     const payload: CreateOrderRequest = {
       customerName: this.form.controls.customerName.value.trim(),
@@ -986,6 +999,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       // Only send the note when OTHER is chosen (it's meaningless otherwise, Req 4.5).
       ...(isOther && note ? { leadSourceNote: note } : {}),
       ...(orderNotes ? { notes: orderNotes } : {}),
+      // Optional buyer GSTIN (gst-filing-compliance Req 1), only when provided.
+      ...(buyerGstin ? { buyerGstin } : {}),
       // Order-level discount (product-catalog-pricing-gst Req 6), only when set.
       ...(raw.discountType
         ? { discountType: raw.discountType as OrderDiscountType, discountValue: raw.discountValue || 0 }
@@ -1101,6 +1116,19 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   invalid(controlName: keyof NewOrderComponent['form']['controls']): boolean {
     const control = this.form.controls[controlName];
     return control.invalid && (control.touched || this.submitAttempted());
+  }
+
+  /**
+   * Uppercases the buyer GSTIN as it is typed so it matches the canonical GSTIN
+   * format (which uses uppercase letters) — otherwise the pattern validator would
+   * reject a lowercase entry. Optional field, so an empty value stays valid.
+   */
+  onGstinInput(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const upper = input.value.toUpperCase();
+    if (upper !== input.value) {
+      this.form.controls.buyerGstin.setValue(upper);
+    }
   }
 
   itemInvalid(index: number, name: 'productId' | 'quantity' | 'rate'): boolean {

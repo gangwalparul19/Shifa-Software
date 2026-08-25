@@ -69,6 +69,15 @@ public class Product {
     private String wtMl;
 
     /**
+     * Optional GST Unit Quantity Code (e.g. NOS, PCS, KGS, MLT) for the GSTR-1
+     * HSN summary (Table 12). Nullable on legacy rows; the default {@code NOS} is
+     * applied in code ({@code Uqc.resolve}) at report time, not as a DB default,
+     * so existing products need no backfill (gst-filing-compliance Req 3.2, 14.2).
+     */
+    @Column(name = "uqc", length = 10)
+    private String uqc;
+
+    /**
      * Optional per-product GST rate percent (e.g. 5.00 / 12.00 / 18.00) used on
      * GST tax invoices when present; {@code null} falls back to the settings-level
      * default GST rate, keeping existing products backward compatible.
@@ -208,6 +217,14 @@ public class Product {
 
     public void setWtMl(String wtMl) {
         this.wtMl = wtMl;
+    }
+
+    public String getUqc() {
+        return uqc;
+    }
+
+    public void setUqc(String uqc) {
+        this.uqc = uqc;
     }
 
     public BigDecimal getGstRate() {

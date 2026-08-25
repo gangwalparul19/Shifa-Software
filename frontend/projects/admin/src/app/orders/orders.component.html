@@ -509,6 +509,16 @@
           </a>
         </div>
 
+        <!-- (5a2) Buyer GSTIN (registered-business / B2B buyer) when captured -->
+        @if (order.buyerGstin) {
+          <div class="shifa-od__card">
+            <div class="shifa-od__totline">
+              <span><i class="ti ti-building-store me-1"></i>Buyer GSTIN</span>
+              <span class="shifa-mono">{{ order.buyerGstin }}</span>
+            </div>
+          </div>
+        }
+
         <!-- (5b) Order note (when the salesperson captured one) -->
         @if (order.notes) {
           <div class="shifa-od__card">

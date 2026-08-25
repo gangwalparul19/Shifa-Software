@@ -95,6 +95,12 @@ public record CreateOrderRequest(
 
         @DecimalMin(value = "0.00", message = "discountValue must not be negative")
         @Digits(integer = 10, fraction = 2, message = "discountValue must be a DECIMAL(12,2) value")
-        BigDecimal discountValue
+        BigDecimal discountValue,
+
+        // Optional buyer GSTIN for GSTR-1 supply classification (gst-filing-compliance
+        // Req 1.1). Null/blank is allowed (the buyer is an unregistered person);
+        // format validation is applied on the write path in OrderService (Req 1.3).
+        @Size(max = 15, message = "buyerGstin must be at most 15 characters")
+        String buyerGstin
 ) {
 }

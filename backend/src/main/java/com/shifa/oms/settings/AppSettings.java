@@ -55,6 +55,16 @@ public class AppSettings {
     @Column(name = "gst_rate_percent", nullable = false, precision = 5, scale = 2)
     private BigDecimal gstRatePercent = new BigDecimal("5.00");
 
+    /**
+     * Optional seller aggregate turnover (₹), used to decide the GSTR-1 HSN
+     * reporting minimum length (6 digits above ₹5 crore, else 4) and the
+     * e-invoicing turnover boundary. Nullable on legacy rows; unset defaults to
+     * the 4-digit HSN rule (gst-filing-compliance Req 3.3, 14.2). Mapped to the
+     * V52 {@code aggregate_turnover} column.
+     */
+    @Column(name = "aggregate_turnover", precision = 15, scale = 2)
+    private BigDecimal aggregateTurnover;
+
     @Column(name = "prices_include_gst", nullable = false)
     private boolean pricesIncludeGst = true;
 
@@ -209,6 +219,14 @@ public class AppSettings {
 
     public void setGstRatePercent(BigDecimal gstRatePercent) {
         this.gstRatePercent = gstRatePercent;
+    }
+
+    public BigDecimal getAggregateTurnover() {
+        return aggregateTurnover;
+    }
+
+    public void setAggregateTurnover(BigDecimal aggregateTurnover) {
+        this.aggregateTurnover = aggregateTurnover;
     }
 
     public boolean isPricesIncludeGst() {

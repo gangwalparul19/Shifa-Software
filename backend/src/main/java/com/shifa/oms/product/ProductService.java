@@ -86,6 +86,7 @@ public class ProductService {
         product.setHsnCode(normalizeHsn(request.hsnCode()));
         product.setGstRate(request.gstRate());
         product.setWtMl(normalizeWtMl(request.wtMl()));
+        product.setUqc(normalizeUqc(request.uqc()));
         applyCatalogFields(product, request);
         return ProductResponse.from(productRepository.save(product));
     }
@@ -116,6 +117,7 @@ public class ProductService {
         product.setHsnCode(normalizeHsn(request.hsnCode()));
         product.setGstRate(request.gstRate());
         product.setWtMl(normalizeWtMl(request.wtMl()));
+        product.setUqc(normalizeUqc(request.uqc()));
         product.setVisibility(request.visibility());
         applyCatalogFields(product, request);
         return ProductResponse.from(productRepository.save(product));
@@ -158,6 +160,19 @@ public class ProductService {
             return null;
         }
         String trimmed = wtMl.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /**
+     * Trims the optional UQC to {@code null} when blank so it stays truly
+     * optional; the {@code NOS} default is applied at GSTR-1 report time
+     * ({@code Uqc.resolve}), not stored here (gst-filing-compliance Req 3.2).
+     */
+    private String normalizeUqc(String uqc) {
+        if (uqc == null) {
+            return null;
+        }
+        String trimmed = uqc.trim();
         return trimmed.isEmpty() ? null : trimmed;
     }
 

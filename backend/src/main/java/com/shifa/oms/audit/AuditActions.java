@@ -94,6 +94,9 @@ public final class AuditActions {
     public static final String WHATSAPP_TEMPLATE_UPDATED = "WHATSAPP_TEMPLATE_UPDATED";
     public static final String WHATSAPP_TEMPLATE_DELETED = "WHATSAPP_TEMPLATE_DELETED";
 
+    /** A portal-ready GSTR-1 return export (CSV bundle / portal JSON) — GST filing compliance (Req 13.3). */
+    public static final String GSTR1_EXPORTED = "GSTR1_EXPORTED";
+
     // --- Entity types -------------------------------------------------------
 
     public static final String ENTITY_ORDER = "ORDER";
@@ -111,4 +114,6 @@ public final class AuditActions {
     public static final String ENTITY_ANNOUNCEMENT = "ANNOUNCEMENT";
     public static final String ENTITY_SALES_TARGET = "SALES_TARGET";
     public static final String ENTITY_WHATSAPP_TEMPLATE = "WHATSAPP_TEMPLATE";
+    /** GST filing/return artifacts (e.g. a GSTR-1 export) — GST filing compliance. */
+    public static final String ENTITY_GST = "GST";
 }

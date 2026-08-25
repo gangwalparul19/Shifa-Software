@@ -46,7 +46,14 @@ public record ProductResponse(
          */
         Double averageRating,
         /** Count of APPROVED reviews contributing to {@link #averageRating}. */
-        long reviewCount
+        long reviewCount,
+
+        /**
+         * Optional GST Unit Quantity Code (e.g. NOS, PCS, KGS) for the GSTR-1 HSN
+         * summary; {@code null} when the product has none assigned
+         * (gst-filing-compliance Req 3.2). Additive: existing consumers ignore it.
+         */
+        String uqc
 ) {
 
     public static ProductResponse from(Product product) {
@@ -75,7 +82,8 @@ public record ProductResponse(
                 product.getCreatedAt(),
                 product.getUpdatedAt(),
                 null,
-                0L);
+                0L,
+                product.getUqc());
     }
 
     /**
@@ -87,6 +95,6 @@ public record ProductResponse(
         return new ProductResponse(
                 id, sku, name, description, mrp, salePrice, minimumRate, hsnCode, gstRate, wtMl,
                 visibility, category, stockStatus, stockQuantity, trackInventory, lowStockThreshold,
-                featured, images, createdAt, updatedAt, averageRating, reviewCount);
+                featured, images, createdAt, updatedAt, averageRating, reviewCount, uqc);
     }
 }

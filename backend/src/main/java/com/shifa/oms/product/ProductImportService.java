@@ -25,7 +25,7 @@ import java.util.Set;
  *
  * <p>Parses and validates every row of an uploaded CSV, producing a per-row
  * outcome ({@link ImportRowResult}). The header row names the columns
- * (case-insensitive): {@code sku,name,mrp,salePrice,minimumRate,hsnCode,wtMl,
+ * (case-insensitive): {@code sku,name,mrp,salePrice,minimumRate,hsnCode,wtMl,uqc,
  * gstRate,stockQuantity,trackInventory,category,visibility,description}. {@code sku},
  * {@code name}, {@code mrp} and {@code salePrice} are required; the rest are
  * optional. Existing products are matched by SKU and updated; otherwise a new
@@ -49,6 +49,7 @@ public class ProductImportService {
     private static final String COL_HSN = "hsncode";
     private static final String COL_GST = "gstrate";
     private static final String COL_WT = "wtml";
+    private static final String COL_UQC = "uqc";
     private static final String COL_STOCK = "stockquantity";
     private static final String COL_TRACK = "trackinventory";
     private static final String COL_CATEGORY = "category";
@@ -138,6 +139,7 @@ public class ProductImportService {
             ProductVisibility visibility = parseVisibility(value(row, columns, COL_VISIBILITY));
             String hsnCode = trimToNull(value(row, columns, COL_HSN));
             String wtMl = trimToNull(value(row, columns, COL_WT));
+            String uqc = trimToNull(value(row, columns, COL_UQC));
             String description = trimToNull(value(row, columns, COL_DESCRIPTION));
 
             // Resolve category (by slug or name); unknown/blank → no category (not an error).
@@ -157,9 +159,9 @@ public class ProductImportService {
             ProductRequest request = isUpdate
                     ? buildUpdateRequest(existing.get(), columns, row, name, description, mrp, salePrice,
                             hsnCode, gstRate, visibility, categoryId, categoryRaw, stockQuantity, trackInventory,
-                            minimumRate, wtMl)
+                            minimumRate, wtMl, uqc)
                     : buildCreateRequest(sku, name, description, mrp, salePrice, hsnCode, gstRate,
-                            visibility, categoryId, stockQuantity, trackInventory, minimumRate, wtMl);
+                            visibility, categoryId, stockQuantity, trackInventory, minimumRate, wtMl, uqc);
 
             if (isUpdate) {
                 if (!dryRun) {
@@ -183,12 +185,12 @@ public class ProductImportService {
                                               BigDecimal gstRate, ProductVisibility visibility,
                                               Long categoryId, Integer stockQuantity,
                                               Boolean trackInventory,
-                                              BigDecimal minimumRate, String wtMl) {
+                                              BigDecimal minimumRate, String wtMl, String uqc) {
         return new ProductRequest(
                 sku, name, description, mrp, salePrice, hsnCode, gstRate,
                 visibility != null ? visibility : ProductVisibility.PUBLISHED,
                 categoryId, stockQuantity, trackInventory, null, null,
-                minimumRate, wtMl);
+                minimumRate, wtMl, uqc);
     }
 
     /**
@@ -202,7 +204,7 @@ public class ProductImportService {
                                               BigDecimal gstRate, ProductVisibility visibility,
                                               Long categoryId, String categoryRaw,
                                               Integer stockQuantity, Boolean trackInventory,
-                                              BigDecimal minimumRate, String wtMl) {
+                                              BigDecimal minimumRate, String wtMl, String uqc) {
         Long resolvedCategory = existing.getCategory() != null ? existing.getCategory().getId() : null;
         if (columns.containsKey(COL_CATEGORY) && categoryRaw != null && categoryId != null) {
             resolvedCategory = categoryId;
@@ -222,7 +224,8 @@ public class ProductImportService {
                 existing.getLowStockThreshold(),
                 existing.isFeatured(),
                 columns.containsKey(COL_MINIMUM) ? minimumRate : existing.getMinimumRate(),
-                columns.containsKey(COL_WT) ? wtMl : existing.getWtMl());
+                columns.containsKey(COL_WT) ? wtMl : existing.getWtMl(),
+                columns.containsKey(COL_UQC) ? uqc : existing.getUqc());
     }
 
     // --- Parsing helpers ----------------------------------------------------

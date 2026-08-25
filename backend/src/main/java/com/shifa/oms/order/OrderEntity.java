@@ -114,6 +114,15 @@ public class OrderEntity {
     @Column(name = "alternate_mobile", length = 10)
     private String alternateMobile;
 
+    /**
+     * Optional buyer GSTIN captured at order entry when the customer is a
+     * GST-registered person (gst-filing-compliance Req 1.1). Nullable; drives
+     * GSTR-1 B2B / B2CL / B2CS supply classification. Mapped to
+     * {@code orders.buyer_gstin} (V52).
+     */
+    @Column(name = "buyer_gstin", length = 15)
+    private String buyerGstin;
+
     @Column(name = "address_line", nullable = false, length = 250)
     private String addressLine;
 
@@ -458,6 +467,15 @@ public class OrderEntity {
     /** Records the optional alternate contact number captured at order entry (V39). */
     public void setAlternateMobile(String alternateMobile) {
         this.alternateMobile = alternateMobile;
+    }
+
+    public String getBuyerGstin() {
+        return buyerGstin;
+    }
+
+    /** Records the optional buyer GSTIN captured at order entry (V52). */
+    public void setBuyerGstin(String buyerGstin) {
+        this.buyerGstin = buyerGstin;
     }
 
     public String getAddressLine() {

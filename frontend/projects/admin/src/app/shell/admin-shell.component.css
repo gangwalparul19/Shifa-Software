@@ -461,8 +461,13 @@
    small tablets keep the framed mobile-first layout above. This only removes
    the frame + lets the content container span the viewport; no page markup
    changes, so nothing else breaks. Applies app-wide and going forward.
+
+   Breakpoint is 768px (tablet-and-up) so laptops/tablets reliably show the
+   persistent sidebar; only true phones (<768px) keep the hamburger + bottom
+   tabs. (Lowered from 992px — narrower laptop viewports were falling back to
+   the mobile layout and losing the sidebar.)
    --------------------------------------------------------------------------- */
-@media (min-width: 992px) {
+@media (min-width: 768px) {
   :host {
     /* No "desk" backdrop when the app fills the screen. */
     background: var(--tblr-body-bg, #ffffff);
@@ -514,7 +519,7 @@
   display: none;
 }
 
-@media (min-width: 992px) {
+@media (min-width: 768px) {
   .shifa-sidebar {
     display: flex;
     flex-direction: column;

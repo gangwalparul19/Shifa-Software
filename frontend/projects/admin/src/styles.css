@@ -1282,3 +1282,42 @@ th,
     max-width: 100%;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Global table alignment — LEFT-align every table's header + data cells.
+   Client request: all data (including numeric/money columns) should be
+   left-aligned across every table in the app. This overrides Bootstrap/Tabler
+   right-align utilities (.text-end / .text-md-end / .text-right) and any
+   component-level right-align (e.g. money columns) when they sit inside a
+   table, so alignment is consistent everywhere. Numeric readability is kept
+   via tabular-nums. Badges that must stay centered inside a cell are exempt.
+   -------------------------------------------------------------------------- */
+.table th,
+.table td,
+.card-table th,
+.card-table td,
+.gst-table th,
+.gst-table td,
+table.dataTable th,
+table.dataTable td {
+  text-align: left !important;
+}
+
+/* Neutralize right-align utility classes applied on cells within tables. */
+.table th.text-end,
+.table td.text-end,
+.table th.text-right,
+.table td.text-right,
+.table th.text-md-end,
+.table td.text-md-end,
+.card-table th.text-end,
+.card-table td.text-end {
+  text-align: left !important;
+}
+
+/* Keep digit columns readable while left-aligned. */
+.table td,
+.card-table td,
+.gst-table td {
+  font-variant-numeric: tabular-nums;
+}

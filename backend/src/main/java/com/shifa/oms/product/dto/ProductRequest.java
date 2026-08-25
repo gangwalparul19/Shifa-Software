@@ -79,6 +79,14 @@ public record ProductRequest(
 
         /** Optional pack size / weight / volume descriptor, e.g. "100ML" (Req 1.4). */
         @Size(max = 32, message = "wtMl must be at most 32 characters")
-        String wtMl
+        String wtMl,
+
+        /**
+         * Optional GST Unit Quantity Code (e.g. NOS, PCS, KGS, MLT) for the GSTR-1
+         * HSN summary; null/blank defaults to {@code NOS} in code at report time
+         * (gst-filing-compliance Req 3.2).
+         */
+        @Size(max = 10, message = "uqc must be at most 10 characters")
+        String uqc
 ) {
 }
