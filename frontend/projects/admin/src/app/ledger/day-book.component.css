@@ -1,0 +1,112 @@
+:host {
+  --db-green: #1f5d3f;
+  --db-green-050: #f1f8f4;
+  --db-ink: #21372c;
+  --db-muted: #6b7b72;
+  --db-line: #e6efe9;
+  display: block;
+}
+
+/* ---- Toolbar (period + filter) ---------------------------------------- */
+.db-toolbar {
+  background: #fff;
+  border: 1px solid var(--db-line);
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 2px 10px rgba(15, 51, 36, 0.05);
+  margin-bottom: 1rem;
+}
+.db-toolbar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.db-spacer { flex: 1 1 auto; }
+.db-controls {
+  display: flex;
+  align-items: end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.db-controls .form-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--db-muted);
+  margin-bottom: 0.15rem;
+}
+.db-controls input,
+.db-controls select { min-width: 10rem; }
+
+/* ---- KPI tiles -------------------------------------------------------- */
+.db-kpi {
+  position: relative;
+  background: #fff;
+  border: 1px solid var(--db-line);
+  border-radius: 14px;
+  padding: 0.75rem 0.95rem 0.75rem 1.1rem;
+  height: 100%;
+  overflow: hidden;
+}
+.db-kpi::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: var(--accent, var(--db-green));
+}
+.db-kpi__label { font-size: 0.76rem; color: var(--db-muted); font-weight: 600; }
+.db-kpi__value { font-size: 1.3rem; font-weight: 700; color: var(--db-ink); margin-top: 0.25rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.acc-green { --accent: #1f5d3f; }
+.acc-blue { --accent: #2563eb; }
+.acc-slate { --accent: #64748b; }
+
+/* ---- Card + table ----------------------------------------------------- */
+.db-card {
+  background: #fff;
+  border: 1px solid var(--db-line);
+  border-radius: 14px;
+  box-shadow: 0 2px 10px rgba(15, 51, 36, 0.04);
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+.db-card__head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.85rem 1.1rem;
+  border-bottom: 1px solid var(--db-line);
+}
+.db-card__title { font-size: 1rem; font-weight: 700; color: var(--db-ink); margin: 0; }
+
+.db-table { width: 100%; border-collapse: collapse; }
+.db-table thead th {
+  background: var(--db-green-050);
+  color: var(--db-ink);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  border-bottom: 1px solid var(--db-line);
+}
+.db-table td { padding: 0.5rem 0.8rem; color: var(--db-ink); font-size: 0.9rem; }
+.db-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* A voucher header row starts a new group with a top divider. */
+.db-table tbody tr.db-voucher td { border-top: 1px solid var(--db-line); padding-top: 0.6rem; }
+.db-table tbody tr.db-voucher:first-child td { border-top: 0; }
+.db-narration { color: var(--db-muted); }
+
+/* Line rows are indented and lighter. */
+.db-table tbody tr.db-line td { padding-top: 0.2rem; padding-bottom: 0.2rem; font-size: 0.86rem; }
+.db-line__acct { padding-left: 1.4rem !important; }
+.db-line__cr { padding-left: 1rem; color: var(--db-muted); }
+
+.db-table tfoot .db-totals td {
+  border-top: 2px solid var(--db-line);
+  background: var(--db-green-050);
+  padding: 0.6rem 0.8rem;
+  color: var(--db-ink);
+}
+
+.db-empty { text-align: center; color: var(--db-muted); padding: 2rem 1rem; }

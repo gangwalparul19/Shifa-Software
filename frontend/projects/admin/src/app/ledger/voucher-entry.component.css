@@ -1,0 +1,26 @@
+/* Voucher entry — most styling comes from the shared Tabler theme + global
+   styles.css. Component-scoped tweaks for the Dr/Cr balance indicator + line rows. */
+
+.ve-balance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  align-items: baseline;
+}
+
+.ve-balance__total {
+  font-variant-numeric: tabular-nums;
+}
+
+.ve-line {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+@media (max-width: 575.98px) {
+  .ve-line {
+    grid-template-columns: 1fr;
+  }
+}

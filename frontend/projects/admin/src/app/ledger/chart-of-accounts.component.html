@@ -1,0 +1,209 @@
+<admin-page-header
+  title="Chart of Accounts"
+  subtitle="Account groups and the ledger accounts posted under them."
+  [breadcrumbs]="[{ label: 'Accounting' }, { label: 'Chart of Accounts' }]"
+>
+  @if (canManage()) {
+    <button type="button" class="btn btn-outline-secondary" (click)="openGroupForm()">
+      <i class="ti ti-folder-plus me-1"></i> Add group
+    </button>
+    <button type="button" class="btn btn-primary" (click)="openLedgerForm()" [disabled]="groups().length === 0">
+      <i class="ti ti-plus me-1"></i> Add ledger
+    </button>
+  }
+</admin-page-header>
+
+<!-- Add-group inline form (ADMIN/ACCOUNTANT only) -->
+@if (canManage() && groupFormOpen()) {
+  <div class="card mb-3">
+    <div class="card-body">
+      <h3 class="card-title mb-3">Add account group</h3>
+      <form [formGroup]="groupForm" (ngSubmit)="submitGroup()">
+        <div class="row g-2">
+          <div class="col-12 col-md-5">
+            <label class="form-label" for="grp-name">Name</label>
+            <input
+              id="grp-name"
+              type="text"
+              class="form-control"
+              formControlName="name"
+              placeholder="e.g. Current Assets"
+              [class.is-invalid]="groupForm.controls.name.touched && groupForm.controls.name.invalid"
+            />
+            @if (groupForm.controls.name.touched && groupForm.controls.name.invalid) {
+              <div class="invalid-feedback">A group name is required.</div>
+            }
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label" for="grp-parent">Parent group</label>
+            <select id="grp-parent" class="form-select" formControlName="parentGroupId">
+              <option [ngValue]="null">— None (root group) —</option>
+              @for (g of groups(); track g.id) {
+                <option [ngValue]="g.id">{{ g.name }} ({{ natureLabel(g.nature) }})</option>
+              }
+            </select>
+            <div class="form-hint">A child group inherits its parent's nature.</div>
+          </div>
+          <div class="col-12 col-md-3">
+            <label class="form-label" for="grp-nature">Nature</label>
+            <select
+              id="grp-nature"
+              class="form-select"
+              formControlName="nature"
+              [attr.disabled]="groupForm.controls.parentGroupId.value ? true : null"
+            >
+              @for (n of natures; track n) {
+                <option [ngValue]="n">{{ natureLabel(n) }}</option>
+              }
+            </select>
+            <div class="form-hint">Only for a root group.</div>
+          </div>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-3">
+          <button type="button" class="btn btn-link" (click)="closeGroupForm()" [disabled]="saving()">Cancel</button>
+          <button type="submit" class="btn btn-primary" [disabled]="saving()">
+            @if (saving()) {
+              <span class="spinner-border spinner-border-sm me-2"></span> Saving…
+            } @else {
+              Add group
+            }
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+}
+
+<!-- Add-ledger inline form (ADMIN/ACCOUNTANT only) -->
+@if (canManage() && ledgerFormOpen()) {
+  <div class="card mb-3">
+    <div class="card-body">
+      <h3 class="card-title mb-3">Add ledger account</h3>
+      <form [formGroup]="ledgerForm" (ngSubmit)="submitLedger()">
+        <div class="row g-2">
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="led-name">Name</label>
+            <input
+              id="led-name"
+              type="text"
+              class="form-control"
+              formControlName="name"
+              placeholder="e.g. HDFC Bank"
+              [class.is-invalid]="ledgerForm.controls.name.touched && ledgerForm.controls.name.invalid"
+            />
+            @if (ledgerForm.controls.name.touched && ledgerForm.controls.name.invalid) {
+              <div class="invalid-feedback">A ledger name is required.</div>
+            }
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="led-group">Account group</label>
+            <select
+              id="led-group"
+              class="form-select"
+              formControlName="accountGroupId"
+              [class.is-invalid]="ledgerForm.controls.accountGroupId.touched && ledgerForm.controls.accountGroupId.invalid"
+            >
+              <option [ngValue]="null">— Select a group —</option>
+              @for (g of groups(); track g.id) {
+                <option [ngValue]="g.id">{{ g.name }} ({{ natureLabel(g.nature) }})</option>
+              }
+            </select>
+            @if (ledgerForm.controls.accountGroupId.touched && ledgerForm.controls.accountGroupId.invalid) {
+              <div class="invalid-feedback">Choose the group this ledger belongs to.</div>
+            }
+            <div class="form-hint">The ledger inherits this group's nature.</div>
+          </div>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-3">
+          <button type="button" class="btn btn-link" (click)="closeLedgerForm()" [disabled]="saving()">Cancel</button>
+          <button type="submit" class="btn btn-primary" [disabled]="saving()">
+            @if (saving()) {
+              <span class="spinner-border spinner-border-sm me-2"></span> Saving…
+            } @else {
+              Add ledger
+            }
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+}
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading chart of accounts…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (flatNodes().length === 0) {
+  <admin-state-panel
+    variant="onboarding"
+    [card]="true"
+    icon="ti-book-2"
+    title="No account groups yet"
+    [message]="
+      canManage()
+        ? 'Add your first account group to start building the chart of accounts.'
+        : 'The chart of accounts has not been set up yet.'
+    "
+    [ctaLabel]="canManage() ? 'Add group' : undefined"
+    ctaIcon="ti-folder-plus"
+    (cta)="openGroupForm()"
+  />
+} @else {
+  <div class="card">
+    <div class="list-group list-group-flush shifa-coa">
+      @for (node of flatNodes(); track node.group.id) {
+        <!-- Account group row -->
+        <div class="list-group-item shifa-coa__group">
+          <div class="shifa-coa__row" [style.padding-left]="indentStyle(node.depth)">
+            <span class="shifa-coa__name">
+              <i class="ti ti-folder text-muted me-2" aria-hidden="true"></i>
+              <strong>{{ node.group.name }}</strong>
+            </span>
+            <span class="d-flex align-items-center gap-2">
+              <span class="badge" [class]="naturePillClass(node.group.nature)">{{ natureLabel(node.group.nature) }}</span>
+              @if (canManage()) {
+                <button
+                  type="button"
+                  class="btn btn-sm btn-ghost-secondary"
+                  (click)="openLedgerForm(node.group.id)"
+                  title="Add ledger to this group"
+                >
+                  <i class="ti ti-plus"></i>
+                </button>
+              }
+            </span>
+          </div>
+        </div>
+
+        <!-- Ledgers directly under this group -->
+        @for (ledger of node.ledgers; track ledger.id) {
+          <div class="list-group-item shifa-coa__ledger">
+            <div class="shifa-coa__row" [style.padding-left]="indentStyle(node.depth + 1)">
+              <span class="shifa-coa__name">
+                <i class="ti ti-file-invoice text-muted me-2" aria-hidden="true"></i>
+                {{ ledger.name }}
+                @if (ledger.controlKey) {
+                  <span class="badge bg-secondary-lt ms-2" title="Auto-posting control account">{{ ledger.controlKey }}</span>
+                }
+              </span>
+              <span class="d-flex align-items-center gap-2">
+                <span class="badge" [class]="naturePillClass(ledger.nature)">{{ natureLabel(ledger.nature) }}</span>
+                @if (canManage() && !ledger.systemGenerated) {
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-ghost-danger"
+                    (click)="deleteLedger(ledger)"
+                    title="Delete ledger"
+                    aria-label="Delete ledger"
+                  >
+                    <i class="ti ti-trash"></i>
+                  </button>
+                }
+              </span>
+            </div>
+          </div>
+        }
+      }
+    </div>
+  </div>
+}

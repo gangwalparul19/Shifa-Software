@@ -1,0 +1,328 @@
+<admin-page-header
+  title="Voucher Entry"
+  subtitle="Record a balanced double-entry journal voucher."
+  [breadcrumbs]="[{ label: 'Accounting' }, { label: 'Voucher Entry' }]"
+/>
+
+@if (!canPost()) {
+  <!-- CA is read-only server-side: hide the entry/reverse UI, show a notice. -->
+  <div class="alert alert-info" role="status">
+    <i class="ti ti-lock me-2"></i>
+    Voucher entry and reversal are available to Admin and Accountant users. Your role has read-only
+    access to the accounting views.
+  </div>
+} @else {
+  @if (ledgersError()) {
+    <admin-state-panel
+      variant="error"
+      [card]="true"
+      title="Couldn't load ledger accounts"
+      [message]="ledgersError()!"
+      (retry)="loadLedgers()"
+    />
+  } @else {
+    <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+      <div class="row row-cards">
+        <!-- Voucher header: type / date / narration (Reqs 5.7, 7.1) -->
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Voucher details</h3>
+            </div>
+            <div class="card-body">
+              <div class="row g-3">
+                <div class="col-12 col-md-4">
+                  <label class="form-label required" for="voucher-type">Type</label>
+                  <select
+                    id="voucher-type"
+                    class="form-select"
+                    formControlName="type"
+                    [class.is-invalid]="invalid('type')"
+                  >
+                    @for (t of voucherTypes; track t) {
+                      <option [value]="t">{{ voucherTypeLabel(t) }}</option>
+                    }
+                  </select>
+                </div>
+                <div class="col-12 col-md-4">
+                  <label class="form-label required" for="voucher-date">Date</label>
+                  <input
+                    id="voucher-date"
+                    type="date"
+                    class="form-control"
+                    formControlName="date"
+                    [class.is-invalid]="invalid('date')"
+                  />
+                  @if (invalid('date')) {
+                    <div class="invalid-feedback">A voucher date is required.</div>
+                  }
+                </div>
+                <div class="col-12">
+                  <label class="form-label required" for="voucher-narration">Narration</label>
+                  <textarea
+                    id="voucher-narration"
+                    class="form-control"
+                    rows="2"
+                    formControlName="narration"
+                    placeholder="What is this voucher for?"
+                    [class.is-invalid]="invalid('narration')"
+                  ></textarea>
+                  @if (invalid('narration')) {
+                    <div class="invalid-feedback">A narration is required.</div>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lines (Req 5.1: at least two) -->
+        <div class="col-12">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">Lines</h3>
+              <div class="card-actions">
+                <button type="button" class="btn btn-sm btn-outline-primary" (click)="addLine()">
+                  <i class="ti ti-plus me-1"></i> Add line
+                </button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="table card-table table-vcenter">
+                <thead>
+                  <tr>
+                    <th>Ledger account</th>
+                    <th class="w-1">Side</th>
+                    <th class="w-1 text-end">Amount</th>
+                    <th class="w-1"></th>
+                  </tr>
+                </thead>
+                <tbody formArrayName="lines">
+                  @for (line of lines.controls; track line; let i = $index) {
+                    <tr [formGroupName]="i">
+                      <td>
+                        <select
+                          class="form-select"
+                          formControlName="ledgerAccountId"
+                          [class.is-invalid]="lineInvalid(i, 'ledgerAccountId')"
+                          [attr.aria-label]="'Ledger account for line ' + (i + 1)"
+                        >
+                          <option [ngValue]="null" disabled>Select a ledger…</option>
+                          @for (l of ledgers(); track l.id) {
+                            <option [ngValue]="l.id">{{ l.name }}</option>
+                          }
+                        </select>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          class="btn w-100"
+                          [class.btn-blue]="line.controls['side'].value === 'DEBIT'"
+                          [class.btn-green]="line.controls['side'].value === 'CREDIT'"
+                          (click)="toggleSide(i)"
+                          [attr.aria-label]="'Toggle side for line ' + (i + 1)"
+                        >
+                          {{ drcrLabel(line.controls['side'].value) }}
+                        </button>
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          class="form-control text-end"
+                          formControlName="amount"
+                          min="0.01"
+                          step="0.01"
+                          placeholder="0.00"
+                          [class.is-invalid]="lineInvalid(i, 'amount')"
+                          [attr.aria-label]="'Amount for line ' + (i + 1)"
+                        />
+                      </td>
+                      <td class="text-end">
+                        <button
+                          type="button"
+                          class="btn btn-ghost-danger btn-icon"
+                          (click)="removeLine(i)"
+                          [disabled]="lines.length <= 2"
+                          [attr.aria-label]="'Remove line ' + (i + 1)"
+                        >
+                          <i class="ti ti-trash"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Live Dr/Cr balance indicator (Req 5.2) -->
+            <div class="card-footer">
+              <div class="row align-items-center g-2">
+                <div class="col">
+                  <div class="d-flex flex-wrap gap-3">
+                    <span>
+                      <span class="text-secondary">Total Dr</span>
+                      <strong class="ms-1">{{ balance().debitTotal | number: '1.2-2' }}</strong>
+                    </span>
+                    <span>
+                      <span class="text-secondary">Total Cr</span>
+                      <strong class="ms-1">{{ balance().creditTotal | number: '1.2-2' }}</strong>
+                    </span>
+                  </div>
+                </div>
+                <div class="col-auto">
+                  @if (balance().balanced) {
+                    <span class="badge bg-green-lt">
+                      <i class="ti ti-scale me-1"></i> Balanced
+                    </span>
+                  } @else {
+                    <span class="badge bg-red-lt">
+                      <i class="ti ti-alert-triangle me-1"></i>
+                      Difference {{ balance().difference | number: '1.2-2' }}
+                    </span>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        @if (serverError()) {
+          <div class="col-12">
+            <div class="alert alert-danger mb-0" role="alert">
+              <i class="ti ti-alert-triangle me-1"></i> {{ serverError() }}
+            </div>
+          </div>
+        }
+
+        <div class="col-12">
+          <div class="d-flex justify-content-end gap-2">
+            <button
+              type="submit"
+              class="btn btn-primary"
+              [disabled]="!canSubmit()"
+              [class.btn-loading]="submitting()"
+            >
+              <i class="ti ti-device-floppy me-1"></i> Post voucher
+            </button>
+          </div>
+          @if (!balance().balanced) {
+            <p class="text-secondary text-end small mt-2 mb-0">
+              Debits must equal credits before the voucher can be posted.
+            </p>
+          }
+        </div>
+      </div>
+    </form>
+
+    <!-- Posted / looked-up voucher with a reverse action (Req 6.3) -->
+    @if (postedVoucher(); as v) {
+      <div class="card mt-3 anim-fade-up">
+        <div class="card-header">
+          <h3 class="card-title">
+            <i class="ti ti-file-check me-1 text-green"></i>
+            Voucher {{ v.reference }} — {{ voucherTypeLabel(v.type) }}
+          </h3>
+          <div class="card-actions">
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-danger"
+              (click)="reverse()"
+              [disabled]="!!v.reversedByVoucherId || reversing()"
+              [class.btn-loading]="reversing()"
+            >
+              <i class="ti ti-arrow-back-up me-1"></i> Reverse
+            </button>
+            <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="dismissPosted()">
+              Dismiss
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="row g-2 mb-2">
+            <div class="col-auto text-secondary">Date {{ v.date }}</div>
+            <div class="col-auto text-secondary">·</div>
+            <div class="col text-secondary">{{ v.narration }}</div>
+          </div>
+          @if (v.reversesVoucherId) {
+            <div class="alert alert-info py-2" role="status">
+              <i class="ti ti-arrow-back-up me-1"></i>
+              This is a reversing voucher for voucher #{{ v.reversesVoucherId }}.
+            </div>
+          }
+          @if (v.reversedByVoucherId) {
+            <div class="alert alert-warning py-2" role="status">
+              <i class="ti ti-alert-triangle me-1"></i>
+              Already reversed by voucher #{{ v.reversedByVoucherId }}.
+            </div>
+          }
+          <div class="table-responsive">
+            <table class="table card-table table-vcenter">
+              <thead>
+                <tr>
+                  <th>Ledger account</th>
+                  <th class="text-end">Debit</th>
+                  <th class="text-end">Credit</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (l of v.lines; track $index) {
+                  <tr>
+                    <td>{{ ledgerName(l.ledgerAccountId) }}</td>
+                    <td class="text-end">
+                      {{ l.debit != null ? (l.debit | number: '1.2-2') : '' }}
+                    </td>
+                    <td class="text-end">
+                      {{ l.credit != null ? (l.credit | number: '1.2-2') : '' }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Reverse an existing posted voucher by id (Req 6.3) -->
+    <div class="card mt-3">
+      <div class="card-header">
+        <h3 class="card-title">Reverse an existing voucher</h3>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary">
+          Look up a posted voucher by its id to review and reverse it. A reversing entry negates the
+          original line by line; the original stays on record.
+        </p>
+        <div class="row g-2 align-items-end">
+          <div class="col-auto">
+            <label class="form-label" for="lookup-id">Voucher id</label>
+            <input
+              #lookupInput
+              id="lookup-id"
+              type="number"
+              class="form-control"
+              min="1"
+              step="1"
+              [class.is-invalid]="!!lookupError()"
+              [value]="lookupId() ?? ''"
+              (input)="lookupId.set(lookupInput.valueAsNumber)"
+            />
+          </div>
+          <div class="col-auto">
+            <button
+              type="button"
+              class="btn btn-outline-primary"
+              (click)="lookupVoucher()"
+              [class.btn-loading]="lookupLoading()"
+            >
+              <i class="ti ti-search me-1"></i> Load
+            </button>
+          </div>
+        </div>
+        @if (lookupError()) {
+          <div class="text-danger small mt-2">{{ lookupError() }}</div>
+        }
+      </div>
+    </div>
+  }
+}

@@ -1,0 +1,27 @@
+/* Chart-of-Accounts tree rows. Groups and ledgers share one flush list; the
+   hierarchy is conveyed by a left indent driven by the node depth (set inline).
+   Mobile-first: rows stay full-width and wrap gracefully on narrow screens. */
+
+.shifa-coa__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.5rem;
+}
+
+.shifa-coa__name {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Group rows read a touch stronger than the ledger leaves beneath them. */
+.shifa-coa__group {
+  background: var(--tblr-bg-surface-secondary, rgba(0, 0, 0, 0.02));
+}
+
+.shifa-coa__ledger .shifa-coa__name {
+  font-size: 0.9375rem;
+}

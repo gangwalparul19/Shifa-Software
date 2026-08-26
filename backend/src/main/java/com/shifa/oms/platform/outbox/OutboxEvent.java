@@ -114,6 +114,29 @@ public class OutboxEvent {
     public static final String AGGREGATE_LEAD = "LEAD";
 
     /**
+     * Aggregate type discriminator for General-Ledger auto-posting events. The
+     * aggregate id is the source document's id; the concrete source type
+     * (ORDER / PURCHASE_ORDER / EXPENSE / PAYMENT) and id are carried on the
+     * payload so the {@code LedgerPostingDrainer} can derive the voucher without
+     * re-deriving them from the aggregate id alone.
+     */
+    public static final String AGGREGATE_LEDGER_SOURCE = "LEDGER_SOURCE";
+
+    /**
+     * Event type emitted (in the source module's own committed transaction) when
+     * a sales order, purchase bill, expense, or payment/receipt is recorded, so
+     * the General Ledger can post the balanced double-entry voucher out-of-band
+     * (Reqs 8.1, 9.1, 10.1, 11.1, 11.2). Its payload carries {@code sourceType}
+     * (ORDER / PURCHASE_ORDER / EXPENSE / PAYMENT) and {@code sourceId}; the
+     * {@code LedgerPostingDrainer} consumes {@code PENDING} rows of this type,
+     * builds + posts the voucher, and never touches the source aggregate (Req
+     * 17.4). Idempotency is enforced at the destination (unique voucher source
+     * key), so a re-delivery or double publish is safe (Reqs 8.4, 9.3, 10.3,
+     * 11.4).
+     */
+    public static final String EVENT_LEDGER_POST = "LEDGER_POST";
+
+    /**
      * Event type emitted by the {@code FollowUpReminderJob} when a non-terminal
      * lead's follow-up date is due, so an in-app reminder is delivered to the
      * lead owner (design &sect;Follow-up Reminders). Its aggregate is

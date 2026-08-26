@@ -64,7 +64,8 @@ class BulkOrderServiceTest {
                 new com.shifa.oms.auth.CurrentUserService());
         OrderWorkflowService workflowService = new OrderWorkflowService(auditService);
         AdminOrderService adminOrderService =
-                new AdminOrderService(orderRepository, labelService, workflowService);
+                new AdminOrderService(orderRepository, labelService, workflowService,
+                        new OutboxEventPublisher(outboxEventRepository));
         PackingService packingService = new PackingService(
                 orderRepository, new OutboxEventPublisher(outboxEventRepository), workflowService,
                 org.mockito.Mockito.mock(com.shifa.oms.auth.UserRepository.class));

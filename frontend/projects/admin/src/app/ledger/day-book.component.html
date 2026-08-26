@@ -1,0 +1,159 @@
+<admin-page-header
+  title="Day Book"
+  [subtitle]="periodLabel() ? periodLabel() + ' · chronological vouchers' : 'Chronological vouchers'"
+  [breadcrumbs]="[{ label: 'Accounting' }, { label: 'Day Book' }]"
+>
+  <button type="button" class="btn btn-primary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i>{{ loading() ? 'Loading…' : 'Apply' }}
+  </button>
+</admin-page-header>
+
+<!-- ================= Period + filter toolbar ================= -->
+<div class="db-toolbar">
+  <div class="db-toolbar__row">
+    <!-- Period mode toggle -->
+    <div class="shifa-formtabs" role="tablist">
+      <button type="button" class="shifa-formtab" [class.is-active]="periodMode() === 'fy'"
+        (click)="setPeriodMode('fy')" role="tab" [attr.aria-selected]="periodMode() === 'fy'">
+        <i class="ti ti-calendar me-1"></i> Financial year
+      </button>
+      <button type="button" class="shifa-formtab" [class.is-active]="periodMode() === 'range'"
+        (click)="setPeriodMode('range')" role="tab" [attr.aria-selected]="periodMode() === 'range'">
+        <i class="ti ti-calendar-event me-1"></i> Date range
+      </button>
+    </div>
+
+    <div class="db-spacer"></div>
+
+    <!-- Period inputs -->
+    <div class="db-controls">
+      @if (periodMode() === 'fy') {
+        <div>
+          <label class="form-label">Financial year</label>
+          <select class="form-select" [ngModel]="selectedFyId()"
+            (ngModelChange)="selectedFyId.set($event)">
+            @for (fy of financialYears(); track fy.id) {
+              <option [ngValue]="fy.id">{{ fy.label }}{{ fy.closed ? ' (closed)' : '' }}</option>
+            }
+            @if (financialYears().length === 0) {
+              <option [ngValue]="null">No financial years</option>
+            }
+          </select>
+        </div>
+      } @else {
+        <div>
+          <label class="form-label">From</label>
+          <input type="date" class="form-control" [value]="from()"
+            (change)="from.set($any($event.target).value)" />
+        </div>
+        <div>
+          <label class="form-label">To</label>
+          <input type="date" class="form-control" [value]="to()"
+            (change)="to.set($any($event.target).value)" />
+        </div>
+      }
+
+      <!-- Voucher-type filter (All by default, Req 13.3) -->
+      <div>
+        <label class="form-label">Voucher type</label>
+        <select class="form-select" [ngModel]="voucherType()" (ngModelChange)="voucherType.set($event)">
+          <option value="">All types</option>
+          @for (t of voucherTypes; track t) {
+            <option [value]="t">{{ typeLabel(t) }}</option>
+          }
+        </select>
+      </div>
+
+      <button type="button" class="btn btn-primary" (click)="load()" [disabled]="loading()">
+        <i class="ti ti-refresh me-1"></i>Apply
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Content ================= -->
+@if (loading()) {
+  <div class="db-card"><div class="db-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading Day Book…</div></div>
+} @else if (error()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+} @else if (data(); as d) {
+
+  <!-- Totals summary -->
+  <div class="row g-2 g-md-3 mb-1">
+    <div class="col-6 col-md-4">
+      <div class="db-kpi acc-slate">
+        <div class="db-kpi__label">Vouchers</div>
+        <div class="db-kpi__value">{{ d.rows.length }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4">
+      <div class="db-kpi acc-blue">
+        <div class="db-kpi__label">Total debit</div>
+        <div class="db-kpi__value">{{ money(totalDebit()) }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4">
+      <div class="db-kpi acc-green">
+        <div class="db-kpi__label">Total credit</div>
+        <div class="db-kpi__value">{{ money(totalCredit()) }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Voucher list (chronological) -->
+  <div class="db-card">
+    <div class="db-card__head">
+      <h3 class="db-card__title">Vouchers</h3>
+      <span class="text-secondary small">Ordered by date</span>
+    </div>
+    <div class="table-responsive">
+      <table class="db-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Reference</th>
+            <th>Type</th>
+            <th>Particulars</th>
+            <th class="num">Debit</th>
+            <th class="num">Credit</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of d.rows; track row.voucherId) {
+            <tr class="db-voucher">
+              <td class="text-secondary">{{ row.date }}</td>
+              <td class="fw-bold shifa-mono">{{ row.reference }}</td>
+              <td><span class="badge" [ngClass]="typePillClass(row.type)">{{ typeLabel(row.type) }}</span></td>
+              <td class="db-narration" [attr.colspan]="1">{{ row.narration }}</td>
+              <td class="num"></td>
+              <td class="num"></td>
+            </tr>
+            @for (line of row.lines; track $index) {
+              <tr class="db-line">
+                <td></td>
+                <td></td>
+                <td></td>
+                <td class="db-line__acct">
+                  <span [class.db-line__cr]="n(line.credit) > 0">{{ ledgerName(line.ledgerAccountId) }}</span>
+                </td>
+                <td class="num">{{ n(line.debit) > 0 ? money(line.debit) : '' }}</td>
+                <td class="num">{{ n(line.credit) > 0 ? money(line.credit) : '' }}</td>
+              </tr>
+            }
+          } @empty {
+            <tr><td colspan="6" class="db-empty">No vouchers posted in this period.</td></tr>
+          }
+        </tbody>
+        @if (d.rows.length) {
+          <tfoot>
+            <tr class="db-totals">
+              <td colspan="4" class="text-end fw-bold">Totals</td>
+              <td class="num fw-bold">{{ money(totalDebit()) }}</td>
+              <td class="num fw-bold">{{ money(totalCredit()) }}</td>
+            </tr>
+          </tfoot>
+        }
+      </table>
+    </div>
+  </div>
+}

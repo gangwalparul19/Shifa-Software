@@ -438,6 +438,51 @@ export class AdminShellComponent {
       ],
     },
     {
+      // General Ledger / accounting module (general-ledger-accounting, Req 16).
+      // Every link is gated to the finance roles (ADMIN/ACCOUNTANT/CA) matching
+      // the route's accountingGuard; CA is read-only server-side.
+      kind: 'group',
+      label: 'Accounting',
+      icon: 'ti-book',
+      children: [
+        {
+          kind: 'link',
+          label: 'Chart of Accounts',
+          path: '/accounting/chart-of-accounts',
+          icon: 'ti-sitemap',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'Voucher Entry',
+          path: '/accounting/vouchers/new',
+          icon: 'ti-file-invoice',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'Day Book',
+          path: '/accounting/day-book',
+          icon: 'ti-book-2',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'Trial Balance',
+          path: '/accounting/trial-balance',
+          icon: 'ti-scale',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'Ledger Statement',
+          path: '/accounting/ledger-statement',
+          icon: 'ti-list-details',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+      ],
+    },
+    {
       kind: 'group',
       label: 'Account & Settings',
       icon: 'ti-settings',

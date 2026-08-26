@@ -60,7 +60,9 @@ class RejectionReasonPropertyTest {
     void rejectionIsAcceptedExactlyForNonBlankReasons(@ForAll("reasons") String reason) {
         OrderRepository orderRepository = mock(OrderRepository.class);
         AdminOrderService service = new AdminOrderService(
-                orderRepository, labelService(orderRepository), workflow());
+                orderRepository, labelService(orderRepository), workflow(),
+                new com.shifa.oms.platform.outbox.OutboxEventPublisher(
+                        mock(com.shifa.oms.platform.outbox.OutboxEventRepository.class)));
 
         OrderEntity order = pendingOrder();
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));

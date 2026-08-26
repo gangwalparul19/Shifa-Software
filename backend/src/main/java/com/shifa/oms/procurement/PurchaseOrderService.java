@@ -14,6 +14,7 @@ import com.shifa.oms.procurement.dto.PurchaseOrderResponse;
 import com.shifa.oms.procurement.dto.PurchaseOrderSummaryResponse;
 import com.shifa.oms.procurement.dto.ReceiveLineRequest;
 import com.shifa.oms.procurement.dto.ReceivePurchaseOrderRequest;
+import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.product.ProductRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -54,6 +55,9 @@ public class PurchaseOrderService {
     /** The prefix applied to every allocated PO number. */
     static final String PO_PREFIX = "PO-";
 
+    /** {@code vouchers.source_type} for a recorded purchase bill (matches {@code SourceType.PURCHASE_ORDER}). */
+    private static final String LEDGER_SOURCE_PURCHASE_ORDER = "PURCHASE_ORDER";
+
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final PurchaseOrderSequenceRepository sequenceRepository;
     private final SupplierRepository supplierRepository;
@@ -61,6 +65,7 @@ public class PurchaseOrderService {
     private final StockService stockService;
     private final AuditService auditService;
     private final CurrentUserService currentUserService;
+    private final OutboxEventPublisher outboxEventPublisher;
 
     public PurchaseOrderService(PurchaseOrderRepository purchaseOrderRepository,
                                 PurchaseOrderSequenceRepository sequenceRepository,
@@ -68,7 +73,8 @@ public class PurchaseOrderService {
                                 ProductRepository productRepository,
                                 StockService stockService,
                                 AuditService auditService,
-                                CurrentUserService currentUserService) {
+                                CurrentUserService currentUserService,
+                                OutboxEventPublisher outboxEventPublisher) {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.sequenceRepository = sequenceRepository;
         this.supplierRepository = supplierRepository;
@@ -76,6 +82,7 @@ public class PurchaseOrderService {
         this.stockService = stockService;
         this.auditService = auditService;
         this.currentUserService = currentUserService;
+        this.outboxEventPublisher = outboxEventPublisher;
     }
 
     /**
@@ -111,6 +118,11 @@ public class PurchaseOrderService {
                 String.valueOf(saved.getId()),
                 "PO " + saved.getPoNumber() + " created for supplier " + saved.getSupplierId()
                         + " (total " + saved.getTotalAmount() + ")");
+        // Auto-posting (Reqs 9.1, 17.3, 17.4): enqueue a ledger-post event in this same
+        // transaction so the General Ledger derives the balanced Purchase voucher out-of-band. The
+        // event row commits atomically with the PO; a downstream posting failure can never roll
+        // back or alter this purchase order (additive — no change to existing behaviour/return value).
+        outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_PURCHASE_ORDER, saved.getId());
         return PurchaseOrderResponse.from(saved);
     }
 

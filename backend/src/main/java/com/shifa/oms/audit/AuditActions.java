@@ -97,6 +97,12 @@ public final class AuditActions {
     /** A portal-ready GSTR-1 return export (CSV bundle / portal JSON) — GST filing compliance (Req 13.3). */
     public static final String GSTR1_EXPORTED = "GSTR1_EXPORTED";
 
+    // General Ledger / double-entry vouchers (general-ledger-accounting, Req 15.1, 15.2).
+    /** A double-entry voucher was posted to the General Ledger (Req 15.1). */
+    public static final String VOUCHER_POSTED = "VOUCHER_POSTED";
+    /** A posted voucher was reversed by a balancing reversing voucher (Req 15.2). */
+    public static final String VOUCHER_REVERSED = "VOUCHER_REVERSED";
+
     // --- Entity types -------------------------------------------------------
 
     public static final String ENTITY_ORDER = "ORDER";
@@ -116,4 +122,6 @@ public final class AuditActions {
     public static final String ENTITY_WHATSAPP_TEMPLATE = "WHATSAPP_TEMPLATE";
     /** GST filing/return artifacts (e.g. a GSTR-1 export) — GST filing compliance. */
     public static final String ENTITY_GST = "GST";
+    /** A General Ledger double-entry voucher (general-ledger-accounting). */
+    public static final String ENTITY_VOUCHER = "VOUCHER";
 }

@@ -13,6 +13,8 @@ import com.shifa.oms.order.PaymentVerificationStatus;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.payment.dto.PaymentQueueRow;
+import com.shifa.oms.platform.outbox.OutboxEventPublisher;
+import com.shifa.oms.platform.outbox.OutboxEventRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -54,7 +56,8 @@ class PaymentVerificationServiceTest {
                 return new AuthPrincipal(7L, "verifier", Role.PAYMENT_VERIFIER);
             }
         };
-        service = new PaymentVerificationService(orderRepository, auditService, currentUser);
+        service = new PaymentVerificationService(orderRepository, auditService, currentUser,
+                new OutboxEventPublisher(mock(OutboxEventRepository.class)));
         lenient().when(orderRepository.save(any(OrderEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
     }

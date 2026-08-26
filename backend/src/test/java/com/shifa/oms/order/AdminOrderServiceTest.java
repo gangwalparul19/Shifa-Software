@@ -9,6 +9,8 @@ import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.label.LabelService;
 import com.shifa.oms.order.dto.ApprovalQueueItemResponse;
 import com.shifa.oms.order.dto.OrderResponse;
+import com.shifa.oms.platform.outbox.OutboxEventPublisher;
+import com.shifa.oms.platform.outbox.OutboxEventRepository;
 import com.shifa.oms.platform.storage.StorageService;
 import com.shifa.oms.statemachine.IllegalStatusTransitionException;
 import com.shifa.oms.statemachine.OrderStatus;
@@ -62,7 +64,10 @@ class AdminOrderServiceTest {
         AuditService auditService = new AuditService(
                 mock(AuditEventRepository.class), new CurrentUserService());
         OrderWorkflowService workflowService = new OrderWorkflowService(auditService);
-        service = new AdminOrderService(orderRepository, labelService, workflowService);
+        OutboxEventPublisher outboxEventPublisher =
+                new OutboxEventPublisher(mock(OutboxEventRepository.class));
+        service = new AdminOrderService(orderRepository, labelService, workflowService,
+                outboxEventPublisher);
         lenient().when(orderRepository.save(any(OrderEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
     }

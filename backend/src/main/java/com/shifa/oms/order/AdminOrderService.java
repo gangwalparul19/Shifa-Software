@@ -8,6 +8,7 @@ import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.order.dto.ApprovalQueueItemResponse;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
+import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -38,15 +39,21 @@ public class AdminOrderService {
 
     private static final String SOURCE_ADMIN = "ADMIN";
 
+    /** {@code vouchers.source_type} for a finalised sales order (matches {@code SourceType.ORDER}). */
+    private static final String LEDGER_SOURCE_ORDER = "ORDER";
+
     private final OrderRepository orderRepository;
     private final LabelService labelService;
     private final OrderWorkflowService orderWorkflowService;
+    private final OutboxEventPublisher outboxEventPublisher;
 
     public AdminOrderService(OrderRepository orderRepository, LabelService labelService,
-                             OrderWorkflowService orderWorkflowService) {
+                             OrderWorkflowService orderWorkflowService,
+                             OutboxEventPublisher outboxEventPublisher) {
         this.orderRepository = orderRepository;
         this.labelService = labelService;
         this.orderWorkflowService = orderWorkflowService;
+        this.outboxEventPublisher = outboxEventPublisher;
     }
 
     /**
@@ -149,7 +156,13 @@ public class AdminOrderService {
                 order, OrderStatus.APPROVED, Actor.user(admin, SOURCE_ADMIN));
         // Req 10.1-10.3: generate the internal label and move to Label_Generated.
         labelService.generateInternalLabelOnApproval(order, admin.username());
-        return OrderResponse.from(orderRepository.save(order));
+        OrderEntity saved = orderRepository.save(order);
+        // Auto-posting (Reqs 8.1, 8.3, 17.3, 17.4): enqueue a ledger-post event in this same
+        // transaction so the General Ledger derives the balanced Sales voucher out-of-band. The
+        // event row commits atomically with the approval; a downstream posting failure can never
+        // roll back or alter this order (additive — no change to existing behaviour/return value).
+        outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_ORDER, saved.getId());
+        return OrderResponse.from(saved);
     }
 
     /**

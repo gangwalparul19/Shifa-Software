@@ -37,6 +37,11 @@ import { WhatsappTemplatesComponent } from './whatsapp/whatsapp-templates.compon
 import { CaGstDashboardComponent } from './ca-gst/ca-gst-dashboard.component';
 import { TeamPerformanceComponent } from './team/team-performance.component';
 import { LeaderboardComponent } from './leaderboard/leaderboard.component';
+import { ChartOfAccountsComponent } from './ledger/chart-of-accounts.component';
+import { VoucherEntryComponent } from './ledger/voucher-entry.component';
+import { DayBookComponent } from './ledger/day-book.component';
+import { TrialBalanceComponent } from './ledger/trial-balance.component';
+import { LedgerStatementComponent } from './ledger/ledger-statement.component';
 
 const LOGIN_PATH = '/login';
 const FORBIDDEN_PATH = '/forbidden';
@@ -98,6 +103,20 @@ export const reportsGuard = createRoleGuard(
 
 /** Reconciliation/settlement + finance sections are limited to Accountant, CA and Admin. */
 export const accountantGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.ACCOUNTANT,
+  Role.CA,
+);
+
+/**
+ * General Ledger / accounting module (general-ledger-accounting, Req 16.1–16.3).
+ * View access is granted to ADMIN, ACCOUNTANT and CA. Post/reverse/CoA-edit are
+ * additionally enforced ADMIN/ACCOUNTANT-only on the backend (CA is read-only,
+ * Req 16.4, 16.5), and the voucher-entry UI hides its mutating affordances for CA.
+ */
+export const accountingGuard = createRoleGuard(
   LOGIN_PATH,
   FORBIDDEN_PATH,
   Role.ADMIN,
@@ -358,6 +377,39 @@ export const routes: Routes = [
         path: 'ca/gst',
         component: CaGstDashboardComponent,
         canActivate: [adminOrCaGuard],
+      },
+      {
+        // General Ledger — Chart of Accounts (ADMIN + ACCOUNTANT + CA view; CoA
+        // edits ADMIN/ACCOUNTANT-only server-side, CA read-only). Req 16.1–16.3.
+        path: 'accounting/chart-of-accounts',
+        component: ChartOfAccountsComponent,
+        canActivate: [accountingGuard],
+      },
+      {
+        // Manual double-entry voucher entry + reversal (ADMIN/ACCOUNTANT post;
+        // CA read-only server-side, entry UI hidden for CA). Req 16.1–16.4.
+        path: 'accounting/vouchers/new',
+        component: VoucherEntryComponent,
+        canActivate: [accountingGuard],
+      },
+      {
+        // Day Book — chronological voucher listing (read). Req 13, 16.1–16.3.
+        path: 'accounting/day-book',
+        component: DayBookComponent,
+        canActivate: [accountingGuard],
+      },
+      {
+        // Trial Balance (read). Req 14, 16.1–16.3, 18.2.
+        path: 'accounting/trial-balance',
+        component: TrialBalanceComponent,
+        canActivate: [accountingGuard],
+      },
+      {
+        // Ledger statement — per-account statement with running balance (read).
+        // The account is chosen in-page, so no route param is needed. Req 12.
+        path: 'accounting/ledger-statement',
+        component: LedgerStatementComponent,
+        canActivate: [accountingGuard],
       },
       {
         // Team management: assign salespeople to a team lead (ADMIN only).

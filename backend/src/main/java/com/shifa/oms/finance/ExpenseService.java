@@ -8,6 +8,7 @@ import com.shifa.oms.common.PageResponse;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.finance.dto.ExpenseRequest;
 import com.shifa.oms.finance.dto.ExpenseResponse;
+import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -26,16 +27,22 @@ import java.time.LocalDate;
 @Service
 public class ExpenseService {
 
+    /** {@code vouchers.source_type} for a recorded expense (matches {@code SourceType.EXPENSE}). */
+    private static final String LEDGER_SOURCE_EXPENSE = "EXPENSE";
+
     private final ExpenseRepository expenseRepository;
     private final AuditService auditService;
     private final CurrentUserService currentUserService;
+    private final OutboxEventPublisher outboxEventPublisher;
 
     public ExpenseService(ExpenseRepository expenseRepository,
                           AuditService auditService,
-                          CurrentUserService currentUserService) {
+                          CurrentUserService currentUserService,
+                          OutboxEventPublisher outboxEventPublisher) {
         this.expenseRepository = expenseRepository;
         this.auditService = auditService;
         this.currentUserService = currentUserService;
+        this.outboxEventPublisher = outboxEventPublisher;
     }
 
     /** Records a new expense. */
@@ -49,6 +56,11 @@ public class ExpenseService {
                 String.valueOf(saved.getId()),
                 "Expense added: " + saved.getCategory() + " " + saved.getAmount()
                         + " on " + saved.getIncurredOn());
+        // Auto-posting (Reqs 10.1, 17.3, 17.4): enqueue a ledger-post event in this same
+        // transaction so the General Ledger derives the balanced expense voucher out-of-band. The
+        // event row commits atomically with the expense; a downstream posting failure can never
+        // roll back or alter this expense (additive — no change to existing behaviour/return value).
+        outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_EXPENSE, saved.getId());
         return ExpenseResponse.from(saved);
     }
 

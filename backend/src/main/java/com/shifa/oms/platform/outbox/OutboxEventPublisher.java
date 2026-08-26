@@ -364,6 +364,33 @@ public class OutboxEventPublisher {
     }
 
     /**
+     * Enqueues a {@code LEDGER_POST} event so the General Ledger posts the
+     * balanced double-entry voucher for a just-recorded source business document
+     * out-of-band (Reqs 8.1, 9.1, 10.1, 11.1, 11.2, 17.3, 17.4).
+     *
+     * <p>Call this from inside the source module's existing {@code @Transactional}
+     * method (sales-invoice finalisation, purchase-bill recording, expense
+     * creation, payment/receipt recording) so the event row commits atomically
+     * with the source change; the {@code LedgerPostingDrainer} then derives and
+     * posts the voucher without ever modifying the source aggregate. The event is
+     * {@link OutboxEvent#AGGREGATE_LEDGER_SOURCE ledger-source}-scoped with the
+     * source document id as the aggregate id; {@code sourceType} + {@code sourceId}
+     * are carried on the payload as the auto-posting key.
+     *
+     * @param sourceType the source-document type name (ORDER / PURCHASE_ORDER /
+     *                   EXPENSE / PAYMENT)
+     * @param sourceId   the source document's id
+     * @return the persisted event row
+     */
+    public OutboxEvent publishLedgerPost(String sourceType, Long sourceId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("sourceType", sourceType);
+        payload.put("sourceId", sourceId);
+        return publish(OutboxEvent.AGGREGATE_LEDGER_SOURCE, sourceId,
+                OutboxEvent.EVENT_LEDGER_POST, payload);
+    }
+
+    /**
      * Enqueues a {@code LEAD_FOLLOW_UP_DUE} event for a lead whose follow-up date
      * is due, so an in-app reminder is delivered to the lead owner (design
      * &sect;Follow-up Reminders). Lead-scoped ({@link OutboxEvent#AGGREGATE_LEAD})

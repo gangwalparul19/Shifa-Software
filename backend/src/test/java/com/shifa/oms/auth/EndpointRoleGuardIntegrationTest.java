@@ -15,10 +15,35 @@ import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderSource;
 import com.shifa.oms.order.dto.OrderResponse;
+import com.shifa.oms.audit.AuditEventRepository;
 import com.shifa.oms.crm.CustomerController;
 import com.shifa.oms.crm.CustomerService;
 import com.shifa.oms.crm.dto.CustomerDetailResponse;
 import com.shifa.oms.crm.dto.CustomerSummaryResponse;
+import com.shifa.oms.ledger.AccountGroup;
+import com.shifa.oms.ledger.AccountGroupRepository;
+import com.shifa.oms.ledger.ChartOfAccountsService;
+import com.shifa.oms.ledger.DayBookService;
+import com.shifa.oms.ledger.FinancialYear;
+import com.shifa.oms.ledger.FinancialYearRepository;
+import com.shifa.oms.ledger.FinancialYearService;
+import com.shifa.oms.ledger.FinancialYearService.Period;
+import com.shifa.oms.ledger.LedgerAccount;
+import com.shifa.oms.ledger.LedgerAccountRepository;
+import com.shifa.oms.ledger.LedgerController;
+import com.shifa.oms.ledger.LedgerViewService;
+import com.shifa.oms.ledger.OpeningBalance;
+import com.shifa.oms.ledger.OpeningBalanceRepository;
+import com.shifa.oms.ledger.OpeningBalanceService;
+import com.shifa.oms.ledger.ReportPeriodResolver;
+import com.shifa.oms.ledger.TrialBalanceService;
+import com.shifa.oms.ledger.Voucher;
+import com.shifa.oms.ledger.VoucherLineRepository;
+import com.shifa.oms.ledger.VoucherRepository;
+import com.shifa.oms.ledger.VoucherService;
+import com.shifa.oms.ledger.domain.AccountNature;
+import com.shifa.oms.ledger.domain.DrCr;
+import com.shifa.oms.ledger.domain.VoucherType;
 import com.shifa.oms.gst.GstAccountingService;
 import com.shifa.oms.gst.GstController;
 import com.shifa.oms.gst.GstPdfExporter;
@@ -72,9 +97,14 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -106,7 +136,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         ReportController.class,
         AdminProductController.class,
         CustomerController.class,
-        GstController.class},
+        GstController.class,
+        LedgerController.class},
         // The production JWT filter (a Filter @Component pulled into the web slice) needs
         // JwtService, which is irrelevant here — callers are authenticated directly via the
         // security-test post-processor. Exclude it so the slice does not wire its dependency chain.
@@ -314,6 +345,164 @@ class EndpointRoleGuardIntegrationTest {
         return total;
     }
 
+    // --- Accounting / General Ledger: reads ADMIN+ACCOUNTANT+CA, writes ADMIN+ACCOUNTANT (Req 16) ----
+
+    /**
+     * The full role set the {@code /api/accounting/**} endpoints are guarded against (Req 16): the
+     * three finance roles the class-level {@code @PreAuthorize hasAnyRole('ADMIN','ACCOUNTANT','CA')}
+     * admits for read access (Reqs 16.1, 16.3, 18.1), plus the four non-finance roles that must be
+     * rejected with 403 on any accounting endpoint (Req 16.2). The mutating endpoints additionally
+     * exclude CA via a method-level {@code hasAnyRole('ADMIN','ACCOUNTANT')} (Reqs 16.4, 16.5).
+     */
+    private static final List<Role> ACCOUNTING_ROLES = List.of(
+            Role.ADMIN, Role.ACCOUNTANT, Role.CA,
+            Role.SALESPERSON, Role.PACKING_USER, Role.TEAM_LEAD, Role.PAYMENT_VERIFIER);
+
+    /** The three finance roles allowed to READ every accounting view (Reqs 16.1, 16.3, 18.1). */
+    private static final List<Role> ACCOUNTING_READ_ROLES = List.of(Role.ADMIN, Role.ACCOUNTANT, Role.CA);
+
+    /**
+     * The two roles allowed to POST/reverse vouchers and edit the Chart of Accounts (Reqs 16.4, 16.5);
+     * CA is deliberately excluded so it is read-only.
+     */
+    private static final List<Role> ACCOUNTING_WRITE_ROLES = List.of(Role.ADMIN, Role.ACCOUNTANT);
+
+    // Read views: ADMIN + ACCOUNTANT + CA succeed; the four non-finance roles get 403 (Reqs 16.1–16.3, 18.1).
+
+    @Test
+    void accountGroupsListReadIsFinanceRoles() throws Exception {
+        assertAccountingRoleMatrix(get("/api/accounting/account-groups"), ACCOUNTING_READ_ROLES);
+    }
+
+    @Test
+    void ledgersListReadIsFinanceRoles() throws Exception {
+        assertAccountingRoleMatrix(get("/api/accounting/ledgers"), ACCOUNTING_READ_ROLES);
+    }
+
+    @Test
+    void financialYearsListReadIsFinanceRoles() throws Exception {
+        assertAccountingRoleMatrix(get("/api/accounting/financial-years"), ACCOUNTING_READ_ROLES);
+    }
+
+    @Test
+    void openingBalancesReadIsFinanceRoles() throws Exception {
+        assertAccountingRoleMatrix(get("/api/accounting/opening-balances"), ACCOUNTING_READ_ROLES);
+    }
+
+    @Test
+    void dayBookReadIsFinanceRoles() throws Exception {
+        assertAccountingRoleMatrix(get("/api/accounting/vouchers"), ACCOUNTING_READ_ROLES);
+    }
+
+    @Test
+    void voucherDetailReadIsFinanceRoles() throws Exception {
+        assertAccountingRoleMatrix(get("/api/accounting/vouchers/5"), ACCOUNTING_READ_ROLES);
+    }
+
+    @Test
+    void voucherAuditReadIsFinanceRoles() throws Exception {
+        assertAccountingRoleMatrix(get("/api/accounting/vouchers/5/audit"), ACCOUNTING_READ_ROLES);
+    }
+
+    @Test
+    void ledgerStatementReadIsFinanceRoles() throws Exception {
+        assertAccountingRoleMatrix(get("/api/accounting/ledgers/5/statement"), ACCOUNTING_READ_ROLES);
+    }
+
+    @Test
+    void trialBalanceReadIsFinanceRoles() throws Exception {
+        assertAccountingRoleMatrix(get("/api/accounting/trial-balance"), ACCOUNTING_READ_ROLES);
+    }
+
+    // Mutations: only ADMIN + ACCOUNTANT succeed; CA AND the four non-finance roles get 403 (Reqs 16.4, 16.5).
+
+    /** Valid account-group create body so the ONLY decision under test on the write is the guard. */
+    private static final String VALID_ACCOUNT_GROUP_JSON = """
+            {"name":"Guard Group","nature":"ASSET"}
+            """;
+
+    /** Valid ledger create body. */
+    private static final String VALID_LEDGER_JSON = """
+            {"name":"Guard Ledger","accountGroupId":1}
+            """;
+
+    /** Valid opening-balance upsert body. */
+    private static final String VALID_OPENING_BALANCE_JSON = """
+            {"ledgerAccountId":1,"financialYearId":1,"amount":"100.00","side":"DEBIT"}
+            """;
+
+    /** Valid, balanced two-line journal voucher body. */
+    private static final String VALID_VOUCHER_JSON = """
+            {"type":"JOURNAL","date":"2026-01-10","narration":"Guard voucher","lines":[
+              {"ledgerAccountId":1,"side":"DEBIT","amount":"100.00"},
+              {"ledgerAccountId":2,"side":"CREDIT","amount":"100.00"}]}
+            """;
+
+    @Test
+    void createAccountGroupIsAdminOrAccountant() throws Exception {
+        assertAccountingRoleMatrix(
+                post("/api/accounting/account-groups")
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_ACCOUNT_GROUP_JSON),
+                ACCOUNTING_WRITE_ROLES);
+    }
+
+    @Test
+    void createLedgerIsAdminOrAccountant() throws Exception {
+        assertAccountingRoleMatrix(
+                post("/api/accounting/ledgers")
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_LEDGER_JSON),
+                ACCOUNTING_WRITE_ROLES);
+    }
+
+    @Test
+    void deleteLedgerIsAdminOrAccountant() throws Exception {
+        assertAccountingRoleMatrix(delete("/api/accounting/ledgers/5"), ACCOUNTING_WRITE_ROLES);
+    }
+
+    @Test
+    void closeFinancialYearIsAdminOrAccountant() throws Exception {
+        assertAccountingRoleMatrix(post("/api/accounting/financial-years/5/close"), ACCOUNTING_WRITE_ROLES);
+    }
+
+    @Test
+    void recordOpeningBalanceIsAdminOrAccountant() throws Exception {
+        assertAccountingRoleMatrix(
+                post("/api/accounting/opening-balances")
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_OPENING_BALANCE_JSON),
+                ACCOUNTING_WRITE_ROLES);
+    }
+
+    @Test
+    void postVoucherIsAdminOrAccountant() throws Exception {
+        assertAccountingRoleMatrix(
+                post("/api/accounting/vouchers")
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_VOUCHER_JSON),
+                ACCOUNTING_WRITE_ROLES);
+    }
+
+    @Test
+    void reverseVoucherIsAdminOrAccountant() throws Exception {
+        assertAccountingRoleMatrix(post("/api/accounting/vouchers/5/reverse"), ACCOUNTING_WRITE_ROLES);
+    }
+
+    /**
+     * As {@link #assertRoleMatrix} but over the accounting role set {@link #ACCOUNTING_ROLES} — so the
+     * {@code /api/accounting/**} endpoints are asserted allowed for {@code allowed} and forbidden (403)
+     * for every other role, covering the three finance roles AND the four non-finance roles (Req 16).
+     */
+    private void assertAccountingRoleMatrix(MockHttpServletRequestBuilder request, List<Role> allowed)
+            throws Exception {
+        for (Role role : ACCOUNTING_ROLES) {
+            if (allowed.contains(role)) {
+                mvc.perform(request.with(authFor(role)))
+                        .andExpect(status().is2xxSuccessful());
+            } else {
+                mvc.perform(request.with(authFor(role)))
+                        .andExpect(status().isForbidden());
+            }
+        }
+    }
+
     // --- Harness ------------------------------------------------------------
 
     /**
@@ -476,12 +665,220 @@ class EndpointRoleGuardIntegrationTest {
         CsvReportExporter csvReportExporter() {
             return new CsvReportExporter();
         }
+
+        // --- General Ledger (accounting) collaborators for LedgerController -------------
+
+        @Bean
+        ChartOfAccountsService chartOfAccountsService() {
+            return new StubChartOfAccountsService();
+        }
+
+        @Bean
+        FinancialYearService financialYearService() {
+            return new StubFinancialYearService();
+        }
+
+        @Bean
+        OpeningBalanceService openingBalanceService() {
+            return new StubOpeningBalanceService();
+        }
+
+        @Bean
+        VoucherService voucherService() {
+            return new StubVoucherService();
+        }
+
+        @Bean
+        DayBookService dayBookService() {
+            return new StubDayBookService();
+        }
+
+        @Bean
+        LedgerViewService ledgerViewService() {
+            return new StubLedgerViewService();
+        }
+
+        @Bean
+        TrialBalanceService trialBalanceService() {
+            return new StubTrialBalanceService();
+        }
+
+        @Bean
+        ReportPeriodResolver reportPeriodResolver() {
+            return new StubReportPeriodResolver();
+        }
+
+        /** Mocked repositories: default answers give empty lists/Optionals; the voucher lookup is
+         * stubbed so the voucher-detail read returns 2xx for a permitted caller (denied callers are
+         * rejected by the guard before the body runs, so the stub value is irrelevant to them). */
+        @Bean
+        AccountGroupRepository ledgerAccountGroupRepository() {
+            return mock(AccountGroupRepository.class);
+        }
+
+        @Bean
+        LedgerAccountRepository ledgerAccountRepository() {
+            return mock(LedgerAccountRepository.class);
+        }
+
+        @Bean
+        FinancialYearRepository financialYearRepository() {
+            return mock(FinancialYearRepository.class);
+        }
+
+        @Bean
+        OpeningBalanceRepository openingBalanceRepository() {
+            return mock(OpeningBalanceRepository.class);
+        }
+
+        @Bean
+        VoucherRepository voucherRepository() {
+            VoucherRepository repository = mock(VoucherRepository.class);
+            when(repository.findById(anyLong())).thenReturn(Optional.of(sampleVoucher()));
+            return repository;
+        }
+
+        @Bean
+        VoucherLineRepository voucherLineRepository() {
+            return mock(VoucherLineRepository.class);
+        }
+
+        @Bean
+        AuditEventRepository auditEventRepository() {
+            return mock(AuditEventRepository.class);
+        }
+    }
+
+    // --- Ledger stub services: canned results so a permitted call passes the guard and yields 2xx ---
+
+    static class StubChartOfAccountsService extends ChartOfAccountsService {
+        StubChartOfAccountsService() {
+            super(null, null, null);
+        }
+
+        @Override
+        public AccountGroup createGroup(String name, AccountNature nature, Long parentGroupId) {
+            return new AccountGroup("Guard Group", AccountNature.ASSET, null, false);
+        }
+
+        @Override
+        public LedgerAccount createLedger(String name, Long groupId) {
+            return new LedgerAccount("Guard Ledger", 1L, null, false);
+        }
+
+        @Override
+        public void deleteLedger(Long id) {
+            // no-op: a permitted delete returns 204
+        }
+    }
+
+    static class StubFinancialYearService extends FinancialYearService {
+        StubFinancialYearService() {
+            super(null, null, null, null, null, null, null);
+        }
+
+        @Override
+        public FinancialYear close(Long financialYearId) {
+            return sampleFinancialYear();
+        }
+    }
+
+    static class StubOpeningBalanceService extends OpeningBalanceService {
+        StubOpeningBalanceService() {
+            super(null, null, null);
+        }
+
+        @Override
+        public OpeningBalance recordOpeningBalance(Long ledgerAccountId, Long financialYearId,
+                                                   BigDecimal amount, DrCr side) {
+            return new OpeningBalance(1L, 1L, new BigDecimal("100.00"), DrCr.DEBIT);
+        }
+
+        @Override
+        public OpeningBalanceCheck checkBalance(Long financialYearId) {
+            return new OpeningBalanceCheck(true, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        }
+    }
+
+    static class StubVoucherService extends VoucherService {
+        StubVoucherService() {
+            super(null, null, null, null, null, null, null, null);
+        }
+
+        @Override
+        public Voucher post(PostVoucherCommand command) {
+            return sampleVoucher();
+        }
+
+        @Override
+        public Voucher reverse(Long voucherId) {
+            return sampleVoucher();
+        }
+    }
+
+    static class StubDayBookService extends DayBookService {
+        StubDayBookService() {
+            super(null, null, null);
+        }
+
+        @Override
+        public DayBook dayBook(Long financialYearId, LocalDate from, LocalDate to, VoucherType voucherType) {
+            return new DayBook(LocalDate.of(2025, 4, 1), LocalDate.of(2026, 3, 31), 1L, voucherType, List.of());
+        }
+    }
+
+    static class StubLedgerViewService extends LedgerViewService {
+        StubLedgerViewService() {
+            super(null, null, null, null, null, null, null);
+        }
+
+        @Override
+        public LedgerStatement statement(Long ledgerAccountId, Long financialYearId,
+                                         LocalDate from, LocalDate to) {
+            Period period = new Period(LocalDate.of(2025, 4, 1), LocalDate.of(2026, 3, 31), 1L);
+            return new LedgerStatement(1L, "Cash", AccountNature.ASSET, period, null, List.of(), null);
+        }
+    }
+
+    static class StubTrialBalanceService extends TrialBalanceService {
+        StubTrialBalanceService() {
+            super(null, null, null, null, null, null);
+        }
+
+        @Override
+        public TrialBalanceReport trialBalance(Long financialYearId, LocalDate from, LocalDate to) {
+            Period period = new Period(LocalDate.of(2025, 4, 1), LocalDate.of(2026, 3, 31), 1L);
+            return new TrialBalanceReport(period, List.of(),
+                    BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, true);
+        }
+    }
+
+    static class StubReportPeriodResolver extends ReportPeriodResolver {
+        StubReportPeriodResolver() {
+            super((FinancialYearService) null);
+        }
+
+        @Override
+        public Period resolve(Long financialYearId, LocalDate from, LocalDate to) {
+            return new Period(LocalDate.of(2025, 4, 1), LocalDate.of(2026, 3, 31), 1L);
+        }
+    }
+
+    /** A posted JOURNAL voucher (no id needed) so voucher reads/writes render to 2xx. */
+    private static Voucher sampleVoucher() {
+        return new Voucher(VoucherType.JOURNAL, LocalDate.of(2026, 1, 10), 1L, "JV/2026/1",
+                "Guard voucher", "admin", null, null, null);
+    }
+
+    /** A current, open financial year for the close-year write. */
+    private static FinancialYear sampleFinancialYear() {
+        return new FinancialYear(LocalDate.of(2025, 4, 1), LocalDate.of(2026, 3, 31), "2025-26");
     }
 
     /** Returns canned results for the guarded actions so a permitted call yields 2xx. */
     static class StubAdminOrderService extends AdminOrderService {
         StubAdminOrderService() {
-            super(null, null, null);
+            super(null, null, null, null);
         }
 
         @Override

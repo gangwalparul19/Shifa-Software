@@ -10,6 +10,7 @@ import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.PaymentVerificationStatus;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.payment.dto.PaymentQueueRow;
+import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,22 +36,30 @@ public class PaymentVerificationService {
 
     private static final Logger log = LoggerFactory.getLogger(PaymentVerificationService.class);
 
+    /** {@code vouchers.source_type} for a customer receipt (matches {@code SourceType.PAYMENT}). */
+    private static final String LEDGER_SOURCE_PAYMENT = "PAYMENT";
+
     private final OrderRepository orderRepository;
     private final AuditService auditService;
     private final CurrentUserService currentUserService;
+    private final OutboxEventPublisher outboxEventPublisher;
     private final Clock clock;
 
     @Autowired
     public PaymentVerificationService(OrderRepository orderRepository, AuditService auditService,
-                                      CurrentUserService currentUserService) {
-        this(orderRepository, auditService, currentUserService, Clock.systemDefaultZone());
+                                      CurrentUserService currentUserService,
+                                      OutboxEventPublisher outboxEventPublisher) {
+        this(orderRepository, auditService, currentUserService, outboxEventPublisher,
+                Clock.systemDefaultZone());
     }
 
     PaymentVerificationService(OrderRepository orderRepository, AuditService auditService,
-                               CurrentUserService currentUserService, Clock clock) {
+                               CurrentUserService currentUserService,
+                               OutboxEventPublisher outboxEventPublisher, Clock clock) {
         this.orderRepository = orderRepository;
         this.auditService = auditService;
         this.currentUserService = currentUserService;
+        this.outboxEventPublisher = outboxEventPublisher;
         this.clock = clock;
     }
 
@@ -67,8 +76,15 @@ public class PaymentVerificationService {
     /** Marks an order's payment as genuine (product-audit §4.4). */
     @Transactional
     public OrderResponse verify(Long orderId, String note) {
-        return decide(orderId, PaymentVerificationStatus.VERIFIED, note,
+        OrderResponse response = decide(orderId, PaymentVerificationStatus.VERIFIED, note,
                 AuditActions.PAYMENT_VERIFIED, "Verified payment for order ");
+        // Auto-posting (Reqs 11.1, 11.3, 17.3, 17.4): a verified customer payment is the recorded
+        // receipt, so enqueue a ledger-post event in this same transaction. The source id is the
+        // ORDER id (LedgerAutoPostingService.buildReceiptDraft loads the order by this id and posts
+        // the amount received). The event row commits atomically with the verification; a downstream
+        // posting failure can never roll back or alter this order (additive — behaviour unchanged).
+        outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_PAYMENT, orderId);
+        return response;
     }
 
     /** Flags an order's payment as not genuine / mismatched (product-audit §4.4). */
