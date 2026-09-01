@@ -4,6 +4,8 @@ import { ApiClient } from 'core';
 import {
   AccountGroup,
   AccountGroupRequest,
+  BalanceSheet,
+  CashFlow,
   DayBook,
   FinancialYear,
   LedgerAccount,
@@ -13,6 +15,7 @@ import {
   OpeningBalanceRequest,
   OpeningBalances,
   PostVoucherRequest,
+  ProfitAndLoss,
   TrialBalance,
   Voucher,
   VoucherAudit,
@@ -153,11 +156,56 @@ export class LedgerService {
     });
   }
 
+  // --- Financial statements: Balance Sheet, P&L, Cash Flow (Phase 2) -------
+
+  /**
+   * The Balance Sheet as at the resolved period's to-date, derived from ledger
+   * closing balances. Accepts a `financialYearId` or a `from`/`to` range and an
+   * optional comparative prior-period flag (off by default). The full recursive
+   * drill-down tree is returned so no separate expand request is needed.
+   */
+  balanceSheet(period?: LedgerPeriod, comparative = false): Observable<BalanceSheet> {
+    return this.api.get<BalanceSheet>('/api/accounting/balance-sheet', {
+      params: this.periodParams(period, comparative),
+    });
+  }
+
+  /**
+   * The Profit & Loss statement for the resolved period. Accepts a
+   * `financialYearId` or a `from`/`to` range and an optional comparative
+   * prior-period flag (off by default), returning the income/expense drill-down
+   * trees with the net profit/loss.
+   */
+  profitAndLoss(period?: LedgerPeriod, comparative = false): Observable<ProfitAndLoss> {
+    return this.api.get<ProfitAndLoss>('/api/accounting/profit-and-loss', {
+      params: this.periodParams(period, comparative),
+    });
+  }
+
+  /**
+   * The direct-method Cash Flow statement for the resolved period. Accepts a
+   * `financialYearId` or a `from`/`to` range and an optional comparative
+   * prior-period flag (off by default), returning the opening → inflows →
+   * outflows → net → closing figures with the per Cash/Bank ledger drill-down.
+   */
+  cashFlow(period?: LedgerPeriod, comparative = false): Observable<CashFlow> {
+    return this.api.get<CashFlow>('/api/accounting/cash-flow', {
+      params: this.periodParams(period, comparative),
+    });
+  }
+
   // --- Helpers -------------------------------------------------------------
 
-  /** Builds the `financialYearId` / `from` / `to` query params from a period. */
-  private periodParams(period?: LedgerPeriod): Record<string, string> {
+  /**
+   * Builds the `financialYearId` / `from` / `to` query params from a period,
+   * plus an optional `comparative=true` flag for the financial-statement
+   * endpoints (only emitted when `true`).
+   */
+  private periodParams(period?: LedgerPeriod, comparative = false): Record<string, string> {
     const p: Record<string, string> = {};
+    if (comparative) {
+      p['comparative'] = 'true';
+    }
     if (!period) {
       return p;
     }

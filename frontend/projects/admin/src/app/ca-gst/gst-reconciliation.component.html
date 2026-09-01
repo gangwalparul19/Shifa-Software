@@ -1,0 +1,187 @@
+<admin-page-header
+  title="GST Reconciliation"
+  [subtitle]="periodLabel()"
+  [breadcrumbs]="[{ label: 'GST & Accounting' }, { label: 'Reconciliation' }]"
+>
+  <button type="button" class="btn btn-primary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i>{{ loading() ? 'Loading…' : 'Refresh' }}
+  </button>
+</admin-page-header>
+
+<!-- ================= Period picker ================= -->
+<div class="gst-toolbar">
+  <div class="gst-toolbar__row">
+    <div class="gst-presets">
+      <button type="button" class="gst-chip" [class.is-active]="activePreset() === 'this-month'" (click)="setThisMonth()">This month</button>
+      <button type="button" class="gst-chip" [class.is-active]="activePreset() === 'last-month'" (click)="setLastMonth()">Last month</button>
+    </div>
+    <div class="gst-spacer"></div>
+    <div class="gst-dates">
+      <div>
+        <label class="form-label">Month</label>
+        <select class="form-select" [value]="month()" (change)="onMonthEdited($any($event.target).value)">
+          @for (m of months; track m.value) {
+            <option [value]="m.value">{{ m.label }}</option>
+          }
+        </select>
+      </div>
+      <div>
+        <label class="form-label">Year</label>
+        <input type="number" class="form-control" [value]="year()" (change)="onYearEdited($any($event.target).value)" />
+      </div>
+      <button type="button" class="btn btn-primary" (click)="load()" [disabled]="loading()">
+        <i class="ti ti-check me-1"></i>Apply
+      </button>
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <div class="gst-card"><div class="gst-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading reconciliation…</div></div>
+} @else if (error()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+} @else if (data(); as d) {
+
+  <!-- ============ Per-period reconciled banner (Req 9.2, 9.6) ============ -->
+  <div class="recon-banner" [class.is-ok]="d.periodReconciled" [class.is-off]="!d.periodReconciled">
+    <i class="ti" [class.ti-circle-check]="d.periodReconciled" [class.ti-alert-triangle]="!d.periodReconciled"></i>
+    <div>
+      <div class="recon-banner__title">
+        {{ d.periodReconciled ? 'Period reconciled' : 'Period not reconciled' }}
+      </div>
+      <div class="recon-banner__sub">
+        {{ periodLabel() }} —
+        {{ d.periodReconciled
+            ? 'every compared figure is within tolerance.'
+            : 'one or more figures differ beyond the tolerance. Review the highlighted rows below.' }}
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Empty-period note (Req 9.5) ============ -->
+  @if (isEmptyPeriod()) {
+    <div class="alert alert-info d-flex align-items-start">
+      <i class="ti ti-info-circle me-2 mt-1"></i>
+      <div>No qualifying transactions in this period — every figure is zero on both the return and ledger sides.</div>
+    </div>
+  }
+
+  <!-- ============ Compared figures ============ -->
+  <div class="gst-card">
+    <div class="gst-card__head">
+      <h3 class="gst-card__title">Compared figures</h3>
+      <span class="text-secondary small">Tap a figure to see contributing rows</span>
+    </div>
+
+    <!-- Desktop table (≥768px) -->
+    <div class="table-responsive d-none d-md-block">
+      <table class="gst-table">
+        <thead>
+          <tr>
+            <th>Figure</th>
+            <th class="num">Return value</th>
+            <th class="num">Ledger / statement</th>
+            <th class="num">Difference</th>
+            <th>Direction</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (f of d.figures; track f.key) {
+            <tr class="is-clickable" [class.recon-row--off]="f.comparisonAvailable && !f.reconciled"
+                (click)="openDrill(f)">
+              <td class="fw-bold">
+                {{ f.label }}
+                @if (f.comparisonAvailable) { <i class="ti ti-external-link recon-drill-hint ms-1"></i> }
+              </td>
+              <td class="num">{{ money(f.returnValue) }}</td>
+              @if (f.comparisonAvailable) {
+                <td class="num">{{ money(f.ledgerValue) }}</td>
+                <td class="num" [class.text-danger]="!f.reconciled" [class.fw-bold]="!f.reconciled">{{ signedMoney(f.difference) }}</td>
+                <td><span class="text-secondary small">{{ directionLabel(f.direction) }}</span></td>
+                <td><span [class]="reconciledIndicatorClass(f.reconciled)">{{ f.reconciled ? 'Reconciled' : 'Unreconciled' }}</span></td>
+              } @else {
+                <td class="num text-secondary" colspan="3"><i class="ti ti-plug-connected-x me-1"></i>Comparison unavailable</td>
+                <td><span class="badge bg-secondary-lt">N/A</span></td>
+              }
+            </tr>
+          } @empty {
+            <tr><td colspan="6" class="gst-empty">No figures to reconcile for this period.</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Mobile cards (<768px) -->
+    <div class="d-md-none recon-cards">
+      @for (f of d.figures; track f.key) {
+        <div class="recon-card" [class.recon-card--off]="f.comparisonAvailable && !f.reconciled"
+             [class.is-clickable]="f.comparisonAvailable" (click)="openDrill(f)">
+          <div class="recon-card__head">
+            <span class="recon-card__label">{{ f.label }}</span>
+            @if (f.comparisonAvailable) {
+              <span [class]="reconciledIndicatorClass(f.reconciled)">{{ f.reconciled ? 'Reconciled' : 'Unreconciled' }}</span>
+            } @else {
+              <span class="badge bg-secondary-lt">N/A</span>
+            }
+          </div>
+          @if (f.comparisonAvailable) {
+            <div class="recon-card__grid">
+              <div><span class="lbl">Return</span><span class="val">{{ money(f.returnValue) }}</span></div>
+              <div><span class="lbl">Ledger / statement</span><span class="val">{{ money(f.ledgerValue) }}</span></div>
+              <div><span class="lbl">Difference</span><span class="val" [class.text-danger]="!f.reconciled">{{ signedMoney(f.difference) }}</span></div>
+              <div><span class="lbl">Direction</span><span class="val">{{ directionLabel(f.direction) }}</span></div>
+            </div>
+            <div class="recon-card__drill"><i class="ti ti-external-link me-1"></i>Tap for contributing rows</div>
+          } @else {
+            <div class="recon-card__grid">
+              <div><span class="lbl">Return</span><span class="val">{{ money(f.returnValue) }}</span></div>
+            </div>
+            <div class="recon-card__na"><i class="ti ti-plug-connected-x me-1"></i>Comparison unavailable for this figure</div>
+          }
+        </div>
+      } @empty {
+        <div class="gst-empty">No figures to reconcile for this period.</div>
+      }
+    </div>
+  </div>
+}
+
+<!-- ================= Drill-down drawer ================= -->
+@if (drillOpen()) {
+  <div class="shifa-drawer-backdrop" (click)="closeDrill()"></div>
+  <aside class="shifa-drawer shifa-drawer--wide" role="dialog" aria-modal="true">
+    <div class="shifa-drawer__head d-flex align-items-center justify-content-between">
+      <h2 class="m-0 h4">{{ drillTitle() }}</h2>
+      <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeDrill()" aria-label="Close"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="shifa-drawer__body">
+      @if (drillLoading()) {
+        <div class="gst-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading contributing rows…</div>
+      } @else if (drillRows().length === 0) {
+        <div class="gst-empty">No contributing orders, returns or ledger vouchers for this figure.</div>
+      } @else {
+        <div class="gst-due-strip">
+          <div class="pill"><span class="lbl">Rows</span><span class="val">{{ drillRows().length }}</span></div>
+          <div class="pill"><span class="lbl">Net contribution</span><span class="val">{{ signedMoney(drillTotal()) }}</span></div>
+        </div>
+        <div class="table-responsive">
+          <table class="gst-table">
+            <thead>
+              <tr><th>Identifier</th><th>Type</th><th class="num">Signed contribution</th></tr>
+            </thead>
+            <tbody>
+              @for (r of drillRows(); track $index) {
+                <tr>
+                  <td class="shifa-mono">{{ r.identifier }}</td>
+                  <td><span class="badge bg-secondary-lt">{{ r.type }}</span></td>
+                  <td class="num">{{ signedMoney(r.signedContribution) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  </aside>
+}

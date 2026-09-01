@@ -1,0 +1,203 @@
+:host {
+  --bs-green: #1f5d3f;
+  --bs-green-050: #f1f8f4;
+  --bs-ink: #21372c;
+  --bs-muted: #6b7b72;
+  --bs-line: #e6efe9;
+  display: block;
+}
+
+/* ---- Toolbar (period control) ----------------------------------------- */
+.bs-toolbar {
+  background: #fff;
+  border: 1px solid var(--bs-line);
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 2px 10px rgba(15, 51, 36, 0.05);
+  margin-bottom: 1rem;
+}
+.bs-toolbar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+}
+.bs-modes {
+  margin-bottom: 0;
+}
+.bs-spacer {
+  flex: 1 1 auto;
+}
+.bs-controls {
+  display: flex;
+  align-items: end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.bs-controls .form-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--bs-muted);
+  margin-bottom: 0.15rem;
+}
+.bs-controls input,
+.bs-controls select {
+  min-width: 11rem;
+}
+.bs-compare {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-bottom: 0.4rem;
+  margin: 0;
+  white-space: nowrap;
+  color: var(--bs-ink);
+  font-size: 0.85rem;
+}
+
+/* ---- Balanced / difference banner ------------------------------------- */
+.bs-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border-radius: 14px;
+  padding: 1rem 1.2rem;
+  margin-bottom: 1rem;
+  border: 1px solid transparent;
+}
+.bs-banner__icon {
+  font-size: 1.6rem;
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+}
+.bs-banner__title {
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+.bs-banner__sub {
+  font-size: 0.84rem;
+  opacity: 0.9;
+}
+.bs-banner--ok {
+  background: #eaf7ef;
+  border-color: #b9e2c9;
+  color: #14432f;
+}
+.bs-banner--ok .bs-banner__icon {
+  color: #1f9d57;
+}
+.bs-banner--bad {
+  background: #fdecec;
+  border-color: #f5c2c2;
+  color: #8f1d1d;
+}
+.bs-banner--bad .bs-banner__icon {
+  color: #dc2626;
+}
+
+/* ---- Two-side layout (assets | liabilities & equity) ------------------- */
+.bs-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+@media (min-width: 992px) {
+  .bs-grid {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+/* ---- Card + table ------------------------------------------------------ */
+.bs-card {
+  background: #fff;
+  border: 1px solid var(--bs-line);
+  border-radius: 14px;
+  box-shadow: 0 2px 10px rgba(15, 51, 36, 0.04);
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+.bs-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.1rem;
+  border-bottom: 1px solid var(--bs-line);
+}
+.bs-card__title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--bs-ink);
+  margin: 0;
+}
+
+.bs-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.bs-table thead th {
+  background: var(--bs-green-050);
+  color: var(--bs-ink);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  border-bottom: 1px solid var(--bs-line);
+}
+.bs-table tbody td {
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--bs-line);
+  color: var(--bs-ink);
+  font-size: 0.9rem;
+}
+.bs-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.bs-table tfoot .bs-total-row td {
+  padding: 0.7rem 0.8rem;
+  border-top: 2px solid var(--bs-line);
+  background: var(--bs-green-050);
+  color: var(--bs-ink);
+  font-size: 0.95rem;
+}
+
+/* ---- Grouped-node rows (drill-down) ----------------------------------- */
+.bs-node--clickable {
+  cursor: pointer;
+}
+.bs-node--clickable:hover {
+  background: var(--bs-green-050);
+}
+.bs-node__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.bs-node__chev {
+  color: var(--bs-green);
+  font-size: 0.95rem;
+}
+.bs-node__dot {
+  color: var(--bs-muted);
+  font-size: 0.9rem;
+}
+.bs-leaf td {
+  background: #fcfdfc;
+}
+.bs-leaf__icon {
+  color: var(--bs-muted);
+  font-size: 0.9rem;
+  margin-right: 0.15rem;
+}
+.bs-retained td {
+  background: #faf6fd;
+}
+
+.bs-empty {
+  text-align: center;
+  color: var(--bs-muted);
+  padding: 2rem 1rem;
+}

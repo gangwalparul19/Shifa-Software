@@ -68,6 +68,27 @@ public class AppSettings {
     @Column(name = "prices_include_gst", nullable = false)
     private boolean pricesIncludeGst = true;
 
+    /**
+     * Optional filing-calendar reminder window, in whole days before a GST return
+     * due date within which a reminder is surfaced. Nullable on legacy rows;
+     * resolved to the range {@code [1, 30]} with a default of {@code 7} when
+     * {@code null} or out of range (GST returns &amp; filing, Req 4.6). Mapped to the
+     * V56 {@code gst_reminder_window_days} column.
+     */
+    @Column(name = "gst_reminder_window_days")
+    private Integer gstReminderWindowDays;
+
+    /**
+     * Optional reconciliation tolerance in rupees (2dp): the maximum absolute
+     * reconciliation difference at or below which a compared figure is treated as
+     * reconciled. Nullable on legacy rows; resolved to {@code [0.00, 9999.99]} with
+     * a default of {@code 1.00} when {@code null} or out of range (GST returns &amp;
+     * filing, Reqs 7.4, 9.1). Mapped to the V56 {@code gst_reconciliation_tolerance}
+     * column.
+     */
+    @Column(name = "gst_reconciliation_tolerance", precision = 6, scale = 2)
+    private BigDecimal gstReconciliationTolerance;
+
     @Column(name = "invoice_footer_note", length = 500)
     private String invoiceFooterNote;
 
@@ -235,6 +256,22 @@ public class AppSettings {
 
     public void setPricesIncludeGst(boolean pricesIncludeGst) {
         this.pricesIncludeGst = pricesIncludeGst;
+    }
+
+    public Integer getGstReminderWindowDays() {
+        return gstReminderWindowDays;
+    }
+
+    public void setGstReminderWindowDays(Integer gstReminderWindowDays) {
+        this.gstReminderWindowDays = gstReminderWindowDays;
+    }
+
+    public BigDecimal getGstReconciliationTolerance() {
+        return gstReconciliationTolerance;
+    }
+
+    public void setGstReconciliationTolerance(BigDecimal gstReconciliationTolerance) {
+        this.gstReconciliationTolerance = gstReconciliationTolerance;
     }
 
     public String getInvoiceFooterNote() {

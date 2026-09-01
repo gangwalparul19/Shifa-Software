@@ -234,6 +234,146 @@ export interface TrialBalance {
   balanced: boolean;
 }
 
+/* ── Financial statements (Phase 2 — Balance Sheet / P&L / Cash Flow) ────── */
+
+/**
+ * A recursive grouped-node in a statement drill-down tree, mirroring the backend
+ * `ledger.statements.dto.StatementNodeResponse`. Each node reports its group
+ * subtotal as a reporting {@link DrCr} `side` plus a non-negative `amount`
+ * magnitude, and carries its nested `childGroups` and leaf `ledgers` so
+ * drill-down needs no separate request. When a comparative prior period was
+ * requested, `priorAmount` carries the prior-period subtotal of the same group
+ * (aligned by `groupId`), else null.
+ */
+export interface StatementNode {
+  groupId: number;
+  name: string;
+  nature: AccountNature;
+  side: DrCr;
+  amount: Money;
+  childGroups: StatementNode[];
+  ledgers: LedgerLine[];
+  priorAmount: Money | null;
+}
+
+/**
+ * A leaf ledger balance within a statement group node — the bottom of a
+ * Tally-style drill-down (`ledger.statements.dto.LedgerLineResponse`). The
+ * balance is a reporting {@link DrCr} `side` plus a non-negative `amount`;
+ * `priorAmount` carries the prior-period magnitude when comparative, else null.
+ */
+export interface LedgerLine {
+  ledgerId: number;
+  name: string;
+  side: DrCr;
+  amount: Money;
+  priorAmount: Money | null;
+}
+
+/**
+ * The synthetic retained-earnings (current-period net-profit) line injected into
+ * the Balance Sheet's equity side (`ledger.statements.dto.RetainedEarningsLine`).
+ * `side` is CREDIT for a profit, DEBIT for a loss; `priorAmount` is the prior
+ * period's magnitude when comparative, else null.
+ */
+export interface RetainedEarningsLine {
+  label: string;
+  side: DrCr;
+  amount: Money;
+  priorAmount: Money | null;
+}
+
+/**
+ * The Balance Sheet as at a date, derived from ledger closing balances
+ * (`ledger.statements.dto.BalanceSheetResponse`). ASSET-nature groups form the
+ * `assets` side; LIABILITY + EQUITY groups plus the injected `retainedEarnings`
+ * line form the liabilities-and-equity side. The side totals carry the domain's
+ * signed totals so `difference == assetsTotal − liabilitiesAndEquityTotal`.
+ */
+export interface BalanceSheet {
+  asAtDate: string;
+  from: string;
+  to: string;
+  financialYearId: number | null;
+  comparative: boolean;
+  assets: StatementNode[];
+  assetsTotal: Money;
+  liabilitiesAndEquity: StatementNode[];
+  retainedEarnings: RetainedEarningsLine;
+  liabilitiesAndEquityTotal: Money;
+  difference: Money;
+  balanced: boolean;
+  priorAssetsTotal: Money | null;
+  priorLiabilitiesAndEquityTotal: Money | null;
+}
+
+/**
+ * The Profit & Loss statement for a period
+ * (`ledger.statements.dto.ProfitAndLossResponse`). INCOME-nature groups form the
+ * `income` side and EXPENSE-nature groups the `expenses` side; totals are
+ * positive magnitudes. `grossProfit` is present only where the Chart of Accounts
+ * distinguishes Direct groups, else null. `netProfit` is `totalIncome −
+ * totalExpenses` (negative denotes a loss); `netLoss`/`netLossAmount` present the
+ * loss for convenience.
+ */
+export interface ProfitAndLoss {
+  from: string;
+  to: string;
+  financialYearId: number | null;
+  comparative: boolean;
+  income: StatementNode[];
+  totalIncome: Money;
+  expenses: StatementNode[];
+  totalExpenses: Money;
+  grossProfit: Money | null;
+  netProfit: Money;
+  netLoss: boolean;
+  netLossAmount: Money;
+  priorTotalIncome: Money | null;
+  priorTotalExpenses: Money | null;
+  priorNetProfit: Money | null;
+}
+
+/**
+ * A single Cash/Bank ledger's direct-method split within the Cash Flow drill-down
+ * (`ledger.statements.dto.CashBankLedgerLine`). Cash/Bank ledgers are ASSET
+ * nature, so `opening`/`closing` are signed (debit-positive) balances and
+ * `inflows`/`outflows` are the in-period debit/credit movement magnitudes.
+ */
+export interface CashBankLedgerLine {
+  ledgerId: number;
+  name: string;
+  opening: Money;
+  inflows: Money;
+  outflows: Money;
+  closing: Money;
+}
+
+/**
+ * The direct-method Cash Flow statement for a period
+ * (`ledger.statements.dto.CashFlowResponse`): the `opening → inflows → outflows →
+ * net → closing` figures (opening/closing as a {@link DrCr} side + magnitude) with
+ * the per-Cash/Bank-ledger drill-down and, when comparative, the prior opening /
+ * net / closing figures.
+ */
+export interface CashFlow {
+  from: string;
+  to: string;
+  financialYearId: number | null;
+  comparative: boolean;
+  openingSide: DrCr;
+  openingBalance: Money;
+  inflows: Money;
+  outflows: Money;
+  netCashMovement: Money;
+  closingSide: DrCr;
+  closingBalance: Money;
+  ledgers: CashBankLedgerLine[];
+  priorOpeningBalance: Money | null;
+  priorNetCashMovement: Money | null;
+  priorClosingBalance: Money | null;
+}
+
 /* ── Voucher audit trail (Req 15) ────────────────────────────────────────── */
 
 /** One voucher audit-trail event (`VoucherAuditResponse`). */

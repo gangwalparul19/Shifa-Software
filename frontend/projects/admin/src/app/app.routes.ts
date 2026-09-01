@@ -35,6 +35,8 @@ import { AnalyticsComponent } from './analytics/analytics.component';
 import { TeamComponent } from './team/team.component';
 import { WhatsappTemplatesComponent } from './whatsapp/whatsapp-templates.component';
 import { CaGstDashboardComponent } from './ca-gst/ca-gst-dashboard.component';
+import { GstFilingComponent } from './ca-gst/gst-filing.component';
+import { GstReconciliationComponent } from './ca-gst/gst-reconciliation.component';
 import { TeamPerformanceComponent } from './team/team-performance.component';
 import { LeaderboardComponent } from './leaderboard/leaderboard.component';
 import { ChartOfAccountsComponent } from './ledger/chart-of-accounts.component';
@@ -42,6 +44,9 @@ import { VoucherEntryComponent } from './ledger/voucher-entry.component';
 import { DayBookComponent } from './ledger/day-book.component';
 import { TrialBalanceComponent } from './ledger/trial-balance.component';
 import { LedgerStatementComponent } from './ledger/ledger-statement.component';
+import { BalanceSheetComponent } from './ledger/balance-sheet.component';
+import { ProfitAndLossComponent } from './ledger/profit-and-loss.component';
+import { CashFlowComponent } from './ledger/cash-flow.component';
 
 const LOGIN_PATH = '/login';
 const FORBIDDEN_PATH = '/forbidden';
@@ -379,6 +384,20 @@ export const routes: Routes = [
         canActivate: [adminOrCaGuard],
       },
       {
+        // GST returns filing workspace: calendar, prepare/file/reopen, snapshots,
+        // filing-aware export (ADMIN + CA, gst-returns-filing Req 10.1).
+        path: 'ca/gst/filing',
+        component: GstFilingComponent,
+        canActivate: [adminOrCaGuard],
+      },
+      {
+        // GST ledger reconciliation: five compared figures + drill-down
+        // (ADMIN + CA, gst-returns-filing Req 10.1).
+        path: 'ca/gst/reconciliation',
+        component: GstReconciliationComponent,
+        canActivate: [adminOrCaGuard],
+      },
+      {
         // General Ledger — Chart of Accounts (ADMIN + ACCOUNTANT + CA view; CoA
         // edits ADMIN/ACCOUNTANT-only server-side, CA read-only). Req 16.1–16.3.
         path: 'accounting/chart-of-accounts',
@@ -409,6 +428,26 @@ export const routes: Routes = [
         // The account is chosen in-page, so no route param is needed. Req 12.
         path: 'accounting/ledger-statement',
         component: LedgerStatementComponent,
+        canActivate: [accountingGuard],
+      },
+      {
+        // Balance Sheet — assets vs liabilities-and-equity as at a date (read).
+        // Financial statements Phase 2, Req 10.1, 10.2, 11.3.
+        path: 'accounting/balance-sheet',
+        component: BalanceSheetComponent,
+        canActivate: [accountingGuard],
+      },
+      {
+        // Profit & Loss — income vs expenses for a period (read). Req 10.1, 10.2, 11.3.
+        path: 'accounting/profit-and-loss',
+        component: ProfitAndLossComponent,
+        canActivate: [accountingGuard],
+      },
+      {
+        // Cash Flow — direct-method cash/bank movement for a period (read).
+        // Req 10.1, 10.2, 11.3.
+        path: 'accounting/cash-flow',
+        component: CashFlowComponent,
         canActivate: [accountingGuard],
       },
       {

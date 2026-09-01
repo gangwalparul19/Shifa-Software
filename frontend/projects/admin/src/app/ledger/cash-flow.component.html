@@ -1,0 +1,229 @@
+<admin-page-header
+  title="Cash Flow"
+  [subtitle]="periodLabel()"
+  [breadcrumbs]="[{ label: 'Accounting' }, { label: 'Cash Flow' }]"
+></admin-page-header>
+
+<!-- ================= Period toolbar ================= -->
+<div class="cf-toolbar">
+  <div class="cf-toolbar__row">
+    <div class="cf-modes shifa-formtabs" role="tablist">
+      <button
+        type="button"
+        class="shifa-formtab"
+        [class.is-active]="periodMode() === 'fy'"
+        (click)="setMode('fy')"
+        role="tab"
+        [attr.aria-selected]="periodMode() === 'fy'"
+      >
+        <i class="ti ti-calendar me-1"></i> Financial year
+      </button>
+      <button
+        type="button"
+        class="shifa-formtab"
+        [class.is-active]="periodMode() === 'range'"
+        (click)="setMode('range')"
+        role="tab"
+        [attr.aria-selected]="periodMode() === 'range'"
+      >
+        <i class="ti ti-calendar-stats me-1"></i> Date range
+      </button>
+    </div>
+
+    <div class="cf-spacer"></div>
+
+    <div class="cf-controls">
+      @if (periodMode() === 'fy') {
+        <div>
+          <label class="form-label">Financial year</label>
+          <select
+            class="form-select"
+            [value]="financialYearId() ?? ''"
+            (change)="onFinancialYearChanged($any($event.target).value)"
+          >
+            <option value="">Current financial year</option>
+            @for (fy of financialYears(); track fy.id) {
+              <option [value]="fy.id">{{ fy.label }}{{ fy.closed ? ' (closed)' : '' }}</option>
+            }
+          </select>
+        </div>
+      } @else {
+        <div>
+          <label class="form-label">From</label>
+          <input
+            type="date"
+            class="form-control"
+            [value]="from()"
+            (change)="onDateEdited('from', $any($event.target).value)"
+          />
+        </div>
+        <div>
+          <label class="form-label">To</label>
+          <input
+            type="date"
+            class="form-control"
+            [value]="to()"
+            (change)="onDateEdited('to', $any($event.target).value)"
+          />
+        </div>
+      }
+
+      <div class="cf-compare">
+        <label class="form-check form-switch mb-0">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            [checked]="comparative()"
+            (change)="onComparativeToggled($any($event.target).checked)"
+          />
+          <span class="form-check-label">Compare prior period</span>
+        </label>
+      </div>
+
+      <button type="button" class="btn btn-primary" (click)="load()" [disabled]="loading()">
+        <i class="ti ti-refresh me-1"></i>Apply
+      </button>
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <div class="cf-card">
+    <div class="cf-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading Cash Flow…</div>
+  </div>
+} @else if (error()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+} @else if (data(); as d) {
+  <!-- ============ Direct-method flow: opening → inflows → outflows → net → closing ============ -->
+  <div class="cf-card">
+    <div class="cf-card__head">
+      <h3 class="cf-card__title">Cash &amp; bank movement</h3>
+      <span class="text-secondary small">Direct method</span>
+    </div>
+
+    <div class="cf-flow">
+      <!-- Opening -->
+      <div class="cf-flow__row cf-flow__row--balance">
+        <div class="cf-flow__label">
+          <i class="ti ti-wallet cf-flow__icon"></i>
+          <span>Opening balance</span>
+        </div>
+        <div class="cf-flow__amounts">
+          @if (d.comparative) {
+            <span class="cf-flow__prior">{{ money(d.priorOpeningBalance) }}</span>
+          }
+          <span class="cf-flow__value">
+            {{ money(d.openingBalance) }} <small class="cf-flow__side">{{ drcrLabel(d.openingSide) }}</small>
+          </span>
+        </div>
+      </div>
+
+      <!-- Inflows -->
+      <div class="cf-flow__row">
+        <div class="cf-flow__label">
+          <i class="ti ti-arrow-down-circle cf-flow__icon cf-flow__icon--in"></i>
+          <span>Cash &amp; bank inflows</span>
+        </div>
+        <div class="cf-flow__amounts">
+          <span class="cf-flow__value cf-flow__value--in">+ {{ money(d.inflows) }}</span>
+        </div>
+      </div>
+
+      <!-- Outflows -->
+      <div class="cf-flow__row">
+        <div class="cf-flow__label">
+          <i class="ti ti-arrow-up-circle cf-flow__icon cf-flow__icon--out"></i>
+          <span>Cash &amp; bank outflows</span>
+        </div>
+        <div class="cf-flow__amounts">
+          <span class="cf-flow__value cf-flow__value--out">− {{ money(d.outflows) }}</span>
+        </div>
+      </div>
+
+      <!-- Net movement -->
+      <div class="cf-flow__row cf-flow__row--net">
+        <div class="cf-flow__label">
+          <i class="ti ti-arrows-exchange cf-flow__icon"></i>
+          <span>Net cash movement</span>
+        </div>
+        <div class="cf-flow__amounts">
+          @if (d.comparative) {
+            <span class="cf-flow__prior">{{ money(d.priorNetCashMovement) }}</span>
+          }
+          <span
+            class="cf-flow__value"
+            [class.text-success]="n(d.netCashMovement) >= 0"
+            [class.text-danger]="n(d.netCashMovement) < 0"
+          >{{ money(d.netCashMovement) }}</span>
+        </div>
+      </div>
+
+      <!-- Closing -->
+      <div class="cf-flow__row cf-flow__row--balance cf-flow__row--closing">
+        <div class="cf-flow__label">
+          <i class="ti ti-building-bank cf-flow__icon"></i>
+          <span>Closing balance</span>
+        </div>
+        <div class="cf-flow__amounts">
+          @if (d.comparative) {
+            <span class="cf-flow__prior">{{ money(d.priorClosingBalance) }}</span>
+          }
+          <span class="cf-flow__value">
+            {{ money(d.closingBalance) }} <small class="cf-flow__side">{{ drcrLabel(d.closingSide) }}</small>
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="cf-flow__note">
+      Closing balance = opening balance + net cash movement, taken directly from the debit and credit
+      movements posted to the Cash and Bank ledgers this period.
+    </div>
+  </div>
+
+  <!-- ============ Per Cash/Bank ledger drill-down ============ -->
+  <div class="cf-card">
+    <div class="cf-card__head">
+      <h3 class="cf-card__title">By cash &amp; bank ledger</h3>
+      <span class="text-secondary small">{{ d.ledgers.length }} ledger{{ d.ledgers.length === 1 ? '' : 's' }}</span>
+    </div>
+    <div class="table-responsive">
+      <table class="cf-table">
+        <thead>
+          <tr>
+            <th>Ledger account</th>
+            <th class="num">Opening</th>
+            <th class="num">Inflows</th>
+            <th class="num">Outflows</th>
+            <th class="num">Closing</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (l of d.ledgers; track l.ledgerId) {
+            <tr>
+              <td class="fw-bold">{{ l.name }}</td>
+              <td class="num">{{ money(l.opening) }}</td>
+              <td class="num cf-in">{{ n(l.inflows) > 0 ? '+ ' + money(l.inflows) : '—' }}</td>
+              <td class="num cf-out">{{ n(l.outflows) > 0 ? '− ' + money(l.outflows) : '—' }}</td>
+              <td class="num fw-bold">{{ money(l.closing) }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="5" class="cf-empty">No Cash or Bank ledgers have any opening balance or movement in this period.</td>
+            </tr>
+          }
+        </tbody>
+        @if (d.ledgers.length) {
+          <tfoot>
+            <tr class="cf-total-row">
+              <td class="fw-bold">Total</td>
+              <td class="num fw-bold">{{ money(d.openingBalance) }}</td>
+              <td class="num fw-bold cf-in">+ {{ money(d.inflows) }}</td>
+              <td class="num fw-bold cf-out">− {{ money(d.outflows) }}</td>
+              <td class="num fw-bold">{{ money(d.closingBalance) }}</td>
+            </tr>
+          </tfoot>
+        }
+      </table>
+    </div>
+  </div>
+}

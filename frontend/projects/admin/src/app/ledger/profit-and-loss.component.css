@@ -1,0 +1,212 @@
+:host {
+  --pl-green: #1f5d3f;
+  --pl-green-050: #f1f8f4;
+  --pl-ink: #21372c;
+  --pl-muted: #6b7b72;
+  --pl-line: #e6efe9;
+  display: block;
+}
+
+/* ---- Toolbar (period control) ----------------------------------------- */
+.pl-toolbar {
+  background: #fff;
+  border: 1px solid var(--pl-line);
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 2px 10px rgba(15, 51, 36, 0.05);
+  margin-bottom: 1rem;
+}
+.pl-toolbar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem;
+}
+.pl-modes {
+  margin-bottom: 0;
+}
+.pl-spacer {
+  flex: 1 1 auto;
+}
+.pl-controls {
+  display: flex;
+  align-items: end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.pl-controls .form-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--pl-muted);
+  margin-bottom: 0.15rem;
+}
+.pl-controls input[type='date'],
+.pl-controls select {
+  min-width: 11rem;
+}
+.pl-compare {
+  display: flex;
+  align-items: center;
+  padding-bottom: 0.35rem;
+}
+.pl-compare .form-check-label {
+  font-size: 0.85rem;
+  color: var(--pl-ink);
+}
+
+/* ---- Card + table ------------------------------------------------------ */
+.pl-card {
+  background: #fff;
+  border: 1px solid var(--pl-line);
+  border-radius: 14px;
+  box-shadow: 0 2px 10px rgba(15, 51, 36, 0.04);
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+.pl-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.1rem;
+  border-bottom: 1px solid var(--pl-line);
+}
+.pl-card__title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--pl-ink);
+  margin: 0;
+}
+
+.pl-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.pl-table thead th {
+  background: var(--pl-green-050);
+  color: var(--pl-ink);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  border-bottom: 1px solid var(--pl-line);
+}
+.pl-table tbody td {
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--pl-line);
+  color: var(--pl-ink);
+  font-size: 0.9rem;
+}
+.pl-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.pl-prior {
+  color: var(--pl-muted);
+}
+
+/* ---- Drill-down rows --------------------------------------------------- */
+.pl-group-row {
+  cursor: pointer;
+}
+.pl-group-row:hover {
+  background: var(--pl-green-050);
+}
+.pl-group-row.pl-open {
+  background: var(--pl-green-050);
+}
+.pl-caret {
+  color: var(--pl-muted);
+  margin-right: 0.4rem;
+  font-size: 0.85rem;
+}
+.pl-ledger-row td {
+  background: #fbfdfb;
+  font-size: 0.86rem;
+  color: var(--pl-ink);
+}
+.pl-ledger-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--pl-muted);
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}
+
+.pl-table tfoot .pl-total-row td {
+  padding: 0.7rem 0.8rem;
+  border-top: 2px solid var(--pl-line);
+  background: var(--pl-green-050);
+  color: var(--pl-ink);
+  font-size: 0.95rem;
+}
+
+.pl-empty {
+  text-align: center;
+  color: var(--pl-muted);
+  padding: 2rem 1rem;
+}
+
+/* ---- Gross-profit subtotal -------------------------------------------- */
+.pl-subtotal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border: 1px solid var(--pl-line);
+  border-radius: 12px;
+  padding: 0.75rem 1.1rem;
+  margin-bottom: 1rem;
+}
+.pl-subtotal__label {
+  font-weight: 700;
+  color: var(--pl-ink);
+}
+.pl-subtotal__value {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--pl-green);
+}
+
+/* ---- Net profit / loss banner ----------------------------------------- */
+.pl-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border-radius: 14px;
+  padding: 1rem 1.2rem;
+  margin-bottom: 1rem;
+  border: 1px solid transparent;
+}
+.pl-banner__icon {
+  font-size: 1.6rem;
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+}
+.pl-banner__title {
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+.pl-banner__sub {
+  font-size: 0.84rem;
+  opacity: 0.9;
+}
+.pl-banner--profit {
+  background: #eaf7ef;
+  border-color: #b9e2c9;
+  color: #14432f;
+}
+.pl-banner--profit .pl-banner__icon {
+  color: #1f9d57;
+}
+.pl-banner--loss {
+  background: #fdecec;
+  border-color: #f5c2c2;
+  color: #8f1d1d;
+}
+.pl-banner--loss .pl-banner__icon {
+  color: #dc2626;
+}

@@ -97,6 +97,18 @@ public final class AuditActions {
     /** A portal-ready GSTR-1 return export (CSV bundle / portal JSON) — GST filing compliance (Req 13.3). */
     public static final String GSTR1_EXPORTED = "GSTR1_EXPORTED";
 
+    // GST returns & filing lifecycle (gst-returns-filing, Reqs 1.3, 1.4, 2.4, 10.2).
+    /** A return period/type was marked prepared (NOT_STARTED → PREPARED). */
+    public static final String GST_RETURN_PREPARED = "GST_RETURN_PREPARED";
+    /** A return period/type was filed (PREPARED → FILED) with an immutable snapshot captured. */
+    public static final String GST_RETURN_FILED = "GST_RETURN_FILED";
+    /** A filed return period/type was reopened by an ADMIN/CA (FILED → PREPARED), prior snapshot retained. */
+    public static final String GST_RETURN_REOPENED = "GST_RETURN_REOPENED";
+    /** A post-filing correction was detected against a Filed_Period and routed/held (Reqs 3.1–3.8, 10.2). */
+    public static final String GST_AMENDMENT_DETECTED = "GST_AMENDMENT_DETECTED";
+    /** A CA created, edited, or resolved a return amendment (manual-review resolution) — Reqs 3.5, 3.7. */
+    public static final String GST_AMENDMENT_REVIEWED = "GST_AMENDMENT_REVIEWED";
+
     // General Ledger / double-entry vouchers (general-ledger-accounting, Req 15.1, 15.2).
     /** A double-entry voucher was posted to the General Ledger (Req 15.1). */
     public static final String VOUCHER_POSTED = "VOUCHER_POSTED";

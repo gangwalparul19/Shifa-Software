@@ -1,0 +1,162 @@
+<admin-page-header
+  title="GST Returns & Filing"
+  [subtitle]="fyLabel(fyStartYear()) + ' · GSTR-1 and GSTR-3B filing calendar'"
+  [breadcrumbs]="[{ label: 'GST & Accounting', link: '/ca/gst' }, { label: 'Returns & Filing' }]"
+>
+  <div class="gf-fy">
+    <label class="form-label m-0 me-2">Financial year</label>
+    <select class="form-select" [value]="fyStartYear()" (change)="onFyChange($any($event.target).value)">
+      @for (y of fyOptions(); track y) {
+        <option [value]="y">{{ fyLabel(y) }}</option>
+      }
+    </select>
+  </div>
+</admin-page-header>
+
+@if (loading()) {
+  <div class="gf-card"><div class="gf-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading filing calendar…</div></div>
+} @else if (error()) {
+  <div class="alert alert-danger d-flex align-items-center justify-content-between">
+    <span>{{ error() }}</span>
+    <button type="button" class="btn btn-sm btn-outline-danger" (click)="load()"><i class="ti ti-refresh me-1"></i>Retry</button>
+  </div>
+} @else if (months().length === 0) {
+  <div class="gf-card"><div class="gf-empty">No return periods for this financial year.</div></div>
+} @else {
+
+  <div class="gf-legend">
+    <span class="badge bg-secondary-lt">Not started</span>
+    <span class="badge bg-yellow-lt">Prepared</span>
+    <span class="badge bg-green-lt">Filed</span>
+    <span [class]="reminderBadgeClass()"><i class="ti ti-bell me-1"></i>Reminder / due today</span>
+    <span [class]="overdueBadgeClass()"><i class="ti ti-alert-triangle me-1"></i>Overdue</span>
+  </div>
+
+  @for (m of months(); track m.label) {
+    <div class="gf-card">
+      <div class="gf-card__head">
+        <h3 class="gf-card__title"><i class="ti ti-calendar-month me-2"></i>{{ m.label }}</h3>
+      </div>
+
+      <!-- One row per return type (GSTR-1, GSTR-3B) -->
+      @for (entry of [m.gstr1, m.gstr3b]; track $index) {
+        @if (entry; as e) {
+          <div class="gf-row" [class.is-filed]="e.status === 'FILED'">
+            <div class="gf-row__main">
+              <div class="gf-row__type">
+                <span class="gf-type-badge">{{ returnTypeLabel(e.returnType) }}</span>
+                @if (e.status === 'FILED') {
+                  <span class="gf-lock" title="Filed period — figures are locked and read-only">
+                    <i class="ti ti-lock"></i> Locked
+                  </span>
+                }
+              </div>
+
+              <div class="gf-row__due">
+                <span class="gf-row__lbl">Due</span>
+                <span class="gf-row__due-date">{{ fmtDate(e.dueDate) }}</span>
+              </div>
+
+              <div class="gf-row__status">
+                <span [class]="filingStatusPillClass(e.status)">{{ filingStatusLabel(e.status) }}</span>
+                @if (e.overdue) {
+                  <span [class]="overdueBadgeClass()"><i class="ti ti-alert-triangle me-1"></i>Overdue {{ e.overdueDays }}d</span>
+                } @else if (e.dueToday) {
+                  <span [class]="reminderBadgeClass()"><i class="ti ti-bell me-1"></i>Due today</span>
+                } @else if (e.reminder) {
+                  <span [class]="reminderBadgeClass()"><i class="ti ti-bell me-1"></i>Due soon</span>
+                }
+              </div>
+            </div>
+
+            <div class="gf-row__actions">
+              <!-- Only the action valid for the current status is offered -->
+              @if (e.status === 'NOT_STARTED') {
+                <button type="button" class="btn btn-sm btn-outline-primary"
+                  (click)="prepare(e)" [disabled]="busyKey() === key(e.returnType, e.month, e.year)">
+                  <i class="ti ti-progress-check me-1"></i>Prepare
+                </button>
+              } @else if (e.status === 'PREPARED') {
+                @if (fileTargetKey() === key(e.returnType, e.month, e.year)) {
+                  <div class="gf-file-input">
+                    <input type="text" class="form-control form-control-sm" maxlength="50"
+                      placeholder="Ack. reference (optional)"
+                      [value]="ackReference()" (input)="ackReference.set($any($event.target).value)" />
+                    <button type="button" class="btn btn-sm btn-success"
+                      (click)="confirmFile(e)" [disabled]="busyKey() === key(e.returnType, e.month, e.year)">
+                      <i class="ti ti-check me-1"></i>Confirm file
+                    </button>
+                    <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="closeFileInput()">Cancel</button>
+                  </div>
+                } @else {
+                  <button type="button" class="btn btn-sm btn-primary" (click)="startFile(e)">
+                    <i class="ti ti-file-check me-1"></i>File
+                  </button>
+                }
+              } @else {
+                <!-- FILED: read-only lock, reopen + history only; no figure-editing affordance (Req 2.1) -->
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                  (click)="reopen(e)" [disabled]="busyKey() === key(e.returnType, e.month, e.year)">
+                  <i class="ti ti-lock-open me-1"></i>Reopen
+                </button>
+              }
+
+              <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="openHistory(e)" title="Filing history">
+                <i class="ti ti-history me-1"></i>History
+              </button>
+
+              <!-- Filing-aware GSTR-1 export (portal formats) -->
+              @if (e.returnType === 'GSTR1') {
+                <div class="gf-export">
+                  <button type="button" class="btn btn-sm btn-ghost-primary"
+                    (click)="exportGstr1(e.month, e.year, 'csv')"
+                    [disabled]="exportingKey() === 'EXP-' + e.year + '-' + e.month + '-csv'" title="Download section CSVs (ZIP)">
+                    <i class="ti ti-file-zip me-1"></i>CSV
+                  </button>
+                  <button type="button" class="btn btn-sm btn-ghost-primary"
+                    (click)="exportGstr1(e.month, e.year, 'json')"
+                    [disabled]="exportingKey() === 'EXP-' + e.year + '-' + e.month + '-json'" title="Download portal JSON">
+                    <i class="ti ti-file-code me-1"></i>JSON
+                  </button>
+                </div>
+              }
+            </div>
+          </div>
+        }
+      }
+    </div>
+  }
+}
+
+<!-- ================= Snapshot history drawer (Req 5.7) ================= -->
+@if (historyOpen()) {
+  <div class="shifa-drawer-backdrop" (click)="closeHistory()"></div>
+  <aside class="shifa-drawer" role="dialog" aria-modal="true">
+    <div class="shifa-drawer__head d-flex align-items-center justify-content-between">
+      <div>
+        <h2 class="m-0 h4">Filing history</h2>
+        <div class="text-secondary small">{{ historyTitle() }}</div>
+      </div>
+      <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeHistory()" aria-label="Close"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="shifa-drawer__body">
+      @if (historyLoading()) {
+        <div class="gf-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading history…</div>
+      } @else if (historySnapshots().length === 0) {
+        <div class="gf-empty">No filing snapshots yet — this return has not been filed.</div>
+      } @else {
+        <ol class="gf-history">
+          @for (s of historySnapshots(); track s.version) {
+            <li class="gf-history__item">
+              <span class="gf-history__ver">v{{ s.version }}</span>
+              <div class="gf-history__meta">
+                <div class="gf-history__by"><i class="ti ti-user me-1"></i>{{ s.filedBy }}</div>
+                <div class="gf-history__at text-secondary"><i class="ti ti-clock me-1"></i>{{ fmtDateTime(s.filedAt) }}</div>
+              </div>
+            </li>
+          }
+        </ol>
+      }
+    </div>
+  </aside>
+}

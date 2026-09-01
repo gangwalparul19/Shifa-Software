@@ -1,0 +1,265 @@
+<admin-page-header
+  title="Profit & Loss"
+  [subtitle]="periodLabel()"
+  [breadcrumbs]="[{ label: 'Accounting' }, { label: 'Profit & Loss' }]"
+></admin-page-header>
+
+<!-- ================= Period toolbar ================= -->
+<div class="pl-toolbar">
+  <div class="pl-toolbar__row">
+    <div class="pl-modes shifa-formtabs" role="tablist">
+      <button
+        type="button"
+        class="shifa-formtab"
+        [class.is-active]="periodMode() === 'fy'"
+        (click)="setMode('fy')"
+        role="tab"
+        [attr.aria-selected]="periodMode() === 'fy'"
+      >
+        <i class="ti ti-calendar me-1"></i> Financial year
+      </button>
+      <button
+        type="button"
+        class="shifa-formtab"
+        [class.is-active]="periodMode() === 'range'"
+        (click)="setMode('range')"
+        role="tab"
+        [attr.aria-selected]="periodMode() === 'range'"
+      >
+        <i class="ti ti-calendar-stats me-1"></i> Date range
+      </button>
+    </div>
+
+    <div class="pl-spacer"></div>
+
+    <div class="pl-controls">
+      @if (periodMode() === 'fy') {
+        <div>
+          <label class="form-label">Financial year</label>
+          <select
+            class="form-select"
+            [value]="financialYearId() ?? ''"
+            (change)="onFinancialYearChanged($any($event.target).value)"
+          >
+            <option value="">Current financial year</option>
+            @for (fy of financialYears(); track fy.id) {
+              <option [value]="fy.id">{{ fy.label }}{{ fy.closed ? ' (closed)' : '' }}</option>
+            }
+          </select>
+        </div>
+      } @else {
+        <div>
+          <label class="form-label">From</label>
+          <input
+            type="date"
+            class="form-control"
+            [value]="from()"
+            (change)="onDateEdited('from', $any($event.target).value)"
+          />
+        </div>
+        <div>
+          <label class="form-label">To</label>
+          <input
+            type="date"
+            class="form-control"
+            [value]="to()"
+            (change)="onDateEdited('to', $any($event.target).value)"
+          />
+        </div>
+      }
+      <div class="pl-compare">
+        <label class="form-check form-switch mb-0">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            [checked]="comparative()"
+            (change)="toggleComparative()"
+          />
+          <span class="form-check-label">Compare prior period</span>
+        </label>
+      </div>
+      <button type="button" class="btn btn-primary" (click)="load()" [disabled]="loading()">
+        <i class="ti ti-refresh me-1"></i>Apply
+      </button>
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <div class="pl-card">
+    <div class="pl-empty">
+      <span class="spinner-border spinner-border-sm me-2"></span>Loading Profit & Loss…
+    </div>
+  </div>
+} @else if (error()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+} @else if (data(); as d) {
+  <!-- ============ Recursive group/ledger drill-down row template ============ -->
+  <ng-template #nodeRow let-node let-depth="depth">
+    <tr
+      class="pl-group-row"
+      [class.pl-open]="isExpanded(node.groupId)"
+      (click)="toggle(node.groupId)"
+    >
+      <td [style.padding-left.rem]="0.8 + depth * 1.1">
+        <i
+          class="ti pl-caret"
+          [class.ti-chevron-right]="!isExpanded(node.groupId)"
+          [class.ti-chevron-down]="isExpanded(node.groupId)"
+        ></i>
+        <span class="fw-bold">{{ node.name }}</span>
+      </td>
+      <td class="num fw-bold">{{ money(node.amount) }}</td>
+      @if (comparative()) {
+        <td class="num pl-prior">{{ node.priorAmount != null ? money(node.priorAmount) : '—' }}</td>
+      }
+    </tr>
+    @if (isExpanded(node.groupId)) {
+      @for (child of node.childGroups; track child.groupId) {
+        <ng-container
+          *ngTemplateOutlet="nodeRow; context: { $implicit: child, depth: depth + 1 }"
+        ></ng-container>
+      }
+      @for (led of node.ledgers; track led.ledgerId) {
+        <tr class="pl-ledger-row">
+          <td [style.padding-left.rem]="0.8 + (depth + 1) * 1.1">
+            <span class="pl-ledger-dot"></span>{{ led.name }}
+          </td>
+          <td class="num">{{ money(led.amount) }}</td>
+          @if (comparative()) {
+            <td class="num pl-prior">{{ led.priorAmount != null ? money(led.priorAmount) : '—' }}</td>
+          }
+        </tr>
+      }
+    }
+  </ng-template>
+
+  <!-- ============ Income side (Req 4.2) ============ -->
+  <div class="pl-card">
+    <div class="pl-card__head">
+      <h3 class="pl-card__title"><i class="ti ti-arrow-down-right me-1"></i>Income</h3>
+      <span class="text-secondary small">Credit balances for the period</span>
+    </div>
+    <div class="table-responsive">
+      <table class="pl-table">
+        <thead>
+          <tr>
+            <th>Account group</th>
+            <th class="num">Amount</th>
+            @if (comparative()) {
+              <th class="num">Prior period</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (node of d.income; track node.groupId) {
+            <ng-container
+              *ngTemplateOutlet="nodeRow; context: { $implicit: node, depth: 0 }"
+            ></ng-container>
+          } @empty {
+            <tr>
+              <td [attr.colspan]="comparative() ? 3 : 2" class="pl-empty">
+                No income was posted in this period.
+              </td>
+            </tr>
+          }
+        </tbody>
+        <tfoot>
+          <tr class="pl-total-row">
+            <td class="fw-bold">Total income</td>
+            <td class="num fw-bold">{{ money(d.totalIncome) }}</td>
+            @if (comparative()) {
+              <td class="num fw-bold pl-prior">
+                {{ d.priorTotalIncome != null ? money(d.priorTotalIncome) : '—' }}
+              </td>
+            }
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============ Expenses side (Req 4.2) ============ -->
+  <div class="pl-card">
+    <div class="pl-card__head">
+      <h3 class="pl-card__title"><i class="ti ti-arrow-up-right me-1"></i>Expenses</h3>
+      <span class="text-secondary small">Debit balances for the period</span>
+    </div>
+    <div class="table-responsive">
+      <table class="pl-table">
+        <thead>
+          <tr>
+            <th>Account group</th>
+            <th class="num">Amount</th>
+            @if (comparative()) {
+              <th class="num">Prior period</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (node of d.expenses; track node.groupId) {
+            <ng-container
+              *ngTemplateOutlet="nodeRow; context: { $implicit: node, depth: 0 }"
+            ></ng-container>
+          } @empty {
+            <tr>
+              <td [attr.colspan]="comparative() ? 3 : 2" class="pl-empty">
+                No expenses were posted in this period.
+              </td>
+            </tr>
+          }
+        </tbody>
+        <tfoot>
+          <tr class="pl-total-row">
+            <td class="fw-bold">Total expenses</td>
+            <td class="num fw-bold">{{ money(d.totalExpenses) }}</td>
+            @if (comparative()) {
+              <td class="num fw-bold pl-prior">
+                {{ d.priorTotalExpenses != null ? money(d.priorTotalExpenses) : '—' }}
+              </td>
+            }
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- ============ Gross profit subtotal (Req 4 decision — only where present) ============ -->
+  @if (d.grossProfit !== null && d.grossProfit !== undefined) {
+    <div class="pl-subtotal">
+      <span class="pl-subtotal__label"><i class="ti ti-report-money me-1"></i>Gross profit</span>
+      <span class="pl-subtotal__value">{{ money(d.grossProfit) }}</span>
+    </div>
+  }
+
+  <!-- ============ Net profit / net loss banner (Reqs 4.4, 4.5, 13.3) ============ -->
+  @if (d.netLoss) {
+    <div class="pl-banner pl-banner--loss">
+      <i class="ti ti-trending-down pl-banner__icon"></i>
+      <div>
+        <div class="pl-banner__title">Net loss {{ money(d.netLossAmount) }}</div>
+        <div class="pl-banner__sub">
+          Total expenses {{ money(d.totalExpenses) }} exceeded total income
+          {{ money(d.totalIncome) }} for this period.
+          @if (comparative() && d.priorNetProfit != null) {
+            Prior period net {{ money(d.priorNetProfit) }}.
+          }
+        </div>
+      </div>
+    </div>
+  } @else {
+    <div class="pl-banner pl-banner--profit">
+      <i class="ti ti-trending-up pl-banner__icon"></i>
+      <div>
+        <div class="pl-banner__title">Net profit {{ money(d.netProfit) }}</div>
+        <div class="pl-banner__sub">
+          Total income {{ money(d.totalIncome) }} less total expenses
+          {{ money(d.totalExpenses) }} for this period.
+          @if (comparative() && d.priorNetProfit != null) {
+            Prior period net {{ money(d.priorNetProfit) }}.
+          }
+        </div>
+      </div>
+    </div>
+  }
+}
