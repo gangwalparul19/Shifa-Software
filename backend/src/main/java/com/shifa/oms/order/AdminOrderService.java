@@ -9,7 +9,9 @@ import com.shifa.oms.order.dto.ApprovalQueueItemResponse;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
+import com.shifa.oms.quikshipx.QuikShipXProperties;
 import com.shifa.oms.statemachine.OrderStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -46,14 +48,31 @@ public class AdminOrderService {
     private final LabelService labelService;
     private final OrderWorkflowService orderWorkflowService;
     private final OutboxEventPublisher outboxEventPublisher;
+    /**
+     * QuikShipX approval hook (nullable): when the integration is enabled, a
+     * {@code QUIKSHIPX_CONFIRM} outbox event is enqueued on approval so the
+     * shipment's QuikShipX status is mirrored to Confirmed. Null in unit tests
+     * that use the legacy constructor — the hook is then skipped.
+     */
+    private final QuikShipXProperties quikShipXProperties;
 
+    /** Legacy constructor (unit tests): no QuikShipX approval hook. */
     public AdminOrderService(OrderRepository orderRepository, LabelService labelService,
                              OrderWorkflowService orderWorkflowService,
                              OutboxEventPublisher outboxEventPublisher) {
+        this(orderRepository, labelService, orderWorkflowService, outboxEventPublisher, null);
+    }
+
+    @Autowired
+    public AdminOrderService(OrderRepository orderRepository, LabelService labelService,
+                             OrderWorkflowService orderWorkflowService,
+                             OutboxEventPublisher outboxEventPublisher,
+                             QuikShipXProperties quikShipXProperties) {
         this.orderRepository = orderRepository;
         this.labelService = labelService;
         this.orderWorkflowService = orderWorkflowService;
         this.outboxEventPublisher = outboxEventPublisher;
+        this.quikShipXProperties = quikShipXProperties;
     }
 
     /**
@@ -162,6 +181,11 @@ public class AdminOrderService {
         // event row commits atomically with the approval; a downstream posting failure can never
         // roll back or alter this order (additive — no change to existing behaviour/return value).
         outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_ORDER, saved.getId());
+        // QuikShipX (confirm-on-approve): enqueue a Confirmed status mirror in this
+        // same transaction when the integration is enabled (no-op otherwise).
+        if (quikShipXProperties != null && quikShipXProperties.isEnabled()) {
+            outboxEventPublisher.publishQuikShipXConfirm(saved.getId(), saved.getOrderCode());
+        }
         return OrderResponse.from(saved);
     }
 

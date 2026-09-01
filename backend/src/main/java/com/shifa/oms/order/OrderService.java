@@ -19,12 +19,16 @@ import com.shifa.oms.order.dto.DuplicateCheckResponse;
 import com.shifa.oms.order.dto.LineItemRequest;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
+import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.platform.storage.StorageService;
 import com.shifa.oms.product.Product;
+import com.shifa.oms.quikshipx.QuikShipXProperties;
 import com.shifa.oms.product.ProductImage;
 import com.shifa.oms.product.ProductImageRepository;
 import com.shifa.oms.product.ProductRepository;
+import com.shifa.oms.quikshipx.OrderShipmentRepository;
 import com.shifa.oms.statemachine.OrderStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -65,7 +69,18 @@ public class OrderService {
     private final TrackingService trackingService;
     private final StockService stockService;
     private final ProductImageRepository productImageRepository;
+    /**
+     * QuikShipX punch hook (nullable): when the integration is enabled, a
+     * {@code QUIKSHIPX_CREATE} outbox event is enqueued on order creation so the
+     * shipment is published to QuikShipX out-of-band. Null in unit tests that use
+     * the legacy constructor — the hook is then skipped.
+     */
+    private final OutboxEventPublisher outboxEventPublisher;
+    private final QuikShipXProperties quikShipXProperties;
+    /** QuikShipX shipment mirror (nullable): enriches order-detail reads. */
+    private final OrderShipmentRepository orderShipmentRepository;
 
+    /** Legacy constructor (unit tests): no QuikShipX punch hook / enrichment. */
     public OrderService(OrderRepository orderRepository,
                         ProductRepository productRepository,
                         OrderCodeGenerator orderCodeGenerator,
@@ -74,6 +89,22 @@ public class OrderService {
                         TrackingService trackingService,
                         StockService stockService,
                         ProductImageRepository productImageRepository) {
+        this(orderRepository, productRepository, orderCodeGenerator, storageService, scopeResolver,
+                trackingService, stockService, productImageRepository, null, null, null);
+    }
+
+    @Autowired
+    public OrderService(OrderRepository orderRepository,
+                        ProductRepository productRepository,
+                        OrderCodeGenerator orderCodeGenerator,
+                        StorageService storageService,
+                        SalespersonScopeResolver scopeResolver,
+                        TrackingService trackingService,
+                        StockService stockService,
+                        ProductImageRepository productImageRepository,
+                        OutboxEventPublisher outboxEventPublisher,
+                        QuikShipXProperties quikShipXProperties,
+                        OrderShipmentRepository orderShipmentRepository) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.orderCodeGenerator = orderCodeGenerator;
@@ -82,6 +113,9 @@ public class OrderService {
         this.trackingService = trackingService;
         this.stockService = stockService;
         this.productImageRepository = productImageRepository;
+        this.outboxEventPublisher = outboxEventPublisher;
+        this.quikShipXProperties = quikShipXProperties;
+        this.orderShipmentRepository = orderShipmentRepository;
     }
 
     // --- Creation: salesperson order entry (Req 7) --------------------------
@@ -180,7 +214,22 @@ public class OrderService {
         // decrements on_hand + records a SALE movement, rejecting insufficient stock.
         reserveStock(priced, actor.userId(), order.getOrderCode());
 
-        return OrderResponse.from(orderRepository.save(order));
+        OrderEntity saved = orderRepository.save(order);
+        // QuikShipX (create-on-punch): enqueue the shipment publication in this same
+        // transaction so the order appears in QuikShipX's Pending section once the
+        // drainer delivers it. Off unless the integration is enabled; the outbox row
+        // commits atomically with the order, so a slow/unavailable QuikShipX never
+        // blocks or fails the punch.
+        publishToQuikShipX(saved);
+        return OrderResponse.from(saved);
+    }
+
+    /** Enqueues the QuikShipX create-order event for a new order when enabled (no-op otherwise). */
+    private void publishToQuikShipX(OrderEntity order) {
+        if (outboxEventPublisher != null && quikShipXProperties != null
+                && quikShipXProperties.isEnabled()) {
+            outboxEventPublisher.publishQuikShipXCreate(order.getId(), order.getOrderCode());
+        }
     }
 
     // --- Payment screenshot upload (two-step) -------------------------------
@@ -279,11 +328,21 @@ public class OrderService {
         // Item 1: resolve each line product's primary image in a single batch
         // query (avoids an N+1 across the order's lines) so the detail view can
         // render a per-item thumbnail.
-        OrderResponse response = OrderResponse.from(order, primaryImageKeys(order));
-        return trackingService.shipmentFor(order.getId())
-                .map(s -> response.withShipment(
+        OrderResponse base = OrderResponse.from(order, primaryImageKeys(order));
+        OrderResponse response = trackingService.shipmentFor(order.getId())
+                .map(s -> base.withShipment(
                         s.awb(), s.courierName(), s.trackingUrl(), s.estimatedDelivery()))
-                .orElse(response);
+                .orElse(base);
+        // Enrich with the QuikShipX mirror (status label, hosted label URL, their
+        // order id) when a shipment has been published for this order.
+        if (orderShipmentRepository != null) {
+            OrderResponse withCourier = response;
+            response = orderShipmentRepository.findByOrderId(order.getId())
+                    .map(s -> withCourier.withQuikShip(
+                            s.getQuikShipXStatus(), s.getLabelUrl(), s.getShipperOrderId(), s.isTest()))
+                    .orElse(withCourier);
+        }
+        return response;
     }
 
     /**

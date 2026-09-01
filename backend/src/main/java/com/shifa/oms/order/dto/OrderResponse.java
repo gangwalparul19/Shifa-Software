@@ -72,7 +72,16 @@ public record OrderResponse(
         BigDecimal discountValue,
         // Optional buyer GSTIN captured at order entry (gst-filing-compliance
         // Req 1.1); null when the buyer is unregistered.
-        String buyerGstin
+        String buyerGstin,
+        // QuikShipX shipment mirror (courier integration): the mirrored QuikShipX
+        // status label (Pending/Confirmed/Tracking ID Assigned/…), the QuikShipX
+        // shipping-label PDF URL, QuikShipX's own order id, and whether the
+        // shipment was booked with the TEST secret. All null/false until the order
+        // is published to QuikShipX; populated on the order-detail read path.
+        String quikShipXStatus,
+        String quikShipXLabelUrl,
+        String quikShipXOrderId,
+        boolean quikShipXTest
 ) {
 
     /**
@@ -196,7 +205,27 @@ public record OrderResponse(
                 priced.gstTotal(),
                 order.getDiscountType(),
                 order.getDiscountValue(),
-                order.getBuyerGstin());
+                order.getBuyerGstin(),
+                null,
+                null,
+                null,
+                false);
+    }
+
+    /**
+     * Returns a copy of this response with the QuikShipX shipment mirror fields
+     * populated (order-detail only). All other fields are preserved.
+     */
+    public OrderResponse withQuikShip(String quikShipXStatus, String quikShipXLabelUrl,
+                                      String quikShipXOrderId, boolean quikShipXTest) {
+        return new OrderResponse(
+                id, orderCode, source, leadSource, leadSourceNote, customerEmail, notes, orderStatus,
+                paymentStatus, customerName, customerMobile, alternateMobile, addressLine, city, state,
+                postalCode, totalAmount, amountReceived, remainingAmount, codAmount, customerOutstanding,
+                couponCode, discountAmount, paymentScreenshotAvailable, items, createdAt, awb, courierName,
+                trackingUrl, estimatedDelivery, handoverName, packageCount, paymentVerificationStatus,
+                subtotalAmount, gstAmount, discountType, discountValue, buyerGstin,
+                quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest);
     }
 
     /**
@@ -243,6 +272,10 @@ public record OrderResponse(
                 gstAmount,
                 discountType,
                 discountValue,
-                buyerGstin);
+                buyerGstin,
+                quikShipXStatus,
+                quikShipXLabelUrl,
+                quikShipXOrderId,
+                quikShipXTest);
     }
 }

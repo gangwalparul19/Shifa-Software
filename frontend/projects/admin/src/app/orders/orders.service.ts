@@ -8,6 +8,8 @@ import {
   DuplicateCheckResponse,
   OrderDetail,
   OrderSummary,
+  QuikShipPublishAck,
+  QuikShipShipment,
   ScreenshotUploadResponse,
 } from './orders.model';
 
@@ -197,5 +199,21 @@ export class OrdersService {
     return this.http.get(this.api.url(`/api/admin/labels/internal/${id}`), {
       responseType: 'blob',
     });
+  }
+
+  /**
+   * The QuikShipX shipment mirror for an order
+   * ({@code GET /api/orders/{id}/quikshipx}, ADMIN). 404 when not yet published.
+   */
+  quikShipShipment(id: number): Observable<QuikShipShipment> {
+    return this.api.get<QuikShipShipment>(`/api/orders/${id}/quikshipx`);
+  }
+
+  /**
+   * (Re)queue an order for publication to QuikShipX
+   * ({@code POST /api/orders/{id}/quikshipx/publish}, ADMIN). Idempotent.
+   */
+  quikShipPublish(id: number): Observable<QuikShipPublishAck> {
+    return this.api.post<QuikShipPublishAck>(`/api/orders/${id}/quikshipx/publish`, {});
   }
 }

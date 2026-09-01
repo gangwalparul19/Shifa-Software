@@ -105,6 +105,37 @@ public class OutboxEventPublisher {
     }
 
     /**
+     * Enqueues a {@code QUIKSHIPX_CREATE} event when an order is punched, so the
+     * QuikShipX drainer creates the shipment (their Pending section) out-of-band.
+     * Publish only when the QuikShipX integration is enabled.
+     *
+     * @param orderId   the punched order's id
+     * @param orderCode the punched order's code (also the QuikShipX customer_order_id)
+     * @return the persisted event row
+     */
+    public OutboxEvent publishQuikShipXCreate(Long orderId, String orderCode) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("orderId", orderId);
+        payload.put("orderCode", orderCode);
+        return publish(OutboxEvent.AGGREGATE_ORDER, orderId, OutboxEvent.EVENT_QUIKSHIPX_CREATE, payload);
+    }
+
+    /**
+     * Enqueues a {@code QUIKSHIPX_CONFIRM} event when an order is admin-approved,
+     * so the QuikShipX drainer mirrors the shipment status to Confirmed.
+     *
+     * @param orderId   the approved order's id
+     * @param orderCode the approved order's code
+     * @return the persisted event row
+     */
+    public OutboxEvent publishQuikShipXConfirm(Long orderId, String orderCode) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("orderId", orderId);
+        payload.put("orderCode", orderCode);
+        return publish(OutboxEvent.AGGREGATE_ORDER, orderId, OutboxEvent.EVENT_QUIKSHIPX_CONFIRM, payload);
+    }
+
+    /**
      * Enqueues a {@code COURIER_ASSIGN} event for an order that has just become
      * {@code Packed} (Req 12.1). The courier drainer (task 14) picks this up and
      * requests the AWB + shipping label out-of-band, so a slow or unavailable

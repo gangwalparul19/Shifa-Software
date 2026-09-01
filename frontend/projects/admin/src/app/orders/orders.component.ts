@@ -1067,6 +1067,54 @@ export class OrdersComponent implements OnInit, OnDestroy {
     });
   }
 
+  // --- QuikShipX shipment (courier integration) --------------------------
+
+  /** Busy flag for the QuikShipX publish action in the detail drawer. */
+  protected readonly quikShipBusy = signal(false);
+
+  /** Whether the current user may (re)publish an order to QuikShipX (ADMIN). */
+  protected readonly canManageQuikShip = computed(() => this.auth.hasAnyRole(Role.ADMIN));
+
+  /** Tabler badge class for a QuikShipX status label (colour by lifecycle stage). */
+  quikShipBadgeClass(status: string | null | undefined): string {
+    const s = (status ?? '').toLowerCase();
+    if (s.includes('deliver')) {
+      return 'bg-green-lt';
+    }
+    if (s.includes('return') || s.includes('lost') || s.includes('cancel')) {
+      return 'bg-red-lt';
+    }
+    if (s.includes('transit') || s.includes('out for') || s.includes('pickup')) {
+      return 'bg-blue-lt';
+    }
+    if (s.includes('tracking') || s.includes('label') || s.includes('confirm')) {
+      return 'bg-cyan-lt';
+    }
+    return 'bg-yellow-lt';
+  }
+
+  /** (Re)queues the open order for publication to QuikShipX (ADMIN). */
+  publishToQuikShip(order: OrderDetail): void {
+    if (!this.canManageQuikShip() || this.quikShipBusy()) {
+      return;
+    }
+    this.quikShipBusy.set(true);
+    this.service.quikShipPublish(order.id).subscribe({
+      next: (ack) => {
+        this.quikShipBusy.set(false);
+        if (ack.queued) {
+          this.toasts.success(ack.message);
+        } else {
+          this.toasts.info(ack.message);
+        }
+      },
+      error: () => {
+        this.quikShipBusy.set(false);
+        this.toasts.error('Could not queue the order for QuikShipX. Please try again.');
+      },
+    });
+  }
+
   // --- Create return (Set B — Feature 2) ---------------------------------
 
   openCreateReturn(): void {

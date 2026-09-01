@@ -658,6 +658,52 @@
           </div>
         }
 
+        <!-- QuikShipX shipment mirror (courier integration) -->
+        @if (order.quikShipXStatus || canManageQuikShip()) {
+          <div class="shifa-od__section">
+            <div class="shifa-od__label mb-2">
+              QuikShipX
+              @if (order.quikShipXTest) {
+                <span class="badge bg-orange-lt ms-1">TEST</span>
+              }
+            </div>
+            <div class="shifa-od__card">
+              @if (order.quikShipXStatus) {
+                <div class="shifa-od__totline">
+                  <span>Status</span>
+                  <span><span [class]="'badge ' + quikShipBadgeClass(order.quikShipXStatus)">{{ order.quikShipXStatus }}</span></span>
+                </div>
+              } @else {
+                <div class="text-secondary small mb-2">Not yet published to QuikShipX.</div>
+              }
+              @if (order.quikShipXOrderId) {
+                <div class="shifa-od__totline"><span>QuikShipX order</span><span class="shifa-mono">{{ order.quikShipXOrderId }}</span></div>
+              }
+              @if (order.awb) {
+                <div class="shifa-od__totline"><span>Tracking ID (AWB)</span><span class="shifa-mono">{{ order.awb }}</span></div>
+              }
+              <div class="d-flex gap-2 flex-wrap mt-2">
+                @if (order.quikShipXLabelUrl) {
+                  <a class="btn btn-sm btn-outline-primary" [href]="order.quikShipXLabelUrl" target="_blank" rel="noopener">
+                    <i class="ti ti-file-download me-1"></i> Shipping label
+                  </a>
+                }
+                @if (canManageQuikShip() && !order.quikShipXStatus) {
+                  <button type="button" class="btn btn-sm btn-outline-secondary"
+                    (click)="publishToQuikShip(order)" [disabled]="quikShipBusy()">
+                    @if (quikShipBusy()) {
+                      <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                    } @else {
+                      <i class="ti ti-cloud-upload me-1"></i>
+                    }
+                    Publish to QuikShipX
+                  </button>
+                }
+              </div>
+            </div>
+          </div>
+        }
+
         }
 
         <!-- (10) Primary lifecycle action for pending orders -->

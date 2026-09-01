@@ -130,6 +130,42 @@ app:
     # Scheduler intervals (ms): outbox drain and missed-webhook poll fallback.
     drain-interval-ms: ${COURIER_DRAIN_INTERVAL_MS:15000}
     poll-interval-ms: ${COURIER_POLL_INTERVAL_MS:300000}
+  quikshipx:
+    # QuikShipX courier integration (create-order on punch, allot-tracking-id on
+    # dispatch, track-order polling). OFF by default — the internal label/packing
+    # flow behaves exactly as before until this is enabled with credentials.
+    enabled: ${QUIKSHIPX_ENABLED:false}
+    # Client backend: MOCK (deterministic, no network) or HTTP (real API).
+    mode: ${QUIKSHIPX_MODE:MOCK}
+    base-url: ${QUIKSHIPX_BASE_URL:https://head.quikshipx.com}
+    # Credentials travel in the request body (shipper_details), not a header.
+    client-code: ${QUIKSHIPX_CLIENT_CODE:SHR083}
+    user-id: ${QUIKSHIPX_USER_ID:86}
+    # Two secrets; secret-mode selects which one is sent (and stamps is_test).
+    # Keep these in env/secrets — never commit a live secret.
+    test-secret: ${QUIKSHIPX_TEST_SECRET:}
+    live-secret: ${QUIKSHIPX_LIVE_SECRET:}
+    secret-mode: ${QUIKSHIPX_SECRET_MODE:TEST}
+    # Pickup warehouse + courier used when allotting a tracking id.
+    warehouse-id: ${QUIKSHIPX_WAREHOUSE_ID:87}
+    courier-id: ${QUIKSHIPX_COURIER_ID:1}
+    # Shipment defaults QuikShipX requires but Shifa does not store per order.
+    package-type: ${QUIKSHIPX_PACKAGE_TYPE:2}      # 1 Flyer, 2 Cardboard
+    shipping-mode: ${QUIKSHIPX_SHIPPING_MODE:1}    # 1 Surface, 2 Express
+    dead-weight-grams: ${QUIKSHIPX_DEAD_WEIGHT_GRAMS:500}
+    length-cm: ${QUIKSHIPX_LENGTH_CM:15}
+    width-cm: ${QUIKSHIPX_WIDTH_CM:15}
+    height-cm: ${QUIKSHIPX_HEIGHT_CM:15}
+    shipping-amount: ${QUIKSHIPX_SHIPPING_AMOUNT:0}
+    product-category: ${QUIKSHIPX_PRODUCT_CATEGORY:Herbal}
+    # Optional confirm-order path once QuikShipX documents one (blank = mirror
+    # Confirmed locally only).
+    confirm-order-path: ${QUIKSHIPX_CONFIRM_ORDER_PATH:}
+    request-timeout: PT15S
+    max-attempts: ${QUIKSHIPX_MAX_ATTEMPTS:5}
+    retry-backoff: PT30S
+    # Scheduler interval (ms) for draining create/confirm events.
+    drain-interval-ms: ${QUIKSHIPX_DRAIN_INTERVAL_MS:15000}
   payment:
     # Online payment gateway (Phase E). Swappable behind the PaymentGateway
     # interface and selected by `mode`:

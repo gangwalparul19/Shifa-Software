@@ -44,6 +44,21 @@ public class OutboxEvent {
     public static final String EVENT_ORDER_PACKED = "ORDER_PACKED";
 
     /**
+     * Event type emitted when an order is punched, so the QuikShipX drainer can
+     * create the shipment out-of-band (QuikShipX create-order → their Pending
+     * section). Its payload carries the order id/code; the drainer reloads the
+     * aggregate. Only published when the QuikShipX integration is enabled.
+     */
+    public static final String EVENT_QUIKSHIPX_CREATE = "QUIKSHIPX_CREATE";
+
+    /**
+     * Event type emitted when an order is admin-approved, so the QuikShipX drainer
+     * can mirror the shipment status to Confirmed (and, once QuikShipX documents a
+     * confirm endpoint, push it). Payload carries the order id/code.
+     */
+    public static final String EVENT_QUIKSHIPX_CONFIRM = "QUIKSHIPX_CONFIRM";
+
+    /**
      * Event type emitted when an order becomes {@code Packed} so the courier
      * drainer can request an AWB + shipping label out-of-band (Req 12.1). Its
      * payload carries the order id/code; the drainer reloads the aggregate.

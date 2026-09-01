@@ -89,6 +89,14 @@ public final class AuditActions {
     // Sales targets & incentives (FEATURE-ROADMAP §6.1).
     public static final String SALES_TARGET_SET = "SALES_TARGET_SET";
 
+    // QuikShipX courier integration.
+    /** An order was published to QuikShipX (create-order → their Pending section). */
+    public static final String QUIKSHIPX_PUBLISHED = "QUIKSHIPX_PUBLISHED";
+    /** An order's QuikShipX status was mirrored to Confirmed on admin approval. */
+    public static final String QUIKSHIPX_CONFIRMED = "QUIKSHIPX_CONFIRMED";
+    /** A QuikShipX tracking id (AWB) + label were allotted for an order. */
+    public static final String QUIKSHIPX_TRACKING_ALLOTTED = "QUIKSHIPX_TRACKING_ALLOTTED";
+
     // Customizable WhatsApp message templates (V44).
     public static final String WHATSAPP_TEMPLATE_CREATED = "WHATSAPP_TEMPLATE_CREATED";
     public static final String WHATSAPP_TEMPLATE_UPDATED = "WHATSAPP_TEMPLATE_UPDATED";

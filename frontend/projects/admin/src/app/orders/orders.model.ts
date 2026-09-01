@@ -226,4 +226,40 @@ export interface OrderDetail {
   trackingUrl?: string;
   /** Estimated delivery date (ISO yyyy-MM-dd), when available. */
   estimatedDelivery?: string;
+  /**
+   * QuikShipX shipment mirror (courier integration): the mirrored QuikShipX
+   * status label (Pending / Confirmed / Tracking ID Assigned / In Transit /
+   * Out For Delivery / Delivered / …), the QuikShipX-hosted shipping-label PDF
+   * URL, QuikShipX's own order id, and whether it was booked with the TEST
+   * secret. All null/false until the order is published to QuikShipX.
+   */
+  quikShipXStatus?: string | null;
+  quikShipXLabelUrl?: string | null;
+  quikShipXOrderId?: string | null;
+  quikShipXTest?: boolean;
+}
+
+/**
+ * The QuikShipX shipment mirror for an order, from
+ * {@code GET /api/orders/{id}/quikshipx} (mirrors the backend
+ * {@code QuikShipXController.ShipmentView}). 404 when not yet published.
+ */
+export interface QuikShipShipment {
+  orderId: number;
+  orderCode: string;
+  shipperOrderId?: string | null;
+  quikShipXStatus?: string | null;
+  awb?: string | null;
+  courierId?: string | null;
+  subCourierName?: string | null;
+  labelUrl?: string | null;
+  test: boolean;
+  lastStatusRaw?: string | null;
+  lastSyncedAt?: string | null;
+}
+
+/** Acknowledgement of a QuikShipX publish request. */
+export interface QuikShipPublishAck {
+  queued: boolean;
+  message: string;
 }

@@ -34,6 +34,9 @@ public final class CourierStatusMapper {
     private static final Map<String, OrderStatus> MAPPING = Map.ofEntries(
             Map.entry("pickup", OrderStatus.DISPATCHED),
             Map.entry("picked_up", OrderStatus.DISPATCHED),
+            // QuikShipX "Ready For Pickup" precedes the courier scan; treat it as
+            // dispatched so a QuikShipX-tracked order advances past Courier_Assigned.
+            Map.entry("ready_for_pickup", OrderStatus.DISPATCHED),
             Map.entry("dispatched", OrderStatus.DISPATCHED),
             Map.entry("in_transit", OrderStatus.IN_TRANSIT),
             Map.entry("out_for_delivery", OrderStatus.OUT_FOR_DELIVERY),
