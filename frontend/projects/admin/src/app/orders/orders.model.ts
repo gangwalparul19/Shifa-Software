@@ -131,6 +131,16 @@ export interface OrderSummary {
   totalAmount: Money;
   codAmount: Money;
   createdAt?: string;
+  /**
+   * Mirrored QuikShipX status (Pending / Confirmed / Tracking ID Assigned / In
+   * Transit / …), shown as a chip on the Orders list. Null when the order was
+   * never published to QuikShipX.
+   */
+  quikShipXStatus?: string | null;
+  /** QuikShipX's own order id (quoted to track on their portal); null until published. */
+  quikShipXOrderId?: string | null;
+  /** The allotted AWB; null until a tracking id is assigned. */
+  quikShipXAwb?: string | null;
 }
 
 /** A single line within a full order detail. */
@@ -262,4 +272,25 @@ export interface QuikShipShipment {
 export interface QuikShipPublishAck {
   queued: boolean;
   message: string;
+}
+
+/** One courier scan event in the QuikShipX tracking timeline. */
+export interface QuikShipScan {
+  status?: string | null;
+  location?: string | null;
+  instructions?: string | null;
+  scanAt?: string | null;
+}
+
+/**
+ * Live tracking for an order, from {@code GET /api/orders/{id}/quikshipx/track}
+ * (mirrors the backend {@code QuikShipXService.TrackView}). `message` is set when
+ * the shipment is not yet trackable (empty timeline).
+ */
+export interface QuikShipTracking {
+  quikShipXStatus?: string | null;
+  awb?: string | null;
+  lastSyncedAt?: string | null;
+  scans: QuikShipScan[];
+  message?: string | null;
 }

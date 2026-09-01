@@ -101,16 +101,25 @@ class OrderWorkflowHistoryAppendPropertyTest {
         addStaff(cases, OrderStatus.APPROVED, OrderStatus.LABEL_GENERATED, Role.ADMIN);
         addSystem(cases, OrderStatus.APPROVED, OrderStatus.LABEL_GENERATED);
         addStaff(cases, OrderStatus.LABEL_GENERATED, OrderStatus.PACKED, Role.PACKING_USER, Role.ADMIN);
+        // QuikShipX fast-forward: allot at approval hands the order to the courier (SYSTEM).
+        addSystem(cases, OrderStatus.LABEL_GENERATED, OrderStatus.COURIER_ASSIGNED);
         addStaff(cases, OrderStatus.PACKED, OrderStatus.HANDED_TO_DELIVERY, Role.PACKING_USER, Role.ADMIN);
         // Dispatch (staff) + assign (SYSTEM) share the edge; self-retain is SYSTEM.
         addStaff(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.COURIER_ASSIGNED,
                 Role.PACKING_USER, Role.ADMIN);
         addSystem(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.COURIER_ASSIGNED);
         addSystem(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.HANDED_TO_DELIVERY);
-        // Courier pickup + webhook progressions — SYSTEM only.
+        // Courier pickup + webhook progressions — SYSTEM only. Forward jumps from
+        // Courier_Assigned keep a QuikShipX tracking poll from stalling on a skipped scan.
         addSystem(cases, OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED);
+        addSystem(cases, OrderStatus.COURIER_ASSIGNED, OrderStatus.IN_TRANSIT);
+        addSystem(cases, OrderStatus.COURIER_ASSIGNED, OrderStatus.OUT_FOR_DELIVERY);
+        addSystem(cases, OrderStatus.COURIER_ASSIGNED, OrderStatus.DELIVERED);
+        addSystem(cases, OrderStatus.COURIER_ASSIGNED, OrderStatus.RTO);
+        addSystem(cases, OrderStatus.COURIER_ASSIGNED, OrderStatus.REDISPATCH);
         addSystem(cases, OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT);
         addSystem(cases, OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY);
+        addSystem(cases, OrderStatus.DISPATCHED, OrderStatus.DELIVERED);
         addSystem(cases, OrderStatus.DISPATCHED, OrderStatus.RTO);
         addSystem(cases, OrderStatus.DISPATCHED, OrderStatus.REDISPATCH);
         addSystem(cases, OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY);

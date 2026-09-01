@@ -65,18 +65,24 @@ public enum OrderStatus {
         table.put(PENDING_ADMIN_APPROVAL, EnumSet.of(APPROVED, REJECTED, CANCELLED));
         // Label service generates the internal label (Req 10.3).
         table.put(APPROVED, EnumSet.of(LABEL_GENERATED));
-        // Packing barcode scan (Req 8.2).
-        table.put(LABEL_GENERATED, EnumSet.of(PACKED));
+        // Packing barcode scan (Req 8.2). QuikShipX orders instead fast-forward
+        // straight to Courier_Assigned when a tracking id is allotted at approval
+        // (SYSTEM only), skipping the manual pack/handover/dispatch steps.
+        table.put(LABEL_GENERATED, EnumSet.of(PACKED, COURIER_ASSIGNED));
         // Handover to the delivery courier (Req 9.2, 9.3). Courier assignment no
         // longer runs directly from Packed — it moves to the handover step.
         table.put(PACKED, EnumSet.of(HANDED_TO_DELIVERY));
         // Dispatch enqueues courier assignment (Req 9.5, 10.1); a failed/retried
         // assignment self-retains Handed_To_Delivery (Req 10.4).
         table.put(HANDED_TO_DELIVERY, EnumSet.of(COURIER_ASSIGNED, HANDED_TO_DELIVERY));
-        // Pickup (Req 10.2).
-        table.put(COURIER_ASSIGNED, EnumSet.of(DISPATCHED));
-        // Courier webhook progressions (Req 10.3).
-        table.put(DISPATCHED, EnumSet.of(IN_TRANSIT, OUT_FOR_DELIVERY, RTO, REDISPATCH));
+        // Pickup (Req 10.2) + forward courier progressions so a QuikShipX tracking
+        // poll never stalls when an intermediate scan (e.g. picked-up) is skipped
+        // between polls — all SYSTEM-driven.
+        table.put(COURIER_ASSIGNED, EnumSet.of(
+                DISPATCHED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, RTO, REDISPATCH));
+        // Courier webhook/tracking progressions (Req 10.3) + a direct Delivered
+        // for a skipped in-transit scan.
+        table.put(DISPATCHED, EnumSet.of(IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, RTO, REDISPATCH));
         table.put(IN_TRANSIT, EnumSet.of(OUT_FOR_DELIVERY, DELIVERED, RTO, REDISPATCH));
         // New delivery outcomes Customer_Rejected / Delivery_Failed (Req 11.1, 11.2).
         table.put(OUT_FOR_DELIVERY,

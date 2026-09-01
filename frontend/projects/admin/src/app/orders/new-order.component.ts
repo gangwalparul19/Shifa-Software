@@ -215,6 +215,44 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   /** Whether the free-text lead-source note is shown (only for {@code OTHER}, Req 4.5). */
   protected readonly showLeadSourceNote = computed(() => this.model().leadSource === 'OTHER');
 
+  // --- Leaner-form expanders (optional fields hidden by default) -----------
+  // Keep the New Order form short for salespeople: alternate number / email /
+  // GSTIN, an order-level discount, and an order note stay collapsed until asked
+  // for. The underlying controls remain registered, so submit + validation are
+  // unaffected; these are pre-opened when a value is already present (e.g.
+  // reorder/convert prefill).
+  protected readonly moreDetails = signal(false);
+  protected readonly showDiscount = signal(false);
+  protected readonly showNote = signal(false);
+
+  protected toggleMoreDetails(): void {
+    this.moreDetails.update((v) => !v);
+  }
+  protected toggleDiscount(): void {
+    this.showDiscount.set(true);
+  }
+  protected toggleNote(): void {
+    this.showNote.set(true);
+  }
+
+  /**
+   * Reveals any collapsed expander whose field already carries a value, so
+   * prefilled data (reorder / convert / prefill-from-last / resumed draft) is
+   * never hidden behind a closed section.
+   */
+  private syncExpandersFromForm(): void {
+    const c = this.form.controls;
+    if (c.alternateMobile.value || c.customerEmail.value || c.buyerGstin.value) {
+      this.moreDetails.set(true);
+    }
+    if (c.discountType.value) {
+      this.showDiscount.set(true);
+    }
+    if (c.notes.value) {
+      this.showNote.set(true);
+    }
+  }
+
   /** Whether a payment screenshot is mandatory (mirrors the backend rule). */
   protected readonly screenshotRequired = computed(() => this.model().amountReceived > 0);
 
@@ -388,6 +426,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     const { items: _drop, ...scalars } = v as { items?: unknown };
     this.form.patchValue(scalars as Record<string, unknown>);
     this.model.set(this.snapshot());
+    this.syncExpandersFromForm();
     this.draftAvailable.set(false);
     this.toasts.success('Resumed your saved order — review and save.');
   }
@@ -448,6 +487,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
           }
         }
         this.model.set(this.snapshot());
+        this.syncExpandersFromForm();
         this.toasts.success(`Loaded ${lines.length} item(s) from ${o.orderCode} — review and save.`);
       },
       error: () => this.toasts.error('Could not load that order to reorder.'),
@@ -483,6 +523,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
         this.form.controls.customerEmail.disable();
         this.form.controls.leadSource.disable();
         this.form.controls.leadSourceNote.disable();
+        this.syncExpandersFromForm();
       },
       error: () => {
         this.toasts.error('Could not load the lead to convert.');
@@ -579,6 +620,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
           c.leadSource.setValue(p.leadSource as LeadSource);
         }
         if (p.leadSourceNote) c.leadSourceNote.setValue(p.leadSourceNote);
+        this.syncExpandersFromForm();
         this.prefilledFromLast.set(p.customerName || 'a previous order');
       },
       error: () => this.prefilledFromLast.set(null),

@@ -467,3 +467,63 @@
   background: #fde4e2;
   color: #b42318;
 }
+
+/* QuikShipX live tracking timeline (order detail drawer). */
+.shifa-qsx-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.shifa-qsx-timeline li {
+  position: relative;
+  display: flex;
+  gap: 0.6rem;
+  padding: 0 0 0.75rem 0;
+}
+.shifa-qsx-timeline li:not(:last-child) .shifa-qsx-dot::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 12px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--tblr-border-color, #e6e7e9);
+}
+.shifa-qsx-dot {
+  position: relative;
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #1F5D3F;
+}
+.shifa-qsx-timeline li:first-child .shifa-qsx-dot {
+  box-shadow: 0 0 0 3px rgba(31, 93, 63, 0.15);
+}
+.shifa-qsx-item {
+  min-width: 0;
+}
+.shifa-qsx-item__head {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+/* QuikShipX status chip row on the mobile order card. */
+.shifa-oc__r3 {
+  margin-top: 0.35rem;
+  display: flex;
+}
+.shifa-oc__r3 .badge {
+  font-weight: 500;
+}
+
+/* Small QuikShipX order-id line under the chip on the desktop Orders table. */
+.shifa-qsx-id {
+  font-size: 0.7rem;
+  line-height: 1.1;
+  margin-top: 2px;
+}

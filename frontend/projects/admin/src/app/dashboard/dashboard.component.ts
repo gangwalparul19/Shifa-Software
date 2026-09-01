@@ -57,17 +57,14 @@ interface StageGroupCount {
   icon: string;
 }
 
-/** Colour accent + icon for each of the 9 lifecycle stage groups. */
+/** Colour accent + icon for each of the 6 QuikShip-aligned lifecycle stage groups. */
 const STAGE_GROUP_STYLE: Record<string, { accent: string; accentSoft: string; icon: string }> = {
   PENDING_APPROVAL: { accent: '#f59f00', accentSoft: '#fdf1da', icon: 'ti ti-clock' },
-  PACKAGING: { accent: '#0ca678', accentSoft: '#e3f7f0', icon: 'ti ti-box' },
-  LABEL_GENERATED: { accent: '#4263eb', accentSoft: '#e8ecfd', icon: 'ti ti-barcode' },
-  AWAITING_HANDOVER: { accent: '#0ca678', accentSoft: '#e3f7f0', icon: 'ti ti-package' },
-  AWAITING_DISPATCH: { accent: '#4263eb', accentSoft: '#e8ecfd', icon: 'ti ti-truck-delivery' },
-  IN_TRANSIT: { accent: '#206bc4', accentSoft: '#e7f0fb', icon: 'ti ti-truck' },
-  COMPLETED: { accent: '#2fb344', accentSoft: '#e5f6e8', icon: 'ti ti-circle-check' },
-  CANCELLED: { accent: '#868e96', accentSoft: '#f1f3f5', icon: 'ti ti-ban' },
+  PROCESSING: { accent: '#0ca678', accentSoft: '#e3f7f0', icon: 'ti ti-box' },
+  SHIPPED: { accent: '#206bc4', accentSoft: '#e7f0fb', icon: 'ti ti-truck' },
+  DELIVERED: { accent: '#2fb344', accentSoft: '#e5f6e8', icon: 'ti ti-circle-check' },
   FAILED_RETURNED: { accent: '#d63939', accentSoft: '#fbe7e7', icon: 'ti ti-alert-triangle' },
+  CANCELLED: { accent: '#868e96', accentSoft: '#f1f3f5', icon: 'ti ti-ban' },
 };
 
 /** A laid-out bar + comparison-point for the hand-rolled SVG sales chart. */

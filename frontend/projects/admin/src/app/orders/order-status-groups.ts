@@ -14,14 +14,11 @@ import { OrderStatus } from 'core';
  */
 export type OrderStatusGroupKey =
   | 'PENDING_APPROVAL'
-  | 'PACKAGING'
-  | 'LABEL_GENERATED'
-  | 'AWAITING_HANDOVER'
-  | 'AWAITING_DISPATCH'
-  | 'IN_TRANSIT'
-  | 'COMPLETED'
-  | 'CANCELLED'
-  | 'FAILED_RETURNED';
+  | 'PROCESSING'
+  | 'SHIPPED'
+  | 'DELIVERED'
+  | 'FAILED_RETURNED'
+  | 'CANCELLED';
 
 /** A single lifecycle group: its server key, display label, and member statuses. */
 export interface OrderStatusGroupDef {
@@ -30,16 +27,28 @@ export interface OrderStatusGroupDef {
   statuses: OrderStatus[];
 }
 
-/** The ordered lifecycle groups (a complete, non-overlapping partition). */
+/**
+ * The ordered lifecycle groups (a complete, non-overlapping partition), collapsed
+ * to a QuikShip-aligned set. With QuikShip handling fulfilment, the old
+ * Packaging / Label Generated / Awaiting Handover / Awaiting Dispatch stages are
+ * skipped in seconds, so they are folded into a single "Processing" stage to keep
+ * the salesperson's view simple.
+ */
 export const ORDER_STATUS_GROUPS: readonly OrderStatusGroupDef[] = [
   { key: 'PENDING_APPROVAL', label: 'Pending Approval', statuses: [OrderStatus.PENDING_ADMIN_APPROVAL] },
-  { key: 'PACKAGING', label: 'Packaging', statuses: [OrderStatus.APPROVED] },
-  { key: 'LABEL_GENERATED', label: 'Label Generated', statuses: [OrderStatus.LABEL_GENERATED] },
-  { key: 'AWAITING_HANDOVER', label: 'Awaiting Handover', statuses: [OrderStatus.PACKED] },
-  { key: 'AWAITING_DISPATCH', label: 'Awaiting Dispatch', statuses: [OrderStatus.HANDED_TO_DELIVERY] },
   {
-    key: 'IN_TRANSIT',
-    label: 'In Transit',
+    key: 'PROCESSING',
+    label: 'Processing',
+    statuses: [
+      OrderStatus.APPROVED,
+      OrderStatus.LABEL_GENERATED,
+      OrderStatus.PACKED,
+      OrderStatus.HANDED_TO_DELIVERY,
+    ],
+  },
+  {
+    key: 'SHIPPED',
+    label: 'Shipped',
     statuses: [
       OrderStatus.COURIER_ASSIGNED,
       OrderStatus.DISPATCHED,
@@ -48,14 +57,13 @@ export const ORDER_STATUS_GROUPS: readonly OrderStatusGroupDef[] = [
     ],
   },
   {
-    key: 'COMPLETED',
-    label: 'Completed',
+    key: 'DELIVERED',
+    label: 'Delivered',
     statuses: [OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED, OrderStatus.CLOSED],
   },
-  { key: 'CANCELLED', label: 'Cancelled', statuses: [OrderStatus.REJECTED, OrderStatus.CANCELLED] },
   {
     key: 'FAILED_RETURNED',
-    label: 'Failed / Returned',
+    label: 'Returned / Failed',
     statuses: [
       OrderStatus.CUSTOMER_REJECTED,
       OrderStatus.DELIVERY_FAILED,
@@ -63,7 +71,57 @@ export const ORDER_STATUS_GROUPS: readonly OrderStatusGroupDef[] = [
       OrderStatus.REDISPATCH,
     ],
   },
+  { key: 'CANCELLED', label: 'Cancelled', statuses: [OrderStatus.REJECTED, OrderStatus.CANCELLED] },
 ];
+
+/**
+ * Maps a pre-collapse group key (from a stale saved view / deep link) onto the
+ * current key, so old bookmarks keep filtering correctly. Returns the input
+ * unchanged when it is already a current key or unrecognised.
+ */
+export function normalizeGroupKey(key: string | null | undefined): OrderStatusGroupKey | '' {
+  if (!key) {
+    return '';
+  }
+  switch (key.toUpperCase()) {
+    case 'PENDING_APPROVAL':
+      return 'PENDING_APPROVAL';
+    case 'PROCESSING':
+    case 'PACKAGING':
+    case 'LABEL_GENERATED':
+    case 'AWAITING_HANDOVER':
+    case 'AWAITING_DISPATCH':
+      return 'PROCESSING';
+    case 'SHIPPED':
+    case 'IN_TRANSIT':
+      return 'SHIPPED';
+    case 'DELIVERED':
+    case 'COMPLETED':
+      return 'DELIVERED';
+    case 'FAILED_RETURNED':
+      return 'FAILED_RETURNED';
+    case 'CANCELLED':
+      return 'CANCELLED';
+    default:
+      return '';
+  }
+}
+
+/**
+ * The friendly business-stage label for a raw order status (e.g. COURIER_ASSIGNED
+ * → "Shipped"), used to show a simplified status to salespeople. Falls back to the
+ * raw status when it has no group.
+ */
+export function stageLabelForStatus(status: string | null | undefined): string {
+  if (!status) {
+    return '';
+  }
+  const needle = String(status).toUpperCase();
+  const found = ORDER_STATUS_GROUPS.find((g) =>
+    g.statuses.some((s) => String(s).toUpperCase() === needle),
+  );
+  return found ? found.label : String(status);
+}
 
 /**
  * Maps a raw order status (in any case) to its group key, or '' if none. Used to

@@ -48,28 +48,26 @@ class OrderStatusGroupTest {
     // --- Membership pins (workflow-critical: matches the packing queue) ------
 
     @Test
-    void singleStatusGroupsMapToTheirStatus() {
+    void pendingApprovalIsTheSingleFirstStage() {
         assertThat(OrderStatusGroup.PENDING_APPROVAL.statuses())
                 .containsExactly(OrderStatus.PENDING_ADMIN_APPROVAL);
-        assertThat(OrderStatusGroup.PACKAGING.statuses())
-                .containsExactly(OrderStatus.APPROVED);
-        assertThat(OrderStatusGroup.LABEL_GENERATED.statuses())
-                .containsExactly(OrderStatus.LABEL_GENERATED);
     }
 
     @Test
-    void packedIsAwaitingHandoverAndHandedIsAwaitingDispatch() {
-        // Mirrors the packing queue terminology: PACKED = "awaiting handover",
-        // HANDED_TO_DELIVERY = "awaiting dispatch" (project memory: packing queue).
-        assertThat(OrderStatusGroup.AWAITING_HANDOVER.statuses())
-                .containsExactly(OrderStatus.PACKED);
-        assertThat(OrderStatusGroup.AWAITING_DISPATCH.statuses())
-                .containsExactly(OrderStatus.HANDED_TO_DELIVERY);
+    void processingClubsApprovalThroughHandover() {
+        // The QuikShip-aligned collapse: approval, internal label, and the (skipped
+        // for QuikShip) pack/handover steps are one "Processing" stage.
+        assertThat(OrderStatusGroup.PROCESSING.statuses())
+                .containsExactlyInAnyOrder(
+                        OrderStatus.APPROVED,
+                        OrderStatus.LABEL_GENERATED,
+                        OrderStatus.PACKED,
+                        OrderStatus.HANDED_TO_DELIVERY);
     }
 
     @Test
-    void inTransitClubsTheCourierStages() {
-        assertThat(OrderStatusGroup.IN_TRANSIT.statuses())
+    void shippedClubsTheCourierStages() {
+        assertThat(OrderStatusGroup.SHIPPED.statuses())
                 .containsExactlyInAnyOrder(
                         OrderStatus.COURIER_ASSIGNED,
                         OrderStatus.DISPATCHED,
@@ -78,8 +76,8 @@ class OrderStatusGroupTest {
     }
 
     @Test
-    void completedClubsTheSuccessfulTerminalStates() {
-        assertThat(OrderStatusGroup.COMPLETED.statuses())
+    void deliveredClubsTheSuccessfulTerminalStates() {
+        assertThat(OrderStatusGroup.DELIVERED.statuses())
                 .containsExactlyInAnyOrder(
                         OrderStatus.DELIVERED,
                         OrderStatus.COD_COLLECTED,
@@ -103,8 +101,24 @@ class OrderStatusGroupTest {
     @Test
     void groupMembersAreUsableAsAnInFilterSet() {
         // What OrderListSpecifications passes to `orderStatus IN (...)`.
-        Set<OrderStatus> inTransit = EnumSet.copyOf(OrderStatusGroup.IN_TRANSIT.statuses());
-        assertThat(inTransit).contains(OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY);
-        assertThat(inTransit).doesNotContain(OrderStatus.DELIVERED, OrderStatus.PACKED);
+        Set<OrderStatus> shipped = EnumSet.copyOf(OrderStatusGroup.SHIPPED.statuses());
+        assertThat(shipped).contains(OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY);
+        assertThat(shipped).doesNotContain(OrderStatus.DELIVERED, OrderStatus.PACKED);
+    }
+
+    // --- Lenient parsing (stale pre-collapse keys still resolve) -------------
+
+    @Test
+    void fromToleratesPreCollapseKeys() {
+        assertThat(OrderStatusGroup.from("PACKAGING")).isEqualTo(OrderStatusGroup.PROCESSING);
+        assertThat(OrderStatusGroup.from("LABEL_GENERATED")).isEqualTo(OrderStatusGroup.PROCESSING);
+        assertThat(OrderStatusGroup.from("AWAITING_HANDOVER")).isEqualTo(OrderStatusGroup.PROCESSING);
+        assertThat(OrderStatusGroup.from("AWAITING_DISPATCH")).isEqualTo(OrderStatusGroup.PROCESSING);
+        assertThat(OrderStatusGroup.from("IN_TRANSIT")).isEqualTo(OrderStatusGroup.SHIPPED);
+        assertThat(OrderStatusGroup.from("COMPLETED")).isEqualTo(OrderStatusGroup.DELIVERED);
+        assertThat(OrderStatusGroup.from("SHIPPED")).isEqualTo(OrderStatusGroup.SHIPPED);
+        assertThat(OrderStatusGroup.from("unknown")).isNull();
+        assertThat(OrderStatusGroup.from(null)).isNull();
+        assertThat(OrderStatusGroup.from("  ")).isNull();
     }
 }

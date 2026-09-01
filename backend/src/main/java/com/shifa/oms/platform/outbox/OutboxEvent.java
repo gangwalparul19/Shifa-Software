@@ -59,6 +59,14 @@ public class OutboxEvent {
     public static final String EVENT_QUIKSHIPX_CONFIRM = "QUIKSHIPX_CONFIRM";
 
     /**
+     * Event type emitted after an order is confirmed, so the QuikShipX drainer
+     * allots a tracking id (AWB) + label via {@code allot-tracking-id} out-of-band
+     * (their Confirmed → Tracking ID Assigned). Decoupled from confirm so the
+     * Confirmed status sticks and the allot retries independently. Idempotent.
+     */
+    public static final String EVENT_QUIKSHIPX_ALLOT = "QUIKSHIPX_ALLOT";
+
+    /**
      * Event type emitted when an order becomes {@code Packed} so the courier
      * drainer can request an AWB + shipping label out-of-band (Req 12.1). Its
      * payload carries the order id/code; the drainer reloads the aggregate.

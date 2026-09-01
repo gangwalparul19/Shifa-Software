@@ -56,12 +56,29 @@ public final class QuikShipXModels {
 
     /**
      * The outcome of a track-order call (documented response:
-     * {@code response[0].shipment_details}).
+     * {@code response[0].shipment_details} + {@code response[0].shipment_scanning}).
      *
-     * @param awb          {@code tracking_no}
-     * @param orderStatus  {@code order_status} (e.g. {@code out for delivery})
+     * @param awb           {@code tracking_no}
+     * @param orderStatus   {@code order_status} (e.g. {@code out for delivery})
      * @param orderStatusId {@code order_status_id}
+     * @param scans         the courier scan timeline, newest first (may be empty)
      */
-    public record TrackResult(String awb, String orderStatus, String orderStatusId) {
+    public record TrackResult(String awb, String orderStatus, String orderStatusId, List<Scan> scans) {
+        public TrackResult {
+            scans = scans == null ? List.of() : List.copyOf(scans);
+        }
+    }
+
+    /**
+     * One courier scan event from {@code shipment_scanning} (a QuikShipX
+     * track-order entry): a human status, the location, the free-text
+     * instruction, and the scan timestamp.
+     *
+     * @param status       {@code status_code_2} (e.g. {@code In Transit}, {@code Delivered})
+     * @param location     {@code location} (e.g. {@code Indore_Dakachya_GW (Madhya Pradesh)})
+     * @param instructions {@code instructions} (e.g. {@code Out for delivery})
+     * @param scanAt       {@code scan_dt} (raw QuikShipX timestamp string)
+     */
+    public record Scan(String status, String location, String instructions, String scanAt) {
     }
 }

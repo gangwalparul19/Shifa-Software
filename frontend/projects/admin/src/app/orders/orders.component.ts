@@ -6,7 +6,7 @@ import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { RouterLink } from '@angular/router';
 import { AuthService, Money, OrderStatus, PaymentStatus, Role, SortDir, SortState } from 'core';
 import { OrdersService } from './orders.service';
-import { OrderDetail, OrderDetailLine, OrderSummary } from './orders.model';
+import { OrderDetail, OrderDetailLine, OrderSummary, QuikShipTracking } from './orders.model';
 import { ReturnsService } from '../returns/returns.service';
 import {
   PLACEHOLDER_PRODUCT_IMAGE,
@@ -36,6 +36,8 @@ import {
   ORDER_STATUS_GROUPS,
   OrderStatusGroupKey,
   groupForStatus,
+  normalizeGroupKey,
+  stageLabelForStatus,
 } from './order-status-groups';
 
 /** Sort fields the backend accepts for the admin orders listing. */
@@ -399,7 +401,9 @@ export class OrdersComponent implements OnInit, OnDestroy {
     // pre-filtered. But a search deep link (?q=) is global — never pin it to a
     // single stage, or the searched order (which lives in one stage) would be
     // hidden under a different stage tab.
-    const statusGroup = q ? '' : (qp.get('statusGroup') ?? groupForStatus(qp.get('status')));
+    const statusGroup = q
+      ? ''
+      : (normalizeGroupKey(qp.get('statusGroup')) || groupForStatus(qp.get('status')));
     const paymentStatus = qp.get('paymentStatus') ?? '';
     const from = qp.get('from') ?? '';
     const to = qp.get('to') ?? '';
@@ -721,8 +725,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
   /** Applies a saved view: sets the filters + sort, then reloads from page 0. */
   applyView(view: SavedView): void {
     this.search.setValue(view.q ?? '', { emitEvent: false });
-    // Prefer a stored group; fall back to mapping a legacy raw status onto its group.
-    const statusGroup = view.statusGroup ?? groupForStatus(view.status);
+    // Prefer a stored group (normalised for pre-collapse keys); fall back to mapping a legacy raw status onto its group.
+    const statusGroup = normalizeGroupKey(view.statusGroup) || groupForStatus(view.status);
     this.filters.setValue(
       {
         statusGroup,
@@ -807,6 +811,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.detailError.set(null);
     this.detailTab.set('details');
     this.selectedDetail.set(null);
+    this.quikShipTracking.set(null);
     this.revokeScreenshot();
     this.screenshotMissing.set(false);
     this.service.detail(order.id).subscribe({
@@ -814,6 +819,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
         this.selectedDetail.set(detail);
         this.detailLoading.set(false);
         this.loadScreenshot(detail);
+        // Pull live courier tracking (status + timeline) when published to QuikShipX.
+        this.loadTracking(detail, { silent: true });
       },
       error: () => {
         this.detailError.set('Could not load this order.');
@@ -825,6 +832,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   closeDetail(): void {
     this.selectedDetail.set(null);
     this.detailError.set(null);
+    this.quikShipTracking.set(null);
     this.revokeScreenshot();
     this.screenshotMissing.set(false);
   }
@@ -1074,6 +1082,91 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   /** Whether the current user may (re)publish an order to QuikShipX (ADMIN). */
   protected readonly canManageQuikShip = computed(() => this.auth.hasAnyRole(Role.ADMIN));
+
+  /** Live QuikShipX tracking (status + scan timeline) for the open order. */
+  protected readonly quikShipTracking = signal<QuikShipTracking | null>(null);
+  protected readonly trackLoading = signal(false);
+
+  /**
+   * Fetches live QuikShipX tracking for the open order (current status + scan
+   * timeline) and refreshes the internal status server-side. No-op when the order
+   * has no shipment yet. Called on drawer open and by the manual refresh button.
+   */
+  loadTracking(order: OrderDetail | null, opts: { silent?: boolean } = {}): void {
+    if (!order || !order.quikShipXStatus) {
+      this.quikShipTracking.set(null);
+      return;
+    }
+    this.trackLoading.set(true);
+    this.service.quikShipTrack(order.id).subscribe({
+      next: (t) => {
+        this.quikShipTracking.set(t);
+        this.trackLoading.set(false);
+      },
+      error: () => {
+        this.trackLoading.set(false);
+        if (!opts.silent) {
+          this.toasts.error('Could not fetch tracking from QuikShipX.');
+        }
+      },
+    });
+  }
+
+  /** Hover title for the Orders-list QuikShipX chip: status + order id + AWB. */
+  quikShipTitle(order: OrderSummary): string {
+    const parts = ['QuikShipX ' + (order.quikShipXStatus ?? '')];
+    if (order.quikShipXOrderId) {
+      parts.push('order #' + order.quikShipXOrderId);
+    }
+    if (order.quikShipXAwb) {
+      parts.push('AWB ' + order.quikShipXAwb);
+    }
+    return parts.join(' · ');
+  }
+
+  /** Copies text (QuikShipX order id / AWB) to the clipboard with a toast. */
+  async copyText(text: string | null | undefined, label: string): Promise<void> {
+    if (!text) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      this.toasts.success(`${label} copied`);
+    } catch {
+      this.toasts.error('Could not copy to clipboard.');
+    }
+  }
+
+  /**
+   * Whether to show the friendly business-stage label (e.g. "Shipped") instead of
+   * the raw internal status on the Orders list — on for salespeople, who found the
+   * raw courier statuses confusing; admins/accountants/packers keep the precise
+   * status badge.
+   */
+  protected readonly useStageLabel = computed(() => this.auth.hasAnyRole(Role.SALESPERSON));
+
+  /** The friendly business-stage label for a raw order status (Change 2). */
+  stageLabel(status: OrderStatus): string {
+    return stageLabelForStatus(status);
+  }
+
+  /** Tabler badge class for the friendly stage label, coloured by lifecycle stage. */
+  stageBadgeClass(status: OrderStatus): string {
+    switch (groupForStatus(status)) {
+      case 'DELIVERED':
+        return 'badge bg-green-lt';
+      case 'SHIPPED':
+        return 'badge bg-blue-lt';
+      case 'PROCESSING':
+        return 'badge bg-cyan-lt';
+      case 'FAILED_RETURNED':
+        return 'badge bg-red-lt';
+      case 'CANCELLED':
+        return 'badge bg-secondary-lt';
+      default:
+        return 'badge bg-yellow-lt';
+    }
+  }
 
   /** Tabler badge class for a QuikShipX status label (colour by lifecycle stage). */
   quikShipBadgeClass(status: string | null | undefined): string {

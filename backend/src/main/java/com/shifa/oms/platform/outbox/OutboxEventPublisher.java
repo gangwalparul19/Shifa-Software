@@ -136,6 +136,21 @@ public class OutboxEventPublisher {
     }
 
     /**
+     * Enqueues a {@code QUIKSHIPX_ALLOT} event so the QuikShipX drainer allots a
+     * tracking id (AWB) + label for a confirmed order (their Tracking ID Assigned).
+     *
+     * @param orderId   the confirmed order's id
+     * @param orderCode the confirmed order's code
+     * @return the persisted event row
+     */
+    public OutboxEvent publishQuikShipXAllot(Long orderId, String orderCode) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("orderId", orderId);
+        payload.put("orderCode", orderCode);
+        return publish(OutboxEvent.AGGREGATE_ORDER, orderId, OutboxEvent.EVENT_QUIKSHIPX_ALLOT, payload);
+    }
+
+    /**
      * Enqueues a {@code COURIER_ASSIGN} event for an order that has just become
      * {@code Packed} (Req 12.1). The courier drainer (task 14) picks this up and
      * requests the AWB + shipping label out-of-band, so a slow or unavailable

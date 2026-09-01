@@ -23,6 +23,9 @@ public interface OrderShipmentRepository extends JpaRepository<OrderShipment, Lo
 
     boolean existsByOrderId(Long orderId);
 
+    /** Shipments for a set of orders (batch enrichment of the Orders list — no N+1). */
+    List<OrderShipment> findByOrderIdIn(java.util.Collection<Long> orderIds);
+
     /** All shipments that have an AWB (tracking-poll candidate set). */
     List<OrderShipment> findByAwbIsNotNull();
 }

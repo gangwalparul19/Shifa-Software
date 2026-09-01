@@ -169,42 +169,6 @@
           }
         </div>
 
-        <!-- Alternate contact number (product-audit §4.5) — optional, for failed-delivery follow-up -->
-        <div class="col-12 col-md-6">
-          <label class="form-label" for="alternateMobile">Alternate number <span class="text-secondary">(optional)</span></label>
-          <input
-            id="alternateMobile"
-            type="tel"
-            inputmode="numeric"
-            class="form-control"
-            formControlName="alternateMobile"
-            maxlength="10"
-            placeholder="10-digit mobile"
-            autocomplete="off"
-            [class.is-invalid]="invalid('alternateMobile')"
-          />
-          @if (invalid('alternateMobile')) {
-            <div class="invalid-feedback">Enter exactly 10 digits, or leave blank.</div>
-          }
-        </div>
-
-        <div class="col-12" [class.col-md-6]="showLeadSourceNote()">
-          <label class="form-label" for="customerEmail">Email <span class="text-secondary">(optional)</span></label>
-          <input
-            id="customerEmail"
-            type="email"
-            class="form-control"
-            formControlName="customerEmail"
-            maxlength="150"
-            inputmode="email"
-            autocomplete="off"
-            placeholder="name@example.com"
-            [class.is-invalid]="invalid('customerEmail')"
-          />
-          @if (invalid('customerEmail')) {
-            <div class="invalid-feedback">Enter a valid email address (max 150 chars).</div>
-          }
-        </div>
         @if (showLeadSourceNote()) {
           <div class="col-12 col-md-6">
             <label class="form-label" for="leadSourceNote">Lead source note</label>
@@ -224,27 +188,80 @@
           </div>
         }
 
-        <!-- Buyer GSTIN (gst-filing-compliance Req 1) — optional; when present it
-             classifies the sale as B2B for GSTR-1. -->
+        <!-- Optional contact/GST details behind an expander to keep the form lean for
+             salespeople. The controls stay registered even when hidden, so submit +
+             validation are unaffected. -->
         <div class="col-12">
-          <label class="form-label" for="buyerGstin">Buyer GSTIN <span class="text-secondary">(optional)</span></label>
-          <input
-            id="buyerGstin"
-            type="text"
-            class="form-control text-uppercase"
-            formControlName="buyerGstin"
-            maxlength="15"
-            autocomplete="off"
-            placeholder="15-char GSTIN (e.g. 27ABCDE1234F1Z5)"
-            (input)="onGstinInput($event)"
-            [class.is-invalid]="invalid('buyerGstin')"
-          />
-          @if (invalid('buyerGstin')) {
-            <div class="invalid-feedback">Enter a valid 15-character GSTIN, or leave blank.</div>
-          } @else {
-            <small class="form-hint">Fill in for a registered business buyer (B2B). Leave blank for regular customers.</small>
-          }
+          <button
+            type="button"
+            class="btn btn-link btn-sm px-0 text-decoration-none"
+            (click)="toggleMoreDetails()"
+          >
+            <i class="ti me-1" [class.ti-chevron-right]="!moreDetails()" [class.ti-chevron-down]="moreDetails()"></i>
+            {{ moreDetails() ? 'Hide extra details' : 'Add more details (alternate number, email, GSTIN)' }}
+          </button>
         </div>
+
+        @if (moreDetails()) {
+          <!-- Alternate contact number (product-audit §4.5) — optional, for failed-delivery follow-up -->
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="alternateMobile">Alternate number <span class="text-secondary">(optional)</span></label>
+            <input
+              id="alternateMobile"
+              type="tel"
+              inputmode="numeric"
+              class="form-control"
+              formControlName="alternateMobile"
+              maxlength="10"
+              placeholder="10-digit mobile"
+              autocomplete="off"
+              [class.is-invalid]="invalid('alternateMobile')"
+            />
+            @if (invalid('alternateMobile')) {
+              <div class="invalid-feedback">Enter exactly 10 digits, or leave blank.</div>
+            }
+          </div>
+
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="customerEmail">Email <span class="text-secondary">(optional)</span></label>
+            <input
+              id="customerEmail"
+              type="email"
+              class="form-control"
+              formControlName="customerEmail"
+              maxlength="150"
+              inputmode="email"
+              autocomplete="off"
+              placeholder="name@example.com"
+              [class.is-invalid]="invalid('customerEmail')"
+            />
+            @if (invalid('customerEmail')) {
+              <div class="invalid-feedback">Enter a valid email address (max 150 chars).</div>
+            }
+          </div>
+
+          <!-- Buyer GSTIN (gst-filing-compliance Req 1) — optional; when present it
+               classifies the sale as B2B for GSTR-1. -->
+          <div class="col-12">
+            <label class="form-label" for="buyerGstin">Buyer GSTIN <span class="text-secondary">(optional)</span></label>
+            <input
+              id="buyerGstin"
+              type="text"
+              class="form-control text-uppercase"
+              formControlName="buyerGstin"
+              maxlength="15"
+              autocomplete="off"
+              placeholder="15-char GSTIN (e.g. 27ABCDE1234F1Z5)"
+              (input)="onGstinInput($event)"
+              [class.is-invalid]="invalid('buyerGstin')"
+            />
+            @if (invalid('buyerGstin')) {
+              <div class="invalid-feedback">Enter a valid 15-character GSTIN, or leave blank.</div>
+            } @else {
+              <small class="form-hint">Fill in for a registered business buyer (B2B). Leave blank for regular customers.</small>
+            }
+          </div>
+        }
 
         <!-- Delivery address (required by the create-order API) -->
         <div class="col-12">
@@ -450,33 +467,44 @@
         </div>
       }
 
-      <!-- Discount (order-level: flat or percent) -->
-      <div class="shifa-no__card">
-        <label class="form-label">Discount <span class="text-secondary">(optional)</span></label>
-        <div class="row g-2">
-          <div class="col-5">
-            <select class="form-select" formControlName="discountType">
-              <option value="">No discount</option>
-              <option value="FLAT">Flat (₹)</option>
-              <option value="PERCENT">Percent (%)</option>
-            </select>
+      <!-- Discount (order-level: flat or percent) — behind an expander to keep the
+           common no-discount path lean. Controls stay registered when hidden. -->
+      @if (!showDiscount()) {
+        <button
+          type="button"
+          class="btn btn-link btn-sm px-0 text-decoration-none"
+          (click)="toggleDiscount()"
+        >
+          <i class="ti ti-chevron-right me-1"></i> Add a discount
+        </button>
+      } @else {
+        <div class="shifa-no__card">
+          <label class="form-label">Discount <span class="text-secondary">(optional)</span></label>
+          <div class="row g-2">
+            <div class="col-5">
+              <select class="form-select" formControlName="discountType">
+                <option value="">No discount</option>
+                <option value="FLAT">Flat (₹)</option>
+                <option value="PERCENT">Percent (%)</option>
+              </select>
+            </div>
+            <div class="col-7">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                class="form-control"
+                formControlName="discountValue"
+                placeholder="0"
+                [attr.disabled]="!form.controls.discountType.value ? true : null"
+              />
+            </div>
           </div>
-          <div class="col-7">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              class="form-control"
-              formControlName="discountValue"
-              placeholder="0"
-              [attr.disabled]="!form.controls.discountType.value ? true : null"
-            />
-          </div>
+          @if (form.controls.discountType.value === 'PERCENT' && (form.controls.discountValue.value || 0) > 100) {
+            <div class="text-danger small mt-1">A percentage discount cannot exceed 100%.</div>
+          }
         </div>
-        @if (form.controls.discountType.value === 'PERCENT' && (form.controls.discountValue.value || 0) > 100) {
-          <div class="text-danger small mt-1">A percentage discount cannot exceed 100%.</div>
-        }
-      </div>
+      }
 
       <!-- Running totals -->
       <div class="shifa-no__card shifa-no__totals">
@@ -591,26 +619,37 @@
   </section>
 
   <!-- ===================== Notes ===================== -->
+  <!-- Optional order note behind an expander; the control stays registered when hidden. -->
   <section class="shifa-no__section">
-    <h2 class="shifa-no__title">Notes</h2>
-    <div class="shifa-no__card">
-      <label class="form-label" for="notes">Order note <span class="text-secondary">(optional)</span></label>
-      <textarea
-        id="notes"
-        class="form-control"
-        formControlName="notes"
-        rows="3"
-        maxlength="1000"
-        autocomplete="off"
-        placeholder="Any specific instruction from the customer for this order…"
-        [class.is-invalid]="invalid('notes')"
-      ></textarea>
-      @if (invalid('notes')) {
-        <div class="invalid-feedback">The note must be at most 1000 characters.</div>
-      } @else {
-        <div class="form-hint">Saved with the order and visible on the order details.</div>
-      }
-    </div>
+    @if (!showNote()) {
+      <button
+        type="button"
+        class="btn btn-link btn-sm px-0 text-decoration-none"
+        (click)="toggleNote()"
+      >
+        <i class="ti ti-chevron-right me-1"></i> Add an order note
+      </button>
+    } @else {
+      <h2 class="shifa-no__title">Notes</h2>
+      <div class="shifa-no__card">
+        <label class="form-label" for="notes">Order note <span class="text-secondary">(optional)</span></label>
+        <textarea
+          id="notes"
+          class="form-control"
+          formControlName="notes"
+          rows="3"
+          maxlength="1000"
+          autocomplete="off"
+          placeholder="Any specific instruction from the customer for this order…"
+          [class.is-invalid]="invalid('notes')"
+        ></textarea>
+        @if (invalid('notes')) {
+          <div class="invalid-feedback">The note must be at most 1000 characters.</div>
+        } @else {
+          <div class="form-hint">Saved with the order and visible on the order details.</div>
+        }
+      </div>
+    }
   </section>
   }
 </form>

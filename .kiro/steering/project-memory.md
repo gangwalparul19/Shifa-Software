@@ -1381,3 +1381,31 @@ service active, `https://shifa.weblithic.online/`=200, `/api/states`=401, and th
 collapsible accordion groups + active-group auto-expand, the CA per-rate invoice rework, and the Settings GST
 inclusive/exclusive toggle. Highest migration in prod remains V51 (no DB change; the -SkipBuild path still took the
 routine pre-restart mysqldump backup).
+
+## Order status + module streamlined for QuikShip / salesperson ease — implemented & DEPLOYED (2026-09-01)
+Three approved changes to reduce complexity for salespeople punching orders, aligned with the live QuikShipX
+courier flow (create-on-punch → Pending, confirm+allot-on-approve → AWB/label/Courier_Assigned, track polling).
+No migration (code/UI only). Backend `mvn clean test` = **701 tests, 0 failures**; admin `build:admin` clean.
+- **Change 1 — collapse 9 lifecycle stages → 6 QuikShip-aligned groups**: PENDING_APPROVAL, PROCESSING, SHIPPED,
+  DELIVERED, FAILED_RETURNED, CANCELLED. `PROCESSING` folds the old APPROVED+LABEL_GENERATED+PACKED+
+  HANDED_TO_DELIVERY (QuikShip skips manual packing). Backend `order/OrderStatusGroup.java` rewritten (6 groups +
+  lenient `from(String)` with old→new aliases so stale `?statusGroup=` deep links/saved views don't 400);
+  `AdminOrderController.list` param changed `OrderStatusGroup statusGroup` → `String statusGroup` +
+  `OrderStatusGroup.from(...)`. `OrderStatusGroupTest` updated (new membership + `fromToleratesPreCollapseKeys`, now
+  bumps suite to 701). Frontend `order-status-groups.ts` rewritten (6 groups + `normalizeGroupKey()` +
+  `stageLabelForStatus()`); `dashboard.component.ts` `STAGE_GROUP_STYLE` → 6 keys.
+- **Change 2 — friendly stage label for salespeople** on Orders list/dashboard: `orders.component.ts`
+  `useStageLabel = computed(hasAnyRole(Role.SALESPERSON))` + `stageLabel()`/`stageBadgeClass()`; mobile pill + desktop
+  Status cell render the friendly stage ONLY for SALESPERSON (admins/accountants/packers keep the precise status badge;
+  the detail drawer always keeps precise status). Deep-link + saved-view reads use
+  `normalizeGroupKey(...) || groupForStatus(...)`.
+- **Change 3 — leaner New Order form** (`new-order.component.*`): optional fields hidden behind expanders to shorten
+  the salesperson flow. Step 1 "Add more details" toggle (`moreDetails` signal) wraps alternate number + email + buyer
+  GSTIN; step 3 "Add a discount" (`showDiscount`); step 4 "Add an order note" (`showNote`). Hidden controls stay
+  registered so submit + validation are unaffected. `syncExpandersFromForm()` auto-opens any expander whose field is
+  pre-filled (reorder / convert / prefill-from-last / resumed draft). Lead source stays required/visible.
+- **DEPLOYED** via `deploy\push-to-aws.ps1` (JAR + admin bundle `main-ZIFL6CWT.js`). DB backup
+  `~/shifa-backup-2026-09-01-184904.sql`. Verified live: service active, Flyway "validated 57 migrations … up to date,
+  **no migration necessary**" (v57 unchanged), Tomcat on 8080, "Started Application in 21.945s",
+  `https://shifa.weblithic.online/` = 200, served index references `main-ZIFL6CWT.js`. Highest migration in prod
+  remains **V57**.

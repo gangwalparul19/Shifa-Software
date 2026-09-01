@@ -94,17 +94,47 @@ public final class QuikShipXResponseParser {
                 text(details, "pdf_label_url", "label_url"));
     }
 
-    /** Parses a track-order response ({@code response[0].shipment_details}). */
+    /** Parses a track-order response ({@code response[0].shipment_details} + scanning). */
     public static TrackResult parseTrack(String body) {
         JsonNode root = requireTree(body);
-        JsonNode details = firstResponseElement(root, null).path("shipment_details");
+        JsonNode element = firstResponseElement(root, null);
+        JsonNode details = element.path("shipment_details");
         if (details.isMissingNode() || !details.isObject()) {
             throw new MalformedResponse("track-order response had no shipment_details");
         }
         return new TrackResult(
                 text(details, "tracking_no", "awb"),
                 text(details, "order_status", "status"),
-                text(details, "order_status_id"));
+                text(details, "order_status_id"),
+                parseScans(element.path("shipment_scanning")));
+    }
+
+    /**
+     * Parses the {@code shipment_scanning} object (numeric string keys "1".."n",
+     * each a scan event) into a timeline, newest first. QuikShipX returns them in
+     * descending time order; we sort by {@code scan_dt} desc defensively.
+     */
+    private static List<QuikShipXModels.Scan> parseScans(JsonNode scanning) {
+        if (scanning == null || !scanning.isObject()) {
+            return List.of();
+        }
+        java.util.List<QuikShipXModels.Scan> scans = new java.util.ArrayList<>();
+        for (JsonNode node : scanning) {
+            if (node == null || !node.isObject()) {
+                continue;
+            }
+            scans.add(new QuikShipXModels.Scan(
+                    text(node, "status_code_2", "status", "status_code"),
+                    text(node, "location"),
+                    text(node, "instructions"),
+                    text(node, "scan_dt", "scan_date", "date")));
+        }
+        scans.sort((a, b) -> {
+            String x = a.scanAt() == null ? "" : a.scanAt();
+            String y = b.scanAt() == null ? "" : b.scanAt();
+            return y.compareTo(x); // newest first (ISO-ish timestamps sort lexically)
+        });
+        return scans;
     }
 
     // --- helpers ------------------------------------------------------------

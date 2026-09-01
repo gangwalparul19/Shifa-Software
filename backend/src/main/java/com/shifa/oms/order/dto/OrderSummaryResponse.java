@@ -21,7 +21,16 @@ public record OrderSummaryResponse(
         PaymentStatus paymentStatus,
         BigDecimal totalAmount,
         BigDecimal codAmount,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        // The mirrored QuikShipX status label (Pending / Confirmed / Tracking ID
+        // Assigned / In Transit / …), shown as a chip on the Orders list. Null when
+        // the order was never published to QuikShipX. Populated by the admin list
+        // read path (batch-loaded); null on the lightweight search results.
+        String quikShipXStatus,
+        // QuikShipX's own order id (the number quoted to track on their portal) and
+        // the allotted AWB, surfaced so the Orders list/chip can show them too.
+        String quikShipXOrderId,
+        String quikShipXAwb
 ) {
 
     public static OrderSummaryResponse from(OrderEntity order) {
@@ -34,6 +43,17 @@ public record OrderSummaryResponse(
                 order.getPaymentStatus(),
                 order.getTotalAmount(),
                 order.getCodAmount(),
-                order.getCreatedAt());
+                order.getCreatedAt(),
+                null,
+                null,
+                null);
+    }
+
+    /** Returns a copy carrying the QuikShipX mirror fields (Orders-list enrichment). */
+    public OrderSummaryResponse withQuikShip(String quikShipXStatus, String quikShipXOrderId,
+                                             String quikShipXAwb) {
+        return new OrderSummaryResponse(id, orderCode, customerName, customerMobile, orderStatus,
+                paymentStatus, totalAmount, codAmount, createdAt,
+                quikShipXStatus, quikShipXOrderId, quikShipXAwb);
     }
 }

@@ -76,6 +76,10 @@ public final class TransitionAuthority {
         put(t, OrderStatus.LABEL_GENERATED, OrderStatus.PACKED, false,
                 Role.PACKING_USER, Role.ADMIN);
 
+        // QuikShipX fast-forward: allotting a tracking id at approval hands the
+        // order straight to the courier (SYSTEM only), skipping manual packing.
+        put(t, OrderStatus.LABEL_GENERATED, OrderStatus.COURIER_ASSIGNED, true);
+
         // Handover to the delivery courier (Req 9.2, 9.3).
         put(t, OrderStatus.PACKED, OrderStatus.HANDED_TO_DELIVERY, false,
                 Role.PACKING_USER, Role.ADMIN);
@@ -86,10 +90,18 @@ public final class TransitionAuthority {
                 Role.PACKING_USER, Role.ADMIN);
         put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.HANDED_TO_DELIVERY, true);
 
-        // Courier pickup + webhook progressions — SYSTEM only (Req 10.2, 10.3).
+        // Courier pickup + webhook/tracking progressions — SYSTEM only (Req 10.2,
+        // 10.3). Forward jumps from Courier_Assigned keep a QuikShipX tracking poll
+        // from stalling when an intermediate scan is skipped between polls.
         put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED, true);
+        put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.IN_TRANSIT, true);
+        put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.OUT_FOR_DELIVERY, true);
+        put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.DELIVERED, true);
+        put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.RTO, true);
+        put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.REDISPATCH, true);
         put(t, OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT, true);
         put(t, OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY, true);
+        put(t, OrderStatus.DISPATCHED, OrderStatus.DELIVERED, true);
         put(t, OrderStatus.DISPATCHED, OrderStatus.RTO, true);
         put(t, OrderStatus.DISPATCHED, OrderStatus.REDISPATCH, true);
         put(t, OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, true);

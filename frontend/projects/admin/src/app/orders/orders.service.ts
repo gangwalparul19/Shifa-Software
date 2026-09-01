@@ -10,6 +10,7 @@ import {
   OrderSummary,
   QuikShipPublishAck,
   QuikShipShipment,
+  QuikShipTracking,
   ScreenshotUploadResponse,
 } from './orders.model';
 
@@ -215,5 +216,14 @@ export class OrdersService {
    */
   quikShipPublish(id: number): Observable<QuikShipPublishAck> {
     return this.api.post<QuikShipPublishAck>(`/api/orders/${id}/quikshipx/publish`, {});
+  }
+
+  /**
+   * Live QuikShipX tracking for an order — current status + scan timeline
+   * ({@code GET /api/orders/{id}/quikshipx/track}). Also refreshes the internal
+   * order status server-side (idempotent). 404 when not yet published.
+   */
+  quikShipTrack(id: number): Observable<QuikShipTracking> {
+    return this.api.get<QuikShipTracking>(`/api/orders/${id}/quikshipx/track`);
   }
 }

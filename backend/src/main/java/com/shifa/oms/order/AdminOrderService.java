@@ -9,6 +9,7 @@ import com.shifa.oms.order.dto.ApprovalQueueItemResponse;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
+import com.shifa.oms.quikshipx.OrderShipmentRepository;
 import com.shifa.oms.quikshipx.QuikShipXProperties;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,24 +56,28 @@ public class AdminOrderService {
      * that use the legacy constructor — the hook is then skipped.
      */
     private final QuikShipXProperties quikShipXProperties;
+    /** QuikShipX shipment mirror (nullable): enriches the Orders list with the QuikShipX status chip. */
+    private final OrderShipmentRepository orderShipmentRepository;
 
-    /** Legacy constructor (unit tests): no QuikShipX approval hook. */
+    /** Legacy constructor (unit tests): no QuikShipX approval hook / list enrichment. */
     public AdminOrderService(OrderRepository orderRepository, LabelService labelService,
                              OrderWorkflowService orderWorkflowService,
                              OutboxEventPublisher outboxEventPublisher) {
-        this(orderRepository, labelService, orderWorkflowService, outboxEventPublisher, null);
+        this(orderRepository, labelService, orderWorkflowService, outboxEventPublisher, null, null);
     }
 
     @Autowired
     public AdminOrderService(OrderRepository orderRepository, LabelService labelService,
                              OrderWorkflowService orderWorkflowService,
                              OutboxEventPublisher outboxEventPublisher,
-                             QuikShipXProperties quikShipXProperties) {
+                             QuikShipXProperties quikShipXProperties,
+                             OrderShipmentRepository orderShipmentRepository) {
         this.orderRepository = orderRepository;
         this.labelService = labelService;
         this.orderWorkflowService = orderWorkflowService;
         this.outboxEventPublisher = outboxEventPublisher;
         this.quikShipXProperties = quikShipXProperties;
+        this.orderShipmentRepository = orderShipmentRepository;
     }
 
     /**
@@ -144,7 +149,37 @@ public class AdminOrderService {
                                                  Pageable pageable, java.util.Collection<Long> creatorIds) {
         Specification<OrderEntity> spec =
                 OrderListSpecifications.build(q, status, statusGroup, paymentStatus, from, to, creatorIds);
-        return orderRepository.findAll(spec, pageable).map(OrderSummaryResponse::from);
+        Page<OrderSummaryResponse> page = orderRepository.findAll(spec, pageable).map(OrderSummaryResponse::from);
+        return enrichWithQuikShipStatus(page);
+    }
+
+    /**
+     * Batch-loads each page order's QuikShipX status (one query) and attaches it to
+     * the summaries so the Orders list can render a QuikShipX chip — avoiding an
+     * N+1. No-op when the integration mirror is unavailable or the page is empty.
+     */
+    private Page<OrderSummaryResponse> enrichWithQuikShipStatus(Page<OrderSummaryResponse> page) {
+        if (orderShipmentRepository == null || page.isEmpty()) {
+            return page;
+        }
+        List<Long> ids = page.getContent().stream()
+                .map(OrderSummaryResponse::id)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (ids.isEmpty()) {
+            return page;
+        }
+        java.util.Map<Long, com.shifa.oms.quikshipx.OrderShipment> byOrderId = new java.util.HashMap<>();
+        orderShipmentRepository.findByOrderIdIn(ids)
+                .forEach(s -> byOrderId.put(s.getOrderId(), s));
+        if (byOrderId.isEmpty()) {
+            return page;
+        }
+        return page.map(row -> {
+            com.shifa.oms.quikshipx.OrderShipment s = byOrderId.get(row.id());
+            return s == null ? row
+                    : row.withQuikShip(s.getQuikShipXStatus(), s.getShipperOrderId(), s.getAwb());
+        });
     }
 
     /** Approval queue: all pending-approval orders with review details (Req 9.1, 9.2). */

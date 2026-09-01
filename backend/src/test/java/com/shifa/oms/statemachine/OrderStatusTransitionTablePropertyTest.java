@@ -57,13 +57,17 @@ class OrderStatusTransitionTablePropertyTest {
         t.put(OrderStatus.PENDING_ADMIN_APPROVAL,
                 EnumSet.of(OrderStatus.APPROVED, OrderStatus.REJECTED, OrderStatus.CANCELLED));
         t.put(OrderStatus.APPROVED, EnumSet.of(OrderStatus.LABEL_GENERATED));
-        t.put(OrderStatus.LABEL_GENERATED, EnumSet.of(OrderStatus.PACKED));
+        t.put(OrderStatus.LABEL_GENERATED,
+                EnumSet.of(OrderStatus.PACKED, OrderStatus.COURIER_ASSIGNED));
         t.put(OrderStatus.PACKED, EnumSet.of(OrderStatus.HANDED_TO_DELIVERY));
         t.put(OrderStatus.HANDED_TO_DELIVERY,
                 EnumSet.of(OrderStatus.COURIER_ASSIGNED, OrderStatus.HANDED_TO_DELIVERY));
-        t.put(OrderStatus.COURIER_ASSIGNED, EnumSet.of(OrderStatus.DISPATCHED));
+        t.put(OrderStatus.COURIER_ASSIGNED, EnumSet.of(OrderStatus.DISPATCHED,
+                OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED,
+                OrderStatus.RTO, OrderStatus.REDISPATCH));
         t.put(OrderStatus.DISPATCHED, EnumSet.of(OrderStatus.IN_TRANSIT,
-                OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO, OrderStatus.REDISPATCH));
+                OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED,
+                OrderStatus.RTO, OrderStatus.REDISPATCH));
         t.put(OrderStatus.IN_TRANSIT, EnumSet.of(OrderStatus.OUT_FOR_DELIVERY,
                 OrderStatus.DELIVERED, OrderStatus.RTO, OrderStatus.REDISPATCH));
         t.put(OrderStatus.OUT_FOR_DELIVERY, EnumSet.of(OrderStatus.DELIVERED,

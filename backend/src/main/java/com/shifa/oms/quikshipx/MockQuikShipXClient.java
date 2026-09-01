@@ -56,7 +56,28 @@ public class MockQuikShipXClient implements QuikShipXClient {
     @Override
     public TrackResult trackOrder(String awb) throws QuikShipXException {
         String status = stagedStatuses.getOrDefault(awb, "in transit");
-        return new TrackResult(awb, status, null);
+        java.util.List<QuikShipXModels.Scan> scans = java.util.List.of(
+                new QuikShipXModels.Scan(titleCase(status), "Indore_Dakachya_GW (Madhya Pradesh)",
+                        "Shipment " + status, "2026-09-01 12:00:00"),
+                new QuikShipXModels.Scan("In Transit", "Indore_Dakachya_GW (Madhya Pradesh)",
+                        "Shipment picked up", "2026-09-01 10:00:00"));
+        return new TrackResult(awb, status, null, scans);
+    }
+
+    /** Title-cases a raw status like "in transit" -> "In Transit". */
+    private static String titleCase(String value) {
+        String[] parts = value.trim().toLowerCase(Locale.ROOT).split("\\s+");
+        StringBuilder sb = new StringBuilder();
+        for (String p : parts) {
+            if (p.isEmpty()) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
+            sb.append(Character.toUpperCase(p.charAt(0))).append(p.substring(1));
+        }
+        return sb.toString();
     }
 
     /**

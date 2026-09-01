@@ -281,9 +281,16 @@
             {{ order.createdAt ? (order.createdAt | date: 'dd MMM yyyy') : '—' }} · {{ order.customerName }}
           </span>
           <span class="shifa-oc__pill" [class]="statusPillClass(order.orderStatus)">
-            {{ humanize(order.orderStatus) }}
+            {{ useStageLabel() ? stageLabel(order.orderStatus) : humanize(order.orderStatus) }}
           </span>
         </div>
+        @if (order.quikShipXStatus) {
+          <div class="shifa-oc__r3">
+            <span [class]="'badge ' + quikShipBadgeClass(order.quikShipXStatus)">
+              <i class="ti ti-truck-delivery me-1"></i>QuikShipX: {{ order.quikShipXStatus }}@if (order.quikShipXOrderId) { · #{{ order.quikShipXOrderId }}}
+            </span>
+          </div>
+        }
       </button>
     }
     <admin-pagination
@@ -344,7 +351,24 @@
               <td class="text-end" data-label="Total">{{ money(order.totalAmount) }}</td>
               <td class="text-end d-none d-xl-table-cell">{{ money(order.codAmount) }}</td>
               <td class="d-none d-md-table-cell"><admin-status-badge [status]="order.paymentStatus" kind="payment" /></td>
-              <td data-label="Status"><admin-status-badge [status]="order.orderStatus" /></td>
+              <td data-label="Status">
+                @if (useStageLabel()) {
+                  <span [class]="stageBadgeClass(order.orderStatus)">{{ stageLabel(order.orderStatus) }}</span>
+                } @else {
+                  <admin-status-badge [status]="order.orderStatus" />
+                }
+                @if (order.quikShipXStatus) {
+                  <div class="mt-1">
+                    <span [class]="'badge ' + quikShipBadgeClass(order.quikShipXStatus)"
+                      [title]="quikShipTitle(order)">
+                      <i class="ti ti-truck-delivery me-1"></i>{{ order.quikShipXStatus }}
+                    </span>
+                    @if (order.quikShipXOrderId) {
+                      <div class="text-secondary shifa-mono shifa-qsx-id">#{{ order.quikShipXOrderId }}</div>
+                    }
+                  </div>
+                }
+              </td>
               <td class="text-secondary d-none d-xl-table-cell">{{ order.createdAt ? (order.createdAt | date: 'dd MMM, HH:mm') : '—' }}</td>
               <td class="text-end d-none d-xl-table-cell">
                 <button
@@ -677,10 +701,26 @@
                 <div class="text-secondary small mb-2">Not yet published to QuikShipX.</div>
               }
               @if (order.quikShipXOrderId) {
-                <div class="shifa-od__totline"><span>QuikShipX order</span><span class="shifa-mono">{{ order.quikShipXOrderId }}</span></div>
+                <div class="shifa-od__totline">
+                  <span>QuikShipX order</span>
+                  <span class="shifa-mono">{{ order.quikShipXOrderId }}
+                    <button type="button" class="btn btn-sm btn-ghost-secondary p-0 ms-1"
+                      (click)="copyText(order.quikShipXOrderId, 'QuikShipX order id')" title="Copy order id">
+                      <i class="ti ti-copy"></i>
+                    </button>
+                  </span>
+                </div>
               }
               @if (order.awb) {
-                <div class="shifa-od__totline"><span>Tracking ID (AWB)</span><span class="shifa-mono">{{ order.awb }}</span></div>
+                <div class="shifa-od__totline">
+                  <span>Tracking ID (AWB)</span>
+                  <span class="shifa-mono">{{ order.awb }}
+                    <button type="button" class="btn btn-sm btn-ghost-secondary p-0 ms-1"
+                      (click)="copyText(order.awb, 'AWB')" title="Copy AWB">
+                      <i class="ti ti-copy"></i>
+                    </button>
+                  </span>
+                </div>
               }
               <div class="d-flex gap-2 flex-wrap mt-2">
                 @if (order.quikShipXLabelUrl) {
@@ -700,6 +740,48 @@
                   </button>
                 }
               </div>
+
+              @if (order.quikShipXStatus) {
+                <div class="shifa-qsx-track mt-3">
+                  <div class="d-flex align-items-center justify-content-between mb-1">
+                    <span class="shifa-od__label">Live tracking</span>
+                    <button type="button" class="btn btn-sm btn-ghost-secondary px-2"
+                      (click)="loadTracking(order)" [disabled]="trackLoading()" title="Refresh from QuikShipX">
+                      @if (trackLoading()) {
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                      } @else {
+                        <i class="ti ti-refresh"></i>
+                      }
+                    </button>
+                  </div>
+                  @if (quikShipTracking(); as t) {
+                    @if (t.lastSyncedAt) {
+                      <div class="text-secondary small mb-2">Updated {{ t.lastSyncedAt | date: 'dd MMM, HH:mm' }}</div>
+                    }
+                    @if (t.scans && t.scans.length) {
+                      <ul class="shifa-qsx-timeline">
+                        @for (s of t.scans; track $index) {
+                          <li>
+                            <div class="shifa-qsx-dot"></div>
+                            <div class="shifa-qsx-item">
+                              <div class="shifa-qsx-item__head">
+                                <span class="fw-medium">{{ s.status || 'Update' }}</span>
+                                @if (s.scanAt) { <span class="text-secondary small">{{ s.scanAt }}</span> }
+                              </div>
+                              @if (s.instructions) { <div class="small">{{ s.instructions }}</div> }
+                              @if (s.location) { <div class="text-secondary small">{{ s.location }}</div> }
+                            </div>
+                          </li>
+                        }
+                      </ul>
+                    } @else {
+                      <div class="text-secondary small">{{ t.message || 'No tracking updates yet.' }}</div>
+                    }
+                  } @else if (!trackLoading()) {
+                    <div class="text-secondary small">Tracking not loaded.</div>
+                  }
+                </div>
+              }
             </div>
           </div>
         }
@@ -765,19 +847,39 @@
 
         <!-- (10) Print packing label (barcode + details) — admin reprint -->
         @if (canPrintLabel()) {
-          <button
-            type="button"
-            class="btn w-100 shifa-od__invoice mt-2"
-            (click)="printLabel(order)"
-            [disabled]="labelLoading()"
-          >
-            @if (labelLoading()) {
-              <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+          <div class="shifa-od__label mt-2 mb-1">Print label</div>
+          <div class="d-flex gap-2">
+            <button
+              type="button"
+              class="btn shifa-od__invoice flex-fill mt-0"
+              (click)="printLabel(order)"
+              [disabled]="labelLoading()"
+              title="Shifa internal packing label (barcode + details)"
+            >
+              @if (labelLoading()) {
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+              } @else {
+                <i class="ti ti-barcode me-1"></i>
+              }
+              Our Label
+            </button>
+            @if (order.quikShipXLabelUrl) {
+              <a
+                class="btn shifa-od__invoice flex-fill mt-0"
+                [href]="order.quikShipXLabelUrl"
+                target="_blank"
+                rel="noopener"
+                title="QuikShipX courier label (from their allot-tracking-id response)"
+              >
+                <i class="ti ti-truck-delivery me-1"></i> QuikShip Label
+              </a>
             } @else {
-              <i class="ti ti-barcode me-1"></i>
+              <button type="button" class="btn shifa-od__invoice flex-fill mt-0" disabled
+                title="Available once a QuikShipX tracking id is assigned">
+                <i class="ti ti-truck-delivery me-1"></i> QuikShip Label
+              </button>
             }
-            Print Label
-          </button>
+          </div>
         }
       </div>
     }

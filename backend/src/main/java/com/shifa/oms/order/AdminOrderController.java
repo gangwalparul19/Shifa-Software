@@ -106,7 +106,7 @@ public class AdminOrderController {
     public PageResponse<OrderSummaryResponse> list(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) OrderStatus status,
-            @RequestParam(required = false) OrderStatusGroup statusGroup,
+            @RequestParam(required = false) String statusGroup,
             @RequestParam(required = false) PaymentStatus paymentStatus,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
@@ -119,9 +119,12 @@ public class AdminOrderController {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         java.util.Collection<Long> creatorIds = scopeResolver.creatorScope(actor).orElse(null);
         Pageable pageable = PageRequests.of(page, size, sort, SORT_WHITELIST, DEFAULT_SORT);
+        // Parse leniently so a stale pre-collapse group key (e.g. PACKAGING/COMPLETED)
+        // maps to the new group instead of 400ing.
+        OrderStatusGroup group = OrderStatusGroup.from(statusGroup);
         return PageResponse.of(
                 adminOrderService.listOrders(
-                        q, status, statusGroup, paymentStatus, from, to, pageable, creatorIds));
+                        q, status, group, paymentStatus, from, to, pageable, creatorIds));
     }
 
     /** The approval queue of pending-approval orders with review details (Req 9.1, 9.2). */

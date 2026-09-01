@@ -59,6 +59,7 @@ public class QuikShipXDrainer {
         int processed = 0;
         processed += drain(OutboxEvent.EVENT_QUIKSHIPX_CREATE, quikShipXService::createForOrder);
         processed += drain(OutboxEvent.EVENT_QUIKSHIPX_CONFIRM, quikShipXService::confirmForOrder);
+        processed += drain(OutboxEvent.EVENT_QUIKSHIPX_ALLOT, quikShipXService::allotForOrder);
         return processed;
     }
 

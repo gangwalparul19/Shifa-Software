@@ -60,6 +60,16 @@ public class QuikShipXCourierClient implements CourierClient {
                 .orElseThrow(() -> new CourierClientException(
                         "Order " + request.orderCode() + " is not yet published to QuikShipX; "
                                 + "cannot allot a tracking id (will retry)."));
+        // Idempotent: if a tracking id was already allotted (e.g. at approval),
+        // reuse it instead of booking a second shipment.
+        if (shipment.getAwb() != null && !shipment.getAwb().isBlank()) {
+            String courier = (shipment.getSubCourierName() == null || shipment.getSubCourierName().isBlank())
+                    ? "QuikShipX" : shipment.getSubCourierName();
+            log.info("QuikShipX AWB {} already allotted for order {}; reusing at dispatch",
+                    shipment.getAwb(), request.orderCode());
+            return new CourierAssignmentResult(shipment.getAwb(), courier, null);
+        }
+
         String shipperOrderId = shipment.getShipperOrderId();
         if (shipperOrderId == null || shipperOrderId.isBlank()) {
             throw new CourierClientException(

@@ -45,14 +45,21 @@ class TransitionAuthorityPropertyTest {
         r.add(rule(OrderStatus.APPROVED, OrderStatus.LABEL_GENERATED, true, Role.ADMIN));
         r.add(rule(OrderStatus.LABEL_GENERATED, OrderStatus.PACKED, false,
                 Role.PACKING_USER, Role.ADMIN));
+        r.add(rule(OrderStatus.LABEL_GENERATED, OrderStatus.COURIER_ASSIGNED, true));
         r.add(rule(OrderStatus.PACKED, OrderStatus.HANDED_TO_DELIVERY, false,
                 Role.PACKING_USER, Role.ADMIN));
         r.add(rule(OrderStatus.HANDED_TO_DELIVERY, OrderStatus.COURIER_ASSIGNED, true,
                 Role.PACKING_USER, Role.ADMIN));
         r.add(rule(OrderStatus.HANDED_TO_DELIVERY, OrderStatus.HANDED_TO_DELIVERY, true));
         r.add(rule(OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED, true));
+        r.add(rule(OrderStatus.COURIER_ASSIGNED, OrderStatus.IN_TRANSIT, true));
+        r.add(rule(OrderStatus.COURIER_ASSIGNED, OrderStatus.OUT_FOR_DELIVERY, true));
+        r.add(rule(OrderStatus.COURIER_ASSIGNED, OrderStatus.DELIVERED, true));
+        r.add(rule(OrderStatus.COURIER_ASSIGNED, OrderStatus.RTO, true));
+        r.add(rule(OrderStatus.COURIER_ASSIGNED, OrderStatus.REDISPATCH, true));
         r.add(rule(OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT, true));
         r.add(rule(OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY, true));
+        r.add(rule(OrderStatus.DISPATCHED, OrderStatus.DELIVERED, true));
         r.add(rule(OrderStatus.DISPATCHED, OrderStatus.RTO, true));
         r.add(rule(OrderStatus.DISPATCHED, OrderStatus.REDISPATCH, true));
         r.add(rule(OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, true));
