@@ -6,4 +6,3 @@ export * from './line-item.model';
 export * from './order.model';
 export * from './receivable.model';
 export * from './api-error.model';
-export * from './review.model';

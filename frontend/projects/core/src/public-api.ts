@@ -2,7 +2,7 @@
  * Public API Surface of core
  *
  * Shared API client, auth interceptor scaffold, and typed models mirroring the
- * backend DTOs. Consumed by both the storefront and admin applications.
+ * backend DTOs. Consumed by the admin application.
  */
 
 // Models (Product, Order, LineItem, PaymentStatus, OrderStatus, Receivable, ...)
@@ -20,14 +20,6 @@ export * from './lib/catalog/stock-status.util';
 
 // Decimal-safe money helpers
 export * from './lib/money/money.util';
-
-// Reviews & ratings star helpers (Phase C)
-export * from './lib/reviews/star-rating.util';
-
-// Storefront cart / wishlist / checkout pure logic (Requirements 2, 3)
-export * from './lib/cart/cart-logic';
-export * from './lib/wishlist/wishlist-logic';
-export * from './lib/checkout/checkout-validation';
 
 // Auth scaffolding
 export * from './lib/auth/auth-token.store';

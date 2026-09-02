@@ -178,7 +178,7 @@ const SOURCE_LABELS: Record<string, string> = {
                       <td class="text-end">{{ s.leads }}</td>
                       <td class="text-end">{{ s.won }}</td>
                       <td class="text-end">
-                        <span class="badge" [class.bg-green-lt]="s.conversionRate >= 50" [class.bg-yellow-lt]="s.conversionRate < 50">
+                        <span class="badge" [class.tone-green]="s.conversionRate >= 50" [class.tone-amber]="s.conversionRate < 50">
                           {{ s.conversionRate }}%
                         </span>
                       </td>

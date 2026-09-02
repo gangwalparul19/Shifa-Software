@@ -16,6 +16,7 @@ import {
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
+import { verificationBadgeClass } from '../shared/status-badge.component';
 
 /** The verification filter tabs, in display order. */
 type StatusFilter = 'ALL' | VerificationStatus;
@@ -409,16 +410,8 @@ export class SalespeopleComponent implements OnInit {
 
   // --- View helpers -------------------------------------------------------
 
-  statusBadgeClass(status: VerificationStatus): string {
-    switch (status) {
-      case 'VERIFIED':
-        return 'bg-green-lt';
-      case 'REJECTED':
-        return 'bg-red-lt';
-      default:
-        return 'bg-yellow-lt';
-    }
-  }
+  /** Canonical verification badge tone (shared, brand palette). */
+  readonly statusBadgeClass = verificationBadgeClass;
 
   statusLabel(status: VerificationStatus): string {
     switch (status) {

@@ -14,6 +14,7 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { StateTypeaheadComponent } from '../shared/state-typeahead.component';
 import { ProductTypeaheadComponent } from '../shared/product-typeahead.component';
+import { InrPipe } from '../shared/inr.pipe';
 import { StatesService } from '../shared/states.service';
 import { PincodeService } from '../shared/pincode.service';
 import { ConfirmService } from '../shared/confirm.service';
@@ -60,6 +61,7 @@ type UploadState = 'idle' | 'uploading' | 'done' | 'error';
     StatePanelComponent,
     StateTypeaheadComponent,
     ProductTypeaheadComponent,
+    InrPipe,
   ],
   templateUrl: './new-order.component.html',
   styleUrl: './new-order.component.css',

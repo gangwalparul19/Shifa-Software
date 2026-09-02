@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
 import { FilingService } from './filing.service';
 import {
@@ -26,7 +27,7 @@ type PresetKey = 'this-month' | 'last-month' | 'custom';
 @Component({
   selector: 'admin-gst-reconciliation',
   standalone: true,
-  imports: [CommonModule, FormsModule, PageHeaderComponent],
+  imports: [CommonModule, FormsModule, PageHeaderComponent, StatePanelComponent],
   templateUrl: './gst-reconciliation.component.html',
   styleUrl: './gst-reconciliation.component.css',
 })

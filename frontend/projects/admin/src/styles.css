@@ -902,6 +902,15 @@ tr.clickable {
 .badge[data-group='done'] { background: #e6f6ec; color: #1f7a34; }
 .badge[data-group='bad'] { background: #fbe7e7; color: #b42318; }
 
+/* Canonical semantic badge tones — one brand-aligned colour language for every
+   pill in the app (leads, insights, customers risk, returns, etc.), replacing
+   the per-page mixes of Tabler bg-*-lt utilities and bespoke is-* classes. */
+.badge.tone-green { background: var(--shifa-green-100, #e4f2ea); color: var(--shifa-green-700, #1a4f38); }
+.badge.tone-amber { background: #fdf0d5; color: #96650a; }
+.badge.tone-red { background: #fde4e2; color: #b42318; }
+.badge.tone-blue { background: #e7f0fb; color: #1c4e8a; }
+.badge.tone-grey { background: #eceff1; color: #62707a; }
+
 .badge[data-status='FULLY_PAID'] { background: #e6f6ec; color: #1f7a34; }
 .badge[data-status='PARTIALLY_PAID'] { background: #fdf1da; color: #9a6a00; }
 .badge[data-status='COD'] { background: #e7f0fb; color: #1c5fb0; }

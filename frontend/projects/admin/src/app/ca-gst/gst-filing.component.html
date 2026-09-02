@@ -14,12 +14,9 @@
 </admin-page-header>
 
 @if (loading()) {
-  <div class="gf-card"><div class="gf-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading filing calendar…</div></div>
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading filing calendar…" />
 } @else if (error()) {
-  <div class="alert alert-danger d-flex align-items-center justify-content-between">
-    <span>{{ error() }}</span>
-    <button type="button" class="btn btn-sm btn-outline-danger" (click)="load()"><i class="ti ti-refresh me-1"></i>Retry</button>
-  </div>
+  <admin-state-panel variant="error" [card]="true" [message]="error()!" (retry)="load()" />
 } @else if (months().length === 0) {
   <div class="gf-card"><div class="gf-empty">No return periods for this financial year.</div></div>
 } @else {

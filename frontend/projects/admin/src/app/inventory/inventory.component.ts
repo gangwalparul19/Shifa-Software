@@ -12,6 +12,7 @@ import {
 } from './inventory.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
+import { humanizeStatus } from '../shared/status-badge.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
@@ -60,6 +61,8 @@ const ADJUST_REASONS = [
   styleUrl: './inventory.component.css',
 })
 export class InventoryComponent implements OnInit {
+  /** Humanises a stock-movement type (SALE → Sale, ADJUSTMENT → Adjustment). */
+  protected readonly humanize = humanizeStatus;
   private readonly service = inject(InventoryService);
   private readonly confirm = inject(ConfirmService);
   private readonly toasts = inject(ToastService);

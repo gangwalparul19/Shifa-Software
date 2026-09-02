@@ -37,9 +37,9 @@
 </div>
 
 @if (loading()) {
-  <div class="gst-card"><div class="gst-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading reconciliation…</div></div>
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading reconciliation…" />
 } @else if (error()) {
-  <div class="alert alert-danger">{{ error() }}</div>
+  <admin-state-panel variant="error" [card]="true" [message]="error()!" (retry)="load()" />
 } @else if (data(); as d) {
 
   <!-- ============ Per-period reconciled banner (Req 9.2, 9.6) ============ -->

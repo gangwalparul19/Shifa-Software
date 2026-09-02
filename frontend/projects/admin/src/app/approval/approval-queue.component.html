@@ -75,7 +75,7 @@
             <tr class="shifa-rowlink" (click)="openDetail(item)">
               <td>
                 <span class="fw-medium">{{ item.orderCode }}</span>
-                <div><span class="badge bg-secondary-lt">{{ item.source }}</span></div>
+                <div><span class="badge bg-secondary-lt">{{ humanize(item.source) }}</span></div>
               </td>
               <td>{{ item.customerName }}</td>
               <td class="text-secondary">{{ item.customerMobile }}</td>

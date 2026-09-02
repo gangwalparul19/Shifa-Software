@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { InrPipe } from '../shared/inr.pipe';
 import { ToastService } from '../shared/toast.service';
 import { PaymentsService } from './payments.service';
 import { PaymentQueueRow } from './payments.model';
@@ -16,7 +17,7 @@ import { PaymentQueueRow } from './payments.model';
  */
 @Component({
   selector: 'admin-payments',
-  imports: [DatePipe, PageHeaderComponent, StatePanelComponent],
+  imports: [DatePipe, PageHeaderComponent, StatePanelComponent, InrPipe],
   templateUrl: './payments.component.html',
   styleUrl: './payments.component.css',
 })

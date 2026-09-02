@@ -70,7 +70,7 @@ import { TeamLead, TeamMember, TeamService } from './team.service';
                 <div class="flex-fill" style="min-width: 0">
                   <div class="fw-medium text-truncate">
                     {{ m.fullName }}
-                    @if (!m.active) { <span class="badge bg-secondary-lt ms-1">inactive</span> }
+                    @if (!m.active) { <span class="badge tone-grey ms-1">inactive</span> }
                   </div>
                   <div class="text-secondary small text-truncate">{{ '@' + m.username }}</div>
                 </div>

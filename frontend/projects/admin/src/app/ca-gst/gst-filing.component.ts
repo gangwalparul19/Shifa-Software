@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
 import { FilingService } from './filing.service';
 import {
@@ -37,7 +38,7 @@ interface MonthRow {
 @Component({
   selector: 'admin-gst-filing',
   standalone: true,
-  imports: [CommonModule, FormsModule, PageHeaderComponent],
+  imports: [CommonModule, FormsModule, PageHeaderComponent, StatePanelComponent],
   templateUrl: './gst-filing.component.html',
   styleUrl: './gst-filing.component.css',
 })

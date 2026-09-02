@@ -61,9 +61,9 @@
 
 @if (mainTab() === 'dashboard') {
 @if (loading()) {
-  <div class="gst-card"><div class="gst-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading GST data…</div></div>
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading GST data…" />
 } @else if (error()) {
-  <div class="alert alert-danger">{{ error() }}</div>
+  <admin-state-panel variant="error" [card]="true" [message]="error()!" (retry)="load()" />
 } @else if (data(); as d) {
 
   @if (!d.report.sellerStateConfigured) {
@@ -270,9 +270,9 @@
 <!-- ================= GSTR-1 (portal-ready outward return) ================= -->
 @if (mainTab() === 'gstr1') {
   @if (gstr1Loading()) {
-    <div class="gst-card"><div class="gst-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading GSTR-1…</div></div>
+    <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading GSTR-1…" />
   } @else if (gstr1Error()) {
-    <div class="alert alert-danger">{{ gstr1Error() }}</div>
+    <admin-state-panel variant="error" [card]="true" [message]="gstr1Error()!" (retry)="loadGstr1()" />
   } @else if (gstr1Data(); as g) {
 
     <!-- Reconciliation banner (sections reconcile to the dashboard GSTR-3B figures, Req 5.5) -->

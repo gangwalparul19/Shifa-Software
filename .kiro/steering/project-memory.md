@@ -1409,3 +1409,38 @@ No migration (code/UI only). Backend `mvn clean test` = **701 tests, 0 failures*
   **no migration necessary**" (v57 unchanged), Tomcat on 8080, "Started Application in 21.945s",
   `https://shifa.weblithic.online/` = 200, served index references `main-ZIFL6CWT.js`. Highest migration in prod
   remains **V57**.
+
+## App-wide UI/UX polish + dead-code cleanup — implemented & DEPLOYED (2026-09-02)
+Two-batch pass after a full UI/UX + dead-code audit (two context-gatherer investigations). Goal: professional/
+consistent UI and remove dead code. Backend `mvn clean test` = **699 tests, 0 failures** (was 701 — removed
+`StorefrontConfigResponseTest`); admin `build:admin` clean (`main-UXHDF5TA.js`). No migration (V57 remains highest).
+**Deployed** via `deploy\push-to-aws.ps1`; DB backup `~/shifa-backup-2026-09-02-202440.sql`; live verified (service
+active, Flyway "no migration necessary", Tomcat 8080, `https://shifa.weblithic.online/`=200, served bundle
+`main-UXHDF5TA.js`).
+- **Shared money pipe**: new `shared/inr.pipe.ts` (`InrPipe` + pure `formatInr`, 2-dec default, `inr:0` for whole
+  rupees). Replaced the raw `₹{{ value }}` decimal strings on Payments, Packing queue, and New Order (salePrice /
+  amountReceived / price-band hints). The ~10 existing per-page `money()`/`inr()` helpers were left as-is (0-dec ones
+  would change displayed values); the pipe is the go-forward standard.
+- **Humanized enums shown to users**: `shared/role-label.ts` (`roleLabel`) → shell user chip/menu/drawer (was raw
+  `PAYMENT_VERIFIER`/`TEAM_LEAD`), and deduped into Users + My Profile (removed their local `roleLabel`). Inventory
+  movement type + Approval-queue order source now use the shared `humanizeStatus()`.
+- **Time**: order-detail, lead history, backups switched 12h `hh:mm a` → 24h `HH:mm` (app-wide 24h).
+- **Status-pill colour unification**: added canonical `.badge.tone-green/amber/red/blue/grey` to `styles.css` (brand
+  palette = the `is-*` pill colours). Migrated the Tabler-`bg-*-lt` outliers to tones: `customers.riskPillClass`,
+  `insights.severityPillClass`, and inline team badges (team-performance conversion, team-member-detail active/inactive,
+  team inactive). Shared `verificationBadgeClass` (in `shared/status-badge.component.ts`, returns tones) replaced the
+  triplicated helper in Users/Salespeople/My Profile. (Returns already used the canonical `data-group` tones.)
+- **CA-GST module** (`ca-gst-dashboard` both tabs, `gst-reconciliation`, `gst-filing`): replaced the inline
+  spinner-in-a-card loading + `alert-danger` (no retry) with the shared `admin-state-panel` (skeleton + retry). Its
+  `--gst-green` was already the brand green `#1F5D3F`; `.gst-card`/`.gst-table` markup kept (brand-consistent, full
+  `.card`/`.card-table` rewrite deferred as low-value/high-churn).
+- **Dead code removed**: core storefront-era modules `cart`, `wishlist`, `checkout`, `reviews` + `models/review.model.ts`
+  (+ their `public-api.ts`/`models/index.ts` exports; their `.pbt.ts` tests went with them — `test:pbt` is glob-based).
+  Deleted the dead `ui` library stub project (`projects/ui` + its `angular.json` project block + `tsconfig.json` path &
+  references). Backend: removed `settings/dto/StorefrontConfigResponse.java` (+ its test) and the unused
+  `OrderRepository.countByCouponCodeAndCustomerMobile`. Also deleted the stale gitignored `deploy-bundle/` (old
+  storefront build) + ~25 scratch `*.log`/`*.txt` at root/backend/frontend (all untracked).
+- **DEFERRED (noted)**: full-page `admin-state-panel` loading for the MAIN `reports` + `reconciliation` modules (they
+  already show a button-spinner; wrapping their complex layouts risked regressions). Coupon plumbing kept (still
+  load-bearing for invoices + QuikShipX payload). `is-*` vs `data-group` pill palettes remain (both brand-aligned; the
+  Tabler outlier — the real inconsistency — is gone).

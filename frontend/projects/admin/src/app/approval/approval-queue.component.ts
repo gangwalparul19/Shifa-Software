@@ -8,7 +8,7 @@ import { AdminEventsService } from '../dashboard/admin-events.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
-import { StatusBadgeComponent } from '../shared/status-badge.component';
+import { StatusBadgeComponent, humanizeStatus } from '../shared/status-badge.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
@@ -45,6 +45,8 @@ interface Toast {
   styleUrl: './approval-queue.component.css',
 })
 export class ApprovalQueueComponent implements OnInit, OnDestroy {
+  /** Humanises the order-source enum for display (e.g. SALESPERSON → Salesperson). */
+  protected readonly humanize = humanizeStatus;
   private readonly service = inject(ApprovalService);
   private readonly fb = inject(FormBuilder);
   private readonly confirmService = inject(ConfirmService);

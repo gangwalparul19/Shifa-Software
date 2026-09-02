@@ -109,11 +109,11 @@ export interface CustomerProfile {
 export function riskPillClass(level: CustomerRiskLevel | string): string {
   switch (level) {
     case 'HIGH':
-      return 'bg-red-lt';
+      return 'tone-red';
     case 'MEDIUM':
-      return 'bg-yellow-lt';
+      return 'tone-amber';
     default:
-      return 'bg-green-lt';
+      return 'tone-green';
   }
 }
 

@@ -134,7 +134,7 @@
               </span>
               <span class="d-none d-md-flex flex-column text-start lh-sm">
                 <span class="fw-medium">{{ session.username }}</span>
-                <span class="text-secondary small">{{ session.role }}</span>
+                <span class="text-secondary small">{{ roleLabel(session.role) }}</span>
               </span>
               <i class="ti ti-chevron-down text-secondary" aria-hidden="true"></i>
             </button>
@@ -150,7 +150,7 @@
                     title="View my profile"
                   >
                     <div class="fw-medium">{{ session.username }}</div>
-                    <div class="text-secondary small">{{ session.role }}</div>
+                    <div class="text-secondary small">{{ roleLabel(session.role) }}</div>
                   </a>
                   <div class="dropdown-divider my-1"></div>
                   <a
@@ -316,7 +316,7 @@
           </span>
           <span class="d-flex flex-column lh-sm">
             <span class="fw-medium">{{ session.username }}</span>
-            <span class="text-secondary small">{{ session.role }}</span>
+            <span class="text-secondary small">{{ roleLabel(session.role) }}</span>
           </span>
         </a>
         <button

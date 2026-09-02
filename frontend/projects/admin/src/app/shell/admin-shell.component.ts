@@ -20,6 +20,7 @@ import {
   announcementIcon,
 } from '../announcements/announcements.model';
 import { ToastsComponent } from '../shared/toasts.component';
+import { roleLabel } from '../shared/role-label';
 import { GlobalSearchComponent } from './global-search.component';
 import { NotificationBellComponent } from '../notifications/notification-bell.component';
 
@@ -100,6 +101,8 @@ export class AdminShellComponent {
   protected readonly auth = inject(AuthService);
   protected readonly events = inject(AdminEventsService);
   protected readonly pwa = inject(PwaService);
+  /** Human-readable role label for the user chip/menus (never the raw enum). */
+  protected readonly roleLabel = roleLabel;
   private readonly announcementsService = inject(AnnouncementsService);
   private readonly router = inject(Router);
   private readonly confirm = inject(ConfirmService);

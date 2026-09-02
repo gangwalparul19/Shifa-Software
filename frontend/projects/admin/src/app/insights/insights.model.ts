@@ -90,11 +90,11 @@ export const INSIGHT_TYPE_LABELS: Record<string, string> = {
 export function severityPillClass(severity: Severity): string {
   switch (severity) {
     case 'DANGER':
-      return 'bg-red-lt';
+      return 'tone-red';
     case 'WARNING':
-      return 'bg-yellow-lt';
+      return 'tone-amber';
     default:
-      return 'bg-blue-lt';
+      return 'tone-blue';
   }
 }
 

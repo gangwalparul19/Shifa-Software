@@ -57,6 +57,24 @@ export function humanizeStatus(status: string): string {
 }
 
 /**
+ * Canonical badge-tone class for a staff verification status (VERIFIED → green,
+ * REJECTED → red, PENDING/other → amber). Single source shared by the Users,
+ * Salespeople and My Profile pages so the pill colours match app-wide.
+ */
+export function verificationBadgeClass(status: string | null | undefined): string {
+  switch (status) {
+    case 'VERIFIED':
+      return 'tone-green';
+    case 'REJECTED':
+      return 'tone-red';
+    case 'PENDING':
+      return 'tone-amber';
+    default:
+      return 'tone-grey';
+  }
+}
+
+/**
  * A consistent status pill reused across orders, approval, packing and the
  * dashboard. It renders a Tabler {@code .badge} carrying a {@code data-group}
  * tone attribute so the existing colour rules apply — one shared colour

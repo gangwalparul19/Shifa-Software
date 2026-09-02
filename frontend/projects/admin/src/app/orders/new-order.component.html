@@ -437,10 +437,10 @@
                 />
                 @if (lineBand(i); as band) {
                   @if (lineRateError(i); as err) {
-                    <div class="text-danger small mt-1">{{ err }} (allowed ₹{{ band.min }}–₹{{ band.max }}).</div>
+                    <div class="text-danger small mt-1">{{ err }} (allowed {{ band.min | inr }}–{{ band.max | inr }}).</div>
                   } @else {
                     <div class="form-hint">
-                      Range ₹{{ band.min }}–₹{{ band.max }}@if (band.wtMl) { · {{ band.wtMl }} }
+                      Range {{ band.min | inr }}–{{ band.max | inr }}@if (band.wtMl) { · {{ band.wtMl }} }
                     </div>
                   }
                 }
@@ -461,7 +461,7 @@
           <span class="shifa-no__chips-label"><i class="ti ti-bulb me-1"></i>Frequently bought together</span>
           @for (p of suggestions(); track p.id) {
             <button type="button" class="btn btn-sm btn-outline-success shifa-chip" (click)="quickAdd(p)">
-              <i class="ti ti-plus me-1"></i>{{ p.name }} <span class="text-secondary ms-1">₹{{ p.salePrice }}</span>
+              <i class="ti ti-plus me-1"></i>{{ p.name }} <span class="text-secondary ms-1">{{ p.salePrice | inr }}</span>
             </button>
           }
         </div>
@@ -613,7 +613,7 @@
         <dt>Deliver to</dt><dd>{{ form.controls.addressLine.value }}, {{ form.controls.city.value }}, {{ form.controls.state.value }} — {{ form.controls.postalCode.value }}</dd>
         <dt>Items</dt><dd>{{ items.length }} item{{ items.length === 1 ? '' : 's' }}</dd>
         <dt>Order total</dt><dd class="fw-bold">{{ formatMoney(orderTotalPaise()) }}</dd>
-        <dt>Amount received</dt><dd>₹{{ form.controls.amountReceived.value }}</dd>
+        <dt>Amount received</dt><dd>{{ form.controls.amountReceived.value | inr }}</dd>
       </dl>
     </div>
   </section>

@@ -20,6 +20,8 @@ import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
+import { verificationBadgeClass } from '../shared/status-badge.component';
+import { roleLabel } from '../shared/role-label';
 
 /**
  * Admin-only staff user management (Req 5.4).
@@ -144,28 +146,8 @@ export class UsersComponent implements OnInit {
     this.page.set(0);
   }
 
-  roleLabel(role: Role | string): string {
-    switch (role) {
-      case Role.ADMIN:
-        return 'Admin';
-      case Role.ACCOUNTANT:
-        return 'Accountant';
-      case Role.SALESPERSON:
-        return 'Salesperson';
-      case Role.TEAM_LEAD:
-        return 'Team Lead';
-      case Role.PACKING_USER:
-        return 'Packing';
-      case Role.PAYMENT_VERIFIER:
-        return 'Payment Verifier';
-      case Role.CA:
-        return 'CA (Accountant)';
-      case Role.CUSTOMER:
-        return 'Customer';
-      default:
-        return String(role);
-    }
-  }
+  /** Human role label (shared, single source). */
+  readonly roleLabel = roleLabel;
 
   /** A Tabler badge tone for each role so they read at a glance. */
   roleBadgeClass(role: Role | string): string {
@@ -208,19 +190,8 @@ export class UsersComponent implements OnInit {
     }
   }
 
-  /** Tabler badge tone for a verification status. */
-  verificationBadgeClass(status: string | null | undefined): string {
-    switch (status) {
-      case 'VERIFIED':
-        return 'bg-green-lt';
-      case 'REJECTED':
-        return 'bg-red-lt';
-      case 'PENDING':
-        return 'bg-yellow-lt';
-      default:
-        return 'bg-secondary-lt';
-    }
-  }
+  /** Canonical badge tone for a verification status (shared, brand palette). */
+  readonly verificationBadgeClass = verificationBadgeClass;
 
   /** Up-to-two-letter initials for the mobile card avatar. */
   userInitials(name: string): string {

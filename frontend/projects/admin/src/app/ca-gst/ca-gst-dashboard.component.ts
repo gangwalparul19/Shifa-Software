@@ -3,6 +3,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
 import { GstService } from './gst.service';
 import { GstDashboard, GstOrderRow, Gstr1ReturnResponse } from './gst.model';
@@ -22,7 +23,7 @@ type MainTab = 'dashboard' | 'gstr1';
 @Component({
   selector: 'admin-ca-gst-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, PageHeaderComponent],
+  imports: [CommonModule, FormsModule, RouterLink, PageHeaderComponent, StatePanelComponent],
   templateUrl: './ca-gst-dashboard.component.html',
   styleUrl: './ca-gst-dashboard.component.css',
 })

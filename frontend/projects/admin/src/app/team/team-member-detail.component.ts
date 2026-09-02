@@ -42,7 +42,7 @@ import {
                 <div class="fw-bold">{{ d.profile.fullName }}</div>
                 <div class="text-secondary small">{{ d.profile.mobile || d.profile.email || 'No contact details' }}</div>
               </div>
-              <span class="badge ms-auto" [class.bg-green-lt]="d.profile.active" [class.bg-red-lt]="!d.profile.active">
+              <span class="badge ms-auto" [class.tone-green]="d.profile.active" [class.tone-red]="!d.profile.active">
                 {{ d.profile.active ? 'Active' : 'Inactive' }}
               </span>
             </section>

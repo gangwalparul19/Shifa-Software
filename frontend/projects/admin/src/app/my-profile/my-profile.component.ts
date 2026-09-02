@@ -15,6 +15,8 @@ import {
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
+import { verificationBadgeClass } from '../shared/status-badge.component';
+import { roleLabel } from '../shared/role-label';
 
 /**
  * Self-service "My Profile" for the signed-in staff member (any role).
@@ -170,20 +172,8 @@ export class MyProfileComponent implements OnInit, OnDestroy {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }
 
-  roleLabel(role: string): string {
-    switch (role) {
-      case 'ADMIN':
-        return 'Admin';
-      case 'ACCOUNTANT':
-        return 'Accountant';
-      case 'SALESPERSON':
-        return 'Salesperson';
-      case 'PACKING_USER':
-        return 'Packing';
-      default:
-        return role;
-    }
-  }
+  /** Human role label (shared, single source). */
+  readonly roleLabel = roleLabel;
 
   verificationLabel(status: string): string {
     switch (status) {
@@ -196,16 +186,8 @@ export class MyProfileComponent implements OnInit, OnDestroy {
     }
   }
 
-  verificationBadgeClass(status: string): string {
-    switch (status) {
-      case 'VERIFIED':
-        return 'bg-green-lt';
-      case 'REJECTED':
-        return 'bg-red-lt';
-      default:
-        return 'bg-yellow-lt';
-    }
-  }
+  /** Canonical verification badge tone (shared, brand palette). */
+  readonly verificationBadgeClass = verificationBadgeClass;
 
   /** Tone token for the hero badge (drives a solid, high-contrast pill on the green banner). */
   verificationTone(status: string): string {

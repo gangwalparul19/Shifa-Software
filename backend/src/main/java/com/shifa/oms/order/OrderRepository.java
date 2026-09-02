@@ -127,13 +127,6 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     List<OrderEntity> findByCreatedAtBetween(java.time.LocalDateTime from, java.time.LocalDateTime to);
 
     /**
-     * How many times a coupon code has been redeemed by a given customer mobile
-     * (Phase D per-customer limit enforcement). The coupon code is stored
-     * upper-cased on the order, so callers pass a normalized code.
-     */
-    long countByCouponCodeAndCustomerMobile(String couponCode, String customerMobile);
-
-    /**
      * Orders for a customer mobile number, most recent first (Req 15.1 agent
      * lookup by mobile). May match several orders for a repeat customer.
      */

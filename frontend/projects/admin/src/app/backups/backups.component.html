@@ -34,7 +34,7 @@
         <div class="subheader">Last successful backup</div>
         <div class="h2 m-0">
           @if (lastSuccess(); as ok) {
-            {{ ok.finishedAt || ok.startedAt | date: 'dd MMM yyyy · hh:mm a' }}
+            {{ ok.finishedAt || ok.startedAt | date: 'dd MMM yyyy · HH:mm' }}
           } @else {
             —
           }

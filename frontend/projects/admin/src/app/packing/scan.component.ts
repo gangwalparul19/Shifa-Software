@@ -8,6 +8,7 @@ import { DashboardService } from '../dashboard/dashboard.service';
 import { PackingService } from './packing.service';
 import { PackingQueueRow, PackingScanResponse, ScanLogEntry, ScanOutcome } from './packing.model';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { InrPipe } from '../shared/inr.pipe';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
 import { ToastService } from '../shared/toast.service';
 import { CameraScannerComponent } from './camera-scanner.component';
@@ -67,6 +68,7 @@ interface PackWorkItem {
     PageHeaderComponent,
     StatusBadgeComponent,
     CameraScannerComponent,
+    InrPipe,
   ],
   templateUrl: './scan.component.html',
   styleUrl: './scan.component.css',

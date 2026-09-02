@@ -237,7 +237,7 @@
                   }
                   <td class="shifa-mono fw-bold">{{ o.orderCode }}</td>
                   <td>{{ o.customerName }}</td>
-                  <td class="text-end fw-semibold">₹{{ o.totalAmount }}</td>
+                  <td class="text-end fw-semibold">{{ o.totalAmount | inr }}</td>
                   <td class="text-secondary">{{ o.createdAt ? (o.createdAt | date: 'dd MMM yyyy, HH:mm') : '—' }}</td>
                   <td class="text-secondary">{{ o.salespersonName || '—' }}</td>
                   <td class="text-end" (click)="$event.stopPropagation()">
