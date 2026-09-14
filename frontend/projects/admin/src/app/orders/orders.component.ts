@@ -1172,19 +1172,21 @@ export class OrdersComponent implements OnInit, OnDestroy {
   quikShipBadgeClass(status: string | null | undefined): string {
     const s = (status ?? '').toLowerCase();
     if (s.includes('deliver')) {
-      return 'bg-green-lt';
+      return 'tone-green';
     }
     if (s.includes('return') || s.includes('lost') || s.includes('cancel')) {
-      return 'bg-red-lt';
+      return 'tone-red';
     }
     if (s.includes('transit') || s.includes('out for') || s.includes('pickup')) {
-      return 'bg-blue-lt';
+      return 'tone-blue';
     }
     if (s.includes('tracking') || s.includes('label') || s.includes('confirm')) {
-      return 'bg-cyan-lt';
+      return 'tone-blue';
     }
-    return 'bg-yellow-lt';
+    return 'tone-amber';
   }
+
+
 
   /** (Re)queues the open order for publication to QuikShipX (ADMIN). */
   publishToQuikShip(order: OrderDetail): void {

@@ -320,3 +320,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* --- Entry-mode toggle (Guided vs Quick, item 3) ------------------------ */
+.shifa-no__modebar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.shifa-no__modehint {
+  font-size: 0.8rem;
+}
+
+/* SKU / barcode quick-add row. */
+.shifa-no__sku {
+  max-width: 26rem;
+}

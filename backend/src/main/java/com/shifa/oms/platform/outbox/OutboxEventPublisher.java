@@ -105,6 +105,30 @@ public class OutboxEventPublisher {
     }
 
     /**
+     * Enqueues an {@code ORDER_AWAITING_APPROVAL} event when a salesperson punches
+     * a new order that lands in the admin approval queue, so connected admins get
+     * a real-time "order needs approval" nudge over the SSE stream. The row is
+     * persisted in the same transaction as the order, so it is never lost even
+     * when no admin is connected.
+     *
+     * @param orderId      the punched order's id
+     * @param orderCode    the punched order's human/barcode code
+     * @param customerName the customer name, for display in the notification
+     * @param total        the order total, for display (as a string)
+     * @return the persisted event row
+     */
+    public OutboxEvent publishOrderAwaitingApproval(Long orderId, String orderCode,
+                                                    String customerName, String total) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("orderId", orderId);
+        payload.put("orderCode", orderCode);
+        payload.put("customerName", customerName);
+        payload.put("total", total);
+        return publish(OutboxEvent.AGGREGATE_ORDER, orderId,
+                OutboxEvent.EVENT_ORDER_AWAITING_APPROVAL, payload);
+    }
+
+    /**
      * Enqueues a {@code QUIKSHIPX_CREATE} event when an order is punched, so the
      * QuikShipX drainer creates the shipment (their Pending section) out-of-band.
      * Publish only when the QuikShipX integration is enabled.

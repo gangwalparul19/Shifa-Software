@@ -44,6 +44,15 @@ public class OutboxEvent {
     public static final String EVENT_ORDER_PACKED = "ORDER_PACKED";
 
     /**
+     * Event type emitted when a salesperson punches a new order that lands in the
+     * admin approval queue ({@code Pending_Admin_Approval}), so admins get a
+     * real-time "order needs approval" nudge over the SSE stream. Its payload
+     * carries the order id/code, customer name, and total; the frontend routes a
+     * toast click through to the approval queue. Aggregate {@code ORDER}.
+     */
+    public static final String EVENT_ORDER_AWAITING_APPROVAL = "ORDER_AWAITING_APPROVAL";
+
+    /**
      * Event type emitted when an order is punched, so the QuikShipX drainer can
      * create the shipment out-of-band (QuikShipX create-order → their Pending
      * section). Its payload carries the order id/code; the drainer reloads the

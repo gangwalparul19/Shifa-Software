@@ -110,9 +110,19 @@ public class HttpQuikShipXClient implements QuikShipXClient {
 
     @Override
     public TrackResult trackOrder(String awb) throws QuikShipXException {
+        return track(awb, "awb");
+    }
+
+    @Override
+    public TrackResult trackOrderById(String shipperOrderId) throws QuikShipXException {
+        return track(shipperOrderId, "order_id");
+    }
+
+    /** Tracks by AWB or QuikShipX order id ({@code tracking_type} = awb | order_id). */
+    private TrackResult track(String trackingNo, String trackingType) throws QuikShipXException {
         Map<String, Object> trackingDetails = new LinkedHashMap<>();
-        trackingDetails.put("tracking_no", awb);
-        trackingDetails.put("tracking_type", "awb");
+        trackingDetails.put("tracking_no", trackingNo);
+        trackingDetails.put("tracking_type", trackingType);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("tracking_details", trackingDetails);
         body.put("shipper_details", shipperDetails());
@@ -121,8 +131,8 @@ public class HttpQuikShipXClient implements QuikShipXClient {
         List<String> soft = QuikShipXResponseParser.detectFailure(responseBody);
         if (!soft.isEmpty()) {
             // Not yet trackable (e.g. between booking and tracking-id) — retryable.
-            throw new QuikShipXException("QuikShipX track-order not ready for AWB "
-                    + awb + ": " + String.join("; ", soft), true);
+            throw new QuikShipXException("QuikShipX track-order not ready for " + trackingType
+                    + " " + trackingNo + ": " + String.join("; ", soft), true);
         }
         try {
             return QuikShipXResponseParser.parseTrack(responseBody);

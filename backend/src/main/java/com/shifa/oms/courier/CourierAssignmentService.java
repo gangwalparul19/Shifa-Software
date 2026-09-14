@@ -130,8 +130,9 @@ public class CourierAssignmentService {
     private CourierCompany resolveCompany(String courierName) {
         String name = (courierName == null || courierName.isBlank())
                 ? properties.companyName() : courierName;
+        // No carrier tracking URL — QuikShipX (aggregator) tracking is via its API,
+        // not a per-carrier public page, so we don't build a carrier link.
         return courierCompanyRepository.findFirstByName(name)
-                .orElseGet(() -> courierCompanyRepository.save(
-                        new CourierCompany(name, "https://track.example.com/{awb}")));
+                .orElseGet(() -> courierCompanyRepository.save(new CourierCompany(name, null)));
     }
 }

@@ -33,3 +33,13 @@ export interface ApprovalQueueItem {
   items: ApprovalLineItem[];
   createdAt?: string;
 }
+
+/**
+ * Result of a bulk-approve call, mirroring the backend {@code BulkActionResult}.
+ * {@code succeeded} holds the ids that transitioned; {@code skipped} holds the
+ * ids that could not (with a human-readable reason, e.g. no longer pending).
+ */
+export interface BulkApproveResult {
+  succeeded: number[];
+  skipped: { id: number; reason: string }[];
+}

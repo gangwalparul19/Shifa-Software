@@ -83,6 +83,7 @@ export class AdminEventsService {
     es.addEventListener('LIVE_STATS', (e) => this.liveStats.set(this.parse<LiveStats>(e)));
     es.addEventListener('ACTIVITY', (e) => this.activity.set(this.parse<ActivityCards>(e)));
 
+    this.listenNotification(es, 'ORDER_AWAITING_APPROVAL');
     this.listenNotification(es, 'ORDER_PACKED');
     this.listenNotification(es, 'ORDER_STATUS_CHANGED');
     this.listenNotification(es, 'CLAIM_FILED_REQUIRED');
@@ -117,8 +118,21 @@ export class AdminEventsService {
 
   private toNotification(type: AdminEventType, payload: Record<string, unknown>): AdminNotification {
     const orderCode = (payload['orderCode'] as string | undefined) ?? undefined;
+    const orderId = typeof payload['orderId'] === 'number' ? (payload['orderId'] as number) : undefined;
     const codeText = orderCode ? `Order ${orderCode}` : 'An order';
     switch (type) {
+      case 'ORDER_AWAITING_APPROVAL': {
+        const customer = (payload['customerName'] as string | undefined) ?? '';
+        const who = customer ? ` from ${customer}` : '';
+        return this.build(
+          type,
+          'New order needs approval',
+          `${codeText}${who} is waiting in the approval queue.`,
+          'warning',
+          orderCode,
+          orderId,
+        );
+      }
       case 'ORDER_PACKED':
         return this.build(type, 'Order packed', `${codeText} was packed and is ready to ship.`, 'success', orderCode);
       case 'ORDER_STATUS_CHANGED':
@@ -164,8 +178,9 @@ export class AdminEventsService {
     detail: string,
     severity: AdminNotification['severity'],
     orderCode?: string,
+    orderId?: number,
   ): AdminNotification {
-    return { type, title, detail, severity, orderCode, receivedAt: new Date() };
+    return { type, title, detail, severity, orderCode, orderId, receivedAt: new Date() };
   }
 
   private pretty(value: unknown): string {

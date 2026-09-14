@@ -61,26 +61,55 @@
   </div>
 }
 
-<!-- Guided wizard progress (product-audit §3.2) -->
-<div class="shifa-wizard-steps mb-3">
-  @for (label of stepLabels; track label; let i = $index) {
+<!-- Entry-mode toggle: guided wizard vs single-screen quick order (item 3) -->
+<div class="shifa-no__modebar mb-2">
+  <div class="btn-group btn-group-sm shifa-no__modetoggle" role="group" aria-label="Order entry mode">
     <button
       type="button"
-      class="shifa-wizard-step"
-      [class.is-active]="step() === i + 1"
-      [class.is-done]="step() > i + 1"
-      (click)="goToStep(i + 1)"
+      class="btn"
+      [class.btn-primary]="!quickMode()"
+      [class.btn-outline-secondary]="quickMode()"
+      (click)="quickMode() && toggleQuickMode()"
     >
-      <span class="shifa-wizard-step__num">
-        @if (step() > i + 1) { <i class="ti ti-check"></i> } @else { {{ i + 1 }} }
-      </span>
-      <span class="shifa-wizard-step__label">{{ label }}</span>
+      <i class="ti ti-list-numbers me-1"></i> Guided
     </button>
-  }
+    <button
+      type="button"
+      class="btn"
+      [class.btn-primary]="quickMode()"
+      [class.btn-outline-secondary]="!quickMode()"
+      (click)="!quickMode() && toggleQuickMode()"
+    >
+      <i class="ti ti-bolt me-1"></i> Quick
+    </button>
+  </div>
+  <span class="shifa-no__modehint text-secondary">
+    {{ quickMode() ? 'All fields on one screen.' : 'Step-by-step with checks.' }}
+  </span>
 </div>
 
-<form [formGroup]="form" (ngSubmit)="submit()" novalidate class="shifa-no">
-  @if (step() === 1) {
+<!-- Guided wizard progress (product-audit §3.2) — hidden in quick mode -->
+@if (!quickMode()) {
+  <div class="shifa-wizard-steps mb-3">
+    @for (label of stepLabels; track label; let i = $index) {
+      <button
+        type="button"
+        class="shifa-wizard-step"
+        [class.is-active]="step() === i + 1"
+        [class.is-done]="step() > i + 1"
+        (click)="goToStep(i + 1)"
+      >
+        <span class="shifa-wizard-step__num">
+          @if (step() > i + 1) { <i class="ti ti-check"></i> } @else { {{ i + 1 }} }
+        </span>
+        <span class="shifa-wizard-step__label">{{ label }}</span>
+      </button>
+    }
+  </div>
+}
+
+<form [formGroup]="form" (ngSubmit)="submit()" (keydown.enter)="onFormEnter($event)" novalidate class="shifa-no">
+  @if (quickMode() || step() === 1) {
   <!-- ===================== Customer Details ===================== -->
   <section class="shifa-no__section">
     <h2 class="shifa-no__title">Customer Details</h2>
@@ -340,13 +369,34 @@
   </section>
   }
 
-  @if (step() === 2) {
+  @if (quickMode() || step() === 2) {
   <!-- ===================== Order Details ===================== -->
   <section class="shifa-no__section">
     <div class="shifa-no__titlerow">
       <h2 class="shifa-no__title mb-0">Order Details</h2>
       <button type="button" class="btn btn-sm btn-outline-primary" (click)="addItem()">
         <i class="ti ti-plus me-1"></i> Add item
+      </button>
+    </div>
+
+    <!-- SKU / barcode quick-add: scan or type a SKU and press Enter to add a line. -->
+    <div class="input-group input-group-sm shifa-no__sku mb-2">
+      <span class="input-group-text"><i class="ti ti-barcode"></i></span>
+      <input
+        #skuInput
+        type="text"
+        class="form-control"
+        data-sku-input="true"
+        placeholder="Scan or type a SKU, then Enter"
+        autocomplete="off"
+        (keydown.enter)="$event.preventDefault(); addBySku(skuInput.value) && (skuInput.value = '')"
+      />
+      <button
+        type="button"
+        class="btn btn-outline-secondary"
+        (click)="addBySku(skuInput.value) && (skuInput.value = '')"
+      >
+        <i class="ti ti-plus me-1"></i>Add
       </button>
     </div>
 
@@ -531,7 +581,7 @@
   </section>
   }
 
-  @if (step() === 3) {
+  @if (quickMode() || step() === 3) {
   <!-- ===================== Payment Details ===================== -->
   <section class="shifa-no__section">
     <h2 class="shifa-no__title">Payment Details</h2>
@@ -603,7 +653,7 @@
   </section>
   }
 
-  @if (step() === 4) {
+  @if (quickMode() || step() === 4) {
   <!-- ===================== Review + Notes ===================== -->
   <section class="shifa-no__section">
     <h2 class="shifa-no__title">Review</h2>
@@ -654,23 +704,13 @@
   }
 </form>
 
-<!-- Sticky bottom action bar (Req 10.4) — wizard Back / Next / Save -->
+<!-- Sticky bottom action bar (Req 10.4) — wizard Back / Next / Save.
+     In quick (single-screen) mode there are no steps, so just Cancel + Save. -->
 <div class="shifa-no__footer">
-  @if (step() === 1) {
+  @if (quickMode()) {
     <button type="button" class="btn btn-outline-secondary shifa-no__cancel" (click)="cancel()" [disabled]="submitting()">
       Cancel
     </button>
-  } @else {
-    <button type="button" class="btn btn-outline-secondary shifa-no__cancel" (click)="prevStep()" [disabled]="submitting()">
-      <i class="ti ti-arrow-left me-1"></i> Back
-    </button>
-  }
-
-  @if (step() < totalSteps) {
-    <button type="button" class="btn btn-primary shifa-no__save" (click)="nextStep()">
-      Next <i class="ti ti-arrow-right ms-1"></i>
-    </button>
-  } @else {
     <button type="button" class="btn btn-primary shifa-no__save" (click)="submit()" [disabled]="submitting()">
       @if (submitting()) {
         <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
@@ -679,5 +719,30 @@
       }
       {{ convertMode() ? 'Convert Lead' : 'Save Order' }}
     </button>
+  } @else {
+    @if (step() === 1) {
+      <button type="button" class="btn btn-outline-secondary shifa-no__cancel" (click)="cancel()" [disabled]="submitting()">
+        Cancel
+      </button>
+    } @else {
+      <button type="button" class="btn btn-outline-secondary shifa-no__cancel" (click)="prevStep()" [disabled]="submitting()">
+        <i class="ti ti-arrow-left me-1"></i> Back
+      </button>
+    }
+
+    @if (step() < totalSteps) {
+      <button type="button" class="btn btn-primary shifa-no__save" (click)="nextStep()">
+        Next <i class="ti ti-arrow-right ms-1"></i>
+      </button>
+    } @else {
+      <button type="button" class="btn btn-primary shifa-no__save" (click)="submit()" [disabled]="submitting()">
+        @if (submitting()) {
+          <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+        } @else {
+          <i class="ti ti-check me-1"></i>
+        }
+        {{ convertMode() ? 'Convert Lead' : 'Save Order' }}
+      </button>
+    }
   }
 </div>

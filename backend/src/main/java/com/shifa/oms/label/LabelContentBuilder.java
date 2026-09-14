@@ -17,7 +17,9 @@ import java.util.Objects;
  * directly against the model (Property 18) and the bulk fan-out against a plain
  * list (Property 19).
  *
- * <p>The barcode value is always the order code (Req 10.1). The COD amount is
+ * <p>The barcode value is the QuikShipX order id when the caller supplies one
+ * (so the courier partner scans their own id), else the order code (Req 10.1).
+ * The COD amount is
  * included on the content <em>if and only if</em> the order's payment status is
  * {@code COD} or {@code Partially_Paid}; it is omitted (left {@code null}, with
  * {@code codApplicable=false}) for {@code Fully_Paid} orders (Req 10.2).
@@ -47,6 +49,24 @@ public class LabelContentBuilder {
      * @return the assembled, render-agnostic label content
      */
     public InternalLabelContent buildInternal(OrderEntity order, LabelCompany company) {
+        return buildInternal(order, company, null);
+    }
+
+    /**
+     * Builds the internal-label content, encoding {@code barcodeValueOverride} in
+     * the scannable Code128 barcode when provided (otherwise the order code).
+     *
+     * <p>The courier partner (QuikShipX) needs to scan <em>their</em> order id off
+     * our label, so callers pass the QuikShipX order id here; the human-readable
+     * "ORDER ID" on the label always stays our own order code.
+     *
+     * @param order                 the source order aggregate (never {@code null})
+     * @param company               the seller/brand details, or {@code null} for defaults
+     * @param barcodeValueOverride  the value to encode in the barcode, or {@code null}/blank
+     *                              to fall back to the order code
+     */
+    public InternalLabelContent buildInternal(OrderEntity order, LabelCompany company,
+                                              String barcodeValueOverride) {
         Objects.requireNonNull(order, "order");
 
         List<InternalLabelContent.LabelLineItem> items = order.getLineItems().stream()
@@ -55,10 +75,12 @@ public class LabelContentBuilder {
 
         boolean codApplicable = isCodApplicable(order.getPaymentStatus());
         LabelCompany c = company != null ? company : LabelCompany.defaults();
+        String barcodeValue = (barcodeValueOverride != null && !barcodeValueOverride.isBlank())
+                ? barcodeValueOverride : order.getOrderCode();
 
         return new InternalLabelContent(
                 order.getOrderCode(),
-                order.getOrderCode(),
+                barcodeValue,
                 order.getCustomerName(),
                 order.getCustomerMobile(),
                 order.getAddressLine(),

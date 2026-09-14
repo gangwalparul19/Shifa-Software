@@ -56,32 +56,56 @@ public class LabelService {
     private final StorageService storageService;
     private final com.shifa.oms.settings.CompanyLogoService companyLogoService;
     private final com.shifa.oms.settings.SettingsService settingsService;
+    /**
+     * QuikShipX shipment mirror (nullable): supplies the QuikShipX order id to
+     * encode in the label barcode so the courier partner scans THEIR order id.
+     * Null in the lightweight test constructors → the barcode falls back to our
+     * order code.
+     */
+    private final com.shifa.oms.quikshipx.OrderShipmentRepository orderShipmentRepository;
     private final LabelContentBuilder contentBuilder;
     private final LabelPdfRenderer pdfRenderer;
     private final OrderStatusStateMachine stateMachine;
 
     /** Test-friendly constructor without the company collaborators (no logo/seller on labels). */
     public LabelService(OrderRepository orderRepository, StorageService storageService) {
-        this(orderRepository, storageService, null, null);
+        this(orderRepository, storageService, null, null, null);
     }
 
     /** Constructor with the logo collaborator only (kept for callers that don't wire settings). */
     public LabelService(OrderRepository orderRepository, StorageService storageService,
                         com.shifa.oms.settings.CompanyLogoService companyLogoService) {
-        this(orderRepository, storageService, companyLogoService, null);
+        this(orderRepository, storageService, companyLogoService, null, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public LabelService(OrderRepository orderRepository, StorageService storageService,
                         com.shifa.oms.settings.CompanyLogoService companyLogoService,
-                        com.shifa.oms.settings.SettingsService settingsService) {
+                        com.shifa.oms.settings.SettingsService settingsService,
+                        com.shifa.oms.quikshipx.OrderShipmentRepository orderShipmentRepository) {
         this.orderRepository = orderRepository;
         this.storageService = storageService;
         this.companyLogoService = companyLogoService;
         this.settingsService = settingsService;
+        this.orderShipmentRepository = orderShipmentRepository;
         this.contentBuilder = new LabelContentBuilder();
         this.pdfRenderer = new LabelPdfRenderer(new BarcodeGenerator());
         this.stateMachine = new OrderStatusStateMachine();
+    }
+
+    /**
+     * The value to encode in the label barcode: the QuikShipX order id when the
+     * order has been published to QuikShipX (so their staff scan their own id),
+     * otherwise our order code.
+     */
+    private String barcodeValueFor(OrderEntity order) {
+        if (orderShipmentRepository == null || order.getId() == null) {
+            return order.getOrderCode();
+        }
+        return orderShipmentRepository.findByOrderId(order.getId())
+                .map(com.shifa.oms.quikshipx.OrderShipment::getShipperOrderId)
+                .filter(s -> s != null && !s.isBlank())
+                .orElse(order.getOrderCode());
     }
 
     /** The configured company logo bytes for rendering, or {@code null} when none/absent. */
@@ -133,7 +157,7 @@ public class LabelService {
      * @return the storage key of the archived label PDF
      */
     public String generateInternalLabelOnApproval(OrderEntity order, String actor) {
-        InternalLabelContent content = contentBuilder.buildInternal(order, company());
+        InternalLabelContent content = contentBuilder.buildInternal(order, company(), barcodeValueFor(order));
         byte[] pdf = pdfRenderer.render(content, logoPng());
 
         StorageService.StoredObjectRef ref = storageService.store(
@@ -153,7 +177,7 @@ public class LabelService {
     @Transactional(readOnly = true)
     public byte[] internalLabelPdf(Long orderId) {
         OrderEntity order = requireOrder(orderId);
-        InternalLabelContent content = contentBuilder.buildInternal(order, company());
+        InternalLabelContent content = contentBuilder.buildInternal(order, company(), barcodeValueFor(order));
         // Multi-pack (product-audit §4.2): print one label copy per box. Default
         // package count is 1 → a single label, unchanged from before.
         int copies = order.getPackageCount();
@@ -180,11 +204,12 @@ public class LabelService {
         if (orderIds == null || orderIds.isEmpty()) {
             throw new ValidationException("At least one order id is required for bulk label printing.");
         }
-        List<OrderEntity> orders = new ArrayList<>(orderIds.size());
+        LabelCompany company = company();
+        List<InternalLabelContent> contents = new ArrayList<>(orderIds.size());
         for (Long id : orderIds) {
-            orders.add(requireOrder(id));
+            OrderEntity order = requireOrder(id);
+            contents.add(contentBuilder.buildInternal(order, company, barcodeValueFor(order)));
         }
-        List<InternalLabelContent> contents = contentBuilder.buildBulk(orders, company());
         return pdfRenderer.render(contents, logoPng());
     }
 

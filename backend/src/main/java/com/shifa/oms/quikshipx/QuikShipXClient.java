@@ -38,12 +38,29 @@ public interface QuikShipXClient {
     AllotResult allotTrackingId(String shipperOrderId) throws QuikShipXException;
 
     /**
-     * The current status of a shipment by AWB ({@code POST /api/track-order-v1}).
+     * The current status of a shipment by AWB ({@code POST /api/track-order-v1}
+     * with {@code tracking_type=awb}). Used by the scheduled courier poller,
+     * which is keyed by AWB.
      *
      * @param awb the AWB to track
-     * @return the current QuikShipX status
+     * @return the current QuikShipX status + scan timeline
      * @throws QuikShipXException on transport failure, timeout, or a not-trackable
      *         / rejection response
      */
     TrackResult trackOrder(String awb) throws QuikShipXException;
+
+    /**
+     * The current status of a shipment by QuikShipX order id
+     * ({@code POST /api/track-order-v1} with {@code tracking_type=order_id}).
+     * Preferred for interactive tracking because the QuikShipX order id is stored
+     * from create-order (available before an AWB is allotted), and it is the
+     * partner's own tracking key — we do not track with any individual carrier.
+     *
+     * @param shipperOrderId QuikShipX's order id (from create-order)
+     * @return the current QuikShipX status + scan timeline (the response also
+     *         carries the AWB)
+     * @throws QuikShipXException on transport failure, timeout, or a not-trackable
+     *         / rejection response
+     */
+    TrackResult trackOrderById(String shipperOrderId) throws QuikShipXException;
 }

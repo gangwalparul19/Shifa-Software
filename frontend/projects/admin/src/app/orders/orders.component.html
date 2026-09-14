@@ -366,6 +366,9 @@
                     @if (order.quikShipXOrderId) {
                       <div class="text-secondary shifa-mono shifa-qsx-id">#{{ order.quikShipXOrderId }}</div>
                     }
+                    @if (order.quikShipXAwb) {
+                      <div class="text-secondary shifa-mono shifa-qsx-id">AWB {{ order.quikShipXAwb }}</div>
+                    }
                   </div>
                 }
               </td>
@@ -661,8 +664,11 @@
           </div>
         }
 
-        <!-- Shipment (kept when a courier has been assigned) -->
-        @if (order.awb) {
+        }
+
+        @if (detailTab() === 'details') {
+        <!-- Shipment (non-QuikShip courier orders; QuikShipX orders use their own card below) -->
+        @if (order.awb && !order.quikShipXStatus) {
           <div class="shifa-od__section">
             <div class="shifa-od__label mb-2">Shipment</div>
             <div class="shifa-od__card">
@@ -672,11 +678,6 @@
               }
               @if (order.estimatedDelivery) {
                 <div class="shifa-od__totline"><span>Est. delivery</span><span>{{ order.estimatedDelivery | date: 'dd MMM yyyy' }}</span></div>
-              }
-              @if (order.trackingUrl) {
-                <a class="btn btn-sm btn-outline-primary mt-2" [href]="order.trackingUrl" target="_blank" rel="noopener">
-                  <i class="ti ti-external-link me-1"></i> Track shipment
-                </a>
               }
             </div>
           </div>
@@ -693,13 +694,30 @@
             </div>
             <div class="shifa-od__card">
               @if (order.quikShipXStatus) {
-                <div class="shifa-od__totline">
-                  <span>Status</span>
-                  <span><span [class]="'badge ' + quikShipBadgeClass(order.quikShipXStatus)">{{ order.quikShipXStatus }}</span></span>
+                <div class="shifa-qsx-status">
+                  <span [class]="'badge ' + quikShipBadgeClass(order.quikShipXStatus)">
+                    <i class="ti ti-truck-delivery me-1"></i>{{ order.quikShipXStatus }}
+                  </span>
                 </div>
               } @else {
                 <div class="text-secondary small mb-2">Not yet published to QuikShipX.</div>
               }
+
+              @if (order.awb) {
+                <div class="shifa-qsx-awb">
+                  <div class="shifa-qsx-awb__label">Tracking number (AWB)</div>
+                  <div class="shifa-qsx-awb__row">
+                    <span class="shifa-qsx-awb__value shifa-mono">{{ order.awb }}</span>
+                    <button type="button" class="btn btn-sm btn-ghost-secondary p-0" (click)="copyText(order.awb, 'AWB')" title="Copy AWB">
+                      <i class="ti ti-copy"></i>
+                    </button>
+                  </div>
+                  @if (order.courierName) {
+                    <div class="text-secondary small">via {{ order.courierName }}</div>
+                  }
+                </div>
+              }
+
               @if (order.quikShipXOrderId) {
                 <div class="shifa-od__totline">
                   <span>QuikShipX order</span>
@@ -711,21 +729,11 @@
                   </span>
                 </div>
               }
-              @if (order.awb) {
-                <div class="shifa-od__totline">
-                  <span>Tracking ID (AWB)</span>
-                  <span class="shifa-mono">{{ order.awb }}
-                    <button type="button" class="btn btn-sm btn-ghost-secondary p-0 ms-1"
-                      (click)="copyText(order.awb, 'AWB')" title="Copy AWB">
-                      <i class="ti ti-copy"></i>
-                    </button>
-                  </span>
-                </div>
-              }
+
               <div class="d-flex gap-2 flex-wrap mt-2">
                 @if (order.quikShipXLabelUrl) {
                   <a class="btn btn-sm btn-outline-primary" [href]="order.quikShipXLabelUrl" target="_blank" rel="noopener">
-                    <i class="ti ti-file-download me-1"></i> Shipping label
+                    <i class="ti ti-file-download me-1"></i> Label
                   </a>
                 }
                 @if (canManageQuikShip() && !order.quikShipXStatus) {

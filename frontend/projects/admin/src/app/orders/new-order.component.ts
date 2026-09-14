@@ -757,6 +757,61 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     this.model.set(this.snapshot());
   }
 
+  /**
+   * Quick-add a product by scanning/typing its SKU (or barcode). Resolves the
+   * SKU against the loaded catalog (case-insensitive; exact match preferred, then
+   * a unique prefix), adds it via {@link quickAdd}, and clears the input. Unknown
+   * or ambiguous codes surface a toast so the salesperson can pick manually.
+   *
+   * @returns true when a product was added (lets the template clear the field)
+   */
+  addBySku(rawCode: string): boolean {
+    const code = (rawCode ?? '').trim().toLowerCase();
+    if (!code) {
+      return false;
+    }
+    const all = this.products();
+    const exact = all.find((p) => (p.sku ?? '').toLowerCase() === code);
+    if (exact) {
+      this.quickAdd(exact);
+      this.toasts.success(`Added ${exact.name}`);
+      return true;
+    }
+    const prefix = all.filter((p) => (p.sku ?? '').toLowerCase().startsWith(code));
+    if (prefix.length === 1) {
+      this.quickAdd(prefix[0]);
+      this.toasts.success(`Added ${prefix[0].name}`);
+      return true;
+    }
+    if (prefix.length > 1) {
+      this.toasts.error(`"${rawCode}" matches ${prefix.length} products — enter the full SKU.`);
+      return false;
+    }
+    this.toasts.error(`No product with SKU "${rawCode}".`);
+    return false;
+  }
+
+  /**
+   * Enter-to-advance keyboard flow (item 3): pressing Enter in a single-line
+   * field moves to the next wizard step instead of submitting the form early. It
+   * is a no-op in quick (single-screen) mode, on the final step, inside a
+   * textarea, or on the SKU field (which owns Enter to add a line).
+   */
+  onFormEnter(event: Event): void {
+    if (this.quickMode()) {
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    const tag = target?.tagName?.toLowerCase();
+    if (tag === 'textarea' || target?.getAttribute('data-sku-input') === 'true') {
+      return;
+    }
+    if (this.step() < this.totalSteps) {
+      event.preventDefault();
+      this.nextStep();
+    }
+  }
+
   removeItem(index: number): void {
     if (this.items.length > 1) {
       this.items.removeAt(index);
@@ -903,6 +958,39 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   protected readonly step = signal(1);
   protected readonly totalSteps = 4;
   protected readonly stepLabels = ['Customer', 'Items', 'Payment', 'Review'];
+
+  /**
+   * Quick-order mode: shows every section on one compact screen (no wizard
+   * stepping) so an experienced salesperson can punch an order fast. The
+   * preference is remembered in localStorage. Convert/reorder still work in
+   * either mode. When on, the step gating in the template is bypassed and the
+   * footer shows a single Save action.
+   */
+  private static readonly QUICK_MODE_KEY = 'shifa:new-order-quick-mode';
+  protected readonly quickMode = signal(this.loadQuickMode());
+
+  /** Toggles quick (single-screen) vs guided (wizard) entry and remembers it. */
+  toggleQuickMode(): void {
+    const next = !this.quickMode();
+    this.quickMode.set(next);
+    try {
+      localStorage.setItem(NewOrderComponent.QUICK_MODE_KEY, next ? '1' : '0');
+    } catch {
+      /* storage unavailable — non-fatal */
+    }
+    if (!next) {
+      // Returning to the wizard: start from the first step.
+      this.step.set(1);
+    }
+  }
+
+  private loadQuickMode(): boolean {
+    try {
+      return localStorage.getItem(NewOrderComponent.QUICK_MODE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
 
   /** Form controls that belong to each step, validated before advancing. */
   private readonly stepControlNames: Record<number, string[]> = {

@@ -65,13 +65,28 @@ public class PackingService {
     private final OutboxEventPublisher outboxEventPublisher;
     private final OrderWorkflowService orderWorkflowService;
     private final UserRepository userRepository;
+    /**
+     * Optional QuikShipX shipment repository so a scanned barcode can be resolved
+     * by the QuikShipX order id / AWB printed on the label (nullable in tests /
+     * when the integration isn't wired). See {@link #resolveBarcode(String)}.
+     */
+    private final com.shifa.oms.quikshipx.OrderShipmentRepository orderShipmentRepository;
 
+    /** Test-friendly constructor without the QuikShipX shipment lookup (order-code scan only). */
     public PackingService(OrderRepository orderRepository, OutboxEventPublisher outboxEventPublisher,
                           OrderWorkflowService orderWorkflowService, UserRepository userRepository) {
+        this(orderRepository, outboxEventPublisher, orderWorkflowService, userRepository, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public PackingService(OrderRepository orderRepository, OutboxEventPublisher outboxEventPublisher,
+                          OrderWorkflowService orderWorkflowService, UserRepository userRepository,
+                          com.shifa.oms.quikshipx.OrderShipmentRepository orderShipmentRepository) {
         this.orderRepository = orderRepository;
         this.outboxEventPublisher = outboxEventPublisher;
         this.orderWorkflowService = orderWorkflowService;
         this.userRepository = userRepository;
+        this.orderShipmentRepository = orderShipmentRepository;
     }
 
     /**
@@ -176,10 +191,35 @@ public class PackingService {
         return PackingScanResponse.packed(saved);
     }
 
+    /**
+     * Resolves a scanned barcode to an order. The internal label encodes the
+     * QuikShipX order id (its {@code shipper_order_id}) once the order is
+     * published to QuikShipX, else our own order code — so the packer and the
+     * courier scan the same value. To make both work we try, in order:
+     * <ol>
+     *   <li>our internal {@code order_code} (the classic label / manual entry);</li>
+     *   <li>the QuikShipX order id printed on published labels
+     *       ({@code shipper_order_id});</li>
+     *   <li>the QuikShipX AWB (tracking id), so a courier AWB label also resolves.</li>
+     * </ol>
+     * Only the first match wins; an unmatched code is {@code BARCODE_NOT_RECOGNIZED}.
+     */
     private OrderEntity resolveBarcode(String barcode) {
         String code = barcode == null ? "" : barcode.trim();
-        return orderRepository.findByOrderCode(code)
-                .orElseThrow(() -> new BarcodeNotRecognizedException(code));
+        java.util.Optional<OrderEntity> byCode = orderRepository.findByOrderCode(code);
+        if (byCode.isPresent()) {
+            return byCode.get();
+        }
+        if (orderShipmentRepository != null && !code.isEmpty()) {
+            java.util.Optional<OrderEntity> viaShipment = orderShipmentRepository.findByShipperOrderId(code)
+                    .or(() -> orderShipmentRepository.findByAwb(code))
+                    .map(com.shifa.oms.quikshipx.OrderShipment::getOrderId)
+                    .flatMap(orderRepository::findById);
+            if (viaShipment.isPresent()) {
+                return viaShipment.get();
+            }
+        }
+        throw new BarcodeNotRecognizedException(code);
     }
 
     /**

@@ -181,6 +181,7 @@ export interface AccountantSummary {
 
 /** The SSE event types the dashboard reacts to (Req 11.2, 13.3, 17.4, 12.4, 14.4). */
 export type AdminEventType =
+  | 'ORDER_AWAITING_APPROVAL'
   | 'ORDER_PACKED'
   | 'ORDER_STATUS_CHANGED'
   | 'CLAIM_FILED_REQUIRED'
@@ -195,4 +196,6 @@ export interface AdminNotification {
   severity: 'info' | 'success' | 'warning' | 'danger';
   receivedAt: Date;
   orderCode?: string;
+  /** The order id, when the event is order-scoped (for click-through routing). */
+  orderId?: number;
 }

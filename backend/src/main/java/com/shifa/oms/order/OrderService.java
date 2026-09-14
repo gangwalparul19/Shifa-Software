@@ -215,6 +215,11 @@ public class OrderService {
         reserveStock(priced, actor.userId(), order.getOrderCode());
 
         OrderEntity saved = orderRepository.save(order);
+        // Real-time admin nudge: a freshly punched order lands in the approval
+        // queue, so enqueue an ORDER_AWAITING_APPROVAL event in this same
+        // transaction. The SSE relay surfaces it to connected admins; the row is
+        // persisted regardless, so nothing is lost when no admin is online.
+        publishAwaitingApproval(saved);
         // QuikShipX (create-on-punch): enqueue the shipment publication in this same
         // transaction so the order appears in QuikShipX's Pending section once the
         // drainer delivers it. Off unless the integration is enabled; the outbox row
@@ -222,6 +227,16 @@ public class OrderService {
         // blocks or fails the punch.
         publishToQuikShipX(saved);
         return OrderResponse.from(saved);
+    }
+
+    /** Enqueues the admin "order needs approval" nudge for a newly punched pending order. */
+    private void publishAwaitingApproval(OrderEntity order) {
+        if (outboxEventPublisher != null
+                && order.getOrderStatus() == OrderStatus.PENDING_ADMIN_APPROVAL) {
+            outboxEventPublisher.publishOrderAwaitingApproval(
+                    order.getId(), order.getOrderCode(), order.getCustomerName(),
+                    order.getTotalAmount() == null ? "" : order.getTotalAmount().toPlainString());
+        }
     }
 
     /** Enqueues the QuikShipX create-order event for a new order when enabled (no-op otherwise). */

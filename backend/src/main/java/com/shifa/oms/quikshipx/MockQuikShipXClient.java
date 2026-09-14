@@ -55,6 +55,16 @@ public class MockQuikShipXClient implements QuikShipXClient {
 
     @Override
     public TrackResult trackOrder(String awb) throws QuikShipXException {
+        return mockTrack(awb);
+    }
+
+    @Override
+    public TrackResult trackOrderById(String shipperOrderId) throws QuikShipXException {
+        // Mock: the order id resolves to the same deterministic AWB as allot.
+        return mockTrack("QSX" + numericId(shipperOrderId, 1000000000L));
+    }
+
+    private TrackResult mockTrack(String awb) {
         String status = stagedStatuses.getOrDefault(awb, "in transit");
         java.util.List<QuikShipXModels.Scan> scans = java.util.List.of(
                 new QuikShipXModels.Scan(titleCase(status), "Indore_Dakachya_GW (Madhya Pradesh)",

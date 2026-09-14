@@ -21,6 +21,13 @@ public interface OrderShipmentRepository extends JpaRepository<OrderShipment, Lo
 
     Optional<OrderShipment> findByAwb(String awb);
 
+    /**
+     * Lookup by QuikShipX's own order id ({@code shipper_order_id}). Backs the
+     * packing barcode scan: the internal label encodes this id (when published)
+     * so the courier and the packer scan the same value.
+     */
+    Optional<OrderShipment> findByShipperOrderId(String shipperOrderId);
+
     boolean existsByOrderId(Long orderId);
 
     /** Shipments for a set of orders (batch enrichment of the Orders list — no N+1). */

@@ -187,6 +187,21 @@
           Print {{ selectedLabelCount() }} label{{ selectedLabelCount() === 1 ? '' : 's' }}
         </button>
       }
+      @if (section.kind === 'handover' && selectedHandoverCount() > 0) {
+        <button
+          type="button"
+          class="btn btn-sm btn-primary ms-auto"
+          (click)="handoverSelected()"
+          [disabled]="bulkHandoverBusy()"
+        >
+          @if (bulkHandoverBusy()) {
+            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+          } @else {
+            <i class="ti ti-truck-loading me-1"></i>
+          }
+          Handover {{ selectedHandoverCount() }}
+        </button>
+      }
     </div>
     <div class="card-body p-0">
       @if (section.orders.length === 0) {
@@ -213,6 +228,17 @@
                     />
                   </th>
                 }
+                @if (section.kind === 'handover') {
+                  <th class="w-1" title="Select all for handover">
+                    <input
+                      class="form-check-input m-0"
+                      type="checkbox"
+                      [checked]="allSelectedForHandover(section.orders)"
+                      (change)="toggleSelectAllForHandover(section.orders)"
+                      aria-label="Select all orders for bulk handover"
+                    />
+                  </th>
+                }
                 <th>Order ID</th>
                 <th>Customer</th>
                 <th class="text-end">Price</th>
@@ -232,6 +258,17 @@
                         [checked]="isSelectedForLabel(o.id)"
                         (change)="toggleLabelSelection(o.id)"
                         aria-label="Select order for batch label printing"
+                      />
+                    </td>
+                  }
+                  @if (section.kind === 'handover') {
+                    <td (click)="$event.stopPropagation()">
+                      <input
+                        class="form-check-input m-0"
+                        type="checkbox"
+                        [checked]="isSelectedForHandover(o.id)"
+                        (change)="toggleHandoverSelection(o.id)"
+                        aria-label="Select order for bulk handover"
                       />
                     </td>
                   }

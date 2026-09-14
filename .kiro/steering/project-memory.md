@@ -1444,3 +1444,168 @@ active, Flyway "no migration necessary", Tomcat 8080, `https://shifa.weblithic.o
   already show a button-spinner; wrapping their complex layouts risked regressions). Coupon plumbing kept (still
   load-bearing for invoices + QuikShipX payload). `is-*` vs `data-group` pill palettes remain (both brand-aligned; the
   Tabler outlier — the real inconsistency — is gone).
+
+## Order detail: clearer QuikShipX status + AWB + Track shipment link — implemented & DEPLOYED (2026-09-03)
+Client: QuikShip works (they just enable it on their side); surface it cleanly on our UI — QuikShip status, AWB
+number, and a tracking link to "see where it is", and show the AWB on the order detail. Frontend-only, no migration,
+admin build clean (`main-XYGIPDFL.js`). Deployed via `push-to-aws.ps1`; DB backup `~/shifa-backup-2026-09-03-184256.sql`;
+verified live (service active, Flyway no-migration, HTTPS 200, served `main-XYGIPDFL.js`).
+- **Order-detail drawer QuikShipX card** (`orders/orders.component.html`) reworked: prominent status pill (with
+  truck icon), a highlighted **AWB block** (`.shifa-qsx-awb` — brand-green tint, big mono AWB + copy + "via {courier}"),
+  the QuikShipX order id (secondary), then an actions row: **Track shipment** (primary), **Label**, and Publish
+  (ADMIN, when unpublished). Live-tracking timeline kept below.
+- **New `trackUrl(order)`** helper (`orders.component.ts`): prefers backend `order.trackingUrl` (TrackingService builds
+  it from the CourierCompany `tracking_url_template`, e.g. Delhivery `.../track/package/{awb}`), else builds the
+  Delhivery track URL from `order.awb`. Null when no AWB. Drives the "Track shipment" link (opens the courier's public
+  where-is-it page).
+- **Orders list (desktop)**: added an at-a-glance `AWB {{ quikShipXAwb }}` line under the QuikShipX chip (next to the
+  existing `#orderId`), so the tracking number is visible without opening the drawer.
+- **Palette**: `quikShipBadgeClass` migrated off Tabler `bg-*-lt` to the shared `.badge.tone-*` tones (deliver→green,
+  return/lost/cancel→red, transit/out-for/pickup + tracking/label/confirm→blue, else→amber) — consistent with the
+  batch-2 pill unification.
+- CSS added to `orders.component.css`: `.shifa-qsx-status`, `.shifa-qsx-awb` + `__label/__row/__value`.
+- Backend note (unchanged, still true): allot-tracking-id is NOT idempotent — each call mints a new AWB; the order
+  stays "Pending/Confirmed" on the QuikShip portal until THEY manifest/enable it on their side (no manifest endpoint in
+  the 3 documented APIs). Our side captures AWB + label + status correctly.
+
+## Order detail: moved Shipment + QuikShipX (status/AWB/track) onto the DETAILS tab — implemented & DEPLOYED (2026-09-03)
+Follow-up: client screenshot showed the order-detail **Details** tab (order date / customer / WhatsApp / address /
+Download Invoice) but the QuikShip status + AWB were only under the **Payment** tab. Moved the **Shipment** and
+**QuikShipX** sections from the Payment tab to the **Details** tab so status + AWB + Track link are visible where users
+look first. Single minimal template edit in `orders/orders.component.html`: closed the `@if (detailTab()==='payment')`
+block right after Payment + screenshot, then opened a second `@if (detailTab()==='details')` wrapping the Shipment +
+QuikShipX cards (the existing trailing `}` closes it). Also gated the plain Shipment card with
+`@if (order.awb && !order.quikShipXStatus)` so QuikShipX orders don't show it twice (the QuikShipX card already shows
+AWB + courier + Track). Payment tab now = Payment + Payment screenshot only. Frontend-only, no migration; admin build
+clean (`main-CPOJKG4G.js`); deployed via `push-to-aws.ps1` (backup `~/shifa-backup-2026-09-03-190039.sql`), verified
+live (service active, HTTPS 200, served `main-CPOJKG4G.js`).
+
+## Fix: "Track shipment" link pointed at demo placeholder (track.example.com) — fixed & DEPLOYED (2026-09-03)
+Client: the order-detail "Track shipment" link showed `https://track.example.com/<awb>` (dead placeholder) and gave
+the track-order-v1 request/response to make tracking work. Findings: our **in-app "Live tracking"** already calls
+track-order-v1 (`HttpQuikShipXClient.trackOrder` → `QuikShipXResponseParser.parseTrack` reads `shipment_details` +
+`shipment_scanning`) and renders the scan timeline (status/location/instructions/scan_dt) — it just shows "not
+trackable yet" until a parcel actually ships (the demo AWBs aren't real shipments). The broken piece was only the
+external link: the placeholder `track.example.com/{awb}` template comes from `CourierCompanySeeder` /
+`CourierAssignmentService` fallback / V22 seed ("Shifa Express"); the prod "Direct_Delhivery" company was first created
+via that mock fallback, so QuikShip orders reused the placeholder template (QuikShipXService's own new-company template
+is the real Delhivery URL, but findFirstByName reused the existing placeholder one).
+- **Fix (frontend-only, no migration)**: `orders.component.ts#trackUrl(order)` now uses the backend `trackingUrl` only
+  when it's real (ignores any `example.com` placeholder), else builds Delhivery's public page from the AWB
+  (`https://www.delhivery.com/track/package/{awb}` — QuikShip parcels ship via Delhivery; the AWB is the Delhivery
+  waybill). The non-QuikShip Shipment block's link was also routed through `trackUrl(order)` (was raw `order.trackingUrl`).
+- WhatsApp/email dispatch notifications also build a tracking link from the courier template, but prod integrations are
+  MOCK (no real link delivered), so not fixed here. If they go live, add a migration to update
+  `courier_companies.tracking_url_template` off `track.example.com` (Delhivery for QuikShip couriers).
+- Verified: admin build clean (`main-XBCOXQPK.js`), deployed via `push-to-aws.ps1` (backup
+  `~/shifa-backup-2026-09-03-191159.sql`), live (service active, HTTPS 200, served `main-XBCOXQPK.js`). Highest migration
+  still V57; no DB change.
+
+## Backend fix: courier tracking template placeholder → real Delhivery URL (V58) — implemented & DEPLOYED (2026-09-03)
+Follow-up to the "Track shipment" link fix: the customer-facing dispatch WhatsApp/email "track your order" links (and
+the admin track button when it reads the stored URL) are built from `courier_companies.tracking_url_template`, which for
+the QuikShip courier ("Direct_Delhivery") and the demo "Shifa Express" was the placeholder `https://track.example.com/{awb}`.
+- **Migration `V58__courier_tracking_url_delhivery.sql`**: `UPDATE courier_companies SET tracking_url_template =
+  'https://www.delhivery.com/track/package/{awb}' WHERE tracking_url_template LIKE '%track.example.com%';` (idempotent;
+  only rewrites the known placeholder). **Highest migration is now V58.**
+- **Source defaults** changed off the placeholder → Delhivery so NEW companies get a real template:
+  `CourierCompanySeeder.TRACKING_TEMPLATE` and `CourierAssignmentService.resolveCompany` fallback. (QuikShipXService
+  already used the Delhivery template for new sub-courier companies, so e.g. a future "Delhivery_Surface" is correct.)
+- **Verified in prod DB after deploy**: courier_companies id 1 Shifa Express + id 5 **Direct_Delhivery** (the one
+  QuikShip orders use, e.g. AWB 7677926738) now = `https://www.delhivery.com/track/package/{awb}`. The V27 test-seed
+  demo couriers (BlueDart/Delhivery/India Post) keep their `*.example` domains — not `track.example.com`, and never
+  assigned to real QuikShip orders, so intentionally left.
+- Tests: `mvn clean test` = **699 pass, 0 failures** (V58 applies clean in the migration smoke tests; the track.example.com
+  test fixtures are test-local and unaffected). Deployed via `push-to-aws.ps1` (backup `~/shifa-backup-2026-09-03-191927.sql`);
+  Flyway "Successfully applied 1 migration … now at version v58"; app started; HTTPS 200; served bundle unchanged
+  (`main-XBCOXQPK.js`, admin already had the frontend trackUrl fix). Frontend `trackUrl()` still ignores any `example.com`
+  placeholder as belt-and-suspenders.
+
+## Internal label barcode now encodes the QuikShipX order id — implemented & DEPLOYED (2026-09-03)
+Client: when the QuikShip person scans OUR internal label, they should get THEIR (QuikShipX) order id, not our
+order code, so they can pull the order up in their system. Changed the label barcode value accordingly.
+- **`LabelContentBuilder.buildInternal(order, company, barcodeValueOverride)`** (new overload; 2-arg/3-arg still
+  delegate with a null override → barcode falls back to the order code, so the property tests
+  `LabelContentCompletenessPropertyTest`/`BulkLabelOutputPropertyTest` stay green).
+- **`LabelService`** now injects `com.shifa.oms.quikshipx.OrderShipmentRepository` (nullable; added as a 5th param on
+  the `@Autowired` ctor — the 2/3-arg test ctors pass null). New `barcodeValueFor(order)` returns the QuikShipX
+  `shipper_order_id` (from `OrderShipmentRepository.findByOrderId`) when published, else the order code. Passed at all
+  three build sites: `generateInternalLabelOnApproval`, `internalLabelPdf` (single/multi-pack), `bulkInternalLabelPdf`
+  (loops per order now instead of `buildBulk`). Labels are (re)rendered on print, so even if the QuikShipX id wasn't
+  ready at approval, the printed label carries it once create-order has run.
+- **`LabelPdfRenderer.barcodeTable`**: the digits under the barcode now show `content.barcodeValue()` (matches the
+  scanned value = QuikShipX id when present). The "ORDER ID" grid row still shows OUR `orderCode`, so our team keeps its
+  reference. No new field on `InternalLabelContent` (repurposed `barcodeValue`).
+- Verified: `mvn clean test` = **699 tests, 0 failures** (full Spring context wired the new LabelService ctor).
+  Backend-only, no migration (V59 remains highest). Deployed via `push-to-aws.ps1` (backup
+  `~/shifa-backup-2026-09-03-214424.sql`); "No migration necessary", app started, HTTPS 200, served bundle unchanged
+  (`main-KHB76XD2.js`). NOTE: the QuikShip **label PDF link** (`quikshipx.com/download_pdf_...php`) still needs a
+  QuikShip PORTAL session (phone/password/client_code) and can't be opened with our API secret — separate item, needs a
+  credentialed label API or signed URL from QuikShip. This change is about OUR internal label's barcode content.
+
+## Order-processing streamlining wave (approval bulk + new-order UX + new-order SSE toast + packing bulk handover) — implemented & DEPLOYED (2026-09-03)
+Client ask: "streamline / quick order processing." Implemented 4 of 5 ideas (skipped auto-approve at client's explicit
+request). Backend **699 tests pass**, admin `build:admin` clean, deployed to AWS. No migration (highest remains V59/…).
+- **Item 2 — Approval queue one-screen bulk actions** (`approval/`): `approval.model.ts` gained `BulkApproveResult
+  {succeeded:number[], skipped:{id,reason}[]}` (mirrors backend `BulkActionResult`); `approval.service.ts.bulkApprove(ids)`
+  → `POST /api/admin/orders/bulk-approve`. `approval-queue.component` added `selectedIds` Set signal + `selectionCount` +
+  `allOnPageSelected` + toggle/toggleSelectAllOnPage/clearSelection + `bulkApprove()` (confirm → service → remove
+  succeeded rows → summary toast). HTML: per-row checkboxes (mobile card leading + desktop `<th>`/`<td>` select-all),
+  a bulk action bar (Select-all-on-page + "Approve N" + Clear), and a **"N needs action"** count badge in the page
+  header (orange pill). Per-row kebab approve/reject + drawer payment screenshot already existed. `removeRow` also drops
+  the id from the selection set.
+- **Item 4 — Real-time new-order SSE toast for admins**: backend `OutboxEvent.EVENT_ORDER_AWAITING_APPROVAL` +
+  `OutboxEventPublisher.publishOrderAwaitingApproval(id,code,customer,total)`; `OrderService.createSalespersonOrder`
+  now calls `publishAwaitingApproval(saved)` (only when status==PENDING_ADMIN_APPROVAL) in the same tx; added the type
+  to `OutboxSseRelay.ADMIN_NOTIFICATION_TYPES` (NOT to `AdminNotificationOutboxSink` — transient SSE nudge only, no
+  persistent bell row; no test asserts the two sets are equal). Frontend: `AdminEventType` gained
+  `'ORDER_AWAITING_APPROVAL'` + `AdminNotification.orderId?`; `admin-events.service` listens for it and builds a
+  warning notification; `ToastService.notify(kind,text,action?,8s)` + `ToastAction{label,run}` + `ToastsComponent`
+  renders an action button; `admin-shell.component` now `events.connect()`s app-wide and an `effect` surfaces a
+  clickable **"Review"** toast + a two-tone Web Audio chime (best-effort) routing to `/approval-queue?q=<code>` for each
+  NEW awaiting-approval event (dedup by receivedAt, ignores the initial snapshot). Approval-queue activity pill now also
+  reacts to `ORDER_AWAITING_APPROVAL`. SSE stays ADMIN-only (`AdminEventsService.connect()` no-ops for non-admins).
+- **Item 3 — Faster order entry** (`orders/new-order.component`): **Quick mode** — `quickMode` signal (persisted
+  `localStorage['shifa:new-order-quick-mode']`) + `toggleQuickMode`; a Guided/Quick `btn-group` toggle bar; template
+  gates every step section with `@if (quickMode() || step()===N)`, hides the wizard step-strip in quick mode, and the
+  sticky footer shows just Cancel+Save in quick mode. **SKU/barcode quick-add** — `addBySku(code)` resolves the SKU
+  against `products()` (exact, then unique prefix, case-insensitive) → `quickAdd` + toast; a SKU input row (barcode
+  icon, `data-sku-input="true"`, `keydown.enter` preventDefault → add → clear) in the Items step. **Enter-to-advance**
+  — `onFormEnter(event: Event)` on the form's `(keydown.enter)`: no-op in quick mode / textarea / the SKU field / last
+  step, else preventDefault + `nextStep()`. (GOTCHA: Angular `(keydown.enter)` passes `Event` not `KeyboardEvent` — the
+  handler param must be `Event` or the build fails TS2345.)
+- **Item 5 — Bulk actions**: bulk approve (from Orders page) + bulk label print (Orders + packing pack-queue) ALREADY
+  existed. Added **bulk handover** on the packing PACKED "awaiting handover" queue (`packing/scan.component`):
+  `selectedForHandover` Set + `bulkHandoverBusy` + count + is/all/toggle-select-all/toggle helpers; `handoverSelected()`
+  reuses the existing "handed to" popup once (sets `handoverPrompt` with orderCode="N orders"); `runBulkHandover(name,
+  phone)` `forkJoin`s `service.handover(id,name,phone)` per selected id (each `catchError`→{ok:false}), reports a
+  success/partial-fail toast, clears selection, reloads queues. HTML: handover select-all `<th>` + per-row `<td>`
+  checkboxes + a "Handover N" header button (mirrors the pack-queue label selection). Imported `catchError/forkJoin/
+  map/of` from rxjs.
+- **DEPLOYED to AWS (2026-09-03, ~22:38 IST)** via `deploy\push-to-aws.ps1`. DB backup `~/shifa-backup-2026-09-03-223748.sql`
+  (804K). Verified live: HTTPS `https://shifa.weblithic.online/`=200, `/api/states`=401, index serves `main-OVFAZAGF.js`,
+  journalctl "Tomcat started on port 8080" + "Started Application in 21.899s". No migration ran.
+- **DEPLOY GOTCHA (reconfirmed, important)**: launching `push-to-aws.ps1` as a background process WITH a
+  `> deploy\x.log 2>&1` redirect produced NO log file and NO captured output (the redirected powershell stdout is
+  swallowed by the cmd background runner). **Working recipe this session: start it as a background process WITHOUT any
+  redirect and read live output via `get_process_output`.** Also `control_pwsh_process start` REUSES a finished terminal
+  with the identical command+cwd and REPLAYS its stale output without re-running — use a unique command (e.g. different
+  log filename) to force a fresh run, and the "running"/"stopped" status is unreliable/stale (a completed build/mvn/deploy
+  can still show "running"). Judge completion by the log/grep content, not the status. `mvn -q` also SUPPRESSES the final
+  "Tests run:"/"BUILD SUCCESS" summary (only jqwik stdout shows) — run WITHOUT `-q` to detect completion via grep.
+
+## Fix: packing barcode scan of the QuikShipX order id "not recognized" — fixed & DEPLOYED (2026-09-03)
+Symptom: scanning a published order's label (barcode = the QuikShipX order id, e.g. `215522`) on the Packing page
+returned "Barcode not recognized / No order matches". Root cause: the internal label encodes
+`LabelService.barcodeValueFor(order)` = the QuikShipX `shipper_order_id` when the order is published to QuikShipX
+(else our `order_code`) — so the courier & packer scan the SAME id — but `PackingService.resolveBarcode` only looked up
+`OrderRepository.findByOrderCode(code)`, which never matches a QuikShipX numeric id.
+- **Fix** (`packing/PackingService.resolveBarcode`): now tries, in order, (1) internal `order_code`, (2) QuikShipX
+  `shipper_order_id`, (3) QuikShipX AWB — each via the QuikShipX `OrderShipment`, mapping `getOrderId()` →
+  `OrderRepository.findById`. Added `OrderShipmentRepository.findByShipperOrderId(String)`. `PackingService` gained a
+  nullable `OrderShipmentRepository` via a 2nd `@Autowired` 5-arg constructor (the old 4-arg ctor delegates with null,
+  so `PackingServiceTest` is unchanged and the order-code-only path still works when the repo is absent) — mirrors the
+  nullable-dependency pattern already used by `LabelService`. Both `preview` and `scan` benefit (both call resolveBarcode).
+- Verified: `PackingServiceTest` + `LabelServiceTest` = 18/18 green on a clean 719-source compile. **DEPLOYED to AWS**
+  via `push-to-aws.ps1`; DB backup `~/shifa-backup-2026-09-03-231747.sql`; live HTTPS 200, "Tomcat started on 8080 /
+  Started Application 22.9s". No migration.

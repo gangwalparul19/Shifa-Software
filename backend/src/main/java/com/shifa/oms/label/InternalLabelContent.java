@@ -13,14 +13,15 @@ import java.util.stream.Collectors;
  * (design "PDF / label / barcode generation"; Property 18).
  *
  * <p>It carries the order identifier, the value to encode in the scannable
- * Code128 barcode (always equal to the order code), the customer details, and
+ * Code128 barcode (the QuikShipX order id when published, else the order code),
+ * the customer details, and
  * the ordered line items. The COD amount is present <em>if and only if</em> the
  * order is COD or Partially_Paid (Req 10.2): for a Fully_Paid order
  * {@link #codApplicable()} is {@code false} and {@link #codAmount()} is
  * {@code null}.
  *
  * @param orderCode      the human/scannable order identifier (never {@code null})
- * @param barcodeValue   the value encoded by the Code128 barcode; equals {@code orderCode}
+ * @param barcodeValue   the value encoded by the Code128 barcode (QuikShipX order id when published, else {@code orderCode})
  * @param customerName   the customer's name
  * @param customerMobile the customer's 10-digit mobile number
  * @param addressLine    the shipping address line

@@ -226,7 +226,10 @@ public class LabelPdfRenderer {
         PdfPCell dest = new PdfPCell(new Phrase(nz(content.city(), nz(content.postalCode(), "")), SMALL_FONT));
         dest.setBorder(Rectangle.NO_BORDER);
         dest.setHorizontalAlignment(Element.ALIGN_LEFT);
-        PdfPCell code = new PdfPCell(new Phrase(content.orderCode(), CODE_FONT));
+        // The digits under the barcode mirror the scanned value (the QuikShipX
+        // order id when published, else our order code) so the courier partner
+        // reads the same id they scan.
+        PdfPCell code = new PdfPCell(new Phrase(content.barcodeValue(), CODE_FONT));
         code.setBorder(Rectangle.NO_BORDER);
         code.setHorizontalAlignment(Element.ALIGN_RIGHT);
         sub.addCell(dest);

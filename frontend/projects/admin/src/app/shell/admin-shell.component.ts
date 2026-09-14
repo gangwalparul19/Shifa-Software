@@ -10,6 +10,7 @@ import {
 import { filter, map, startWith } from 'rxjs';
 import { AuthService, Role } from 'core';
 import { AdminEventsService } from '../dashboard/admin-events.service';
+import { AdminNotification } from '../dashboard/dashboard.model';
 import { routeFade } from '../shared/animations';
 import { ConfirmService } from '../shared/confirm.service';
 import { PwaService } from '../shared/pwa.service';
@@ -20,6 +21,7 @@ import {
   announcementIcon,
 } from '../announcements/announcements.model';
 import { ToastsComponent } from '../shared/toasts.component';
+import { ToastService } from '../shared/toast.service';
 import { roleLabel } from '../shared/role-label';
 import { GlobalSearchComponent } from './global-search.component';
 import { NotificationBellComponent } from '../notifications/notification-bell.component';
@@ -106,6 +108,11 @@ export class AdminShellComponent {
   private readonly announcementsService = inject(AnnouncementsService);
   private readonly router = inject(Router);
   private readonly confirm = inject(ConfirmService);
+  private readonly toasts = inject(ToastService);
+
+  /** Newest awaiting-approval nudge already surfaced as a toast (dedupes the effect). */
+  private lastApprovalNudgeTs = 0;
+  private approvalNudgeInitialised = false;
 
   // --- Staff announcement banners (FEATURE-ROADMAP §8.4) ------------------
   private static readonly DISMISSED_KEY = 'shifa.dismissedAnnouncements.v1';
@@ -151,6 +158,32 @@ export class AdminShellComponent {
       });
     }
 
+    // Open the real-time admin stream app-wide (idempotent; no-ops when the user
+    // is not an ADMIN or EventSource is unavailable) so new-order approval nudges
+    // reach admins on any screen, not just the dashboard/orders/approval pages.
+    this.events.connect();
+
+    // Real-time "new order needs approval" toast for admins: when a fresh
+    // ORDER_AWAITING_APPROVAL arrives on the SSE feed, surface a clickable toast
+    // that routes to the approval queue. Only reacts to events newer than the
+    // first snapshot, so opening the app doesn't replay a burst of old nudges.
+    effect(() => {
+      const pending = this.events
+        .notifications()
+        .filter((n) => n.type === 'ORDER_AWAITING_APPROVAL');
+      const newest = pending.length ? pending[0] : null;
+      const newestTs = newest ? newest.receivedAt.getTime() : 0;
+      if (!this.approvalNudgeInitialised) {
+        this.approvalNudgeInitialised = true;
+        this.lastApprovalNudgeTs = newestTs;
+        return;
+      }
+      if (newest && newestTs > this.lastApprovalNudgeTs) {
+        this.lastApprovalNudgeTs = newestTs;
+        untracked(() => this.surfaceApprovalNudge(newest));
+      }
+    });
+
     // Keep the desktop sidebar's active section expanded: whenever the route
     // changes, ensure the group that owns the current page is open (other groups
     // stay as the user left them). Depends only on the URL (untracked writes).
@@ -168,6 +201,55 @@ export class AdminShellComponent {
         }
       });
     });
+  }
+
+  /**
+   * Surfaces a clickable "new order needs approval" toast and plays a short
+   * chime, so an admin anywhere in the app is nudged to review a freshly punched
+   * order. The action navigates to the approval queue (deep-linked to the order
+   * when its id is known).
+   */
+  private surfaceApprovalNudge(note: AdminNotification): void {
+    const label = note.orderCode ? `Order ${note.orderCode} needs approval` : 'New order needs approval';
+    this.toasts.notify('info', label, {
+      label: 'Review',
+      run: () => {
+        const extras = note.orderCode ? { queryParams: { q: note.orderCode } } : {};
+        void this.router.navigate(['/approval-queue'], extras);
+      },
+    });
+    this.playChime();
+  }
+
+  /** Plays a brief, unobtrusive two-tone chime via the Web Audio API (best-effort). */
+  private playChime(): void {
+    try {
+      const Ctx =
+        (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext })
+          .AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) {
+        return;
+      }
+      const ctx = new Ctx();
+      const now = ctx.currentTime;
+      [880, 1174].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        const start = now + i * 0.16;
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.14, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.15);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.16);
+      });
+      setTimeout(() => ctx.close().catch(() => undefined), 600);
+    } catch {
+      /* audio blocked/unavailable — the toast is enough */
+    }
   }
 
   /** Dismisses an announcement banner for this user (remembered locally). */

@@ -3,6 +3,7 @@ import { AfterViewInit, Component, ElementRef, OnInit, ViewChild, computed, inje
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
+import { catchError, forkJoin, map, of } from 'rxjs';
 import { ApiError } from 'core';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { PackingService } from './packing.service';
@@ -300,6 +301,95 @@ export class ScanComponent implements OnInit, AfterViewInit {
         this.toasts.error('Could not print the selected labels. Please try again.');
         this.bulkLabelBusy.set(false);
       },
+    });
+  }
+
+  // --- Bulk handover (PACKED "awaiting handover" queue) -------------------
+
+  /** Order ids selected for a bulk hand-over from the "awaiting handover" queue. */
+  protected readonly selectedForHandover = signal<Set<number>>(new Set<number>());
+  /** True while the bulk hand-over is running. */
+  protected readonly bulkHandoverBusy = signal(false);
+
+  /** How many orders are currently selected for bulk hand-over. */
+  protected readonly selectedHandoverCount = computed(() => this.selectedForHandover().size);
+
+  isSelectedForHandover(id: number): boolean {
+    return this.selectedForHandover().has(id);
+  }
+
+  /** True when every order in the handover queue is selected. */
+  allSelectedForHandover(rows: PackingQueueRow[]): boolean {
+    if (rows.length === 0) {
+      return false;
+    }
+    const sel = this.selectedForHandover();
+    return rows.every((o) => sel.has(o.id));
+  }
+
+  /** Header "select all" toggle for the awaiting-handover queue. */
+  toggleSelectAllForHandover(rows: PackingQueueRow[]): void {
+    const next = new Set(this.selectedForHandover());
+    const allSelected = rows.length > 0 && rows.every((o) => next.has(o.id));
+    if (allSelected) {
+      rows.forEach((o) => next.delete(o.id));
+    } else {
+      rows.forEach((o) => next.add(o.id));
+    }
+    this.selectedForHandover.set(next);
+  }
+
+  /** Toggle an order's selection for bulk hand-over. */
+  toggleHandoverSelection(id: number): void {
+    const next = new Set(this.selectedForHandover());
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    this.selectedForHandover.set(next);
+  }
+
+  /**
+   * Opens the "handed to" popup once for the whole selection; on confirm the
+   * same name/phone are applied to every selected order via the existing
+   * per-order handover endpoint (partial failures are reported, not fatal).
+   */
+  handoverSelected(): void {
+    const ids = Array.from(this.selectedForHandover());
+    if (ids.length === 0 || this.bulkHandoverBusy()) {
+      return;
+    }
+    this.handoverPrompt.set({
+      orderCode: `${ids.length} order${ids.length === 1 ? '' : 's'}`,
+      run: (name, phone) => this.runBulkHandover(name, phone),
+    });
+  }
+
+  private runBulkHandover(name: string, phone: string): void {
+    const ids = Array.from(this.selectedForHandover());
+    if (ids.length === 0 || this.bulkHandoverBusy()) {
+      return;
+    }
+    this.bulkHandoverBusy.set(true);
+    const calls = ids.map((id) =>
+      this.service.handover(id, name, phone).pipe(
+        map(() => ({ id, ok: true })),
+        catchError(() => of({ id, ok: false })),
+      ),
+    );
+    forkJoin(calls).subscribe((results) => {
+      const okCount = results.filter((r) => r.ok).length;
+      const failCount = results.length - okCount;
+      this.bulkHandoverBusy.set(false);
+      this.selectedForHandover.set(new Set<number>());
+      if (failCount === 0) {
+        this.toasts.success(`Handed over ${okCount} order${okCount === 1 ? '' : 's'} to delivery`);
+      } else {
+        this.toasts.error(`Handed over ${okCount}, ${failCount} failed (status may have changed).`);
+      }
+      this.loadQueue();
+      this.loadQueues();
     });
   }
 

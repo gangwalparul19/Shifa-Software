@@ -13,9 +13,9 @@ import org.springframework.stereotype.Component;
  * idempotent — it creates the company only when none with the configured name
  * exists.
  *
- * <p>The seeded company uses a {@code tracking_url_template} of
- * {@code https://track.example.com/{awb}} so the customer tracking view (Req 13.4)
- * can build a link from any assigned AWB.
+ * <p>No carrier {@code tracking_url_template} is set: we do not track with any
+ * individual carrier directly — QuikShipX is the aggregator and tracking is via
+ * their track-order API (surfaced in-app), so no carrier-specific link is built.
  */
 @Component
 @Profile("local")
@@ -23,7 +23,7 @@ import org.springframework.stereotype.Component;
 public class CourierCompanySeeder implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(CourierCompanySeeder.class);
-    private static final String TRACKING_TEMPLATE = "https://track.example.com/{awb}";
+    private static final String TRACKING_TEMPLATE = null;
 
     private final CourierCompanyRepository courierCompanyRepository;
     private final CourierProperties properties;

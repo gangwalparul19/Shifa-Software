@@ -43,6 +43,7 @@ public class OutboxSseRelay {
 
     /** The outbox event types surfaced to admins over SSE (mapped 1:1 to SSE event names). */
     static final Set<String> ADMIN_NOTIFICATION_TYPES = Set.of(
+            OutboxEvent.EVENT_ORDER_AWAITING_APPROVAL,
             OutboxEvent.EVENT_ORDER_PACKED,
             OutboxEvent.EVENT_ORDER_STATUS_CHANGED,
             OutboxEvent.EVENT_CLAIM_FILED_REQUIRED,

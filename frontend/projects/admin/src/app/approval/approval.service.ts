@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient, Order } from 'core';
-import { ApprovalQueueItem } from './approval.model';
+import { ApprovalQueueItem, BulkApproveResult } from './approval.model';
 
 /**
  * Data access for the admin order-approval workflow (Req 9).
@@ -26,6 +26,15 @@ export class ApprovalService {
   /** Approve an order → Approved (Req 9.3). */
   approve(orderId: number): Observable<Order> {
     return this.api.post<Order>(`/api/admin/orders/${orderId}/approve`);
+  }
+
+  /**
+   * Bulk-approve the given orders in one call, reusing the existing partial-success
+   * endpoint. Each eligible order is approved in its own transaction server-side;
+   * ineligible ids come back in {@code skipped} with a reason.
+   */
+  bulkApprove(ids: number[]): Observable<BulkApproveResult> {
+    return this.api.post<BulkApproveResult>('/api/admin/orders/bulk-approve', { ids });
   }
 
   /** Reject an order with a mandatory reason → Rejected (Req 9.4). */

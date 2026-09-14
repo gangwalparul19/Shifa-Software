@@ -3,6 +3,11 @@
   subtitle="Review punched orders and approve or reject them."
   [breadcrumbs]="[{ label: 'Approval Queue' }]"
 >
+  @if (!loading() && !loadError() && totalElements() > 0) {
+    <span class="badge bg-orange-lt shifa-appr__needs" title="Orders needing your review">
+      <i class="ti ti-alert-circle me-1"></i>{{ totalElements() }} need{{ totalElements() === 1 ? 's' : '' }} action
+    </span>
+  }
   <admin-density-toggle />
   <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
     <i class="ti ti-refresh"></i>
@@ -32,12 +37,43 @@
     message="New punched orders will appear here for review."
   />
 } @else {
+  <!-- Bulk action bar: select-all on page + bulk approve of the ticked rows. -->
+  <div class="shifa-bulkbar mb-2">
+    <label class="shifa-bulkbar__all">
+      <input
+        type="checkbox"
+        class="form-check-input m-0"
+        [checked]="allOnPageSelected()"
+        (change)="toggleSelectAllOnPage()"
+        aria-label="Select all on this page"
+      />
+      <span>Select all on page</span>
+    </label>
+    @if (selectionCount() > 0) {
+      <span class="shifa-bulkbar__count">{{ selectionCount() }} selected</span>
+      <button type="button" class="btn btn-sm btn-success" (click)="bulkApprove()" [disabled]="acting()">
+        <i class="ti ti-checks me-1"></i>Approve {{ selectionCount() }}
+      </button>
+      <button type="button" class="btn btn-sm btn-link text-secondary" (click)="clearSelection()">Clear</button>
+    } @else {
+      <span class="shifa-bulkbar__hint text-secondary">Tick orders to approve several at once</span>
+    }
+  </div>
+
   <!-- Mobile (<768px): tappable approval cards — code + amount, customer + date,
        payment pill, and clear Approve / Reject actions (mockup-faithful). -->
   <div class="shifa-appr-cards d-md-none">
     @for (item of pageItems(); track item.id) {
-      <div class="shifa-appr shifa-appr--clickable" (click)="openDetail(item)" tabindex="0" (keydown.enter)="openDetail(item)">
+      <div class="shifa-appr shifa-appr--clickable" [class.is-selected]="isSelected(item.id)" (click)="openDetail(item)" tabindex="0" (keydown.enter)="openDetail(item)">
         <div class="shifa-appr__top">
+          <input
+            type="checkbox"
+            class="form-check-input shifa-appr__check"
+            [checked]="isSelected(item.id)"
+            (click)="$event.stopPropagation()"
+            (change)="toggleSelection(item.id)"
+            [attr.aria-label]="'Select order ' + item.orderCode"
+          />
           <div class="shifa-appr__idwrap">
             <span class="shifa-appr__code">{{ item.orderCode }}</span>
             <span class="shifa-appr__meta">
@@ -65,6 +101,15 @@
       <table class="table table-vcenter card-table table-hover stagger-rows">
         <thead>
           <tr>
+            <th class="w-1">
+              <input
+                type="checkbox"
+                class="form-check-input m-0"
+                [checked]="allOnPageSelected()"
+                (change)="toggleSelectAllOnPage()"
+                aria-label="Select all on this page"
+              />
+            </th>
             <th>Order</th><th>Customer</th><th>Mobile</th><th>Items</th>
             <th class="text-end">Total</th><th class="text-end">Paid</th><th class="text-end">COD</th>
             <th>Payment</th><th>Date</th><th class="text-end">Actions</th>
@@ -72,7 +117,16 @@
         </thead>
         <tbody>
           @for (item of pageItems(); track item.id) {
-            <tr class="shifa-rowlink" (click)="openDetail(item)">
+            <tr class="shifa-rowlink" [class.is-selected]="isSelected(item.id)" (click)="openDetail(item)">
+              <td (click)="$event.stopPropagation()">
+                <input
+                  type="checkbox"
+                  class="form-check-input m-0"
+                  [checked]="isSelected(item.id)"
+                  (change)="toggleSelection(item.id)"
+                  [attr.aria-label]="'Select order ' + item.orderCode"
+                />
+              </td>
               <td>
                 <span class="fw-medium">{{ item.orderCode }}</span>
                 <div><span class="badge bg-secondary-lt">{{ humanize(item.source) }}</span></div>

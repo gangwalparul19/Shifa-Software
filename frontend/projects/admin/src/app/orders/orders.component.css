@@ -468,6 +468,40 @@
   color: #b42318;
 }
 
+/* QuikShipX status pill + AWB block (order detail drawer). */
+.shifa-qsx-status {
+  margin-bottom: 0.6rem;
+}
+.shifa-qsx-status .badge {
+  font-size: 0.82rem;
+  padding: 0.4em 0.8em;
+}
+.shifa-qsx-awb {
+  background: var(--shifa-green-050, #f1f8f4);
+  border: 1px solid var(--shifa-green-100, #e4f2ea);
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.6rem;
+}
+.shifa-qsx-awb__label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--shifa-green-700, #1a4f38);
+  font-weight: 700;
+}
+.shifa-qsx-awb__row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.shifa-qsx-awb__value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #21372c;
+}
+
 /* QuikShipX live tracking timeline (order detail drawer). */
 .shifa-qsx-timeline {
   list-style: none;

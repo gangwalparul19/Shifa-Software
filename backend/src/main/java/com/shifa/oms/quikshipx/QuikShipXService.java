@@ -108,22 +108,30 @@ public class QuikShipXService {
         OrderShipment shipment = shipmentRepository.findByOrderId(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Order " + orderId + " has no QuikShipX shipment yet."));
-        String awb = shipment.getAwb();
-        if (awb == null || awb.isBlank()) {
-            return new TrackView(shipment.getQuikShipXStatus(), null, shipment.getLastSyncedAt(),
-                    java.util.List.of(), "No tracking id assigned yet (dispatch the order to allot one).");
+        // Track through QuikShipX by THEIR order id (tracking_type=order_id) — the
+        // partner's own tracking key. It is stored from create-order (available
+        // before an AWB is allotted), and we do not track with any carrier directly.
+        String shipperOrderId = shipment.getShipperOrderId();
+        if (shipperOrderId == null || shipperOrderId.isBlank()) {
+            return new TrackView(shipment.getQuikShipXStatus(), shipment.getAwb(), shipment.getLastSyncedAt(),
+                    java.util.List.of(), "Not published to QuikShipX yet.");
         }
         try {
-            QuikShipXModels.TrackResult r = client.trackOrder(awb);
+            QuikShipXModels.TrackResult r = client.trackOrderById(shipperOrderId);
             shipment.recordTracked(r.orderStatus(), titleCase(r.orderStatus()), java.time.LocalDateTime.now());
             shipmentRepository.save(shipment);
-            // Apply the mapped internal status transition (idempotent, SYSTEM).
-            courierStatusApplier.applyByAwb(awb, r.orderStatus());
+            // Apply the mapped internal status transition (idempotent, SYSTEM). The
+            // AWB comes from the shipment, or the track response when not yet stored.
+            String awb = (shipment.getAwb() != null && !shipment.getAwb().isBlank())
+                    ? shipment.getAwb() : r.awb();
+            if (awb != null && !awb.isBlank()) {
+                courierStatusApplier.applyByAwb(awb, r.orderStatus());
+            }
             return new TrackView(shipment.getQuikShipXStatus(), awb, shipment.getLastSyncedAt(),
                     r.scans(), null);
         } catch (QuikShipXException e) {
             // Not trackable yet / transient — surface cleanly, keep the last state.
-            return new TrackView(shipment.getQuikShipXStatus(), awb, shipment.getLastSyncedAt(),
+            return new TrackView(shipment.getQuikShipXStatus(), shipment.getAwb(), shipment.getLastSyncedAt(),
                     java.util.List.of(), e.getMessage());
         }
     }

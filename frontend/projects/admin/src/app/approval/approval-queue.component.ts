@@ -70,6 +70,97 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     return this.queue().slice(s, s + this.size());
   });
 
+  // --- Bulk selection -----------------------------------------------------
+  /** Ids currently ticked for a bulk action. */
+  protected readonly selectedIds = signal<Set<number>>(new Set());
+  protected readonly selectionCount = computed(() => this.selectedIds().size);
+  /** True when every row on the current page is selected (drives the header box). */
+  protected readonly allOnPageSelected = computed(() => {
+    const rows = this.pageItems();
+    if (!rows.length) {
+      return false;
+    }
+    const sel = this.selectedIds();
+    return rows.every((r) => sel.has(r.id));
+  });
+
+  isSelected(id: number): boolean {
+    return this.selectedIds().has(id);
+  }
+
+  toggleSelection(id: number): void {
+    this.selectedIds.update((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  /** Select-all / clear-all for the rows on the current page. */
+  toggleSelectAllOnPage(): void {
+    const rows = this.pageItems();
+    this.selectedIds.update((prev) => {
+      const next = new Set(prev);
+      const allSelected = rows.length > 0 && rows.every((r) => next.has(r.id));
+      if (allSelected) {
+        rows.forEach((r) => next.delete(r.id));
+      } else {
+        rows.forEach((r) => next.add(r.id));
+      }
+      return next;
+    });
+  }
+
+  clearSelection(): void {
+    this.selectedIds.set(new Set());
+  }
+
+  /** Bulk-approve every ticked order, reporting a per-order summary. */
+  async bulkApprove(): Promise<void> {
+    if (this.acting()) {
+      return;
+    }
+    const ids = [...this.selectedIds()];
+    if (!ids.length) {
+      return;
+    }
+    const confirmed = await this.confirmService.confirm({
+      title: 'Approve selected orders',
+      message: `Approve ${ids.length} selected order${ids.length === 1 ? '' : 's'}? Each moves into fulfilment.`,
+      confirmLabel: `Approve ${ids.length}`,
+      icon: 'ti-checks',
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.acting.set(true);
+    this.service.bulkApprove(ids).subscribe({
+      next: (result) => {
+        const okCount = result.succeeded?.length ?? 0;
+        const skipCount = result.skipped?.length ?? 0;
+        result.succeeded?.forEach((id) => this.removeRow(id));
+        this.selectedIds.set(new Set());
+        this.acting.set(false);
+        if (skipCount === 0) {
+          this.showToast('ok', `Approved ${okCount} order${okCount === 1 ? '' : 's'}.`);
+        } else {
+          this.showToast(
+            okCount ? 'ok' : 'error',
+            `Approved ${okCount}, skipped ${skipCount} (no longer pending).`,
+          );
+        }
+      },
+      error: () => {
+        this.acting.set(false);
+        this.showToast('error', 'Could not complete the bulk approval.');
+      },
+    });
+  }
+
   /** True when a live status change may have altered the pending queue (A3). */
   protected readonly newActivity = signal(false);
   private activityInitialised = false;
@@ -97,7 +188,9 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     // subtle, non-disruptive refresh pill rather than reloading mid-review.
     effect(() => {
       const notes = this.events.notifications();
-      const relevant = notes.filter((n) => n.type === 'ORDER_STATUS_CHANGED');
+      const relevant = notes.filter(
+        (n) => n.type === 'ORDER_STATUS_CHANGED' || n.type === 'ORDER_AWAITING_APPROVAL',
+      );
       const newestTs = relevant.length ? relevant[0].receivedAt.getTime() : 0;
       if (!this.activityInitialised) {
         this.activityInitialised = true;
@@ -140,7 +233,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
         // Now in sync with the live feed: hide the activity pill.
         const relevant = this.events
           .notifications()
-          .filter((n) => n.type === 'ORDER_STATUS_CHANGED');
+          .filter((n) => n.type === 'ORDER_STATUS_CHANGED' || n.type === 'ORDER_AWAITING_APPROVAL');
         this.lastSeenActivityTs = relevant.length ? relevant[0].receivedAt.getTime() : 0;
         this.newActivity.set(false);
       },
@@ -359,6 +452,13 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
 
   private removeRow(id: number): void {
     this.queue.update((items) => items.filter((i) => i.id !== id));
+    if (this.selectedIds().has(id)) {
+      this.selectedIds.update((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
     // Avoid being stranded on a now-empty trailing page.
     const maxPage = Math.max(0, this.totalPages() - 1);
     if (this.page() > maxPage) {
