@@ -331,8 +331,3 @@
 .shifa-no__modehint {
   font-size: 0.8rem;
 }
-
-/* SKU / barcode quick-add row. */
-.shifa-no__sku {
-  max-width: 26rem;
-}

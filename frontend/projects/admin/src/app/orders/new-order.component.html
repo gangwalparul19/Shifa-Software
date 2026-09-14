@@ -379,27 +379,6 @@
       </button>
     </div>
 
-    <!-- SKU / barcode quick-add: scan or type a SKU and press Enter to add a line. -->
-    <div class="input-group input-group-sm shifa-no__sku mb-2">
-      <span class="input-group-text"><i class="ti ti-barcode"></i></span>
-      <input
-        #skuInput
-        type="text"
-        class="form-control"
-        data-sku-input="true"
-        placeholder="Scan or type a SKU, then Enter"
-        autocomplete="off"
-        (keydown.enter)="$event.preventDefault(); addBySku(skuInput.value) && (skuInput.value = '')"
-      />
-      <button
-        type="button"
-        class="btn btn-outline-secondary"
-        (click)="addBySku(skuInput.value) && (skuInput.value = '')"
-      >
-        <i class="ti ti-plus me-1"></i>Add
-      </button>
-    </div>
-
     <!-- Favorites: one-tap quick-add of best-sellers (Tranche 3) -->
     @if (favorites().length > 0) {
       <div class="shifa-no__chips mb-2">

@@ -1,0 +1,470 @@
+<!doctype html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shifa OMS — Fresh AWS Free-Tier Instance Setup (New Account)</title>
+<style>
+  :root{
+    --green:#1F5D3F; --green-d:#164632; --green-050:#f2f9f5; --green-100:#e4f2ea;
+    --ink:#1c2b24; --muted:#5b6b63; --line:#e2ece7; --amber:#8a5a00; --amber-bg:#fff7e6;
+    --red:#b42318; --red-bg:#fdecea; --blue:#0b5cad; --blue-bg:#eaf3fc; --code:#0f172a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);line-height:1.6;background:#f6f9f7}
+  .wrap{max-width:920px;margin:0 auto;padding:0 20px 80px}
+  header{background:linear-gradient(135deg,var(--green),var(--green-d));color:#fff;padding:34px 0 28px;margin-bottom:8px}
+  header .wrap{padding-top:0;padding-bottom:0}
+  header h1{margin:0 0 6px;font-size:1.7rem}
+  header p{margin:0;opacity:.9}
+  h2{color:var(--green-d);border-bottom:2px solid var(--green-100);padding-bottom:6px;margin-top:38px;font-size:1.3rem}
+  h3{color:var(--green-d);margin-top:26px;font-size:1.05rem}
+  code{background:#eef3f0;padding:1px 6px;border-radius:5px;font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:.9em}
+  pre{background:var(--code);color:#e6edf3;padding:14px 16px;border-radius:10px;overflow:auto;font-size:.86rem;line-height:1.5;
+    font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace}
+  pre .c{color:#7ee787}          /* comment */
+  pre .k{color:#ffa657}          /* keyword-ish */
+  .note,.warn,.tip{border-radius:10px;padding:12px 16px;margin:14px 0;border:1px solid}
+  .note{background:var(--blue-bg);border-color:#bcdcf5}
+  .warn{background:var(--amber-bg);border-color:#f0d9a8;color:#5a3d00}
+  .tip{background:var(--green-050);border-color:#cfe6da}
+  .danger{background:var(--red-bg);border-color:#f3c2bd;color:#7a1a12}
+  .pill{display:inline-block;background:var(--green-100);color:var(--green-d);border-radius:999px;padding:2px 10px;font-size:.75rem;font-weight:700;letter-spacing:.03em}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:.92rem}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:var(--green-050);color:var(--green-d)}
+  .toc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:18px 0}
+  .toc ol{margin:6px 0 0;padding-left:22px}
+  .toc a{color:var(--green-d);text-decoration:none}
+  .toc a:hover{text-decoration:underline}
+  .step{background:#fff;border:1px solid var(--line);border-radius:12px;padding:4px 20px 18px;margin:18px 0;box-shadow:0 1px 3px rgba(15,51,36,.05)}
+  .kbd{background:#fff;border:1px solid #cbd5cf;border-bottom-width:2px;border-radius:6px;padding:1px 6px;font-size:.82rem}
+  small{color:var(--muted)}
+  .free{color:var(--green);font-weight:700}
+  footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="pill">Weblithic · Shifa OMS</div>
+    <h1>Fresh AWS Free-Tier Instance — Setup Runbook</h1>
+    <p>Stand up the exact same application on a brand-new EC2 instance in the new account (Admin-Weblithic · 226635093151), storage on S3, kept within the 12-month Free Tier. The current live box is left completely untouched.</p>
+  </div>
+</header>
+<div class="wrap">
+
+  <div class="note">
+    <strong>Before you start — what stays free.</strong> The only things that cost money if you're not careful are the
+    <em>instance size</em>, an <em>idle/second public IP</em>, and going beyond the Free-Tier limits. Follow the sizes in this
+    guide (<code>t3.micro</code>/<code>t2.micro</code>, one 30&nbsp;GB disk, one Elastic IP kept attached to the running instance)
+    and you stay at roughly <span class="free">₹0 for the first 12 months</span>. S3 for attachments is a few MB → well inside the
+    5&nbsp;GB free allowance.
+  </div>
+
+  <div class="toc">
+    <strong>Steps</strong>
+    <ol>
+      <li><a href="#s1">Launch the Free-Tier EC2 instance</a></li>
+      <li><a href="#s2">Allocate &amp; attach an Elastic IP (stable, free while attached)</a></li>
+      <li><a href="#s3">Create the S3 bucket + IAM role (for attachments/screenshots)</a></li>
+      <li><a href="#s4">Connect over SSH (Windows)</a></li>
+      <li><a href="#s5">Add a swap file (needed on 1&nbsp;GB)</a></li>
+      <li><a href="#s6">Install Java 21, MySQL 8, Nginx</a></li>
+      <li><a href="#s7">Create the database + app user</a></li>
+      <li><a href="#s8">Create app user, folders &amp; the environment file</a></li>
+      <li><a href="#s9">Install the systemd service</a></li>
+      <li><a href="#s10">Configure Nginx</a></li>
+      <li><a href="#s11">Build the app locally &amp; upload it</a></li>
+      <li><a href="#s12">Start &amp; verify</a></li>
+      <li><a href="#s13">(Optional) HTTPS with a domain</a></li>
+      <li><a href="#s14">Make it a clean handover (no demo/order data)</a></li>
+      <li><a href="#s15">Capacity, cost guardrails &amp; day-2 ops</a></li>
+    </ol>
+  </div>
+
+  <!-- ============================================================= -->
+  <div class="step" id="s1">
+  <h2>1. Launch the Free-Tier EC2 instance</h2>
+  <p>AWS Console → <strong>EC2 → Launch instance</strong>:</p>
+  <table>
+    <tr><th>Setting</th><th>Choose</th></tr>
+    <tr><td>Name</td><td><code>shifa-oms-prod</code></td></tr>
+    <tr><td>AMI</td><td><strong>Ubuntu Server 24.04 LTS</strong> (or 22.04 LTS) — “Free tier eligible”. 64-bit (x86).</td></tr>
+    <tr><td>Instance type</td><td><strong>t3.micro</strong> or <strong>t2.micro</strong> — must say <span class="free">“Free tier eligible”</span>. <em>Do not pick t3.small/large.</em></td></tr>
+    <tr><td>Key pair</td><td>Create/choose a key pair and <strong>download the <code>.pem</code></strong> (you’ll need it to SSH). Keep it safe.</td></tr>
+    <tr><td>Storage</td><td>1 volume, <strong>gp3</strong>, <strong>size 30&nbsp;GB</strong> (Free Tier covers up to 30&nbsp;GB). No extra volumes.</td></tr>
+    <tr><td>Region</td><td>Pick one region (e.g. <strong>ap-south-1 / Mumbai</strong>) and use it for the S3 bucket too.</td></tr>
+  </table>
+
+  <h3>Security group (firewall)</h3>
+  <table>
+    <tr><th>Type</th><th>Port</th><th>Source</th><th>Why</th></tr>
+    <tr><td>SSH</td><td>22</td><td><strong>My IP</strong> (your office/home IP)</td><td>Admin login only — never <code>0.0.0.0/0</code></td></tr>
+    <tr><td>HTTP</td><td>80</td><td>Anywhere <code>0.0.0.0/0</code></td><td>The web app</td></tr>
+    <tr><td>HTTPS</td><td>443</td><td>Anywhere <code>0.0.0.0/0</code></td><td>The web app (after you add a domain)</td></tr>
+  </table>
+  <div class="warn"><strong>Cost check:</strong> confirm the launch summary shows the instance type as <em>Free tier eligible</em>. Leave “Detailed CloudWatch monitoring” <strong>off</strong> (it’s paid).</div>
+  </div>
+
+  <!-- ============================================================= -->
+  <div class="step" id="s2">
+  <h2>2. Allocate &amp; attach an Elastic IP</h2>
+  <p>A plain instance’s public IP <strong>changes every stop/start</strong>. An Elastic IP gives you a permanent address and is
+  <span class="free">free while attached to a running instance</span> (covered by the 12-month public-IPv4 Free-Tier hours).</p>
+  <ol>
+    <li>EC2 → <strong>Elastic IPs</strong> → <strong>Allocate Elastic IP address</strong> → Allocate.</li>
+    <li>Select it → <strong>Actions → Associate</strong> → choose your instance → Associate.</li>
+  </ol>
+  <div class="danger"><strong>Avoid charges:</strong> you’re billed for an Elastic IP only if it’s <em>not</em> attached to a running instance,
+  if you keep it on a <em>stopped</em> instance, or if you allocate a <em>second</em> one. Rule: <strong>one Elastic IP, attached, instance kept running.</strong>
+  If you ever terminate the instance, <strong>release the Elastic IP</strong> too.</div>
+  <p>From here on, <code>&lt;ELASTIC_IP&gt;</code> means the address you just allocated.</p>
+  </div>
+
+  <!-- ============================================================= -->
+  <div class="step" id="s3">
+  <h2>3. Create the S3 bucket + IAM role (attachments / profile images / payment screenshots)</h2>
+  <p>The app stores payment screenshots, profile/ID images, and internal label PDFs in S3 (durable, off the server disk).</p>
+
+  <h3>3a. Create the bucket</h3>
+  <ul>
+    <li>Console → <strong>S3 → Create bucket</strong>. Name e.g. <code>shifa-oms-files-prod</code> (globally unique — add a suffix if taken).</li>
+    <li><strong>Region: same as the instance</strong> (e.g. ap-south-1).</li>
+    <li>Keep <strong>“Block all public access” = ON</strong> (the app reads/writes it privately via the IAM role — files are never public).</li>
+  </ul>
+
+  <h3>3b. Create an IAM role for the instance</h3>
+  <ul>
+    <li>Console → <strong>IAM → Roles → Create role</strong> → Trusted entity <strong>AWS service → EC2</strong>.</li>
+    <li>Skip attaching managed policies; create the role (e.g. <code>shifa-ec2-role</code>), then add an <strong>inline policy</strong> (replace the bucket name):</li>
+  </ul>
+<pre>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ShifaBucketObjects",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject","s3:GetObject","s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::shifa-oms-files-prod/*"
+    },
+    {
+      "Sid": "ShifaBucketList",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::shifa-oms-files-prod"
+    }
+  ]
+}</pre>
+
+  <h3>3c. Attach the role to the instance</h3>
+  <p>EC2 → select instance → <strong>Actions → Security → Modify IAM role</strong> → choose <code>shifa-ec2-role</code> → Update.
+  Because the instance uses the role, you leave the access/secret keys <strong>blank</strong> in the env file (most secure).</p>
+  <div class="tip"><strong>S3 cost:</strong> Free Tier includes 5&nbsp;GB storage + 20k GET + 2k PUT/month for 12 months. Screenshots/PDFs are tiny, so this is effectively free. (If you’d rather avoid S3 entirely, set <code>STORAGE_PROVIDER=DB</code> in Step&nbsp;8 to keep files inside MySQL — but you asked for S3, so we use S3.)</div>
+  </div>
+
+  <!-- ============================================================= -->
+  <div class="step" id="s4">
+  <h2>4. Connect over SSH (from Windows)</h2>
+  <p>Windows refuses a key that’s too open. Lock the <code>.pem</code> permissions once, then connect:</p>
+<pre><span class="c">:: Run in Command Prompt / PowerShell (adjust the path to your .pem)</span>
+icacls "C:\Users\Parul\Downloads\shifa-newbox.pem" /inheritance:r
+icacls "C:\Users\Parul\Downloads\shifa-newbox.pem" /grant:r "%USERNAME%:R"
+
+<span class="c">:: Connect (Ubuntu default user is "ubuntu")</span>
+ssh -i "C:\Users\Parul\Downloads\shifa-newbox.pem" ubuntu@&lt;ELASTIC_IP&gt;</pre>
+  <p>Accept the host-key prompt the first time. You’re now on the server; run the following steps there.</p>
+  <div class="note">Keep the SSH inbound rule limited to <strong>your IP</strong>. If your IP changes and you can’t connect, update that rule (or use <strong>EC2 → Connect → EC2 Instance Connect</strong> in the browser).</div>
+  </div>
+
+  <!-- ============================================================= -->
+  <div class="step" id="s5">
+  <h2>5. Add a swap file (important on 1&nbsp;GB RAM)</h2>
+  <p>t3.micro has 1&nbsp;GB RAM; MySQL + the JVM together need a cushion. A 2&nbsp;GB swap file prevents out-of-memory kills:</p>
+<pre>sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+free -h        <span class="c"># confirm "Swap: 2.0Gi"</span></pre>
+  </div>
+
+  <!-- ============================================================= -->
+  <div class="step" id="s6">
+  <h2>6. Install Java 21, MySQL 8, Nginx</h2>
+<pre>sudo apt-get update &amp;&amp; sudo apt-get upgrade -y
+sudo apt-get install -y openjdk-21-jre-headless mysql-server nginx unzip
+
+java -version          <span class="c"># expect openjdk 21.x</span>
+systemctl status mysql --no-pager | head -3
+nginx -v</pre>
+  <div class="note">The backend is built for <strong>Java 21</strong>. Ubuntu 24.04 ships OpenJDK 21 in its repos (used above). On 22.04, <code>openjdk-21-jre-headless</code> is also available; if not, use Amazon Corretto 21.</div>
+  </div>
+
+  <!-- ============================================================= -->
+  <div class="step" id="s7">
+  <h2>7. Create the database + app user</h2>
+  <p>Pick a strong DB password and use it consistently in Step&nbsp;8.</p>
+<pre>sudo mysql &lt;&lt;'SQL'
+CREATE DATABASE IF NOT EXISTS shifa_dashboard
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'shifa'@'localhost'
+  IDENTIFIED BY 'CHANGE_ME_STRONG_DB_PASSWORD';
+GRANT ALL PRIVILEGES ON shifa_dashboard.* TO 'shifa'@'localhost';
+FLUSH PRIVILEGES;
+SQL</pre>
+  <div class="tip"><code>GRANT ALL</code> on the one schema gives Flyway the rights it needs to create tables on first boot. MySQL listens on localhost only (not exposed to the internet) — good.</div>
+  </div>
+
+  <!-- ============================================================= -->
+  <div class="step" id="s8">
+  <h2>8. Create the app user, folders &amp; the environment file</h2>
+<pre>sudo useradd -r -s /usr/sbin/nologin shifa 2&gt;/dev/null || true
+sudo mkdir -p /opt/shifa /var/www/shifa/admin /etc/shifa
+sudo chown -R shifa:shifa /opt/shifa
+
+<span class="c"># Generate a strong JWT secret and note it down:</span>
+openssl rand -base64 48</pre>
+
+  <p>Create <code>/etc/shifa/shifa.env</code> (root-owned, mode 600). Fill in the DB password, the JWT secret from above, and your S3 bucket:</p>
+<pre>sudo tee /etc/shifa/shifa.env &gt;/dev/null &lt;&lt;'ENV'
+SPRING_PROFILES_ACTIVE=prod
+
+# --- Database (local MySQL) ---
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=shifa_dashboard
+DB_USERNAME=shifa
+DB_PASSWORD=CHANGE_ME_STRONG_DB_PASSWORD
+DB_POOL_SIZE=10
+
+# --- Security ---
+JWT_SECRET=PASTE_THE_openssl_rand_OUTPUT_HERE
+
+# --- File storage on S3 (uses the instance IAM role; keys stay blank) ---
+STORAGE_PROVIDER=S3
+STORAGE_S3_BUCKET=shifa-oms-files-prod
+STORAGE_S3_REGION=ap-south-1
+STORAGE_S3_PREFIX=
+STORAGE_S3_ACCESS_KEY=
+STORAGE_S3_SECRET_KEY=
+STORAGE_S3_ENDPOINT=
+
+# --- Uploads (phone screenshots are 2-5 MB) ---
+MAX_UPLOAD_FILE_SIZE=10MB
+MAX_UPLOAD_REQUEST_SIZE=12MB
+
+# --- Integrations: keep mocked until the client provides live creds ---
+PAYMENT_MODE=SANDBOX
+COURIER_MODE=MOCK
+WHATSAPP_MODE=MOCK
+MAIL_MODE=MOCK
+QUIKSHIPX_ENABLED=false
+QUIKSHIPX_MODE=MOCK
+
+# --- Backups (nightly mysqldump) ---
+MYSQLDUMP_PATH=mysqldump
+BACKUP_CRON=0 0 2 * * *
+
+# --- JVM tuning for a 1 GB free-tier VM ---
+JAVA_OPTS=-Xms256m -Xmx640m -XX:+UseSerialGC
+ENV
+
+sudo chmod 600 /etc/shifa/shifa.env
+sudo chown root:root /etc/shifa/shifa.env</pre>
+  <div class="warn"><strong>Do not commit this file</strong> to git — it holds real secrets. On a 1&nbsp;GB box keep <code>-Xmx</code> ≤ ~640–768&nbsp;MB so MySQL has room.</div>
+  </div>
+
+  <!-- ============================================================= -->
+  <div class="step" id="s9">
+  <h2>9. Install the systemd service</h2>
+<pre>sudo tee /etc/systemd/system/shifa-oms.service &gt;/dev/null &lt;&lt;'UNIT'
+[Unit]
+Description=Shifa Herbal Remedies OMS (Spring Boot)
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=shifa
+Group=shifa
+EnvironmentFile=/etc/shifa/shifa.env
+WorkingDirectory=/opt/shifa
+ExecStart=/bin/sh -c '/usr/bin/java $JAVA_OPTS -jar /opt/shifa/shifa-oms.jar'
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+sudo systemctl daemon-reload
+sudo systemctl enable shifa-oms      <span class="c"># start on boot (we start it in Step 12, after the JAR is uploaded)</span></pre>
+  </div>
+
+  <!-- ============================================================= -->
+  <div class="step" id="s10">
+  <h2>10. Configure Nginx (serves the admin panel + proxies the API)</h2>
+<pre>sudo tee /etc/nginx/sites-available/shifa &gt;/dev/null &lt;&lt;'NGINX'
+server {
+    listen 80;
+    listen [::]:80;
+    server_name _;                 # replace with your domain later
+    client_max_body_size 15m;
+    gzip on;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }
+
+    location = /api/admin/events {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Connection '';
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+    }
+
+    location / {
+        root /var/www/shifa/admin;
+        try_files $uri $uri/ /index.html;
+    }
+}
+NGINX
+
+sudo ln -sf /etc/nginx/sites-available/shifa /etc/nginx/sites-enabled/shifa
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t &amp;&amp; sudo systemctl reload nginx</pre>
+  </div>
+
+  <!-- ============================================================= -->
+  <div class="step" id="s11">
+  <h2>11. Build the app locally &amp; upload it</h2>
+  <p>Run these <strong>on your Windows dev machine</strong> (in the project folder), then upload the two artifacts.</p>
+<pre><span class="c">:: 1) Backend fat JAR</span>
+mvn -f backend/pom.xml -DskipTests clean package
+<span class="c">::   -> backend\target\shifa-oms-0.0.1-SNAPSHOT.jar</span>
+
+<span class="c">:: 2) Admin web bundle (base-href /)</span>
+npm --prefix frontend run build:admin
+<span class="c">::   -> frontend\dist\admin\browser\</span>
+
+<span class="c">:: 3) Upload both to the server (home dir first)</span>
+scp -i "C:\path\shifa-newbox.pem" backend\target\shifa-oms-0.0.1-SNAPSHOT.jar ubuntu@&lt;ELASTIC_IP&gt;:~/shifa-oms.jar
+scp -i "C:\path\shifa-newbox.pem" -r frontend\dist\admin\browser ubuntu@&lt;ELASTIC_IP&gt;:~/admin-dist</pre>
+
+  <p>Then <strong>on the server</strong>, move them into place:</p>
+<pre>sudo cp ~/shifa-oms.jar /opt/shifa/shifa-oms.jar
+sudo chown shifa:shifa /opt/shifa/shifa-oms.jar
+
+sudo rm -rf /var/www/shifa/admin
+sudo mkdir -p /var/www/shifa/admin
+sudo cp -r ~/admin-dist/* /var/www/shifa/admin/
+sudo chown -R www-data:www-data /var/www/shifa/admin</pre>
+  <div class="tip">Your repo already has a one-command helper (<code>deploy\push-to-aws.ps1</code>) that builds, uploads, backs up and restarts. Once this box is running you can reuse it for future updates by pointing <code>-Ip &lt;ELASTIC_IP&gt; -KeyPath &lt;your.pem&gt;</code>. For the very first setup, the manual steps above are clearest.</div>
+  </div>
+
+  <!-- ============================================================= -->
+  <div class="step" id="s12">
+  <h2>12. Start &amp; verify</h2>
+<pre>sudo systemctl start shifa-oms
+sudo systemctl status shifa-oms --no-pager | head -6
+
+<span class="c"># Watch it boot: Flyway migrates the empty DB, then Tomcat starts on 8080</span>
+sudo journalctl -u shifa-oms -f
+<span class="c"># Look for: "Successfully applied N migrations", "Tomcat started on port 8080", "Started Application"</span></pre>
+  <p>Quick checks (from the server):</p>
+<pre>curl -s -o /dev/null -w "%{http_code}\n" http://localhost/            <span class="c"># 200 (admin loads)</span>
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost/api/states  <span class="c"># 401 (API up + auth enforced)</span></pre>
+  <p>Then open <code>http://&lt;ELASTIC_IP&gt;/</code> in a browser. The app is live. First login uses the seeded admin
+  (<code>admin</code> / <code>admin123</code>) — <strong>change this immediately</strong> (Users page) or run Step&nbsp;14.</p>
+  <div class="warn"><strong>If it fails to start:</strong> the most common causes are a wrong <code>DB_PASSWORD</code>, a blank <code>STORAGE_S3_BUCKET</code> (with <code>STORAGE_PROVIDER=S3</code> the app refuses to boot), or the IAM role not attached. The journal shows the exact reason.</div>
+  </div>
+
+  <!-- ============================================================= -->
+  <div class="step" id="s13">
+  <h2>13. (Optional) HTTPS with a domain</h2>
+  <p>When the client points a domain (e.g. <code>oms.theirdomain.com</code>) at <code>&lt;ELASTIC_IP&gt;</code> (an A record):</p>
+<pre>sudo snap install --classic certbot
+sudo ln -sf /snap/bin/certbot /usr/bin/certbot
+sudo certbot --nginx -d oms.theirdomain.com     <span class="c"># auto-edits Nginx, adds the 443 block, auto-renews</span></pre>
+  <p>Also set <code>server_name oms.theirdomain.com;</code> in the Nginx file. Certbot (Let’s Encrypt) is free.</p>
+  </div>
+
+  <!-- ============================================================= -->
+  <div class="step" id="s14">
+  <h2>14. Make it a clean handover (no demo / order data)</h2>
+  <p>On a fresh DB, the migrations seed demo/test data (including sample orders) so the app is explorable. For a client
+  hand-over you’ll want the <strong>catalog + settings kept</strong> but <strong>all demo orders/customers/leads removed</strong>,
+  and your <strong>real staff</strong> (1 admin + the 2 team leads + 17 salespeople) seeded.</p>
+  <p>This is a one-time SQL script run <em>after</em> the app is up — it is <strong>not</strong> a code migration, so it can never
+  affect the current live box. It:</p>
+  <ul>
+    <li>deletes all orders, line items, payments, status history, receivables, courier shipments, returns, leads, customer notes/tags, notifications, audit log, insights and demo stock movements;</li>
+    <li>optionally clears demo suppliers / purchase orders / expenses;</li>
+    <li>resets the invoice &amp; PO number sequences to 1;</li>
+    <li>keeps the 30-product catalog, delivery states, GST/company settings and WhatsApp templates;</li>
+    <li>replaces the demo logins with your real admin + 19 staff (correct names, emails, mobiles, team-lead assignments).</li>
+  </ul>
+  <div class="note"><strong>I’ll generate this exact <code>handover-clean.sql</code> for you</strong> once you confirm the final admin username/password and that the 19-person team sheet is final. You’ll run it once with a backup first:
+  <pre>MYSQL_PWD=YOUR_DB_PASSWORD mysqldump --no-tablespaces -u shifa shifa_dashboard &gt; ~/pre-clean-backup.sql
+MYSQL_PWD=YOUR_DB_PASSWORD mysql -u shifa shifa_dashboard &lt; handover-clean.sql</pre></div>
+  </div>
+
+  <!-- ============================================================= -->
+  <div class="step" id="s15">
+  <h2>15. Capacity, cost guardrails &amp; day-2 ops</h2>
+
+  <h3>Will t3.micro handle your load?</h3>
+  <p><strong>Yes.</strong> Your profile — ~20–25 salespeople logged in, each punching ~4–5 orders/day — is a <em>read-mostly</em>
+  workload with very low write volume (well under a handful of concurrent INSERT/UPDATE/DELETE at peak). The connection pool is
+  capped at 10 DB connections and the JVM heap is tuned for 1&nbsp;GB, which comfortably covers dozens of concurrent logged-in
+  users doing reads. The 2&nbsp;GB swap absorbs occasional spikes. If usage ever grows a lot, moving to <strong>t3.small (2&nbsp;GB)</strong>
+  is a one-click resize (a small monthly cost, not free-tier).</p>
+
+  <h3>Cost guardrails (stay free)</h3>
+  <table>
+    <tr><th>Do</th><th>Don’t</th></tr>
+    <tr><td>One <code>t3.micro</code>/<code>t2.micro</code> instance</td><td>Bigger types, or a 2nd instance</td></tr>
+    <tr><td>One 30&nbsp;GB gp3 volume</td><td>Extra volumes / large snapshots piling up</td></tr>
+    <tr><td>One Elastic IP, attached, instance running</td><td>Idle/unattached Elastic IP, or a 2nd IP</td></tr>
+    <tr><td>MySQL on the instance</td><td>RDS, Load Balancer, NAT Gateway (all paid)</td></tr>
+    <tr><td>S3 for files (few MB)</td><td>Detailed CloudWatch monitoring</td></tr>
+  </table>
+  <div class="tip">Set a <strong>Billing → Budgets</strong> alert (e.g. ₹100/month) in the new account so you’re emailed if anything unexpected starts costing money. Also check <strong>Billing → Free Tier</strong> usage occasionally.</div>
+
+  <h3>Everyday operations</h3>
+<pre>sudo systemctl restart shifa-oms          <span class="c"># restart backend</span>
+sudo journalctl -u shifa-oms -n 100 --no-pager   <span class="c"># recent logs</span>
+sudo systemctl reload nginx               <span class="c"># after editing the site file</span>
+<span class="c"># Manual DB backup:</span>
+MYSQL_PWD=YOUR_DB_PASSWORD mysqldump --no-tablespaces -u shifa shifa_dashboard &gt; ~/backup-$(date +%F).sql</pre>
+
+  <h3>The current live box is safe</h3>
+  <p>This is a different AWS account, instance, key and IP. Nothing in this guide touches the existing production server — it keeps
+  running exactly as-is. Deploy tooling for the new box uses its own IP/key, so the two never cross over.</p>
+  </div>
+
+  <footer>
+    Shifa OMS · New-account Free-Tier setup runbook · prepared by Weblithic.<br/>
+    Ask me to generate <code>handover-clean.sql</code> (Step&nbsp;14) and a <code>push-to-newbox.ps1</code> deploy wrapper once the Elastic IP + key path are ready.
+  </footer>
+</div>
+</body>
+</html>

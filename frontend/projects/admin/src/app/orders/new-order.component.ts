@@ -758,44 +758,10 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Quick-add a product by scanning/typing its SKU (or barcode). Resolves the
-   * SKU against the loaded catalog (case-insensitive; exact match preferred, then
-   * a unique prefix), adds it via {@link quickAdd}, and clears the input. Unknown
-   * or ambiguous codes surface a toast so the salesperson can pick manually.
-   *
-   * @returns true when a product was added (lets the template clear the field)
-   */
-  addBySku(rawCode: string): boolean {
-    const code = (rawCode ?? '').trim().toLowerCase();
-    if (!code) {
-      return false;
-    }
-    const all = this.products();
-    const exact = all.find((p) => (p.sku ?? '').toLowerCase() === code);
-    if (exact) {
-      this.quickAdd(exact);
-      this.toasts.success(`Added ${exact.name}`);
-      return true;
-    }
-    const prefix = all.filter((p) => (p.sku ?? '').toLowerCase().startsWith(code));
-    if (prefix.length === 1) {
-      this.quickAdd(prefix[0]);
-      this.toasts.success(`Added ${prefix[0].name}`);
-      return true;
-    }
-    if (prefix.length > 1) {
-      this.toasts.error(`"${rawCode}" matches ${prefix.length} products — enter the full SKU.`);
-      return false;
-    }
-    this.toasts.error(`No product with SKU "${rawCode}".`);
-    return false;
-  }
-
-  /**
    * Enter-to-advance keyboard flow (item 3): pressing Enter in a single-line
    * field moves to the next wizard step instead of submitting the form early. It
-   * is a no-op in quick (single-screen) mode, on the final step, inside a
-   * textarea, or on the SKU field (which owns Enter to add a line).
+   * is a no-op in quick (single-screen) mode, on the final step, or inside a
+   * textarea.
    */
   onFormEnter(event: Event): void {
     if (this.quickMode()) {
@@ -803,7 +769,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     }
     const target = event.target as HTMLElement | null;
     const tag = target?.tagName?.toLowerCase();
-    if (tag === 'textarea' || target?.getAttribute('data-sku-input') === 'true') {
+    if (tag === 'textarea') {
       return;
     }
     if (this.step() < this.totalSteps) {
