@@ -1,10 +1,9 @@
 <!doctype html>
-<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Shifa OMS — Fresh AWS Free-Tier Instance Setup (New Account)</title>
+<title>Shifa OMS — EC2 Free-Tier Setup &amp; Migration Runbook</title>
 <style>
   :root{
     --green:#1F5D3F; --green-d:#164632; --green-050:#f2f9f5; --green-100:#e4f2ea;
@@ -12,136 +11,229 @@
     --red:#b42318; --red-bg:#fdecea; --blue:#0b5cad; --blue-bg:#eaf3fc; --code:#0f172a;
   }
   *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     color:var(--ink);line-height:1.6;background:#f6f9f7}
-  .wrap{max-width:920px;margin:0 auto;padding:0 20px 80px}
-  header{background:linear-gradient(135deg,var(--green),var(--green-d));color:#fff;padding:34px 0 28px;margin-bottom:8px}
+  .wrap{max-width:1020px;margin:0 auto;padding:0 20px 80px}
+  header{background:linear-gradient(135deg,var(--green),var(--green-d));color:#fff;padding:30px 0 22px;margin-bottom:0}
   header .wrap{padding-top:0;padding-bottom:0}
-  header h1{margin:0 0 6px;font-size:1.7rem}
-  header p{margin:0;opacity:.9}
-  h2{color:var(--green-d);border-bottom:2px solid var(--green-100);padding-bottom:6px;margin-top:38px;font-size:1.3rem}
-  h3{color:var(--green-d);margin-top:26px;font-size:1.05rem}
+  header h1{margin:0 0 6px;font-size:1.6rem}
+  header p{margin:0;opacity:.92;max-width:760px}
+  .pill{display:inline-block;background:rgba(255,255,255,.18);color:#fff;border-radius:999px;padding:3px 12px;font-size:.75rem;font-weight:700;letter-spacing:.03em;margin-bottom:10px}
+  h2{color:var(--green-d);border-bottom:2px solid var(--green-100);padding-bottom:6px;margin-top:0;font-size:1.35rem}
+  h3{color:var(--green-d);margin-top:24px;font-size:1.05rem}
+  h4{color:var(--green-d);margin-top:18px;font-size:.95rem}
   code{background:#eef3f0;padding:1px 6px;border-radius:5px;font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:.9em}
-  pre{background:var(--code);color:#e6edf3;padding:14px 16px;border-radius:10px;overflow:auto;font-size:.86rem;line-height:1.5;
-    font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace}
-  pre .c{color:#7ee787}          /* comment */
-  pre .k{color:#ffa657}          /* keyword-ish */
-  .note,.warn,.tip{border-radius:10px;padding:12px 16px;margin:14px 0;border:1px solid}
+  pre{background:var(--code);color:#e6edf3;padding:14px 16px;border-radius:10px;overflow:auto;font-size:.85rem;line-height:1.55;
+    font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;position:relative}
+  pre .c{color:#7ee787}
+  .note,.warn,.tip,.danger{border-radius:10px;padding:12px 16px;margin:14px 0;border:1px solid}
   .note{background:var(--blue-bg);border-color:#bcdcf5}
   .warn{background:var(--amber-bg);border-color:#f0d9a8;color:#5a3d00}
   .tip{background:var(--green-050);border-color:#cfe6da}
   .danger{background:var(--red-bg);border-color:#f3c2bd;color:#7a1a12}
-  .pill{display:inline-block;background:var(--green-100);color:var(--green-d);border-radius:999px;padding:2px 10px;font-size:.75rem;font-weight:700;letter-spacing:.03em}
   table{width:100%;border-collapse:collapse;margin:14px 0;font-size:.92rem}
   th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
   th{background:var(--green-050);color:var(--green-d)}
-  .toc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:18px 0}
-  .toc ol{margin:6px 0 0;padding-left:22px}
-  .toc a{color:var(--green-d);text-decoration:none}
-  .toc a:hover{text-decoration:underline}
-  .step{background:#fff;border:1px solid var(--line);border-radius:12px;padding:4px 20px 18px;margin:18px 0;box-shadow:0 1px 3px rgba(15,51,36,.05)}
-  .kbd{background:#fff;border:1px solid #cbd5cf;border-bottom-width:2px;border-radius:6px;padding:1px 6px;font-size:.82rem}
-  small{color:var(--muted)}
   .free{color:var(--green);font-weight:700}
-  footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}
+  small{color:var(--muted)}
   a{color:var(--blue)}
+  .kbd{background:#fff;border:1px solid #cbd5cf;border-bottom-width:2px;border-radius:6px;padding:1px 6px;font-size:.82rem}
+
+  /* ---------------- Tab navigation ---------------- */
+  .tabbar-outer{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:50;box-shadow:0 2px 8px rgba(15,51,36,.05)}
+  .tabbar{max-width:1020px;margin:0 auto;padding:0 20px;display:flex;gap:4px;overflow-x:auto;scrollbar-width:thin}
+  .tabbar::-webkit-scrollbar{height:6px}
+  .tabbar::-webkit-scrollbar-thumb{background:var(--green-100);border-radius:3px}
+  .tab-btn{
+    flex:0 0 auto;border:none;background:transparent;color:var(--muted);font-size:.85rem;font-weight:600;
+    padding:12px 14px;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;transition:.15s;
+  }
+  .tab-btn:hover{color:var(--green-d);background:var(--green-050)}
+  .tab-btn.active{color:var(--green-d);border-bottom-color:var(--green)}
+  .tab-num{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;
+    background:var(--green-100);color:var(--green-d);font-size:.7rem;margin-right:6px;font-weight:700}
+  .tab-btn.active .tab-num{background:var(--green);color:#fff}
+
+  .panel{display:none;background:#fff;border:1px solid var(--line);border-radius:12px;padding:22px 26px 28px;margin-top:22px;box-shadow:0 1px 3px rgba(15,51,36,.05)}
+  .panel.active{display:block;animation:fadeIn .15s ease}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+  .stepgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin:16px 0}
+  .stepcard{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--green-050)}
+  .stepcard b{color:var(--green-d)}
+
+  .qbox{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:16px 0}
+  .qbox summary{cursor:pointer;font-weight:700;color:var(--green-d)}
+  .qbox[open] summary{margin-bottom:8px}
+
+  .copybar{display:flex;justify-content:flex-end;margin:-4px 0 6px}
+  .copybtn{background:#233042;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:.72rem;padding:3px 9px;cursor:pointer}
+  .copybtn:hover{background:#334155;color:#fff}
+
+  .fact-table td:first-child{width:220px;color:var(--muted)}
+  footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}
+
+  @media (max-width:640px){
+    .panel{padding:18px 16px 22px}
+    .tab-btn{padding:10px 10px;font-size:.8rem}
+  }
 </style>
 </head>
 <body>
 <header>
   <div class="wrap">
-    <div class="pill">Weblithic · Shifa OMS</div>
-    <h1>Fresh AWS Free-Tier Instance — Setup Runbook</h1>
-    <p>Stand up the exact same application on a brand-new EC2 instance in the new account (Admin-Weblithic · 226635093151), storage on S3, kept within the 12-month Free Tier. The current live box is left completely untouched.</p>
+    <span class="pill">Weblithic · Shifa OMS · Infra Runbook</span>
+    <h1>EC2 Free-Tier Setup &amp; Migration Runbook</h1>
+    <p>Everything needed to stand up (or re-migrate, 6 months from now or later) the exact same Shifa OMS application
+    on a fresh AWS account/instance — provisioning, deployment, verification, data handover cleanup, and every
+    real gotcha we hit while doing it the first time. Written so anyone on the team can follow it end-to-end
+    without prior context.</p>
   </div>
 </header>
-<div class="wrap">
 
-  <div class="note">
-    <strong>Before you start — what stays free.</strong> The only things that cost money if you're not careful are the
-    <em>instance size</em>, an <em>idle/second public IP</em>, and going beyond the Free-Tier limits. Follow the sizes in this
-    guide (<code>t3.micro</code>/<code>t2.micro</code>, one 30&nbsp;GB disk, one Elastic IP kept attached to the running instance)
-    and you stay at roughly <span class="free">₹0 for the first 12 months</span>. S3 for attachments is a few MB → well inside the
-    5&nbsp;GB free allowance.
-  </div>
+<div class="tabbar-outer">
+  <nav class="tabbar" id="tabbar"></nav>
+</div>
 
-  <div class="toc">
-    <strong>Steps</strong>
-    <ol>
-      <li><a href="#s1">Launch the Free-Tier EC2 instance</a></li>
-      <li><a href="#s2">Allocate &amp; attach an Elastic IP (stable, free while attached)</a></li>
-      <li><a href="#s3">Create the S3 bucket + IAM role (for attachments/screenshots)</a></li>
-      <li><a href="#s4">Connect over SSH (Windows)</a></li>
-      <li><a href="#s5">Add a swap file (needed on 1&nbsp;GB)</a></li>
-      <li><a href="#s6">Install Java 21, MySQL 8, Nginx</a></li>
-      <li><a href="#s7">Create the database + app user</a></li>
-      <li><a href="#s8">Create app user, folders &amp; the environment file</a></li>
-      <li><a href="#s9">Install the systemd service</a></li>
-      <li><a href="#s10">Configure Nginx</a></li>
-      <li><a href="#s11">Build the app locally &amp; upload it</a></li>
-      <li><a href="#s12">Start &amp; verify</a></li>
-      <li><a href="#s13">(Optional) HTTPS with a domain</a></li>
-      <li><a href="#s14">Make it a clean handover (no demo/order data)</a></li>
-      <li><a href="#s15">Capacity, cost guardrails &amp; day-2 ops</a></li>
-    </ol>
-  </div>
+<div class="wrap" id="panels"></div>
 
-  <!-- ============================================================= -->
-  <div class="step" id="s1">
-  <h2>1. Launch the Free-Tier EC2 instance</h2>
-  <p>AWS Console → <strong>EC2 → Launch instance</strong>:</p>
-  <table>
-    <tr><th>Setting</th><th>Choose</th></tr>
-    <tr><td>Name</td><td><code>shifa-oms-prod</code></td></tr>
-    <tr><td>AMI</td><td><strong>Ubuntu Server 24.04 LTS</strong> (or 22.04 LTS) — “Free tier eligible”. 64-bit (x86).</td></tr>
-    <tr><td>Instance type</td><td><strong>t3.micro</strong> or <strong>t2.micro</strong> — must say <span class="free">“Free tier eligible”</span>. <em>Do not pick t3.small/large.</em></td></tr>
-    <tr><td>Key pair</td><td>Create/choose a key pair and <strong>download the <code>.pem</code></strong> (you’ll need it to SSH). Keep it safe.</td></tr>
-    <tr><td>Storage</td><td>1 volume, <strong>gp3</strong>, <strong>size 30&nbsp;GB</strong> (Free Tier covers up to 30&nbsp;GB). No extra volumes.</td></tr>
-    <tr><td>Region</td><td>Pick one region (e.g. <strong>ap-south-1 / Mumbai</strong>) and use it for the S3 bucket too.</td></tr>
-  </table>
+<script>
+/* ============================================================================
+   Content model: each tab is {id, label, html}. Rendered + tab-switched by the
+   tiny script at the bottom. Kept as one file (no build step) so it opens
+   anywhere, forever, with no dependency on this repo being checked out.
+   ============================================================================ */
+const TABS = [];
+function addTab(id, label, html){ TABS.push({id, label, html}); }
 
-  <h3>Security group (firewall)</h3>
-  <table>
-    <tr><th>Type</th><th>Port</th><th>Source</th><th>Why</th></tr>
-    <tr><td>SSH</td><td>22</td><td><strong>My IP</strong> (your office/home IP)</td><td>Admin login only — never <code>0.0.0.0/0</code></td></tr>
-    <tr><td>HTTP</td><td>80</td><td>Anywhere <code>0.0.0.0/0</code></td><td>The web app</td></tr>
-    <tr><td>HTTPS</td><td>443</td><td>Anywhere <code>0.0.0.0/0</code></td><td>The web app (after you add a domain)</td></tr>
-  </table>
-  <div class="warn"><strong>Cost check:</strong> confirm the launch summary shows the instance type as <em>Free tier eligible</em>. Leave “Detailed CloudWatch monitoring” <strong>off</strong> (it’s paid).</div>
-  </div>
+/* -------------------------------------------------------------------------- */
+addTab('overview', 'Overview', `
+<h2>0. Overview &amp; when to use this</h2>
+<p>Use this whole document when you need to run Shifa OMS on a <strong>brand-new AWS account / brand-new EC2
+instance</strong> — e.g. this current migration (old account → <em>Admin-Weblithic</em>, 226635093151), or any future
+migration (this app, another client's account, a disaster-recovery rebuild, etc.). Follow the tabs <strong>in order</strong>
+the first time; after that, use whichever tab matches the task (redeploy, reset data, troubleshoot).</p>
 
-  <!-- ============================================================= -->
-  <div class="step" id="s2">
-  <h2>2. Allocate &amp; attach an Elastic IP</h2>
-  <p>A plain instance’s public IP <strong>changes every stop/start</strong>. An Elastic IP gives you a permanent address and is
-  <span class="free">free while attached to a running instance</span> (covered by the 12-month public-IPv4 Free-Tier hours).</p>
-  <ol>
-    <li>EC2 → <strong>Elastic IPs</strong> → <strong>Allocate Elastic IP address</strong> → Allocate.</li>
-    <li>Select it → <strong>Actions → Associate</strong> → choose your instance → Associate.</li>
-  </ol>
-  <div class="danger"><strong>Avoid charges:</strong> you’re billed for an Elastic IP only if it’s <em>not</em> attached to a running instance,
-  if you keep it on a <em>stopped</em> instance, or if you allocate a <em>second</em> one. Rule: <strong>one Elastic IP, attached, instance kept running.</strong>
-  If you ever terminate the instance, <strong>release the Elastic IP</strong> too.</div>
-  <p>From here on, <code>&lt;ELASTIC_IP&gt;</code> means the address you just allocated.</p>
-  </div>
+<h3>Architecture (what you're building)</h3>
+<div class="stepgrid">
+  <div class="stepcard"><b>1 EC2 instance</b><br/>Ubuntu, running Nginx + the Spring Boot backend + MySQL 8, all on one box.</div>
+  <div class="stepcard"><b>Nginx</b><br/>Serves the Angular admin SPA at <code>/</code>; reverse-proxies <code>/api/</code> to Spring Boot on <code>127.0.0.1:8080</code>.</div>
+  <div class="stepcard"><b>MySQL 8</b><br/>Local to the instance, listens on <code>localhost</code> only — never exposed to the internet.</div>
+  <div class="stepcard"><b>S3 bucket</b><br/>Stores payment screenshots, profile/ID images, and internal label PDFs — accessed via an EC2 IAM role (no access keys on disk).</div>
+  <div class="stepcard"><b>Elastic IP</b><br/>A permanent public address for the instance (plain EC2 public IPs change on every stop/start).</div>
+  <div class="stepcard"><b>systemd</b><br/>Runs the backend JAR as a service (<code>shifa-oms.service</code>), auto-restarts on failure, starts on boot.</div>
+</div>
 
-  <!-- ============================================================= -->
-  <div class="step" id="s3">
-  <h2>3. Create the S3 bucket + IAM role (attachments / profile images / payment screenshots)</h2>
-  <p>The app stores payment screenshots, profile/ID images, and internal label PDFs in S3 (durable, off the server disk).</p>
+<h3>Cost guardrails — read this before touching AWS</h3>
+<p>The only things that cost money if you're not careful are the <em>instance size</em>, an <em>idle/extra public IP</em>,
+and going beyond Free-Tier limits. Stick to this table and you stay near <span class="free">₹0 for 12 months</span>.</p>
+<table>
+  <tr><th>Do</th><th>Don't</th></tr>
+  <tr><td>One <code>t3.micro</code> / <code>t2.micro</code> instance</td><td>Bigger instance types, or a 2nd instance</td></tr>
+  <tr><td>One 30&nbsp;GB gp3 EBS volume</td><td>Extra volumes / accumulating snapshots</td></tr>
+  <tr><td>One Elastic IP, <strong>attached to a running instance</strong></td><td>An idle/unattached Elastic IP, or a 2nd one</td></tr>
+  <tr><td>MySQL on the instance itself</td><td>RDS, an Application Load Balancer, NAT Gateway (all paid)</td></tr>
+  <tr><td>S3 for file storage (a few MB of screenshots/PDFs)</td><td>Detailed CloudWatch monitoring (paid, opt-in)</td></tr>
+</table>
+<div class="tip">Set a <strong>Billing → Budgets</strong> alert (e.g. ₹100/month) in every new AWS account the first day, so
+you get emailed if something starts costing money unexpectedly. Check <strong>Billing → Free Tier</strong> usage occasionally too.</div>
 
-  <h3>3a. Create the bucket</h3>
-  <ul>
-    <li>Console → <strong>S3 → Create bucket</strong>. Name e.g. <code>shifa-oms-files-prod</code> (globally unique — add a suffix if taken).</li>
-    <li><strong>Region: same as the instance</strong> (e.g. ap-south-1).</li>
-    <li>Keep <strong>“Block all public access” = ON</strong> (the app reads/writes it privately via the IAM role — files are never public).</li>
-  </ul>
+<h3>Capacity — will a free-tier box handle real usage?</h3>
+<p><strong>Yes, comfortably</strong>, for this app's actual profile: ~20–25 salespeople logged in, each punching roughly
+4–5 orders/day. That is a <em>read-heavy</em> workload with very low write concurrency (rarely more than a handful of
+simultaneous INSERT/UPDATE/DELETE). The DB connection pool is capped at 10, the JVM heap is tuned for a 1&nbsp;GB box, and a
+2&nbsp;GB swap file (Tab 5) absorbs occasional spikes. If the team or order volume grows a lot later, resizing to
+<code>t3.small</code> (2&nbsp;GB RAM) is a one-click change in the EC2 console — it just stops being free.</p>
 
-  <h3>3b. Create an IAM role for the instance</h3>
-  <ul>
-    <li>Console → <strong>IAM → Roles → Create role</strong> → Trusted entity <strong>AWS service → EC2</strong>.</li>
-    <li>Skip attaching managed policies; create the role (e.g. <code>shifa-ec2-role</code>), then add an <strong>inline policy</strong> (replace the bucket name):</li>
-  </ul>
+<h3>How to use the tabs above</h3>
+<ol>
+  <li><strong>First-time setup</strong>: go through tabs 1 → 12 in order.</li>
+  <li><strong>Redeploying a code change</strong> (no fresh instance): jump straight to <em>Build &amp; Deploy</em> (tab 10).</li>
+  <li><strong>Wiping demo/test data for a client handover</strong>: <em>Data Reset / Handover Cleanup</em> (tab 13).</li>
+  <li><strong>Something's broken</strong>: <em>Troubleshooting</em> (tab 14) documents every real issue hit so far, with the exact fix.</li>
+  <li><strong>Doing this again in 6+ months</strong>: <em>Quick Reference Cheat Sheet</em> (tab 15) is the condensed, copy-paste version of the whole thing.</li>
+</ol>
+
+<h3>Known values for THIS deployment (reference only — will differ next time)</h3>
+<p>Recorded here so this specific box can be managed without re-discovering it. When you migrate again, every value
+below gets a new one — don't assume these will still be valid.</p>
+<table class="fact-table">
+  <tr><td>AWS account</td><td>Admin-Weblithic · <code>226635093151</code></td></tr>
+  <tr><td>SSH user</td><td><code>ubuntu</code></td></tr>
+  <tr><td>Key file (on the admin's Windows PC)</td><td><code>shifa-oms-prod.pem</code></td></tr>
+  <tr><td>App JAR path</td><td><code>/opt/shifa/shifa-oms.jar</code></td></tr>
+  <tr><td>Env file</td><td><code>/etc/shifa/shifa.env</code> (mode 600, root-owned)</td></tr>
+  <tr><td>Admin web root</td><td><code>/var/www/shifa/admin/</code></td></tr>
+  <tr><td>systemd unit</td><td><code>/etc/systemd/system/shifa-oms.service</code></td></tr>
+  <tr><td>Nginx site</td><td><code>/etc/nginx/sites-available/shifa</code></td></tr>
+  <tr><td>Database</td><td><code>shifa_dashboard</code> (MySQL user <code>shifa</code>, localhost only)</td></tr>
+</table>
+`);
+
+/* -------------------------------------------------------------------------- */
+addTab('launch', '1 · Launch Instance', `
+<h2>1. Launch the Free-Tier EC2 instance</h2>
+<p>AWS Console → <strong>EC2 → Launch instance</strong>:</p>
+<table>
+  <tr><th>Setting</th><th>Choose</th></tr>
+  <tr><td>Name</td><td><code>shifa-oms-prod</code> (or a name that identifies the client/purpose)</td></tr>
+  <tr><td>AMI</td><td><strong>Ubuntu Server 24.04 LTS</strong> (22.04 LTS also fine) — must say "Free tier eligible". 64-bit (x86).</td></tr>
+  <tr><td>Instance type</td><td><strong>t3.micro</strong> or <strong>t2.micro</strong> — must say <span class="free">"Free tier eligible"</span>. Never t3.small/large for the free path.</td></tr>
+  <tr><td>Key pair</td><td>Create/choose one and <strong>download the <code>.pem</code></strong> immediately — AWS only lets you download it once.</td></tr>
+  <tr><td>Storage</td><td>1 volume, <strong>gp3</strong>, <strong>30&nbsp;GB</strong> (the Free-Tier cap). No extra volumes.</td></tr>
+  <tr><td>Region</td><td>Pick one and use the <em>same</em> region for the S3 bucket (Tab 3) to avoid cross-region data transfer.</td></tr>
+</table>
+
+<h3>Security group (firewall rules)</h3>
+<table>
+  <tr><th>Type</th><th>Port</th><th>Source</th><th>Why</th></tr>
+  <tr><td>SSH</td><td>22</td><td><strong>My IP</strong> only</td><td>Admin access — never open this to <code>0.0.0.0/0</code></td></tr>
+  <tr><td>HTTP</td><td>80</td><td><code>0.0.0.0/0</code></td><td>The web app / certbot challenge</td></tr>
+  <tr><td>HTTPS</td><td>443</td><td><code>0.0.0.0/0</code></td><td>The web app once a domain is added (Tab 12)</td></tr>
+</table>
+<div class="warn"><strong>Cost check:</strong> before clicking Launch, confirm the summary panel actually says the instance
+type is <em>Free tier eligible</em>. Leave "Detailed CloudWatch monitoring" <strong>unchecked</strong> (it's a paid add-on).</div>
+<div class="note">If SSH ever stops connecting later (timeouts) after your home/office IP changes, come back here and
+update the SSH rule's source to your new IP — see Tab 14 (Troubleshooting) for the exact symptom.</div>
+`);
+
+/* -------------------------------------------------------------------------- */
+addTab('eip', '2 · Elastic IP', `
+<h2>2. Allocate &amp; attach an Elastic IP</h2>
+<p>A plain instance's public IP <strong>changes on every stop/start</strong>. An Elastic IP gives it a permanent address
+and is <span class="free">free while attached to a running instance</span> (covered by the Free-Tier public-IPv4 hours
+for 12 months).</p>
+<ol>
+  <li>EC2 → <strong>Elastic IPs</strong> → <strong>Allocate Elastic IP address</strong> → Allocate.</li>
+  <li>Select it → <strong>Actions → Associate Elastic IP address</strong> → choose the instance → Associate.</li>
+</ol>
+<div class="danger"><strong>Avoid charges:</strong> you're billed for an Elastic IP only if it's <em>not</em> attached to
+a running instance, if it sits on a <em>stopped</em> instance for a while, or if you allocate a <em>second</em> one. Rule:
+<strong>exactly one Elastic IP, attached, instance kept running.</strong> If you ever terminate the instance, release the
+Elastic IP too (in the same visit — it's easy to forget).</div>
+<p>From here on, <code>&lt;ELASTIC_IP&gt;</code> in every command means the address you just allocated.</p>
+`);
+
+/* -------------------------------------------------------------------------- */
+addTab('s3', '3 · S3 + IAM', `
+<h2>3. Create the S3 bucket + IAM role (for attachments)</h2>
+<p>Payment screenshots, profile/ID images, and internal label PDFs are stored in S3 — durable, off the server disk, not
+bloating the database.</p>
+
+<h3>3a. Create the bucket</h3>
+<ul>
+  <li>Console → <strong>S3 → Create bucket</strong>. Name e.g. <code>shifa-oms-files-prod</code> (globally unique — add a suffix if taken).</li>
+  <li><strong>Region: same as the EC2 instance</strong> (Tab 1) to avoid cross-region transfer costs.</li>
+  <li>Keep <strong>"Block all public access" = ON</strong> — files are never public; the app reads/writes privately via the IAM role.</li>
+</ul>
+
+<h3>3b. Create an IAM role for the instance</h3>
+<ul>
+  <li>Console → <strong>IAM → Roles → Create role</strong> → Trusted entity <strong>AWS service → EC2</strong>.</li>
+  <li>Skip attaching managed policies for now; create the role (e.g. <code>shifa-ec2-role</code>), then add this <strong>inline policy</strong> (replace the bucket name):</li>
+</ul>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
 <pre>{
   "Version": "2012-10-17",
   "Statement": [
@@ -160,54 +252,68 @@
   ]
 }</pre>
 
-  <h3>3c. Attach the role to the instance</h3>
-  <p>EC2 → select instance → <strong>Actions → Security → Modify IAM role</strong> → choose <code>shifa-ec2-role</code> → Update.
-  Because the instance uses the role, you leave the access/secret keys <strong>blank</strong> in the env file (most secure).</p>
-  <div class="tip"><strong>S3 cost:</strong> Free Tier includes 5&nbsp;GB storage + 20k GET + 2k PUT/month for 12 months. Screenshots/PDFs are tiny, so this is effectively free. (If you’d rather avoid S3 entirely, set <code>STORAGE_PROVIDER=DB</code> in Step&nbsp;8 to keep files inside MySQL — but you asked for S3, so we use S3.)</div>
-  </div>
+<h3>3c. Attach the role to the instance</h3>
+<p>EC2 → select the instance → <strong>Actions → Security → Modify IAM role</strong> → choose the role → Update.
+Leave the access/secret keys blank in the app's env file (Tab 7) — the instance role handles auth, which is the most
+secure option (no long-lived keys sitting on disk).</p>
+<div class="tip"><strong>S3 cost:</strong> Free Tier includes 5&nbsp;GB storage + 20k GET + 2k PUT/month for 12 months. Screenshots/PDFs
+for this app are tiny — effectively free.</div>
+`);
 
-  <!-- ============================================================= -->
-  <div class="step" id="s4">
-  <h2>4. Connect over SSH (from Windows)</h2>
-  <p>Windows refuses a key that’s too open. Lock the <code>.pem</code> permissions once, then connect:</p>
-<pre><span class="c">:: Run in Command Prompt / PowerShell (adjust the path to your .pem)</span>
-icacls "C:\Users\Parul\Downloads\shifa-newbox.pem" /inheritance:r
-icacls "C:\Users\Parul\Downloads\shifa-newbox.pem" /grant:r "%USERNAME%:R"
+/* -------------------------------------------------------------------------- */
+addTab('ssh', '4 · Connect (Windows)', `
+<h2>4. Connect over SSH from Windows</h2>
+<p>Windows sometimes rejects a key file with overly-open permissions. Lock it down once, then connect:</p>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
+<pre><span class="c">:: Run in Command Prompt / PowerShell (adjust the .pem path)</span>
+icacls "C:\\Users\\Parul\\Downloads\\shifa-oms-prod.pem" /inheritance:r
+icacls "C:\\Users\\Parul\\Downloads\\shifa-oms-prod.pem" /grant:r "%USERNAME%:R"
 
-<span class="c">:: Connect (Ubuntu default user is "ubuntu")</span>
-ssh -i "C:\Users\Parul\Downloads\shifa-newbox.pem" ubuntu@&lt;ELASTIC_IP&gt;</pre>
-  <p>Accept the host-key prompt the first time. You’re now on the server; run the following steps there.</p>
-  <div class="note">Keep the SSH inbound rule limited to <strong>your IP</strong>. If your IP changes and you can’t connect, update that rule (or use <strong>EC2 → Connect → EC2 Instance Connect</strong> in the browser).</div>
-  </div>
+<span class="c">:: Connect (Ubuntu's default user is "ubuntu")</span>
+ssh -i "C:\\Users\\Parul\\Downloads\\shifa-oms-prod.pem" ubuntu@&lt;ELASTIC_IP&gt;</pre>
+<p>Accept the host-key prompt the first time you connect to a given IP. Every server-side command in the rest of this
+document is run <strong>inside this SSH session</strong> unless a step explicitly says "on your Windows machine".</p>
+<div class="note">Keep the SSH inbound rule restricted to <strong>your IP</strong> (Tab 1). If your IP changes (new
+location/ISP) and SSH suddenly times out, that's the cause — update the security group rule, or use
+<strong>EC2 → Connect → EC2 Instance Connect</strong> in the browser as a fallback that doesn't need the security group open to you.</div>
+<div class="warn"><strong>Don't mix up which machine a command runs on.</strong> Commands that upload files (<code>scp</code>) always
+run on your <em>Windows</em> machine, pointing <em>at</em> the server. Commands that configure the server
+(<code>sudo</code>, <code>systemctl</code>, editing <code>/etc/...</code>) always run <em>inside the SSH session, on the
+server</em>. Running a Windows-path <code>scp</code> command from inside the SSH session (or vice versa) is a real mistake
+we hit during this migration — see Tab 14.</div>
+`);
 
-  <!-- ============================================================= -->
-  <div class="step" id="s5">
-  <h2>5. Add a swap file (important on 1&nbsp;GB RAM)</h2>
-  <p>t3.micro has 1&nbsp;GB RAM; MySQL + the JVM together need a cushion. A 2&nbsp;GB swap file prevents out-of-memory kills:</p>
+/* -------------------------------------------------------------------------- */
+addTab('baseos', '5 · Server Base Setup', `
+<h2>5. Swap file + Java, MySQL, Nginx</h2>
+
+<h3>5a. Add a 2&nbsp;GB swap file (needed on 1&nbsp;GB RAM)</h3>
+<p>t3.micro/t2.micro has 1&nbsp;GB RAM; MySQL + the JVM together need a cushion so the OOM killer doesn't strike:</p>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
 <pre>sudo fallocate -l 2G /swapfile
 sudo chmod 600 /swapfile
 sudo mkswap /swapfile
 sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 free -h        <span class="c"># confirm "Swap: 2.0Gi"</span></pre>
-  </div>
 
-  <!-- ============================================================= -->
-  <div class="step" id="s6">
-  <h2>6. Install Java 21, MySQL 8, Nginx</h2>
+<h3>5b. Install Java 21, MySQL 8, Nginx</h3>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
 <pre>sudo apt-get update &amp;&amp; sudo apt-get upgrade -y
 sudo apt-get install -y openjdk-21-jre-headless mysql-server nginx unzip
 
-java -version          <span class="c"># expect openjdk 21.x</span>
-systemctl status mysql --no-pager | head -3
+java -version                                 <span class="c"># expect openjdk 21.x</span>
+systemctl status mysql --no-pager | head -3   <span class="c"># expect "active (running)"</span>
 nginx -v</pre>
-  <div class="note">The backend is built for <strong>Java 21</strong>. Ubuntu 24.04 ships OpenJDK 21 in its repos (used above). On 22.04, <code>openjdk-21-jre-headless</code> is also available; if not, use Amazon Corretto 21.</div>
-  </div>
+<div class="note">The backend is built for <strong>Java 21</strong>. Ubuntu 22.04/24.04 both ship an
+<code>openjdk-21-jre-headless</code> package. If it's ever unavailable on a different Ubuntu release, use Amazon Corretto 21 instead.</div>
+`);
 
-  <!-- ============================================================= -->
-  <div class="step" id="s7">
-  <h2>7. Create the database + app user</h2>
-  <p>Pick a strong DB password and use it consistently in Step&nbsp;8.</p>
+/* -------------------------------------------------------------------------- */
+addTab('db', '6 · Database', `
+<h2>6. Create the database + app user</h2>
+<p>Pick a strong DB password now and reuse it consistently in Tab 7.</p>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
 <pre>sudo mysql &lt;&lt;'SQL'
 CREATE DATABASE IF NOT EXISTS shifa_dashboard
   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -216,20 +322,31 @@ CREATE USER IF NOT EXISTS 'shifa'@'localhost'
 GRANT ALL PRIVILEGES ON shifa_dashboard.* TO 'shifa'@'localhost';
 FLUSH PRIVILEGES;
 SQL</pre>
-  <div class="tip"><code>GRANT ALL</code> on the one schema gives Flyway the rights it needs to create tables on first boot. MySQL listens on localhost only (not exposed to the internet) — good.</div>
-  </div>
+<div class="tip"><code>GRANT ALL</code> on this one schema gives Flyway the rights it needs to create every table on first
+boot. MySQL only listens on <code>localhost</code> — it is never exposed to the internet, by design (see Tab 13 for how
+to connect to it remotely anyway, via an SSH tunnel, for admin work).</div>
+`);
 
-  <!-- ============================================================= -->
-  <div class="step" id="s8">
-  <h2>8. Create the app user, folders &amp; the environment file</h2>
+/* -------------------------------------------------------------------------- */
+addTab('env', '7 · App Env File', `
+<h2>7. Create the app user, folders &amp; the environment file</h2>
+
+<h3>7a. App user + folders</h3>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
 <pre>sudo useradd -r -s /usr/sbin/nologin shifa 2&gt;/dev/null || true
 sudo mkdir -p /opt/shifa /var/www/shifa/admin /etc/shifa
 sudo chown -R shifa:shifa /opt/shifa
 
-<span class="c"># Generate a strong JWT secret and note it down:</span>
+<span class="c"># Generate a strong JWT secret and copy the output somewhere safe:</span>
 openssl rand -base64 48</pre>
 
-  <p>Create <code>/etc/shifa/shifa.env</code> (root-owned, mode 600). Fill in the DB password, the JWT secret from above, and your S3 bucket:</p>
+<h3>7b. Why you can't just <code>nano /etc/shifa/shifa.env</code> as the ubuntu user</h3>
+<p><code>/etc</code> is root-owned, so a plain user can't create files there. Always use <code>sudo</code>. The cleanest
+way to write a whole multi-line file in one paste is <code>sudo tee</code> with a heredoc, shown below — it's equivalent
+to <code>sudo nano</code> but lets you paste the entire block at once instead of typing it interactively.</p>
+
+<h3>7c. Create <code>/etc/shifa/shifa.env</code></h3>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
 <pre>sudo tee /etc/shifa/shifa.env &gt;/dev/null &lt;&lt;'ENV'
 SPRING_PROFILES_ACTIVE=prod
 
@@ -253,7 +370,7 @@ STORAGE_S3_ACCESS_KEY=
 STORAGE_S3_SECRET_KEY=
 STORAGE_S3_ENDPOINT=
 
-# --- Uploads (phone screenshots are 2-5 MB) ---
+# --- Uploads (phone screenshots are commonly 2-5 MB) ---
 MAX_UPLOAD_FILE_SIZE=10MB
 MAX_UPLOAD_REQUEST_SIZE=12MB
 
@@ -275,12 +392,30 @@ ENV
 
 sudo chmod 600 /etc/shifa/shifa.env
 sudo chown root:root /etc/shifa/shifa.env</pre>
-  <div class="warn"><strong>Do not commit this file</strong> to git — it holds real secrets. On a 1&nbsp;GB box keep <code>-Xmx</code> ≤ ~640–768&nbsp;MB so MySQL has room.</div>
-  </div>
 
-  <!-- ============================================================= -->
-  <div class="step" id="s9">
-  <h2>9. Install the systemd service</h2>
+<h3>7d. Fill in the real values</h3>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
+<pre>sudo nano /etc/shifa/shifa.env</pre>
+<p>Edit at minimum:</p>
+<ul>
+  <li><code>DB_PASSWORD</code> → the password you set in Tab 6</li>
+  <li><code>JWT_SECRET</code> → the <code>openssl rand -base64 48</code> output from step 7a</li>
+  <li><code>STORAGE_S3_BUCKET</code> / <code>STORAGE_S3_REGION</code> → your actual bucket (Tab 3)</li>
+</ul>
+<p>Save with <span class="kbd">Ctrl+O</span> then Enter, exit with <span class="kbd">Ctrl+X</span>.</p>
+<div class="warn"><strong>Never commit this file to git</strong> — it holds real secrets. On a 1&nbsp;GB box keep
+<code>-Xmx</code> at or below ~640–768&nbsp;MB so MySQL still has room to breathe.</div>
+
+<h3>7e. Sanity-check without printing the secrets to your terminal history</h3>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
+<pre>sudo ls -l /etc/shifa/shifa.env       <span class="c"># expect: -rw------- 1 root root ...</span>
+sudo cat /etc/shifa/shifa.env | wc -l <span class="c"># sanity line count</span></pre>
+`);
+
+/* -------------------------------------------------------------------------- */
+addTab('systemd', '8 · systemd Service', `
+<h2>8. Install the systemd service</h2>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
 <pre>sudo tee /etc/systemd/system/shifa-oms.service &gt;/dev/null &lt;&lt;'UNIT'
 [Unit]
 Description=Shifa Herbal Remedies OMS (Spring Boot)
@@ -305,17 +440,22 @@ WantedBy=multi-user.target
 UNIT
 
 sudo systemctl daemon-reload
-sudo systemctl enable shifa-oms      <span class="c"># start on boot (we start it in Step 12, after the JAR is uploaded)</span></pre>
-  </div>
+sudo systemctl enable shifa-oms   <span class="c"># start on boot; actually STARTED in Tab 11, once the JAR exists</span></pre>
+<p>This unit reads every setting from <code>/etc/shifa/shifa.env</code> (Tab 7) via <code>EnvironmentFile=</code>, so
+config changes never require touching this file again — just edit the env file and <code>sudo systemctl restart shifa-oms</code>.</p>
+`);
 
-  <!-- ============================================================= -->
-  <div class="step" id="s10">
-  <h2>10. Configure Nginx (serves the admin panel + proxies the API)</h2>
+/* -------------------------------------------------------------------------- */
+addTab('nginx', '9 · Nginx Config', `
+<h2>9. Configure Nginx</h2>
+<p>Serves the Angular admin panel at <code>/</code> and reverse-proxies <code>/api/</code> to Spring Boot on
+<code>127.0.0.1:8080</code>, including the Server-Sent Events (SSE) admin live-dashboard stream.</p>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
 <pre>sudo tee /etc/nginx/sites-available/shifa &gt;/dev/null &lt;&lt;'NGINX'
 server {
     listen 80;
     listen [::]:80;
-    server_name _;                 # replace with your domain later
+    server_name _;                 # replace with your domain once you have one (Tab 12)
     client_max_body_size 15m;
     gzip on;
     gzip_types text/plain text/css application/javascript application/json image/svg+xml;
@@ -351,119 +491,438 @@ NGINX
 sudo ln -sf /etc/nginx/sites-available/shifa /etc/nginx/sites-enabled/shifa
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t &amp;&amp; sudo systemctl reload nginx</pre>
-  </div>
+<div class="note">Always run <code>sudo nginx -t</code> before <code>reload</code> — it validates syntax and tells you
+exactly which line is wrong if you made a typo, instead of silently failing to reload.</div>
+`);
 
-  <!-- ============================================================= -->
-  <div class="step" id="s11">
-  <h2>11. Build the app locally &amp; upload it</h2>
-  <p>Run these <strong>on your Windows dev machine</strong> (in the project folder), then upload the two artifacts.</p>
-<pre><span class="c">:: 1) Backend fat JAR</span>
+/* -------------------------------------------------------------------------- */
+addTab('deploy', '10 · Build &amp; Deploy', `
+<h2>10. Build the app locally &amp; deploy it</h2>
+<p>This is the step you'll repeat for <strong>every future code update</strong> — read the warnings carefully, they
+cover real mistakes made (and fixed) during this exact migration.</p>
+
+<h3>10a. Build — on your <u>Windows</u> machine, from the workspace root</h3>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
+<pre><span class="c">:: From C:\\...\\Shifa-Software (the workspace ROOT, not the frontend folder)</span>
 mvn -f backend/pom.xml -DskipTests clean package
-<span class="c">::   -> backend\target\shifa-oms-0.0.1-SNAPSHOT.jar</span>
+<span class="c">::   -> backend\\target\\shifa-oms-0.0.1-SNAPSHOT.jar</span>
 
-<span class="c">:: 2) Admin web bundle (base-href /)</span>
 npm --prefix frontend run build:admin
-<span class="c">::   -> frontend\dist\admin\browser\</span>
+<span class="c">::   -> frontend\\dist\\admin\\browser\\</span></pre>
+<div class="warn">
+  <strong>Gotcha — "ENOENT ... frontend\\frontend\\package.json":</strong> this happens if you're
+  <em>already inside</em> the <code>frontend</code> folder and still pass <code>--prefix frontend</code> — npm then looks
+  for <code>frontend\\frontend\\package.json</code>, which doesn't exist. Either run the command from the
+  workspace <strong>root</strong> with <code>--prefix frontend</code> (as above), <strong>or</strong> <code>cd frontend</code>
+  first and drop <code>--prefix frontend</code> entirely. Don't combine both.
+</div>
 
-<span class="c">:: 3) Upload both to the server (home dir first)</span>
-scp -i "C:\path\shifa-newbox.pem" backend\target\shifa-oms-0.0.1-SNAPSHOT.jar ubuntu@&lt;ELASTIC_IP&gt;:~/shifa-oms.jar
-scp -i "C:\path\shifa-newbox.pem" -r frontend\dist\admin\browser ubuntu@&lt;ELASTIC_IP&gt;:~/admin-dist</pre>
+<h3>10b. Upload — also on Windows, pointing at the server</h3>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
+<pre>scp -i "C:\\path\\to\\your-key.pem" backend\\target\\shifa-oms-0.0.1-SNAPSHOT.jar ubuntu@&lt;ELASTIC_IP&gt;:~/shifa-oms.jar
+scp -i "C:\\path\\to\\your-key.pem" -r frontend\\dist\\admin\\browser ubuntu@&lt;ELASTIC_IP&gt;:~/admin-dist</pre>
+<div class="warn">
+  <strong>Gotcha — "ssh: Could not resolve hostname http":</strong> the destination for <code>scp</code>/<code>ssh</code>
+  must be a <em>plain</em> host — <code>ubuntu@&lt;IP&gt;</code>. Never paste it with a <code>http://</code> prefix or a
+  trailing <code>/</code> (e.g. <code>ubuntu@http://1.2.3.4/</code> is wrong). Just the bare IP or hostname.
+</div>
+<div class="danger">
+  <strong>THE big one — stale bundle served forever after a redeploy.</strong> If <code>~/admin-dist</code> already
+  exists on the server from a <em>previous</em> upload, a second <code>scp -r ... ~/admin-dist</code> does NOT overwrite
+  it — <code>scp</code> nests the new <code>browser</code> folder <em>inside</em> the existing one, so you end up with
+  <code>~/admin-dist/browser/index.html</code> (new) sitting next to the stale files directly in <code>~/admin-dist/</code>
+  (old). Every subsequent "copy into place" command then keeps copying the <em>old</em> files, and the app keeps serving
+  an outdated bundle no matter how many times you redeploy — with zero error message anywhere. This is exactly what
+  happened during this migration and cost real debugging time chasing "browser cache" as a red herring.<br/><br/>
+  <strong>The fix — always wipe the remote staging folder before every re-upload:</strong>
+  <pre style="margin-top:8px">ssh -i "C:\\path\\to\\your-key.pem" ubuntu@&lt;ELASTIC_IP&gt; "rm -rf ~/admin-dist"</pre>
+  Run that <em>before</em> the <code>scp -r ... ~/admin-dist</code> line above, every single time.
+</div>
 
-  <p>Then <strong>on the server</strong>, move them into place:</p>
+<h3>10c. Move into place — inside the SSH session, on the server</h3>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
 <pre>sudo cp ~/shifa-oms.jar /opt/shifa/shifa-oms.jar
 sudo chown shifa:shifa /opt/shifa/shifa-oms.jar
 
-sudo rm -rf /var/www/shifa/admin
-sudo mkdir -p /var/www/shifa/admin
+sudo rm -rf /var/www/shifa/admin/*
 sudo cp -r ~/admin-dist/* /var/www/shifa/admin/
-sudo chown -R www-data:www-data /var/www/shifa/admin</pre>
-  <div class="tip">Your repo already has a one-command helper (<code>deploy\push-to-aws.ps1</code>) that builds, uploads, backs up and restarts. Once this box is running you can reuse it for future updates by pointing <code>-Ip &lt;ELASTIC_IP&gt; -KeyPath &lt;your.pem&gt;</code>. For the very first setup, the manual steps above are clearest.</div>
-  </div>
+sudo chown -R www-data:www-data /var/www/shifa/admin
 
-  <!-- ============================================================= -->
-  <div class="step" id="s12">
-  <h2>12. Start &amp; verify</h2>
+sudo systemctl restart shifa-oms</pre>
+
+<h3>10d. Verify the NEW bundle is actually what's being served</h3>
+<p>Angular fingerprints every build with a random hash in the filename (e.g. <code>main-OVFAZAGF.js</code>). Compare it
+before trusting a browser test:</p>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
+<pre><span class="c"># On the server — which hash is actually live right now:</span>
+grep -o 'main-[A-Za-z0-9]*\\.js' /var/www/shifa/admin/index.html
+
+<span class="c"># On Windows — which hash your last local build produced:</span>
+dir frontend\\dist\\admin\\browser\\main-*.js</pre>
+<p>If these two don't match, the deploy did not actually land — go back to 10a–10c and check for the nested-folder gotcha above.</p>
+
+<h3>10e. Force your browser to drop any stale cached copy</h3>
+<p>This app has offline/PWA support (a Service Worker), which is great for salespeople on flaky mobile connections but
+means a browser can keep serving an old cached version even after the server has the new one. After every deploy:</p>
+<div class="stepgrid">
+  <div class="stepcard"><b>Quickest check</b><br/>Open the site in a fresh Incognito/Private window first — it has zero cache, so it always reflects what the server is really serving.</div>
+  <div class="stepcard"><b>Force your normal browser to update</b><br/>DevTools (F12) → Application tab → Service Workers → <strong>Unregister</strong>, then Application → Storage → <strong>Clear site data</strong>, then hard-refresh (<span class="kbd">Ctrl+Shift+R</span>).</div>
+</div>
+
+<div class="tip">The repo already ships a one-command helper, <code>deploy\\push-to-aws.ps1</code>, which automates build →
+upload → server-side backup → swap-in → restart for the <em>original</em> production box. For a fresh account/instance,
+either point its <code>-Ip</code>/<code>-KeyPath</code> parameters at the new box, or follow the manual steps above the
+first time (clearer for learning exactly what's happening).</div>
+`);
+
+/* -------------------------------------------------------------------------- */
+addTab('verify', '11 · Start &amp; Verify', `
+<h2>11. Start &amp; verify</h2>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
 <pre>sudo systemctl start shifa-oms
 sudo systemctl status shifa-oms --no-pager | head -6
 
 <span class="c"># Watch it boot: Flyway migrates the empty DB, then Tomcat starts on 8080</span>
 sudo journalctl -u shifa-oms -f
-<span class="c"># Look for: "Successfully applied N migrations", "Tomcat started on port 8080", "Started Application"</span></pre>
-  <p>Quick checks (from the server):</p>
-<pre>curl -s -o /dev/null -w "%{http_code}\n" http://localhost/            <span class="c"># 200 (admin loads)</span>
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost/api/states  <span class="c"># 401 (API up + auth enforced)</span></pre>
-  <p>Then open <code>http://&lt;ELASTIC_IP&gt;/</code> in a browser. The app is live. First login uses the seeded admin
-  (<code>admin</code> / <code>admin123</code>) — <strong>change this immediately</strong> (Users page) or run Step&nbsp;14.</p>
-  <div class="warn"><strong>If it fails to start:</strong> the most common causes are a wrong <code>DB_PASSWORD</code>, a blank <code>STORAGE_S3_BUCKET</code> (with <code>STORAGE_PROVIDER=S3</code> the app refuses to boot), or the IAM role not attached. The journal shows the exact reason.</div>
-  </div>
+<span class="c"># Look for: "Successfully applied N migrations", "Tomcat started on port 8080", "Started Application"</span>
+<span class="c"># Ctrl+C to stop following once you see those lines.</span></pre>
 
-  <!-- ============================================================= -->
-  <div class="step" id="s13">
-  <h2>13. (Optional) HTTPS with a domain</h2>
-  <p>When the client points a domain (e.g. <code>oms.theirdomain.com</code>) at <code>&lt;ELASTIC_IP&gt;</code> (an A record):</p>
+<h3>Quick HTTP checks (from the server)</h3>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
+<pre>curl -s -o /dev/null -w "%{http_code}\\n" http://localhost/            <span class="c"># expect 200 (admin app loads)</span>
+curl -s -o /dev/null -w "%{http_code}\\n" http://localhost/api/states  <span class="c"># expect 401 (API up, auth enforced)</span></pre>
+
+<p>Then open <code>http://&lt;ELASTIC_IP&gt;/</code> in a browser (Incognito, per Tab 10e). First login uses the seeded
+admin (<code>admin</code> / <code>admin123</code> by default) — <strong>change this immediately</strong> via the Users
+page, or seed a real admin during the handover cleanup (Tab 13).</p>
+
+<div class="warn"><strong>If the service fails to start</strong>, the journal (<code>journalctl -u shifa-oms -n 100</code>)
+almost always names the exact cause. The most common ones: a wrong <code>DB_PASSWORD</code> in <code>shifa.env</code>; a
+blank <code>STORAGE_S3_BUCKET</code> while <code>STORAGE_PROVIDER=S3</code> (the app refuses to boot without it by
+design); or the IAM role from Tab 3c not actually attached to the instance.</div>
+`);
+
+/* -------------------------------------------------------------------------- */
+addTab('https', '12 · HTTPS (optional)', `
+<h2>12. HTTPS with a domain (optional, do this once the client has a domain)</h2>
+<p>Point the domain's DNS <strong>A record</strong> at <code>&lt;ELASTIC_IP&gt;</code>, wait for it to propagate, then:</p>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
 <pre>sudo snap install --classic certbot
 sudo ln -sf /snap/bin/certbot /usr/bin/certbot
-sudo certbot --nginx -d oms.theirdomain.com     <span class="c"># auto-edits Nginx, adds the 443 block, auto-renews</span></pre>
-  <p>Also set <code>server_name oms.theirdomain.com;</code> in the Nginx file. Certbot (Let’s Encrypt) is free.</p>
-  </div>
+sudo certbot --nginx -d oms.theirdomain.com     <span class="c"># auto-edits Nginx, adds the 443 block, sets up auto-renewal</span></pre>
+<p>Also update <code>server_name oms.theirdomain.com;</code> in <code>/etc/nginx/sites-available/shifa</code> (Tab 9) if
+it's still <code>_</code>. Certbot / Let's Encrypt certificates are free and renew automatically via a systemd timer it installs.</p>
+<div class="tip">You can run the whole app happily on plain HTTP + the Elastic IP indefinitely if there's no domain yet
+(e.g. during initial client testing) — just add HTTPS whenever the domain is ready. Nothing else in the setup needs to change.</div>
+`);
 
-  <!-- ============================================================= -->
-  <div class="step" id="s14">
-  <h2>14. Make it a clean handover (no demo / order data)</h2>
-  <p>On a fresh DB, the migrations seed demo/test data (including sample orders) so the app is explorable. For a client
-  hand-over you’ll want the <strong>catalog + settings kept</strong> but <strong>all demo orders/customers/leads removed</strong>,
-  and your <strong>real staff</strong> (1 admin + the 2 team leads + 17 salespeople) seeded.</p>
-  <p>This is a one-time SQL script run <em>after</em> the app is up — it is <strong>not</strong> a code migration, so it can never
-  affect the current live box. It:</p>
+/* -------------------------------------------------------------------------- */
+addTab('reset', '13 · Data Reset / Handover', `
+<h2>13. Handover data cleanup (fresh app, no demo/order data)</h2>
+<p>A fresh DB comes up with Flyway's seeded demo/test data (sample orders, customers, etc.) so the app is explorable.
+Before handing the app to a client, you'll usually want the <strong>catalog + settings kept</strong> but
+<strong>all demo/transactional data removed</strong>, with the <strong>real staff logins</strong> seeded instead.</p>
+
+<h3>13a. ALWAYS back up first</h3>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
+<pre>MYSQL_PWD='your_db_password' mysqldump --no-tablespaces -u shifa shifa_dashboard \\
+  &gt; ~/pre-clean-backup-$(date +%F).sql</pre>
+
+<h3>13b. Connecting via MySQL Workbench (instead of the raw <code>mysql</code> CLI)</h3>
+<p>MySQL only listens on <code>localhost</code> on the server (by design, Tab 6) — Workbench reaches it through an
+<strong>SSH tunnel</strong> it manages for you, so you never need to open port 3306 to the internet.</p>
+<ol>
+  <li>MySQL Workbench → <strong>+</strong> next to "MySQL Connections".</li>
+  <li><strong>Connection Method</strong> → <code>Standard TCP/IP over SSH</code>.</li>
+  <li><strong>SSH tab</strong>: Hostname = <code>&lt;ELASTIC_IP&gt;:22</code>, Username = <code>ubuntu</code>, SSH Key File = your <code>.pem</code>.
+    (If Workbench rejects a raw AWS <code>.pem</code>, convert it once with PuTTYgen: Load the <code>.pem</code> → "Save private key" as <code>.ppk</code>, then point Workbench at the <code>.ppk</code> instead.)</li>
+  <li><strong>MySQL tab</strong>: Hostname = <code>127.0.0.1</code>, Port = <code>3306</code>, Username = <code>shifa</code>, Password = stored in the vault, Default schema = <code>shifa_dashboard</code>.</li>
+  <li><strong>Test Connection</strong> → accept the SSH host-key prompt the first time → "Successfully made the MySQL connection."</li>
+</ol>
+
+<h3>13c. The delete + reset pattern (per table)</h3>
+<p>Deleting rows does <strong>not</strong> reset MySQL's <code>AUTO_INCREMENT</code> counter on its own — the next insert
+still continues from wherever it left off. To reset a table's ids back to 1:</p>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
+<pre>DELETE FROM some_table;                    <span class="c">-- must be fully empty for the reset to actually take effect</span>
+ALTER TABLE some_table AUTO_INCREMENT = 1;</pre>
+<div class="warn"><strong>Two things that catch people out:</strong>
   <ul>
-    <li>deletes all orders, line items, payments, status history, receivables, courier shipments, returns, leads, customer notes/tags, notifications, audit log, insights and demo stock movements;</li>
-    <li>optionally clears demo suppliers / purchase orders / expenses;</li>
-    <li>resets the invoice &amp; PO number sequences to 1;</li>
-    <li>keeps the 30-product catalog, delivery states, GST/company settings and WhatsApp templates;</li>
-    <li>replaces the demo logins with your real admin + 19 staff (correct names, emails, mobiles, team-lead assignments).</li>
+    <li>MySQL silently <strong>ignores</strong> <code>AUTO_INCREMENT = 1</code> if any row with a higher id is still in the
+    table — it will never let the counter drop below the current max id. Delete <em>every</em> row first.</li>
+    <li><strong>Delete children before parents</strong>, or you'll hit a foreign-key error (e.g.
+    <code>lead_status_history</code> must be cleared before <code>leads</code>; <code>line_items</code>/<code>payments</code>/
+    <code>status_history</code>/<code>receivables</code>/<code>courier_records</code>/<code>order_returns</code> before
+    <code>orders</code>). If you get <em>"Cannot delete or update a parent row: a foreign key constraint fails"</em>, the
+    error names the blocking table — clear that one first, then retry.</li>
   </ul>
-  <div class="note"><strong>I’ll generate this exact <code>handover-clean.sql</code> for you</strong> once you confirm the final admin username/password and that the 19-person team sheet is final. You’ll run it once with a backup first:
-  <pre>MYSQL_PWD=YOUR_DB_PASSWORD mysqldump --no-tablespaces -u shifa shifa_dashboard &gt; ~/pre-clean-backup.sql
-MYSQL_PWD=YOUR_DB_PASSWORD mysql -u shifa shifa_dashboard &lt; handover-clean.sql</pre></div>
-  </div>
+</div>
 
-  <!-- ============================================================= -->
-  <div class="step" id="s15">
-  <h2>15. Capacity, cost guardrails &amp; day-2 ops</h2>
+<h3>13d. Worked example — orders + leads (children first)</h3>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
+<pre><span class="c">-- Leads</span>
+DELETE FROM lead_status_history;
+ALTER TABLE lead_status_history AUTO_INCREMENT = 1;
+DELETE FROM leads;
+ALTER TABLE leads AUTO_INCREMENT = 1;
 
-  <h3>Will t3.micro handle your load?</h3>
-  <p><strong>Yes.</strong> Your profile — ~20–25 salespeople logged in, each punching ~4–5 orders/day — is a <em>read-mostly</em>
-  workload with very low write volume (well under a handful of concurrent INSERT/UPDATE/DELETE at peak). The connection pool is
-  capped at 10 DB connections and the JVM heap is tuned for 1&nbsp;GB, which comfortably covers dozens of concurrent logged-in
-  users doing reads. The 2&nbsp;GB swap absorbs occasional spikes. If usage ever grows a lot, moving to <strong>t3.small (2&nbsp;GB)</strong>
-  is a one-click resize (a small monthly cost, not free-tier).</p>
+<span class="c">-- Orders (children first)</span>
+DELETE FROM line_items;        ALTER TABLE line_items       AUTO_INCREMENT = 1;
+DELETE FROM payments;          ALTER TABLE payments         AUTO_INCREMENT = 1;
+DELETE FROM status_history;    ALTER TABLE status_history   AUTO_INCREMENT = 1;
+DELETE FROM receivables;       ALTER TABLE receivables      AUTO_INCREMENT = 1;
+DELETE FROM courier_records;   ALTER TABLE courier_records  AUTO_INCREMENT = 1;
+DELETE FROM order_returns;     ALTER TABLE order_returns    AUTO_INCREMENT = 1;
+DELETE FROM orders;            ALTER TABLE orders           AUTO_INCREMENT = 1;</pre>
 
-  <h3>Cost guardrails (stay free)</h3>
-  <table>
-    <tr><th>Do</th><th>Don’t</th></tr>
-    <tr><td>One <code>t3.micro</code>/<code>t2.micro</code> instance</td><td>Bigger types, or a 2nd instance</td></tr>
-    <tr><td>One 30&nbsp;GB gp3 volume</td><td>Extra volumes / large snapshots piling up</td></tr>
-    <tr><td>One Elastic IP, attached, instance running</td><td>Idle/unattached Elastic IP, or a 2nd IP</td></tr>
-    <tr><td>MySQL on the instance</td><td>RDS, Load Balancer, NAT Gateway (all paid)</td></tr>
-    <tr><td>S3 for files (few MB)</td><td>Detailed CloudWatch monitoring</td></tr>
-  </table>
-  <div class="tip">Set a <strong>Billing → Budgets</strong> alert (e.g. ₹100/month) in the new account so you’re emailed if anything unexpected starts costing money. Also check <strong>Billing → Free Tier</strong> usage occasionally.</div>
+<h3>13e. Two tables that are NOT auto-increment (reset differently)</h3>
+<p><code>invoice_sequence</code> and <code>purchase_order_sequence</code> are single-row manual counters — reset via
+<code>UPDATE</code>, not <code>ALTER TABLE</code>:</p>
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
+<pre>UPDATE invoice_sequence SET next_value = 1 WHERE id = 1;
+UPDATE purchase_order_sequence SET next_value = 1 WHERE id = 1;</pre>
 
-  <h3>Everyday operations</h3>
-<pre>sudo systemctl restart shifa-oms          <span class="c"># restart backend</span>
-sudo journalctl -u shifa-oms -n 100 --no-pager   <span class="c"># recent logs</span>
-sudo systemctl reload nginx               <span class="c"># after editing the site file</span>
-<span class="c"># Manual DB backup:</span>
-MYSQL_PWD=YOUR_DB_PASSWORD mysqldump --no-tablespaces -u shifa shifa_dashboard &gt; ~/backup-$(date +%F).sql</pre>
+<h3>13f. What to keep vs. clear for a client handover</h3>
+<table>
+  <tr><th>Keep</th><th>Clear</th></tr>
+  <tr><td>Product catalog (30 SKUs), delivery states, GST/company settings, WhatsApp templates, chart of accounts</td>
+      <td>All orders + their children, customers, leads, payments, returns, courier shipments, notifications, audit log, insights, stock movements, demo suppliers/POs/expenses</td></tr>
+</table>
+<p>Then seed the real admin login + real staff (names/emails/mobiles/roles/team assignments) via the <strong>Users</strong>
+and <strong>Teams</strong> pages in the app, or a one-off SQL script if there are many people to add at once.</p>
+`);
 
-  <h3>The current live box is safe</h3>
-  <p>This is a different AWS account, instance, key and IP. Nothing in this guide touches the existing production server — it keeps
-  running exactly as-is. Deploy tooling for the new box uses its own IP/key, so the two never cross over.</p>
-  </div>
+/* -------------------------------------------------------------------------- */
+addTab('troubleshoot', '14 · Troubleshooting', `
+<h2>14. Troubleshooting — every real issue hit, and the fix</h2>
+<p>These are drawn directly from doing this migration for real — not hypothetical. Match the symptom, apply the fix.</p>
 
+<details class="qbox" open>
+  <summary>SSH: "Connection timed out" (was working before, suddenly isn't)</summary>
+  <p><strong>Cause:</strong> the security group's SSH rule only allows a specific source IP, and that IP changed (your
+  ISP/location changed) — <em>not</em> that the server's own IP changed (an Elastic IP never changes once attached).</p>
+  <p><strong>Fix:</strong> EC2 → Security Groups → edit the SSH inbound rule → update the source to your current IP. Or
+  use <strong>EC2 → Connect → EC2 Instance Connect</strong> in the browser as a no-security-group-change fallback.</p>
+</details>
+
+<details class="qbox">
+  <summary>npm error ENOENT: "...frontend\\frontend\\package.json"</summary>
+  <p><strong>Cause:</strong> ran <code>npm --prefix frontend run build:admin</code> while <em>already inside</em> the
+  <code>frontend</code> directory — the <code>--prefix</code> path gets applied on top of the current directory.</p>
+  <p><strong>Fix:</strong> either run from the workspace root with <code>--prefix frontend</code>, or <code>cd frontend</code>
+  and run plain <code>npm run build:admin</code> — never both.</p>
+</details>
+
+<details class="qbox">
+  <summary>scp: "ssh: Could not resolve hostname http: No such host is known"</summary>
+  <p><strong>Cause:</strong> the destination was written with a URL scheme and/or trailing slash, e.g.
+  <code>ubuntu@http://1.2.3.4/</code>, which is not a valid SSH/SCP host.</p>
+  <p><strong>Fix:</strong> use a bare address only: <code>ubuntu@1.2.3.4:~/target-path</code> — no <code>http://</code>,
+  no <code>https://</code>, no trailing slash before the colon.</p>
+</details>
+
+<details class="qbox">
+  <summary>scp: "stat local ... No such file or directory" with a mangled path like "frontenddistadminbrowser"</summary>
+  <p><strong>Cause:</strong> a Windows-style backslash path (<code>frontend\\dist\\admin\\browser</code>) was typed/pasted
+  into a Linux/bash shell (i.e. run inside the SSH session on the server instead of on Windows) — bash doesn't treat
+  backslashes as path separators, so it reads the whole thing as one literal filename.</p>
+  <p><strong>Fix:</strong> <code>scp</code> for uploading <em>to</em> the server must run <strong>on your Windows
+  machine</strong>, using Windows-style backslash paths for the local side and a plain <code>user@host:path</code> for
+  the remote side. Never run an upload <code>scp</code> command from inside the SSH session.</p>
+</details>
+
+<details class="qbox">
+  <summary>Deployed a code fix, but the server keeps serving the OLD version no matter how many times you redeploy</summary>
+  <p><strong>Cause (confirmed root cause this migration):</strong> the remote staging folder (<code>~/admin-dist</code>)
+  already existed from an earlier upload. A second <code>scp -r ... ~/admin-dist</code> does not replace it — it nests
+  the new build one level deeper, at <code>~/admin-dist/browser/</code>, while the stale files stay directly in
+  <code>~/admin-dist/</code>. Every "copy into place" command then keeps grabbing the old files, silently, with no error.</p>
+  <p><strong>Fix:</strong> before every re-upload, wipe the staging folder first:</p>
+  <pre>ssh -i "C:\\path\\to\\your-key.pem" ubuntu@&lt;ELASTIC_IP&gt; "rm -rf ~/admin-dist"</pre>
+  <p>Then re-run the <code>scp -r</code> upload. Always verify with the hash check in Tab 10d before assuming a fix landed.</p>
+</details>
+
+<details class="qbox">
+  <summary>New Order page: Product typeahead shows nothing / Enter key does nothing / page feels "stuck"</summary>
+  <p><strong>Cause:</strong> almost always the browser (or the server itself, per the entry above) is still on an old
+  bundle. Because this app has offline/PWA support, a Service Worker can keep serving a cached old version even when
+  the server has the new one.</p>
+  <p><strong>Fix:</strong> confirm the server-side hash first (Tab 10d). If it's correct, force the browser to drop its
+  cache: DevTools → Application → Service Workers → Unregister, then Application → Storage → Clear site data, then hard
+  refresh (<span class="kbd">Ctrl+Shift+R</span>). Testing in a fresh Incognito window first is the fastest way to tell
+  cache-vs-real-bug apart, since Incognito starts with zero cache.</p>
+</details>
+
+<details class="qbox">
+  <summary>Can't create /etc/shifa/shifa.env — "Permission denied"</summary>
+  <p><strong>Cause:</strong> <code>/etc</code> is root-owned; the <code>ubuntu</code> user has no write access there.</p>
+  <p><strong>Fix:</strong> always use <code>sudo</code> — either <code>sudo mkdir -p /etc/shifa</code> then
+  <code>sudo nano /etc/shifa/shifa.env</code>, or the one-paste <code>sudo tee ... &lt;&lt;'ENV' ... ENV</code> heredoc
+  shown in Tab 7c.</p>
+</details>
+
+<details class="qbox">
+  <summary>ALTER TABLE ... AUTO_INCREMENT = 1 doesn't seem to do anything</summary>
+  <p><strong>Cause:</strong> MySQL refuses to set the counter below the current highest id still present in the table —
+  it silently no-ops if the table isn't actually empty.</p>
+  <p><strong>Fix:</strong> run <code>DELETE FROM the_table;</code> (with zero rows remaining) before the
+  <code>ALTER TABLE ... AUTO_INCREMENT = 1;</code>. See Tab 13c–13e for the full pattern including foreign-key ordering
+  and the two non-auto-increment sequence tables.</p>
+</details>
+
+<details class="qbox">
+  <summary>"Cannot delete or update a parent row: a foreign key constraint fails" while clearing data</summary>
+  <p><strong>Cause:</strong> trying to delete rows from a table that's still referenced by rows in another table (e.g.
+  deleting from <code>leads</code> while <code>lead_status_history</code> still has rows pointing at them).</p>
+  <p><strong>Fix:</strong> the error message names the referencing table — delete that child table's rows first, then
+  retry the parent. See the worked example in Tab 13d for the correct order for orders/leads.</p>
+</details>
+`);
+
+/* -------------------------------------------------------------------------- */
+addTab('cheatsheet', '15 · Cheat Sheet', `
+<h2>15. Quick reference — the whole thing, condensed</h2>
+<p>For when you already know this document and just need the commands. Replace every
+<code>&lt;PLACEHOLDER&gt;</code> before running. Full explanations for each step live in Tabs 1–13.</p>
+
+<div class="copybar"><button class="copybtn" data-copy>Copy</button></div>
+<pre><span class="c"># === 1-3. AWS console: launch t3.micro Ubuntu, 30GB gp3, SG (22=MyIP, 80/443=all) ===</span>
+<span class="c"># === Allocate + associate an Elastic IP. Create S3 bucket + IAM role, attach to instance. ===</span>
+
+<span class="c"># === 4. Connect (Windows) ===</span>
+icacls "&lt;PEM_PATH&gt;" /inheritance:r
+icacls "&lt;PEM_PATH&gt;" /grant:r "%USERNAME%:R"
+ssh -i "&lt;PEM_PATH&gt;" ubuntu@&lt;ELASTIC_IP&gt;
+
+<span class="c"># === 5. Base OS (on the server) ===</span>
+sudo fallocate -l 2G /swapfile &amp;&amp; sudo chmod 600 /swapfile &amp;&amp; sudo mkswap /swapfile &amp;&amp; sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+sudo apt-get update &amp;&amp; sudo apt-get upgrade -y
+sudo apt-get install -y openjdk-21-jre-headless mysql-server nginx unzip
+
+<span class="c"># === 6. Database ===</span>
+sudo mysql -e "CREATE DATABASE shifa_dashboard CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+  CREATE USER 'shifa'@'localhost' IDENTIFIED BY '&lt;DB_PASSWORD&gt;';
+  GRANT ALL PRIVILEGES ON shifa_dashboard.* TO 'shifa'@'localhost'; FLUSH PRIVILEGES;"
+
+<span class="c"># === 7. App env file ===</span>
+sudo mkdir -p /opt/shifa /var/www/shifa/admin /etc/shifa
+openssl rand -base64 48   <span class="c"># -> use as JWT_SECRET below</span>
+sudo tee /etc/shifa/shifa.env &gt;/dev/null &lt;&lt;'ENV'
+SPRING_PROFILES_ACTIVE=prod
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=shifa_dashboard
+DB_USERNAME=shifa
+DB_PASSWORD=&lt;DB_PASSWORD&gt;
+DB_POOL_SIZE=10
+JWT_SECRET=&lt;JWT_SECRET&gt;
+STORAGE_PROVIDER=S3
+STORAGE_S3_BUCKET=&lt;BUCKET_NAME&gt;
+STORAGE_S3_REGION=&lt;REGION&gt;
+MAX_UPLOAD_FILE_SIZE=10MB
+MAX_UPLOAD_REQUEST_SIZE=12MB
+PAYMENT_MODE=SANDBOX
+COURIER_MODE=MOCK
+WHATSAPP_MODE=MOCK
+MAIL_MODE=MOCK
+QUIKSHIPX_ENABLED=false
+JAVA_OPTS=-Xms256m -Xmx640m -XX:+UseSerialGC
+ENV
+sudo chmod 600 /etc/shifa/shifa.env
+
+<span class="c"># === 8. systemd service (paste the full unit from Tab 8, then:) ===</span>
+sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable shifa-oms
+
+<span class="c"># === 9. Nginx (paste the full site config from Tab 9, then:) ===</span>
+sudo ln -sf /etc/nginx/sites-available/shifa /etc/nginx/sites-enabled/shifa
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t &amp;&amp; sudo systemctl reload nginx
+
+<span class="c"># === 10. Build (on WINDOWS, from the workspace root) ===</span>
+mvn -f backend/pom.xml -DskipTests clean package
+npm --prefix frontend run build:admin
+
+<span class="c"># === 10. Upload (on WINDOWS) — ALWAYS wipe the staging dir first! ===</span>
+ssh -i "&lt;PEM_PATH&gt;" ubuntu@&lt;ELASTIC_IP&gt; "rm -rf ~/admin-dist"
+scp -i "&lt;PEM_PATH&gt;" backend\\target\\shifa-oms-0.0.1-SNAPSHOT.jar ubuntu@&lt;ELASTIC_IP&gt;:~/shifa-oms.jar
+scp -i "&lt;PEM_PATH&gt;" -r frontend\\dist\\admin\\browser ubuntu@&lt;ELASTIC_IP&gt;:~/admin-dist
+
+<span class="c"># === 10. Place + start (on the SERVER) ===</span>
+sudo cp ~/shifa-oms.jar /opt/shifa/shifa-oms.jar &amp;&amp; sudo chown shifa:shifa /opt/shifa/shifa-oms.jar
+sudo rm -rf /var/www/shifa/admin/* &amp;&amp; sudo cp -r ~/admin-dist/* /var/www/shifa/admin/
+sudo chown -R www-data:www-data /var/www/shifa/admin
+sudo systemctl restart shifa-oms
+sudo journalctl -u shifa-oms -f   <span class="c"># watch for "Started Application"</span>
+
+<span class="c"># === 11. Verify ===</span>
+curl -s -o /dev/null -w "%{http_code}\\n" http://localhost/
+curl -s -o /dev/null -w "%{http_code}\\n" http://localhost/api/states
+grep -o 'main-[A-Za-z0-9]*\\.js' /var/www/shifa/admin/index.html   <span class="c"># compare vs your local build</span>
+
+<span class="c"># === 12. HTTPS (optional, once a domain points here) ===</span>
+sudo snap install --classic certbot &amp;&amp; sudo ln -sf /snap/bin/certbot /usr/bin/certbot
+sudo certbot --nginx -d &lt;YOUR_DOMAIN&gt;</pre>
+
+<div class="tip">For the ongoing handover data-reset SQL and MySQL Workbench SSH-tunnel steps, use Tab 13 directly — that
+part is intentionally not condensed here since it depends on which tables you're clearing.</div>
+`);
+
+/* ==================================== render + tab logic ==================================== */
+const tabbar = document.getElementById('tabbar');
+const panels = document.getElementById('panels');
+
+TABS.forEach((t, i) => {
+  const btn = document.createElement('button');
+  btn.className = 'tab-btn' + (i === 0 ? ' active' : '');
+  btn.dataset.tab = t.id;
+  btn.innerHTML = '<span class="tab-num">' + (i + 1) + '</span>' + t.label;
+  btn.addEventListener('click', () => activate(t.id));
+  tabbar.appendChild(btn);
+
+  const panel = document.createElement('section');
+  panel.className = 'panel' + (i === 0 ? ' active' : '');
+  panel.id = 'panel-' + t.id;
+  panel.innerHTML = t.html;
+  panels.appendChild(panel);
+});
+
+function activate(id){
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + id));
+  try { localStorage.setItem('shifa-runbook-tab', id); } catch(e){}
+  window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+  const active = document.querySelector('.tab-btn.active');
+  if (active) active.scrollIntoView({ block: 'nearest', inline: 'center' });
+}
+
+/* Restore last-viewed tab (handy when this file is bookmarked/reopened later). */
+try {
+  const saved = localStorage.getItem('shifa-runbook-tab');
+  if (saved && TABS.some(t => t.id === saved)) activate(saved);
+} catch(e){}
+
+/* Copy-to-clipboard buttons on every <pre> that has one. */
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-copy]');
+  if (!btn) return;
+  const pre = btn.closest('pre') ? btn.closest('pre') : btn.parentElement.nextElementSibling;
+  const target = pre && pre.tagName === 'PRE' ? pre : btn.nextElementSibling;
+  if (!target) return;
+  const text = target.innerText.replace(/^Copy\\n?/, '');
+  navigator.clipboard?.writeText(text).then(() => {
+    const old = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => (btn.textContent = old), 1200);
+  }).catch(() => {});
+});
+</script>
+
+<div class="wrap">
   <footer>
-    Shifa OMS · New-account Free-Tier setup runbook · prepared by Weblithic.<br/>
-    Ask me to generate <code>handover-clean.sql</code> (Step&nbsp;14) and a <code>push-to-newbox.ps1</code> deploy wrapper once the Elastic IP + key path are ready.
+    Shifa OMS · EC2 Free-Tier setup &amp; migration runbook · maintained by Weblithic.<br/>
+    Last major update: full rewrite with tab navigation, real deploy/troubleshooting lessons from the
+    Admin-Weblithic (226635093151) account migration, and the handover data-reset procedure.
   </footer>
 </div>
 </body>

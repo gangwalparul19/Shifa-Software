@@ -48,8 +48,8 @@ public class QuikShipXController {
      */
     @GetMapping("/track")
     @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','TEAM_LEAD','PACKING_USER')")
-    public QuikShipXService.TrackView track(@PathVariable Long orderId) {
-        return quikShipXService.trackLive(orderId);
+    public QuikShipXService.TrackView track(@PathVariable String awbId) {
+        return quikShipXService.trackLive(awbId);
     }
 
     /** The QuikShipX shipment mirror for an order (404 when not yet published). */

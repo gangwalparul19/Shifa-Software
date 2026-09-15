@@ -104,10 +104,10 @@ public class QuikShipXService {
      * @throws ResourceNotFoundException when the order has no QuikShipX shipment
      */
     @Transactional
-    public TrackView trackLive(Long orderId) {
-        OrderShipment shipment = shipmentRepository.findByOrderId(orderId)
+    public TrackView trackLive(String awbId) {
+        OrderShipment shipment = shipmentRepository.findByAwb(awbId)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "Order " + orderId + " has no QuikShipX shipment yet."));
+                        "AWB " + awbId + " has no QuikShipX shipment yet."));
         // Track through QuikShipX by THEIR order id (tracking_type=order_id) — the
         // partner's own tracking key. It is stored from create-order (available
         // before an AWB is allotted), and we do not track with any carrier directly.
