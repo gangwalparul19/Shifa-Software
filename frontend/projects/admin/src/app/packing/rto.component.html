@@ -1,0 +1,155 @@
+<admin-page-header
+  title="Mark RTO"
+  subtitle="Scan a returned parcel's order barcode, choose a reason, and mark it returned to origin."
+  [breadcrumbs]="[{ label: 'Packing', link: '/packing' }, { label: 'Mark RTO' }]"
+/>
+
+<!-- Hero: the scan box — the primary action of the page -->
+<div class="card card-hover mb-3 pk-hero shifa-touch">
+  <div class="card-body">
+    <form [formGroup]="form" (ngSubmit)="submit()">
+      <div class="pk-hero__top">
+        <span class="pk-hero__icon"><i class="ti ti-rotate-2"></i></span>
+        <div class="pk-hero__field">
+          <label class="form-label mb-1" for="rtoBarcode">Scan or type the order barcode</label>
+          <input
+            #barcodeInput
+            id="rtoBarcode"
+            class="form-control form-control-lg shifa-barcode"
+            type="text"
+            formControlName="barcode"
+            placeholder="e.g. SHR-5012"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            [attr.aria-invalid]="form.controls.barcode.touched && form.controls.barcode.invalid"
+          />
+        </div>
+      </div>
+      <div class="pk-hero__btns">
+        <button
+          type="button"
+          class="btn btn-primary btn-lg pk-hero__scan"
+          (click)="openCamera()"
+          [disabled]="submitting() || pendingPreview() !== null"
+        >
+          @if (submitting()) {
+            <span class="spinner-border spinner-border-sm me-2"></span> Looking up order…
+          } @else {
+            <i class="ti ti-scan me-1"></i> Scan order
+          }
+        </button>
+      </div>
+      <p class="text-secondary small m-0 mt-2">
+        <i class="ti ti-info-circle me-1"></i>
+        Tap Scan order to use the camera. A handheld scanner or manual entry can use this field, then press Enter.
+      </p>
+    </form>
+  </div>
+</div>
+
+@if (cameraOpen()) {
+  <admin-camera-scanner (scanned)="onCameraScanned($event)" (closed)="closeCamera()" />
+}
+
+<!-- Confirmation modal: order details + required reason + optional note -->
+@if (pendingPreview(); as preview) {
+  <div class="pk-modal-backdrop" (click)="cancelPreview()">
+    <div class="card pk-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="rtoPreviewTitle">
+      <div class="card-header py-2">
+        <h3 id="rtoPreviewTitle" class="card-title mb-0"><i class="ti ti-rotate-2 me-2"></i>Mark RTO</h3>
+      </div>
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+          <div>
+            <div class="shifa-mono fw-bold">{{ preview.order.orderCode }}</div>
+            <div class="text-secondary small">Order #{{ preview.order.id }} · {{ preview.order.customerName }}</div>
+            <div class="text-secondary small">{{ preview.order.customerMobile }}</div>
+          </div>
+          <admin-status-badge [status]="preview.order.orderStatus" />
+        </div>
+
+        @if (!preview.eligible) {
+          <div class="alert alert-secondary mb-0">
+            <i class="ti ti-alert-triangle me-2"></i>
+            {{ preview.message }}
+          </div>
+        } @else {
+          <form [formGroup]="reasonForm">
+            <div class="mb-3">
+              <label class="form-label required" for="rtoReason">Reason</label>
+              <select
+                id="rtoReason"
+                class="form-select"
+                formControlName="reason"
+                [class.is-invalid]="reasonForm.controls.reason.touched && reasonForm.controls.reason.invalid"
+              >
+                <option value="" disabled>Choose a reason…</option>
+                @for (opt of reasonOptions; track opt.value) {
+                  <option [value]="opt.value">{{ opt.label }}</option>
+                }
+              </select>
+              @if (reasonForm.controls.reason.touched && reasonForm.controls.reason.invalid) {
+                <div class="invalid-feedback">A reason is required.</div>
+              }
+            </div>
+            <div class="mb-1">
+              <label class="form-label" for="rtoNote">Notes <span class="text-secondary">(optional)</span></label>
+              <textarea
+                id="rtoNote"
+                class="form-control"
+                formControlName="note"
+                rows="2"
+                maxlength="500"
+                placeholder="Any extra detail…"
+              ></textarea>
+            </div>
+          </form>
+        }
+      </div>
+      <div class="card-footer d-flex gap-2 justify-content-end py-2">
+        <button type="button" class="btn btn-link" (click)="cancelPreview()">
+          {{ preview.eligible ? 'Cancel' : 'Close' }}
+        </button>
+        @if (preview.eligible) {
+          <button type="button" class="btn btn-danger" (click)="confirmMarkRto()" [disabled]="marking()">
+            @if (marking()) {
+              <span class="spinner-border spinner-border-sm me-1"></span> Marking…
+            } @else {
+              <i class="ti ti-check me-1"></i> Confirm RTO
+            }
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Running scan log -->
+@if (log().length > 0) {
+  <div class="card">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+      <h3 class="card-title mb-0">Recent scans</h3>
+      <button type="button" class="btn btn-sm btn-link" (click)="clearLog()">Clear</button>
+    </div>
+    <div class="list-group list-group-flush">
+      @for (entry of log(); track entry.at) {
+        <div class="list-group-item d-flex justify-content-between align-items-start gap-2">
+          <div class="min-w-0">
+            <div class="shifa-mono fw-medium">{{ entry.barcode }}</div>
+            <div class="text-secondary small">{{ entry.message }}</div>
+          </div>
+          <span
+            class="badge"
+            [class.bg-danger-lt]="entry.outcome === 'marked'"
+            [class.bg-yellow-lt]="entry.outcome === 'not-eligible'"
+            [class.bg-secondary-lt]="entry.outcome === 'not-recognized'"
+            [class.bg-red-lt]="entry.outcome === 'error'"
+          >
+            {{ entry.outcome.replace('-', ' ') }}
+          </span>
+        </div>
+      }
+    </div>
+  </div>
+}

@@ -14,6 +14,7 @@ import com.shifa.oms.order.dto.CreateOrderRequest;
 import com.shifa.oms.order.dto.DuplicateCheckResponse;
 import com.shifa.oms.order.dto.LineItemRequest;
 import com.shifa.oms.order.dto.OrderResponse;
+import com.shifa.oms.order.dto.UpdateOrderRequest;
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
@@ -44,6 +45,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -132,7 +134,7 @@ class OrderServiceTest {
         // payment/creation edge-case tests use WHATSAPP with no note/email.
         return new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
                 "Pune", "Maharashtra", "411001", items, amountReceived, screenshotKey,
-                LeadSource.WHATSAPP, null, null, null, null, null, null, null);
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null);
     }
 
     // --- Order total round-off to nearest rupee (product-audit §4.6) --------
@@ -208,7 +210,7 @@ class OrderServiceTest {
         CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
                 "Pune", "Maharashtra", "411001",
                 List.of(new LineItemRequest(1L, 1, null)), BigDecimal.ZERO, null,
-                LeadSource.WHATSAPP, null, null, null, "9800011122", null, null, null);
+                LeadSource.WHATSAPP, null, null, null, "9800011122", null, null, null, null);
 
         OrderResponse response = service.createSalespersonOrder(request, salesperson);
 
@@ -461,5 +463,125 @@ class OrderServiceTest {
         OrderResponse response = service.getOrder(12L, admin);
 
         assertThat(response.discountAmount()).isEqualByComparingTo("0.00");
+    }
+
+    // --- Admin edit-order (edit-order feature) ------------------------------
+
+    /** Builds an editable (PENDING_ADMIN_APPROVAL) order with one line for product 1. */
+    private OrderEntity editableOrder(long id, OrderStatus status, int quantity, String rate) {
+        OrderEntity order = new OrderEntity("SHR-000200", OrderSource.SALESPERSON, 5L,
+                "Asha", "9812345678", "12 MG Road", "Pune", "Maharashtra", "411001");
+        BigDecimal r = new BigDecimal(rate);
+        BigDecimal lineTotal = r.multiply(BigDecimal.valueOf(quantity));
+        order.addLineItem(new OrderLineItem(1L, "Product 1", quantity, r, lineTotal));
+        order.applyAmounts(lineTotal, BigDecimal.ZERO, lineTotal, lineTotal, PaymentStatus.COD);
+        order.setLeadSource(LeadSource.WHATSAPP);
+        order.setOrderStatus(status);
+        ReflectionTestUtils.setField(order, "id", id);
+        return order;
+    }
+
+    private UpdateOrderRequest updateRequest(List<LineItemRequest> items) {
+        return new UpdateOrderRequest("Asha Corrected", "9812345678", null, null,
+                "12 MG Road", "Pune", "Maharashtra", "411001",
+                items, LeadSource.WHATSAPP, null, null, null, null, null);
+    }
+
+    @Test
+    void updateOrderRepricesItemsAndOverwritesCustomerDetails() {
+        OrderEntity order = editableOrder(20L, OrderStatus.PENDING_ADMIN_APPROVAL, 1, "100.00");
+        when(orderRepository.findById(20L)).thenReturn(Optional.of(order));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "100.00")));
+
+        UpdateOrderRequest request = updateRequest(List.of(new LineItemRequest(1L, 3, null)));
+
+        OrderResponse response = service.updateOrder(20L, request, admin);
+
+        assertThat(response.customerName()).isEqualTo("Asha Corrected");
+        assertThat(response.totalAmount()).isEqualByComparingTo("300.00");
+        assertThat(response.items()).hasSize(1);
+        assertThat(response.items().get(0).quantity()).isEqualTo(3);
+    }
+
+    @Test
+    void updateOrderRejectedOncePastEditableStatuses() {
+        OrderEntity order = editableOrder(21L, OrderStatus.LABEL_GENERATED, 1, "100.00");
+        when(orderRepository.findById(21L)).thenReturn(Optional.of(order));
+
+        UpdateOrderRequest request = updateRequest(List.of(new LineItemRequest(1L, 1, null)));
+
+        assertThatThrownBy(() -> service.updateOrder(21L, request, admin))
+                .isInstanceOf(OrderNotEditableException.class);
+        // Left completely unchanged.
+        assertThat(order.getCustomerName()).isEqualTo("Asha");
+        verify(productRepository, org.mockito.Mockito.never()).findById(any());
+    }
+
+    @Test
+    void updateOrderAllowedWhileApproved() {
+        OrderEntity order = editableOrder(22L, OrderStatus.APPROVED, 1, "100.00");
+        when(orderRepository.findById(22L)).thenReturn(Optional.of(order));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "150.00")));
+
+        UpdateOrderRequest request = updateRequest(List.of(new LineItemRequest(1L, 1, null)));
+
+        OrderResponse response = service.updateOrder(22L, request, admin);
+
+        assertThat(response.orderStatus()).isEqualTo(OrderStatus.APPROVED);
+        assertThat(response.totalAmount()).isEqualByComparingTo("150.00");
+    }
+
+    @Test
+    void updateOrderRejectsInvalidBuyerGstin() {
+        OrderEntity order = editableOrder(23L, OrderStatus.PENDING_ADMIN_APPROVAL, 1, "100.00");
+        when(orderRepository.findById(23L)).thenReturn(Optional.of(order));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "100.00")));
+
+        UpdateOrderRequest request = new UpdateOrderRequest("Asha Corrected", "9812345678", null, null,
+                "12 MG Road", "Pune", "Maharashtra", "411001",
+                List.of(new LineItemRequest(1L, 1, null)), LeadSource.WHATSAPP, null, null,
+                "NOT-A-GSTIN", null, null);
+
+        assertThatThrownBy(() -> service.updateOrder(23L, request, admin))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("GSTIN");
+    }
+
+    @Test
+    void updateOrderReconcilesTrackedStockForQuantityIncrease() {
+        // Original order had 2 units of a tracked product; edit bumps to 5, so the
+        // ledger must consume 3 more units.
+        OrderEntity order = editableOrder(24L, OrderStatus.PENDING_ADMIN_APPROVAL, 2, "50.00");
+        when(orderRepository.findById(24L)).thenReturn(Optional.of(order));
+        Product tracked = product(1L, "50.00");
+        tracked.setTrackInventory(true);
+        tracked.setStockQuantity(10);
+        ReflectionTestUtils.setField(tracked, "id", 1L);
+        when(productRepository.findById(1L)).thenReturn(Optional.of(tracked));
+
+        UpdateOrderRequest request = updateRequest(List.of(new LineItemRequest(1L, 5, null)));
+
+        service.updateOrder(24L, request, admin);
+
+        // 10 on-hand − 3 additional consumed = 7.
+        assertThat(tracked.getStockQuantity()).isEqualTo(7);
+    }
+
+    @Test
+    void updateOrderReturnsTrackedStockForQuantityDecrease() {
+        OrderEntity order = editableOrder(25L, OrderStatus.PENDING_ADMIN_APPROVAL, 5, "50.00");
+        when(orderRepository.findById(25L)).thenReturn(Optional.of(order));
+        Product tracked = product(1L, "50.00");
+        tracked.setTrackInventory(true);
+        tracked.setStockQuantity(3);
+        ReflectionTestUtils.setField(tracked, "id", 1L);
+        when(productRepository.findById(1L)).thenReturn(Optional.of(tracked));
+
+        UpdateOrderRequest request = updateRequest(List.of(new LineItemRequest(1L, 2, null)));
+
+        service.updateOrder(25L, request, admin);
+
+        // 3 on-hand + 3 returned (5 old - 2 new) = 6.
+        assertThat(tracked.getStockQuantity()).isEqualTo(6);
     }
 }

@@ -60,6 +60,15 @@ public class OrderEntity {
     private OrderSource source;
 
     /**
+     * How this order is fulfilled for last-mile delivery — QuikShipX (default) or
+     * Shifa's own in-house team. Distinct from {@link #source}. Mapped to
+     * {@code orders.delivery_method} (V60).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "delivery_method", nullable = false, length = 20)
+    private DeliveryMethod deliveryMethod = DeliveryMethod.QUIKSHIPX;
+
+    /**
      * The origin channel of the lead (Req 4.1-4.4), distinct from {@link #source}.
      * Nullable at the column level so seeded/pre-existing rows stay valid and
      * report as {@code UNSPECIFIED}; required at the service/DTO layer for new
@@ -191,6 +200,20 @@ public class OrderEntity {
     private String rejectionReason;
 
     /**
+     * The categorized reason this order was marked RTO when done manually by a
+     * packer/admin scanning the label (label redesign feature); null for orders
+     * that were never RTO'd, or RTO'd automatically via the courier webhook/poll
+     * path (which does not set a reason). Mapped to {@code orders.rto_reason} (V61).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "rto_reason", length = 30)
+    private RtoReason rtoReason;
+
+    /** Optional free-text note accompanying {@link #rtoReason} (mainly for {@code OTHER}). */
+    @Column(name = "rto_reason_note", length = 500)
+    private String rtoReasonNote;
+
+    /**
      * Who the packed order was handed to at the handover step (courier person /
      * agency name) and an optional phone (product-audit §4.3). Nullable; mapped
      * to {@code orders.handover_name}/{@code handover_phone} (V40).
@@ -278,6 +301,17 @@ public class OrderEntity {
         this.lineItems.add(item);
     }
 
+    /**
+     * Replaces every line item with the given list (admin edit-order feature):
+     * clears the existing lines — {@code orphanRemoval = true} on the mapping
+     * deletes the old rows on flush — then adds the new ones, exactly like
+     * removing then re-adding via {@link #addLineItem}.
+     */
+    public void replaceLineItems(List<OrderLineItem> newLines) {
+        this.lineItems.clear();
+        this.lineItems.addAll(newLines);
+    }
+
     /** Adds a payment capture row to the aggregate. */
     public void addPayment(OrderPayment payment) {
         this.payments.add(payment);
@@ -331,6 +365,20 @@ public class OrderEntity {
     /** Stores the admin's rejection reason when an order is rejected (Req 9.4). */
     public void setRejectionReason(String rejectionReason) {
         this.rejectionReason = rejectionReason;
+    }
+
+    public RtoReason getRtoReason() {
+        return rtoReason;
+    }
+
+    public String getRtoReasonNote() {
+        return rtoReasonNote;
+    }
+
+    /** Records why this order was manually marked RTO (label redesign feature). */
+    public void setRtoReason(RtoReason rtoReason, String rtoReasonNote) {
+        this.rtoReason = rtoReason;
+        this.rtoReasonNote = rtoReasonNote;
     }
 
     public String getHandoverName() {
@@ -406,6 +454,20 @@ public class OrderEntity {
         return source;
     }
 
+    public DeliveryMethod getDeliveryMethod() {
+        return deliveryMethod == null ? DeliveryMethod.QUIKSHIPX : deliveryMethod;
+    }
+
+    /** Sets the delivery method (defaults to QUIKSHIPX when null, e.g. legacy rows). */
+    public void setDeliveryMethod(DeliveryMethod deliveryMethod) {
+        this.deliveryMethod = deliveryMethod == null ? DeliveryMethod.QUIKSHIPX : deliveryMethod;
+    }
+
+    /** Whether this order is flagged for in-house (non-QuikShipX) delivery. */
+    public boolean isInHouseDelivery() {
+        return getDeliveryMethod() == DeliveryMethod.IN_HOUSE;
+    }
+
     public LeadSource getLeadSource() {
         return leadSource;
     }
@@ -456,8 +518,18 @@ public class OrderEntity {
         return customerName;
     }
 
+    /** Corrects the customer name (admin edit-order feature — fixes salesperson entry errors). */
+    public void setCustomerName(String customerName) {
+        this.customerName = customerName;
+    }
+
     public String getCustomerMobile() {
         return customerMobile;
+    }
+
+    /** Corrects the customer mobile number (admin edit-order feature). */
+    public void setCustomerMobile(String customerMobile) {
+        this.customerMobile = customerMobile;
     }
 
     public String getAlternateMobile() {
@@ -482,16 +554,36 @@ public class OrderEntity {
         return addressLine;
     }
 
+    /** Corrects the shipping address line (admin edit-order feature). */
+    public void setAddressLine(String addressLine) {
+        this.addressLine = addressLine;
+    }
+
     public String getCity() {
         return city;
+    }
+
+    /** Corrects the shipping city (admin edit-order feature). */
+    public void setCity(String city) {
+        this.city = city;
     }
 
     public String getState() {
         return state;
     }
 
+    /** Corrects the shipping state (admin edit-order feature). */
+    public void setState(String state) {
+        this.state = state;
+    }
+
     public String getPostalCode() {
         return postalCode;
+    }
+
+    /** Corrects the shipping postal code (admin edit-order feature). */
+    public void setPostalCode(String postalCode) {
+        this.postalCode = postalCode;
     }
 
     public BigDecimal getTotalAmount() {

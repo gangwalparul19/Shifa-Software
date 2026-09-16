@@ -139,6 +139,9 @@ export interface LeadConvertRequest {
   discountType?: 'FLAT' | 'PERCENT';
   /** The raw discount value entered (rupee amount for FLAT, percent for PERCENT). */
   discountValue?: number;
+  /** Per-order delivery method carried to the created order — always IN_HOUSE at
+   *  order entry; the admin picks/overrides the delivery partner at approval. */
+  deliveryMethod?: 'QUIKSHIPX' | 'IN_HOUSE';
 }
 
 /** Filters for the scoped lead list (`GET /api/leads`). */

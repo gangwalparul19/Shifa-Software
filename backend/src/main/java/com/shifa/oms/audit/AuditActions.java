@@ -17,6 +17,10 @@ public final class AuditActions {
 
     public static final String ORDER_APPROVED = "ORDER_APPROVED";
     public static final String ORDER_REJECTED = "ORDER_REJECTED";
+    /** An admin corrected the order's customer/address/items/discount/notes (edit-order feature). */
+    public static final String ORDER_UPDATED = "ORDER_UPDATED";
+    /** A packer/admin manually marked an order RTO by scanning its label (label redesign feature). */
+    public static final String ORDER_MARKED_RTO = "ORDER_MARKED_RTO";
     /** Payment authenticity verification decisions (product-audit §4.4). */
     public static final String PAYMENT_VERIFIED = "PAYMENT_VERIFIED";
     public static final String PAYMENT_REJECTED = "PAYMENT_REJECTED";

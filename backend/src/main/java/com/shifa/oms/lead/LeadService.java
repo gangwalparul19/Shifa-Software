@@ -72,13 +72,19 @@ public class LeadService {
     private final OrderService orderService;
     private final Clock clock;
 
-    /** Production constructor (Spring): uses the system UTC clock for "today". */
+    /**
+     * Production constructor (Spring): uses the system default-zone clock for
+     * "today" (Req: business runs entirely in IST — the app pins the JVM default
+     * zone to Asia/Kolkata at startup, {@code Application.main}). Was
+     * {@code Clock.systemUTC()}, which is immune to that pin and would compute
+     * "today"/due-follow-ups a fixed 5.5h off from the IST business day.
+     */
     @Autowired
     public LeadService(LeadRepository leadRepository,
                        SalespersonScopeResolver scopeResolver,
                        AuditService auditService,
                        OrderService orderService) {
-        this(leadRepository, scopeResolver, auditService, orderService, Clock.systemUTC());
+        this(leadRepository, scopeResolver, auditService, orderService, Clock.systemDefaultZone());
     }
 
     /** Test constructor with an injected clock (deterministic due-follow-up "today"). */
@@ -316,7 +322,8 @@ public class LeadService {
                 null,
                 request.discountType(),
                 request.discountValue(),
-                null);
+                null,
+                request.deliveryMethod());
 
         // Same transaction: a failure here rolls the whole convert back (Req 4.4).
         OrderResponse order = orderService.createSalespersonOrder(orderRequest, actor);

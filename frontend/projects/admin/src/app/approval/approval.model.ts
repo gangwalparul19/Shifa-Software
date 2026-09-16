@@ -32,6 +32,12 @@ export interface ApprovalQueueItem {
   paymentScreenshotAvailable: boolean;
   items: ApprovalLineItem[];
   createdAt?: string;
+  /**
+   * The order's current delivery method (defaults to IN_HOUSE at order entry).
+   * Shown/editable in the review drawer so the admin can pick/override the
+   * delivery partner as part of approving (in-house-delivery feature).
+   */
+  deliveryMethod?: 'QUIKSHIPX' | 'IN_HOUSE';
 }
 
 /**

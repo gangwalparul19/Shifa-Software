@@ -7,9 +7,11 @@ import { AdminShellComponent } from './shell/admin-shell.component';
 import { ApprovalQueueComponent } from './approval/approval-queue.component';
 import { OrdersComponent } from './orders/orders.component';
 import { NewOrderComponent } from './orders/new-order.component';
+import { EditOrderComponent } from './orders/edit-order.component';
 import { ProductsComponent } from './products/products.component';
 import { InventoryComponent } from './inventory/inventory.component';
 import { ScanComponent } from './packing/scan.component';
+import { RtoComponent } from './packing/rto.component';
 import { ReconciliationComponent } from './reconciliation/reconciliation.component';
 import { ReportsComponent } from './reports/reports.component';
 import { SettingsComponent } from './settings/settings.component';
@@ -202,6 +204,15 @@ export const routes: Routes = [
         canActivate: [orderEntryGuard],
       },
       {
+        // Admin edit-order (edit-order feature): corrects the details a
+        // salesperson entered. ADMIN-only, mirrors PUT /api/admin/orders/{id}.
+        // Registered before the all-orders view; the server enforces the same
+        // role + editable-status restriction (409 once fulfilment has begun).
+        path: 'orders/:id/edit',
+        component: EditOrderComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
         // All-orders view; any staff may reach it (the backend scopes a
         // salesperson to their own orders, Req 5.5, 22.1).
         path: 'orders',
@@ -301,6 +312,13 @@ export const routes: Routes = [
       {
         path: 'packing',
         component: ScanComponent,
+        canActivate: [packingGuard],
+      },
+      {
+        // RTO (returned to origin) scan page (label redesign feature): scan a
+        // returned parcel's order barcode, choose a reason, mark it RTO.
+        path: 'packing/rto',
+        component: RtoComponent,
         canActivate: [packingGuard],
       },
       {

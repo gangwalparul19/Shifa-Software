@@ -9,10 +9,13 @@ import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderSource;
 import com.shifa.oms.order.OrderWorkflowService;
+import com.shifa.oms.order.RtoReason;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.packing.dto.HandoverRequest;
+import com.shifa.oms.packing.dto.MarkRtoRequest;
 import com.shifa.oms.packing.dto.PackingScanResponse;
+import com.shifa.oms.packing.dto.RtoScanPreviewResponse;
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
@@ -236,5 +239,70 @@ class PackingServiceTest {
     @Test
     void newOrderDefaultsToSinglePackage() {
         assertThat(orderIn(OrderStatus.LABEL_GENERATED).getPackageCount()).isEqualTo(1);
+    }
+
+    // --- Manual RTO marking (label redesign feature) ------------------------
+
+    @Test
+    void rtoPreviewReportsEligibleForInTransitOrder() {
+        OrderEntity order = orderIn(OrderStatus.COURIER_ASSIGNED);
+        when(orderRepository.findByOrderCode("SHR-000123")).thenReturn(Optional.of(order));
+
+        RtoScanPreviewResponse preview = service.rtoPreview("SHR-000123");
+
+        assertThat(preview.eligible()).isTrue();
+        assertThat(preview.order().orderCode()).isEqualTo("SHR-000123");
+    }
+
+    @Test
+    void rtoPreviewReportsIneligibleForPendingOrder() {
+        OrderEntity order = orderIn(OrderStatus.PENDING_ADMIN_APPROVAL);
+        when(orderRepository.findByOrderCode("SHR-000123")).thenReturn(Optional.of(order));
+
+        RtoScanPreviewResponse preview = service.rtoPreview("SHR-000123");
+
+        assertThat(preview.eligible()).isFalse();
+    }
+
+    @Test
+    void rtoPreviewUnknownBarcodeIsNotRecognized() {
+        when(orderRepository.findByOrderCode("NOPE-1")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.rtoPreview("NOPE-1"))
+                .isInstanceOf(BarcodeNotRecognizedException.class);
+    }
+
+    @Test
+    void markRtoTransitionsAndRecordsReason() {
+        OrderEntity order = orderIn(OrderStatus.OUT_FOR_DELIVERY);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+        OrderResponse response = service.markRto(
+                1L, new MarkRtoRequest(RtoReason.CUSTOMER_UNAVAILABLE, "Called twice, no answer"), PACKER);
+
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.RTO);
+        assertThat(order.getRtoReason()).isEqualTo(RtoReason.CUSTOMER_UNAVAILABLE);
+        assertThat(order.getRtoReasonNote()).isEqualTo("Called twice, no answer");
+        assertThat(response.orderStatus()).isEqualTo(OrderStatus.RTO);
+        assertThat(order.getStatusHistory()).hasSize(1);
+        assertThat(order.getStatusHistory().get(0).getToStatus()).isEqualTo(OrderStatus.RTO);
+    }
+
+    @Test
+    void markRtoRejectedWhenNotInAnEligibleStatus() {
+        OrderEntity order = orderIn(OrderStatus.PENDING_ADMIN_APPROVAL);
+        when(orderRepository.findById(2L)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.markRto(
+                2L, new MarkRtoRequest(RtoReason.OTHER, null), PACKER))
+                .isInstanceOf(OrderNotRtoEligibleException.class)
+                .satisfies(ex -> assertThat(((OrderNotRtoEligibleException) ex).getCurrentStatus())
+                        .isEqualTo(OrderStatus.PENDING_ADMIN_APPROVAL));
+
+        // Order left completely unchanged.
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PENDING_ADMIN_APPROVAL);
+        assertThat(order.getRtoReason()).isNull();
+        assertThat(order.getStatusHistory()).isEmpty();
+        verify(orderRepository, never()).save(any(OrderEntity.class));
     }
 }

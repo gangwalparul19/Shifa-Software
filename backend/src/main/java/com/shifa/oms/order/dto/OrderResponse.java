@@ -1,5 +1,6 @@
 package com.shifa.oms.order.dto;
 
+import com.shifa.oms.order.DeliveryMethod;
 import com.shifa.oms.order.LeadSource;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
@@ -32,6 +33,7 @@ public record OrderResponse(
         Long id,
         String orderCode,
         OrderSource source,
+        DeliveryMethod deliveryMethod,
         LeadSource leadSource,
         String leadSourceNote,
         String customerEmail,
@@ -81,7 +83,11 @@ public record OrderResponse(
         String quikShipXStatus,
         String quikShipXLabelUrl,
         String quikShipXOrderId,
-        boolean quikShipXTest
+        boolean quikShipXTest,
+        // The admin's reason for rejecting the order (Req 9.4); null unless the
+        // order's status is REJECTED, so the salesperson can see why on the
+        // order-detail view and rework it.
+        String rejectionReason
 ) {
 
     /**
@@ -171,6 +177,7 @@ public record OrderResponse(
                 order.getId(),
                 order.getOrderCode(),
                 order.getSource(),
+                order.getDeliveryMethod(),
                 order.getLeadSource(),
                 order.getLeadSourceNote(),
                 order.getCustomerEmail(),
@@ -209,7 +216,8 @@ public record OrderResponse(
                 null,
                 null,
                 null,
-                false);
+                false,
+                order.getRejectionReason());
     }
 
     /**
@@ -219,13 +227,13 @@ public record OrderResponse(
     public OrderResponse withQuikShip(String quikShipXStatus, String quikShipXLabelUrl,
                                       String quikShipXOrderId, boolean quikShipXTest) {
         return new OrderResponse(
-                id, orderCode, source, leadSource, leadSourceNote, customerEmail, notes, orderStatus,
+                id, orderCode, source, deliveryMethod, leadSource, leadSourceNote, customerEmail, notes, orderStatus,
                 paymentStatus, customerName, customerMobile, alternateMobile, addressLine, city, state,
                 postalCode, totalAmount, amountReceived, remainingAmount, codAmount, customerOutstanding,
                 couponCode, discountAmount, paymentScreenshotAvailable, items, createdAt, awb, courierName,
                 trackingUrl, estimatedDelivery, handoverName, packageCount, paymentVerificationStatus,
                 subtotalAmount, gstAmount, discountType, discountValue, buyerGstin,
-                quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest);
+                quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest, rejectionReason);
     }
 
     /**
@@ -238,6 +246,7 @@ public record OrderResponse(
                 id,
                 orderCode,
                 source,
+                deliveryMethod,
                 leadSource,
                 leadSourceNote,
                 customerEmail,
@@ -276,6 +285,7 @@ public record OrderResponse(
                 quikShipXStatus,
                 quikShipXLabelUrl,
                 quikShipXOrderId,
-                quikShipXTest);
+                quikShipXTest,
+                rejectionReason);
     }
 }

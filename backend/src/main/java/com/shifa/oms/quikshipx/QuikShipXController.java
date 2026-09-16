@@ -41,15 +41,17 @@ public class QuikShipXController {
 
     /**
      * Live tracking for an order: fetches the current QuikShipX status + scan
-     * timeline from {@code track-order}, mirrors the status onto the shipment, and
-     * applies the mapped internal transition (idempotent). Viewable by any
-     * order-handling staff. Returns an empty timeline with a message when the
-     * shipment is not yet trackable.
+     * timeline from {@code track-order} (by the order's AWB — the confirmed-working
+     * key once a tracking id is allotted, falling back to QuikShipX's own order id
+     * before that), mirrors the status onto the shipment, and applies the mapped
+     * internal transition (idempotent). Viewable by any order-handling staff.
+     * Returns an empty timeline with a message when the shipment is not yet
+     * trackable.
      */
     @GetMapping("/track")
     @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','TEAM_LEAD','PACKING_USER')")
-    public QuikShipXService.TrackView track(@PathVariable String awbId) {
-        return quikShipXService.trackLive(awbId);
+    public QuikShipXService.TrackView track(@PathVariable Long orderId) {
+        return quikShipXService.trackLive(orderId);
     }
 
     /** The QuikShipX shipment mirror for an order (404 when not yet published). */

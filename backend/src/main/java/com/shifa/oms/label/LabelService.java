@@ -57,12 +57,21 @@ public class LabelService {
     private final com.shifa.oms.settings.CompanyLogoService companyLogoService;
     private final com.shifa.oms.settings.SettingsService settingsService;
     /**
-     * QuikShipX shipment mirror (nullable): supplies the QuikShipX order id to
-     * encode in the label barcode so the courier partner scans THEIR order id.
-     * Null in the lightweight test constructors → the barcode falls back to our
-     * order code.
+     * QuikShipX shipment mirror (nullable): supplies the courier name + AWB
+     * (tracking number) to render as the label's courier barcode once QuikShipX
+     * has allotted a tracking id, so the courier team scans the label at
+     * pickup and it resolves straight to the AWB in their own system. Null in
+     * the lightweight test constructors → the courier barcode section is simply
+     * omitted (only the order barcode renders).
      */
     private final com.shifa.oms.quikshipx.OrderShipmentRepository orderShipmentRepository;
+    /**
+     * Generic/in-house courier record (nullable): the fallback courier + AWB
+     * source for non-QuikShipX orders (Req 10.1). Null in the lightweight test
+     * constructors.
+     */
+    private final com.shifa.oms.courier.CourierRecordRepository courierRecordRepository;
+    private final com.shifa.oms.courier.CourierCompanyRepository courierCompanyRepository;
     private final LabelContentBuilder contentBuilder;
     private final LabelPdfRenderer pdfRenderer;
     private final OrderStatusStateMachine stateMachine;
@@ -78,34 +87,86 @@ public class LabelService {
         this(orderRepository, storageService, companyLogoService, null, null);
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
+    /**
+     * Constructor used by existing test call sites (5 args): wires the QuikShipX
+     * shipment lookup only, leaving the generic courier-record lookup unwired
+     * (in-house/legacy courier barcode falls back to omitted).
+     */
     public LabelService(OrderRepository orderRepository, StorageService storageService,
                         com.shifa.oms.settings.CompanyLogoService companyLogoService,
                         com.shifa.oms.settings.SettingsService settingsService,
                         com.shifa.oms.quikshipx.OrderShipmentRepository orderShipmentRepository) {
+        this(orderRepository, storageService, companyLogoService, settingsService,
+                orderShipmentRepository, null, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public LabelService(OrderRepository orderRepository, StorageService storageService,
+                        com.shifa.oms.settings.CompanyLogoService companyLogoService,
+                        com.shifa.oms.settings.SettingsService settingsService,
+                        com.shifa.oms.quikshipx.OrderShipmentRepository orderShipmentRepository,
+                        com.shifa.oms.courier.CourierRecordRepository courierRecordRepository,
+                        com.shifa.oms.courier.CourierCompanyRepository courierCompanyRepository) {
         this.orderRepository = orderRepository;
         this.storageService = storageService;
         this.companyLogoService = companyLogoService;
         this.settingsService = settingsService;
         this.orderShipmentRepository = orderShipmentRepository;
+        this.courierRecordRepository = courierRecordRepository;
+        this.courierCompanyRepository = courierCompanyRepository;
         this.contentBuilder = new LabelContentBuilder();
         this.pdfRenderer = new LabelPdfRenderer(new BarcodeGenerator());
         this.stateMachine = new OrderStatusStateMachine();
     }
 
+    /** The courier partner's display name + allotted AWB for an order's label, or both {@code null}. */
+    private record CourierInfo(String name, String awb) {
+        static final CourierInfo NONE = new CourierInfo(null, null);
+    }
+
     /**
-     * The value to encode in the label barcode: the QuikShipX order id when the
-     * order has been published to QuikShipX (so their staff scan their own id),
-     * otherwise our order code.
+     * Resolves the courier partner name + AWB to render as the label's courier
+     * barcode (label redesign feature): prefers the QuikShipX shipment mirror
+     * (its {@code subCourierName} + {@code awb} once a tracking id is allotted),
+     * falling back to the generic {@code CourierRecord}/{@code CourierCompany}
+     * pair for in-house/legacy orders. Returns {@link CourierInfo#NONE} when
+     * neither source has an AWB yet (e.g. awaiting allotment, or an in-house
+     * order with no courier at all) — the label then shows only the order
+     * barcode. The print/reprint endpoints re-read this fresh on every call, so
+     * a label printed before allotment and reprinted after automatically picks
+     * up the courier + AWB once they land (Req 10.4).
      */
-    private String barcodeValueFor(OrderEntity order) {
-        if (orderShipmentRepository == null || order.getId() == null) {
-            return order.getOrderCode();
+    private CourierInfo courierInfoFor(OrderEntity order) {
+        if (order.getId() == null) {
+            return CourierInfo.NONE;
         }
-        return orderShipmentRepository.findByOrderId(order.getId())
-                .map(com.shifa.oms.quikshipx.OrderShipment::getShipperOrderId)
-                .filter(s -> s != null && !s.isBlank())
-                .orElse(order.getOrderCode());
+        if (orderShipmentRepository != null) {
+            java.util.Optional<com.shifa.oms.quikshipx.OrderShipment> shipment =
+                    orderShipmentRepository.findByOrderId(order.getId());
+            if (shipment.isPresent()) {
+                String awb = shipment.get().getAwb();
+                if (awb != null && !awb.isBlank()) {
+                    return new CourierInfo(shipment.get().getSubCourierName(), awb);
+                }
+            }
+        }
+        if (courierRecordRepository != null) {
+            java.util.Optional<com.shifa.oms.courier.CourierRecord> record =
+                    courierRecordRepository.findByOrderId(order.getId());
+            if (record.isPresent()) {
+                String awb = record.get().getAwb();
+                if (awb != null && !awb.isBlank()) {
+                    String name = null;
+                    if (courierCompanyRepository != null && record.get().getCourierCompanyId() != null) {
+                        name = courierCompanyRepository.findById(record.get().getCourierCompanyId())
+                                .map(com.shifa.oms.courier.CourierCompany::getName)
+                                .orElse(null);
+                    }
+                    return new CourierInfo(name, awb);
+                }
+            }
+        }
+        return CourierInfo.NONE;
     }
 
     /** The configured company logo bytes for rendering, or {@code null} when none/absent. */
@@ -157,7 +218,9 @@ public class LabelService {
      * @return the storage key of the archived label PDF
      */
     public String generateInternalLabelOnApproval(OrderEntity order, String actor) {
-        InternalLabelContent content = contentBuilder.buildInternal(order, company(), barcodeValueFor(order));
+        CourierInfo courier = courierInfoFor(order);
+        InternalLabelContent content = contentBuilder.buildInternal(
+                order, company(), courier.name(), courier.awb());
         byte[] pdf = pdfRenderer.render(content, logoPng());
 
         StorageService.StoredObjectRef ref = storageService.store(
@@ -177,7 +240,9 @@ public class LabelService {
     @Transactional(readOnly = true)
     public byte[] internalLabelPdf(Long orderId) {
         OrderEntity order = requireOrder(orderId);
-        InternalLabelContent content = contentBuilder.buildInternal(order, company(), barcodeValueFor(order));
+        CourierInfo courier = courierInfoFor(order);
+        InternalLabelContent content = contentBuilder.buildInternal(
+                order, company(), courier.name(), courier.awb());
         // Multi-pack (product-audit §4.2): print one label copy per box. Default
         // package count is 1 → a single label, unchanged from before.
         int copies = order.getPackageCount();
@@ -208,7 +273,8 @@ public class LabelService {
         List<InternalLabelContent> contents = new ArrayList<>(orderIds.size());
         for (Long id : orderIds) {
             OrderEntity order = requireOrder(id);
-            contents.add(contentBuilder.buildInternal(order, company, barcodeValueFor(order)));
+            CourierInfo courier = courierInfoFor(order);
+            contents.add(contentBuilder.buildInternal(order, company, courier.name(), courier.awb()));
         }
         return pdfRenderer.render(contents, logoPng());
     }

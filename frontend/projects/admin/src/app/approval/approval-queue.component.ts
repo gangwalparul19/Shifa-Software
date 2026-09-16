@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Money } from 'core';
 import { ApprovalService } from './approval.service';
 import { ApprovalQueueItem } from './approval.model';
@@ -13,6 +13,7 @@ import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
+import { DELIVERY_METHOD_OPTIONS, DeliveryMethod } from '../orders/orders.model';
 
 interface Toast {
   kind: 'ok' | 'error';
@@ -32,6 +33,7 @@ interface Toast {
 @Component({
   selector: 'admin-approval-queue',
   imports: [
+    FormsModule,
     ReactiveFormsModule,
     DatePipe,
     PageHeaderComponent,
@@ -172,6 +174,18 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
   protected readonly screenshotLoading = signal(false);
   protected readonly screenshotMissing = signal(false);
 
+  /**
+   * The delivery method picked in the review drawer for the order currently
+   * open, defaulting to the order's own current value (in-house-delivery
+   * feature: the admin decides/overrides the delivery partner at approval).
+   */
+  protected readonly deliveryMethod = signal<DeliveryMethod>('IN_HOUSE');
+  protected readonly deliveryMethodOptions = DELIVERY_METHOD_OPTIONS;
+
+  setDeliveryMethod(value: string): void {
+    this.deliveryMethod.set(value === 'QUIKSHIPX' ? 'QUIKSHIPX' : 'IN_HOUSE');
+  }
+
   /** True while the invoice PDF is being fetched (review drawer). */
   protected readonly invoiceLoading = signal(false);
 
@@ -294,6 +308,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
 
   openDetail(item: ApprovalQueueItem): void {
     this.selected.set(item);
+    this.deliveryMethod.set(item.deliveryMethod ?? 'IN_HOUSE');
     this.loadScreenshot(item);
   }
 
@@ -379,6 +394,11 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     if (this.acting()) {
       return;
     }
+    // The delivery-method picker only applies when approving from the open
+    // review drawer for this exact order (in-house-delivery feature); a
+    // kebab-menu/mobile-card quick-approve without opening the drawer leaves
+    // the order's existing delivery method unchanged.
+    const deliveryMethod = this.selected()?.id === item.id ? this.deliveryMethod() : undefined;
     const confirmed = await this.confirmService.confirm({
       title: 'Approve order',
       message: `Approve order ${item.orderCode} for ${item.customerName}? This moves it into fulfilment.`,
@@ -389,7 +409,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
       return;
     }
     this.acting.set(true);
-    this.service.approve(item.id).subscribe({
+    this.service.approve(item.id, deliveryMethod).subscribe({
       next: () => {
         this.removeRow(item.id);
         this.acting.set(false);

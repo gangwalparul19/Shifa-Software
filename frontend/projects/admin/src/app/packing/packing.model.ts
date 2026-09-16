@@ -75,6 +75,40 @@ export interface PackingScanPreviewResponse {
 /** How a single scan resolved, for the in-session scan log. */
 export type ScanOutcome = 'packed' | 'moved' | 'not-recognized' | 'wrong-status' | 'error';
 
+// --- RTO (returned to origin) manual marking (label redesign feature) --------
+
+/**
+ * The categorized reason an order was marked RTO, mirroring the backend
+ * {@code RtoReason} enum.
+ */
+export type RtoReason =
+  | 'CUSTOMER_UNAVAILABLE'
+  | 'CUSTOMER_REFUSED'
+  | 'ADDRESS_ISSUE'
+  | 'DAMAGED_IN_TRANSIT'
+  | 'OTHER';
+
+/** Selectable RTO-reason options for the "Mark RTO" picker. */
+export const RTO_REASON_OPTIONS: { value: RtoReason; label: string }[] = [
+  { value: 'CUSTOMER_UNAVAILABLE', label: 'Customer unavailable' },
+  { value: 'CUSTOMER_REFUSED', label: 'Customer refused delivery' },
+  { value: 'ADDRESS_ISSUE', label: 'Address issue' },
+  { value: 'DAMAGED_IN_TRANSIT', label: 'Damaged in transit' },
+  { value: 'OTHER', label: 'Other' },
+];
+
+/**
+ * Read-only result of {@code POST /api/packing/rto-preview}. Identifies the
+ * order and current status, and reports whether marking it RTO is currently a
+ * legal move; the final mark request still checks authorization and state on
+ * the server. Mirrors the backend {@code RtoScanPreviewResponse}.
+ */
+export interface RtoScanPreviewResponse {
+  message: string;
+  order: ScannedOrderSummary;
+  eligible: boolean;
+}
+
 /** One entry in the running scan log shown in the UI. */
 export interface ScanLogEntry {
   barcode: string;

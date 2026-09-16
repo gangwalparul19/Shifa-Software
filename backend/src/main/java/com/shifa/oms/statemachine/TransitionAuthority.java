@@ -90,34 +90,56 @@ public final class TransitionAuthority {
                 Role.PACKING_USER, Role.ADMIN);
         put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.HANDED_TO_DELIVERY, true);
 
+        // Manual "Mark Delivered" for in-house (non-QuikShipX) orders: ADMIN,
+        // PACKING_USER, or the order's own SALESPERSON may mark it delivered
+        // directly (in-house-delivery feature). The order-instance check that
+        // this is genuinely an in-house order, and that a SALESPERSON caller owns
+        // the specific order, is enforced in the service layer — this table only
+        // expresses which roles may ever trigger the edge.
+        put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.DELIVERED, false,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+
         // Courier pickup + webhook/tracking progressions — SYSTEM only (Req 10.2,
         // 10.3). Forward jumps from Courier_Assigned keep a QuikShipX tracking poll
         // from stalling when an intermediate scan is skipped between polls.
+        //
+        // RTO is the one exception: alongside the automatic courier-driven edge,
+        // a packer/admin may also manually mark an order RTO by scanning its
+        // label (label redesign feature) — e.g. a parcel physically returns to
+        // the godown before the courier's webhook/poll reports it. That manual
+        // path requires a reason (enforced in the service layer); the table here
+        // only expresses which roles/SYSTEM may ever trigger the edge.
         put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED, true);
         put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.IN_TRANSIT, true);
         put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.OUT_FOR_DELIVERY, true);
         put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.DELIVERED, true);
-        put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.RTO, true);
+        put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN);
         put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.REDISPATCH, true);
         put(t, OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT, true);
         put(t, OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY, true);
         put(t, OrderStatus.DISPATCHED, OrderStatus.DELIVERED, true);
-        put(t, OrderStatus.DISPATCHED, OrderStatus.RTO, true);
+        put(t, OrderStatus.DISPATCHED, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN);
         put(t, OrderStatus.DISPATCHED, OrderStatus.REDISPATCH, true);
         put(t, OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, true);
         put(t, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED, true);
-        put(t, OrderStatus.IN_TRANSIT, OrderStatus.RTO, true);
+        put(t, OrderStatus.IN_TRANSIT, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN);
         put(t, OrderStatus.IN_TRANSIT, OrderStatus.REDISPATCH, true);
         // New delivery outcomes (Req 11.1, 11.2) — SYSTEM only.
         put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED, true);
         put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CUSTOMER_REJECTED, true);
         put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERY_FAILED, true);
-        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO, true);
+        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN);
         put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.REDISPATCH, true);
 
-        // Settlement — ACCOUNTANT/ADMIN or SYSTEM (Req 16.1, 16.2).
-        put(t, OrderStatus.DELIVERED, OrderStatus.CLOSED, true, Role.ACCOUNTANT, Role.ADMIN);
-        put(t, OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED, true, Role.ACCOUNTANT, Role.ADMIN);
+        // Settlement — ACCOUNTANT/ADMIN or SYSTEM (Req 16.1, 16.2). PACKING_USER
+        // and SALESPERSON are also permitted so the manual in-house "Mark
+        // Delivered" action (which immediately settles to Closed/COD_Collected in
+        // the same action) can complete for the same roles that trigger Delivered
+        // above; the order-instance ownership/in-house check lives in the service.
+        put(t, OrderStatus.DELIVERED, OrderStatus.CLOSED, true,
+                Role.ACCOUNTANT, Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED, true,
+                Role.ACCOUNTANT, Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
 
         return Collections.unmodifiableMap(t);
     }

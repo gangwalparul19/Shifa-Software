@@ -69,6 +69,11 @@ public record LeadConvertRequest(
 
         @DecimalMin(value = "0.00", message = "discountValue must not be negative")
         @Digits(integer = 10, fraction = 2, message = "discountValue must be a DECIMAL(12,2) value")
-        BigDecimal discountValue
+        BigDecimal discountValue,
+
+        // Optional per-order delivery method carried through to the created order:
+        // "QUIKSHIPX" (default when null/blank) or "IN_HOUSE". Case-insensitive.
+        @Pattern(regexp = "(?i)(QUIKSHIPX|IN_HOUSE)?", message = "deliveryMethod must be QUIKSHIPX or IN_HOUSE")
+        String deliveryMethod
 ) {
 }

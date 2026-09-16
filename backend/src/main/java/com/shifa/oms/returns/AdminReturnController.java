@@ -96,7 +96,11 @@ public class AdminReturnController {
         return returnService.getByOrder(orderId);
     }
 
-    /** Creates a new return for a returnable order (ADMIN only). */
+    /**
+     * Creates a new return for a returnable order (ADMIN only). {@code orderId}
+     * accepts either the order's numeric id or its human-readable order code
+     * (e.g. {@code SHR-20260916-JGM9}).
+     */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('ADMIN')")

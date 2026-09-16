@@ -8,6 +8,7 @@ import com.shifa.oms.invoice.InvoiceService;
 import com.shifa.oms.order.dto.CreateOrderRequest;
 import com.shifa.oms.order.dto.CustomerPrefillResponse;
 import com.shifa.oms.order.dto.DuplicateCheckResponse;
+import com.shifa.oms.order.dto.MarkDeliveredRequest;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.order.dto.ScreenshotUploadResponse;
@@ -51,15 +52,18 @@ public class OrderController {
     private final InvoiceService invoiceService;
     private final ProductService productService;
     private final OrderSuggestionService suggestionService;
+    private final ManualDeliveryService manualDeliveryService;
 
     public OrderController(OrderService orderService, CurrentUserService currentUserService,
                            InvoiceService invoiceService, ProductService productService,
-                           OrderSuggestionService suggestionService) {
+                           OrderSuggestionService suggestionService,
+                           ManualDeliveryService manualDeliveryService) {
         this.orderService = orderService;
         this.currentUserService = currentUserService;
         this.invoiceService = invoiceService;
         this.productService = productService;
         this.suggestionService = suggestionService;
+        this.manualDeliveryService = manualDeliveryService;
     }
 
     /**
@@ -107,6 +111,23 @@ public class OrderController {
     public OrderResponse create(@Valid @RequestBody CreateOrderRequest request) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return orderService.createSalespersonOrder(request, actor);
+    }
+
+    /**
+     * Manual one-shot "Mark Delivered" for an in-house (non-QuikShipX) order:
+     * jumps the order straight to {@code Delivered} and settles it (Closed /
+     * COD_Collected) in the same action (in-house-delivery feature). Restricted
+     * to ADMIN, PACKING_USER, and the order's own salesperson — a salesperson
+     * calling on another salesperson's order gets a 403 (enforced in the
+     * service, since {@code TransitionAuthority} has no per-order ownership
+     * concept).
+     */
+    @PostMapping("/{id}/mark-delivered")
+    @PreAuthorize("hasAnyRole('ADMIN','PACKING_USER','SALESPERSON')")
+    public OrderResponse markDelivered(@PathVariable Long id,
+                                       @Valid @RequestBody(required = false) MarkDeliveredRequest request) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return manualDeliveryService.markDelivered(id, actor, request);
     }
 
     /**

@@ -70,10 +70,55 @@ export interface CreateOrderRequest {
   discountType?: OrderDiscountType;
   /** The raw discount value entered (rupee amount for FLAT, percent for PERCENT). */
   discountValue?: number;
+  /**
+   * Optional per-order delivery method: "QUIKSHIPX" (default when omitted) or
+   * "IN_HOUSE" to skip the QuikShipX courier integration entirely and have
+   * Shifa's own team deliver the order (mirrors the backend).
+   */
+  deliveryMethod?: DeliveryMethod;
 }
 
 /** The kind of order-level discount (mirrors the backend). */
 export type OrderDiscountType = 'FLAT' | 'PERCENT';
+
+/**
+ * Admin edit-order payload posted to {@code PUT /api/admin/orders/{id}}
+ * (mirrors the backend {@code UpdateOrderRequest}). Lets an ADMIN correct the
+ * customer / shipping / line-item / lead-source / note / GSTIN / discount
+ * details a salesperson entered — payment fields (amount received / screenshot)
+ * are deliberately excluded; only allowed while the order is still
+ * {@code Pending_Admin_Approval} or {@code Approved}.
+ */
+export interface UpdateOrderRequest {
+  customerName: string;
+  customerMobile: string;
+  alternateMobile?: string;
+  customerEmail?: string;
+  addressLine: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  items: CreateOrderLineItem[];
+  leadSource: LeadSource;
+  leadSourceNote?: string;
+  notes?: string;
+  buyerGstin?: string;
+  discountType?: OrderDiscountType;
+  discountValue?: number;
+}
+
+/** Per-order delivery method (mirrors the backend {@code DeliveryMethod} enum). */
+export type DeliveryMethod = 'QUIKSHIPX' | 'IN_HOUSE';
+
+/**
+ * Selectable delivery-method options — shown to the ADMIN at approval time
+ * (the salesperson no longer chooses this at order entry; every order defaults
+ * to IN_HOUSE and the admin picks/overrides the delivery partner on approve).
+ */
+export const DELIVERY_METHOD_OPTIONS: { value: DeliveryMethod; label: string }[] = [
+  { value: 'QUIKSHIPX', label: 'QuikShipX (courier partner)' },
+  { value: 'IN_HOUSE', label: 'In-house delivery (own team)' },
+];
 
 /**
  * Result of {@code POST /api/orders/payment-screenshots} (mirrors the backend
@@ -180,6 +225,13 @@ export interface OrderDetail {
   id: number;
   orderCode: string;
   source: OrderSource;
+  /**
+   * Per-order delivery method — defaults to IN_HOUSE at order entry; the admin
+   * picks/overrides the delivery partner when approving. IN_HOUSE orders never
+   * get a QuikShipX shipment — the QuikShipX card is hidden and an in-house
+   * delivery card with a "Mark delivered" action is shown instead.
+   */
+  deliveryMethod?: DeliveryMethod;
   orderStatus: OrderStatus;
   paymentStatus: PaymentStatus;
   customerName: string;
@@ -247,6 +299,12 @@ export interface OrderDetail {
   quikShipXLabelUrl?: string | null;
   quikShipXOrderId?: string | null;
   quikShipXTest?: boolean;
+  /**
+   * The admin's reason for rejecting the order (Req 9.4); present only when
+   * {@code orderStatus === 'REJECTED'}, so the salesperson can see why and
+   * rework the order.
+   */
+  rejectionReason?: string | null;
 }
 
 /**

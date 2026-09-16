@@ -370,12 +370,14 @@
         }
         <form (ngSubmit)="submitCreate()" novalidate [formGroup]="createForm">
           <div class="mb-3">
-            <label class="form-label required">Order id</label>
-            <input type="text" class="form-control" formControlName="orderId" inputmode="numeric"
-              placeholder="e.g. 1024" autocomplete="off"
+            <label class="form-label required">Order id or code</label>
+            <input type="text" class="form-control" formControlName="orderId"
+              placeholder="e.g. SHR-20260916-JGM9" autocomplete="off"
               [class.is-invalid]="createForm.controls.orderId.touched && createForm.controls.orderId.invalid" />
             @if (createForm.controls.orderId.touched && createForm.controls.orderId.invalid) {
-              <div class="text-danger small mt-1">Enter the numeric order id.</div>
+              <div class="text-danger small mt-1">Enter the order code (e.g. SHR-20260916-JGM9) or its numeric id.</div>
+            } @else {
+              <div class="form-hint">The order code shown on the order (e.g. SHR-20260916-JGM9).</div>
             }
           </div>
           <div class="mb-3">

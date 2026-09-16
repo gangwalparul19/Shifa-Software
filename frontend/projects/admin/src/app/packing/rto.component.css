@@ -1,0 +1,85 @@
+:host {
+  display: block;
+}
+
+.shifa-barcode {
+  font-family: var(--tblr-font-monospace, ui-monospace, monospace);
+  letter-spacing: 0.05em;
+}
+
+.min-w-0 {
+  min-width: 0;
+}
+
+/* ==========================================================================
+   Hero scan box — mirrors the packing "Scan & Move" hero.
+   ========================================================================== */
+.pk-hero {
+  border: 1px solid rgba(31, 93, 63, 0.18);
+}
+.pk-hero__top {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 0.85rem;
+}
+.pk-hero__icon {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 1rem;
+  font-size: 1.8rem;
+  color: var(--shifa-green-600, #1f5d3f);
+  background: var(--shifa-green-100, #e4f2ea);
+}
+.pk-hero__field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.pk-hero__field .form-label {
+  font-weight: 600;
+  color: #45524b;
+}
+.shifa-barcode {
+  height: 3rem;
+  font-size: 1.15rem;
+}
+.pk-hero__btns {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.pk-hero__btns .btn {
+  min-height: 48px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (max-width: 400px) {
+  .pk-hero__icon {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   Confirmation modal.
+   ========================================================================== */
+.pk-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 61, 39, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 1080;
+}
+.pk-modal {
+  width: 100%;
+  max-width: 440px;
+  margin: 0;
+  box-shadow: 0 20px 60px rgba(15, 61, 39, 0.3);
+}

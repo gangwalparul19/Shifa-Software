@@ -1,5 +1,6 @@
 package com.shifa.oms.order.dto;
 
+import com.shifa.oms.order.DeliveryMethod;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderSource;
@@ -38,7 +39,11 @@ public record ApprovalQueueItemResponse(
         PaymentStatus paymentStatus,
         boolean paymentScreenshotAvailable,
         List<LineItemResponse> items,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        // The order's current delivery method (default IN_HOUSE at entry), shown
+        // to the admin so they can review/override it as part of approving
+        // (in-house-delivery feature: admin decides the delivery partner).
+        DeliveryMethod deliveryMethod
 ) {
 
     /** A single order line in the review projection. */
@@ -81,6 +86,7 @@ public record ApprovalQueueItemResponse(
                 order.getPaymentStatus(),
                 screenshotKey != null && !screenshotKey.isBlank(),
                 items,
-                order.getCreatedAt());
+                order.getCreatedAt(),
+                order.getDeliveryMethod());
     }
 }

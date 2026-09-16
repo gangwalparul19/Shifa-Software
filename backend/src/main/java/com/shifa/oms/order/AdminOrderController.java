@@ -10,11 +10,13 @@ import com.shifa.oms.common.PageResponse;
 import com.shifa.oms.label.LabelService;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.order.dto.ApprovalQueueItemResponse;
+import com.shifa.oms.order.dto.ApproveOrderRequest;
 import com.shifa.oms.order.dto.BulkActionResult;
 import com.shifa.oms.order.dto.BulkOrderIdsRequest;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.order.dto.RejectOrderRequest;
+import com.shifa.oms.order.dto.UpdateOrderRequest;
 import com.shifa.oms.statemachine.OrderStatus;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
@@ -27,6 +29,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -73,19 +76,22 @@ public class AdminOrderController {
     private final CurrentUserService currentUserService;
     private final AuditService auditService;
     private final SalespersonScopeResolver scopeResolver;
+    private final OrderService orderService;
 
     public AdminOrderController(AdminOrderService adminOrderService,
                                 BulkOrderService bulkOrderService,
                                 LabelService labelService,
                                 CurrentUserService currentUserService,
                                 AuditService auditService,
-                                SalespersonScopeResolver scopeResolver) {
+                                SalespersonScopeResolver scopeResolver,
+                                OrderService orderService) {
         this.adminOrderService = adminOrderService;
         this.bulkOrderService = bulkOrderService;
         this.labelService = labelService;
         this.currentUserService = currentUserService;
         this.auditService = auditService;
         this.scopeResolver = scopeResolver;
+        this.orderService = orderService;
     }
 
     /**
@@ -133,11 +139,18 @@ public class AdminOrderController {
         return adminOrderService.approvalQueue();
     }
 
-    /** Approve a pending order → Approved (Req 9.3). */
+    /**
+     * Approve a pending order → Approved (Req 9.3). Optionally carries the
+     * delivery method the admin has chosen/overridden for this order
+     * (in-house-delivery feature) — an absent/empty body approves with the
+     * order's existing delivery method unchanged.
+     */
     @PostMapping("/{id}/approve")
-    public OrderResponse approve(@PathVariable Long id) {
+    public OrderResponse approve(@PathVariable Long id,
+                                 @Valid @RequestBody(required = false) ApproveOrderRequest request) {
         AuthPrincipal admin = currentUserService.requireCurrentUser();
-        OrderResponse response = adminOrderService.approve(id, admin);
+        String deliveryMethod = request != null ? request.deliveryMethod() : null;
+        OrderResponse response = adminOrderService.approve(id, admin, deliveryMethod);
         auditService.record(AuditActions.ORDER_APPROVED, AuditActions.ENTITY_ORDER,
                 String.valueOf(id), "Approved order " + response.orderCode());
         return response;
@@ -150,6 +163,23 @@ public class AdminOrderController {
         OrderResponse response = adminOrderService.reject(id, request.reason(), admin);
         auditService.record(AuditActions.ORDER_REJECTED, AuditActions.ENTITY_ORDER,
                 String.valueOf(id), "Rejected order " + response.orderCode() + ": " + request.reason());
+        return response;
+    }
+
+    /**
+     * Admin edit-order (edit-order feature): corrects the customer / shipping /
+     * line-item / lead-source / note / GSTIN / discount details a salesperson
+     * entered. Re-prices the edited items through the same pricing engine used
+     * at creation and reconciles tracked-product stock. Only allowed while the
+     * order is still {@code Pending_Admin_Approval} or {@code Approved} — a 409
+     * ({@code ORDER_NOT_EDITABLE}) is returned once fulfilment has begun.
+     */
+    @PutMapping("/{id}")
+    public OrderResponse update(@PathVariable Long id, @Valid @RequestBody UpdateOrderRequest request) {
+        AuthPrincipal admin = currentUserService.requireCurrentUser();
+        OrderResponse response = orderService.updateOrder(id, request, admin);
+        auditService.record(AuditActions.ORDER_UPDATED, AuditActions.ENTITY_ORDER,
+                String.valueOf(id), "Updated order " + response.orderCode());
         return response;
     }
 

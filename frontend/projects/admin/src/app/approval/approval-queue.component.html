@@ -249,6 +249,29 @@
         </div>
       </section>
 
+      <!-- Delivery method: admin picks/overrides the delivery partner at approval -->
+      <section class="sa-dr__section">
+        <div class="sa-dr__label"><i class="ti ti-truck-delivery me-1"></i>Delivery method</div>
+        <div class="sa-dr__card">
+          <select
+            class="form-select"
+            [ngModel]="deliveryMethod()"
+            (ngModelChange)="setDeliveryMethod($event)"
+            aria-label="Delivery method"
+          >
+            @for (opt of deliveryMethodOptions; track opt.value) {
+              <option [value]="opt.value">{{ opt.label }}</option>
+            }
+          </select>
+          @if (deliveryMethod() === 'IN_HOUSE') {
+            <div class="form-hint mt-1">
+              <i class="ti ti-truck-delivery me-1"></i>
+              This order will be delivered by Shifa's own team — it will not be sent to QuikShipX.
+            </div>
+          }
+        </div>
+      </section>
+
       <!-- Payment screenshot -->
       <section class="sa-dr__section">
         <div class="sa-dr__label"><i class="ti ti-photo me-1"></i>Payment screenshot</div>

@@ -23,9 +23,17 @@ export class ApprovalService {
     return this.api.get<ApprovalQueueItem[]>('/api/admin/orders/approval-queue');
   }
 
-  /** Approve an order → Approved (Req 9.3). */
-  approve(orderId: number): Observable<Order> {
-    return this.api.post<Order>(`/api/admin/orders/${orderId}/approve`);
+  /**
+   * Approve an order → Approved (Req 9.3). {@code deliveryMethod}, when
+   * provided, sets/overrides the order's delivery partner as part of approving
+   * (in-house-delivery feature) — omit to leave the order's current value
+   * unchanged.
+   */
+  approve(orderId: number, deliveryMethod?: 'QUIKSHIPX' | 'IN_HOUSE'): Observable<Order> {
+    return this.api.post<Order>(
+      `/api/admin/orders/${orderId}/approve`,
+      deliveryMethod ? { deliveryMethod } : {},
+    );
   }
 
   /**

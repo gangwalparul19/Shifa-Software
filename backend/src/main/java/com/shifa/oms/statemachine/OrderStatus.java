@@ -73,8 +73,11 @@ public enum OrderStatus {
         // longer runs directly from Packed — it moves to the handover step.
         table.put(PACKED, EnumSet.of(HANDED_TO_DELIVERY));
         // Dispatch enqueues courier assignment (Req 9.5, 10.1); a failed/retried
-        // assignment self-retains Handed_To_Delivery (Req 10.4).
-        table.put(HANDED_TO_DELIVERY, EnumSet.of(COURIER_ASSIGNED, HANDED_TO_DELIVERY));
+        // assignment self-retains Handed_To_Delivery (Req 10.4). An in-house
+        // (non-QuikShipX) order never gets a courier assignment — its own team
+        // delivers it directly, so a manual mark-delivered action needs a direct
+        // edge straight to Delivered from this step (in-house-delivery feature).
+        table.put(HANDED_TO_DELIVERY, EnumSet.of(COURIER_ASSIGNED, HANDED_TO_DELIVERY, DELIVERED));
         // Pickup (Req 10.2) + forward courier progressions so a QuikShipX tracking
         // poll never stalls when an intermediate scan (e.g. picked-up) is skipped
         // between polls — all SYSTEM-driven.

@@ -101,39 +101,52 @@ public class QuikShipXService {
      * timeline for display. A not-yet-trackable shipment returns an empty timeline
      * with a message rather than throwing.
      *
+     * <p>Tracks by AWB ({@code tracking_type=awb}) once a tracking id has been
+     * allotted — confirmed working against the live QuikShipX API. Before an AWB
+     * exists it falls back to QuikShipX's own order id ({@code tracking_type=order_id}),
+     * which is typically not yet trackable but keeps the call harmless.
+     *
      * @throws ResourceNotFoundException when the order has no QuikShipX shipment
      */
     @Transactional
-    public TrackView trackLive(String awbId) {
-        OrderShipment shipment = shipmentRepository.findByAwb(awbId)
+    public TrackView trackLive(Long orderId) {
+        OrderShipment shipment = shipmentRepository.findByOrderId(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "AWB " + awbId + " has no QuikShipX shipment yet."));
-        // Track through QuikShipX by THEIR order id (tracking_type=order_id) — the
-        // partner's own tracking key. It is stored from create-order (available
-        // before an AWB is allotted), and we do not track with any carrier directly.
+                        "Order " + orderId + " has no QuikShipX shipment yet."));
+        String awb = shipment.getAwb();
         String shipperOrderId = shipment.getShipperOrderId();
-        if (shipperOrderId == null || shipperOrderId.isBlank()) {
+        boolean haveAwb = awb != null && !awb.isBlank();
+        if (!haveAwb && (shipperOrderId == null || shipperOrderId.isBlank())) {
             return new TrackView(shipment.getQuikShipXStatus(), shipment.getAwb(), shipment.getLastSyncedAt(),
                     java.util.List.of(), "Not published to QuikShipX yet.");
         }
         try {
-            QuikShipXModels.TrackResult r = client.trackOrderById(shipperOrderId);
+            QuikShipXModels.TrackResult r = haveAwb ? client.trackOrder(awb) : client.trackOrderById(shipperOrderId);
             shipment.recordTracked(r.orderStatus(), titleCase(r.orderStatus()), java.time.LocalDateTime.now());
             shipmentRepository.save(shipment);
             // Apply the mapped internal status transition (idempotent, SYSTEM). The
             // AWB comes from the shipment, or the track response when not yet stored.
-            String awb = (shipment.getAwb() != null && !shipment.getAwb().isBlank())
-                    ? shipment.getAwb() : r.awb();
-            if (awb != null && !awb.isBlank()) {
-                courierStatusApplier.applyByAwb(awb, r.orderStatus());
+            String resolvedAwb = haveAwb ? awb : r.awb();
+            if (resolvedAwb != null && !resolvedAwb.isBlank()) {
+                courierStatusApplier.applyByAwb(resolvedAwb, r.orderStatus());
             }
-            return new TrackView(shipment.getQuikShipXStatus(), awb, shipment.getLastSyncedAt(),
+            return new TrackView(shipment.getQuikShipXStatus(), resolvedAwb, shipment.getLastSyncedAt(),
                     r.scans(), null);
         } catch (QuikShipXException e) {
             // Not trackable yet / transient — surface cleanly, keep the last state.
             return new TrackView(shipment.getQuikShipXStatus(), shipment.getAwb(), shipment.getLastSyncedAt(),
                     java.util.List.of(), e.getMessage());
         }
+    }
+
+    /**
+     * Defensive check: whether the order is flagged for in-house delivery, so a
+     * stray/late CONFIRM or ALLOT outbox event never touches QuikShipX. A missing
+     * order is treated as not in-house (falls through to the caller's own
+     * not-found handling where applicable).
+     */
+    private boolean isInHouseDelivery(Long orderId) {
+        return orderRepository.findById(orderId).map(OrderEntity::isInHouseDelivery).orElse(false);
     }
 
     /** Title-cases a raw status like "out for delivery" -> "Out For Delivery". */
@@ -176,6 +189,12 @@ public class QuikShipXService {
             log.warn("QuikShipX create skipped: order {} no longer exists", orderId);
             return;
         }
+        if (order.isInHouseDelivery()) {
+            // Defensive: a stray/late outbox row for an order flagged in-house after
+            // the enqueue site's own check — never publish it to QuikShipX.
+            log.debug("QuikShipX create skipped: order {} is flagged for in-house delivery", order.getOrderCode());
+            return;
+        }
 
         CreatePayload payload = payloadFactory.build(order, loadProducts(order));
         CreateResult result = client.createOrder(payload); // throws QuikShipXException on failure
@@ -207,7 +226,7 @@ public class QuikShipXService {
      */
     @Transactional
     public void confirmForOrder(Long orderId) {
-        if (!properties.isEnabled()) {
+        if (!properties.isEnabled() || isInHouseDelivery(orderId)) {
             return;
         }
         OrderShipment shipment = shipmentRepository.findByOrderId(orderId).orElse(null);
@@ -240,7 +259,7 @@ public class QuikShipXService {
      */
     @Transactional
     public void allotForOrder(Long orderId) {
-        if (!properties.isEnabled()) {
+        if (!properties.isEnabled() || isInHouseDelivery(orderId)) {
             return;
         }
         OrderShipment shipment = shipmentRepository.findByOrderId(orderId).orElse(null);

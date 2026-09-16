@@ -387,6 +387,13 @@ export class AdminShellComponent {
         },
         {
           kind: 'link',
+          label: 'Mark RTO',
+          path: '/packing/rto',
+          icon: 'ti-rotate-2',
+          roles: [Role.ADMIN, Role.PACKING_USER],
+        },
+        {
+          kind: 'link',
           label: 'Reconciliation',
           path: '/reconciliation',
           icon: 'ti-cash-register',

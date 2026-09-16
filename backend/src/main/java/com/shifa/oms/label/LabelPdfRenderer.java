@@ -145,25 +145,33 @@ public class LabelPdfRenderer {
         // 2) Recipient block (left) + logo/brand (right).
         main.addCell(boxWrap(recipientTable(content, logoPng, brand), 8f));
 
-        // 3) Scannable barcode with destination (left) + order code (right).
-        main.addCell(boxWrap(barcodeTable(content), 8f));
+        // 3) Courier barcode (name + AWB) — only when a courier/AWB is allotted
+        // (label redesign feature): lets the courier team scan the parcel
+        // straight into their own system at pickup.
+        if (content.hasCourierBarcode()) {
+            main.addCell(boxWrap(courierBarcodeTable(content), 8f));
+        }
 
-        // 4) Item description + order total.
+        // 4) Order barcode — always present, our own order code, so the godown/
+        // RTO flow always has something to scan back to the order in our system.
+        main.addCell(boxWrap(orderBarcodeTable(content), 8f));
+
+        // 5) Item description + order total.
         main.addCell(twoColRow(
                 "ITEM DESCRIPTION", nz(content.itemSummary(), "\u2014"), Element.ALIGN_LEFT,
                 "TOTAL", money(content.totalAmount()), Element.ALIGN_RIGHT,
                 3.2f, 1f));
 
-        // 5) Order id + prominent payment badge (Pre-Paid / COD).
+        // 6) Order id + prominent payment badge (Pre-Paid / COD).
         main.addCell(orderPaymentRow(content));
 
-        // 6) Ordered-on + COD-collect amount (or "Prepaid").
+        // 7) Ordered-on + COD-collect amount (or "Prepaid").
         main.addCell(orderedCodRow(content));
 
-        // 7) Pickup & return address (full width).
+        // 8) Pickup & return address (full width).
         main.addCell(captionBox("PICKUP & RETURN ADDRESS", nz(content.pickupReturnAddress(), "\u2014")));
 
-        // 8) Seller name (full width).
+        // 9) Seller name (full width).
         main.addCell(captionBox("SELLER NAME", brand));
 
         document.add(main);
@@ -207,14 +215,56 @@ public class LabelPdfRenderer {
         return t;
     }
 
-    private PdfPTable barcodeTable(InternalLabelContent content) {
+    /**
+     * The courier barcode block (label redesign feature): the courier partner's
+     * display name as a small caption above a Code128 barcode of the allotted
+     * AWB, with the AWB digits repeated below for a human read — so the courier
+     * team scans this straight into their own system at pickup. Only rendered
+     * when {@link InternalLabelContent#hasCourierBarcode()} is {@code true}.
+     */
+    private PdfPTable courierBarcodeTable(InternalLabelContent content) {
         PdfPTable t = new PdfPTable(1);
         t.setWidthPercentage(100);
         t.getDefaultCell().setBorder(Rectangle.NO_BORDER);
         t.getDefaultCell().setHorizontalAlignment(Element.ALIGN_CENTER);
 
-        Image barcode = imageOf(barcodeGenerator.code128Png(content.barcodeValue()));
-        barcode.scaleToFit(330, 80);
+        PdfPCell caption = new PdfPCell(
+                new Phrase("COURIER: " + nz(content.courierName(), "\u2014").toUpperCase(), CAPTION_FONT));
+        caption.setBorder(Rectangle.NO_BORDER);
+        caption.setHorizontalAlignment(Element.ALIGN_CENTER);
+        caption.setPaddingBottom(2f);
+        t.addCell(caption);
+
+        Image barcode = imageOf(barcodeGenerator.code128Png(content.courierBarcodeValue()));
+        barcode.scaleToFit(330, 70);
+        PdfPCell bc = new PdfPCell(barcode, false);
+        bc.setBorder(Rectangle.NO_BORDER);
+        bc.setHorizontalAlignment(Element.ALIGN_CENTER);
+        bc.setPadding(3f);
+        t.addCell(bc);
+
+        PdfPCell awb = new PdfPCell(new Phrase("AWB: " + content.courierBarcodeValue(), CODE_FONT));
+        awb.setBorder(Rectangle.NO_BORDER);
+        awb.setHorizontalAlignment(Element.ALIGN_CENTER);
+        awb.setPaddingTop(2f);
+        t.addCell(awb);
+        return t;
+    }
+
+    /**
+     * The order barcode block (label redesign feature): always present, a
+     * Code128 barcode of our own {@code orderCode} — so the godown/RTO flow can
+     * scan a returned parcel straight back to the order regardless of whether a
+     * courier/AWB was ever allotted.
+     */
+    private PdfPTable orderBarcodeTable(InternalLabelContent content) {
+        PdfPTable t = new PdfPTable(1);
+        t.setWidthPercentage(100);
+        t.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+        t.getDefaultCell().setHorizontalAlignment(Element.ALIGN_CENTER);
+
+        Image barcode = imageOf(barcodeGenerator.code128Png(content.orderCode()));
+        barcode.scaleToFit(330, 70);
         PdfPCell bc = new PdfPCell(barcode, false);
         bc.setBorder(Rectangle.NO_BORDER);
         bc.setHorizontalAlignment(Element.ALIGN_CENTER);
@@ -226,10 +276,7 @@ public class LabelPdfRenderer {
         PdfPCell dest = new PdfPCell(new Phrase(nz(content.city(), nz(content.postalCode(), "")), SMALL_FONT));
         dest.setBorder(Rectangle.NO_BORDER);
         dest.setHorizontalAlignment(Element.ALIGN_LEFT);
-        // The digits under the barcode mirror the scanned value (the QuikShipX
-        // order id when published, else our order code) so the courier partner
-        // reads the same id they scan.
-        PdfPCell code = new PdfPCell(new Phrase(content.barcodeValue(), CODE_FONT));
+        PdfPCell code = new PdfPCell(new Phrase("ORDER: " + content.orderCode(), CODE_FONT));
         code.setBorder(Rectangle.NO_BORDER);
         code.setHorizontalAlignment(Element.ALIGN_RIGHT);
         sub.addCell(dest);

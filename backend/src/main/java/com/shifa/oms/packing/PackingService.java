@@ -8,12 +8,15 @@ import com.shifa.oms.order.Actor;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderWorkflowService;
+import com.shifa.oms.order.RtoReason;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.packing.dto.HandoverRequest;
+import com.shifa.oms.packing.dto.MarkRtoRequest;
 import com.shifa.oms.packing.dto.PackingQueueResponse;
 import com.shifa.oms.packing.dto.PackingQueueRow;
 import com.shifa.oms.packing.dto.PackingScanPreviewResponse;
 import com.shifa.oms.packing.dto.PackingScanResponse;
+import com.shifa.oms.packing.dto.RtoScanPreviewResponse;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.statemachine.OrderStatus;
 
@@ -60,6 +63,11 @@ public class PackingService {
     private static final Logger log = LoggerFactory.getLogger(PackingService.class);
 
     private static final String SOURCE_PACKING = "PACKING";
+
+    /** Statuses from which a manual RTO mark is a legal move (mirrors the RTO edges in the state machine). */
+    private static final java.util.Set<OrderStatus> RTO_ELIGIBLE_STATUSES = java.util.EnumSet.of(
+            OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED,
+            OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY);
 
     private final OrderRepository orderRepository;
     private final OutboxEventPublisher outboxEventPublisher;
@@ -220,6 +228,60 @@ public class PackingService {
             }
         }
         throw new BarcodeNotRecognizedException(code);
+    }
+
+    // --- Manual RTO marking (label redesign feature) -----------------------
+
+    /**
+     * Resolves a scanned order-label barcode for the RTO page without changing
+     * the order, reporting whether marking it RTO is currently a legal move
+     * (Req: manual RTO marking). Reuses the same barcode resolution as the
+     * packing scan ({@link #resolveBarcode(String)}) so either the courier
+     * barcode (AWB) or the order barcode on the redesigned label resolves.
+     *
+     * @throws BarcodeNotRecognizedException when no order matches the barcode
+     */
+    @Transactional(readOnly = true)
+    public RtoScanPreviewResponse rtoPreview(String barcode) {
+        return RtoScanPreviewResponse.from(resolveBarcode(barcode));
+    }
+
+    /**
+     * Marks an order RTO (returned to origin) after an explicit scan +
+     * confirmation on the RTO page, recording the categorized reason (+
+     * optional note) that a courier webhook/poll driven RTO does not capture.
+     * The final mutation deliberately rechecks the current state because a
+     * preview is not a reservation.
+     *
+     * @param orderId the order to mark RTO
+     * @param request the categorized reason + optional note
+     * @param actor   the packing user (or admin) performing the mark
+     * @return the updated order projection (now {@code RTO})
+     * @throws ResourceNotFoundException when no order matches (404)
+     * @throws OrderNotRtoEligibleException when the order is not in an RTO-eligible status (409)
+     */
+    @Transactional
+    public OrderResponse markRto(Long orderId, MarkRtoRequest request, AuthPrincipal actor) {
+        OrderEntity order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order " + orderId + " does not exist."));
+
+        if (!RTO_ELIGIBLE_STATUSES.contains(order.getOrderStatus())) {
+            // Recheck after preview and surface the current status without mutation.
+            throw new OrderNotRtoEligibleException(order.getOrderCode(), order.getOrderStatus());
+        }
+
+        RtoReason reason = request.reason();
+        order.setRtoReason(reason, trimToNull(request.note()));
+
+        // Centralized transition: authorize (role) → apply (409 on illegal) →
+        // status + one history row → audit → matrix notification.
+        orderWorkflowService.applyTransition(
+                order, OrderStatus.RTO, Actor.user(actor, SOURCE_PACKING));
+        OrderEntity saved = orderRepository.save(order);
+
+        log.debug("Order {} manually marked RTO by {} (reason {})",
+                saved.getOrderCode(), actor.username(), reason);
+        return OrderResponse.from(saved);
     }
 
     /**

@@ -205,7 +205,26 @@ public class AdminOrderService {
      */
     @Transactional
     public OrderResponse approve(Long id, AuthPrincipal admin) {
+        return approve(id, admin, null);
+    }
+
+    /**
+     * Approves a pending order, optionally setting/overriding its delivery
+     * method (in-house-delivery feature): the admin decides at approval time
+     * whether the order goes out via QuikShipX or Shifa's own in-house team,
+     * regardless of the default recorded at order entry. A {@code null}/blank
+     * {@code deliveryMethod} leaves the order's current value unchanged (Req 9.3).
+     *
+     * @param deliveryMethod {@code "QUIKSHIPX"} or {@code "IN_HOUSE"} (case-insensitive),
+     *                       or {@code null}/blank to leave unchanged
+     */
+    @Transactional
+    public OrderResponse approve(Long id, AuthPrincipal admin, String deliveryMethod) {
         OrderEntity order = requireOrder(id);
+        if (deliveryMethod != null && !deliveryMethod.isBlank()) {
+            order.setDeliveryMethod(
+                    DeliveryMethod.valueOf(deliveryMethod.trim().toUpperCase(java.util.Locale.ROOT)));
+        }
         orderWorkflowService.applyTransition(
                 order, OrderStatus.APPROVED, Actor.user(admin, SOURCE_ADMIN));
         // Req 10.1-10.3: generate the internal label and move to Label_Generated.
@@ -217,8 +236,10 @@ public class AdminOrderService {
         // roll back or alter this order (additive — no change to existing behaviour/return value).
         outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_ORDER, saved.getId());
         // QuikShipX (confirm-on-approve): enqueue a Confirmed status mirror in this
-        // same transaction when the integration is enabled (no-op otherwise).
-        if (quikShipXProperties != null && quikShipXProperties.isEnabled()) {
+        // same transaction when the integration is enabled AND the order is not
+        // flagged for in-house delivery (no-op otherwise) — an in-house order never
+        // touches the QuikShipX pipeline.
+        if (quikShipXProperties != null && quikShipXProperties.isEnabled() && !saved.isInHouseDelivery()) {
             outboxEventPublisher.publishQuikShipXConfirm(saved.getId(), saved.getOrderCode());
         }
         return OrderResponse.from(saved);

@@ -59,4 +59,17 @@ public class PackingExceptionHandler {
                 List.of("currentStatus: " + ex.getCurrentStatus()));
         return ResponseEntity.status(ex.getStatus()).body(body);
     }
+
+    @ExceptionHandler(OrderNotRtoEligibleException.class)
+    public ResponseEntity<ErrorResponse> handleNotRtoEligible(OrderNotRtoEligibleException ex,
+                                                               HttpServletRequest request) {
+        ErrorResponse body = ErrorResponse.of(
+                ex.getStatus().value(),
+                ex.getStatus().getReasonPhrase(),
+                ex.getCode(),
+                ex.getMessage(),
+                request.getRequestURI(),
+                List.of("currentStatus: " + ex.getCurrentStatus()));
+        return ResponseEntity.status(ex.getStatus()).body(body);
+    }
 }

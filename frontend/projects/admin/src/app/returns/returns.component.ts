@@ -112,9 +112,11 @@ export class ReturnsComponent implements OnInit, OnDestroy {
     validators: [Validators.required, Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)],
   });
   protected readonly createForm = new FormGroup({
+    // Accepts either the numeric order id or the human-readable order code
+    // (e.g. SHR-20260916-JGM9) — whatever the admin has on hand.
     orderId: new FormControl<string>('', {
       nonNullable: true,
-      validators: [Validators.required, Validators.pattern(/^\d{1,18}$/)],
+      validators: [Validators.required, Validators.maxLength(40)],
     }),
     reason: new FormControl<string>('', {
       nonNullable: true,
@@ -355,13 +357,13 @@ export class ReturnsComponent implements OnInit, OnDestroy {
     this.modalError.set(null);
     this.service
       .create({
-        orderId: Number(raw.orderId),
+        orderId: raw.orderId.trim(),
         reason: raw.reason.trim(),
         notes: raw.notes.trim() || undefined,
       })
       .subscribe({
         next: () => this.afterMutation('Return created.'),
-        error: () => this.failMutation('Could not create the return. Check the order id.'),
+        error: () => this.failMutation('Could not create the return. Check the order id/code.'),
       });
   }
 

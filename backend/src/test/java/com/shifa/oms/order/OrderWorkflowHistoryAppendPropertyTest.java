@@ -109,6 +109,9 @@ class OrderWorkflowHistoryAppendPropertyTest {
                 Role.PACKING_USER, Role.ADMIN);
         addSystem(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.COURIER_ASSIGNED);
         addSystem(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.HANDED_TO_DELIVERY);
+        // Manual "Mark Delivered" for in-house orders (in-house-delivery feature).
+        addStaff(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.DELIVERED,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
         // Courier pickup + webhook progressions — SYSTEM only. Forward jumps from
         // Courier_Assigned keep a QuikShipX tracking poll from stalling on a skipped scan.
         addSystem(cases, OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED);
@@ -131,9 +134,12 @@ class OrderWorkflowHistoryAppendPropertyTest {
         addSystem(cases, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERY_FAILED);
         addSystem(cases, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO);
         addSystem(cases, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.REDISPATCH);
-        // Settlement — ACCOUNTANT/ADMIN or SYSTEM.
-        addStaff(cases, OrderStatus.DELIVERED, OrderStatus.CLOSED, Role.ACCOUNTANT, Role.ADMIN);
-        addStaff(cases, OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED, Role.ACCOUNTANT, Role.ADMIN);
+        // Settlement — ACCOUNTANT/ADMIN/PACKING_USER/SALESPERSON (manual in-house
+        // mark-delivered settles in the same action) or SYSTEM.
+        addStaff(cases, OrderStatus.DELIVERED, OrderStatus.CLOSED,
+                Role.ACCOUNTANT, Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        addStaff(cases, OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED,
+                Role.ACCOUNTANT, Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
         addSystem(cases, OrderStatus.DELIVERED, OrderStatus.CLOSED);
         addSystem(cases, OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED);
         return cases;

@@ -6,6 +6,7 @@ import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.courier.TrackingService;
 import com.shifa.oms.gst.domain.Gstin;
+import com.shifa.oms.inventory.StockMovementType;
 import com.shifa.oms.inventory.StockService;
 import com.shifa.oms.order.domain.DiscountType;
 import com.shifa.oms.order.domain.Money;
@@ -19,6 +20,7 @@ import com.shifa.oms.order.dto.DuplicateCheckResponse;
 import com.shifa.oms.order.dto.LineItemRequest;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
+import com.shifa.oms.order.dto.UpdateOrderRequest;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.platform.storage.StorageService;
 import com.shifa.oms.product.Product;
@@ -193,6 +195,10 @@ public class OrderService {
         }
         order.setBuyerGstin(buyerGstin);
 
+        // Per-order delivery method (QUIKSHIPX default, or IN_HOUSE to skip the
+        // courier integration entirely). Blank/null → QUIKSHIPX.
+        order.setDeliveryMethod(parseDeliveryMethod(request.deliveryMethod()));
+
         // Prepaid / partially-paid orders carry a payment to verify for authenticity
         // (product-audit §4.4). Pure COD orders have nothing to verify.
         if (calc.paymentStatus() != PaymentStatus.COD) {
@@ -239,11 +245,169 @@ public class OrderService {
         }
     }
 
-    /** Enqueues the QuikShipX create-order event for a new order when enabled (no-op otherwise). */
+    /**
+     * Enqueues the QuikShipX create-order event for a new order when the
+     * integration is enabled AND the order is not flagged for in-house delivery
+     * (no-op otherwise). An {@code IN_HOUSE} order never gets an
+     * {@code OrderShipment} row and is invisible to the whole QuikShipX pipeline.
+     */
     private void publishToQuikShipX(OrderEntity order) {
         if (outboxEventPublisher != null && quikShipXProperties != null
-                && quikShipXProperties.isEnabled()) {
+                && quikShipXProperties.isEnabled() && !order.isInHouseDelivery()) {
             outboxEventPublisher.publishQuikShipXCreate(order.getId(), order.getOrderCode());
+        }
+    }
+
+    /** Parses the optional delivery-method request field; blank/null defaults to QUIKSHIPX. */
+    private static DeliveryMethod parseDeliveryMethod(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return DeliveryMethod.QUIKSHIPX;
+        }
+        return DeliveryMethod.valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT));
+    }
+
+    // --- Admin edit-order (correct salesperson-entered details) ------------
+
+    /**
+     * Statuses in which an order may still be edited by an admin: only before
+     * physical fulfilment begins — a printed label / QuikShipX payload / packed
+     * box already reflects the original details from {@link OrderStatus#LABEL_GENERATED}
+     * onward, so editing is restricted to the two earliest statuses (edit-order
+     * feature).
+     */
+    private static final java.util.Set<OrderStatus> EDITABLE_STATUSES =
+            java.util.EnumSet.of(OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.APPROVED);
+
+    /**
+     * Admin edit-order (Req: "As an Admin I should be able to update the order
+     * details ... to correct what salesperson has added"). Re-prices the edited
+     * line items through the same {@link OrderPricing} engine used at creation,
+     * reconciles tracked-product stock against the quantity delta per product,
+     * and overwrites the customer/shipping/lead-source/note/GSTIN/discount
+     * fields. Rejected with {@link OrderNotEditableException} (409) once the
+     * order has moved past {@link #EDITABLE_STATUSES} (label generated / packed /
+     * dispatched, etc.) — the printed label, courier payload, and stock have
+     * already been committed against the original details by then.
+     *
+     * <p>No status-history row is added: a field edit is orthogonal to a status
+     * transition. The caller (controller) records an audit entry.
+     */
+    @Transactional
+    public OrderResponse updateOrder(Long id, UpdateOrderRequest request, AuthPrincipal admin) {
+        OrderEntity order = orderRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Order " + id + " does not exist."));
+        if (!EDITABLE_STATUSES.contains(order.getOrderStatus())) {
+            throw new OrderNotEditableException(order.getOrderCode(), order.getOrderStatus());
+        }
+
+        OrderCreationValidator.validateLeadSourceNote(request.leadSourceNote());
+
+        // Snapshot the quantity previously committed per tracked product so the
+        // stock ledger can be reconciled to the new lines below (stock was
+        // reserved against the ORIGINAL items when the order was first created).
+        Map<Long, Integer> previousQuantities = new LinkedHashMap<>();
+        for (OrderLineItem existing : order.getLineItems()) {
+            if (existing.getProductId() != null) {
+                previousQuantities.merge(existing.getProductId(), existing.getQuantity(), Integer::sum);
+            }
+        }
+
+        List<PricedLine> priced = priceLines(request.items());
+
+        OrderPricing.DiscountSpec discountSpec = OrderPricing.DiscountSpec.of(
+                DiscountType.from(request.discountType()), request.discountValue());
+        OrderPricing.PricedOrder pricedOrder = OrderPricing.compute(toPricingLines(priced), discountSpec);
+        Money total = Money.of(pricedOrder.total());
+        requirePositiveTotal(total);
+
+        // Re-run the payment classification against the ALREADY-received amount
+        // (edit-order never touches payment capture) so remaining/COD stay correct
+        // if the re-priced total differs from the original.
+        PaymentCalculation calc = PaymentCalculator.classify(total, Money.of(order.getAmountReceived()));
+
+        String buyerGstin = trimToNull(request.buyerGstin());
+        if (buyerGstin != null && !Gstin.isValid(buyerGstin)) {
+            throw new ValidationException(
+                    "buyerGstin must be a valid 15-character GSTIN "
+                            + "(2-digit state code, 10-character PAN, 1 entity digit, the letter Z, "
+                            + "and 1 checksum character).");
+        }
+
+        // Reconcile tracked-product stock: for each product touched by either the
+        // old or new lines, apply the signed delta (old qty − new qty) so on-hand
+        // reflects exactly the new lines, rejecting when a tracked product lacks
+        // enough stock to cover an increase.
+        reconcileStockForEdit(previousQuantities, priced, order.getOrderCode(), admin.userId());
+
+        order.setCustomerName(request.customerName());
+        order.setCustomerMobile(request.customerMobile());
+        order.setAlternateMobile(trimToNull(request.alternateMobile()));
+        order.setCustomerEmail(request.customerEmail());
+        order.setAddressLine(request.addressLine());
+        order.setCity(request.city());
+        order.setState(request.state());
+        order.setPostalCode(request.postalCode());
+        order.setLeadSource(request.leadSource());
+        order.setLeadSourceNote(request.leadSourceNote());
+        order.setNotes(trimToNull(request.notes()));
+        order.setBuyerGstin(buyerGstin);
+
+        order.replaceLineItems(priced.stream().map(PricedLine::toEntity).toList());
+
+        order.applyAmounts(
+                calc.totalAmount().toBigDecimal(),
+                calc.amountReceived().toBigDecimal(),
+                calc.remainingAmount().toBigDecimal(),
+                calc.codAmount().toBigDecimal(),
+                calc.paymentStatus());
+        order.setCustomerOutstanding(calc.codAmount().toBigDecimal());
+
+        DiscountType discountType = discountSpec.type();
+        order.applyOrderDiscount(
+                discountType == DiscountType.NONE ? null : discountType.name(),
+                discountType == DiscountType.NONE ? null : discountSpec.value(),
+                pricedOrder.discount());
+
+        OrderEntity saved = orderRepository.save(order);
+        return OrderResponse.from(saved);
+    }
+
+    /**
+     * Applies the signed per-product stock delta needed to move from the
+     * previously-committed quantities to the newly-priced lines (edit-order):
+     * a product ordered MORE now records an additional SALE decrement; a
+     * product ordered LESS (or removed) returns the difference via
+     * {@link StockService#adjust}. Untracked products are skipped (mirrors
+     * {@link StockService#recordSale}). Only tracked products actually change
+     * on-hand quantity; the ledger reason names the order code.
+     */
+    private void reconcileStockForEdit(Map<Long, Integer> previousQuantities,
+                                       List<PricedLine> priced, String orderCode, Long userId) {
+        Map<Long, Integer> newQuantities = new LinkedHashMap<>();
+        Map<Long, Product> productsById = new LinkedHashMap<>();
+        for (PricedLine line : priced) {
+            Long productId = line.product().getId();
+            newQuantities.merge(productId, line.quantity(), Integer::sum);
+            productsById.put(productId, line.product());
+        }
+        for (Long productId : previousQuantities.keySet()) {
+            productsById.computeIfAbsent(productId, this::requireProduct);
+        }
+
+        String reason = "Order " + orderCode + " (edited)";
+        for (Map.Entry<Long, Product> entry : productsById.entrySet()) {
+            Product product = entry.getValue();
+            if (!product.isTrackInventory()) {
+                continue;
+            }
+            int before = previousQuantities.getOrDefault(entry.getKey(), 0);
+            int after = newQuantities.getOrDefault(entry.getKey(), 0);
+            int delta = before - after; // +delta returns stock, -delta consumes more stock
+            if (delta == 0) {
+                continue;
+            }
+            StockMovementType type = delta > 0 ? StockMovementType.RETURN : StockMovementType.ADJUSTMENT;
+            stockService.adjust(entry.getKey(), delta, type, reason, userId);
         }
     }
 

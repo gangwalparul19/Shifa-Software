@@ -12,6 +12,7 @@ import {
   QuikShipShipment,
   QuikShipTracking,
   ScreenshotUploadResponse,
+  UpdateOrderRequest,
 } from './orders.model';
 
 /** Filters + paging for the admin all-orders page (server-side, Wave 2). */
@@ -170,6 +171,17 @@ export class OrdersService {
   /** Full order detail with line items and payment tracking (Req 21.1). */
   detail(id: number): Observable<OrderDetail> {
     return this.api.get<OrderDetail>(`/api/orders/${id}`);
+  }
+
+  /**
+   * Admin edit-order (edit-order feature): corrects the customer / shipping /
+   * line-item / lead-source / note / GSTIN / discount details a salesperson
+   * entered, via {@code PUT /api/admin/orders/{id}} (ADMIN-only). Only allowed
+   * while the order is still {@code Pending_Admin_Approval} or {@code Approved}
+   * — a 409 is returned once fulfilment has begun.
+   */
+  updateOrder(id: number, payload: UpdateOrderRequest): Observable<OrderDetail> {
+    return this.api.put<OrderDetail>(`/api/admin/orders/${id}`, payload);
   }
 
   /** Fetch the payment screenshot as a Blob for inline rendering (Req 21.2). */

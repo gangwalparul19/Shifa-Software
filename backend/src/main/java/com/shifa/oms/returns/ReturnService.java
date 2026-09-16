@@ -22,6 +22,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -71,13 +72,17 @@ public class ReturnService {
      * At most one active (non-terminal) return may exist per order. New returns
      * start {@link ReturnStatus#REQUESTED}.
      *
-     * @throws ResourceNotFoundException when the order does not exist
+     * @param orderIdOrCode either the order's numeric database id or its
+     *                      human-readable order code (e.g. {@code SHR-20260916-JGM9})
+     *                      — resolved via {@link #resolveOrder(String)}
+     * @throws ResourceNotFoundException when no order matches
      * @throws ValidationException       when the order is not returnable or already
      *                                   has an active return
      */
     @Transactional
-    public ReturnResponse create(Long orderId, String reason, String notes) {
-        OrderEntity order = requireOrder(orderId);
+    public ReturnResponse create(String orderIdOrCode, String reason, String notes) {
+        OrderEntity order = resolveOrder(orderIdOrCode);
+        Long orderId = order.getId();
         if (!RETURNABLE_STATUSES.contains(order.getOrderStatus())) {
             throw new ValidationException(
                     "A return can only be created for a delivered or RTO order (order "
@@ -213,6 +218,29 @@ public class ReturnService {
         return orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Order " + orderId + " does not exist."));
+    }
+
+    /**
+     * Resolves an order from either its numeric database id (e.g. {@code "5"})
+     * or its human-readable order code (e.g. {@code SHR-20260916-JGM9}) —
+     * whichever the caller has to hand. A purely-digit input is tried as an id
+     * first (falling back to a code lookup on that same string, in case an order
+     * code were ever purely numeric); anything else is looked up by code
+     * directly.
+     *
+     * @throws ResourceNotFoundException when no order matches either form
+     */
+    private OrderEntity resolveOrder(String orderIdOrCode) {
+        String trimmed = orderIdOrCode == null ? "" : orderIdOrCode.trim();
+        if (trimmed.matches("\\d+")) {
+            Optional<OrderEntity> byId = orderRepository.findById(Long.valueOf(trimmed));
+            if (byId.isPresent()) {
+                return byId.get();
+            }
+        }
+        return orderRepository.findByOrderCode(trimmed)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Order '" + trimmed + "' does not exist."));
     }
 
     private OrderReturn requireReturn(Long returnId) {

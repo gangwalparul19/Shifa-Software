@@ -384,6 +384,34 @@
   color: var(--shifa-green-700, #164632);
 }
 
+/* Secondary action grid (Edit / Create return / Reorder / Invoice / labels):
+   2 columns on phones so 4 previously-stacked full-width rows collapse into 2
+   compact rows, saving vertical space in the drawer; 1 column only on very
+   narrow screens where two buttons wouldn't comfortably fit side by side. */
+.shifa-od__actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+.shifa-od__action {
+  min-height: 44px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding-inline: 0.5rem;
+  white-space: normal;
+  line-height: 1.2;
+}
+@media (max-width: 340px) {
+  .shifa-od__actions-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ==========================================================================
    Orders list — mobile card list (Req 6.1, 14.3), mockup-faithful.
    Shown only <768px; the bulk-capable table takes over at ≥768px.

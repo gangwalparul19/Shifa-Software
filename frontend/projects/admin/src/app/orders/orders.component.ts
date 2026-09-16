@@ -1040,6 +1040,21 @@ export class OrdersComponent implements OnInit, OnDestroy {
     );
   }
 
+  /**
+   * Whether the acting role may edit this order's details (edit-order
+   * feature). Admin only, and only while the order hasn't moved past the
+   * editable statuses (mirrors the server-side {@code OrderNotEditableException}
+   * guard, so this is a UI convenience — the server enforces it regardless).
+   */
+  canEditOrder(order: OrderDetail | null): boolean {
+    return (
+      !!order &&
+      (order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL ||
+        order.orderStatus === OrderStatus.APPROVED) &&
+      this.auth.hasAnyRole(Role.ADMIN)
+    );
+  }
+
   /** Approves the open order (admin, pending only) via the bulk-approve API. */
   async approveOne(order: OrderDetail): Promise<void> {
     if (!this.canApprove(order) || this.detailBusy()) {
@@ -1234,7 +1249,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.createReturnError.set(null);
     this.returnsService
       .create({
-        orderId: order.id,
+        orderId: String(order.id),
         reason: raw.reason.trim(),
         notes: raw.notes.trim() || undefined,
       })

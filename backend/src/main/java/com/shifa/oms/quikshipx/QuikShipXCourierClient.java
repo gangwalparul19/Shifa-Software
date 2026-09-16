@@ -4,7 +4,9 @@ import com.shifa.oms.courier.CourierAssignmentRequest;
 import com.shifa.oms.courier.CourierAssignmentResult;
 import com.shifa.oms.courier.CourierClient;
 import com.shifa.oms.courier.CourierClientException;
+import com.shifa.oms.courier.CourierProperties;
 import com.shifa.oms.courier.CourierTrackingEvent;
+import com.shifa.oms.courier.MockCourierClient;
 import com.shifa.oms.quikshipx.QuikShipXModels.AllotResult;
 import com.shifa.oms.quikshipx.QuikShipXModels.TrackResult;
 import org.slf4j.Logger;
@@ -29,7 +31,12 @@ import java.util.Optional;
  *   <li>{@link #assign} → QuikShipX <b>allot-tracking-id</b>: allots the AWB +
  *       label using the shipment's stored QuikShipX order id, records them on the
  *       {@link OrderShipment}, and returns the AWB so the caller advances the
- *       order to {@code Courier_Assigned} (QuikShipX "Tracking ID Assigned").</li>
+ *       order to {@code Courier_Assigned} (QuikShipX "Tracking ID Assigned").
+ *       When the order has <b>no</b> {@link OrderShipment} — i.e. it was flagged
+ *       for in-house delivery and so was never published to QuikShipX — this
+ *       delegates to an internal {@link MockCourierClient} instance instead of
+ *       failing, so an in-house order is never blocked at dispatch by the
+ *       (irrelevant) QuikShipX pipeline.</li>
  *   <li>{@link #pollLatest} → QuikShipX <b>track-order</b>: reads the current
  *       status, mirrors it onto the shipment, and returns it for
  *       {@code CourierStatusApplier} to apply.</li>
@@ -47,19 +54,31 @@ public class QuikShipXCourierClient implements CourierClient {
 
     private final QuikShipXClient client;
     private final OrderShipmentRepository shipmentRepository;
+    /** Fallback for orders never published to QuikShipX (in-house delivery). */
+    private final MockCourierClient manualFallback;
 
-    public QuikShipXCourierClient(QuikShipXClient client, OrderShipmentRepository shipmentRepository) {
+    public QuikShipXCourierClient(QuikShipXClient client, OrderShipmentRepository shipmentRepository,
+                                  CourierProperties courierProperties) {
         this.client = client;
         this.shipmentRepository = shipmentRepository;
+        this.manualFallback = new MockCourierClient(courierProperties);
     }
 
     @Override
     @Transactional
     public CourierAssignmentResult assign(CourierAssignmentRequest request) {
-        OrderShipment shipment = shipmentRepository.findByOrderCode(request.orderCode())
-                .orElseThrow(() -> new CourierClientException(
-                        "Order " + request.orderCode() + " is not yet published to QuikShipX; "
-                                + "cannot allot a tracking id (will retry)."));
+        Optional<OrderShipment> shipmentOpt = shipmentRepository.findByOrderCode(request.orderCode());
+        if (shipmentOpt.isEmpty()) {
+            // Never published to QuikShipX — most likely an order flagged for
+            // in-house delivery. Fall back to the manual/mock assignment path
+            // rather than blocking dispatch on an integration this order opted out
+            // of (courier company defaults to CourierProperties.companyName, e.g.
+            // "Shifa Express" — representing the in-house delivery team).
+            log.debug("No QuikShipX shipment for order {} — using in-house/manual courier assignment",
+                    request.orderCode());
+            return manualFallback.assign(request);
+        }
+        OrderShipment shipment = shipmentOpt.get();
         // Idempotent: if a tracking id was already allotted (e.g. at approval),
         // reuse it instead of booking a second shipment.
         if (shipment.getAwb() != null && !shipment.getAwb().isBlank()) {

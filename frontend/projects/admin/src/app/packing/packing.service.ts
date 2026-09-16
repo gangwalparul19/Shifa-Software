@@ -3,7 +3,13 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
 import { OrderDetail } from '../orders/orders.model';
-import { PackingQueue, PackingScanPreviewResponse, PackingScanResponse } from './packing.model';
+import {
+  PackingQueue,
+  PackingScanPreviewResponse,
+  PackingScanResponse,
+  RtoReason,
+  RtoScanPreviewResponse,
+} from './packing.model';
 
 /**
  * Data access for the packing barcode-scan workflow (Req 11).
@@ -87,5 +93,27 @@ export class PackingService {
    */
   dispatch(id: number): Observable<OrderDetail> {
     return this.api.post<OrderDetail>(`/api/packing/${id}/dispatch`);
+  }
+
+  /**
+   * Resolve a scanned order-label barcode for the RTO page without mutating the
+   * order (label redesign feature). Reports whether marking it RTO is currently
+   * a legal move.
+   */
+  rtoPreview(barcode: string): Observable<RtoScanPreviewResponse> {
+    return this.api.post<RtoScanPreviewResponse>('/api/packing/rto-preview', { barcode });
+  }
+
+  /**
+   * Mark a scanned order RTO (returned to origin) with a required categorized
+   * reason and optional note, after explicit confirmation. A non-RTO-eligible
+   * order surfaces as a 409 {@code HttpErrorResponse}.
+   */
+  markRto(id: number, reason: RtoReason, note?: string): Observable<OrderDetail> {
+    const body: { reason: RtoReason; note?: string } = { reason };
+    if (note && note.trim()) {
+      body.note = note.trim();
+    }
+    return this.api.post<OrderDetail>(`/api/packing/${id}/rto`, body);
   }
 }

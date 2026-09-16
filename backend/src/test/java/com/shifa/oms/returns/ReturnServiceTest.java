@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -78,10 +79,12 @@ class ReturnServiceTest {
 
     @Test
     void createSucceedsFromDeliveredOrder() {
-        when(orderRepository.findById(1L)).thenReturn(Optional.of(orderIn(OrderStatus.DELIVERED, 1)));
+        OrderEntity order = orderIn(OrderStatus.DELIVERED, 1);
+        ReflectionTestUtils.setField(order, "id", 1L);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(returnRepository.existsByOrderIdAndStatusIn(anyLong(), any())).thenReturn(false);
 
-        ReturnResponse response = service.create(1L, "Damaged", "box crushed");
+        ReturnResponse response = service.create("1", "Damaged", "box crushed");
 
         assertThat(response.status()).isEqualTo(ReturnStatus.REQUESTED);
         assertThat(response.reason()).isEqualTo("Damaged");
@@ -89,10 +92,26 @@ class ReturnServiceTest {
     }
 
     @Test
-    void createFromNonReturnableStatusIsRejected() {
-        when(orderRepository.findById(1L)).thenReturn(Optional.of(orderIn(OrderStatus.APPROVED, 1)));
+    void createAcceptsOrderCodeInsteadOfNumericId() {
+        OrderEntity order = orderIn(OrderStatus.DELIVERED, 1);
+        ReflectionTestUtils.setField(order, "id", 1L);
+        // The order code is not purely numeric, so resolveOrder goes straight to
+        // the code lookup (findByOrderCode), never touching findById.
+        when(orderRepository.findByOrderCode("SHR-000123")).thenReturn(Optional.of(order));
+        when(returnRepository.existsByOrderIdAndStatusIn(anyLong(), any())).thenReturn(false);
 
-        assertThatThrownBy(() -> service.create(1L, "Damaged", null))
+        ReturnResponse response = service.create("SHR-000123", "Damaged", null);
+
+        assertThat(response.status()).isEqualTo(ReturnStatus.REQUESTED);
+    }
+
+    @Test
+    void createFromNonReturnableStatusIsRejected() {
+        OrderEntity order = orderIn(OrderStatus.APPROVED, 1);
+        ReflectionTestUtils.setField(order, "id", 1L);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.create("1", "Damaged", null))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("delivered or RTO");
     }
@@ -100,8 +119,9 @@ class ReturnServiceTest {
     @Test
     void createForMissingOrderIsNotFound() {
         when(orderRepository.findById(9L)).thenReturn(Optional.empty());
+        when(orderRepository.findByOrderCode("9")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.create(9L, "Damaged", null))
+        assertThatThrownBy(() -> service.create("9", "Damaged", null))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -109,10 +129,12 @@ class ReturnServiceTest {
 
     @Test
     void createBlockedWhenAnActiveReturnAlreadyExists() {
-        when(orderRepository.findById(1L)).thenReturn(Optional.of(orderIn(OrderStatus.RTO, 1)));
+        OrderEntity order = orderIn(OrderStatus.RTO, 1);
+        ReflectionTestUtils.setField(order, "id", 1L);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(returnRepository.existsByOrderIdAndStatusIn(anyLong(), any())).thenReturn(true);
 
-        assertThatThrownBy(() -> service.create(1L, "Wrong size", null))
+        assertThatThrownBy(() -> service.create("1", "Wrong size", null))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("already has an active return");
     }

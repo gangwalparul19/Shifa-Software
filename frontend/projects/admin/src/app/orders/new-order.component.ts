@@ -177,6 +177,10 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     discountValue: 0,
   });
 
+  // Delivery method is no longer chosen by the salesperson at order entry —
+  // every order defaults to IN_HOUSE; the admin picks/overrides the delivery
+  // partner (QuikShipX vs in-house) when approving (in-house-delivery feature).
+
   /** Selectable lead-source options for the origin picker (Req 4.1). */
   protected readonly leadSourceOptions = LEAD_SOURCE_OPTIONS;
 
@@ -1103,6 +1107,10 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       ...(raw.discountType
         ? { discountType: raw.discountType as OrderDiscountType, discountValue: raw.discountValue || 0 }
         : {}),
+      // Delivery method is no longer a salesperson choice — every order created
+      // here defaults to in-house; the admin picks/overrides the delivery
+      // partner (QuikShipX vs in-house) at approval time.
+      deliveryMethod: 'IN_HOUSE',
     };
 
     // Offline capture (FEATURE-ROADMAP §8.1): a COD order (no money collected) is
@@ -1180,6 +1188,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       ...(raw.discountType
         ? { discountType: raw.discountType as OrderDiscountType, discountValue: raw.discountValue || 0 }
         : {}),
+      // Delivery method is no longer a salesperson choice — defaults to in-house.
+      deliveryMethod: 'IN_HOUSE',
     };
 
     this.submitting.set(true);

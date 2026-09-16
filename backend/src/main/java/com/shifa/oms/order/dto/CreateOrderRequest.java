@@ -101,6 +101,12 @@ public record CreateOrderRequest(
         // Req 1.1). Null/blank is allowed (the buyer is an unregistered person);
         // format validation is applied on the write path in OrderService (Req 1.3).
         @Size(max = 15, message = "buyerGstin must be at most 15 characters")
-        String buyerGstin
+        String buyerGstin,
+
+        // Optional per-order delivery method: "QUIKSHIPX" (default when null/blank)
+        // or "IN_HOUSE" to skip the QuikShipX courier integration entirely and have
+        // Shifa's own team deliver the order. Case-insensitive.
+        @Pattern(regexp = "(?i)(QUIKSHIPX|IN_HOUSE)?", message = "deliveryMethod must be QUIKSHIPX or IN_HOUSE")
+        String deliveryMethod
 ) {
 }

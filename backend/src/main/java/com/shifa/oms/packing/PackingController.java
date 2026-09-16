@@ -4,11 +4,13 @@ import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.CurrentUserService;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.packing.dto.HandoverRequest;
+import com.shifa.oms.packing.dto.MarkRtoRequest;
 import com.shifa.oms.packing.dto.PackageCountRequest;
 import com.shifa.oms.packing.dto.PackingQueueResponse;
 import com.shifa.oms.packing.dto.PackingScanPreviewResponse;
 import com.shifa.oms.packing.dto.PackingScanRequest;
 import com.shifa.oms.packing.dto.PackingScanResponse;
+import com.shifa.oms.packing.dto.RtoScanPreviewResponse;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -103,5 +105,29 @@ public class PackingController {
     @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
     public OrderResponse setPackages(@PathVariable Long id, @Valid @RequestBody PackageCountRequest request) {
         return packingService.setPackageCount(id, request.packageCount());
+    }
+
+    /**
+     * Resolves a scanned order-label barcode for the RTO page without changing
+     * the order (label redesign feature). Reports whether marking it RTO is
+     * currently a legal move so the UI can gate the reason form.
+     */
+    @PostMapping("/rto-preview")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public RtoScanPreviewResponse rtoPreview(@Valid @RequestBody PackingScanRequest request) {
+        return packingService.rtoPreview(request.barcode());
+    }
+
+    /**
+     * Marks a scanned order RTO (returned to origin) with a required categorized
+     * reason and optional note, after explicit confirmation on the RTO page
+     * (label redesign feature). A non-RTO-eligible order yields 409
+     * {@code ORDER_NOT_RTO_ELIGIBLE}.
+     */
+    @PostMapping("/{id}/rto")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public OrderResponse markRto(@PathVariable Long id, @Valid @RequestBody MarkRtoRequest request) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return packingService.markRto(id, request, actor);
     }
 }

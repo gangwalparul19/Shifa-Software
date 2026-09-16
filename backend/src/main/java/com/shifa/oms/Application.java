@@ -4,6 +4,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+import java.util.TimeZone;
+
 /**
  * Entry point for the Shifa Herbal Remedies Order Management System (OMS).
  *
@@ -19,6 +21,17 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 public class Application {
 
     public static void main(String[] args) {
+        // The business runs entirely in India (AWS Mumbai region), so every
+        // timestamp the app generates or displays must be IST. Most of the
+        // codebase stamps timestamps via bare `LocalDateTime.now()` or
+        // `Clock.systemDefaultZone()`, both of which resolve against the JVM's
+        // default zone — which in turn defaults to the OS timezone (UTC on a
+        // bare Ubuntu/EC2 AMI unless someone has run `timedatectl set-timezone`).
+        // Pinning it here, before the Spring context starts, makes the fix
+        // self-contained in the app (works identically on any server/OS/region
+        // this ever gets deployed/migrated to, without relying on a manual
+        // server-level timezone step being remembered).
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Kolkata"));
         SpringApplication.run(Application.class, args);
     }
 }

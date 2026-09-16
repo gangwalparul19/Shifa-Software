@@ -2,7 +2,7 @@ import { DatePipe } from '@angular/common';
 import { AfterViewInit, Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { catchError, forkJoin, map, of } from 'rxjs';
 import { ApiError } from 'core';
 import { DashboardService } from '../dashboard/dashboard.service';
@@ -65,6 +65,7 @@ interface PackWorkItem {
   selector: 'admin-packing-scan',
   imports: [
     ReactiveFormsModule,
+    RouterLink,
     DatePipe,
     PageHeaderComponent,
     StatusBadgeComponent,

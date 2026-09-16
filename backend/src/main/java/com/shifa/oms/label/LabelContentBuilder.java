@@ -17,9 +17,10 @@ import java.util.Objects;
  * directly against the model (Property 18) and the bulk fan-out against a plain
  * list (Property 19).
  *
- * <p>The barcode value is the QuikShipX order id when the caller supplies one
- * (so the courier partner scans their own id), else the order code (Req 10.1).
- * The COD amount is
+ * <p>The label carries two barcodes (label redesign feature): a courier barcode
+ * (name + AWB, when a courier/AWB has been allotted) and an order barcode
+ * (always present, our own order code) — see {@link InternalLabelContent} for
+ * the full rationale. The COD amount is
  * included on the content <em>if and only if</em> the order's payment status is
  * {@code COD} or {@code Partially_Paid}; it is omitted (left {@code null}, with
  * {@code codApplicable=false}) for {@code Fully_Paid} orders (Req 10.2).
@@ -49,24 +50,26 @@ public class LabelContentBuilder {
      * @return the assembled, render-agnostic label content
      */
     public InternalLabelContent buildInternal(OrderEntity order, LabelCompany company) {
-        return buildInternal(order, company, null);
+        return buildInternal(order, company, null, null);
     }
 
     /**
-     * Builds the internal-label content, encoding {@code barcodeValueOverride} in
-     * the scannable Code128 barcode when provided (otherwise the order code).
+     * Builds the internal-label content with the courier barcode section
+     * populated when a courier + AWB have been allotted (label redesign
+     * feature).
      *
-     * <p>The courier partner (QuikShipX) needs to scan <em>their</em> order id off
-     * our label, so callers pass the QuikShipX order id here; the human-readable
-     * "ORDER ID" on the label always stays our own order code.
+     * <p>The order barcode always encodes our own order code; the courier
+     * barcode (name + AWB) is shown ONLY when both are supplied, so the courier
+     * team can scan the parcel straight into their own system at pickup while
+     * the godown/RTO flow always has our order code to scan against.
      *
-     * @param order                 the source order aggregate (never {@code null})
-     * @param company               the seller/brand details, or {@code null} for defaults
-     * @param barcodeValueOverride  the value to encode in the barcode, or {@code null}/blank
-     *                              to fall back to the order code
+     * @param order       the source order aggregate (never {@code null})
+     * @param company     the seller/brand details, or {@code null} for defaults
+     * @param courierName the courier partner's display name, or {@code null}/blank when not yet allotted
+     * @param courierAwb  the allotted AWB, or {@code null}/blank when not yet allotted
      */
     public InternalLabelContent buildInternal(OrderEntity order, LabelCompany company,
-                                              String barcodeValueOverride) {
+                                              String courierName, String courierAwb) {
         Objects.requireNonNull(order, "order");
 
         List<InternalLabelContent.LabelLineItem> items = order.getLineItems().stream()
@@ -75,12 +78,12 @@ public class LabelContentBuilder {
 
         boolean codApplicable = isCodApplicable(order.getPaymentStatus());
         LabelCompany c = company != null ? company : LabelCompany.defaults();
-        String barcodeValue = (barcodeValueOverride != null && !barcodeValueOverride.isBlank())
-                ? barcodeValueOverride : order.getOrderCode();
+        boolean hasCourier = courierAwb != null && !courierAwb.isBlank();
 
         return new InternalLabelContent(
                 order.getOrderCode(),
-                barcodeValue,
+                hasCourier ? blankToNull(courierName) : null,
+                hasCourier ? courierAwb.trim() : null,
                 order.getCustomerName(),
                 order.getCustomerMobile(),
                 order.getAddressLine(),
@@ -95,6 +98,14 @@ public class LabelContentBuilder {
                 paymentLabel(order.getPaymentStatus()),
                 c.sellerName(),
                 c.pickupReturnAddress());
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private String formatOrderedOn(LocalDateTime createdAt) {

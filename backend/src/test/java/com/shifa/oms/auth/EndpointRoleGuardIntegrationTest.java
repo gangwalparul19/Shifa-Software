@@ -13,8 +13,10 @@ import com.shifa.oms.order.AdminOrderService;
 import com.shifa.oms.order.BulkOrderService;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
+import com.shifa.oms.order.OrderService;
 import com.shifa.oms.order.OrderSource;
 import com.shifa.oms.order.dto.OrderResponse;
+import com.shifa.oms.order.dto.UpdateOrderRequest;
 import com.shifa.oms.audit.AuditEventRepository;
 import com.shifa.oms.crm.CustomerController;
 import com.shifa.oms.crm.CustomerService;
@@ -169,6 +171,23 @@ class EndpointRoleGuardIntegrationTest {
                 List.of(Role.ADMIN));
     }
 
+    /** A minimal valid edit-order payload so bean-validation passes and the ONLY
+     * decision under test is the {@code @PreAuthorize} guard (class-level ADMIN-only). */
+    private static final String VALID_UPDATE_ORDER_JSON = """
+            {"customerName":"Asha","customerMobile":"9812345678","addressLine":"12 MG Road",
+             "city":"Pune","state":"Maharashtra","postalCode":"411001",
+             "items":[{"productId":1,"quantity":1,"rate":"100.00"}],"leadSource":"WHATSAPP"}
+            """;
+
+    @Test
+    void editOrderIsAdminOnly() throws Exception {
+        assertRoleMatrix(
+                put("/api/admin/orders/5")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_UPDATE_ORDER_JSON),
+                List.of(Role.ADMIN));
+    }
+
     // --- Pack / handover / dispatch: PACKING_USER + ADMIN (design §6.3–6.5) ------------
 
     @Test
@@ -189,6 +208,24 @@ class EndpointRoleGuardIntegrationTest {
     @Test
     void dispatchIsPackerOrAdmin() throws Exception {
         assertRoleMatrix(post("/api/packing/5/dispatch"),
+                List.of(Role.PACKING_USER, Role.ADMIN));
+    }
+
+    @Test
+    void rtoPreviewIsPackerOrAdmin() throws Exception {
+        assertRoleMatrix(
+                post("/api/packing/rto-preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"barcode\":\"SHR-TEST01\"}"),
+                List.of(Role.PACKING_USER, Role.ADMIN));
+    }
+
+    @Test
+    void markRtoIsPackerOrAdmin() throws Exception {
+        assertRoleMatrix(
+                post("/api/packing/5/rto")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"CUSTOMER_UNAVAILABLE\"}"),
                 List.of(Role.PACKING_USER, Role.ADMIN));
     }
 
@@ -591,6 +628,11 @@ class EndpointRoleGuardIntegrationTest {
         }
 
         @Bean
+        OrderService orderService() {
+            return new StubOrderService();
+        }
+
+        @Bean
         SalespersonScopeResolver salespersonScopeResolver() {
             return new SalespersonScopeResolver();
         }
@@ -887,7 +929,24 @@ class EndpointRoleGuardIntegrationTest {
         }
 
         @Override
+        public OrderResponse approve(Long id, AuthPrincipal admin, String deliveryMethod) {
+            return sampleOrderResponse();
+        }
+
+        @Override
         public OrderResponse reject(Long id, String reason, AuthPrincipal admin) {
+            return sampleOrderResponse();
+        }
+    }
+
+    /** Returns a canned result for the edit-order write so a permitted call yields 2xx. */
+    static class StubOrderService extends OrderService {
+        StubOrderService() {
+            super(null, null, null, null, null, null, null, null);
+        }
+
+        @Override
+        public OrderResponse updateOrder(Long id, UpdateOrderRequest request, AuthPrincipal admin) {
             return sampleOrderResponse();
         }
     }
@@ -910,6 +969,17 @@ class EndpointRoleGuardIntegrationTest {
 
         @Override
         public OrderResponse dispatch(Long orderId, AuthPrincipal actor) {
+            return null;
+        }
+
+        @Override
+        public com.shifa.oms.packing.dto.RtoScanPreviewResponse rtoPreview(String barcode) {
+            return null;
+        }
+
+        @Override
+        public OrderResponse markRto(Long orderId, com.shifa.oms.packing.dto.MarkRtoRequest request,
+                                     AuthPrincipal actor) {
             return null;
         }
     }

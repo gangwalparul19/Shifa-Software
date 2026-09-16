@@ -12,29 +12,43 @@ import java.util.stream.Collectors;
  * completeness can be property-tested without generating any bytes
  * (design "PDF / label / barcode generation"; Property 18).
  *
- * <p>It carries the order identifier, the value to encode in the scannable
- * Code128 barcode (the QuikShipX order id when published, else the order code),
- * the customer details, and
- * the ordered line items. The COD amount is present <em>if and only if</em> the
- * order is COD or Partially_Paid (Req 10.2): for a Fully_Paid order
- * {@link #codApplicable()} is {@code false} and {@link #codAmount()} is
- * {@code null}.
+ * <p>The label carries TWO scannable Code128 barcodes (label redesign feature):
+ * <ol>
+ *   <li>the <strong>courier barcode</strong> — the courier partner's display
+ *       name printed above a barcode of the allotted AWB, so the courier team
+ *       scans the parcel straight into their own system at pickup. Absent
+ *       ({@link #courierName()}/{@link #courierBarcodeValue()} both
+ *       {@code null}) until a courier + AWB have been allotted (e.g. an
+ *       in-house order, or a QuikShipX order awaiting allotment) — the courier
+ *       section is then omitted from the rendered label;</li>
+ *   <li>the <strong>order barcode</strong> — always present, encoding our own
+ *       {@link #orderCode()} so the godown team can scan a returned parcel
+ *       (RTO) straight back to the order in our system regardless of whether a
+ *       courier/AWB was ever allotted.</li>
+ * </ol>
  *
- * @param orderCode      the human/scannable order identifier (never {@code null})
- * @param barcodeValue   the value encoded by the Code128 barcode (QuikShipX order id when published, else {@code orderCode})
- * @param customerName   the customer's name
- * @param customerMobile the customer's 10-digit mobile number
- * @param addressLine    the shipping address line
- * @param city           the shipping city
- * @param state          the shipping state
- * @param postalCode     the shipping postal code
- * @param lineItems      the ordered line items (name + quantity), never {@code null}
- * @param codApplicable  whether a COD amount applies (COD / Partially_Paid)
- * @param codAmount      the COD amount when applicable, else {@code null} (Req 10.2)
+ * <p>It also carries the customer details and the ordered line items. The COD
+ * amount is present <em>if and only if</em> the order is COD or Partially_Paid
+ * (Req 10.2): for a Fully_Paid order {@link #codApplicable()} is {@code false}
+ * and {@link #codAmount()} is {@code null}.
+ *
+ * @param orderCode           the human/scannable order identifier (never {@code null})
+ * @param courierName         the courier partner's display name, or {@code null} when no courier/AWB is allotted yet
+ * @param courierBarcodeValue the AWB encoded by the courier Code128 barcode, or {@code null} when absent
+ * @param customerName        the customer's name
+ * @param customerMobile      the customer's 10-digit mobile number
+ * @param addressLine         the shipping address line
+ * @param city                the shipping city
+ * @param state               the shipping state
+ * @param postalCode          the shipping postal code
+ * @param lineItems           the ordered line items (name + quantity), never {@code null}
+ * @param codApplicable       whether a COD amount applies (COD / Partially_Paid)
+ * @param codAmount           the COD amount when applicable, else {@code null} (Req 10.2)
  */
 public record InternalLabelContent(
         String orderCode,
-        String barcodeValue,
+        String courierName,
+        String courierBarcodeValue,
         String customerName,
         String customerMobile,
         String addressLine,
@@ -52,8 +66,12 @@ public record InternalLabelContent(
 
     public InternalLabelContent {
         Objects.requireNonNull(orderCode, "orderCode");
-        Objects.requireNonNull(barcodeValue, "barcodeValue");
         lineItems = List.copyOf(Objects.requireNonNull(lineItems, "lineItems"));
+    }
+
+    /** Whether a courier + AWB have been allotted, so the courier barcode section should render. */
+    public boolean hasCourierBarcode() {
+        return courierBarcodeValue != null && !courierBarcodeValue.isBlank();
     }
 
     /** A compact one-line summary of the ordered items, e.g. "Ashwagandha x 2, Triphala x 1". */

@@ -546,6 +546,14 @@
           </div>
         }
 
+        <!-- (5a-i) Rejection reason — visible so the salesperson knows why and can rework it -->
+        @if (order.orderStatus === 'REJECTED' && order.rejectionReason) {
+          <div class="shifa-od__card border-danger">
+            <div class="shifa-od__label text-danger"><i class="ti ti-alert-triangle me-1"></i>Rejected — reason</div>
+            <div class="shifa-od__muted mt-1" style="white-space: pre-wrap">{{ order.rejectionReason }}</div>
+          </div>
+        }
+
         <!-- (5b) Order note (when the salesperson captured one) -->
         @if (order.notes) {
           <div class="shifa-od__card">
@@ -814,52 +822,65 @@
           </button>
         }
 
-        @if (canCreateReturn() && isReturnEligible(order)) {
+        <!-- Secondary actions compacted into a 2-column grid (was 4 stacked
+             full-width rows) so the drawer scrolls less. -->
+        <div class="shifa-od__actions-grid">
+          @if (canEditOrder(order)) {
+            <a
+              class="btn btn-outline-primary shifa-od__action"
+              [routerLink]="['/orders', order.id, 'edit']"
+              title="Correct the customer/shipping/item details on this order"
+            >
+              <i class="ti ti-edit me-1"></i> Edit order
+            </a>
+          }
+
+          @if (canCreateReturn() && isReturnEligible(order)) {
+            <button
+              type="button"
+              class="btn btn-outline-secondary shifa-od__action"
+              (click)="openCreateReturn()"
+              title="Create a return for this order"
+            >
+              <i class="ti ti-arrow-back-up me-1"></i> Create return
+            </button>
+          }
+
+          <!-- One-tap reorder: clone this order into a fresh New Order draft -->
+          @if (canCreateOrder()) {
+            <a
+              class="btn btn-outline-primary shifa-od__action"
+              [routerLink]="['/orders/new']"
+              [queryParams]="{ reorderFrom: order.id }"
+              (click)="closeDetail()"
+              title="Create a new order with these items"
+            >
+              <i class="ti ti-repeat me-1"></i> Reorder
+            </a>
+          }
+
           <button
             type="button"
-            class="btn btn-outline-secondary w-100 shifa-od__secondary"
-            (click)="openCreateReturn()"
-            title="Create a return for this order"
+            class="btn shifa-od__invoice shifa-od__action"
+            (click)="downloadInvoice(order)"
+            [disabled]="invoiceLoading()"
           >
-            <i class="ti ti-arrow-back-up me-1"></i> Create return
+            @if (invoiceLoading()) {
+              <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            } @else {
+              <i class="ti ti-file-invoice me-1"></i>
+            }
+            Invoice
           </button>
-        }
-
-        <!-- One-tap reorder: clone this order into a fresh New Order draft -->
-        @if (canCreateOrder()) {
-          <a
-            class="btn btn-primary w-100 shifa-od__primary"
-            [routerLink]="['/orders/new']"
-            [queryParams]="{ reorderFrom: order.id }"
-            (click)="closeDetail()"
-            title="Create a new order with these items"
-          >
-            <i class="ti ti-repeat me-1"></i> Reorder
-          </a>
-        }
-
-        <!-- (9) Full-width outlined green Download Invoice -->
-        <button
-          type="button"
-          class="btn w-100 shifa-od__invoice"
-          (click)="downloadInvoice(order)"
-          [disabled]="invoiceLoading()"
-        >
-          @if (invoiceLoading()) {
-            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-          } @else {
-            <i class="ti ti-file-invoice me-1"></i>
-          }
-          Download Invoice
-        </button>
+        </div>
 
         <!-- (10) Print packing label (barcode + details) — admin reprint -->
         @if (canPrintLabel()) {
           <div class="shifa-od__label mt-2 mb-1">Print label</div>
-          <div class="d-flex gap-2">
+          <div class="shifa-od__actions-grid">
             <button
               type="button"
-              class="btn shifa-od__invoice flex-fill mt-0"
+              class="btn shifa-od__invoice shifa-od__action"
               (click)="printLabel(order)"
               [disabled]="labelLoading()"
               title="Shifa internal packing label (barcode + details)"
@@ -873,7 +894,7 @@
             </button>
             @if (order.quikShipXLabelUrl) {
               <a
-                class="btn shifa-od__invoice flex-fill mt-0"
+                class="btn shifa-od__invoice shifa-od__action"
                 [href]="order.quikShipXLabelUrl"
                 target="_blank"
                 rel="noopener"
@@ -882,7 +903,7 @@
                 <i class="ti ti-truck-delivery me-1"></i> QuikShip Label
               </a>
             } @else {
-              <button type="button" class="btn shifa-od__invoice flex-fill mt-0" disabled
+              <button type="button" class="btn shifa-od__invoice shifa-od__action" disabled
                 title="Available once a QuikShipX tracking id is assigned">
                 <i class="ti ti-truck-delivery me-1"></i> QuikShip Label
               </button>

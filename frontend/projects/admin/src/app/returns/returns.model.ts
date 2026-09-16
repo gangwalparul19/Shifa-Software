@@ -20,9 +20,13 @@ export interface ReturnResponse {
   updatedAt?: string | null;
 }
 
-/** Payload for creating a return ({@code POST /api/admin/returns}). */
+/**
+ * Payload for creating a return ({@code POST /api/admin/returns}). {@code orderId}
+ * accepts either the order's numeric id or its human-readable order code
+ * (e.g. {@code SHR-20260916-JGM9}) — the backend resolves whichever is supplied.
+ */
 export interface CreateReturnRequest {
-  orderId: number;
+  orderId: string;
   reason: string;
   notes?: string;
 }
