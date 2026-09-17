@@ -10,6 +10,8 @@ export type ReturnStatus = 'REQUESTED' | 'APPROVED' | 'REFUNDED' | 'REJECTED';
 export interface ReturnResponse {
   id: number;
   orderId: number;
+  /** The order's human-readable code (e.g. SHR-20260916-JGM9); null only if the order no longer exists. */
+  orderCode?: string | null;
   reason: string;
   notes?: string | null;
   status: ReturnStatus;

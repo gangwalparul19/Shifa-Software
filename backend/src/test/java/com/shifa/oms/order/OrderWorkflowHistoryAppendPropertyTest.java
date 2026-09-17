@@ -112,6 +112,30 @@ class OrderWorkflowHistoryAppendPropertyTest {
         // Manual "Mark Delivered" for in-house orders (in-house-delivery feature).
         addStaff(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.DELIVERED,
                 Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        // Manual in-house progression: staff advance the in-transit stages by hand
+        // because no courier webhook will ever do it (in-house-delivery feature).
+        addStaff(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.DISPATCHED,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        addStaff(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.IN_TRANSIT,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        addStaff(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.OUT_FOR_DELIVERY,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        addStaff(cases, OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        addStaff(cases, OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        addStaff(cases, OrderStatus.DISPATCHED, OrderStatus.DELIVERED,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        addStaff(cases, OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        addStaff(cases, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        addStaff(cases, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        addStaff(cases, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CUSTOMER_REJECTED,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        addStaff(cases, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERY_FAILED,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
         // Courier pickup + webhook progressions — SYSTEM only. Forward jumps from
         // Courier_Assigned keep a QuikShipX tracking poll from stalling on a skipped scan.
         addSystem(cases, OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED);

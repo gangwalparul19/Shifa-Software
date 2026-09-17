@@ -12,6 +12,7 @@ import { ProductsComponent } from './products/products.component';
 import { InventoryComponent } from './inventory/inventory.component';
 import { ScanComponent } from './packing/scan.component';
 import { RtoComponent } from './packing/rto.component';
+import { PickListComponent } from './packing/pick-list.component';
 import { ReconciliationComponent } from './reconciliation/reconciliation.component';
 import { ReportsComponent } from './reports/reports.component';
 import { SettingsComponent } from './settings/settings.component';
@@ -319,6 +320,13 @@ export const routes: Routes = [
         // returned parcel's order barcode, choose a reason, mark it RTO.
         path: 'packing/rto',
         component: RtoComponent,
+        canActivate: [packingGuard],
+      },
+      {
+        // Daily pick-list / packing manifest (enhancement): every product
+        // needed across all orders awaiting packing, aggregated onto one sheet.
+        path: 'packing/pick-list',
+        component: PickListComponent,
         canActivate: [packingGuard],
       },
       {

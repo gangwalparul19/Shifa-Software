@@ -1,0 +1,26 @@
+@if (currentStep(); as step) {
+  <div class="gt-overlay" role="dialog" aria-modal="true" [attr.aria-label]="step.title">
+    <div class="gt-spotlight" [ngStyle]="spotlightStyle()"></div>
+    <div class="gt-card" [ngStyle]="tooltipStyle()">
+      <div class="gt-card__head">
+        <span class="gt-card__step">{{ position() }} / {{ total() }}</span>
+        <button type="button" class="gt-card__close" (click)="skip()" aria-label="Skip tour">
+          <i class="ti ti-x"></i>
+        </button>
+      </div>
+      <div class="gt-card__title">{{ step.title }}</div>
+      <div class="gt-card__body">{{ step.body }}</div>
+      <div class="gt-card__actions">
+        <button type="button" class="btn btn-sm btn-link text-secondary" (click)="skip()">Skip</button>
+        <div class="gt-card__nav">
+          @if (position() > 1) {
+            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="back()">Back</button>
+          }
+          <button type="button" class="btn btn-sm btn-primary" (click)="next()">
+            {{ isLast() ? 'Done' : 'Next' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}

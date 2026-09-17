@@ -3,6 +3,9 @@
   subtitle="Scan a label to pack an order, then hand over and dispatch."
   [breadcrumbs]="[{ label: 'Packing' }]"
 >
+  <a class="btn btn-outline-secondary" routerLink="/packing/pick-list" title="Today's pick-list / packing manifest">
+    <i class="ti ti-clipboard-list me-1"></i> Pick-list
+  </a>
   <a class="btn btn-outline-danger" routerLink="/packing/rto" title="Scan a returned parcel and mark it RTO">
     <i class="ti ti-rotate-2 me-1"></i> Mark RTO
   </a>
@@ -205,6 +208,21 @@
           Handover {{ selectedHandoverCount() }}
         </button>
       }
+      @if (section.kind === 'dispatch' && selectedDispatchCount() > 0) {
+        <button
+          type="button"
+          class="btn btn-sm btn-primary ms-auto"
+          (click)="dispatchSelected()"
+          [disabled]="bulkDispatchBusy()"
+        >
+          @if (bulkDispatchBusy()) {
+            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+          } @else {
+            <i class="ti ti-truck-delivery me-1"></i>
+          }
+          Dispatch {{ selectedDispatchCount() }}
+        </button>
+      }
     </div>
     <div class="card-body p-0">
       @if (section.orders.length === 0) {
@@ -242,6 +260,17 @@
                     />
                   </th>
                 }
+                @if (section.kind === 'dispatch') {
+                  <th class="w-1" title="Select all for dispatch">
+                    <input
+                      class="form-check-input m-0"
+                      type="checkbox"
+                      [checked]="allSelectedForDispatch(section.orders)"
+                      (change)="toggleSelectAllForDispatch(section.orders)"
+                      aria-label="Select all orders for bulk dispatch"
+                    />
+                  </th>
+                }
                 <th>Order ID</th>
                 <th>Customer</th>
                 <th class="text-end">Price</th>
@@ -272,6 +301,17 @@
                         [checked]="isSelectedForHandover(o.id)"
                         (change)="toggleHandoverSelection(o.id)"
                         aria-label="Select order for bulk handover"
+                      />
+                    </td>
+                  }
+                  @if (section.kind === 'dispatch') {
+                    <td (click)="$event.stopPropagation()">
+                      <input
+                        class="form-check-input m-0"
+                        type="checkbox"
+                        [checked]="isSelectedForDispatch(o.id)"
+                        (change)="toggleDispatchSelection(o.id)"
+                        aria-label="Select order for bulk dispatch"
                       />
                     </td>
                   }
@@ -456,7 +496,7 @@
             autocomplete="off"
           />
         </div>
-        <div class="mb-1">
+        <div class="mb-3">
           <label class="form-label" for="handoverPhone">Phone <span class="text-secondary">(optional)</span></label>
           <input
             #handoverPhoneInput
@@ -469,13 +509,31 @@
             autocomplete="off"
           />
         </div>
+        <div class="mb-1">
+          <label class="form-label" for="handoverVehicle">
+            Vehicle / transport no. <span class="text-secondary">(optional)</span>
+          </label>
+          <input
+            #handoverVehicleInput
+            id="handoverVehicle"
+            type="text"
+            class="form-control shifa-mono"
+            maxlength="40"
+            placeholder="e.g. MP09 AB1234, train 12920, bus operator"
+            autocomplete="off"
+          />
+          <div class="form-hint mt-1">
+            For an in-house delivery there is no AWB — record the vehicle, train or bus
+            carrying the parcel so it can be traced.
+          </div>
+        </div>
       </div>
       <div class="card-footer d-flex gap-2 justify-content-end py-2">
         <button type="button" class="btn btn-link" (click)="cancelHandover()">Cancel</button>
         <button
           type="button"
           class="btn btn-primary"
-          (click)="confirmHandover(handoverNameInput.value, handoverPhoneInput.value)"
+          (click)="confirmHandover(handoverNameInput.value, handoverPhoneInput.value, handoverVehicleInput.value)"
         >
           <i class="ti ti-check me-1"></i> Confirm handover
         </button>

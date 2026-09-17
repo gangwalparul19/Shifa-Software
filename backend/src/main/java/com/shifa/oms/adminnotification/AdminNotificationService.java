@@ -106,7 +106,8 @@ public class AdminNotificationService {
 
     /**
      * Marks a single notification read (idempotent). A 404 is raised when the id
-     * does not exist.
+     * does not exist. Used by the ADMIN-only {@code /api/admin/notifications}
+     * endpoint, where the caller is always allowed to act on any notification.
      */
     @Transactional
     public AdminNotificationResponse markRead(Long id) {
@@ -115,6 +116,45 @@ public class AdminNotificationService {
                         "Notification " + id + " does not exist."));
         notification.markRead();
         return AdminNotificationResponse.from(repository.save(notification));
+    }
+
+    /**
+     * Marks a single notification read (idempotent), but only if it is actually
+     * visible to {@code principal} (Req 13.4 ownership check). Used by the
+     * staff-facing {@code POST /api/notifications/{id}/read}, which previously
+     * did not verify the notification belonged to the caller — any authenticated
+     * user could mark (or reveal the existence of) another user's notification
+     * by id. A 404 is raised both when the id does not exist AND when it exists
+     * but is not addressed to this user/role, so the response never leaks which
+     * case applies.
+     *
+     * @throws ResourceNotFoundException when the id doesn't exist, or isn't visible to the caller
+     */
+    @Transactional
+    public AdminNotificationResponse markReadForUser(Long id, AuthPrincipal principal) {
+        AdminNotification notification = repository.findById(id)
+                .filter(n -> isVisibleTo(n, principal))
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Notification " + id + " does not exist."));
+        notification.markRead();
+        return AdminNotificationResponse.from(repository.save(notification));
+    }
+
+    /**
+     * Whether a notification is visible to {@code principal}, mirroring the
+     * addressing rules used by {@link #listForUser}/{@link #unreadCountForUser}:
+     * addressed to their user id, to their role, or (for admins only) a legacy
+     * broadcast (both {@code recipientRole}/{@code recipientUserId} null).
+     */
+    private static boolean isVisibleTo(AdminNotification notification, AuthPrincipal principal) {
+        if (notification.getRecipientUserId() != null) {
+            return notification.getRecipientUserId().equals(principal.userId());
+        }
+        if (notification.getRecipientRole() != null) {
+            return notification.getRecipientRole() == principal.role();
+        }
+        // Legacy admin broadcast (both null) — admin-visible only.
+        return principal.role() == Role.ADMIN;
     }
 
     /**

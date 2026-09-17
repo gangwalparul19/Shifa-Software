@@ -16,7 +16,10 @@ import com.shifa.oms.packing.dto.PackingQueueResponse;
 import com.shifa.oms.packing.dto.PackingQueueRow;
 import com.shifa.oms.packing.dto.PackingScanPreviewResponse;
 import com.shifa.oms.packing.dto.PackingScanResponse;
+import com.shifa.oms.packing.dto.PickListResponse;
 import com.shifa.oms.packing.dto.RtoScanPreviewResponse;
+import com.shifa.oms.product.Product;
+import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.statemachine.OrderStatus;
 
@@ -80,21 +83,95 @@ public class PackingService {
      */
     private final com.shifa.oms.quikshipx.OrderShipmentRepository orderShipmentRepository;
 
+    /**
+     * Optional product repository so the pick-list can look up SKUs for the
+     * products it aggregates (nullable in tests / lightweight call sites; the
+     * pick-list simply omits the SKU when unavailable). See {@link #pickList()}.
+     */
+    private final ProductRepository productRepository;
+
+    /**
+     * Optional generic/in-house courier record repository so a scanned barcode
+     * can also be resolved by a delivery partner's AWB (label redesign feature —
+     * single-barcode label: a courier barcode is what actually gets printed and
+     * scanned when a partner is assigned, so the RTO/packing scan flow must
+     * recognise it, not just our own order code / QuikShipX). Nullable in tests
+     * / lightweight call sites. See {@link #resolveBarcodeMatch(String)}.
+     */
+    private final com.shifa.oms.courier.CourierRecordRepository courierRecordRepository;
+
+    /** Resolves a matched {@code CourierRecord}'s company id to a display name. Nullable in tests. */
+    private final com.shifa.oms.courier.CourierCompanyRepository courierCompanyRepository;
+
+    /**
+     * Optional returns service so marking an order RTO also raises a sales-return
+     * record for GST/CA reporting (GSTR-1 credit notes): nullable in tests /
+     * lightweight call sites, in which case {@link #markRto} simply skips
+     * creating a return (behaviour-preserving for existing callers/tests).
+     */
+    private final com.shifa.oms.returns.ReturnService returnService;
+
     /** Test-friendly constructor without the QuikShipX shipment lookup (order-code scan only). */
     public PackingService(OrderRepository orderRepository, OutboxEventPublisher outboxEventPublisher,
                           OrderWorkflowService orderWorkflowService, UserRepository userRepository) {
-        this(orderRepository, outboxEventPublisher, orderWorkflowService, userRepository, null);
+        this(orderRepository, outboxEventPublisher, orderWorkflowService, userRepository, null, null);
+    }
+
+    /**
+     * Constructor used by existing test call sites (5 args): wires the QuikShipX
+     * shipment lookup only, leaving the pick-list's product/SKU lookup and the
+     * generic courier-AWB lookup unwired (pick-list simply omits SKUs; a generic
+     * courier AWB scan falls back to "not recognized").
+     */
+    public PackingService(OrderRepository orderRepository, OutboxEventPublisher outboxEventPublisher,
+                          OrderWorkflowService orderWorkflowService, UserRepository userRepository,
+                          com.shifa.oms.quikshipx.OrderShipmentRepository orderShipmentRepository) {
+        this(orderRepository, outboxEventPublisher, orderWorkflowService, userRepository,
+                orderShipmentRepository, null);
+    }
+
+    /** Constructor used by existing test call sites (6 args): leaves the generic courier-AWB lookup unwired. */
+    public PackingService(OrderRepository orderRepository, OutboxEventPublisher outboxEventPublisher,
+                          OrderWorkflowService orderWorkflowService, UserRepository userRepository,
+                          com.shifa.oms.quikshipx.OrderShipmentRepository orderShipmentRepository,
+                          ProductRepository productRepository) {
+        this(orderRepository, outboxEventPublisher, orderWorkflowService, userRepository,
+                orderShipmentRepository, productRepository, null, null);
+    }
+
+    /**
+     * Constructor used by existing test call sites (8 args): leaves the
+     * auto-return-on-RTO orchestration unwired (marking RTO then simply skips
+     * creating a return record).
+     */
+    public PackingService(OrderRepository orderRepository, OutboxEventPublisher outboxEventPublisher,
+                          OrderWorkflowService orderWorkflowService, UserRepository userRepository,
+                          com.shifa.oms.quikshipx.OrderShipmentRepository orderShipmentRepository,
+                          ProductRepository productRepository,
+                          com.shifa.oms.courier.CourierRecordRepository courierRecordRepository,
+                          com.shifa.oms.courier.CourierCompanyRepository courierCompanyRepository) {
+        this(orderRepository, outboxEventPublisher, orderWorkflowService, userRepository,
+                orderShipmentRepository, productRepository, courierRecordRepository,
+                courierCompanyRepository, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public PackingService(OrderRepository orderRepository, OutboxEventPublisher outboxEventPublisher,
                           OrderWorkflowService orderWorkflowService, UserRepository userRepository,
-                          com.shifa.oms.quikshipx.OrderShipmentRepository orderShipmentRepository) {
+                          com.shifa.oms.quikshipx.OrderShipmentRepository orderShipmentRepository,
+                          ProductRepository productRepository,
+                          com.shifa.oms.courier.CourierRecordRepository courierRecordRepository,
+                          com.shifa.oms.courier.CourierCompanyRepository courierCompanyRepository,
+                          com.shifa.oms.returns.ReturnService returnService) {
         this.orderRepository = orderRepository;
         this.outboxEventPublisher = outboxEventPublisher;
         this.orderWorkflowService = orderWorkflowService;
         this.userRepository = userRepository;
         this.orderShipmentRepository = orderShipmentRepository;
+        this.productRepository = productRepository;
+        this.courierRecordRepository = courierRecordRepository;
+        this.courierCompanyRepository = courierCompanyRepository;
+        this.returnService = returnService;
     }
 
     /**
@@ -157,7 +234,7 @@ public class PackingService {
      */
     @Transactional(readOnly = true)
     public PackingScanPreviewResponse preview(String barcode) {
-        return PackingScanPreviewResponse.from(resolveBarcode(barcode));
+        return PackingScanPreviewResponse.from(resolveBarcodeMatch(barcode).order());
     }
 
     /**
@@ -174,7 +251,7 @@ public class PackingService {
      */
     @Transactional
     public PackingScanResponse scan(String barcode, AuthPrincipal actor) {
-        OrderEntity order = resolveBarcode(barcode);
+        OrderEntity order = resolveBarcodeMatch(barcode).order();
 
         if (order.getOrderStatus() != OrderStatus.LABEL_GENERATED) {
             // Recheck after preview and surface the current status without mutation.
@@ -200,31 +277,70 @@ public class PackingService {
     }
 
     /**
-     * Resolves a scanned barcode to an order. The internal label encodes the
-     * QuikShipX order id (its {@code shipper_order_id}) once the order is
-     * published to QuikShipX, else our own order code — so the packer and the
-     * courier scan the same value. To make both work we try, in order:
+     * The result of resolving a scanned barcode: the matched order plus whether
+     * the match came from a delivery partner's own barcode (QuikShipX order
+     * id/AWB, or a generic/in-house courier AWB) rather than our own order code —
+     * and, when so, the partner's display name + the AWB value that was scanned
+     * (label redesign feature: single-barcode label). Lets the RTO scan page
+     * show "scanned via <partner> — AWB <value>" per the printed barcode.
+     */
+    private record BarcodeMatch(OrderEntity order, boolean viaCourier, String courierName, String courierAwb) {
+        static BarcodeMatch direct(OrderEntity order) {
+            return new BarcodeMatch(order, false, null, null);
+        }
+
+        static BarcodeMatch viaCourier(OrderEntity order, String courierName, String awb) {
+            return new BarcodeMatch(order, true, courierName, awb);
+        }
+    }
+
+    /**
+     * Resolves a scanned barcode to an order. Because the redesigned label prints
+     * exactly one scannable barcode — the delivery partner's (name + AWB) once
+     * one is allotted, else our own order code as a fallback — the packer/RTO
+     * scan must resolve whichever one is actually on the parcel. Tried in order:
      * <ol>
-     *   <li>our internal {@code order_code} (the classic label / manual entry);</li>
+     *   <li>our internal {@code order_code} (the fallback label / manual entry);</li>
      *   <li>the QuikShipX order id printed on published labels
-     *       ({@code shipper_order_id});</li>
-     *   <li>the QuikShipX AWB (tracking id), so a courier AWB label also resolves.</li>
+     *       ({@code shipper_order_id}), or its AWB;</li>
+     *   <li>a generic/in-house {@code CourierRecord}'s AWB (manually assigned
+     *       courier).</li>
      * </ol>
      * Only the first match wins; an unmatched code is {@code BARCODE_NOT_RECOGNIZED}.
      */
-    private OrderEntity resolveBarcode(String barcode) {
+    private BarcodeMatch resolveBarcodeMatch(String barcode) {
         String code = barcode == null ? "" : barcode.trim();
         java.util.Optional<OrderEntity> byCode = orderRepository.findByOrderCode(code);
         if (byCode.isPresent()) {
-            return byCode.get();
+            return BarcodeMatch.direct(byCode.get());
         }
         if (orderShipmentRepository != null && !code.isEmpty()) {
-            java.util.Optional<OrderEntity> viaShipment = orderShipmentRepository.findByShipperOrderId(code)
-                    .or(() -> orderShipmentRepository.findByAwb(code))
-                    .map(com.shifa.oms.quikshipx.OrderShipment::getOrderId)
-                    .flatMap(orderRepository::findById);
-            if (viaShipment.isPresent()) {
-                return viaShipment.get();
+            java.util.Optional<com.shifa.oms.quikshipx.OrderShipment> shipment =
+                    orderShipmentRepository.findByShipperOrderId(code)
+                            .or(() -> orderShipmentRepository.findByAwb(code));
+            if (shipment.isPresent()) {
+                java.util.Optional<OrderEntity> viaShipment =
+                        orderRepository.findById(shipment.get().getOrderId());
+                if (viaShipment.isPresent()) {
+                    String awb = shipment.get().getAwb() != null ? shipment.get().getAwb() : code;
+                    return BarcodeMatch.viaCourier(viaShipment.get(), "QuikShipX", awb);
+                }
+            }
+        }
+        if (courierRecordRepository != null && !code.isEmpty()) {
+            java.util.Optional<com.shifa.oms.courier.CourierRecord> record =
+                    courierRecordRepository.findByAwb(code);
+            if (record.isPresent()) {
+                java.util.Optional<OrderEntity> viaRecord = orderRepository.findById(record.get().getOrderId());
+                if (viaRecord.isPresent()) {
+                    String name = null;
+                    if (courierCompanyRepository != null && record.get().getCourierCompanyId() != null) {
+                        name = courierCompanyRepository.findById(record.get().getCourierCompanyId())
+                                .map(com.shifa.oms.courier.CourierCompany::getName)
+                                .orElse(null);
+                    }
+                    return BarcodeMatch.viaCourier(viaRecord.get(), name, code);
+                }
             }
         }
         throw new BarcodeNotRecognizedException(code);
@@ -243,7 +359,8 @@ public class PackingService {
      */
     @Transactional(readOnly = true)
     public RtoScanPreviewResponse rtoPreview(String barcode) {
-        return RtoScanPreviewResponse.from(resolveBarcode(barcode));
+        BarcodeMatch match = resolveBarcodeMatch(barcode);
+        return RtoScanPreviewResponse.from(match.order(), match.viaCourier(), match.courierName(), match.courierAwb());
     }
 
     /**
@@ -271,13 +388,27 @@ public class PackingService {
         }
 
         RtoReason reason = request.reason();
-        order.setRtoReason(reason, trimToNull(request.note()));
+        String note = trimToNull(request.note());
+        order.setRtoReason(reason, note);
 
         // Centralized transition: authorize (role) → apply (409 on illegal) →
         // status + one history row → audit → matrix notification.
         orderWorkflowService.applyTransition(
                 order, OrderStatus.RTO, Actor.user(actor, SOURCE_PACKING));
         OrderEntity saved = orderRepository.save(order);
+
+        // Auto-raise a sales-return record for GST/CA reporting (client request:
+        // RTO should surface as a sales return in the GSTR-1 credit-note figures).
+        // Best-effort/non-fatal: the RTO status change itself must never fail
+        // because the return bookkeeping couldn't be created.
+        if (returnService != null) {
+            try {
+                returnService.createAutoReturnForRto(saved.getId(), reason != null ? reason.name() : note);
+            } catch (RuntimeException e) {
+                log.warn("Could not auto-create a sales return for RTO order {}: {}",
+                        saved.getOrderCode(), e.getMessage());
+            }
+        }
 
         log.debug("Order {} manually marked RTO by {} (reason {})",
                 saved.getOrderCode(), actor.username(), reason);
@@ -307,10 +438,17 @@ public class PackingService {
             throw new OrderNotHandoverableException(order.getOrderCode(), order.getOrderStatus());
         }
 
-        // Capture who the order was handed to (product-audit §4.3), when supplied.
+        // Capture who the order was handed to (product-audit §4.3), when supplied,
+        // plus the optional in-house vehicle / transport reference (V63) — for an
+        // in-house delivery there is no courier AWB, so the handover name +
+        // vehicle number are what identify the shipment.
         if (request != null) {
             order.setHandoverDetails(
                     trimToNull(request.handoverName()), trimToNull(request.handoverPhone()));
+            String vehicle = trimToNull(request.vehicleNumber());
+            if (vehicle != null) {
+                order.setVehicleNumber(vehicle);
+            }
         }
 
         // Centralized transition: authorize (role) → apply (409 on illegal) →
@@ -355,6 +493,72 @@ public class PackingService {
         log.debug("Order {} dispatched (courier assignment enqueued) by {}",
                 order.getOrderCode(), actor.username());
         return OrderResponse.from(order);
+    }
+
+    /**
+     * The daily pick-list / packing manifest (enhancement): aggregates every
+     * product needed across all orders awaiting packing ({@code Label_Generated})
+     * into one sheet, sorted by total quantity descending — the packer picks the
+     * highest-volume items first, once per product, instead of walking the stock
+     * room per order.
+     */
+    @Transactional(readOnly = true)
+    public PickListResponse pickList() {
+        List<OrderEntity> orders = orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.LABEL_GENERATED);
+
+        // Aggregate quantity + distinct-order-count per product id (falling back to
+        // the snapshotted product name as the key for line-less/legacy products
+        // with a null productId, so they still surface on the sheet).
+        Map<Object, Integer> qtyByKey = new java.util.LinkedHashMap<>();
+        Map<Object, Integer> orderCountByKey = new java.util.LinkedHashMap<>();
+        Map<Object, String> nameByKey = new java.util.LinkedHashMap<>();
+        for (OrderEntity order : orders) {
+            Set<Object> keysInThisOrder = new HashSet<>();
+            for (var item : order.getLineItems()) {
+                Object key = item.getProductId() != null ? item.getProductId() : item.getProductName();
+                qtyByKey.merge(key, item.getQuantity(), Integer::sum);
+                nameByKey.putIfAbsent(key, item.getProductName());
+                if (keysInThisOrder.add(key)) {
+                    orderCountByKey.merge(key, 1, Integer::sum);
+                }
+            }
+        }
+
+        Map<Long, String> skusByProductId = resolveSkus(qtyByKey.keySet());
+
+        List<PickListResponse.PickListLine> lines = qtyByKey.entrySet().stream()
+                .map(e -> {
+                    Object key = e.getKey();
+                    Long productId = key instanceof Long id ? id : null;
+                    return new PickListResponse.PickListLine(
+                            productId,
+                            nameByKey.get(key),
+                            productId != null ? skusByProductId.get(productId) : null,
+                            e.getValue(),
+                            orderCountByKey.getOrDefault(key, 0));
+                })
+                .sorted(java.util.Comparator.comparingInt(PickListResponse.PickListLine::totalQuantity).reversed())
+                .toList();
+
+        return new PickListResponse(orders.size(), lines);
+    }
+
+    private Map<Long, String> resolveSkus(Set<Object> keys) {
+        if (productRepository == null) {
+            return Map.of();
+        }
+        List<Long> productIds = keys.stream()
+                .filter(Long.class::isInstance)
+                .map(Long.class::cast)
+                .toList();
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, String> skus = new HashMap<>();
+        for (Product p : productRepository.findAllById(productIds)) {
+            skus.put(p.getId(), p.getSku());
+        }
+        return skus;
     }
 
     /**

@@ -123,6 +123,80 @@ class CourierAssignmentIntegrationTest {
         assertThat(savedRecord).isNull();
     }
 
+    // --- Manual courier/AWB assignment ("assign courier early" enhancement) -----
+
+    @Test
+    void manuallyAssignCreatesACourierRecordWithoutChangingOrderStatus() {
+        OrderEntity order = handedOverCodOrder();
+        order.setOrderStatus(OrderStatus.APPROVED); // well before dispatch
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        when(courierCompanyRepository.findFirstByName("Shifa Express"))
+                .thenReturn(Optional.of(new CourierCompany("Shifa Express", null)));
+
+        assignmentService.manuallyAssign(10L, "Shifa Express", "AWB-EARLY-001");
+
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.APPROVED); // unchanged
+        assertThat(order.getStatusHistory()).isEmpty(); // no transition recorded
+        assertThat(savedRecord).isNotNull();
+        assertThat(savedRecord.getAwb()).isEqualTo("AWB-EARLY-001");
+    }
+
+    @Test
+    void manuallyAssignUpdatesAnExistingRecord() {
+        OrderEntity order = handedOverCodOrder();
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        CourierRecord existing = new CourierRecord(10L);
+        existing.assign(1L, "OLD-AWB", "labels/shipping/old.pdf", LocalDate.now());
+        when(courierRecordRepository.findByOrderId(10L)).thenReturn(Optional.of(existing));
+        when(courierCompanyRepository.findFirstByName("Shifa Express"))
+                .thenReturn(Optional.of(new CourierCompany("Shifa Express", null)));
+
+        assignmentService.manuallyAssign(10L, "Shifa Express", "NEW-AWB-002");
+
+        assertThat(savedRecord.getAwb()).isEqualTo("NEW-AWB-002");
+        // The prior label key/ETA are preserved (manual assign only touches courier + AWB).
+        assertThat(savedRecord.getShippingLabelKey()).isEqualTo("labels/shipping/old.pdf");
+    }
+
+    @Test
+    void manuallyAssignRejectsBlankCourierName() {
+        assertThat(
+                org.assertj.core.api.Assertions.catchThrowable(
+                        () -> assignmentService.manuallyAssign(10L, "  ", "AWB-1")))
+                .isInstanceOf(com.shifa.oms.common.ValidationException.class);
+    }
+
+    /**
+     * A blank AWB is allowed (in-house-delivery feature): an in-house delivery, or
+     * a parcel handed to a local operator / bus / train, has no tracking number.
+     * The partner is still recorded (so the app can show who has the parcel) with a
+     * null AWB, and the label falls back to our own order-code barcode.
+     */
+    @Test
+    void manuallyAssignAcceptsABlankAwbAndRecordsThePartnerWithoutOne() {
+        OrderEntity order = handedOverCodOrder();
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        when(courierCompanyRepository.findFirstByName("In-House"))
+                .thenReturn(Optional.of(new CourierCompany("In-House", null)));
+
+        assignmentService.manuallyAssign(10L, "In-House", "   ");
+
+        assertThat(savedRecord).isNotNull();
+        assertThat(savedRecord.getAwb()).isNull();
+        // Status is untouched, exactly as for an AWB-bearing manual assignment.
+        assertThat(order.getStatusHistory()).isEmpty();
+    }
+
+    @Test
+    void manuallyAssignForMissingOrderIsNotFound() {
+        when(orderRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThat(
+                org.assertj.core.api.Assertions.catchThrowable(
+                        () -> assignmentService.manuallyAssign(99L, "Shifa Express", "AWB-1")))
+                .isInstanceOf(com.shifa.oms.common.ResourceNotFoundException.class);
+    }
+
     private OrderEntity handedOverCodOrder() {
         OrderEntity order = new OrderEntity(
                 "SHR-000777", OrderSource.STOREFRONT, null,

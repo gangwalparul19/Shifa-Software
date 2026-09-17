@@ -305,4 +305,49 @@ class PackingServiceTest {
         assertThat(order.getStatusHistory()).isEmpty();
         verify(orderRepository, never()).save(any(OrderEntity.class));
     }
+
+    // --- Daily pick-list / packing manifest (enhancement) -------------------
+
+    @Test
+    void pickListAggregatesQuantityAndOrderCountAcrossAwaitingPackingOrders() {
+        OrderEntity orderA = orderIn(OrderStatus.LABEL_GENERATED);
+        orderA.addLineItem(new com.shifa.oms.order.OrderLineItem(
+                100L, "Neem Capsules", 3, new BigDecimal("50.00"), new BigDecimal("150.00")));
+        orderA.addLineItem(new com.shifa.oms.order.OrderLineItem(
+                101L, "Ashwagandha", 1, new BigDecimal("90.00"), new BigDecimal("90.00")));
+
+        OrderEntity orderB = orderIn(OrderStatus.LABEL_GENERATED);
+        orderB.addLineItem(new com.shifa.oms.order.OrderLineItem(
+                100L, "Neem Capsules", 2, new BigDecimal("50.00"), new BigDecimal("100.00")));
+
+        when(orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.LABEL_GENERATED))
+                .thenReturn(java.util.List.of(orderA, orderB));
+
+        com.shifa.oms.packing.dto.PickListResponse pickList = service.pickList();
+
+        assertThat(pickList.orderCount()).isEqualTo(2);
+        assertThat(pickList.lines()).hasSize(2);
+        // Sorted by total quantity descending: Neem (3+2=5) before Ashwagandha (1).
+        com.shifa.oms.packing.dto.PickListResponse.PickListLine first = pickList.lines().get(0);
+        assertThat(first.productId()).isEqualTo(100L);
+        assertThat(first.productName()).isEqualTo("Neem Capsules");
+        assertThat(first.totalQuantity()).isEqualTo(5);
+        assertThat(first.orderCount()).isEqualTo(2); // appears in both orders
+
+        com.shifa.oms.packing.dto.PickListResponse.PickListLine second = pickList.lines().get(1);
+        assertThat(second.productId()).isEqualTo(101L);
+        assertThat(second.totalQuantity()).isEqualTo(1);
+        assertThat(second.orderCount()).isEqualTo(1);
+    }
+
+    @Test
+    void pickListIsEmptyWhenNoOrdersAwaitingPacking() {
+        when(orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.LABEL_GENERATED))
+                .thenReturn(java.util.List.of());
+
+        com.shifa.oms.packing.dto.PickListResponse pickList = service.pickList();
+
+        assertThat(pickList.orderCount()).isZero();
+        assertThat(pickList.lines()).isEmpty();
+    }
 }

@@ -12,20 +12,21 @@ import java.util.stream.Collectors;
  * completeness can be property-tested without generating any bytes
  * (design "PDF / label / barcode generation"; Property 18).
  *
- * <p>The label carries TWO scannable Code128 barcodes (label redesign feature):
+ * <p>The label carries exactly ONE scannable Code128 barcode (label redesign
+ * feature — single-barcode label):
  * <ol>
  *   <li>the <strong>courier barcode</strong> — the courier partner's display
  *       name printed above a barcode of the allotted AWB, so the courier team
- *       scans the parcel straight into their own system at pickup. Absent
- *       ({@link #courierName()}/{@link #courierBarcodeValue()} both
- *       {@code null}) until a courier + AWB have been allotted (e.g. an
- *       in-house order, or a QuikShipX order awaiting allotment) — the courier
- *       section is then omitted from the rendered label;</li>
- *   <li>the <strong>order barcode</strong> — always present, encoding our own
- *       {@link #orderCode()} so the godown team can scan a returned parcel
- *       (RTO) straight back to the order in our system regardless of whether a
- *       courier/AWB was ever allotted.</li>
+ *       scans the parcel straight into their own system at pickup. Rendered
+ *       whenever {@link #hasCourierBarcode()} is {@code true} (both
+ *       {@link #courierName()}/{@link #courierBarcodeValue()} present);</li>
+ *   <li>the <strong>order barcode</strong> — a fallback encoding our own
+ *       {@link #orderCode()}, rendered only when no courier + AWB have been
+ *       allotted yet (e.g. an in-house order, or a QuikShipX order awaiting
+ *       allotment).</li>
  * </ol>
+ * The packing/RTO scan flow resolves either barcode value back to the order, so
+ * whichever one is actually printed can always be scanned to find the order.
  *
  * <p>It also carries the customer details and the ordered line items. The COD
  * amount is present <em>if and only if</em> the order is COD or Partially_Paid

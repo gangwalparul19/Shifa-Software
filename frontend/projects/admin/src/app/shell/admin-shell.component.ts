@@ -1,4 +1,4 @@
-import { Component, HostListener, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, HostListener, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import {
   NavigationEnd,
@@ -25,6 +25,37 @@ import { ToastService } from '../shared/toast.service';
 import { roleLabel } from '../shared/role-label';
 import { GlobalSearchComponent } from './global-search.component';
 import { NotificationBellComponent } from '../notifications/notification-bell.component';
+import { GuidedTourComponent } from '../shared/guided-tour.component';
+import { GuidedTourService, TourStep } from '../shared/guided-tour.service';
+
+/** The first-run tour's id (localStorage key namespace) + its steps. */
+const MAIN_TOUR_ID = 'main-shell-v1';
+const MAIN_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="hamburger"]',
+    title: 'Menu',
+    body: 'Tap here any time to see every page you can access, grouped by area.',
+    placement: 'bottom',
+  },
+  {
+    selector: '[data-tour="global-search"]',
+    title: 'Quick search',
+    body: 'Find any order, product, or customer instantly. On a keyboard, press Ctrl+K (or Cmd+K) from anywhere.',
+    placement: 'bottom',
+  },
+  {
+    selector: '[data-tour="notif-bell"]',
+    title: 'Notifications',
+    body: 'Alerts addressed to you — new orders, approvals needed, follow-ups due — show up here.',
+    placement: 'bottom',
+  },
+  {
+    selector: '[data-tour="bottom-tabs"]',
+    title: 'Your main tabs',
+    body: 'The four screens you use most are always one tap away here.',
+    placement: 'top',
+  },
+];
 
 /** A single navigable link (either standalone or a child inside a group). */
 interface NavLink {
@@ -94,6 +125,7 @@ interface BottomTab {
     ToastsComponent,
     GlobalSearchComponent,
     NotificationBellComponent,
+    GuidedTourComponent,
   ],
   templateUrl: './admin-shell.component.html',
   styleUrl: './admin-shell.component.css',
@@ -109,6 +141,11 @@ export class AdminShellComponent {
   private readonly router = inject(Router);
   private readonly confirm = inject(ConfirmService);
   private readonly toasts = inject(ToastService);
+
+  /** The global search bar, for the Ctrl/Cmd+K shortcut (enhancement: global quick-search). */
+  private readonly globalSearch = viewChild(GlobalSearchComponent);
+  /** First-run guided tour (enhancement: "First-run guided tour + contextual help tooltips"). */
+  private readonly tour = inject(GuidedTourService);
 
   /** Newest awaiting-approval nudge already surfaced as a toast (dedupes the effect). */
   private lastApprovalNudgeTs = 0;
@@ -162,6 +199,13 @@ export class AdminShellComponent {
     // is not an ADMIN or EventSource is unavailable) so new-order approval nudges
     // reach admins on any screen, not just the dashboard/orders/approval pages.
     this.events.connect();
+
+    // First-run guided tour: only ever auto-starts once per browser (tracked in
+    // localStorage), and only for a signed-in user. A short delay lets the shell
+    // (bottom tabs, bell, etc.) finish its first render before spotlighting it.
+    if (this.auth.session()) {
+      setTimeout(() => this.tour.startIfUnseen(MAIN_TOUR_ID, MAIN_TOUR_STEPS), 600);
+    }
 
     // Real-time "new order needs approval" toast for admins: when a fresh
     // ORDER_AWAITING_APPROVAL arrives on the SSE feed, surface a clickable toast
@@ -815,6 +859,11 @@ export class AdminShellComponent {
     this.userMenuOpen.set(false);
   }
 
+  /** Replays the guided tour on demand from the account menu. */
+  replayTour(): void {
+    this.tour.start(MAIN_TOUR_ID, MAIN_TOUR_STEPS);
+  }
+
   /** Escape closes the user menu or the hamburger drawer for keyboard users. */
   @HostListener('document:keydown.escape')
   onEscape(): void {
@@ -823,6 +872,20 @@ export class AdminShellComponent {
     }
     if (this.menuOpen()) {
       this.closeMenu();
+    }
+  }
+
+  /**
+   * Global quick-search shortcut (enhancement): Ctrl+K (or Cmd+K on Mac) jumps
+   * straight to the search bar from anywhere in the app, mirroring the common
+   * "command palette" convention. Prevents the browser's own Ctrl+K (address
+   * bar search in some browsers) so it reliably focuses our search instead.
+   */
+  @HostListener('document:keydown', ['$event'])
+  onGlobalKeydown(event: KeyboardEvent): void {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      this.globalSearch()?.focusSearch();
     }
   }
 

@@ -363,18 +363,18 @@ export class ScanComponent implements OnInit, AfterViewInit {
     }
     this.handoverPrompt.set({
       orderCode: `${ids.length} order${ids.length === 1 ? '' : 's'}`,
-      run: (name, phone) => this.runBulkHandover(name, phone),
+      run: (name, phone, vehicle) => this.runBulkHandover(name, phone, vehicle),
     });
   }
 
-  private runBulkHandover(name: string, phone: string): void {
+  private runBulkHandover(name: string, phone: string, vehicle: string): void {
     const ids = Array.from(this.selectedForHandover());
     if (ids.length === 0 || this.bulkHandoverBusy()) {
       return;
     }
     this.bulkHandoverBusy.set(true);
     const calls = ids.map((id) =>
-      this.service.handover(id, name, phone).pipe(
+      this.service.handover(id, name, phone, vehicle).pipe(
         map(() => ({ id, ok: true })),
         catchError(() => of({ id, ok: false })),
       ),
@@ -388,6 +388,84 @@ export class ScanComponent implements OnInit, AfterViewInit {
         this.toasts.success(`Handed over ${okCount} order${okCount === 1 ? '' : 's'} to delivery`);
       } else {
         this.toasts.error(`Handed over ${okCount}, ${failCount} failed (status may have changed).`);
+      }
+      this.loadQueue();
+      this.loadQueues();
+    });
+  }
+
+  // --- Bulk dispatch (HANDED_TO_DELIVERY "awaiting dispatch" queue) -------
+
+  /** Order ids selected for a bulk dispatch from the "awaiting dispatch" queue. */
+  protected readonly selectedForDispatch = signal<Set<number>>(new Set<number>());
+  /** True while the bulk dispatch is running. */
+  protected readonly bulkDispatchBusy = signal(false);
+
+  /** How many orders are currently selected for bulk dispatch. */
+  protected readonly selectedDispatchCount = computed(() => this.selectedForDispatch().size);
+
+  isSelectedForDispatch(id: number): boolean {
+    return this.selectedForDispatch().has(id);
+  }
+
+  /** True when every order in the dispatch queue is selected. */
+  allSelectedForDispatch(rows: PackingQueueRow[]): boolean {
+    if (rows.length === 0) {
+      return false;
+    }
+    const sel = this.selectedForDispatch();
+    return rows.every((o) => sel.has(o.id));
+  }
+
+  /** Header "select all" toggle for the awaiting-dispatch queue. */
+  toggleSelectAllForDispatch(rows: PackingQueueRow[]): void {
+    const next = new Set(this.selectedForDispatch());
+    const allSelected = rows.length > 0 && rows.every((o) => next.has(o.id));
+    if (allSelected) {
+      rows.forEach((o) => next.delete(o.id));
+    } else {
+      rows.forEach((o) => next.add(o.id));
+    }
+    this.selectedForDispatch.set(next);
+  }
+
+  /** Toggle an order's selection for bulk dispatch. */
+  toggleDispatchSelection(id: number): void {
+    const next = new Set(this.selectedForDispatch());
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    this.selectedForDispatch.set(next);
+  }
+
+  /**
+   * Dispatches every selected order (enqueues courier assignment for each) via
+   * the existing per-order dispatch endpoint; partial failures are reported,
+   * not fatal — mirrors {@link runBulkHandover}.
+   */
+  dispatchSelected(): void {
+    const ids = Array.from(this.selectedForDispatch());
+    if (ids.length === 0 || this.bulkDispatchBusy()) {
+      return;
+    }
+    this.bulkDispatchBusy.set(true);
+    const calls = ids.map((id) =>
+      this.service.dispatch(id).pipe(
+        map(() => ({ id, ok: true })),
+        catchError(() => of({ id, ok: false })),
+      ),
+    );
+    forkJoin(calls).subscribe((results) => {
+      const okCount = results.filter((r) => r.ok).length;
+      const failCount = results.length - okCount;
+      this.bulkDispatchBusy.set(false);
+      this.selectedForDispatch.set(new Set<number>());
+      if (failCount === 0) {
+        this.toasts.success(`Dispatched ${okCount} order${okCount === 1 ? '' : 's'} for courier assignment`);
+      } else {
+        this.toasts.error(`Dispatched ${okCount}, ${failCount} failed (status may have changed).`);
       }
       this.loadQueue();
       this.loadQueues();
@@ -442,7 +520,7 @@ export class ScanComponent implements OnInit, AfterViewInit {
    */
   protected readonly handoverPrompt = signal<{
     orderCode: string;
-    run: (name: string, phone: string) => void;
+    run: (name: string, phone: string, vehicle: string) => void;
   } | null>(null);
 
   /** A scanned order awaiting the packer's explicit confirmation. */
@@ -454,19 +532,25 @@ export class ScanComponent implements OnInit, AfterViewInit {
   } | null>(null);
 
   /** Opens the "handed to" popup for an order; the callback runs on confirm. */
-  private openHandoverPrompt(orderCode: string, run: (name: string, phone: string) => void): void {
+  private openHandoverPrompt(
+    orderCode: string,
+    run: (name: string, phone: string, vehicle: string) => void,
+  ): void {
     if (this.busyOrderId() !== null) {
       return;
     }
     this.handoverPrompt.set({ orderCode, run });
   }
 
-  /** Confirms the popup with the entered name/phone and runs the handover. */
-  confirmHandover(name: string, phone: string): void {
+  /**
+   * Confirms the popup with the entered name/phone plus the optional vehicle /
+   * transport reference (in-house deliveries have no AWB) and runs the handover.
+   */
+  confirmHandover(name: string, phone: string, vehicle = ''): void {
     const pending = this.handoverPrompt();
     this.handoverPrompt.set(null);
     if (pending) {
-      pending.run(name, phone);
+      pending.run(name, phone, vehicle);
     }
   }
 
@@ -477,15 +561,22 @@ export class ScanComponent implements OnInit, AfterViewInit {
 
   /** Hand a packed order over to the courier, straight from the queue. */
   handoverOrder(order: PackingQueueRow): void {
-    this.openHandoverPrompt(order.orderCode, (name, phone) => this.runQueueHandover(order, name, phone));
+    this.openHandoverPrompt(order.orderCode, (name, phone, vehicle) =>
+      this.runQueueHandover(order, name, phone, vehicle),
+    );
   }
 
-  private runQueueHandover(order: PackingQueueRow, name: string, phone: string): void {
+  private runQueueHandover(
+    order: PackingQueueRow,
+    name: string,
+    phone: string,
+    vehicle: string,
+  ): void {
     if (this.busyOrderId() !== null) {
       return;
     }
     this.busyOrderId.set(order.id);
-    this.service.handover(order.id, name, phone).subscribe({
+    this.service.handover(order.id, name, phone, vehicle).subscribe({
       next: () => {
         this.busyOrderId.set(null);
         this.toasts.success(`Order ${order.orderCode} handed over to delivery`);
@@ -567,15 +658,17 @@ export class ScanComponent implements OnInit, AfterViewInit {
 
   /** Hand a packed order over to the delivery courier (PACKED → HANDED_TO_DELIVERY). */
   handover(item: PackWorkItem): void {
-    this.openHandoverPrompt(item.orderCode, (name, phone) => this.runItemHandover(item, name, phone));
+    this.openHandoverPrompt(item.orderCode, (name, phone, vehicle) =>
+      this.runItemHandover(item, name, phone, vehicle),
+    );
   }
 
-  private runItemHandover(item: PackWorkItem, name: string, phone: string): void {
+  private runItemHandover(item: PackWorkItem, name: string, phone: string, vehicle: string): void {
     if (item.busy) {
       return;
     }
     this.patchItem(item.id, { busy: true, error: null });
-    this.service.handover(item.id, name, phone).subscribe({
+    this.service.handover(item.id, name, phone, vehicle).subscribe({
       next: (order) => {
         this.patchItem(item.id, {
           busy: false,
@@ -669,8 +762,8 @@ export class ScanComponent implements OnInit, AfterViewInit {
         break;
       case 'HANDOVER':
         this.pendingPreview.set(null);
-        this.openHandoverPrompt(preview.order.orderCode, (name, phone) =>
-          this.commitHandover(preview, name, phone),
+        this.openHandoverPrompt(preview.order.orderCode, (name, phone, vehicle) =>
+          this.commitHandover(preview, name, phone, vehicle),
         );
         break;
       case 'DISPATCH':
@@ -705,9 +798,10 @@ export class ScanComponent implements OnInit, AfterViewInit {
     preview: NonNullable<ReturnType<typeof this.pendingPreview>>,
     name: string,
     phone: string,
+    vehicle: string,
   ): void {
     this.submitting.set(true);
-    this.service.handover(preview.order.id, name, phone).subscribe({
+    this.service.handover(preview.order.id, name, phone, vehicle).subscribe({
       next: (order) => this.onPreviewMoveSuccess(
         preview,
         `Order ${preview.order.orderCode} handed over to delivery`,

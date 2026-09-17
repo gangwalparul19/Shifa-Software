@@ -53,24 +53,42 @@ class TransitionAuthorityPropertyTest {
         r.add(rule(OrderStatus.HANDED_TO_DELIVERY, OrderStatus.HANDED_TO_DELIVERY, true));
         r.add(rule(OrderStatus.HANDED_TO_DELIVERY, OrderStatus.DELIVERED, false,
                 Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
+        // Manual in-house progression out of handover — staff only, no SYSTEM
+        // (no courier drives an in-house delivery).
+        r.add(rule(OrderStatus.HANDED_TO_DELIVERY, OrderStatus.DISPATCHED, false,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
+        r.add(rule(OrderStatus.HANDED_TO_DELIVERY, OrderStatus.IN_TRANSIT, false,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
+        r.add(rule(OrderStatus.HANDED_TO_DELIVERY, OrderStatus.OUT_FOR_DELIVERY, false,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
         r.add(rule(OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED, true));
         r.add(rule(OrderStatus.COURIER_ASSIGNED, OrderStatus.IN_TRANSIT, true));
         r.add(rule(OrderStatus.COURIER_ASSIGNED, OrderStatus.OUT_FOR_DELIVERY, true));
         r.add(rule(OrderStatus.COURIER_ASSIGNED, OrderStatus.DELIVERED, true));
         r.add(rule(OrderStatus.COURIER_ASSIGNED, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN));
         r.add(rule(OrderStatus.COURIER_ASSIGNED, OrderStatus.REDISPATCH, true));
-        r.add(rule(OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT, true));
-        r.add(rule(OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY, true));
-        r.add(rule(OrderStatus.DISPATCHED, OrderStatus.DELIVERED, true));
+        // In-transit forward hops + delivery outcomes are shared: SYSTEM for a
+        // courier order, staff for a manually-progressed in-house delivery.
+        r.add(rule(OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
+        r.add(rule(OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
+        r.add(rule(OrderStatus.DISPATCHED, OrderStatus.DELIVERED, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
         r.add(rule(OrderStatus.DISPATCHED, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN));
         r.add(rule(OrderStatus.DISPATCHED, OrderStatus.REDISPATCH, true));
-        r.add(rule(OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, true));
-        r.add(rule(OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED, true));
+        r.add(rule(OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
+        r.add(rule(OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
         r.add(rule(OrderStatus.IN_TRANSIT, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN));
         r.add(rule(OrderStatus.IN_TRANSIT, OrderStatus.REDISPATCH, true));
-        r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED, true));
-        r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CUSTOMER_REJECTED, true));
-        r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERY_FAILED, true));
+        r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
+        r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CUSTOMER_REJECTED, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
+        r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERY_FAILED, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
         r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN));
         r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.REDISPATCH, true));
         r.add(rule(OrderStatus.DELIVERED, OrderStatus.CLOSED, true,

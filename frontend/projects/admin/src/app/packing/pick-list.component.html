@@ -1,0 +1,65 @@
+<admin-page-header
+  title="Pick-list"
+  subtitle="Every product needed for today's orders awaiting packing, grouped so you pick each product once."
+  [breadcrumbs]="[{ label: 'Packing', link: '/packing' }, { label: 'Pick-list' }]"
+>
+  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
+    <i class="ti ti-refresh me-1"></i> Refresh
+  </button>
+  <button type="button" class="btn btn-primary" (click)="print()" [disabled]="loading() || !pickList()">
+    <i class="ti ti-printer me-1"></i> Print
+  </button>
+</admin-page-header>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading pick-list…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (pickList(); as list) {
+  @if (list.lines.length === 0) {
+    <admin-state-panel
+      variant="empty"
+      [card]="true"
+      icon="ti-box-off"
+      title="Nothing to pick right now"
+      message="No orders are currently awaiting packing."
+    />
+  } @else {
+    <div class="card mb-3">
+      <div class="card-body py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div class="text-secondary small">
+          <strong>{{ list.orderCount }}</strong> order{{ list.orderCount === 1 ? '' : 's' }} awaiting packing ·
+          <strong>{{ list.lines.length }}</strong> distinct product{{ list.lines.length === 1 ? '' : 's' }}
+          @if (generatedAt()) {
+            · generated {{ generatedAt() | date: 'HH:mm' }}
+          }
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>SKU</th>
+              <th class="text-end">Qty to pick</th>
+              <th class="text-end">Orders</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (line of list.lines; track line.productId ?? line.productName) {
+              <tr>
+                <td class="fw-medium">{{ line.productName }}</td>
+                <td><span class="shifa-mono text-secondary">{{ line.sku || '—' }}</span></td>
+                <td class="text-end"><span class="badge bg-blue-lt fs-5">{{ line.totalQuantity }}</span></td>
+                <td class="text-end text-secondary">{{ line.orderCount }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  }
+}

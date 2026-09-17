@@ -29,6 +29,15 @@ import java.util.List;
  * This separation lets the label content be property-tested without producing
  * bytes (Property 18/19).
  *
+ * <p><strong>Single scannable barcode (label redesign feature).</strong> The
+ * label prints exactly one scannable barcode: the delivery partner's barcode +
+ * AWB once one has been allotted (so the courier scans straight into their own
+ * system at pickup), or — only when no partner/AWB is allotted yet — our own
+ * order-code barcode as a fallback. The RTO/packing scan flow ({@code
+ * PackingService}'s barcode resolution) recognises both our order code and a
+ * courier AWB, so scanning whichever barcode is actually printed still resolves
+ * back to the order.
+ *
  * <p><strong>Trigger — auto on approval.</strong>
  * {@link #generateInternalLabelOnApproval(OrderEntity, String)} is invoked from
  * {@code AdminOrderService} immediately after an order is approved, within the
@@ -127,15 +136,26 @@ public class LabelService {
     /**
      * Resolves the courier partner name + AWB to render as the label's courier
      * barcode (label redesign feature): prefers the QuikShipX shipment mirror
-     * (its {@code subCourierName} + {@code awb} once a tracking id is allotted),
+     * (always displayed as {@value #QUIKSHIPX_DISPLAY_NAME} — the partner
+     * actually selected — plus its {@code awb}, once a tracking id is allotted),
      * falling back to the generic {@code CourierRecord}/{@code CourierCompany}
      * pair for in-house/legacy orders. Returns {@link CourierInfo#NONE} when
      * neither source has an AWB yet (e.g. awaiting allotment, or an in-house
-     * order with no courier at all) — the label then shows only the order
+     * order with no courier at all) — the label then falls back to the order
      * barcode. The print/reprint endpoints re-read this fresh on every call, so
      * a label printed before allotment and reprinted after automatically picks
      * up the courier + AWB once they land (Req 10.4).
      */
+    /**
+     * Display name shown on the label for a QuikShipX-fulfilled shipment. The
+     * courier partner the admin/salesperson actually selected is QuikShipX (the
+     * aggregator); the sub-courier it allots under the hood (e.g. a mocked/real
+     * "Direct_Delhivery") is an internal QuikShipX routing detail that means
+     * nothing to our own packing/courier team, so the label always shows the
+     * partner name "QuikShipX" instead of the raw sub-courier string.
+     */
+    private static final String QUIKSHIPX_DISPLAY_NAME = "QuikShipX";
+
     private CourierInfo courierInfoFor(OrderEntity order) {
         if (order.getId() == null) {
             return CourierInfo.NONE;
@@ -146,7 +166,7 @@ public class LabelService {
             if (shipment.isPresent()) {
                 String awb = shipment.get().getAwb();
                 if (awb != null && !awb.isBlank()) {
-                    return new CourierInfo(shipment.get().getSubCourierName(), awb);
+                    return new CourierInfo(QUIKSHIPX_DISPLAY_NAME, awb);
                 }
             }
         }

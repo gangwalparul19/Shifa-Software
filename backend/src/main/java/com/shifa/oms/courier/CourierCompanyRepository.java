@@ -2,6 +2,7 @@ package com.shifa.oms.courier;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.Optional;
 
 /** Spring Data repository for {@link CourierCompany} rows. */
@@ -9,4 +10,7 @@ public interface CourierCompanyRepository extends JpaRepository<CourierCompany, 
 
     /** The first company with the given name, if any (used by the local seeder). */
     Optional<CourierCompany> findFirstByName(String name);
+
+    /** Every known delivery partner, alphabetical (delivery-partner dropdown enhancement). */
+    List<CourierCompany> findAllByOrderByNameAsc();
 }

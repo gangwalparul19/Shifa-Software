@@ -181,7 +181,9 @@
 
         <!-- Lead source (origin channel, Req 4.1, 4.5) — required by order entry -->
         <div class="col-6">
-          <label class="form-label required" for="leadSource">Lead source</label>
+          <label class="form-label required" for="leadSource">Lead source
+            <admin-help-tip text="Where the customer first heard about us — WhatsApp, Instagram, a referral, etc. Helps track which channels bring in the most orders." />
+          </label>
           <select
             id="leadSource"
             class="form-select"
@@ -508,7 +510,9 @@
         </button>
       } @else {
         <div class="shifa-no__card">
-          <label class="form-label">Discount <span class="text-secondary">(optional)</span></label>
+          <label class="form-label">Discount <span class="text-secondary">(optional)</span>
+            <admin-help-tip text="Flat = a fixed rupee amount off the whole order. Percent = a percentage off the subtotal. GST is recalculated automatically after the discount." />
+          </label>
           <div class="row g-2">
             <div class="col-5">
               <select class="form-select" formControlName="discountType">

@@ -60,9 +60,13 @@ class OrderStatusTransitionTablePropertyTest {
         t.put(OrderStatus.LABEL_GENERATED,
                 EnumSet.of(OrderStatus.PACKED, OrderStatus.COURIER_ASSIGNED));
         t.put(OrderStatus.PACKED, EnumSet.of(OrderStatus.HANDED_TO_DELIVERY));
+        // An in-house order has no courier, so besides the courier-assignment edge
+        // it may also be advanced manually straight into the in-transit stages or
+        // to Delivered (in-house-delivery feature).
         t.put(OrderStatus.HANDED_TO_DELIVERY,
                 EnumSet.of(OrderStatus.COURIER_ASSIGNED, OrderStatus.HANDED_TO_DELIVERY,
-                        OrderStatus.DELIVERED));
+                        OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT,
+                        OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED));
         t.put(OrderStatus.COURIER_ASSIGNED, EnumSet.of(OrderStatus.DISPATCHED,
                 OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED,
                 OrderStatus.RTO, OrderStatus.REDISPATCH));

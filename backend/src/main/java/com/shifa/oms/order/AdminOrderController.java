@@ -7,6 +7,8 @@ import com.shifa.oms.auth.CurrentUserService;
 import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.common.PageRequests;
 import com.shifa.oms.common.PageResponse;
+import com.shifa.oms.courier.CourierAssignmentService;
+import com.shifa.oms.courier.dto.AssignCourierRequest;
 import com.shifa.oms.label.LabelService;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.order.dto.ApprovalQueueItemResponse;
@@ -77,6 +79,7 @@ public class AdminOrderController {
     private final AuditService auditService;
     private final SalespersonScopeResolver scopeResolver;
     private final OrderService orderService;
+    private final CourierAssignmentService courierAssignmentService;
 
     public AdminOrderController(AdminOrderService adminOrderService,
                                 BulkOrderService bulkOrderService,
@@ -84,7 +87,8 @@ public class AdminOrderController {
                                 CurrentUserService currentUserService,
                                 AuditService auditService,
                                 SalespersonScopeResolver scopeResolver,
-                                OrderService orderService) {
+                                OrderService orderService,
+                                CourierAssignmentService courierAssignmentService) {
         this.adminOrderService = adminOrderService;
         this.bulkOrderService = bulkOrderService;
         this.labelService = labelService;
@@ -92,6 +96,7 @@ public class AdminOrderController {
         this.auditService = auditService;
         this.scopeResolver = scopeResolver;
         this.orderService = orderService;
+        this.courierAssignmentService = courierAssignmentService;
     }
 
     /**
@@ -181,6 +186,35 @@ public class AdminOrderController {
         auditService.record(AuditActions.ORDER_UPDATED, AuditActions.ENTITY_ORDER,
                 String.valueOf(id), "Updated order " + response.orderCode());
         return response;
+    }
+
+    /**
+     * Manually attaches a courier name + AWB to an order (ADMIN only; "assign
+     * courier early" enhancement). Usable any time before dispatch so the
+     * internal label's courier barcode can render as soon as staff know the
+     * courier + AWB, rather than waiting for automatic in-house assignment
+     * (which only runs after dispatch). Does not change the order's lifecycle
+     * status.
+     */
+    @PostMapping("/{id}/assign-courier")
+    public void assignCourier(@PathVariable Long id, @Valid @RequestBody AssignCourierRequest request) {
+        courierAssignmentService.manuallyAssign(id, request.courierName(), request.awb());
+        auditService.record(AuditActions.COURIER_MANUALLY_ASSIGNED, AuditActions.ENTITY_ORDER,
+                String.valueOf(id),
+                "Manually assigned courier " + request.courierName() + " (AWB " + request.awb() + ")");
+    }
+
+    /**
+     * The known delivery partners (courier companies), alphabetical (delivery-
+     * partner dropdown enhancement): backs the "Assign courier" modal's picker
+     * so the admin selects a known partner (e.g. QuikShipX, Blue Dart) instead
+     * of free-typing a name that could create a duplicate/typo'd company.
+     */
+    @GetMapping("/courier-companies")
+    public List<com.shifa.oms.courier.dto.CourierCompanyResponse> courierCompanies() {
+        return courierAssignmentService.listCompanies().stream()
+                .map(com.shifa.oms.courier.dto.CourierCompanyResponse::from)
+                .toList();
     }
 
     /**

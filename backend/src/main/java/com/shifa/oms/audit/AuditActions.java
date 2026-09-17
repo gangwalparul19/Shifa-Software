@@ -61,6 +61,9 @@ public final class AuditActions {
     // Bulk product CSV import ("operations depth" Feature 2).
     public static final String PRODUCTS_IMPORTED = "PRODUCTS_IMPORTED";
 
+    // Courier COD remittance CSV import & auto-match (enhancement).
+    public static final String COD_REMITTANCE_IMPORTED = "COD_REMITTANCE_IMPORTED";
+
     // Procurement: suppliers + purchase orders (Feature C2).
     public static final String SUPPLIER_CREATED = "SUPPLIER_CREATED";
     public static final String PO_CREATED = "PO_CREATED";
@@ -100,6 +103,8 @@ public final class AuditActions {
     public static final String QUIKSHIPX_CONFIRMED = "QUIKSHIPX_CONFIRMED";
     /** A QuikShipX tracking id (AWB) + label were allotted for an order. */
     public static final String QUIKSHIPX_TRACKING_ALLOTTED = "QUIKSHIPX_TRACKING_ALLOTTED";
+    /** An admin manually attached a courier name + AWB to an order (assign-courier-early enhancement). */
+    public static final String COURIER_MANUALLY_ASSIGNED = "COURIER_MANUALLY_ASSIGNED";
 
     // Customizable WhatsApp message templates (V44).
     public static final String WHATSAPP_TEMPLATE_CREATED = "WHATSAPP_TEMPLATE_CREATED";
@@ -130,6 +135,7 @@ public final class AuditActions {
     // --- Entity types -------------------------------------------------------
 
     public static final String ENTITY_ORDER = "ORDER";
+    public static final String ENTITY_RECEIVABLE = "RECEIVABLE";
     public static final String ENTITY_USER = "USER";
     public static final String ENTITY_SETTINGS = "SETTINGS";
     public static final String ENTITY_PRODUCT = "PRODUCT";

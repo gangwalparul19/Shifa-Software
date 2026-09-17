@@ -1,13 +1,28 @@
 import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
-import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { RouterLink } from '@angular/router';
 import { AuthService, Money, OrderStatus, PaymentStatus, Role, SortDir, SortState } from 'core';
 import { OrdersService } from './orders.service';
-import { OrderDetail, OrderDetailLine, OrderSummary, QuikShipTracking } from './orders.model';
+import {
+  CourierCompanyOption,
+  DELIVERY_METHOD_OPTIONS,
+  DeliveryMethod,
+  MANUAL_DELIVERY_STAGE_OPTIONS,
+  MANUAL_NEXT_STAGES,
+  MANUAL_PACKING_STAGES,
+  ManualStage,
+  OrderDetail,
+  OrderDetailLine,
+  OrderSummary,
+  QuikShipTracking,
+  RTO_REASON_LABELS,
+  RtoReasonValue,
+} from './orders.model';
 import { ReturnsService } from '../returns/returns.service';
+import { ReturnResponse } from '../returns/returns.model';
 import {
   PLACEHOLDER_PRODUCT_IMAGE,
   imageErrorFallback,
@@ -25,6 +40,7 @@ import { ToastService } from '../shared/toast.service';
 import { toggleSort, sortParam } from '../shared/sort.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { WHATSAPP_TEMPLATES, openWhatsApp, renderTemplate, whatsAppMessage } from '../shared/whatsapp.util';
+import { relativeTime } from '../shared/time.util';
 import { WhatsappTemplate, WhatsappTemplatesService } from '../whatsapp/whatsapp-templates.service';
 import {
   SavedView,
@@ -39,6 +55,42 @@ import {
   normalizeGroupKey,
   stageLabelForStatus,
 } from './order-status-groups';
+
+/** One rendered step in the order-detail visual status timeline. */
+interface OrderTimelineStep {
+  status: OrderStatusGroupKey;
+  label: string;
+  icon: string;
+  /** Timestamp of the matching status-history row, if one exists yet. */
+  at: string | null;
+  /** This stage has been reached (a history row exists, or it's an earlier stage than current). */
+  done: boolean;
+  /** This is the order's present stage. */
+  current: boolean;
+}
+
+/** Icon per timeline stage, matching the group's business meaning. */
+const TIMELINE_ICONS: Record<OrderStatusGroupKey, string> = {
+  PENDING_APPROVAL: 'ti-hourglass',
+  PROCESSING: 'ti-box',
+  SHIPPED: 'ti-truck-delivery',
+  DELIVERED: 'ti-circle-check',
+  FAILED_RETURNED: 'ti-rotate-2',
+  CANCELLED: 'ti-x',
+};
+
+/** Friendly label per stage for the timeline (slightly warmer than the filter-tab labels). */
+const TIMELINE_LABELS: Record<OrderStatusGroupKey, string> = {
+  PENDING_APPROVAL: 'Placed',
+  PROCESSING: 'Packed',
+  SHIPPED: 'Shipped',
+  DELIVERED: 'Delivered',
+  FAILED_RETURNED: 'Returned / Failed',
+  CANCELLED: 'Cancelled',
+};
+
+/** The happy-path stage order (excludes the two terminal-exception groups). */
+const HAPPY_PATH: OrderStatusGroupKey[] = ['PENDING_APPROVAL', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
 
 /** Sort fields the backend accepts for the admin orders listing. */
 const SORT_FIELDS = new Set([
@@ -105,6 +157,7 @@ export const ORDER_STATUS_TABS: { key: OrderStatusFilter; label: string }[] = [
   selector: 'admin-orders',
   imports: [
     ReactiveFormsModule,
+    FormsModule,
     RouterLink,
     DatePipe,
     PageHeaderComponent,
@@ -134,6 +187,28 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   /** Creating a return is ADMIN-only (Set B — Feature 2, mutations = ADMIN). */
   protected readonly canCreateReturn = computed(() => this.auth.hasAnyRole(Role.ADMIN));
+
+  /**
+   * Manually assigning a courier is ADMIN-only, and only useful before the
+   * order has actually been dispatched (terminal/late-stage orders already
+   * have a real courier, or never will).
+   */
+  canAssignCourier(order: OrderDetail | null): boolean {
+    if (!order || !this.auth.hasAnyRole(Role.ADMIN)) {
+      return false;
+    }
+    const late: (OrderStatus | string)[] = [
+      OrderStatus.DISPATCHED,
+      OrderStatus.IN_TRANSIT,
+      OrderStatus.OUT_FOR_DELIVERY,
+      OrderStatus.DELIVERED,
+      OrderStatus.COD_COLLECTED,
+      OrderStatus.CLOSED,
+      OrderStatus.REJECTED,
+      OrderStatus.CANCELLED,
+    ];
+    return !late.includes(order.orderStatus);
+  }
 
   /** A return may be raised only for a delivered or RTO'd order. */
   isReturnEligible(order: OrderDetail | null): boolean {
@@ -234,6 +309,122 @@ export class OrdersComponent implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * Loads the known delivery partners for the "Assign courier" dropdown
+   * (delivery-partner dropdown enhancement; non-fatal on error — the modal
+   * falls back to a free-text "other" input only).
+   */
+  private loadCourierCompanies(): void {
+    this.service.courierCompanies().subscribe({
+      next: (list) => this.courierCompanies.set(list ?? []),
+      error: () => {
+        /* fall back to free-text only */
+      },
+    });
+  }
+
+  /**
+   * The courier name to display for an order's shipment card: the actual
+   * assigned delivery partner when known, else "In-House" for in-house delivery
+   * orders, else "QuikShipX" as the default delivery method (never blank/absent
+   * per the client's request).
+   */
+  courierDisplayName(order: OrderDetail): string {
+    if (order.courierName) {
+      return order.courierName;
+    }
+    return this.isInHouse(order) ? 'In-House' : 'QuikShipX';
+  }
+
+  /** Whether this order is fulfilled by Shifa's own team (no courier partner, no AWB). */
+  isInHouse(order: OrderDetail | null): boolean {
+    return !!order && order.deliveryMethod === 'IN_HOUSE';
+  }
+
+  // --- In-house manual delivery status (in-house-delivery feature) ----------
+
+  /** The stage picked in the status control, pending confirmation. */
+  protected readonly manualStage = signal<ManualStage | ''>('');
+  protected readonly manualVehicle = signal('');
+  protected readonly manualStatusBusy = signal(false);
+
+  setManualStage(value: string): void {
+    this.manualStage.set((value || '') as ManualStage | '');
+  }
+
+  setManualVehicle(value: string): void {
+    this.manualVehicle.set(value ?? '');
+  }
+
+  /**
+   * The statuses this order can legally be moved to by hand right now, filtered
+   * by what the caller's role is actually allowed to do:
+   * <ul>
+   *   <li>the warehouse steps (Packed / Handed to delivery) apply to ANY order
+   *       and need ADMIN or PACKING_USER — they mirror the Packing page;</li>
+   *   <li>the post-handover delivery stages are in-house only (a courier reports
+   *       its own progress) and additionally allow the order's salesperson.</li>
+   * </ul>
+   * Empty when the order has no manual next step (terminal, or awaiting approval).
+   */
+  allowedManualStages(order: OrderDetail | null): typeof MANUAL_DELIVERY_STAGE_OPTIONS {
+    if (!order) {
+      return [];
+    }
+    const next = MANUAL_NEXT_STAGES[String(order.orderStatus)] ?? [];
+    const isWarehouseStaff = this.auth.hasAnyRole(Role.ADMIN, Role.PACKING_USER);
+    const isSalesperson = this.auth.hasAnyRole(Role.SALESPERSON);
+    return MANUAL_DELIVERY_STAGE_OPTIONS.filter((opt) => {
+      if (!next.includes(opt.value)) {
+        return false;
+      }
+      if (MANUAL_PACKING_STAGES.includes(opt.value)) {
+        return isWarehouseStaff;
+      }
+      // Post-handover stages: in-house orders only.
+      return this.isInHouse(order) && (isWarehouseStaff || isSalesperson);
+    });
+  }
+
+  /** Whether the manual status control should be offered at all. */
+  canUpdateDeliveryStatus(order: OrderDetail | null): boolean {
+    return this.allowedManualStages(order).length > 0;
+  }
+
+  /** The hint for the currently picked stage, for the inline explanation line. */
+  manualStageHint(): string | null {
+    const stage = this.manualStage();
+    return MANUAL_DELIVERY_STAGE_OPTIONS.find((o) => o.value === stage)?.hint ?? null;
+  }
+
+  /** Applies the picked stage (and, for in-house, the vehicle no.) to the order. */
+  updateDeliveryStatus(order: OrderDetail): void {
+    const stage = this.manualStage();
+    if (!stage || this.manualStatusBusy()) {
+      return;
+    }
+    this.manualStatusBusy.set(true);
+    this.service
+      .updateDeliveryStatus(order.id, stage, { vehicleNumber: this.manualVehicle() })
+      .subscribe({
+        next: (updated) => {
+          this.manualStatusBusy.set(false);
+          this.manualStage.set('');
+          this.selectedDetail.set(updated);
+          this.toasts.success(
+            `${order.orderCode} updated to ${humanizeStatus(updated.orderStatus)}.`,
+          );
+          this.load();
+        },
+        error: (err: { error?: { message?: string } }) => {
+          this.manualStatusBusy.set(false);
+          this.toasts.error(
+            err?.error?.message ?? 'Could not update the delivery status. Please try again.',
+          );
+        },
+      });
+  }
+
   /** Opens WhatsApp for the order's customer with a pre-filled template message. */
   sendWhatsApp(order: OrderDetail, key: string): void {
     const ctx = {
@@ -265,6 +456,22 @@ export class OrdersComponent implements OnInit, OnDestroy {
    */
   protected readonly detailTab = signal<'details' | 'items' | 'payment'>('details');
   protected readonly detailLoading = signal(false);
+  /** Existing returns for the open order (closes the loop between Returns and Orders). */
+  protected readonly orderReturns = signal<ReturnResponse[]>([]);
+
+  /**
+   * The delivery method picked in the detail drawer for the order awaiting
+   * approval, defaulting to the order's own current value (in-house-delivery
+   * feature: the admin decides/overrides the delivery partner at approval) —
+   * mirrors the same picker on the Approval Queue page so it's available from
+   * the Orders page too.
+   */
+  protected readonly deliveryMethod = signal<DeliveryMethod>('IN_HOUSE');
+  protected readonly deliveryMethodOptions = DELIVERY_METHOD_OPTIONS;
+
+  setDeliveryMethod(value: string): void {
+    this.deliveryMethod.set(value === 'QUIKSHIPX' ? 'QUIKSHIPX' : 'IN_HOUSE');
+  }
   protected readonly detailError = signal<string | null>(null);
   protected readonly invoiceLoading = signal(false);
   protected readonly invoiceError = signal<string | null>(null);
@@ -300,6 +507,31 @@ export class OrdersComponent implements OnInit, OnDestroy {
     }),
     notes: new FormControl<string>('', { nonNullable: true, validators: [Validators.maxLength(500)] }),
   });
+
+  // --- Manual courier/AWB assignment ("assign courier early" enhancement) ---
+  /** Whether the assign-courier modal is open for the current detail order. */
+  protected readonly assignCourierOpen = signal(false);
+  protected readonly assignCourierBusy = signal(false);
+  protected readonly assignCourierError = signal<string | null>(null);
+  protected readonly assignCourierForm = new FormGroup({
+    courierName: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.maxLength(150)],
+    }),
+    awb: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.maxLength(64)],
+    }),
+  });
+
+  /** Sentinel select value meaning "type a partner not in the list". */
+  protected readonly OTHER_COURIER = '__OTHER__';
+  /** Known delivery partners for the "Assign courier" dropdown (delivery-partner dropdown enhancement). */
+  protected readonly courierCompanies = signal<CourierCompanyOption[]>([]);
+  /** Whether the free-text "other partner" input is shown (sentinel selected, or a name not in the list). */
+  protected readonly showOtherCourierInput = signal(false);
+  /** The dropdown's own current selection (may be the sentinel value, distinct from the actual courierName). */
+  protected readonly courierSelectValue = signal('');
 
   // --- Real-time activity pill (A3) ---------------------------------------
   /** True when a relevant order event arrived since the last (re)load. */
@@ -343,6 +575,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.savedViews.set(loadSavedViews());
     this.load();
     this.loadWhatsappTemplates();
+    this.loadCourierCompanies();
     // Reuse the shell's singleton SSE stream (idempotent; no second source).
     this.events.connect();
 
@@ -812,15 +1045,23 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.detailTab.set('details');
     this.selectedDetail.set(null);
     this.quikShipTracking.set(null);
+    this.orderReturns.set([]);
+    // Reset the in-house manual status controls so nothing carries over between orders.
+    this.manualStage.set('');
+    this.manualVehicle.set('');
     this.revokeScreenshot();
     this.screenshotMissing.set(false);
     this.service.detail(order.id).subscribe({
       next: (detail) => {
         this.selectedDetail.set(detail);
         this.detailLoading.set(false);
+        this.deliveryMethod.set(detail.deliveryMethod ?? 'IN_HOUSE');
+        // Pre-fill the in-house vehicle field with whatever is already recorded.
+        this.manualVehicle.set(detail.vehicleNumber ?? '');
         this.loadScreenshot(detail);
         // Pull live courier tracking (status + timeline) when published to QuikShipX.
         this.loadTracking(detail, { silent: true });
+        this.loadOrderReturns(detail.id);
       },
       error: () => {
         this.detailError.set('Could not load this order.');
@@ -833,8 +1074,25 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.selectedDetail.set(null);
     this.detailError.set(null);
     this.quikShipTracking.set(null);
+    this.orderReturns.set([]);
     this.revokeScreenshot();
     this.screenshotMissing.set(false);
+  }
+
+  /**
+   * Loads existing returns for the open order (non-fatal on error — the
+   * backend gates {@code /api/admin/returns/*} to ADMIN/ACCOUNTANT/CA, so a
+   * salesperson viewing the drawer simply sees no returns section rather than
+   * an error).
+   */
+  private loadOrderReturns(orderId: number): void {
+    if (!this.auth.hasAnyRole(Role.ADMIN, Role.ACCOUNTANT)) {
+      return;
+    }
+    this.returnsService.byOrder(orderId).subscribe({
+      next: (returns) => this.orderReturns.set(returns),
+      error: () => this.orderReturns.set([]),
+    });
   }
 
   /**
@@ -937,6 +1195,80 @@ export class OrdersComponent implements OnInit, OnDestroy {
       default:
         return 'bg-secondary-lt';
     }
+  }
+
+  /** Human label for a manually-marked RTO reason (label redesign feature). */
+  rtoReasonLabel(reason: RtoReasonValue | null | undefined): string {
+    return reason ? RTO_REASON_LABELS[reason] ?? reason : '';
+  }
+
+  /** Short relative time (enhancement: relative timestamps) — shown alongside the exact date, not instead of it. */
+  protected readonly relativeTime = relativeTime;
+
+  /**
+   * Builds the order-detail visual status timeline (enhancement: order status
+   * timeline) — a friendly "Placed → Packed → Shipped → Delivered" stepper with
+   * real timestamps drawn from the order's status-history rows, folding the many
+   * raw statuses into the same business-facing groups the Orders page filter
+   * uses (so a less-technical salesperson reads one consistent vocabulary).
+   *
+   * <p>Cancelled/Failed-Returned orders replace the happy path's tail with their
+   * own single terminal step, since those are exceptions to (not steps on) the
+   * normal delivery journey.
+   */
+  orderTimelineSteps(order: OrderDetail): OrderTimelineStep[] {
+    const currentGroup = groupForStatus(order.orderStatus);
+    const history = order.statusHistory ?? [];
+
+    // Earliest changedAt whose toStatus falls in each group (oldest first data,
+    // but be defensive and take the min just in case).
+    const firstAtByGroup = new Map<OrderStatusGroupKey, string>();
+    for (const row of history) {
+      const group = groupForStatus(row.toStatus);
+      if (!group) {
+        continue;
+      }
+      const existing = firstAtByGroup.get(group);
+      if (!existing || new Date(row.changedAt).getTime() < new Date(existing).getTime()) {
+        firstAtByGroup.set(group, row.changedAt);
+      }
+    }
+
+    // Exception path: cancelled or failed/returned — show Placed then the
+    // terminal exception step only (no fabricated "Shipped"/"Delivered" steps
+    // that never happened for a cancelled order).
+    if (currentGroup === 'CANCELLED' || currentGroup === 'FAILED_RETURNED') {
+      const placedAt = firstAtByGroup.get('PENDING_APPROVAL') ?? order.createdAt ?? null;
+      const terminalAt = firstAtByGroup.get(currentGroup) ?? null;
+      return [
+        this.buildStep('PENDING_APPROVAL', placedAt, true, false),
+        this.buildStep(currentGroup, terminalAt, true, true),
+      ];
+    }
+
+    const currentIndex = HAPPY_PATH.indexOf(currentGroup || 'PENDING_APPROVAL');
+    return HAPPY_PATH.map((stage, i) => {
+      const at = stage === 'PENDING_APPROVAL' && !firstAtByGroup.has(stage)
+        ? order.createdAt ?? null
+        : firstAtByGroup.get(stage) ?? null;
+      return this.buildStep(stage, at, i <= currentIndex, i === currentIndex);
+    });
+  }
+
+  private buildStep(
+    status: OrderStatusGroupKey,
+    at: string | null,
+    done: boolean,
+    current: boolean,
+  ): OrderTimelineStep {
+    return {
+      status,
+      label: TIMELINE_LABELS[status],
+      icon: TIMELINE_ICONS[status],
+      at,
+      done,
+      current,
+    };
   }
 
   /** Subtotal = sum of line totals (Money is a decimal string). */
@@ -1055,7 +1387,11 @@ export class OrdersComponent implements OnInit, OnDestroy {
     );
   }
 
-  /** Approves the open order (admin, pending only) via the bulk-approve API. */
+  /**
+   * Approves the open order (admin, pending only), carrying the delivery
+   * method picked in the drawer (defaults to the order's own current value,
+   * i.e. In-house — mirrors the Approval Queue page's picker).
+   */
   async approveOne(order: OrderDetail): Promise<void> {
     if (!this.canApprove(order) || this.detailBusy()) {
       return;
@@ -1070,18 +1406,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
       return;
     }
     this.detailBusy.set(true);
-    this.service.bulkApprove([order.id]).subscribe({
-      next: (res) => {
+    this.service.approve(order.id, this.deliveryMethod()).subscribe({
+      next: (updated) => {
         this.detailBusy.set(false);
-        if (res.succeeded?.includes(order.id)) {
-          this.toasts.success(`Order ${order.orderCode} approved.`);
-          // Refresh the drawer + list so the new status is reflected.
-          this.service.detail(order.id).subscribe((d) => this.selectedDetail.set(d));
-          this.load();
-        } else {
-          const reason = res.skipped?.find((s) => s.id === order.id)?.reason;
-          this.toasts.info(reason ? `Skipped: ${reason}` : 'Order could not be approved.');
-        }
+        this.toasts.success(`Order ${order.orderCode} approved.`);
+        this.selectedDetail.set(updated);
+        this.load();
       },
       error: () => {
         this.detailBusy.set(false);
@@ -1264,5 +1594,90 @@ export class OrdersComponent implements OnInit, OnDestroy {
           this.createReturnError.set('Could not create the return. Please try again.');
         },
       });
+  }
+
+  // --- Manual courier/AWB assignment ("assign courier early" enhancement) ---
+
+  openAssignCourier(order: OrderDetail): void {
+    this.assignCourierError.set(null);
+    const currentName = order.courierName ?? '';
+    const knownNames = this.courierCompanies().map((c) => c.name);
+    // Pre-select the current courier in the dropdown when it's a known partner;
+    // otherwise default to "In-House" (or fall back to the free-text "other"
+    // input pre-filled with the unrecognised name).
+    const isKnown = currentName !== '' && knownNames.includes(currentName);
+    const isOther = currentName !== '' && !isKnown;
+    this.showOtherCourierInput.set(isOther);
+    this.courierSelectValue.set(isOther ? this.OTHER_COURIER : currentName || 'In-House');
+    this.assignCourierForm.reset({
+      courierName: isOther ? currentName : isKnown ? currentName : 'In-House',
+      awb: order.awb ?? '',
+    });
+    this.syncAwbRequirement();
+    this.assignCourierOpen.set(true);
+  }
+
+  closeAssignCourier(): void {
+    this.assignCourierOpen.set(false);
+    this.assignCourierError.set(null);
+  }
+
+  /** The dropdown's change handler: toggles the free-text "other partner" input. */
+  onCourierSelectChange(value: string): void {
+    this.courierSelectValue.set(value);
+    if (value === this.OTHER_COURIER) {
+      this.showOtherCourierInput.set(true);
+      this.assignCourierForm.controls.courierName.setValue('');
+    } else {
+      this.showOtherCourierInput.set(false);
+      this.assignCourierForm.controls.courierName.setValue(value);
+    }
+    this.syncAwbRequirement();
+  }
+
+  /**
+   * Whether an AWB must be supplied: only for a real courier partner. An
+   * In-House delivery has no tracking number at all, so the field is optional
+   * there (in-house-delivery feature) — the label then prints our own order
+   * barcode, which the packing/RTO scan resolves.
+   */
+  awbRequired(): boolean {
+    return this.courierSelectValue() !== 'In-House';
+  }
+
+  /** Applies/removes the AWB required-validator to match the selected partner. */
+  private syncAwbRequirement(): void {
+    const awb = this.assignCourierForm.controls.awb;
+    awb.setValidators(
+      this.awbRequired()
+        ? [Validators.required, Validators.maxLength(64)]
+        : [Validators.maxLength(64)],
+    );
+    awb.updateValueAndValidity({ emitEvent: false });
+  }
+
+  submitAssignCourier(): void {
+    const order = this.selectedDetail();
+    if (!order || this.assignCourierBusy() || this.assignCourierForm.invalid) {
+      this.assignCourierForm.markAllAsTouched();
+      return;
+    }
+    const raw = this.assignCourierForm.getRawValue();
+    this.assignCourierBusy.set(true);
+    this.assignCourierError.set(null);
+    this.service.assignCourier(order.id, raw.courierName.trim(), raw.awb.trim()).subscribe({
+      next: () => {
+        this.assignCourierBusy.set(false);
+        this.closeAssignCourier();
+        this.toasts.success(`Courier assigned for ${order.orderCode}.`);
+        // Refresh the open drawer so the shipment card + label barcode reflect
+        // the newly-assigned courier/AWB immediately.
+        this.service.detail(order.id).subscribe((updated) => this.selectedDetail.set(updated));
+      },
+      error: () => {
+        this.assignCourierBusy.set(false);
+        this.assignCourierError.set('Could not assign the courier. Please try again.');
+      },
+    });
   }
 }

@@ -64,10 +64,30 @@
           <div>
             <div class="shifa-mono fw-bold">{{ preview.order.orderCode }}</div>
             <div class="text-secondary small">Order #{{ preview.order.id }} · {{ preview.order.customerName }}</div>
-            <div class="text-secondary small">{{ preview.order.customerMobile }}</div>
+            <div class="text-secondary small d-flex align-items-center gap-2">
+              {{ preview.order.customerMobile }}
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-success py-0 px-2"
+                (click)="messageCustomer(preview.order)"
+                title="Message the customer on WhatsApp"
+              >
+                <i class="ti ti-brand-whatsapp"></i>
+              </button>
+            </div>
           </div>
           <admin-status-badge [status]="preview.order.orderStatus" />
         </div>
+
+        @if (preview.scannedViaCourier) {
+          <div class="alert alert-info py-2 mb-3">
+            <i class="ti ti-truck-delivery me-2"></i>
+            Scanned via {{ preview.courierName || 'the delivery partner' }}'s barcode
+            @if (preview.courierAwb) {
+              — AWB <span class="shifa-mono fw-medium">{{ preview.courierAwb }}</span>
+            }
+          </div>
+        }
 
         @if (!preview.eligible) {
           <div class="alert alert-secondary mb-0">
@@ -141,7 +161,7 @@
           </div>
           <span
             class="badge"
-            [class.bg-danger-lt]="entry.outcome === 'marked'"
+            [class.bg-green-lt]="entry.outcome === 'marked'"
             [class.bg-yellow-lt]="entry.outcome === 'not-eligible'"
             [class.bg-secondary-lt]="entry.outcome === 'not-recognized'"
             [class.bg-red-lt]="entry.outcome === 'error'"

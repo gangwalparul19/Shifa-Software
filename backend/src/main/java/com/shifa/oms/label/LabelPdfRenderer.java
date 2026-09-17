@@ -145,33 +145,41 @@ public class LabelPdfRenderer {
         // 2) Recipient block (left) + logo/brand (right).
         main.addCell(boxWrap(recipientTable(content, logoPng, brand), 8f));
 
-        // 3) Courier barcode (name + AWB) — only when a courier/AWB is allotted
-        // (label redesign feature): lets the courier team scan the parcel
-        // straight into their own system at pickup.
+        // 3) Single scannable barcode (label redesign feature): when a delivery
+        // partner + AWB have been allotted, print ONLY their barcode (name + AWB)
+        // so the courier team scans the parcel straight into their own system at
+        // pickup — printing our own order barcode alongside it would be a second,
+        // redundant barcode on the same label. Our own order code is still
+        // resolvable later: the packing/RTO scan flow also recognises a courier
+        // AWB and resolves it back to the order (see PackingService's barcode
+        // resolution), so scanning the printed courier barcode at RTO still finds
+        // the order.
+        // Only when no courier/AWB has been allotted yet (e.g. in-house delivery,
+        // or a QuikShipX order still awaiting allotment) do we fall back to
+        // printing our own order barcode, so there is always exactly one
+        // scannable barcode on the label.
         if (content.hasCourierBarcode()) {
             main.addCell(boxWrap(courierBarcodeTable(content), 8f));
+        } else {
+            main.addCell(boxWrap(orderBarcodeTable(content), 8f));
         }
 
-        // 4) Order barcode — always present, our own order code, so the godown/
-        // RTO flow always has something to scan back to the order in our system.
-        main.addCell(boxWrap(orderBarcodeTable(content), 8f));
-
-        // 5) Item description + order total.
+        // 4) Item description + order total.
         main.addCell(twoColRow(
                 "ITEM DESCRIPTION", nz(content.itemSummary(), "\u2014"), Element.ALIGN_LEFT,
                 "TOTAL", money(content.totalAmount()), Element.ALIGN_RIGHT,
                 3.2f, 1f));
 
-        // 6) Order id + prominent payment badge (Pre-Paid / COD).
+        // 5) Order id + prominent payment badge (Pre-Paid / COD).
         main.addCell(orderPaymentRow(content));
 
-        // 7) Ordered-on + COD-collect amount (or "Prepaid").
+        // 6) Ordered-on + COD-collect amount (or "Prepaid").
         main.addCell(orderedCodRow(content));
 
-        // 8) Pickup & return address (full width).
+        // 7) Pickup & return address (full width).
         main.addCell(captionBox("PICKUP & RETURN ADDRESS", nz(content.pickupReturnAddress(), "\u2014")));
 
-        // 9) Seller name (full width).
+        // 8) Seller name (full width).
         main.addCell(captionBox("SELLER NAME", brand));
 
         document.add(main);

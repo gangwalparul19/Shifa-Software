@@ -147,6 +147,12 @@ export class GlobalSearchComponent {
     queueMicrotask(() => this.inputEl()?.nativeElement.focus());
   }
 
+  /** Focuses the search field from anywhere (Ctrl/Cmd+K global shortcut). */
+  focusSearch(): void {
+    this.expanded.set(true);
+    queueMicrotask(() => this.inputEl()?.nativeElement.focus());
+  }
+
   onFocus(): void {
     if (this.hasResults()) {
       this.open.set(true);

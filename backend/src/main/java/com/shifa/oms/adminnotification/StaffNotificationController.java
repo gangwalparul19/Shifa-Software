@@ -77,10 +77,15 @@ public class StaffNotificationController {
         return new UnreadCountResponse(notificationService.unreadCountForUser(principal));
     }
 
-    /** Marks a single notification read (idempotent); 404 when the id is unknown. */
+    /**
+     * Marks a single notification read (idempotent); 404 when the id is unknown
+     * OR when it isn't addressed to the current staff user's id/role (Req 13.4
+     * ownership check — a user can only mark their own notifications read).
+     */
     @PostMapping("/{id}/read")
     public AdminNotificationResponse markRead(@PathVariable Long id) {
-        return notificationService.markRead(id);
+        AuthPrincipal principal = currentUserService.requireCurrentUser();
+        return notificationService.markReadForUser(id, principal);
     }
 
     /**

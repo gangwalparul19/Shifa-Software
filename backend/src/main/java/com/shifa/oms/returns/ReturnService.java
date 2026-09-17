@@ -22,6 +22,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -97,7 +98,7 @@ public class ReturnService {
         auditService.record(AuditActions.RETURN_CREATED, AuditActions.ENTITY_RETURN,
                 String.valueOf(saved.getId()),
                 "Return requested for order " + order.getOrderCode() + ": " + reason);
-        return ReturnResponse.from(saved);
+        return ReturnResponse.from(saved, order.getOrderCode());
     }
 
     /**
@@ -132,7 +133,7 @@ public class ReturnService {
                 String.valueOf(returnId),
                 "Return approved" + (restock ? " (restocked)" : "")
                         + (refundAmount != null ? ", refund " + refundAmount : ""));
-        return ReturnResponse.from(saved);
+        return ReturnResponse.from(saved, orderCodeFor(ret.getOrderId()));
     }
 
     /**
@@ -152,7 +153,7 @@ public class ReturnService {
         auditService.record(AuditActions.RETURN_REJECTED, AuditActions.ENTITY_RETURN,
                 String.valueOf(returnId), "Return rejected"
                         + (notes != null && !notes.isBlank() ? ": " + notes : ""));
-        return ReturnResponse.from(saved);
+        return ReturnResponse.from(saved, orderCodeFor(ret.getOrderId()));
     }
 
     /**
@@ -170,30 +171,93 @@ public class ReturnService {
         OrderReturn saved = returnRepository.save(ret);
         auditService.record(AuditActions.RETURN_REFUNDED, AuditActions.ENTITY_RETURN,
                 String.valueOf(returnId), "Return refunded: " + refundAmount);
-        return ReturnResponse.from(saved);
+        return ReturnResponse.from(saved, orderCodeFor(ret.getOrderId()));
     }
 
-    /** Filtered, paged return listing (newest-first by default via the pageable). */
+    /**
+     * Automatically raises + finalizes a sales-return record when an order is
+     * marked RTO (returned to origin) via the manual scan flow (client request:
+     * "RTO should have a sales return entry for the CA calculations so GSTR1
+     * will show the sales return"). Without this, RTO was purely an order
+     * lifecycle status with no {@link OrderReturn} row — and
+     * {@code Gstr1ReturnService.buildCreditNotes} only ever looks at
+     * {@link OrderReturn} rows in {@link ReturnStatus#REFUNDED}, so an RTO'd
+     * order's reversed sale would never surface as a GSTR-1 credit note.
+     *
+     * <p>Creates the return {@code REQUESTED} and immediately advances it
+     * through {@code APPROVED} → {@code REFUNDED} in one call (an RTO'd parcel
+     * is a fait accompli the moment it's marked — there is no separate admin
+     * approval step for it, unlike a customer-initiated return/refund request).
+     * The refund amount is the order's full total (the entire sale is reversed);
+     * stock is deliberately <strong>not</strong> auto-restocked — that remains a
+     * manual inventory decision once the physical parcel is inspected, mirroring
+     * the existing "Create return" manual flow. Skipped (no-op) when the order
+     * already has an active return (idempotent against a double-RTO/duplicate
+     * call).
+     *
+     * @param orderId    the RTO'd order's id
+     * @param reasonNote a human-readable RTO reason (recorded in the return's reason)
+     * @return the created return's response, or {@code null} if skipped (an active return already exists)
+     */
+    @Transactional
+    public ReturnResponse createAutoReturnForRto(Long orderId, String reasonNote) {
+        if (returnRepository.existsByOrderIdAndStatusIn(orderId, ACTIVE_STATUSES)) {
+            return null;
+        }
+        Long actorId = currentUserId();
+        String reason = "Returned to origin (RTO)" + (reasonNote != null && !reasonNote.isBlank()
+                ? ": " + reasonNote : "");
+        OrderReturn ret = returnRepository.save(new OrderReturn(
+                orderId, reason, "Automatically raised when the order was marked RTO.", actorId));
+        auditService.record(AuditActions.RETURN_CREATED, AuditActions.ENTITY_RETURN,
+                String.valueOf(ret.getId()), "Return auto-created for RTO order id " + orderId);
+
+        OrderEntity order = requireOrder(orderId);
+        BigDecimal refundAmount = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+
+        ret.changeStatus(ReturnStatus.APPROVED);
+        returnRepository.save(ret);
+        auditService.record(AuditActions.RETURN_APPROVED, AuditActions.ENTITY_RETURN,
+                String.valueOf(ret.getId()), "Return auto-approved for RTO order " + order.getOrderCode());
+
+        ret.setRefundAmount(refundAmount);
+        ret.changeStatus(ReturnStatus.REFUNDED);
+        OrderReturn saved = returnRepository.save(ret);
+        auditService.record(AuditActions.RETURN_REFUNDED, AuditActions.ENTITY_RETURN,
+                String.valueOf(ret.getId()),
+                "Return auto-settled for RTO order " + order.getOrderCode() + ": " + refundAmount);
+
+        return ReturnResponse.from(saved, order.getOrderCode());
+    }
+
+    /**
+     * Filtered, paged return listing (newest-first by default via the pageable).
+     * Order codes are batch-resolved (one query) rather than N+1'd per row.
+     */
     @Transactional(readOnly = true)
     public PageResponse<ReturnResponse> list(ReturnStatus status, String q,
                                              LocalDateTime from, LocalDateTime to,
                                              Pageable pageable) {
         Page<OrderReturn> page = returnRepository.search(status, blankToNull(q), from, to, pageable);
-        return PageResponse.of(page, ReturnResponse::from);
+        Map<Long, String> codes = orderCodesFor(page.getContent().stream()
+                .map(OrderReturn::getOrderId).toList());
+        return PageResponse.of(page, r -> ReturnResponse.from(r, codes.get(r.getOrderId())));
     }
 
     /** All returns for a given order, newest first. */
     @Transactional(readOnly = true)
     public List<ReturnResponse> getByOrder(Long orderId) {
+        String orderCode = orderCodeFor(orderId);
         return returnRepository.findByOrderIdOrderByCreatedAtDesc(orderId).stream()
-                .map(ReturnResponse::from)
+                .map(r -> ReturnResponse.from(r, orderCode))
                 .toList();
     }
 
     /** A single return by id, or a 404. */
     @Transactional(readOnly = true)
     public ReturnResponse get(Long id) {
-        return ReturnResponse.from(requireReturn(id));
+        OrderReturn ret = requireReturn(id);
+        return ReturnResponse.from(ret, orderCodeFor(ret.getOrderId()));
     }
 
     // --- Internal helpers ---------------------------------------------------
@@ -247,6 +311,28 @@ public class ReturnService {
         return returnRepository.findById(returnId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Return " + returnId + " does not exist."));
+    }
+
+    /**
+     * Best-effort single-order code lookup for a response (null if the order no
+     * longer exists — should not happen in practice, but a return must never 404
+     * just because its order code couldn't be resolved).
+     */
+    private String orderCodeFor(Long orderId) {
+        if (orderId == null) {
+            return null;
+        }
+        return orderRepository.findById(orderId).map(OrderEntity::getOrderCode).orElse(null);
+    }
+
+    /** Batch order-code resolution for a page of returns (avoids N+1 queries). */
+    private Map<Long, String> orderCodesFor(List<Long> orderIds) {
+        List<Long> distinct = orderIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (distinct.isEmpty()) {
+            return Map.of();
+        }
+        return orderRepository.findAllById(distinct).stream()
+                .collect(java.util.stream.Collectors.toMap(OrderEntity::getId, OrderEntity::getOrderCode));
     }
 
     private Long currentUserId() {

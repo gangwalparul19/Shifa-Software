@@ -1,0 +1,82 @@
+.gt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  /* A dark scrim with a "hole" is faked by a box-shadow on the spotlight rect
+     below, so we don't need a separate full-screen dim layer that would also
+     block clicks on the highlighted element. */
+  pointer-events: none;
+}
+
+.gt-spotlight {
+  position: fixed;
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(15, 23, 20, 0.55);
+  transition: top 0.2s ease, left 0.2s ease, width 0.2s ease, height 0.2s ease;
+  pointer-events: none;
+}
+
+.gt-card {
+  position: fixed;
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 20, 0.28);
+  padding: 0.9rem 1rem;
+  pointer-events: auto;
+  transition: top 0.2s ease, left 0.2s ease;
+}
+
+.gt-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+}
+
+.gt-card__step {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #8a938e;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.gt-card__close {
+  border: none;
+  background: none;
+  color: #8a938e;
+  padding: 0.15rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.gt-card__close:hover {
+  color: #1c2b24;
+}
+
+.gt-card__title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #1c2b24;
+  margin-bottom: 0.3rem;
+}
+
+.gt-card__body {
+  font-size: 0.85rem;
+  color: #4b5a53;
+  line-height: 1.4;
+  margin-bottom: 0.75rem;
+}
+
+.gt-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.gt-card__nav {
+  display: flex;
+  gap: 0.4rem;
+}

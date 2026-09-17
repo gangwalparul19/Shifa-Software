@@ -511,7 +511,11 @@ public class OrderService {
         OrderResponse response = trackingService.shipmentFor(order.getId())
                 .map(s -> base.withShipment(
                         s.awb(), s.courierName(), s.trackingUrl(), s.estimatedDelivery()))
-                .orElse(base);
+                // No AWB (in-house delivery, or a partner recorded without a
+                // tracking number) — still surface who has the parcel, if known.
+                .orElseGet(() -> trackingService.courierNameFor(order.getId())
+                        .map(base::withCourierName)
+                        .orElse(base));
         // Enrich with the QuikShipX mirror (status label, hosted label URL, their
         // order id) when a shipment has been published for this order.
         if (orderShipmentRepository != null) {

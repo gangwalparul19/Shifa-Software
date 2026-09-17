@@ -12,6 +12,7 @@ import com.shifa.oms.order.dto.MarkDeliveredRequest;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.order.dto.ScreenshotUploadResponse;
+import com.shifa.oms.order.dto.UpdateDeliveryStatusRequest;
 import com.shifa.oms.platform.storage.StorageService;
 import com.shifa.oms.product.ProductService;
 import com.shifa.oms.product.dto.ProductResponse;
@@ -128,6 +129,28 @@ public class OrderController {
                                        @Valid @RequestBody(required = false) MarkDeliveredRequest request) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return manualDeliveryService.markDelivered(id, actor, request);
+    }
+
+    /**
+     * Manually advance an in-house (non-QuikShipX) order's delivery status
+     * (in-house-delivery feature): an in-house order has no courier partner, so
+     * no webhook/poll ever reports progress — staff move it through Dispatched /
+     * In_Transit / Out_For_Delivery and finally Delivered (which also settles it)
+     * or a failure outcome. Optionally records/updates the vehicle reference
+     * (bus vehicle no., train no., own van) in the same call.
+     *
+     * <p>Restricted to ADMIN, PACKING_USER, and the order's own salesperson (the
+     * in-house-only and ownership checks are enforced in the service). A
+     * non-in-house order yields 400; an illegal hop from the current status
+     * yields 409.
+     */
+    @PostMapping("/{id}/delivery-status")
+    @PreAuthorize("hasAnyRole('ADMIN','PACKING_USER','SALESPERSON')")
+    public OrderResponse updateDeliveryStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateDeliveryStatusRequest request) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return manualDeliveryService.updateDeliveryStatus(id, actor, request);
     }
 
     /**

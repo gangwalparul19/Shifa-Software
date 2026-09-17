@@ -3,9 +3,12 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient, OrderStatus, PageResponse, PaymentStatus } from 'core';
 import {
+  CourierCompanyOption,
   CreateOrderRequest,
   CustomerPrefillResponse,
+  DeliveryMethod,
   DuplicateCheckResponse,
+  ManualStage,
   OrderDetail,
   OrderSummary,
   QuikShipPublishAck,
@@ -147,6 +150,21 @@ export class OrdersService {
     return this.api.get<PageResponse<OrderSummary>>('/api/admin/orders', { params });
   }
 
+  /**
+   * Approve a single order → Approved, via {@code POST /api/admin/orders/{id}/approve}.
+   * {@code deliveryMethod}, when provided, sets/overrides the order's delivery
+   * partner as part of approving (in-house-delivery feature) — omit to leave
+   * the order's current value unchanged. Used by the Orders-page detail drawer
+   * so the admin can pick the delivery partner right there, same as the
+   * Approval Queue page.
+   */
+  approve(id: number, deliveryMethod?: DeliveryMethod): Observable<OrderDetail> {
+    return this.api.post<OrderDetail>(
+      `/api/admin/orders/${id}/approve`,
+      deliveryMethod ? { deliveryMethod } : {},
+    );
+  }
+
   /** Bulk-approve the given orders; returns a partial-result summary. */
   bulkApprove(ids: number[]): Observable<BulkResult> {
     return this.api.post<BulkResult>('/api/admin/orders/bulk-approve', { ids });
@@ -182,6 +200,49 @@ export class OrdersService {
    */
   updateOrder(id: number, payload: UpdateOrderRequest): Observable<OrderDetail> {
     return this.api.put<OrderDetail>(`/api/admin/orders/${id}`, payload);
+  }
+
+  /**
+   * Manually attaches a courier name + AWB to an order (ADMIN-only; "assign
+   * courier early" enhancement), via
+   * {@code POST /api/admin/orders/{id}/assign-courier}. Usable any time before
+   * dispatch so the internal label's courier barcode can render right away,
+   * instead of waiting for automatic in-house assignment (which only runs
+   * after dispatch). Does not change the order's lifecycle status.
+   */
+  assignCourier(id: number, courierName: string, awb: string): Observable<void> {
+    return this.api.post<void>(`/api/admin/orders/${id}/assign-courier`, { courierName, awb });
+  }
+
+  /**
+   * The known delivery partners (courier companies), alphabetical — backs the
+   * "Assign courier" modal's dropdown (delivery-partner dropdown enhancement),
+   * via {@code GET /api/admin/orders/courier-companies} (ADMIN-only).
+   */
+  courierCompanies(): Observable<CourierCompanyOption[]> {
+    return this.api.get<CourierCompanyOption[]>('/api/admin/orders/courier-companies');
+  }
+
+  /**
+   * Manually advance an IN_HOUSE order's delivery status
+   * ({@code POST /api/orders/{id}/delivery-status}, in-house-delivery feature) —
+   * an in-house order has no courier partner, so no webhook reports progress.
+   * Optionally records/updates the vehicle reference in the same call.
+   * {@code DELIVERED} also settles the order (closed / COD collected).
+   */
+  updateDeliveryStatus(
+    id: number,
+    status: ManualStage,
+    opts: { vehicleNumber?: string | null; note?: string | null } = {},
+  ): Observable<OrderDetail> {
+    const body: { status: ManualStage; vehicleNumber?: string; note?: string } = { status };
+    if (opts.vehicleNumber && opts.vehicleNumber.trim()) {
+      body.vehicleNumber = opts.vehicleNumber.trim();
+    }
+    if (opts.note && opts.note.trim()) {
+      body.note = opts.note.trim();
+    }
+    return this.api.post<OrderDetail>(`/api/orders/${id}/delivery-status`, body);
   }
 
   /** Fetch the payment screenshot as a Blob for inline rendering (Req 21.2). */

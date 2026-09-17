@@ -299,10 +299,17 @@ public class QuikShipXService {
         }
     }
 
-    /** Upserts the courier record (AWB + company) so the tracking poller follows the shipment. */
+    /**
+     * Upserts the courier record (AWB + company) so the tracking poller follows
+     * the shipment. Always names the record's company {@code "QuikShipX"} — the
+     * delivery partner actually selected — rather than the raw sub-courier
+     * QuikShipX allots under the hood (e.g. a mocked/real "Direct_Delhivery"),
+     * which is an internal routing detail meaningless to our own team and would
+     * otherwise surface verbatim on the order detail / label ("COURIER:
+     * DIRECT_DELIVERY").
+     */
     private void upsertCourierRecord(Long orderId, AllotResult allot) {
-        String name = (allot.subCourierName() == null || allot.subCourierName().isBlank())
-                ? "QuikShipX" : allot.subCourierName();
+        String name = "QuikShipX";
         CourierCompany company = courierCompanyRepository.findFirstByName(name)
                 .orElseGet(() -> courierCompanyRepository.save(
                         new CourierCompany(name, "https://www.delhivery.com/track/package/{awb}")));

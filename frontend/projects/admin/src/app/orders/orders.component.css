@@ -220,6 +220,85 @@
   white-space: nowrap;
 }
 
+/* Order status timeline (enhancement): a horizontal "Placed -> Packed ->
+   Shipped -> Delivered" stepper with a connecting line, icons, and real
+   timestamps — reads at a glance for less-technical staff. */
+.shifa-od__timeline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  margin-bottom: 1.25rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+.shifa-od__tlstep {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1 0 0;
+  min-width: 4.5rem;
+  position: relative;
+  text-align: center;
+}
+.shifa-od__tlstep::before {
+  content: '';
+  position: absolute;
+  top: 0.95rem;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: #e1e6e3;
+  z-index: 0;
+}
+.shifa-od__tlstep:first-child::before {
+  display: none;
+}
+.shifa-od__tlstep.is-done::before {
+  background: var(--shifa-green-500, #1f5d3f);
+}
+.shifa-od__tldot {
+  position: relative;
+  z-index: 1;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef1ef;
+  color: #8a938e;
+  font-size: 0.95rem;
+  border: 2px solid #eef1ef;
+}
+.shifa-od__tlstep.is-done .shifa-od__tldot {
+  background: var(--shifa-green-100, #e4f2ea);
+  color: var(--shifa-green-700, #1a4f38);
+  border-color: var(--shifa-green-500, #1f5d3f);
+}
+.shifa-od__tlstep.is-current .shifa-od__tldot {
+  background: var(--shifa-green-500, #1f5d3f);
+  color: #fff;
+  border-color: var(--shifa-green-500, #1f5d3f);
+  box-shadow: 0 0 0 3px var(--shifa-green-100, #e4f2ea);
+}
+.shifa-od__tlbody {
+  margin-top: 0.4rem;
+}
+.shifa-od__tllabel {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #4b5a53;
+  white-space: nowrap;
+}
+.shifa-od__tlstep.is-current .shifa-od__tllabel {
+  color: #1c2b24;
+}
+.shifa-od__tlwhen {
+  font-size: 0.65rem;
+  color: #8a938e;
+  white-space: nowrap;
+}
+
 /* Rounded cards with a soft shadow (~12px radius). */
 .shifa-od__card {
   background: #fff;

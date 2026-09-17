@@ -277,8 +277,8 @@
           <span class="shifa-oc__amount">{{ money(order.totalAmount) }}</span>
         </div>
         <div class="shifa-oc__r2">
-          <span class="shifa-oc__meta">
-            {{ order.createdAt ? (order.createdAt | date: 'dd MMM yyyy') : '—' }} · {{ order.customerName }}
+          <span class="shifa-oc__meta" [title]="order.createdAt ? (order.createdAt | date: 'dd MMM yyyy, HH:mm') : ''">
+            {{ order.createdAt ? relativeTime(order.createdAt) : '—' }} · {{ order.customerName }}
           </span>
           <span class="shifa-oc__pill" [class]="statusPillClass(order.orderStatus)">
             {{ useStageLabel() ? stageLabel(order.orderStatus) : humanize(order.orderStatus) }}
@@ -372,7 +372,9 @@
                   </div>
                 }
               </td>
-              <td class="text-secondary d-none d-xl-table-cell">{{ order.createdAt ? (order.createdAt | date: 'dd MMM, HH:mm') : '—' }}</td>
+              <td class="text-secondary d-none d-xl-table-cell" [title]="order.createdAt ? (order.createdAt | date: 'dd MMM yyyy, HH:mm') : ''">
+                {{ order.createdAt ? relativeTime(order.createdAt) : '—' }}
+              </td>
               <td class="text-end d-none d-xl-table-cell">
                 <button
                   type="button"
@@ -442,6 +444,31 @@
           <span class="shifa-od__code">{{ order.orderCode }}</span>
         </div>
 
+        <!-- Order status timeline (enhancement): a visual "where's my order" stepper
+             from the real status-history rows, so a less-technical salesperson can
+             see the journey at a glance instead of reading a raw status list. -->
+        @if (orderTimelineSteps(order).length > 0) {
+          <div class="shifa-od__timeline" role="list" aria-label="Order status timeline">
+            @for (step of orderTimelineSteps(order); track step.status) {
+              <div class="shifa-od__tlstep" [class.is-done]="step.done" [class.is-current]="step.current" role="listitem">
+                <span class="shifa-od__tldot" aria-hidden="true">
+                  @if (step.done && !step.current) {
+                    <i class="ti ti-check"></i>
+                  } @else {
+                    <i class="ti {{ step.icon }}"></i>
+                  }
+                </span>
+                <div class="shifa-od__tlbody">
+                  <div class="shifa-od__tllabel">{{ step.label }}</div>
+                  @if (step.at) {
+                    <div class="shifa-od__tlwhen" [title]="step.at | date: 'dd MMM yyyy, HH:mm'">{{ relativeTime(step.at) }}</div>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        }
+
         <!-- Tabbed navigation so the drawer doesn't require a long scroll -->
         <div class="shifa-formtabs mb-3" role="tablist">
           <button type="button" class="shifa-formtab" [class.is-active]="detailTab() === 'details'"
@@ -464,6 +491,9 @@
           <div class="shifa-od__label">Order Date</div>
           <div class="shifa-od__value">
             {{ order.createdAt ? (order.createdAt | date: 'dd MMM yyyy · HH:mm') : '—' }}
+            @if (order.createdAt) {
+              <span class="text-secondary small ms-1">({{ relativeTime(order.createdAt) }})</span>
+            }
           </div>
         </div>
 
@@ -580,6 +610,38 @@
           </div>
         }
 
+        <!-- (5c-2) Existing returns for this order (closes the loop with the Returns page) -->
+        @if (orderReturns().length > 0) {
+          <div class="shifa-od__card">
+            <div class="shifa-od__label mb-2">
+              {{ orderReturns().length === 1 ? 'Return' : orderReturns().length + ' returns' }}
+            </div>
+            @for (ret of orderReturns(); track ret.id) {
+              <a
+                [routerLink]="['/returns']"
+                class="shifa-od__totline text-reset"
+                title="View in Returns"
+              >
+                <span><i class="ti ti-arrow-back-up me-1"></i>Return #{{ ret.id }} — {{ ret.reason }}</span>
+                <span class="badge" [attr.data-group]="ret.status === 'REFUNDED' ? 'done' : ret.status === 'REJECTED' ? 'bad' : ret.status === 'APPROVED' ? 'progress' : 'pending'">{{ ret.status }}</span>
+              </a>
+            }
+          </div>
+        }
+
+        <!-- (5d) RTO reason (when this order was manually marked RTO via the scan flow) -->
+        @if (order.rtoReason) {
+          <div class="shifa-od__card">
+            <div class="shifa-od__totline">
+              <span><i class="ti ti-rotate-2 me-1"></i>RTO reason</span>
+              <span class="fw-medium">{{ rtoReasonLabel(order.rtoReason) }}</span>
+            </div>
+            @if (order.rtoReasonNote) {
+              <div class="shifa-od__muted mt-1" style="white-space: pre-wrap">{{ order.rtoReasonNote }}</div>
+            }
+          </div>
+        }
+
         }
 
         @if (detailTab() === 'items') {
@@ -675,18 +737,106 @@
         }
 
         @if (detailTab() === 'details') {
-        <!-- Shipment (non-QuikShip courier orders; QuikShipX orders use their own card below) -->
-        @if (order.awb && !order.quikShipXStatus) {
+        <!-- Shipment / delivery (non-QuikShip orders; QuikShipX orders use their own
+             card below). Always shown so an in-house order — which has no courier
+             partner and no AWB — still states its delivery partner as "In-House"
+             plus who is carrying it, instead of the card disappearing entirely. -->
+        @if (!order.quikShipXStatus) {
           <div class="shifa-od__section">
-            <div class="shifa-od__label mb-2">Shipment</div>
+            <div class="shifa-od__label mb-2">{{ isInHouse(order) ? 'In-house delivery' : 'Shipment' }}</div>
             <div class="shifa-od__card">
-              <div class="shifa-od__totline"><span>AWB</span><span class="shifa-mono">{{ order.awb }}</span></div>
-              @if (order.courierName) {
-                <div class="shifa-od__totline"><span>Courier</span><span>{{ order.courierName }}</span></div>
+              <div class="shifa-od__totline"><span>Courier</span><span>{{ courierDisplayName(order) }}</span></div>
+              @if (order.awb) {
+                <div class="shifa-od__totline"><span>AWB</span><span class="shifa-mono">{{ order.awb }}</span></div>
+              } @else if (isInHouse(order)) {
+                <div class="shifa-od__totline">
+                  <span>AWB</span>
+                  <span class="text-secondary">Not applicable — delivered by our own team</span>
+                </div>
+              }
+              @if (order.handoverName) {
+                <div class="shifa-od__totline">
+                  <span>Handed to</span>
+                  <span>
+                    {{ order.handoverName }}
+                    @if (order.handoverPhone) {
+                      <a class="ms-1" [href]="'tel:' + order.handoverPhone">{{ order.handoverPhone }}</a>
+                    }
+                  </span>
+                </div>
+              }
+              @if (order.vehicleNumber) {
+                <div class="shifa-od__totline">
+                  <span>Vehicle / transport</span><span class="shifa-mono">{{ order.vehicleNumber }}</span>
+                </div>
               }
               @if (order.estimatedDelivery) {
                 <div class="shifa-od__totline"><span>Est. delivery</span><span>{{ order.estimatedDelivery | date: 'dd MMM yyyy' }}</span></div>
               }
+            </div>
+          </div>
+        }
+
+        <!-- Manual status control. Offered whenever the order has a legal next step
+             the caller may trigger: the warehouse steps (Packed / Handed to
+             delivery) for any order, and the post-handover delivery stages for
+             in-house orders, which no courier webhook will ever move along. -->
+        @if (canUpdateDeliveryStatus(order)) {
+          <div class="shifa-od__section">
+            <div class="shifa-od__label mb-2">
+              <i class="ti ti-progress-check me-1"></i>Update status
+            </div>
+            <div class="shifa-od__card">
+              <div class="form-hint mb-2">
+                @if (isInHouse(order)) {
+                  No delivery partner is tracking this order, so move it along yourself as the parcel travels.
+                } @else {
+                  Move this order through packing and handover without going to the Packing page.
+                }
+              </div>
+              @if (isInHouse(order)) {
+                <label class="form-label mb-1" for="odVehicleNo">
+                  Vehicle / transport no. <span class="text-secondary">(optional)</span>
+                </label>
+                <input
+                  id="odVehicleNo"
+                  type="text"
+                  class="form-control mb-2 shifa-mono"
+                  maxlength="40"
+                  placeholder="e.g. MP09 AB1234, train 12920, bus operator"
+                  autocomplete="off"
+                  [value]="manualVehicle()"
+                  (input)="setManualVehicle($any($event.target).value)"
+                />
+              }
+              <label class="form-label mb-1" for="odManualStage">New status</label>
+              <select
+                id="odManualStage"
+                class="form-select"
+                [value]="manualStage()"
+                (change)="setManualStage($any($event.target).value)"
+              >
+                <option value="">Choose a status…</option>
+                @for (opt of allowedManualStages(order); track opt.value) {
+                  <option [value]="opt.value">{{ opt.label }}</option>
+                }
+              </select>
+              @if (manualStageHint(); as hint) {
+                <div class="form-hint mt-1">{{ hint }}</div>
+              }
+              <button
+                type="button"
+                class="btn btn-primary w-100 mt-2"
+                [disabled]="!manualStage() || manualStatusBusy()"
+                (click)="updateDeliveryStatus(order)"
+              >
+                @if (manualStatusBusy()) {
+                  <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                  Updating…
+                } @else {
+                  <i class="ti ti-check me-1"></i> Update status
+                }
+              </button>
             </div>
           </div>
         }
@@ -806,6 +956,31 @@
 
         <!-- (10) Primary lifecycle action for pending orders -->
         @if (canApprove(order)) {
+          <div class="shifa-od__card mb-2">
+            <label class="shifa-od__label mb-1" for="odDeliveryMethod">
+              <i class="ti ti-truck-delivery me-1"></i>Delivery method
+            </label>
+            <select
+              id="odDeliveryMethod"
+              class="form-select"
+              [ngModel]="deliveryMethod()"
+              (ngModelChange)="setDeliveryMethod($event)"
+              aria-label="Delivery method"
+            >
+              @for (opt of deliveryMethodOptions; track opt.value) {
+                <option [value]="opt.value">{{ opt.label }}</option>
+              }
+            </select>
+            @if (deliveryMethod() === 'IN_HOUSE') {
+              <div class="form-hint mt-1">
+                This order will be delivered by Shifa's own team — it will not be sent to QuikShipX.
+              </div>
+            } @else {
+              <div class="form-hint mt-1">
+                This order will be sent to QuikShipX for courier pickup and delivery.
+              </div>
+            }
+          </div>
           <button
             type="button"
             class="btn btn-primary w-100 shifa-od__primary"
@@ -872,6 +1047,21 @@
             }
             Invoice
           </button>
+
+          <!-- Manual courier/AWB assignment (ADMIN-only): usable any time before
+               dispatch so the internal label's courier barcode can render right
+               away, instead of waiting for automatic in-house assignment which
+               only runs after dispatch. -->
+          @if (canAssignCourier(order)) {
+            <button
+              type="button"
+              class="btn btn-outline-secondary shifa-od__action"
+              (click)="openAssignCourier(order)"
+              title="Manually attach a courier name + AWB so the label's courier barcode can render now"
+            >
+              <i class="ti ti-truck-loading me-1"></i> {{ order.awb ? 'Update courier' : 'Assign courier' }}
+            </button>
+          }
         </div>
 
         <!-- (10) Print packing label (barcode + details) — admin reprint -->
@@ -957,6 +1147,88 @@
                 <span class="spinner-border spinner-border-sm me-2"></span> Working…
               } @else {
                 <i class="ti ti-arrow-back-up me-1"></i> Create return
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===================== Assign courier modal (manual, ADMIN-only) ===================== -->
+@if (assignCourierOpen() && selectedDetail(); as order) {
+  <div class="shifa-overlay" (click)="closeAssignCourier()"></div>
+  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Assign courier">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-truck-loading me-2"></i>Assign courier</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeAssignCourier()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">
+          Order <span class="shifa-mono">{{ order.orderCode }}</span> — attach the courier + AWB now so the
+          internal label's courier barcode can render right away, without waiting for automatic dispatch-time
+          assignment.
+        </p>
+        @if (assignCourierError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert"><i class="ti ti-alert-triangle me-2"></i>{{ err }}</div>
+        }
+        <form (ngSubmit)="submitAssignCourier()" novalidate [formGroup]="assignCourierForm">
+          <div class="mb-3">
+            <label class="form-label required">Delivery partner</label>
+            <select
+              class="form-select"
+              [ngModel]="courierSelectValue()"
+              [ngModelOptions]="{ standalone: true }"
+              (ngModelChange)="onCourierSelectChange($event)"
+            >
+              <option value="In-House">In-House (own team)</option>
+              @for (company of courierCompanies(); track company.id) {
+                <option [value]="company.name">{{ company.name }}</option>
+              }
+              <option [value]="OTHER_COURIER">Other (type below)…</option>
+            </select>
+            @if (showOtherCourierInput()) {
+              <input type="text" class="form-control mt-2" formControlName="courierName" maxlength="150"
+                placeholder="e.g. Ekart" autocomplete="off"
+                [class.is-invalid]="assignCourierForm.controls.courierName.touched && assignCourierForm.controls.courierName.invalid" />
+              @if (assignCourierForm.controls.courierName.touched && assignCourierForm.controls.courierName.invalid) {
+                <div class="text-danger small mt-1">Courier name is required.</div>
+              }
+            }
+          </div>
+          <div class="mb-3">
+            <label class="form-label" [class.required]="awbRequired()">
+              AWB / tracking number
+              @if (!awbRequired()) {
+                <span class="text-secondary">(optional)</span>
+              }
+            </label>
+            <input type="text" class="form-control shifa-mono" formControlName="awb" maxlength="64"
+              placeholder="e.g. SHFEXP1000123" autocomplete="off"
+              [class.is-invalid]="assignCourierForm.controls.awb.touched && assignCourierForm.controls.awb.invalid" />
+            @if (assignCourierForm.controls.awb.touched && assignCourierForm.controls.awb.invalid) {
+              <div class="text-danger small mt-1">AWB / tracking number is required.</div>
+            }
+            @if (!awbRequired()) {
+              <div class="form-hint mt-1">
+                In-house deliveries have no tracking number — leave this blank and the label prints
+                our own order barcode instead, which the packing / RTO scan still recognises.
+              </div>
+            }
+          </div>
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-link text-secondary" (click)="closeAssignCourier()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="assignCourierBusy()">
+              @if (assignCourierBusy()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Working…
+              } @else {
+                <i class="ti ti-check me-1"></i> Save
               }
             </button>
           </div>

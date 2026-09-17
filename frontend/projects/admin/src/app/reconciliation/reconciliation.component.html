@@ -4,6 +4,9 @@
   [breadcrumbs]="[{ label: 'Reconciliation' }]"
 >
   <admin-density-toggle />
+  <button type="button" class="btn btn-outline-secondary" (click)="openRemittanceImport()" title="Import courier COD remittance" aria-label="Import courier COD remittance">
+    <i class="ti ti-file-import"></i><span class="d-none d-sm-inline ms-1">Import remittance</span>
+  </button>
   <button type="button" class="btn btn-icon btn-outline-secondary" (click)="loadAll()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
     <i class="ti ti-refresh"></i>
   </button>
@@ -436,6 +439,135 @@
             <button type="submit" class="btn btn-primary" [disabled]="acting()">Confirm settle</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===================== Courier remittance import modal ===================== -->
+@if (remittanceOpen()) {
+  <div class="shifa-overlay" (click)="closeRemittanceImport()"></div>
+  <div class="shifa-modal shifa-modal-wide" role="dialog" aria-label="Import courier COD remittance">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-file-import me-2"></i>Import courier COD remittance</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeRemittanceImport()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (remittanceError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert">
+            <i class="ti ti-alert-triangle me-2"></i>{{ err }}
+          </div>
+        }
+
+        <div class="alert alert-info" role="note">
+          <div class="fw-medium mb-1">Expected columns</div>
+          <code class="shifa-mono d-block text-wrap">awb,orderCode,amount</code>
+          <div class="small text-secondary mt-1">
+            Each row needs an <strong>amount</strong> and at least one of <strong>awb</strong> /
+            <strong>orderCode</strong>. A row is auto-settled only when it matches exactly one unsettled
+            COD receivable AND the amount agrees (within ₹1) — anything else is reported for manual review,
+            never guessed at.
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label required">Remittance CSV</label>
+          <input
+            type="file"
+            class="form-control"
+            accept=".csv,text/csv"
+            (change)="onRemittanceFileChange($event)"
+            aria-label="Choose a CSV file"
+          />
+        </div>
+
+        @if (remittancePreview() || remittanceResult(); as res) {
+          <div class="row row-cards g-2 mb-3">
+            <div class="col"><div class="card card-sm"><div class="card-body py-2">
+              <div class="text-secondary small">Rows</div><div class="h3 mb-0">{{ res.totalRows }}</div>
+            </div></div></div>
+            <div class="col"><div class="card card-sm"><div class="card-body py-2">
+              <div class="text-secondary small">Settled</div><div class="h3 mb-0 text-success">{{ res.settled }}</div>
+            </div></div></div>
+            <div class="col"><div class="card card-sm"><div class="card-body py-2">
+              <div class="text-secondary small">Mismatch</div><div class="h3 mb-0 text-warning">{{ res.mismatched }}</div>
+            </div></div></div>
+            <div class="col"><div class="card card-sm"><div class="card-body py-2">
+              <div class="text-secondary small">Not found</div><div class="h3 mb-0">{{ res.notFound }}</div>
+            </div></div></div>
+            <div class="col"><div class="card card-sm"><div class="card-body py-2">
+              <div class="text-secondary small">Errors</div><div class="h3 mb-0 text-danger">{{ res.errors }}</div>
+            </div></div></div>
+          </div>
+
+          @if (remittanceResult()) {
+            <div class="alert alert-success" role="status">
+              <i class="ti ti-circle-check me-2"></i>Import complete.
+            </div>
+          } @else {
+            <div class="text-secondary small mb-2">
+              Preview only — nothing has been settled yet. Review the rows below, then confirm.
+            </div>
+          }
+
+          <div class="table-responsive shifa-import-rows">
+            <table class="table table-sm table-vcenter">
+              <thead>
+                <tr>
+                  <th class="w-1">Row</th>
+                  <th>AWB / Order</th>
+                  <th class="text-end">Remitted</th>
+                  <th class="text-end">Expected</th>
+                  <th>Status</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of res.rows; track row.rowNumber) {
+                  <tr [class.table-danger]="row.status === 'ERROR'" [class.table-warning]="row.status === 'MISMATCH'">
+                    <td class="text-secondary">{{ row.rowNumber }}</td>
+                    <td><span class="shifa-mono">{{ row.resolvedOrderCode || row.orderCode || row.awb || '—' }}</span></td>
+                    <td class="text-end">{{ remittanceMoney(row.remittedAmount) }}</td>
+                    <td class="text-end">{{ row.expectedAmount != null ? remittanceMoney(row.expectedAmount) : '—' }}</td>
+                    <td><span class="badge" [attr.data-group]="remittanceRowTone(row.status)">{{ row.status }}</span></td>
+                    <td [class.text-danger]="row.status === 'ERROR'">{{ row.message || '—' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+
+      <div class="card-footer d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-link text-secondary" (click)="closeRemittanceImport()">
+          {{ remittanceResult() ? 'Close' : 'Cancel' }}
+        </button>
+        @if (!remittanceResult()) {
+          @if (!remittancePreview()) {
+            <button type="button" class="btn btn-primary" (click)="previewRemittance()"
+              [disabled]="!remittanceFile() || remittanceBusy()">
+              @if (remittanceBusy()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Matching…
+              } @else {
+                <i class="ti ti-eye me-1"></i> Preview
+              }
+            </button>
+          } @else {
+            <button type="button" class="btn btn-primary" (click)="confirmRemittance()" [disabled]="remittanceBusy()">
+              @if (remittanceBusy()) {
+                <span class="spinner-border spinner-border-sm me-2"></span> Settling…
+              } @else {
+                <i class="ti ti-check me-1"></i> Confirm settlement
+              }
+            </button>
+          }
+        }
       </div>
     </div>
   </div>

@@ -7,6 +7,7 @@ import {
   PackingQueue,
   PackingScanPreviewResponse,
   PackingScanResponse,
+  PickList,
   RtoReason,
   RtoScanPreviewResponse,
 } from './packing.model';
@@ -28,6 +29,14 @@ export class PackingService {
   /** The packing work queues (awaiting packing / handover / dispatch), oldest-first. */
   queue(): Observable<PackingQueue> {
     return this.api.get<PackingQueue>('/api/packing/queue');
+  }
+
+  /**
+   * The daily pick-list / packing manifest (enhancement): every product needed
+   * across all orders currently awaiting packing, aggregated into one sheet.
+   */
+  pickList(): Observable<PickList> {
+    return this.api.get<PickList>('/api/packing/pick-list');
   }
 
   /**
@@ -76,13 +85,23 @@ export class PackingService {
    * ({@code PACKED → HANDED_TO_DELIVERY}, Req 9.2–9.4). Returns the updated
    * order; a non-{@code PACKED} order surfaces as a 409 {@code HttpErrorResponse}.
    */
-  handover(id: number, handoverName?: string, handoverPhone?: string): Observable<OrderDetail> {
-    const body: { handoverName?: string; handoverPhone?: string } = {};
+  handover(
+    id: number,
+    handoverName?: string,
+    handoverPhone?: string,
+    vehicleNumber?: string,
+  ): Observable<OrderDetail> {
+    const body: { handoverName?: string; handoverPhone?: string; vehicleNumber?: string } = {};
     if (handoverName && handoverName.trim()) {
       body.handoverName = handoverName.trim();
     }
     if (handoverPhone && handoverPhone.trim()) {
       body.handoverPhone = handoverPhone.trim();
+    }
+    // In-house deliveries have no AWB — the vehicle / transport reference (bus,
+    // train, own van) is what identifies the shipment instead.
+    if (vehicleNumber && vehicleNumber.trim()) {
+      body.vehicleNumber = vehicleNumber.trim();
     }
     return this.api.post<OrderDetail>(`/api/packing/${id}/handover`, body);
   }

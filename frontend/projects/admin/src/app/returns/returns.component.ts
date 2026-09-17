@@ -1,7 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { AuthService, Money, Role, SortState } from 'core';
 import { ReturnsService } from './returns.service';
@@ -15,6 +15,7 @@ import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.c
 import { ToastService } from '../shared/toast.service';
 import { toggleSort, sortParam } from '../shared/sort.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
+import { relativeTime } from '../shared/time.util';
 
 /** Sort fields the backend accepts for the admin returns listing. */
 const SORT_FIELDS = new Set(['createdAt', 'updatedAt', 'status', 'refundAmount']);
@@ -52,6 +53,7 @@ export class ReturnsComponent implements OnInit, OnDestroy {
   private readonly service = inject(ReturnsService);
   private readonly auth = inject(AuthService);
   private readonly toasts = inject(ToastService);
+  private readonly route = inject(ActivatedRoute);
 
   protected readonly statusOptions: ReturnStatus[] = ['REQUESTED', 'APPROVED', 'REFUNDED', 'REJECTED'];
 
@@ -133,6 +135,14 @@ export class ReturnsComponent implements OnInit, OnDestroy {
       .pipe(debounceTime(300), distinctUntilChanged(), takeUntil(this.destroy$))
       .subscribe(() => this.resetAndLoad());
     this.filters.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => this.resetAndLoad());
+
+    // Deep link (RTO scan page's "Create a return?" suggestion): ?createOrder=
+    // pre-opens the Create return modal with that order code already filled in.
+    const createOrder = this.route.snapshot.queryParamMap.get('createOrder');
+    if (createOrder && this.canManage()) {
+      this.openCreate();
+      this.createForm.patchValue({ orderId: createOrder });
+    }
   }
 
   ngOnDestroy(): void {
@@ -230,6 +240,9 @@ export class ReturnsComponent implements OnInit, OnDestroy {
     }
     return `₹${value}`;
   }
+
+  /** Short relative time (enhancement: relative timestamps) — shown alongside the exact date. */
+  protected readonly relativeTime = relativeTime;
 
   canApproveOrReject(r: ReturnResponse): boolean {
     return this.canManage() && r.status === 'REQUESTED';

@@ -121,8 +121,8 @@
     @for (r of returns(); track r.id) {
       <div class="shifa-ret">
         <div class="shifa-ret__r1">
-          <a [routerLink]="['/orders']" [queryParams]="{ q: r.orderId }" class="shifa-ret__code text-reset">
-            <span class="shifa-mono">#{{ r.orderId }}</span>
+          <a [routerLink]="['/orders']" [queryParams]="{ q: r.orderCode || r.orderId }" class="shifa-ret__code text-reset">
+            <span class="shifa-mono">{{ r.orderCode || ('#' + r.orderId) }}</span>
             <span class="shifa-ret__return">Return #{{ r.id }}</span>
           </a>
           <span class="badge" [attr.data-group]="statusTone(r.status)">{{ r.status }}</span>
@@ -172,8 +172,8 @@
             <tr>
               <td class="fw-medium">#{{ r.id }}</td>
               <td>
-                <a [routerLink]="['/orders']" [queryParams]="{ q: r.orderId }" class="text-reset">
-                  <span class="shifa-mono">#{{ r.orderId }}</span>
+                <a [routerLink]="['/orders']" [queryParams]="{ q: r.orderCode || r.orderId }" class="text-reset">
+                  <span class="shifa-mono">{{ r.orderCode || ('#' + r.orderId) }}</span>
                 </a>
               </td>
               <td>
@@ -191,7 +191,9 @@
                   <span class="text-secondary">—</span>
                 }
               </td>
-              <td class="text-secondary">{{ r.createdAt ? (r.createdAt | date: 'dd MMM, HH:mm') : '—' }}</td>
+              <td class="text-secondary" [title]="r.createdAt ? (r.createdAt | date: 'dd MMM yyyy, HH:mm') : ''">
+                {{ r.createdAt ? relativeTime(r.createdAt) : '—' }}
+              </td>
               <td class="text-end">
                 @if (rowActions(r).length) {
                   <admin-row-actions [actions]="rowActions(r)" ariaLabel="Return actions" (select)="onRowAction($event, r)" />
@@ -229,7 +231,7 @@
         </div>
       </div>
       <div class="card-body">
-        <p class="text-secondary small mb-3">Order <span class="shifa-mono">#{{ r.orderId }}</span> — {{ r.reason }}</p>
+        <p class="text-secondary small mb-3">Order <span class="shifa-mono">{{ r.orderCode || ('#' + r.orderId) }}</span> — {{ r.reason }}</p>
         @if (modalError(); as err) {
           <div class="alert alert-danger anim-fade-up" role="alert"><i class="ti ti-alert-triangle me-2"></i>{{ err }}</div>
         }

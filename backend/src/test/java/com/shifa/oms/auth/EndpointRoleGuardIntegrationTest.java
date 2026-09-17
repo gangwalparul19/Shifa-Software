@@ -191,6 +191,15 @@ class EndpointRoleGuardIntegrationTest {
     // --- Pack / handover / dispatch: PACKING_USER + ADMIN (design §6.3–6.5) ------------
 
     @Test
+    void assignCourierIsAdminOnly() throws Exception {
+        assertRoleMatrix(
+                post("/api/admin/orders/5/assign-courier")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"courierName\":\"Shifa Express\",\"awb\":\"AWB123\"}"),
+                List.of(Role.ADMIN));
+    }
+
+    @Test
     void scanIsPackerOrAdmin() throws Exception {
         assertRoleMatrix(
                 post("/api/packing/scan")
@@ -648,6 +657,11 @@ class EndpointRoleGuardIntegrationTest {
         }
 
         @Bean
+        com.shifa.oms.courier.CourierAssignmentService courierAssignmentService() {
+            return new StubCourierAssignmentService();
+        }
+
+        @Bean
         PackingService packingService() {
             return new StubPackingService();
         }
@@ -948,6 +962,18 @@ class EndpointRoleGuardIntegrationTest {
         @Override
         public OrderResponse updateOrder(Long id, UpdateOrderRequest request, AuthPrincipal admin) {
             return sampleOrderResponse();
+        }
+    }
+
+    /** No-op manual-assign so a permitted call yields 2xx without a real courier stack. */
+    static class StubCourierAssignmentService extends com.shifa.oms.courier.CourierAssignmentService {
+        StubCourierAssignmentService() {
+            super(null, null, null, null, null, null, null, null);
+        }
+
+        @Override
+        public void manuallyAssign(Long orderId, String courierName, String awb) {
+            // no-op
         }
     }
 

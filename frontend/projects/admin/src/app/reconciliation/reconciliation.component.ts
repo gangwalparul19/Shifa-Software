@@ -3,7 +3,13 @@ import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular
 import { FormBuilder, FormControl, ReactiveFormsModule } from '@angular/forms';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { Money, ReceivableType, SortState } from 'core';
-import { ReconciliationService } from './reconciliation.service';
+import { HttpErrorResponse } from '@angular/common/http';
+import { ApiError } from 'core';
+import {
+  ReconciliationService,
+  RemittanceImportResult,
+  RemittanceRowStatus,
+} from './reconciliation.service';
 import {
   CourierSummary,
   ReceivableRow,
@@ -125,6 +131,16 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
   });
 
   private toastTimer?: ReturnType<typeof setTimeout>;
+
+  // --- Courier COD remittance import (enhancement) -------------------------
+  protected readonly remittanceOpen = signal(false);
+  protected readonly remittanceFile = signal<File | null>(null);
+  protected readonly remittanceBusy = signal(false);
+  protected readonly remittanceError = signal<string | null>(null);
+  /** The dry-run preview result (null until a file has been previewed). */
+  protected readonly remittancePreview = signal<RemittanceImportResult | null>(null);
+  /** The committed import result (null until the import is confirmed). */
+  protected readonly remittanceResult = signal<RemittanceImportResult | null>(null);
 
   ngOnInit(): void {
     this.loadAll();
@@ -387,5 +403,106 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
       clearTimeout(this.toastTimer);
     }
     this.toastTimer = setTimeout(() => this.toast.set(null), 4000);
+  }
+
+  // --- Courier COD remittance import (enhancement) --------------------------
+
+  openRemittanceImport(): void {
+    this.remittanceFile.set(null);
+    this.remittanceError.set(null);
+    this.remittancePreview.set(null);
+    this.remittanceResult.set(null);
+    this.remittanceBusy.set(false);
+    this.remittanceOpen.set(true);
+  }
+
+  closeRemittanceImport(): void {
+    this.remittanceOpen.set(false);
+    if (this.remittanceResult()) {
+      // Something was actually settled — refresh totals + lists.
+      this.loadAll();
+    }
+  }
+
+  /** Handles the file picker change; resets any prior preview/result. */
+  onRemittanceFileChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    this.remittanceFile.set(file);
+    this.remittancePreview.set(null);
+    this.remittanceResult.set(null);
+    this.remittanceError.set(null);
+  }
+
+  /** Step 1 — dry-run the import to preview the auto-match without settling anything. */
+  previewRemittance(): void {
+    const file = this.remittanceFile();
+    if (!file || this.remittanceBusy()) {
+      return;
+    }
+    this.remittanceBusy.set(true);
+    this.remittanceError.set(null);
+    this.remittanceResult.set(null);
+    this.service.importRemittance(file, true).subscribe({
+      next: (res) => {
+        this.remittancePreview.set(res);
+        this.remittanceBusy.set(false);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.remittanceBusy.set(false);
+        this.remittanceError.set(this.describeRemittanceError(err));
+      },
+    });
+  }
+
+  /** Step 2 — commit the import (dryRun=false), settling every clean match. */
+  confirmRemittance(): void {
+    const file = this.remittanceFile();
+    if (!file || this.remittanceBusy()) {
+      return;
+    }
+    this.remittanceBusy.set(true);
+    this.remittanceError.set(null);
+    this.service.importRemittance(file, false).subscribe({
+      next: (res) => {
+        this.remittanceResult.set(res);
+        this.remittanceBusy.set(false);
+        this.showToast(
+          'ok',
+          `Remittance import complete: ${res.settled} settled, ${res.mismatched} need review.`,
+        );
+      },
+      error: (err: HttpErrorResponse) => {
+        this.remittanceBusy.set(false);
+        this.remittanceError.set(this.describeRemittanceError(err));
+      },
+    });
+  }
+
+  /** Tabler badge tone for a per-row remittance outcome. */
+  remittanceRowTone(status: RemittanceRowStatus): string {
+    switch (status) {
+      case 'SETTLED':
+        return 'done';
+      case 'MISMATCH':
+        return 'pending';
+      case 'ERROR':
+        return 'bad';
+      default:
+        return 'neutral';
+    }
+  }
+
+  /** Formats a remittance row's amount (may be a raw number, unlike Money elsewhere). */
+  remittanceMoney(value: number | string | undefined | null): string {
+    if (value === undefined || value === null) {
+      return '—';
+    }
+    return `₹${value}`;
+  }
+
+  private describeRemittanceError(err: HttpErrorResponse): string {
+    const apiError = err.error as ApiError | undefined;
+    return apiError?.message ?? 'Could not process the CSV. Please check the file and try again.';
   }
 }

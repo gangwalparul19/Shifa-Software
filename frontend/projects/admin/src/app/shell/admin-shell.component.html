@@ -64,6 +64,7 @@
         <button
           type="button"
           class="btn btn-icon shifa-appbar__burger"
+          data-tour="hamburger"
           (click)="toggleMenu()"
           [attr.aria-expanded]="menuOpen()"
           aria-controls="shifa-nav-drawer"
@@ -77,8 +78,8 @@
       <!-- Right: global search, live status, notifications, account -->
       <div class="shifa-appbar__actions">
         <!-- Global search (inline on desktop, expanding icon on mobile) -->
-        <div class="shifa-appbar__search">
-          <admin-global-search />
+        <div class="shifa-appbar__search" data-tour="global-search">
+          <admin-global-search #globalSearch />
         </div>
 
         <!-- Offline indicator (FEATURE-ROADMAP §8.1) -->
@@ -115,7 +116,7 @@
 
         <!-- Per-user notifications bell (all staff roles, Req 13.4) -->
         @if (auth.session()) {
-          <admin-notification-bell />
+          <span data-tour="notif-bell"><admin-notification-bell /></span>
         }
 
         <!-- User dropdown (Angular-driven) -->
@@ -160,6 +161,13 @@
                   >
                     <i class="ti ti-user-circle me-2"></i> My Profile
                   </a>
+                  <button
+                    type="button"
+                    class="btn btn-ghost-secondary w-100 justify-content-start"
+                    (click)="closeUserMenu(); replayTour()"
+                  >
+                    <i class="ti ti-map-2 me-2"></i> Take the tour
+                  </button>
                   <button
                     type="button"
                     class="btn btn-ghost-danger w-100 justify-content-start"
@@ -213,7 +221,7 @@
 
   <!-- ===================== Bottom tab bar (Req 2) ===================== -->
   @if (auth.session() && bottomTabs().length) {
-    <nav class="shifa-bottomnav d-print-none" aria-label="Primary">
+    <nav class="shifa-bottomnav d-print-none" data-tour="bottom-tabs" aria-label="Primary">
       @for (tab of bottomTabs(); track tab.label) {
         <a
           class="shifa-bottomnav__tab"
@@ -379,3 +387,6 @@
 
 <!-- App-wide toast notifications (single host for the whole admin) -->
 <admin-toasts />
+
+<!-- First-run guided tour overlay (enhancement) -->
+<admin-guided-tour />

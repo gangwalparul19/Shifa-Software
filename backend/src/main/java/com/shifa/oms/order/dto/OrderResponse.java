@@ -5,6 +5,7 @@ import com.shifa.oms.order.LeadSource;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderSource;
+import com.shifa.oms.order.OrderStatusHistory;
 import com.shifa.oms.order.PaymentVerificationStatus;
 import com.shifa.oms.order.domain.DiscountType;
 import com.shifa.oms.order.domain.OrderPricing;
@@ -87,8 +88,48 @@ public record OrderResponse(
         // The admin's reason for rejecting the order (Req 9.4); null unless the
         // order's status is REJECTED, so the salesperson can see why on the
         // order-detail view and rework it.
-        String rejectionReason
+        String rejectionReason,
+        // The categorized reason + optional note captured when a packer/admin
+        // manually marks an order RTO via the Mark RTO scan flow (label redesign
+        // feature). Both null unless the order was ever marked RTO that way.
+        com.shifa.oms.order.RtoReason rtoReason,
+        String rtoReasonNote,
+        // Optional vehicle / transport reference for an in-house delivery — bus
+        // vehicle no., train no., taxi registration, own van (in-house-delivery
+        // feature, V63). Null for courier orders / when not captured. Together
+        // with handoverName this identifies an in-house shipment, which has no AWB.
+        String vehicleNumber,
+        // The contact number of whoever the parcel was handed to at handover
+        // (product-audit §4.3); surfaced alongside handoverName so staff can call
+        // the person/operator carrying an in-house parcel.
+        String handoverPhone,
+        // The order's full status-history timeline (enhancement: order status
+        // timeline), oldest first, so the order-detail drawer can render a
+        // visual stepper with real timestamps instead of just the current pill.
+        List<StatusHistoryEntryResponse> statusHistory
 ) {
+
+    /**
+     * One status-history row for the order-detail timeline.
+     *
+     * @param fromStatus null for the synthetic creation row
+     * @param toStatus   the status this row transitioned into
+     * @param actor      the acting username, or COURIER_API/SYSTEM
+     * @param source     the transition source (e.g. ADMIN, PACKING, SYSTEM)
+     * @param changedAt  when the transition was recorded
+     */
+    public record StatusHistoryEntryResponse(
+            OrderStatus fromStatus,
+            OrderStatus toStatus,
+            String actor,
+            String source,
+            LocalDateTime changedAt
+    ) {
+        static StatusHistoryEntryResponse from(OrderStatusHistory h) {
+            return new StatusHistoryEntryResponse(
+                    h.getFromStatus(), h.getToStatus(), h.getActor(), h.getSource(), h.getChangedAt());
+        }
+    }
 
     /**
      * A single order line in the response.
@@ -217,7 +258,12 @@ public record OrderResponse(
                 null,
                 null,
                 false,
-                order.getRejectionReason());
+                order.getRejectionReason(),
+                order.getRtoReason(),
+                order.getRtoReasonNote(),
+                order.getVehicleNumber(),
+                order.getHandoverPhone(),
+                order.getStatusHistory().stream().map(StatusHistoryEntryResponse::from).toList());
     }
 
     /**
@@ -233,7 +279,8 @@ public record OrderResponse(
                 couponCode, discountAmount, paymentScreenshotAvailable, items, createdAt, awb, courierName,
                 trackingUrl, estimatedDelivery, handoverName, packageCount, paymentVerificationStatus,
                 subtotalAmount, gstAmount, discountType, discountValue, buyerGstin,
-                quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest, rejectionReason);
+                quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest, rejectionReason,
+                rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory);
     }
 
     /**
@@ -286,6 +333,30 @@ public record OrderResponse(
                 quikShipXLabelUrl,
                 quikShipXOrderId,
                 quikShipXTest,
-                rejectionReason);
+                rejectionReason,
+                rtoReason,
+                rtoReasonNote,
+                vehicleNumber,
+                handoverPhone,
+                statusHistory);
+    }
+
+    /**
+     * Returns a copy with only the courier's display name set (order-detail only,
+     * in-house-delivery feature). Used when a delivery partner is recorded for the
+     * order but has <em>no AWB</em> — e.g. a parcel handed to a local operator or
+     * sent by bus — so {@code shipmentFor} yields nothing to track yet the admin
+     * should still see who has the parcel.
+     */
+    public OrderResponse withCourierName(String courierName) {
+        return new OrderResponse(
+                id, orderCode, source, deliveryMethod, leadSource, leadSourceNote, customerEmail, notes,
+                orderStatus, paymentStatus, customerName, customerMobile, alternateMobile, addressLine,
+                city, state, postalCode, totalAmount, amountReceived, remainingAmount, codAmount,
+                customerOutstanding, couponCode, discountAmount, paymentScreenshotAvailable, items,
+                createdAt, awb, courierName, trackingUrl, estimatedDelivery, handoverName, packageCount,
+                paymentVerificationStatus, subtotalAmount, gstAmount, discountType, discountValue,
+                buyerGstin, quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest,
+                rejectionReason, rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory);
     }
 }

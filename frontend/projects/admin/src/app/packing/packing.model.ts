@@ -75,6 +75,28 @@ export interface PackingScanPreviewResponse {
 /** How a single scan resolved, for the in-session scan log. */
 export type ScanOutcome = 'packed' | 'moved' | 'not-recognized' | 'wrong-status' | 'error';
 
+// --- Daily pick-list / packing manifest (enhancement) -----------------------
+
+/** One aggregated product row on the pick-list, mirroring the backend {@code PickListLine}. */
+export interface PickListLine {
+  productId: number | null;
+  productName: string;
+  sku?: string | null;
+  totalQuantity: number;
+  /** How many distinct orders need this product (context, not a sum). */
+  orderCount: number;
+}
+
+/**
+ * The daily pick-list / packing manifest, mirroring the backend
+ * {@code PickListResponse}: every product needed across all orders currently
+ * awaiting packing, aggregated into one sheet.
+ */
+export interface PickList {
+  orderCount: number;
+  lines: PickListLine[];
+}
+
 // --- RTO (returned to origin) manual marking (label redesign feature) --------
 
 /**
@@ -107,6 +129,16 @@ export interface RtoScanPreviewResponse {
   message: string;
   order: ScannedOrderSummary;
   eligible: boolean;
+  /**
+   * Whether the scanned barcode was the delivery partner's own barcode (the
+   * single scannable barcode printed on the label when a partner is assigned)
+   * rather than our internal order code — mirrors the backend.
+   */
+  scannedViaCourier: boolean;
+  /** The delivery partner's display name, when {@code scannedViaCourier} (else null/undefined). */
+  courierName?: string | null;
+  /** The scanned AWB value, when {@code scannedViaCourier} (else null/undefined). */
+  courierAwb?: string | null;
 }
 
 /** One entry in the running scan log shown in the UI. */

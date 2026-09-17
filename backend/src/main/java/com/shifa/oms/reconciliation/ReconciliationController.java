@@ -2,15 +2,18 @@ package com.shifa.oms.reconciliation;
 
 import com.shifa.oms.common.PageRequests;
 import com.shifa.oms.common.PageResponse;
+import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
 import com.shifa.oms.reconciliation.dto.CourierSummaryResponse;
 import com.shifa.oms.reconciliation.dto.ReceivableResponse;
+import com.shifa.oms.reconciliation.dto.RemittanceImportResponse;
 import com.shifa.oms.reconciliation.dto.SegregationResponse;
 import com.shifa.oms.reconciliation.dto.SettleReceivableRequest;
 import com.shifa.oms.reconciliation.dto.UnsettledCodResponse;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,7 +22,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -63,9 +69,12 @@ public class ReconciliationController {
             Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.DESC, "id"));
 
     private final ReconciliationService reconciliationService;
+    private final RemittanceImportService remittanceImportService;
 
-    public ReconciliationController(ReconciliationService reconciliationService) {
+    public ReconciliationController(ReconciliationService reconciliationService,
+                                    RemittanceImportService remittanceImportService) {
         this.reconciliationService = reconciliationService;
+        this.remittanceImportService = remittanceImportService;
     }
 
     /**
@@ -141,6 +150,34 @@ public class ReconciliationController {
             @PathVariable Long id,
             @RequestBody(required = false) SettleReceivableRequest request) {
         return reconciliationService.settle(id, request != null ? request.date() : null);
+    }
+
+    /**
+     * Imports (or previews) a courier COD remittance CSV, auto-matching each row
+     * by AWB/order code to an unsettled COD receivable and settling it when the
+     * amount agrees (enhancement: "courier remittance import & auto-match").
+     * Restricted to ADMIN + ACCOUNTANT (not CA — settling money is an operational
+     * action, unlike the class-level read access).
+     *
+     * @param file   the multipart CSV file (required; header needs 'amount' and
+     *               at least one of 'awb'/'orderCode')
+     * @param dryRun when true (default), match + report only; when false, settle
+     *               every row that cleanly matches
+     * @return the aggregate import result with per-row outcomes
+     */
+    @PostMapping(path = "/remittance/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT')")
+    public RemittanceImportResponse importRemittance(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(name = "dryRun", defaultValue = "true") boolean dryRun) {
+        if (file == null || file.isEmpty()) {
+            throw new ValidationException("A CSV file is required.");
+        }
+        try {
+            return remittanceImportService.importCsv(file.getBytes(), dryRun);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to read the uploaded CSV file.", e);
+        }
     }
 }
 

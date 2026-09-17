@@ -111,6 +111,75 @@ export interface UpdateOrderRequest {
 export type DeliveryMethod = 'QUIKSHIPX' | 'IN_HOUSE';
 
 /**
+ * The delivery stages a human may set on an IN_HOUSE order via
+ * {@code POST /api/orders/{id}/delivery-status} (mirrors the backend's
+ * MANUAL_DELIVERY_STAGES whitelist). An in-house order has no courier partner, so
+ * no webhook ever reports progress — staff advance it by hand.
+ */
+export type ManualDeliveryStage =
+  | 'DISPATCHED'
+  | 'IN_TRANSIT'
+  | 'OUT_FOR_DELIVERY'
+  | 'DELIVERED'
+  | 'CUSTOMER_REJECTED'
+  | 'DELIVERY_FAILED';
+
+/**
+ * The internal warehouse steps, settable manually on ANY order (they mirror the
+ * Packing page's own actions) — as opposed to the post-handover stages below,
+ * which only apply to in-house orders.
+ */
+export type ManualPackingStage = 'PACKED' | 'HANDED_TO_DELIVERY';
+
+/** Every status the manual status control can set (mirrors the backend whitelist). */
+export type ManualStage = ManualPackingStage | ManualDeliveryStage;
+
+/** Selectable manual stages, in real-world lifecycle order. */
+export const MANUAL_DELIVERY_STAGE_OPTIONS: {
+  value: ManualStage;
+  label: string;
+  hint: string;
+}[] = [
+  { value: 'PACKED', label: 'Packed', hint: 'Items picked and boxed, ready to hand over.' },
+  { value: 'HANDED_TO_DELIVERY', label: 'Handed to delivery', hint: 'Given to whoever is carrying it (own team, bus, courier counter).' },
+  { value: 'DISPATCHED', label: 'Dispatched', hint: 'Parcel has left with the carrier / vehicle.' },
+  { value: 'IN_TRANSIT', label: 'In transit', hint: 'On the way to the destination city.' },
+  { value: 'OUT_FOR_DELIVERY', label: 'Out for delivery', hint: 'Being delivered to the customer today.' },
+  { value: 'DELIVERED', label: 'Delivered', hint: 'Handed to the customer — also settles the order (COD collected / closed).' },
+  { value: 'CUSTOMER_REJECTED', label: 'Customer refused', hint: 'Customer declined the parcel at the door.' },
+  { value: 'DELIVERY_FAILED', label: 'Delivery failed', hint: 'Attempted but could not be delivered.' },
+];
+
+/**
+ * The stages that may legally follow a given status, mirroring the backend
+ * {@code OrderStatus} transition table (only the manually-settable subset — RTO
+ * has its own scan flow with a required reason, and settlement is automatic).
+ * Anything not listed here has no manual next step.
+ */
+export const MANUAL_NEXT_STAGES: Record<string, ManualStage[]> = {
+  LABEL_GENERATED: ['PACKED'],
+  PACKED: ['HANDED_TO_DELIVERY'],
+  HANDED_TO_DELIVERY: ['DISPATCHED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED'],
+  DISPATCHED: ['IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED'],
+  IN_TRANSIT: ['OUT_FOR_DELIVERY', 'DELIVERED'],
+  OUT_FOR_DELIVERY: ['DELIVERED', 'CUSTOMER_REJECTED', 'DELIVERY_FAILED'],
+};
+
+/** The warehouse steps that apply to any order regardless of delivery method. */
+export const MANUAL_PACKING_STAGES: ManualStage[] = ['PACKED', 'HANDED_TO_DELIVERY'];
+
+/**
+ * A selectable delivery partner for the "Assign courier" dropdown (delivery-
+ * partner dropdown enhancement), from
+ * {@code GET /api/admin/orders/courier-companies}. Mirrors the backend
+ * {@code CourierCompanyResponse}.
+ */
+export interface CourierCompanyOption {
+  id: number;
+  name: string;
+}
+
+/**
  * Selectable delivery-method options — shown to the ADMIN at approval time
  * (the salesperson no longer chooses this at order entry; every order defaults
  * to IN_HOUSE and the admin picks/overrides the delivery partner on approve).
@@ -271,6 +340,14 @@ export interface OrderDetail {
   buyerGstin?: string | null;
   /** Who the order was handed to at handover (product-audit §4.3), when captured. */
   handoverName?: string | null;
+  /** Their contact number, when captured — so staff can call whoever carries the parcel. */
+  handoverPhone?: string | null;
+  /**
+   * Optional vehicle / transport reference for an in-house delivery (bus vehicle
+   * no., train no., taxi registration, own van). An in-house order has no AWB, so
+   * this plus {@link handoverName} identifies the shipment in the real world.
+   */
+  vehicleNumber?: string | null;
   /** Number of boxes the order ships in (product-audit §4.2); defaults to 1. */
   packageCount?: number;
   /**
@@ -305,7 +382,45 @@ export interface OrderDetail {
    * rework the order.
    */
   rejectionReason?: string | null;
+  /**
+   * The categorized reason + optional note captured when a packer/admin
+   * manually marked this order RTO via the Mark RTO scan flow. Both null
+   * unless the order was ever marked RTO that way (mirrors backend RtoReason).
+   */
+  rtoReason?: RtoReasonValue | null;
+  rtoReasonNote?: string | null;
+  /**
+   * The order's full status-history timeline (enhancement: order status
+   * timeline), oldest first, mirroring the backend {@code StatusHistoryEntryResponse}.
+   */
+  statusHistory?: OrderStatusHistoryEntry[];
 }
+
+/** One status-history row, mirroring the backend {@code StatusHistoryEntryResponse}. */
+export interface OrderStatusHistoryEntry {
+  fromStatus: OrderStatus | string | null;
+  toStatus: OrderStatus | string;
+  actor: string;
+  source: string;
+  changedAt: string;
+}
+
+/** Mirrors the backend RtoReason enum (kept in sync with packing.model.ts). */
+export type RtoReasonValue =
+  | 'CUSTOMER_UNAVAILABLE'
+  | 'CUSTOMER_REFUSED'
+  | 'ADDRESS_ISSUE'
+  | 'DAMAGED_IN_TRANSIT'
+  | 'OTHER';
+
+/** Human-readable label for an RtoReasonValue, matching packing's RTO_REASON_OPTIONS. */
+export const RTO_REASON_LABELS: Record<RtoReasonValue, string> = {
+  CUSTOMER_UNAVAILABLE: 'Customer unavailable',
+  CUSTOMER_REFUSED: 'Customer refused delivery',
+  ADDRESS_ISSUE: 'Address issue',
+  DAMAGED_IN_TRANSIT: 'Damaged in transit',
+  OTHER: 'Other',
+};
 
 /**
  * The QuikShipX shipment mirror for an order, from

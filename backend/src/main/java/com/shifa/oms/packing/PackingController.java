@@ -10,6 +10,7 @@ import com.shifa.oms.packing.dto.PackingQueueResponse;
 import com.shifa.oms.packing.dto.PackingScanPreviewResponse;
 import com.shifa.oms.packing.dto.PackingScanRequest;
 import com.shifa.oms.packing.dto.PackingScanResponse;
+import com.shifa.oms.packing.dto.PickListResponse;
 import com.shifa.oms.packing.dto.RtoScanPreviewResponse;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -50,6 +51,17 @@ public class PackingController {
     @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
     public PackingQueueResponse queue() {
         return packingService.queue();
+    }
+
+    /**
+     * The daily pick-list / packing manifest (enhancement): every product needed
+     * across all orders currently awaiting packing, aggregated into one sheet so
+     * the packer picks stock once per product instead of per order.
+     */
+    @GetMapping("/pick-list")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public PickListResponse pickList() {
+        return packingService.pickList();
     }
 
     /**

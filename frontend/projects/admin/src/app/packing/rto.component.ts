@@ -14,6 +14,7 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
 import { ToastService } from '../shared/toast.service';
 import { CameraScannerComponent } from './camera-scanner.component';
+import { openWhatsApp } from '../shared/whatsapp.util';
 
 /** How a single RTO scan resolved, for the in-session log. */
 type RtoOutcome = 'marked' | 'not-eligible' | 'not-recognized' | 'error';
@@ -128,11 +129,13 @@ export class RtoComponent implements OnInit {
       next: () => {
         this.marking.set(false);
         this.pendingPreview.set(null);
-        this.toasts.success(`Order ${preview.order.orderCode} marked RTO.`);
+        this.toasts.success(
+          `Order ${preview.order.orderCode} marked RTO. A sales return was recorded automatically.`,
+        );
         this.appendLog({
           barcode: preview.order.orderCode,
           outcome: 'marked',
-          message: `Marked RTO (${this.reasonLabel(reason)})`,
+          message: `Marked RTO (${this.reasonLabel(reason)}) — sales return recorded`,
           at: new Date(),
         });
         this.finish();
@@ -161,6 +164,22 @@ export class RtoComponent implements OnInit {
   /** Opens the order detail (via the Orders page filtered to this order code). */
   openOrder(order: ScannedOrderSummary): void {
     void this.router.navigate(['/orders'], { queryParams: { q: order.orderCode } });
+  }
+
+  /**
+   * Opens WhatsApp for the previewed order's customer with a short RTO
+   * notification message (click-to-WhatsApp, no API needed). Uses BMP-safe
+   * symbols only, matching the app-wide WhatsApp templates.
+   */
+  messageCustomer(order: ScannedOrderSummary): void {
+    const message =
+      `Hi! ☘ This is Shifa Herbal Remedies.\n\n` +
+      `Your order ${order.orderCode} could not be delivered and is on its way back to us. ` +
+      `We would love to get it to you — please reply here to arrange redelivery or a refund. ❤`;
+    const ok = openWhatsApp(order.customerMobile, message);
+    if (!ok) {
+      this.toasts.error('No valid mobile number to message on WhatsApp.');
+    }
   }
 
   formatStatus(status: string | undefined | null): string {

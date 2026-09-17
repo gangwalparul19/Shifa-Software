@@ -225,6 +225,18 @@ public class OrderEntity {
     private String handoverPhone;
 
     /**
+     * Optional vehicle / transport reference for the leg Shifa's own team
+     * arranges on an in-house delivery — a bus operator's vehicle number, a
+     * train number, a taxi registration, our own van, and so on (in-house
+     * delivery feature). An in-house order has no courier AWB, so this plus
+     * {@link #handoverName}/{@link #handoverPhone} is what identifies the
+     * shipment in the real world. Nullable; mapped to
+     * {@code orders.vehicle_number} (V63).
+     */
+    @Column(name = "vehicle_number", length = 40)
+    private String vehicleNumber;
+
+    /**
      * Number of physical boxes/packages the order ships in (product-audit §4.2);
      * drives how many label copies are printed. Defaults to 1. Mapped to
      * {@code orders.package_count} (V41).
@@ -393,6 +405,20 @@ public class OrderEntity {
     public void setHandoverDetails(String handoverName, String handoverPhone) {
         this.handoverName = handoverName;
         this.handoverPhone = handoverPhone;
+    }
+
+    /** The optional in-house vehicle / transport reference (V63), or {@code null}. */
+    public String getVehicleNumber() {
+        return vehicleNumber;
+    }
+
+    /**
+     * Records the optional in-house vehicle / transport reference — bus vehicle
+     * number, train number, taxi registration, own van (V63, in-house delivery
+     * feature). A {@code null} clears it.
+     */
+    public void setVehicleNumber(String vehicleNumber) {
+        this.vehicleNumber = vehicleNumber;
     }
 
     public int getPackageCount() {

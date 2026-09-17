@@ -76,4 +76,24 @@ public class TrackingService {
         return Optional.of(new ShipmentInfo(
                 cr.getAwb(), courierName, trackingUrl, cr.getEstimatedDelivery()));
     }
+
+    /**
+     * The assigned delivery partner's name for an order, <em>independent of
+     * whether an AWB exists</em> (in-house-delivery feature).
+     *
+     * <p>{@link #shipmentFor} deliberately returns empty without an AWB (the
+     * public tracking view has nothing to track), but a partner can now be
+     * recorded with no tracking number at all — e.g. a parcel handed to a local
+     * operator or sent by bus. This lets the admin order-detail view still show
+     * who has the parcel. Returns {@link Optional#empty()} when no courier record
+     * / company is recorded for the order.
+     */
+    @Transactional(readOnly = true)
+    public Optional<String> courierNameFor(Long orderId) {
+        return courierRecordRepository.findByOrderId(orderId)
+                .map(CourierRecord::getCourierCompanyId)
+                .flatMap(companyId -> companyId == null
+                        ? Optional.empty() : courierCompanyRepository.findById(companyId))
+                .map(CourierCompany::getName);
+    }
 }

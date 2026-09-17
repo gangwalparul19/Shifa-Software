@@ -99,6 +99,19 @@ public final class TransitionAuthority {
         put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.DELIVERED, false,
                 Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
 
+        // Manual in-house progression out of handover (in-house-delivery feature):
+        // an in-house order has no courier partner, so NO webhook/poll will ever
+        // move it along — staff advance it by hand through the same in-transit
+        // stages a courier would report. Staff-only edges (never SYSTEM, since no
+        // courier drives them); the in-house-only and salesperson-ownership checks
+        // live in the service layer, exactly as for the mark-delivered edge above.
+        put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.DISPATCHED, false,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.IN_TRANSIT, false,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.OUT_FOR_DELIVERY, false,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+
         // Courier pickup + webhook/tracking progressions — SYSTEM only (Req 10.2,
         // 10.3). Forward jumps from Courier_Assigned keep a QuikShipX tracking poll
         // from stalling when an intermediate scan is skipped between polls.
@@ -115,19 +128,31 @@ public final class TransitionAuthority {
         put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.DELIVERED, true);
         put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN);
         put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.REDISPATCH, true);
-        put(t, OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT, true);
-        put(t, OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY, true);
-        put(t, OrderStatus.DISPATCHED, OrderStatus.DELIVERED, true);
+        // The in-transit forward hops are shared: SYSTEM drives them for a courier
+        // order, and staff drive them by hand for an in-house order (which has no
+        // courier to report progress) — same reasoning as the manual RTO edges.
+        put(t, OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.DISPATCHED, OrderStatus.DELIVERED, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
         put(t, OrderStatus.DISPATCHED, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN);
         put(t, OrderStatus.DISPATCHED, OrderStatus.REDISPATCH, true);
-        put(t, OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, true);
-        put(t, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED, true);
+        put(t, OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
         put(t, OrderStatus.IN_TRANSIT, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN);
         put(t, OrderStatus.IN_TRANSIT, OrderStatus.REDISPATCH, true);
-        // New delivery outcomes (Req 11.1, 11.2) — SYSTEM only.
-        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED, true);
-        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CUSTOMER_REJECTED, true);
-        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERY_FAILED, true);
+        // Delivery outcomes (Req 11.1, 11.2): SYSTEM for courier orders, and staff
+        // for a manually-progressed in-house delivery.
+        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CUSTOMER_REJECTED, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERY_FAILED, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
         put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN);
         put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.REDISPATCH, true);
 
