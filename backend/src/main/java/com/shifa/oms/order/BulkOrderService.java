@@ -2,6 +2,7 @@ package com.shifa.oms.order;
 
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.order.dto.BulkActionResult;
+import com.shifa.oms.order.dto.BulkPreviewResponse;
 import com.shifa.oms.packing.PackingService;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.slf4j.Logger;
@@ -111,6 +112,44 @@ public class BulkOrderService {
             }
         }
         return result.build();
+    }
+
+    /**
+     * Read-only eligibility preview. This is advisory only: every mutation
+     * still re-reads the order and re-checks the workflow in its own transaction.
+     */
+    public BulkPreviewResponse preview(String action, List<Long> ids) {
+        String normalized = action == null ? "" : action.trim().toUpperCase();
+        if (!List.of("APPROVE", "MARK_PACKED", "LABELS").contains(normalized)) {
+            throw new com.shifa.oms.common.ValidationException(
+                    "Unsupported bulk action. Use APPROVE, MARK_PACKED, or LABELS.");
+        }
+        List<BulkPreviewResponse.EligibleItem> eligible = new java.util.ArrayList<>();
+        List<BulkPreviewResponse.IneligibleItem> ineligible = new java.util.ArrayList<>();
+        for (Long id : distinct(ids)) {
+            OrderEntity order = orderRepository.findById(id).orElse(null);
+            if (order == null) {
+                ineligible.add(new BulkPreviewResponse.IneligibleItem(id, null, null, "Order not found."));
+                continue;
+            }
+            String reason = switch (normalized) {
+                case "APPROVE" -> order.getOrderStatus() == OrderStatus.PENDING_ADMIN_APPROVAL
+                        ? null : "Order is not awaiting approval.";
+                case "MARK_PACKED" -> order.getOrderStatus() == OrderStatus.LABEL_GENERATED
+                        ? null : "Order is not ready to pack.";
+                case "LABELS" -> null;
+                default -> "Unsupported bulk action.";
+            };
+            if (reason == null) {
+                eligible.add(new BulkPreviewResponse.EligibleItem(
+                        order.getId(), order.getOrderCode(), order.getOrderStatus()));
+            } else {
+                ineligible.add(new BulkPreviewResponse.IneligibleItem(
+                        order.getId(), order.getOrderCode(), order.getOrderStatus(), reason));
+            }
+        }
+        return new BulkPreviewResponse(normalized, distinct(ids).size(),
+                List.copyOf(eligible), List.copyOf(ineligible));
     }
 
     /** De-duplicates the requested ids while preserving request order. */

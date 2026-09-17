@@ -94,3 +94,21 @@
   background: #e7f0fb;
   color: #1c4e8a;
 }
+
+.shifa-due__name {
+  text-decoration: none;
+}
+.shifa-due__name:hover {
+  text-decoration: underline;
+}
+.shifa-due__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgba(15, 51, 36, 0.08);
+}
+.shifa-due__actions .btn {
+  min-height: 40px;
+}

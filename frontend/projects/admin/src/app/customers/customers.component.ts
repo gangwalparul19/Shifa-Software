@@ -86,6 +86,29 @@ export class CustomersComponent implements OnInit, OnDestroy {
     return profile.orders.find((o) => o.orderId != null)?.orderId ?? null;
   }
 
+  /** Opens WhatsApp for a customer directly from a list row. */
+  sendWhatsAppSummary(customer: CustomerSummary, event?: Event): void {
+    event?.stopPropagation();
+    const message = whatsAppMessage('followup', {
+      customerName: customer.name,
+      total: customer.totalSpent,
+    });
+    if (!openWhatsApp(customer.mobile, message)) {
+      this.toasts.error('No valid mobile number to message on WhatsApp.');
+    }
+  }
+
+  /** Prevents a row action from opening the full drawer as well. */
+  stopRowClick(event: Event): void {
+    event.stopPropagation();
+  }
+
+  /** Opens the caller's phone app directly from a customer list row. */
+  callCustomer(mobile: string, event?: Event): void {
+    event?.stopPropagation();
+    window.location.href = `tel:${mobile}`;
+  }
+
   /** Opens WhatsApp for the open customer with a pre-filled template message. */
   sendWhatsApp(profile: CustomerProfile, key: string): void {
     const ctx = {

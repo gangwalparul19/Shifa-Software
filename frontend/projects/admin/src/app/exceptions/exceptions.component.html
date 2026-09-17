@@ -1,0 +1,102 @@
+<admin-page-header
+  title="Exception Center"
+  subtitle="One admin work list for orders, payments, deliveries, claims, and urgent insights."
+  [breadcrumbs]="[{ label: 'Exception Center' }]"
+>
+  <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
+    <i class="ti ti-refresh"></i>
+  </button>
+</admin-page-header>
+
+<div class="alert alert-info d-flex align-items-start mb-3" role="note">
+  <i class="ti ti-info-circle me-2 mt-1"></i>
+  <div>
+    <strong>Work from the top.</strong>
+    These are read-only signals. The action button opens the owning screen, where the normal permission, confirmation,
+    state-machine, and GST safeguards still apply.
+  </div>
+</div>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading admin exceptions…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (response(); as data) {
+  <div class="row row-cards g-2 g-md-3 mb-3">
+    @for (category of categories; track category) {
+      <div class="col-6 col-md-4 col-xl-2">
+        <div class="card exception-kpi" [class.is-empty]="count(category) === 0">
+          <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between gap-2">
+              <span class="exception-kpi__icon"><i class="ti {{ categoryIcon(category) }}"></i></span>
+              <span class="h2 mb-0">{{ count(category) }}</span>
+            </div>
+            <div class="text-secondary small mt-2">{{ categoryLabels[category] }}</div>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+
+  @if (data.total === 0) {
+    <admin-state-panel
+      variant="empty"
+      [card]="true"
+      icon="ti-circle-check"
+      title="No urgent exceptions"
+      message="Approval, payment, delivery, claim, and insight queues are clear."
+    />
+  } @else {
+    <div class="card">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <div>
+          <h3 class="card-title mb-0">Needs attention</h3>
+          <div class="text-secondary small">{{ data.total }} item{{ data.total === 1 ? '' : 's' }}, highest priority first</div>
+        </div>
+        <span class="badge bg-red-lt text-red"><i class="ti ti-alert-triangle me-1"></i>Action required</span>
+      </div>
+      <div class="list-group list-group-flush">
+        @for (item of data.items; track item.category + ':' + (item.orderId ?? item.title)) {
+          <div class="list-group-item exception-row">
+            <div class="exception-row__icon" [class]="severityClass(item.severity)">
+              <i class="ti {{ categoryIcon(item.category) }}"></i>
+            </div>
+            <div class="exception-row__main">
+              <div class="d-flex align-items-start justify-content-between gap-2">
+                <div class="min-w-0">
+                  <div class="fw-semibold text-truncate">{{ item.title }}</div>
+                  <div class="text-secondary small">{{ item.detail }}</div>
+                </div>
+                <span class="badge {{ severityClass(item.severity) }}">{{ item.severity }}</span>
+              </div>
+              @if (item.orderCode) {
+                <div class="exception-row__facts">
+                  <a class="shifa-mono" [routerLink]="['/orders']" [queryParams]="{ q: item.orderCode }">{{ item.orderCode }}</a>
+                  @if (item.customerName) { <span>{{ item.customerName }}</span> }
+                  @if (item.orderStatus) { <span class="badge bg-secondary-lt">{{ statusLabel(item.orderStatus) }}</span> }
+                  @if (item.amount) { <span class="fw-semibold">{{ money(item.amount) }}</span> }
+                  @if (item.createdAt) { <span class="text-secondary">{{ item.createdAt | date: 'dd MMM, HH:mm' }}</span> }
+                </div>
+              } @else if (item.createdAt) {
+                <div class="text-secondary small mt-1">{{ item.createdAt | date: 'dd MMM, HH:mm' }}</div>
+              }
+              <div class="exception-row__actions">
+                @if (item.customerMobile) {
+                  <a class="btn btn-sm btn-outline-secondary" [href]="'tel:' + item.customerMobile" (click)="call(item, $event)">
+                    <i class="ti ti-phone me-1"></i>Call
+                  </a>
+                  <button type="button" class="btn btn-sm btn-outline-success" (click)="message(item, $event)">
+                    <i class="ti ti-brand-whatsapp me-1"></i>WhatsApp
+                  </button>
+                }
+                <a class="btn btn-sm btn-primary" [routerLink]="[item.actionPath]" [queryParams]="actionQuery(item)">
+                  {{ actionLabel(item) }} <i class="ti ti-arrow-right ms-1"></i>
+                </a>
+              </div>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  }
+}

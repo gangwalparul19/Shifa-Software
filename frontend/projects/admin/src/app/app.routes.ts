@@ -50,6 +50,7 @@ import { LedgerStatementComponent } from './ledger/ledger-statement.component';
 import { BalanceSheetComponent } from './ledger/balance-sheet.component';
 import { ProfitAndLossComponent } from './ledger/profit-and-loss.component';
 import { CashFlowComponent } from './ledger/cash-flow.component';
+import { ExceptionsComponent } from './exceptions/exceptions.component';
 
 const LOGIN_PATH = '/login';
 const FORBIDDEN_PATH = '/forbidden';
@@ -234,6 +235,11 @@ export const routes: Routes = [
         path: 'leads',
         component: LeadsComponent,
         canActivate: [salespersonGuard],
+      },
+      {
+        path: 'exceptions',
+        component: ExceptionsComponent,
+        canActivate: [adminOnlyGuard],
       },
       {
         // Statistical Insights (ADMIN only, statistical-insights-engine Req 13).

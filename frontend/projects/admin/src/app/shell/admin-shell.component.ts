@@ -406,6 +406,7 @@ export class AdminShellComponent {
           roles: [Role.SALESPERSON, Role.ADMIN, Role.TEAM_LEAD],
         },
         { kind: 'link', label: 'Approval Queue', path: '/approval-queue', icon: 'ti-checklist', adminOnly: true },
+        { kind: 'link', label: 'Exception Center', path: '/exceptions', icon: 'ti-alert-triangle', adminOnly: true },
         {
           kind: 'link',
           label: 'Payments',

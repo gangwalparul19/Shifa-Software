@@ -312,6 +312,10 @@ export interface OrderDetail {
   paymentStatus: PaymentStatus;
   customerName: string;
   customerMobile: string;
+  /** Lead source and optional note returned on order detail for safe reorder defaults. */
+  customerEmail?: string | null;
+  leadSource?: LeadSource | null;
+  leadSourceNote?: string | null;
   /** Optional alternate contact number captured at order entry. */
   alternateMobile?: string | null;
   addressLine: string;

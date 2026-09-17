@@ -13,6 +13,8 @@ import {
   leadPillClass,
 } from './leads.model';
 import { LEAD_SOURCE_OPTIONS, LeadSource } from '../orders/orders.model';
+import { ToastService } from '../shared/toast.service';
+import { openWhatsApp, whatsAppMessage } from '../shared/whatsapp.util';
 
 /**
  * The acting user's due follow-ups (design §Frontend, Req 5.2): the non-terminal
@@ -29,6 +31,7 @@ import { LEAD_SOURCE_OPTIONS, LeadSource } from '../orders/orders.model';
 })
 export class DueFollowUpsComponent implements OnInit {
   private readonly service = inject(LeadsService);
+  private readonly toasts = inject(ToastService);
 
   protected readonly statusLabels = LEAD_STATUS_LABELS;
   protected readonly pillClass = leadPillClass;
@@ -111,6 +114,28 @@ export class DueFollowUpsComponent implements OnInit {
         return 'ti-dots-circle-horizontal';
       default:
         return 'ti-broadcast';
+    }
+  }
+
+  /** Direct action from the task list; keeps the lead card open. */
+  callLead(lead: LeadSummary, event: Event): void {
+    event.stopPropagation();
+    window.location.href = `tel:${lead.customerMobile ?? ''}`;
+  }
+
+  /** Direct follow-up message from the task list. */
+  messageLead(lead: LeadSummary, event: Event): void {
+    event.stopPropagation();
+    if (!lead.customerMobile) {
+      this.toasts.error('This lead has no mobile number.');
+      return;
+    }
+    const ok = openWhatsApp(
+      lead.customerMobile,
+      whatsAppMessage('followup', { customerName: lead.customerName }),
+    );
+    if (!ok) {
+      this.toasts.error('No valid mobile number to message on WhatsApp.');
     }
   }
 

@@ -181,6 +181,7 @@
       <!-- Quick select by date -->
       <div class="d-flex align-items-center flex-wrap gap-2">
         <span class="text-secondary small"><i class="ti ti-calendar-check me-1"></i>Quick select:</span>
+        <admin-help-tip text="Selection is limited to the currently loaded page. Preview checks the current server status; changed or ineligible orders are skipped safely." />
         <div class="btn-group btn-group-sm" role="group" aria-label="Quick select orders by date">
           <button type="button" class="btn btn-outline-secondary" (click)="selectByDate('today')">Today</button>
           <button type="button" class="btn btn-outline-secondary" (click)="selectByDate('yesterday')">Yesterday</button>
@@ -195,13 +196,16 @@
           <i class="ti ti-checks me-1"></i>{{ selectionCount() }} selected
         </span>
         <div class="btn-list ms-auto flex-wrap">
-          <button type="button" class="btn btn-sm btn-primary" (click)="approveSelected()" [disabled]="bulkBusy()">
+          @if (bulkPreviewLoading()) {
+            <span class="text-secondary small d-inline-flex align-items-center"><span class="spinner-border spinner-border-sm me-1"></span>Checking eligibility…</span>
+          }
+          <button type="button" class="btn btn-sm btn-primary" (click)="approveSelected()" [disabled]="bulkBusy() || bulkPreviewLoading()">
             <i class="ti ti-check me-1"></i> Approve selected
           </button>
-          <button type="button" class="btn btn-sm btn-outline-primary" (click)="markPackedSelected()" [disabled]="bulkBusy()">
+          <button type="button" class="btn btn-sm btn-outline-primary" (click)="markPackedSelected()" [disabled]="bulkBusy() || bulkPreviewLoading()">
             <i class="ti ti-package me-1"></i> Mark packed selected
           </button>
-          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="printLabelsSelected()" [disabled]="bulkBusy()">
+          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="printLabelsSelected()" [disabled]="bulkBusy() || bulkPreviewLoading()">
             @if (bulkBusy()) {
               <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
             } @else {
@@ -209,7 +213,7 @@
             }
             Print labels selected
           </button>
-          <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="clearSelection()" [disabled]="bulkBusy()">
+          <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="clearSelection()" [disabled]="bulkBusy() || bulkPreviewLoading()">
             Clear
           </button>
         </div>
@@ -271,7 +275,14 @@
   <!-- Mobile: clean tappable order cards (Req 6.1, mockup-faithful) -->
   <div class="shifa-order-cards d-md-none">
     @for (order of visibleOrders(); track order.id) {
-      <button type="button" class="shifa-oc" (click)="openDetail(order)">
+      <article
+        class="shifa-oc"
+        role="button"
+        tabindex="0"
+        (click)="openDetail(order)"
+        (keydown.enter)="openDetail(order)"
+        (keydown.space)="$event.preventDefault(); openDetail(order)"
+      >
         <div class="shifa-oc__r1">
           <span class="shifa-oc__code">{{ order.orderCode }}</span>
           <span class="shifa-oc__amount">{{ money(order.totalAmount) }}</span>
@@ -291,7 +302,15 @@
             </span>
           </div>
         }
-      </button>
+        <div class="shifa-list-actions mt-2" (click)="stopRowClick($event)">
+          <a class="btn btn-sm btn-outline-secondary" [href]="'tel:' + order.customerMobile" (click)="callCustomer(order.customerMobile, $event)" aria-label="Call customer">
+            <i class="ti ti-phone me-1"></i>Call
+          </a>
+          <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsAppSummary(order, $event)">
+            <i class="ti ti-brand-whatsapp me-1"></i>WhatsApp
+          </button>
+        </div>
+      </article>
     }
     <admin-pagination
       [page]="page()"
@@ -375,14 +394,24 @@
               <td class="text-secondary d-none d-xl-table-cell" [title]="order.createdAt ? (order.createdAt | date: 'dd MMM yyyy, HH:mm') : ''">
                 {{ order.createdAt ? relativeTime(order.createdAt) : '—' }}
               </td>
-              <td class="text-end d-none d-xl-table-cell">
-                <button
-                  type="button"
-                  class="btn btn-sm btn-outline-primary"
-                  (click)="$event.stopPropagation(); openDetail(order)"
-                >
-                  View
-                </button>
+              <td class="text-end d-none d-xl-table-cell" (click)="stopRowClick($event)">
+                <div class="btn-list justify-content-end flex-nowrap">
+                  @if (order.customerMobile) {
+                    <a class="btn btn-sm btn-outline-secondary" [href]="'tel:' + order.customerMobile" (click)="callCustomer(order.customerMobile, $event)" title="Call customer" aria-label="Call customer">
+                      <i class="ti ti-phone"></i>
+                    </a>
+                    <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsAppSummary(order, $event)" title="WhatsApp customer" aria-label="WhatsApp customer">
+                      <i class="ti ti-brand-whatsapp"></i>
+                    </button>
+                  }
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    (click)="$event.stopPropagation(); openDetail(order)"
+                  >
+                    View
+                  </button>
+                </div>
               </td>
             </tr>
           }
@@ -467,6 +496,31 @@
               </div>
             }
           </div>
+        }
+
+        @if (canViewRawHistory()) {
+          <div class="shifa-od__history-toggle">
+            <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="toggleRawHistory()">
+              <i class="ti me-1" [class.ti-chevron-down]="rawHistoryOpen()" [class.ti-chevron-right]="!rawHistoryOpen()"></i>
+              Admin action history ({{ order.statusHistory?.length ?? 0 }})
+            </button>
+          </div>
+          @if (rawHistoryOpen()) {
+            <div class="shifa-od__history" role="list" aria-label="Admin action history">
+              @for (entry of order.statusHistory ?? []; track entry.changedAt + ':' + entry.actor) {
+                <div class="shifa-od__history-row" role="listitem">
+                  <div class="shifa-od__history-status">
+                    <span class="shifa-mono">{{ entry.fromStatus ? humanize(entry.fromStatus) : 'Created' }}</span>
+                    <i class="ti ti-arrow-right mx-1"></i>
+                    <span class="shifa-mono">{{ humanize(entry.toStatus) }}</span>
+                  </div>
+                  <div class="text-secondary small">{{ entry.actor }} · {{ entry.source }} · {{ entry.changedAt | date: 'dd MMM yyyy, HH:mm' }}</div>
+                </div>
+              } @empty {
+                <div class="text-secondary small">No action history recorded.</div>
+              }
+            </div>
+          }
         }
 
         <!-- Tabbed navigation so the drawer doesn't require a long scroll -->
@@ -789,6 +843,7 @@
               } @else {
                 <i class="ti ti-progress-check me-1"></i>Update status
               }
+              <admin-help-tip text="In-House orders are moved manually because no courier webhook is available. Failed/refused needs a reason; RTO is the GST-safe give-up path." />
             </div>
             <div class="shifa-od__card">
               <div class="form-hint mb-2">
@@ -832,6 +887,19 @@
               </select>
               @if (manualStageHint(); as hint) {
                 <div class="form-hint mt-1">{{ hint }}</div>
+              }
+              @if (manualStage() === 'CUSTOMER_REJECTED' || manualStage() === 'DELIVERY_FAILED') {
+                <label class="form-label mb-1 mt-2" for="odManualNote">Why did delivery fail? <span class="text-danger">*</span></label>
+                <textarea
+                  id="odManualNote"
+                  class="form-control"
+                  rows="2"
+                  maxlength="500"
+                  placeholder="e.g. customer refused, bus missed, address closed…"
+                  [value]="manualNote()"
+                  (input)="setManualNote($any($event.target).value)"
+                ></textarea>
+                <div class="form-hint">A reason helps the next person choose retry or RTO and keeps the audit trail understandable.</div>
               }
               <button
                 type="button"

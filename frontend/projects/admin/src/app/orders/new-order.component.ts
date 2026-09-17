@@ -185,6 +185,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   /** Selectable lead-source options for the origin picker (Req 4.1). */
   protected readonly leadSourceOptions = LEAD_SOURCE_OPTIONS;
+  /** Safe, salesperson-specific preference: reused only for a fresh order. */
+  private static readonly PREFERRED_LEAD_SOURCE_KEY = 'shifa:new-order-preferred-lead-source';
 
   protected readonly form = this.fb.nonNullable.group({
     customerName: ['', [Validators.required, Validators.maxLength(100)]],
@@ -195,7 +197,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     city: ['', [Validators.required, Validators.maxLength(100)]],
     state: ['', [Validators.required, Validators.maxLength(100)]],
     postalCode: ['', [Validators.required, Validators.pattern(/^\d{6}$/)]],
-    leadSource: ['' as '' | LeadSource, [Validators.required]],
+    leadSource: [this.loadPreferredLeadSource(), [Validators.required]],
     leadSourceNote: ['', [Validators.maxLength(200)]],
     // Optional buyer GSTIN (gst-filing-compliance Req 1): blank is valid; when
     // present it must match the standard 15-char GSTIN format (2 digits, 5
@@ -337,6 +339,19 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       .pipe(debounceTime(400), distinctUntilChanged())
       .subscribe((pincode) => this.autoFillFromPincode(pincode));
 
+    // Remember only a safe workflow preference; customer and payment values are
+    // never carried from one fresh order to another.
+    this.form.controls.leadSource.valueChanges.subscribe((source) => {
+      if (this.convertMode() || !source || source === 'OTHER') {
+        return;
+      }
+      try {
+        localStorage.setItem(NewOrderComponent.PREFERRED_LEAD_SOURCE_KEY, source);
+      } catch {
+        /* storage unavailable — non-fatal */
+      }
+    });
+
     // Convert-from-lead mode: seed customer + source from the lead and lock them.
     const leadIdParam = this.route.snapshot.queryParamMap.get('leadId');
     const leadId = leadIdParam ? Number(leadIdParam) : NaN;
@@ -469,11 +484,15 @@ export class NewOrderComponent implements OnInit, OnDestroy {
           {
             customerName: o.customerName ?? '',
             customerMobile: o.customerMobile ?? '',
+            customerEmail: o.customerEmail ?? '',
             alternateMobile: o.alternateMobile ?? '',
             addressLine: o.addressLine ?? '',
             city: o.city ?? '',
             state: o.state ?? '',
             postalCode: o.postalCode ?? '',
+            leadSource: o.leadSource ?? this.form.controls.leadSource.value,
+            leadSourceNote: o.leadSourceNote ?? '',
+            buyerGstin: o.buyerGstin ?? '',
           },
           { emitEvent: false },
         );
@@ -922,6 +941,40 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       URL.revokeObjectURL(url);
     }
     this.screenshotPreview.set(null);
+  }
+
+  /** Sets a payment amount using one-hand quick actions in the payment step. */
+  setAmountReceived(amount: number): void {
+    const total = this.orderTotalPaise() / 100;
+    const safe = Math.max(0, Math.min(Number.isFinite(amount) ? amount : 0, total));
+    this.form.controls.amountReceived.setValue(Number(safe.toFixed(2)));
+    this.form.controls.amountReceived.markAsDirty();
+    this.form.controls.amountReceived.markAsTouched();
+    this.model.set(this.snapshot());
+  }
+
+  /** COD means no amount was collected at order entry. */
+  setCodPayment(): void {
+    this.setAmountReceived(0);
+  }
+
+  /** Convenience action for a fully prepaid order. */
+  setPaidInFull(): void {
+    this.setAmountReceived(this.orderTotalPaise() / 100);
+  }
+
+  /**
+   * On a fresh order, the previously used lead source is the only default we
+   * retain. Customer, address, products, discount and payment are intentionally
+   * never copied between customers/orders.
+   */
+  private loadPreferredLeadSource(): '' | LeadSource {
+    try {
+      const saved = localStorage.getItem(NewOrderComponent.PREFERRED_LEAD_SOURCE_KEY) as LeadSource | null;
+      return saved && this.leadSourceOptions.some((option) => option.value === saved) ? saved : '';
+    } catch {
+      return '';
+    }
   }
 
   // --- Guided wizard (product-audit §3.2) ---------------------------------

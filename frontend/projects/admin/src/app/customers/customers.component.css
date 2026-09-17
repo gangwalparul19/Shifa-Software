@@ -461,3 +461,12 @@
   flex-wrap: wrap;
   gap: 0.4rem;
 }
+
+.shifa-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.shifa-list-actions .btn {
+  min-height: 40px;
+}

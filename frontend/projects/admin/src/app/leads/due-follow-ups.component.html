@@ -33,9 +33,9 @@
 } @else {
   <div class="shifa-due-cards">
     @for (lead of pageItems(); track lead.id) {
-      <a class="shifa-due" routerLink="/leads" [queryParams]="{ leadId: lead.id }">
+      <div class="shifa-due">
         <div class="shifa-due__r1">
-          <span class="shifa-due__name">{{ lead.customerName }}</span>
+          <a class="shifa-due__name" routerLink="/leads" [queryParams]="{ leadId: lead.id }">{{ lead.customerName }}</a>
           <span class="shifa-due__pill" [class]="pillClass(lead.status)">{{ statusOf(lead.status) }}</span>
         </div>
         <div class="shifa-due__r2">
@@ -49,7 +49,20 @@
             @if (isOverdue(lead)) { · Overdue }
           </span>
         </div>
-      </a>
+        <div class="shifa-due__actions">
+          @if (lead.customerMobile) {
+            <a class="btn btn-sm btn-outline-secondary" [href]="'tel:' + lead.customerMobile" (click)="callLead(lead, $event)" aria-label="Call lead">
+              <i class="ti ti-phone me-1"></i>Call
+            </a>
+            <button type="button" class="btn btn-sm btn-outline-success" (click)="messageLead(lead, $event)">
+              <i class="ti ti-brand-whatsapp me-1"></i>WhatsApp
+            </button>
+          }
+          <a class="btn btn-sm btn-outline-primary" routerLink="/leads" [queryParams]="{ leadId: lead.id }">
+            <i class="ti ti-arrow-right me-1"></i>Work lead
+          </a>
+        </div>
+      </div>
     }
   </div>
   <admin-pagination

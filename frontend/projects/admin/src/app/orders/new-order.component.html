@@ -459,6 +459,7 @@
                 <input
                   [id]="'rate-' + i"
                   type="number"
+                  inputmode="decimal"
                   class="form-control text-end"
                   formControlName="rate"
                   min="0"
@@ -524,6 +525,7 @@
             <div class="col-7">
               <input
                 type="number"
+                inputmode="decimal"
                 min="0"
                 step="0.01"
                 class="form-control"
@@ -573,15 +575,14 @@
         <label class="form-label required" for="amountReceived">Amount received</label>
         <div class="input-group">
           <span class="input-group-text">₹</span>
-          <input
-            id="amountReceived"
-            type="number"
-            min="0"
-            step="0.01"
-            class="form-control"
-            formControlName="amountReceived"
-            [class.is-invalid]="invalid('amountReceived')"
-          />
+          <div class="shifa-payment-quick" role="group" aria-label="Payment shortcuts">
+            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="setCodPayment()">
+              <i class="ti ti-truck-delivery me-1"></i> COD / ₹0
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-success" (click)="setPaidInFull()">
+              <i class="ti ti-check me-1"></i> Paid in full
+            </button>
+          </div>
         </div>
         @if (invalid('amountReceived')) {
           <div class="text-danger small mt-1">Enter a non-negative amount.</div>

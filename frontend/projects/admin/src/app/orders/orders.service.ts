@@ -47,6 +47,20 @@ export interface BulkResult {
   skipped: BulkSkip[];
 }
 
+export interface BulkPreviewItem {
+  id: number;
+  orderCode?: string | null;
+  currentStatus?: OrderStatus | null;
+  reason?: string;
+}
+
+export interface BulkPreview {
+  action: string;
+  requested: number;
+  eligible: BulkPreviewItem[];
+  ineligible: BulkPreviewItem[];
+}
+
 /**
  * Data access for the admin all-orders view (Req 21, 22).
  *
@@ -163,6 +177,11 @@ export class OrdersService {
       `/api/admin/orders/${id}/approve`,
       deliveryMethod ? { deliveryMethod } : {},
     );
+  }
+
+  /** Read-only server eligibility check; this never reserves or mutates orders. */
+  bulkPreview(action: 'APPROVE' | 'MARK_PACKED' | 'LABELS', ids: number[]): Observable<BulkPreview> {
+    return this.api.post<BulkPreview>(`/api/admin/orders/bulk-preview?action=${action}`, { ids });
   }
 
   /** Bulk-approve the given orders; returns a partial-result summary. */

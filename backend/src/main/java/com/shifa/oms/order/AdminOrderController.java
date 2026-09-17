@@ -15,6 +15,7 @@ import com.shifa.oms.order.dto.ApprovalQueueItemResponse;
 import com.shifa.oms.order.dto.ApproveOrderRequest;
 import com.shifa.oms.order.dto.BulkActionResult;
 import com.shifa.oms.order.dto.BulkOrderIdsRequest;
+import com.shifa.oms.order.dto.BulkPreviewResponse;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.order.dto.RejectOrderRequest;
@@ -215,6 +216,14 @@ public class AdminOrderController {
         return courierAssignmentService.listCompanies().stream()
                 .map(com.shifa.oms.courier.dto.CourierCompanyResponse::from)
                 .toList();
+    }
+
+    /** Read-only eligibility preview; final mutations still re-check each order. */
+    @PostMapping("/bulk-preview")
+    public BulkPreviewResponse bulkPreview(
+            @RequestParam String action,
+            @Valid @RequestBody BulkOrderIdsRequest request) {
+        return bulkOrderService.preview(action, request.ids());
     }
 
     /**

@@ -1,6 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { RouterLink } from '@angular/router';
@@ -34,6 +35,7 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatusBadgeComponent, humanizeStatus } from '../shared/status-badge.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
+import { HelpTipComponent } from '../shared/help-tip.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { SortableHeaderComponent } from '../shared/sortable-header.component';
 import { ConfirmService } from '../shared/confirm.service';
@@ -165,6 +167,7 @@ export const ORDER_STATUS_TABS: { key: OrderStatusFilter; label: string }[] = [
     StatusBadgeComponent,
     StatePanelComponent,
     DensityToggleComponent,
+    HelpTipComponent,
     PaginationComponent,
     SortableHeaderComponent,
   ],
@@ -274,6 +277,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   // --- Bulk selection -----------------------------------------------------
   protected readonly selected = signal<Set<number>>(new Set());
   protected readonly bulkBusy = signal(false);
+  protected readonly bulkPreviewLoading = signal(false);
   protected readonly lastSkips = signal<{ id: number; reason: string }[]>([]);
   protected readonly showSkips = signal(false);
 
@@ -347,6 +351,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   /** The stage picked in the status control, pending confirmation. */
   protected readonly manualStage = signal<ManualStage | ''>('');
   protected readonly manualVehicle = signal('');
+  protected readonly manualNote = signal('');
   protected readonly manualStatusBusy = signal(false);
 
   setManualStage(value: string): void {
@@ -355,6 +360,10 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   setManualVehicle(value: string): void {
     this.manualVehicle.set(value ?? '');
+  }
+
+  setManualNote(value: string): void {
+    this.manualNote.set(value ?? '');
   }
 
   /**
@@ -412,9 +421,16 @@ export class OrdersComponent implements OnInit, OnDestroy {
     if (!stage || this.manualStatusBusy()) {
       return;
     }
+    if ((stage === 'CUSTOMER_REJECTED' || stage === 'DELIVERY_FAILED') && !this.manualNote().trim()) {
+      this.toasts.error('Add a short reason before marking this delivery failed or refused.');
+      return;
+    }
     this.manualStatusBusy.set(true);
     this.service
-      .updateDeliveryStatus(order.id, stage, { vehicleNumber: this.manualVehicle() })
+      .updateDeliveryStatus(order.id, stage, {
+        vehicleNumber: this.manualVehicle(),
+        note: this.manualNote().trim() || undefined,
+      })
       .subscribe({
         next: (updated) => {
           this.manualStatusBusy.set(false);
@@ -427,11 +443,37 @@ export class OrdersComponent implements OnInit, OnDestroy {
         },
         error: (err: { error?: { message?: string } }) => {
           this.manualStatusBusy.set(false);
-          this.toasts.error(
-            err?.error?.message ?? 'Could not update the delivery status. Please try again.',
-          );
+          this.toasts.error(this.concurrencyMessage(err, 'Could not update the delivery status. Please try again.'));
         },
       });
+  }
+
+  /** Direct follow-up action from an orders-list row (without opening the drawer). */
+  sendWhatsAppSummary(order: OrderSummary, event?: Event): void {
+    event?.stopPropagation();
+    const message = whatsAppMessage('confirm', {
+      customerName: order.customerName,
+      orderCode: order.orderCode,
+      total: order.totalAmount,
+    });
+    if (!openWhatsApp(order.customerMobile, message)) {
+      this.toasts.error('No valid mobile number to message on WhatsApp.');
+    }
+  }
+
+  /** Prevents a contact button from opening the order drawer as well. */
+  stopRowClick(event: Event): void {
+    event.stopPropagation();
+  }
+
+  /** Opens the customer's phone app from an order-list row. */
+  callCustomer(mobile: string, event?: Event): void {
+    event?.stopPropagation();
+    window.location.href = `tel:${mobile}`;
+  }
+
+  toggleRawHistory(): void {
+    this.rawHistoryOpen.update((value) => !value);
   }
 
   /** Opens WhatsApp for the order's customer with a pre-filled template message. */
@@ -464,6 +506,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * buttons stay pinned below the tabs, visible from any tab.
    */
   protected readonly detailTab = signal<'details' | 'items' | 'payment'>('details');
+  protected readonly rawHistoryOpen = signal(false);
+  protected readonly canViewRawHistory = computed(() => this.auth.hasAnyRole(Role.ADMIN));
   protected readonly detailLoading = signal(false);
   /** Existing returns for the open order (closes the loop between Returns and Orders). */
   protected readonly orderReturns = signal<ReturnResponse[]>([]);
@@ -849,50 +893,71 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   // --- Bulk actions -------------------------------------------------------
 
-  async approveSelected(): Promise<void> {
+  approveSelected(): void {
     const ids = [...this.selected()];
-    if (ids.length === 0 || this.bulkBusy()) {
-      return;
-    }
-    const confirmed = await this.confirm.confirm({
-      title: 'Approve selected orders',
-      message: `Approve ${ids.length} selected order${ids.length === 1 ? '' : 's'}? Ineligible orders are skipped.`,
-      confirmLabel: 'Approve',
-      icon: 'ti-check',
-    });
-    if (!confirmed) {
-      return;
-    }
-    this.bulkBusy.set(true);
-    this.service.bulkApprove(ids).subscribe({
-      next: (res) => this.afterBulk(res, 'approved'),
-      error: () => {
-        this.bulkBusy.set(false);
-        this.toasts.error('Bulk approve failed. Please try again.');
-      },
+    this.previewThenConfirm('APPROVE', ids, 'Approve', (eligible) => {
+      this.bulkBusy.set(true);
+      this.service.bulkApprove(eligible).subscribe({
+        next: (res) => this.afterBulk(res, 'approved'),
+        error: (error) => {
+          this.bulkBusy.set(false);
+          this.toasts.error(this.concurrencyMessage(error, 'Bulk approve failed. Refresh and try again.'));
+        },
+      });
     });
   }
 
-  async markPackedSelected(): Promise<void> {
+  markPackedSelected(): void {
     const ids = [...this.selected()];
-    if (ids.length === 0 || this.bulkBusy()) {
-      return;
-    }
-    const confirmed = await this.confirm.confirm({
-      title: 'Mark selected as packed',
-      message: `Mark ${ids.length} selected order${ids.length === 1 ? '' : 's'} as packed? Ineligible orders are skipped.`,
-      confirmLabel: 'Mark packed',
-      icon: 'ti-package',
+    this.previewThenConfirm('MARK_PACKED', ids, 'Mark packed', (eligible) => {
+      this.bulkBusy.set(true);
+      this.service.bulkMarkPacked(eligible).subscribe({
+        next: (res) => this.afterBulk(res, 'marked packed'),
+        error: (error) => {
+          this.bulkBusy.set(false);
+          this.toasts.error(this.concurrencyMessage(error, 'Bulk mark-packed failed. Refresh and try again.'));
+        },
+      });
     });
-    if (!confirmed) {
+  }
+
+  private previewThenConfirm(
+    action: 'APPROVE' | 'MARK_PACKED' | 'LABELS',
+    ids: number[],
+    verb: string,
+    proceed: (eligible: number[]) => void,
+  ): void {
+    if (ids.length === 0 || this.bulkBusy() || this.bulkPreviewLoading()) {
       return;
     }
-    this.bulkBusy.set(true);
-    this.service.bulkMarkPacked(ids).subscribe({
-      next: (res) => this.afterBulk(res, 'marked packed'),
+    this.bulkPreviewLoading.set(true);
+    this.service.bulkPreview(action, ids).subscribe({
+      next: async (preview) => {
+        this.bulkPreviewLoading.set(false);
+        const eligible = (preview.eligible ?? []).map((item) => item.id);
+        const skipped = preview.ineligible ?? [];
+        if (eligible.length === 0) {
+          this.toasts.info('Nothing is eligible for this action. Refresh the list and try again.');
+          this.lastSkips.set(skipped.map((item) => ({ id: item.id, reason: item.reason ?? 'Not eligible.' })));
+          this.showSkips.set(true);
+          return;
+        }
+        const skippedText = skipped.length
+          ? ` ${skipped.length} will be skipped because their status changed or they are unavailable.`
+          : '';
+        const confirmed = await this.confirm.confirm({
+          title: `${verb} selected orders`,
+          message: `${eligible.length} of ${ids.length} selected order${ids.length === 1 ? '' : 's'} are eligible.${skippedText} The server will re-check each order before applying the action.`,
+          confirmLabel: verb,
+          icon: action === 'APPROVE' ? 'ti-check' : action === 'MARK_PACKED' ? 'ti-package' : 'ti-printer',
+        });
+        if (confirmed) {
+          proceed(eligible);
+        }
+      },
       error: () => {
-        this.bulkBusy.set(false);
-        this.toasts.error('Bulk mark-packed failed. Please try again.');
+        this.bulkPreviewLoading.set(false);
+        this.toasts.error('Could not preview the selected orders. Refresh and try again.');
       },
     });
   }
@@ -917,28 +982,29 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   printLabelsSelected(): void {
     const ids = [...this.selected()];
-    if (ids.length === 0 || this.bulkBusy()) {
-      return;
-    }
-    this.bulkBusy.set(true);
-    this.service.bulkLabels(ids).subscribe({
-      next: (blob) => {
-        this.bulkBusy.set(false);
-        const url = URL.createObjectURL(blob);
-        const opened = window.open(url, '_blank');
-        if (!opened) {
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'order-labels.pdf';
-          a.click();
-        }
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
-        this.toasts.success(`Labels generated for ${ids.length} order${ids.length === 1 ? '' : 's'}.`);
-      },
-      error: () => {
-        this.bulkBusy.set(false);
-        this.toasts.error('Could not generate labels. Please try again.');
-      },
+    this.previewThenConfirm('LABELS', ids, 'Print labels', (eligible) => {
+      this.bulkBusy.set(true);
+      this.service.bulkLabels(eligible).subscribe({
+        next: (blob) => {
+          this.bulkBusy.set(false);
+          const url = URL.createObjectURL(blob);
+          const opened = window.open(url, '_blank');
+          if (!opened) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'order-labels.pdf';
+            a.click();
+          }
+          setTimeout(() => URL.revokeObjectURL(url), 60_000);
+          this.toasts.success(`Labels generated for ${eligible.length} order${eligible.length === 1 ? '' : 's'}.`);
+          this.clearSelection();
+          this.load();
+        },
+        error: (error) => {
+          this.bulkBusy.set(false);
+          this.toasts.error(this.concurrencyMessage(error, 'Could not generate labels. Refresh and try again.'));
+        },
+      });
     });
   }
 
@@ -1039,6 +1105,14 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   // --- Helpers ------------------------------------------------------------
 
+  private concurrencyMessage(error: unknown, fallback: string): string {
+    const err = error as HttpErrorResponse | undefined;
+    if (err?.status === 409 || (err?.error as { code?: string } | undefined)?.code === 'CONCURRENT_UPDATE') {
+      return 'This order changed elsewhere. Refresh the order and try again.';
+    }
+    return (err?.error as { message?: string } | undefined)?.message ?? fallback;
+  }
+
   money(value: Money | undefined): string {
     if (value === undefined || value === null) {
       return '₹0.00';
@@ -1052,12 +1126,14 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.detailLoading.set(true);
     this.detailError.set(null);
     this.detailTab.set('details');
+    this.rawHistoryOpen.set(false);
     this.selectedDetail.set(null);
     this.quikShipTracking.set(null);
     this.orderReturns.set([]);
     // Reset the in-house manual status controls so nothing carries over between orders.
     this.manualStage.set('');
     this.manualVehicle.set('');
+    this.manualNote.set('');
     this.revokeScreenshot();
     this.screenshotMissing.set(false);
     this.service.detail(order.id).subscribe({

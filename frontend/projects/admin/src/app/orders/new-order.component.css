@@ -331,3 +331,29 @@
 .shifa-no__modehint {
   font-size: 0.8rem;
 }
+
+/* One-hand payment shortcuts: keep the two common choices thumb-reachable. */
+.shifa-payment-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.shifa-payment-quick .btn {
+  min-height: 44px;
+  flex: 1 1 9rem;
+  font-weight: 600;
+}
+
+@media (max-width: 480px) {
+  .shifa-no__card {
+    padding: 0.85rem;
+  }
+  .shifa-no__footer {
+    gap: 0.5rem;
+    padding-inline: 0.5rem;
+  }
+  .shifa-no__footer .btn {
+    min-height: 50px;
+  }
+}

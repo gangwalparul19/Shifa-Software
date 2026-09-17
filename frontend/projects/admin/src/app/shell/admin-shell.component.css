@@ -103,7 +103,23 @@
   flex: 0 1 auto;
 }
 
-/* --- User dropdown ------------------------------------------------------- */
+/* The app-bar ghost rule intentionally makes top-bar controls white. The account
+   popover is a white card, so reset its action buttons to dark readable text. */
+.shifa-usermenu__panel .btn-ghost-secondary {
+  color: #33443a !important;
+}
+.shifa-usermenu__panel .btn-ghost-secondary .ti {
+  color: #1f5d3f !important;
+}
+.shifa-usermenu__panel .btn-ghost-secondary:hover,
+.shifa-usermenu__panel .btn-ghost-secondary:focus-visible {
+  color: #164632 !important;
+  background: rgba(31, 93, 63, 0.1);
+}
+.shifa-usermenu__panel .btn-ghost-secondary:hover .ti,
+.shifa-usermenu__panel .btn-ghost-secondary:focus-visible .ti {
+  color: #164632 !important;
+}
 .shifa-usermenu {
   position: relative;
 }

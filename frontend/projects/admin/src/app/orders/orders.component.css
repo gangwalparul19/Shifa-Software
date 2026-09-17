@@ -668,3 +668,39 @@
   line-height: 1.1;
   margin-top: 2px;
 }
+
+.shifa-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.shifa-list-actions .btn {
+  min-height: 40px;
+}
+
+.shifa-od__history-toggle {
+  margin: 0.5rem 0 0.75rem;
+  border-top: 1px solid rgba(15, 51, 36, 0.08);
+  padding-top: 0.5rem;
+}
+.shifa-od__history {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+  padding: 0.65rem;
+  border-radius: 10px;
+  background: #f7faf8;
+}
+.shifa-od__history-row {
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid rgba(15, 51, 36, 0.07);
+}
+.shifa-od__history-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.shifa-od__history-status {
+  font-size: 0.78rem;
+  font-weight: 600;
+}

@@ -65,6 +65,14 @@
             <i class="ti ti-shopping-bag me-1"></i>{{ c.orderCount }} orders
             · <span class="fw-semibold">{{ money(c.totalSpent) }}</span>
           </div>
+          <div class="shifa-list-actions mt-2" (click)="stopRowClick($event)">
+            <a class="btn btn-sm btn-outline-secondary" [href]="'tel:' + c.mobile" aria-label="Call customer">
+              <i class="ti ti-phone me-1"></i>Call
+            </a>
+            <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsAppSummary(c, $event)">
+              <i class="ti ti-brand-whatsapp me-1"></i>WhatsApp
+            </button>
+          </div>
         </div>
         <i class="ti ti-chevron-right shifa-cust__view text-secondary" aria-hidden="true"></i>
       </div>
@@ -91,6 +99,7 @@
             <th class="text-end" adminSortHeader field="totalSpent" [sort]="sort()" (sortChange)="onSort($event)">Total spent</th>
             <th adminSortHeader field="lastOrderAt" [sort]="sort()" (sortChange)="onSort($event)">Last order</th>
             <th>Tags</th>
+            <th class="text-end">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -111,6 +120,16 @@
                   } @else {
                     <span class="badge" data-group="neutral">Guest</span>
                   }
+                </div>
+              </td>
+              <td class="text-end" (click)="stopRowClick($event)">
+                <div class="btn-list justify-content-end flex-nowrap">
+                  <a class="btn btn-sm btn-outline-secondary" [href]="'tel:' + c.mobile" title="Call customer" aria-label="Call customer">
+                    <i class="ti ti-phone"></i>
+                  </a>
+                  <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsAppSummary(c, $event)" title="WhatsApp customer" aria-label="WhatsApp customer">
+                    <i class="ti ti-brand-whatsapp"></i>
+                  </button>
                 </div>
               </td>
             </tr>

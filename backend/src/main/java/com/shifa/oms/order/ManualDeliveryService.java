@@ -156,6 +156,12 @@ public class ManualDeliveryService {
                             + "Switch the order to in-house delivery to manage its status manually.");
         }
 
+        if (target == OrderStatus.CUSTOMER_REJECTED || target == OrderStatus.DELIVERY_FAILED) {
+            if (request.note() == null || request.note().isBlank()) {
+                throw new ValidationException("Add a short reason before marking an in-house delivery failed or refused.");
+            }
+        }
+
         String vehicle = trimToNull(request.vehicleNumber());
         if (vehicle != null) {
             order.setVehicleNumber(vehicle);

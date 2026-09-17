@@ -1,5 +1,10 @@
 <!-- Page header -->
 <admin-page-header title="Dashboard" subtitle="Business performance at a glance.">
+  @if (isAdmin()) {
+    <a routerLink="/exceptions" class="btn btn-outline-danger shifa-touch">
+      <i class="ti ti-alert-triangle me-1"></i> Exception Center
+    </a>
+  }
   @if (isTeamLead()) {
     <a routerLink="/orders/new" class="btn btn-primary shifa-touch">
       <i class="ti ti-plus me-1"></i> New Order
