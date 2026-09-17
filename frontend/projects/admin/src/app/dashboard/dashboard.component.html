@@ -82,7 +82,7 @@
           <div class="shifa-hero__content">
             <div class="shifa-hero__pretitle">Overview</div>
             <h2 class="shifa-hero__greet">
-              {{ greeting() }}@if (auth.session(); as s) {, {{ s.username }}}
+              {{ greeting() }}@if (auth.displayName(); as name) {, {{ name }}}
             </h2>
             <p class="shifa-hero__sub">Here's what's happening across Shifa Herbal Remedies today.</p>
             <div class="shifa-hero__kpis">
@@ -797,7 +797,7 @@
     <div class="shifa-hero__content">
       <div class="shifa-hero__pretitle">Overview</div>
       <h2 class="shifa-hero__greet">
-        {{ greeting() }}@if (auth.session(); as s) {, {{ s.username }}}
+        {{ greeting() }}@if (auth.displayName(); as name) {, {{ name }}}
       </h2>
       <p class="shifa-hero__sub m-0">Here's your work at a glance across Shifa Herbal Remedies.</p>
     </div>

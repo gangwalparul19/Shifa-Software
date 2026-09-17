@@ -131,10 +131,10 @@
               aria-label="Account menu"
             >
               <span class="avatar avatar-sm shifa-avatar" aria-hidden="true">
-                {{ session.username.charAt(0).toUpperCase() }}
+                {{ auth.initials() }}
               </span>
               <span class="d-none d-md-flex flex-column text-start lh-sm">
-                <span class="fw-medium">{{ session.username }}</span>
+                <span class="fw-medium">{{ auth.displayName() }}</span>
                 <span class="text-secondary small">{{ roleLabel(session.role) }}</span>
               </span>
               <i class="ti ti-chevron-down text-secondary" aria-hidden="true"></i>
@@ -150,8 +150,9 @@
                     (click)="closeUserMenu()"
                     title="View my profile"
                   >
-                    <div class="fw-medium">{{ session.username }}</div>
+                    <div class="fw-medium">{{ auth.displayName() }}</div>
                     <div class="text-secondary small">{{ roleLabel(session.role) }}</div>
+                    <div class="text-secondary small shifa-mono">{{ session.username }}</div>
                   </a>
                   <div class="dropdown-divider my-1"></div>
                   <a
@@ -320,10 +321,10 @@
       <div class="shifa-drawer__foot shifa-navdrawer__foot">
         <a class="shifa-navdrawer__user" routerLink="/my-profile" (click)="closeMenu()" title="View my profile">
           <span class="avatar avatar-sm shifa-avatar" aria-hidden="true">
-            {{ session.username.charAt(0).toUpperCase() }}
+            {{ auth.initials() }}
           </span>
           <span class="d-flex flex-column lh-sm">
-            <span class="fw-medium">{{ session.username }}</span>
+            <span class="fw-medium">{{ auth.displayName() }}</span>
             <span class="text-secondary small">{{ roleLabel(session.role) }}</span>
           </span>
         </a>

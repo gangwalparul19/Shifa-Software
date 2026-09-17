@@ -10,6 +10,7 @@ import {
   TokenResponse,
 } from '../models/auth.model';
 import { decodeJwtPayload } from './jwt.util';
+import { initialsOf } from './initials.util';
 
 /**
  * Application-facing authentication service shared by both apps.
@@ -38,7 +39,12 @@ export class AuthService {
     if (!claims) {
       return null;
     }
-    return { userId: claims.uid, username: claims.sub, role: claims.role };
+    return {
+      userId: claims.uid,
+      username: claims.sub,
+      role: claims.role,
+      fullName: claims.name?.trim() || undefined,
+    };
   });
 
   /** Whether a user is currently signed in. */
@@ -46,6 +52,22 @@ export class AuthService {
 
   /** The signed-in user's role, or {@code null}. */
   readonly role = computed<Role | null>(() => this.session()?.role ?? null);
+
+  /**
+   * The name to show the user in the UI: their full name when the token carries
+   * it, otherwise their username. Salespeople sign in with their mobile number,
+   * so never render {@code session().username} as a greeting — use this.
+   */
+  readonly displayName = computed<string | null>(() => {
+    const session = this.session();
+    if (!session) {
+      return null;
+    }
+    return session.fullName ?? session.username;
+  });
+
+  /** Up to two initials for the signed-in user's avatar (never blank when signed in). */
+  readonly initials = computed<string>(() => initialsOf(this.displayName()));
 
   /** Authenticates and stores the resulting token pair. */
   login(credentials: LoginCredentials): Observable<AuthSession> {

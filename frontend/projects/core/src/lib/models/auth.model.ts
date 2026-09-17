@@ -38,4 +38,10 @@ export interface AuthSession {
   userId: number;
   username: string;
   role: Role;
+  /**
+   * The user's full name, when the access token carries it. Absent for tokens
+   * issued before the claim existed, so prefer {@code AuthService.displayName}
+   * over reading this directly.
+   */
+  fullName?: string;
 }

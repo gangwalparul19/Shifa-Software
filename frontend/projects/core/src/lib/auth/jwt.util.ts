@@ -8,6 +8,12 @@ export interface DecodedJwt {
   typ: string;
   iat: number;
   exp: number;
+  /**
+   * The user's display name. Optional: the backend omits it when blank, and
+   * tokens issued before this claim existed do not carry it — callers must fall
+   * back to {@link DecodedJwt.sub}.
+   */
+  name?: string;
 }
 
 /**

@@ -29,6 +29,7 @@ export * from './lib/auth/auth.interceptor';
 // Auth flow: login/refresh service, JWT helpers, and route guards
 export * from './lib/auth/auth.service';
 export * from './lib/auth/jwt.util';
+export * from './lib/auth/initials.util';
 export * from './lib/auth/auth.guards';
 
 // Application wiring helper

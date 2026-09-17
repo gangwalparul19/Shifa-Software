@@ -1643,3 +1643,43 @@ is an in-House delivery why am I seeing QuikShipX below". Both fixed. **No migra
 - Offered follow-up (NOT built): a Sec 34(2) warning on the GST dashboard for the 30-Nov-following-FY-end credit-note
   deadline.
 - **Nothing is committed to git** for this batch yet (as with the preceding batches this session).
+
+## Show the signed-in user's NAME (not their mobile/username) in the shell + Welcome — implemented & DEPLOYED (2026-09-17)
+Client: salespeople sign in with their **mobile number as the username**, and the app greeted them with that number and
+put its leading digit in the avatar. Root cause: the display name was **never carried into the client session at all** —
+`AuthSession` was built purely from JWT claims (`sub`/`uid`/`role`), and `sub` IS the username, so every render site read
+`session.username`. `fullName` existed on `User`/`StaffProfileResponse` but not in the token or the login response.
+- **Fix = new `name` JWT claim** (chosen over adding `fullName` to `TokenResponse`): `JwtService.issue(...)` now puts
+  `"name" = user.getFullName().trim()` (omitted when null/blank). Because `issue` is shared by access+refresh tokens and
+  the frontend session is a `computed` over the decoded access token, this covers **login, refresh, register and page
+  reload with zero storage changes**. Persisting a name in `localStorage` was rejected: extra key to clear on logout,
+  stale name could leak to the next user on a shared device.
+- **Core lib**: `auth/jwt.util.ts` `DecodedJwt.name?: string` (optional — `decodeJwtPayload` only hard-requires
+  sub/uid/role/exp, so **old tokens still decode**); `models/auth.model.ts` `AuthSession.fullName?: string`;
+  `auth/auth.service.ts` maps `fullName: claims.name?.trim() || undefined` and exposes two new computeds —
+  **`displayName`** (`fullName ?? username`) and **`initials`**. New pure `auth/initials.util.ts#initialsOf(name)`
+  ("Asha Kumari"→"AK", "Asha"→"AS", "9876543210"→"98", blank→"?"), exported from `public-api.ts`.
+- **Render sites switched to `auth.displayName()` / `auth.initials()`**: shell app-bar user chip, account-menu identity
+  row, mobile drawer footer (`shell/admin-shell.component.html`), and BOTH dashboard hero greetings
+  (`dashboard.component.html` ~line 86 admin hero + ~line 801 role-shaped hero). The account-menu identity row now also
+  shows the username (mobile) as a small `shifa-mono` third line so the user can still confirm which account they're in.
+- **Deliberately left on `username`**: `users.component.ts#currentUsername` → `isSelf(user)` compares against
+  `user.username` for the self-deactivation guard. **Do not "fix" that to displayName.**
+- **RULE going forward**: never bind `auth.session().username` as a greeting/label — use `auth.displayName()`. The
+  username is a mobile number for salespeople.
+- **Back-compat**: users holding a token issued before this deploy decode with `name === undefined` and keep seeing the
+  username until their next login (access-token TTL is 15m and there is no silent-refresh interceptor — a 401 clears the
+  session and routes to login), at which point the claim appears. No forced logout, no storage migration.
+- **Verified**: targeted backend suite `JwtServiceTest,AuthServiceTest,EndpointRoleGuardIntegrationTest` = **54 tests,
+  0 failures** (no test asserts an exact JWT payload key set, and nothing constructs `TokenResponse`, so no test churn);
+  admin `build:admin` clean → `main-6X2X7Q4C.js`. **No migration** (V64 remains highest).
+- **DEPLOYED** via `deploy\push-to-new-server.ps1 -SkipBuild`. Backup `~/shifa-backup-2026-09-17-130321.sql`. Live:
+  `is-active`=active, **NRestarts=0**, started 13:03:24 UTC, "Tomcat started on port 8080", "Started Application in
+  21.709 seconds", `https://shifa.weblithic.online/`=200, `/api/states`=401, served bundle `main-6X2X7Q4C.js`.
+- **TOOLING GOTCHA (cost ~3 failed builds this turn)**: polling with foreground `execute_pwsh` (`timeout /t ...`,
+  `tasklist`) **while a background build runs KILLS the build** — they share the console, output comes back garbled and
+  the node/mvn process dies with no completion line. **Recipe that works**: launch the long command ONCE (foreground
+  `execute_pwsh` with a big timeout, redirecting to a log), then **do not run any shell command**; wait by
+  reading/grepping the log file, or delegate the polling to a `general-task-execution` sub-agent instructed to use
+  file reads ONLY. Also confirmed again: `control_pwsh_process start` can hand back a reused terminal that never runs
+  the command (log file never appears) — check the log exists within a few seconds before waiting on it.
