@@ -12,6 +12,7 @@ import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderSource;
+import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.returns.dto.ReturnResponse;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -209,6 +210,57 @@ class ReturnServiceTest {
         assertThat(response.status()).isEqualTo(ReturnStatus.REFUNDED);
         assertThat(response.refundAmount()).isEqualByComparingTo("199.50");
         assertThat(response.updatedAt()).isNotNull();
+    }
+
+    // --- RTO auto-return: credit-note value vs cash refund (V64) ------------
+
+    /**
+     * The CA scenario: a ₹1000 order partially paid (₹300 prepaid, ₹700 COD) that
+     * later RTOs. Under GST the whole supply is reversed, so the credit note must
+     * carry the full ₹1000; but the only cash owed back is the ₹300 actually
+     * collected. Conflating the two reported a ₹1000 cash refund that never
+     * happened.
+     */
+    @Test
+    void rtoAutoReturnCreditsTheFullSupplyButRefundsOnlyTheCashCollected() {
+        OrderEntity order = orderIn(OrderStatus.RTO, 2);
+        ReflectionTestUtils.setField(order, "id", 1L);
+        order.applyAmounts(new BigDecimal("1000.00"), new BigDecimal("300.00"),
+                new BigDecimal("700.00"), new BigDecimal("700.00"), PaymentStatus.PARTIALLY_PAID);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        when(returnRepository.existsByOrderIdAndStatusIn(anyLong(), any())).thenReturn(false);
+
+        ReturnResponse response = service.createAutoReturnForRto(1L, "CUSTOMER_UNAVAILABLE");
+
+        assertThat(response.status()).isEqualTo(ReturnStatus.REFUNDED);
+        // GST: the entire invoice value is reversed by the credit note.
+        assertThat(response.creditNoteValue()).isEqualByComparingTo("1000.00");
+        // Money: only the prepaid part is actually refundable.
+        assertThat(response.refundAmount()).isEqualByComparingTo("300.00");
+    }
+
+    /** A pure COD RTO: full credit note, but no cash was ever taken, so no refund. */
+    @Test
+    void rtoAutoReturnOnACodOrderRefundsNoCash() {
+        OrderEntity order = orderIn(OrderStatus.RTO, 1);
+        ReflectionTestUtils.setField(order, "id", 1L);
+        order.applyAmounts(new BigDecimal("1000.00"), BigDecimal.ZERO,
+                new BigDecimal("1000.00"), new BigDecimal("1000.00"), PaymentStatus.COD);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        when(returnRepository.existsByOrderIdAndStatusIn(anyLong(), any())).thenReturn(false);
+
+        ReturnResponse response = service.createAutoReturnForRto(1L, "CUSTOMER_REFUSED");
+
+        assertThat(response.creditNoteValue()).isEqualByComparingTo("1000.00");
+        assertThat(response.refundAmount()).isEqualByComparingTo("0.00");
+    }
+
+    /** Idempotent: a second RTO mark must not raise a duplicate return. */
+    @Test
+    void rtoAutoReturnIsSkippedWhenAnActiveReturnAlreadyExists() {
+        when(returnRepository.existsByOrderIdAndStatusIn(anyLong(), any())).thenReturn(true);
+
+        assertThat(service.createAutoReturnForRto(1L, "OTHER")).isNull();
     }
 
     // --- reject transitions to REJECTED and stores notes --------------------

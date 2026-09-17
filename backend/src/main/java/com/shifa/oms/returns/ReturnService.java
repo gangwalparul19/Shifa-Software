@@ -188,12 +188,26 @@ public class ReturnService {
      * through {@code APPROVED} → {@code REFUNDED} in one call (an RTO'd parcel
      * is a fait accompli the moment it's marked — there is no separate admin
      * approval step for it, unlike a customer-initiated return/refund request).
-     * The refund amount is the order's full total (the entire sale is reversed);
-     * stock is deliberately <strong>not</strong> auto-restocked — that remains a
+     * Stock is deliberately <strong>not</strong> auto-restocked — that remains a
      * manual inventory decision once the physical parcel is inspected, mirroring
      * the existing "Create return" manual flow. Skipped (no-op) when the order
      * already has an active return (idempotent against a double-RTO/duplicate
      * call).
+     *
+     * <p><strong>Two different amounts are recorded (V64), and conflating them is
+     * a GST/accounting error:</strong>
+     * <ul>
+     *   <li>{@code creditNoteValue} = the order's <em>full</em> GST-inclusive total.
+     *       An RTO reverses the entire supply, so the credit note carries the whole
+     *       invoice value plus its GST regardless of how little was collected. This
+     *       is what lands in GSTR-1 CDNR/CDNUR.</li>
+     *   <li>{@code refundAmount} = the CASH actually owed back, i.e. only what the
+     *       customer had already paid ({@code amountReceived}) — zero for a pure COD
+     *       order, where the customer never paid anything. This is what the money
+     *       reports / P&amp;L count as a refund.</li>
+     * </ul>
+     * Using the order total for both would report a cash refund that never
+     * happened (the whole order value for a COD parcel that was never paid for).
      *
      * @param orderId    the RTO'd order's id
      * @param reasonNote a human-readable RTO reason (recorded in the return's reason)
@@ -213,21 +227,31 @@ public class ReturnService {
                 String.valueOf(ret.getId()), "Return auto-created for RTO order id " + orderId);
 
         OrderEntity order = requireOrder(orderId);
-        BigDecimal refundAmount = order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO;
+        // Whole supply reversed → credit note for the full invoice value.
+        BigDecimal creditNoteValue = nz(order.getTotalAmount());
+        // Cash owed back = only what the customer actually paid, never more than the
+        // order value (a pure COD order yields zero).
+        BigDecimal cashRefund = nz(order.getAmountReceived()).min(creditNoteValue);
 
         ret.changeStatus(ReturnStatus.APPROVED);
         returnRepository.save(ret);
         auditService.record(AuditActions.RETURN_APPROVED, AuditActions.ENTITY_RETURN,
                 String.valueOf(ret.getId()), "Return auto-approved for RTO order " + order.getOrderCode());
 
-        ret.setRefundAmount(refundAmount);
+        ret.setCreditNoteValue(creditNoteValue);
+        ret.setRefundAmount(cashRefund);
         ret.changeStatus(ReturnStatus.REFUNDED);
         OrderReturn saved = returnRepository.save(ret);
         auditService.record(AuditActions.RETURN_REFUNDED, AuditActions.ENTITY_RETURN,
                 String.valueOf(ret.getId()),
-                "Return auto-settled for RTO order " + order.getOrderCode() + ": " + refundAmount);
+                "Return auto-settled for RTO order " + order.getOrderCode()
+                        + ": credit note " + creditNoteValue + ", cash refund " + cashRefund);
 
         return ReturnResponse.from(saved, order.getOrderCode());
+    }
+
+    private static BigDecimal nz(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
     }
 
     /**

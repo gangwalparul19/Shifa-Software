@@ -20,7 +20,14 @@ public record ReturnResponse(
         String reason,
         String notes,
         ReturnStatus status,
+        // The CASH refunded to the customer (money out) — for an RTO only what was
+        // actually collected, so zero for a pure COD order.
         BigDecimal refundAmount,
+        // The GST-inclusive VALUE OF SUPPLY reversed by the credit note (V64), which
+        // for a whole-consignment return/RTO is the full invoice value regardless of
+        // how much cash was collected. This is what GSTR-1 CDNR/CDNUR reports. Null
+        // on legacy rows written before the two amounts were separated.
+        BigDecimal creditNoteValue,
         boolean restocked,
         Long createdBy,
         LocalDateTime createdAt,
@@ -42,6 +49,7 @@ public record ReturnResponse(
                 r.getNotes(),
                 r.getStatus(),
                 r.getRefundAmount(),
+                r.getCreditNoteValue(),
                 r.isRestocked(),
                 r.getCreatedBy(),
                 r.getCreatedAt(),

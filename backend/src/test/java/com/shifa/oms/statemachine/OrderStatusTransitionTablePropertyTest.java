@@ -45,10 +45,15 @@ class OrderStatusTransitionTablePropertyTest {
      */
     private static final Map<OrderStatus, Set<OrderStatus>> EXPECTED = expectedTable();
 
-    /** The terminal states of the lifecycle (design &sect;4.1). */
+    /**
+     * The terminal states of the lifecycle (design &sect;4.1).
+     *
+     * <p>{@code CUSTOMER_REJECTED}/{@code DELIVERY_FAILED} are deliberately NOT
+     * terminal: a failed or refused delivery attempt still has the parcel in hand, so
+     * it can be re-attempted or returned to origin. Only the true end states are here.
+     */
     private static final Set<OrderStatus> TERMINAL = EnumSet.of(
             OrderStatus.REJECTED, OrderStatus.CANCELLED,
-            OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED,
             OrderStatus.RTO, OrderStatus.REDISPATCH,
             OrderStatus.COD_COLLECTED, OrderStatus.CLOSED);
 
@@ -79,11 +84,14 @@ class OrderStatusTransitionTablePropertyTest {
                 OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED,
                 OrderStatus.RTO, OrderStatus.REDISPATCH));
         t.put(OrderStatus.DELIVERED, EnumSet.of(OrderStatus.CLOSED, OrderStatus.COD_COLLECTED));
+        // A failed/refused attempt can be re-attempted or given up on (returned).
+        t.put(OrderStatus.CUSTOMER_REJECTED,
+                EnumSet.of(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO));
+        t.put(OrderStatus.DELIVERY_FAILED,
+                EnumSet.of(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO));
         // Terminal states.
         t.put(OrderStatus.REJECTED, EnumSet.noneOf(OrderStatus.class));
         t.put(OrderStatus.CANCELLED, EnumSet.noneOf(OrderStatus.class));
-        t.put(OrderStatus.CUSTOMER_REJECTED, EnumSet.noneOf(OrderStatus.class));
-        t.put(OrderStatus.DELIVERY_FAILED, EnumSet.noneOf(OrderStatus.class));
         t.put(OrderStatus.RTO, EnumSet.noneOf(OrderStatus.class));
         t.put(OrderStatus.REDISPATCH, EnumSet.noneOf(OrderStatus.class));
         t.put(OrderStatus.COD_COLLECTED, EnumSet.noneOf(OrderStatus.class));

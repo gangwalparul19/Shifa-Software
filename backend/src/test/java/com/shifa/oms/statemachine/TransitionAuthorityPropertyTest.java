@@ -89,6 +89,15 @@ class TransitionAuthorityPropertyTest {
                 Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
         r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERY_FAILED, true,
                 Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
+        // Recovery from a failed/refused attempt: retry, or give up and return.
+        r.add(rule(OrderStatus.DELIVERY_FAILED, OrderStatus.OUT_FOR_DELIVERY, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
+        r.add(rule(OrderStatus.DELIVERY_FAILED, OrderStatus.RTO, true,
+                Role.PACKING_USER, Role.ADMIN));
+        r.add(rule(OrderStatus.CUSTOMER_REJECTED, OrderStatus.OUT_FOR_DELIVERY, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
+        r.add(rule(OrderStatus.CUSTOMER_REJECTED, OrderStatus.RTO, true,
+                Role.PACKING_USER, Role.ADMIN));
         r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN));
         r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.REDISPATCH, true));
         r.add(rule(OrderStatus.DELIVERED, OrderStatus.CLOSED, true,

@@ -163,7 +163,14 @@ export const MANUAL_NEXT_STAGES: Record<string, ManualStage[]> = {
   DISPATCHED: ['IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED'],
   IN_TRANSIT: ['OUT_FOR_DELIVERY', 'DELIVERED'],
   OUT_FOR_DELIVERY: ['DELIVERED', 'CUSTOMER_REJECTED', 'DELIVERY_FAILED'],
+  // A failed/refused attempt still has the parcel in hand: re-attempt it. Giving up
+  // instead means marking it RTO (Packing → Mark RTO), which raises the credit note.
+  DELIVERY_FAILED: ['OUT_FOR_DELIVERY'],
+  CUSTOMER_REJECTED: ['OUT_FOR_DELIVERY'],
 };
+
+/** Statuses where a delivery attempt has failed and can be retried or closed out. */
+export const FAILED_DELIVERY_STATUSES = ['DELIVERY_FAILED', 'CUSTOMER_REJECTED'];
 
 /** The warehouse steps that apply to any order regardless of delivery method. */
 export const MANUAL_PACKING_STAGES: ManualStage[] = ['PACKED', 'HANDED_TO_DELIVERY'];

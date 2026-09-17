@@ -10,6 +10,7 @@ import {
   CourierCompanyOption,
   DELIVERY_METHOD_OPTIONS,
   DeliveryMethod,
+  FAILED_DELIVERY_STATUSES,
   MANUAL_DELIVERY_STAGE_OPTIONS,
   MANUAL_NEXT_STAGES,
   MANUAL_PACKING_STAGES,
@@ -395,6 +396,14 @@ export class OrdersComponent implements OnInit, OnDestroy {
   manualStageHint(): string | null {
     const stage = this.manualStage();
     return MANUAL_DELIVERY_STAGE_OPTIONS.find((o) => o.value === stage)?.hint ?? null;
+  }
+
+  /**
+   * Whether a delivery attempt on this order has failed or been refused — the parcel
+   * is still in hand, so it can be retried, or closed out by marking it RTO.
+   */
+  hasFailedDelivery(order: OrderDetail | null): boolean {
+    return !!order && FAILED_DELIVERY_STATUSES.includes(String(order.orderStatus));
   }
 
   /** Applies the picked stage (and, for in-house, the vehicle no.) to the order. */

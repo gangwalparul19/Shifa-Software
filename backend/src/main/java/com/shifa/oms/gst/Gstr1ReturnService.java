@@ -66,6 +66,8 @@ public class Gstr1ReturnService {
             EnumSet.of(OrderStatus.CANCELLED, OrderStatus.REJECTED);
 
     private static final String DOC_NATURE = "Invoices for outward supply";
+    /** Table-13 nature-of-document label for credit notes issued in the period (Req 4.1). */
+    private static final String CREDIT_NOTE_DOC_NATURE = "Credit Note";
 
     /** In-code statutory reference (no Spring bean needed). */
     private final StateCodeMaster stateCodes = new StateCodeMaster();
@@ -135,8 +137,9 @@ public class Gstr1ReturnService {
         Map<String, String> uqcByHsn = buildUqcByHsn();
 
         // Table-13 documents issued: a SEPARATE, unfiltered period load so cancelled invoices
-        // are still counted (Req 4.1, 4.2, 4.4).
-        List<DocRow> docs = buildDocs(p);
+        // are still counted (Req 4.1, 4.2, 4.4). Credit notes issued in the period are a
+        // document series in their own right and are appended.
+        List<DocRow> docs = buildDocs(p, notes);
 
         // HSN min length from the seller's aggregate turnover (Req 3.3).
         int hsnMinLength = HsnCompliance.minLength(seller.getAggregateTurnover());
@@ -181,10 +184,14 @@ public class Gstr1ReturnService {
             DocumentCategory category =
                     GstDocumentClassifier.classify(original.getBuyerGstin(), type, invoiceValue(original));
             String stateCode = stateCodes.resolve(original.getState()).orElse("");
+            // The credit note reverses the VALUE OF SUPPLY, not the cash refunded
+            // (V64): an RTO'd or returned consignment reverses the whole invoice
+            // even when little/no cash was collected (e.g. a COD parcel). Legacy
+            // rows fall back to refundAmount so already-filed periods are unchanged.
             OrderReturnView view = new OrderReturnView(
                     r.getId(), original.getOrderCode(),
                     r.getCreatedAt() != null ? r.getCreatedAt().toLocalDate() : null,
-                    r.getRefundAmount());
+                    r.creditNoteValueOrRefund());
             notes.add(CreditNoteProjection.fromReturn(view, gstOrder, category, stateCode, sellerState));
         }
         return notes;
@@ -224,7 +231,7 @@ public class Gstr1ReturnService {
      * number of documents in the series; {@code cancelledCount} is those whose order is
      * CANCELLED/REJECTED. An empty period yields an empty list (Req 4.4).
      */
-    private List<DocRow> buildDocs(Period p) {
+    private List<DocRow> buildDocs(Period p, List<CreditNote> notes) {
         Map<String, DocAcc> byPrefix = new LinkedHashMap<>();
         for (OrderEntity o : allOrders(p)) {
             String invoiceNumber = o.getInvoiceNumber();
@@ -242,7 +249,47 @@ public class Gstr1ReturnService {
             docs.add(new DocRow(DOC_NATURE, acc.fromNumber, acc.toNumber,
                     acc.totalCount, acc.cancelledCount));
         }
+        docs.addAll(creditNoteDocs(notes));
         return docs;
+    }
+
+    /**
+     * The Table-13 row(s) for credit notes issued in the period. A credit note is a
+     * document issued in its own right, so it has to be declared in the
+     * documents-issued summary alongside invoices — without this, a period that
+     * reversed supplies (e.g. an RTO) declared the credit note in CDNR/CDNUR but
+     * never disclosed the document series it came from.
+     *
+     * <p>Note numbers are not numerically sequential, so the from/to range is the
+     * lexicographic min/max — enough to identify the series. None are cancelled: a
+     * credit note that shouldn't have been raised is itself reversed by a debit
+     * note, not cancelled.
+     */
+    private static List<DocRow> creditNoteDocs(List<CreditNote> notes) {
+        if (notes == null || notes.isEmpty()) {
+            return List.of();
+        }
+        String from = null;
+        String to = null;
+        for (CreditNote note : notes) {
+            String number = creditNoteNumber(note);
+            if (from == null || number.compareTo(from) < 0) {
+                from = number;
+            }
+            if (to == null || number.compareTo(to) > 0) {
+                to = number;
+            }
+        }
+        return List.of(new DocRow(CREDIT_NOTE_DOC_NATURE, from, to, notes.size(), 0));
+    }
+
+    /**
+     * The credit-note number for a note. Must match how {@code Gstr1Builder} numbers
+     * the CDNR/CDNUR rows, so Table 13 declares the same series that the note rows
+     * reference.
+     */
+    private static String creditNoteNumber(CreditNote note) {
+        return "CN-" + note.originalOrderCode();
     }
 
     /** The non-numeric leading portion of an invoice number (its series prefix). */

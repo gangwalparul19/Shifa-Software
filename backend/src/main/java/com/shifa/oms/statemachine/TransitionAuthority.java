@@ -153,6 +153,20 @@ public final class TransitionAuthority {
                 Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
         put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERY_FAILED, true,
                 Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+
+        // Recovering from a failed/refused attempt: re-attempt the delivery, or give
+        // up and return to origin. SYSTEM is permitted too — a courier's tracking can
+        // legitimately report a fresh attempt, or the parcel coming back, after a
+        // failed one. RTO stays staff-restricted to ADMIN/PACKING_USER (it requires a
+        // categorized reason and raises the credit note), matching the other RTO edges.
+        put(t, OrderStatus.DELIVERY_FAILED, OrderStatus.OUT_FOR_DELIVERY, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.DELIVERY_FAILED, OrderStatus.RTO, true,
+                Role.PACKING_USER, Role.ADMIN);
+        put(t, OrderStatus.CUSTOMER_REJECTED, OrderStatus.OUT_FOR_DELIVERY, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.CUSTOMER_REJECTED, OrderStatus.RTO, true,
+                Role.PACKING_USER, Role.ADMIN);
         put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN);
         put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.REDISPATCH, true);
 

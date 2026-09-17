@@ -31,10 +31,15 @@ public record RtoScanPreviewResponse(
         String courierAwb
 ) {
 
-    /** Statuses from which a manual RTO mark is a legal move (mirrors {@code OrderStatus}'s RTO edges). */
+    /**
+     * Statuses from which a manual RTO mark is a legal move (mirrors
+     * {@code OrderStatus}'s RTO edges, including the failed/refused outcomes — a
+     * failed attempt is closed out by returning the parcel to origin).
+     */
     private static final Set<OrderStatus> RTO_ELIGIBLE_STATUSES = EnumSet.of(
             OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED,
-            OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY);
+            OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY,
+            OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED);
 
     /** Resolves a preview for a scan matched by our own order code (no courier barcode involved). */
     public static RtoScanPreviewResponse from(OrderEntity order) {

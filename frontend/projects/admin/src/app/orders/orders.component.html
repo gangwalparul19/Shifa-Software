@@ -784,11 +784,20 @@
         @if (canUpdateDeliveryStatus(order)) {
           <div class="shifa-od__section">
             <div class="shifa-od__label mb-2">
-              <i class="ti ti-progress-check me-1"></i>Update status
+              @if (hasFailedDelivery(order)) {
+                <i class="ti ti-refresh me-1"></i>Retry delivery
+              } @else {
+                <i class="ti ti-progress-check me-1"></i>Update status
+              }
             </div>
             <div class="shifa-od__card">
               <div class="form-hint mb-2">
-                @if (isInHouse(order)) {
+                @if (hasFailedDelivery(order)) {
+                  The parcel is still with us, so the delivery can be attempted again. To close
+                  the order instead, mark it returned on
+                  <a routerLink="/packing/rto">Packing → Mark RTO</a> — that reverses the sale
+                  with a GST credit note.
+                } @else if (isInHouse(order)) {
                   No delivery partner is tracking this order, so move it along yourself as the parcel travels.
                 } @else {
                   Move this order through packing and handover without going to the Packing page.
@@ -841,8 +850,11 @@
           </div>
         }
 
-        <!-- QuikShipX shipment mirror (courier integration) -->
-        @if (order.quikShipXStatus || canManageQuikShip()) {
+        <!-- QuikShipX shipment mirror (courier integration). Hidden entirely for an
+             in-house order: it never touches the QuikShipX pipeline, so offering
+             "Publish to QuikShipX" there is misleading. Still shown if the order
+             somehow already HAS QuikShipX data, so nothing is ever hidden from view. -->
+        @if (order.quikShipXStatus || (canManageQuikShip() && !isInHouse(order))) {
           <div class="shifa-od__section">
             <div class="shifa-od__label mb-2">
               QuikShipX

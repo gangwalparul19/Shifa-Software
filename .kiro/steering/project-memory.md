@@ -1609,3 +1609,37 @@ returned "Barcode not recognized / No order matches". Root cause: the internal l
 - Verified: `PackingServiceTest` + `LabelServiceTest` = 18/18 green on a clean 719-source compile. **DEPLOYED to AWS**
   via `push-to-aws.ps1`; DB backup `~/shifa-backup-2026-09-03-231747.sql`; live HTTPS 200, "Tomcat started on 8080 /
   Started Application 22.9s". No migration.
+
+## Failed-delivery recovery (retry / RTO) + QuikShipX hidden for in-house — implemented & DEPLOYED (2026-09-17)
+Client: "when the order is Delivery Failed I need to retry the delivery … or an option to cancel"; and "if the order
+is an in-House delivery why am I seeing QuikShipX below". Both fixed. **No migration** (V64 remains highest).
+- **DELIVERY_FAILED / CUSTOMER_REJECTED are no longer terminal.** `statemachine/OrderStatus` gives both
+  `EnumSet.of(OUT_FOR_DELIVERY, RTO)` and they were removed from the terminal block. `TransitionAuthority` gained 4
+  edges: `DELIVERY_FAILED→OUT_FOR_DELIVERY` and `CUSTOMER_REJECTED→OUT_FOR_DELIVERY` (SYSTEM + ADMIN/PACKING_USER/
+  SALESPERSON — a courier's tracking can legitimately report a fresh attempt), plus `DELIVERY_FAILED→RTO` and
+  `CUSTOMER_REJECTED→RTO` (SYSTEM + ADMIN/PACKING_USER only, since RTO needs a categorized reason).
+- **RTO scan** accepts the failed statuses: `PackingService.RTO_ELIGIBLE_STATUSES` (+ `packing/dto/RtoScanPreviewResponse`)
+  now include `CUSTOMER_REJECTED, DELIVERY_FAILED`, so a failed parcel coming back can be scanned straight into RTO.
+- **DESIGN DECISION (important, don't "fix" later)**: there is deliberately **NO `DELIVERY_FAILED → CANCELLED` edge**.
+  `Gstr1ReturnService` treats CANCELLED as NON_REVENUE and excludes it from outward supplies, so cancelling a
+  post-invoice order would retroactively drop an already-filed invoice out of a past GST period. **RTO is the
+  GST-correct "give up" path** — it auto-raises the credit note (V64 `credit_note_value`) in the CURRENT period.
+- **Frontend**: `orders/orders.model.ts` `MANUAL_NEXT_STAGES` gained `DELIVERY_FAILED: ['OUT_FOR_DELIVERY']` and
+  `CUSTOMER_REJECTED: ['OUT_FOR_DELIVERY']`, plus a new `FAILED_DELIVERY_STATUSES` set; `orders.component.ts`
+  `hasFailedDelivery(order)`; the status card retitles to **"Retry delivery"** with a hint linking
+  `routerLink="/packing/rto"` for the give-up path.
+- **QuikShipX card** on order detail is now guarded by
+  `@if (order.quikShipXStatus || (canManageQuikShip() && !isInHouse(order)))` — hidden for in-house orders **unless**
+  QuikShipX data already exists (never conceal existing shipment data).
+- Test tables updated in lockstep (they pin the transition matrix): `OrderStatusTransitionTablePropertyTest`
+  (added entries, removed the two from `TERMINAL`), `TransitionAuthorityPropertyTest`,
+  `OrderWorkflowHistoryAppendPropertyTest`.
+- **Verified**: backend `mvn clean test` = **752 tests, 0 failures**; admin `build:admin` clean → `main-LWGKWX7L.js`.
+- **DEPLOYED** via `deploy\push-to-new-server.ps1 -SkipBuild` to `ubuntu@15.252.230.73`. Backup
+  `~/shifa-backup-2026-09-17-122418.sql`. Live checks: `is-active`=active, **NRestarts=0**, Flyway "Successfully
+  validated 64 migrations … Schema is up to date. No migration necessary." (current v64), "Tomcat started on port 8080",
+  "Started Application in 21.701 seconds", `https://shifa.weblithic.online/`=200, `/api/states`=401, served bundle
+  `main-LWGKWX7L.js` (matches the local build).
+- Offered follow-up (NOT built): a Sec 34(2) warning on the GST dashboard for the 30-Nov-following-FY-end credit-note
+  deadline.
+- **Nothing is committed to git** for this batch yet (as with the preceding batches this session).

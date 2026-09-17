@@ -136,6 +136,17 @@ class OrderWorkflowHistoryAppendPropertyTest {
                 Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
         addStaff(cases, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERY_FAILED,
                 Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        // Recovery from a failed/refused attempt: retry the delivery, or return to origin.
+        addStaff(cases, OrderStatus.DELIVERY_FAILED, OrderStatus.OUT_FOR_DELIVERY,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        addSystem(cases, OrderStatus.DELIVERY_FAILED, OrderStatus.OUT_FOR_DELIVERY);
+        addStaff(cases, OrderStatus.DELIVERY_FAILED, OrderStatus.RTO,
+                Role.ADMIN, Role.PACKING_USER);
+        addStaff(cases, OrderStatus.CUSTOMER_REJECTED, OrderStatus.OUT_FOR_DELIVERY,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        addSystem(cases, OrderStatus.CUSTOMER_REJECTED, OrderStatus.OUT_FOR_DELIVERY);
+        addStaff(cases, OrderStatus.CUSTOMER_REJECTED, OrderStatus.RTO,
+                Role.ADMIN, Role.PACKING_USER);
         // Courier pickup + webhook progressions — SYSTEM only. Forward jumps from
         // Courier_Assigned keep a QuikShipX tracking poll from stalling on a skipped scan.
         addSystem(cases, OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED);

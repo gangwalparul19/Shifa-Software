@@ -97,13 +97,19 @@ public enum OrderStatus {
         // Settlement outcomes (Req 16.1, 16.2).
         table.put(DELIVERED, EnumSet.of(CLOSED, COD_COLLECTED));
 
+        // A failed/refused delivery attempt is NOT the end of the road: the parcel is
+        // still in hand, so it can be re-attempted (back to Out_For_Delivery) or given
+        // up on and returned to origin (RTO, which reverses the sale with a credit
+        // note). Without these edges a failed attempt was a dead end with no way to
+        // retry or close the order.
+        table.put(CUSTOMER_REJECTED, EnumSet.of(OUT_FOR_DELIVERY, RTO));
+        table.put(DELIVERY_FAILED, EnumSet.of(OUT_FOR_DELIVERY, RTO));
+
         // Terminal states — no outgoing transitions (Req 12.7).
         table.put(COD_COLLECTED, EnumSet.noneOf(OrderStatus.class));
         table.put(CLOSED, EnumSet.noneOf(OrderStatus.class));
         table.put(REJECTED, EnumSet.noneOf(OrderStatus.class));
         table.put(CANCELLED, EnumSet.noneOf(OrderStatus.class));
-        table.put(CUSTOMER_REJECTED, EnumSet.noneOf(OrderStatus.class));
-        table.put(DELIVERY_FAILED, EnumSet.noneOf(OrderStatus.class));
         table.put(RTO, EnumSet.noneOf(OrderStatus.class));
         table.put(REDISPATCH, EnumSet.noneOf(OrderStatus.class));
 

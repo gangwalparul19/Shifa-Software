@@ -67,10 +67,16 @@ public class PackingService {
 
     private static final String SOURCE_PACKING = "PACKING";
 
-    /** Statuses from which a manual RTO mark is a legal move (mirrors the RTO edges in the state machine). */
+    /**
+     * Statuses from which a manual RTO mark is a legal move (mirrors the RTO edges in
+     * the state machine). Includes the failed/refused outcomes: once a delivery
+     * attempt has failed, marking the parcel returned-to-origin is how the order is
+     * closed out — and it raises the credit note that reverses the sale for GST.
+     */
     private static final java.util.Set<OrderStatus> RTO_ELIGIBLE_STATUSES = java.util.EnumSet.of(
             OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED,
-            OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY);
+            OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY,
+            OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED);
 
     private final OrderRepository orderRepository;
     private final OutboxEventPublisher outboxEventPublisher;

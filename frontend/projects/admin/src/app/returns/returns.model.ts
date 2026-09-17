@@ -15,7 +15,15 @@ export interface ReturnResponse {
   reason: string;
   notes?: string | null;
   status: ReturnStatus;
+  /** Cash refunded to the customer (money out) — zero for a pure COD RTO. */
   refundAmount?: Money | null;
+  /**
+   * GST-inclusive value of supply reversed by the credit note — the full invoice
+   * value for a whole-consignment return/RTO, regardless of cash collected. This
+   * is what GSTR-1 CDNR/CDNUR reports. Null on returns created before the two
+   * amounts were separated.
+   */
+  creditNoteValue?: Money | null;
   restocked: boolean;
   createdBy?: string | null;
   createdAt?: string | null;

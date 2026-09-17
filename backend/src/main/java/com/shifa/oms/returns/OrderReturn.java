@@ -45,8 +45,27 @@ public class OrderReturn {
     @Column(name = "status", nullable = false, length = 20)
     private ReturnStatus status;
 
+    /**
+     * The CASH refundable/refunded to the customer — money out. For an RTO this is
+     * only what was actually collected (nothing at all for a pure COD order), not
+     * the order value. Feeds the money reports / P&amp;L "refunds".
+     */
     @Column(name = "refund_amount", precision = 12, scale = 2)
     private BigDecimal refundAmount;
+
+    /**
+     * The GST-inclusive <strong>value of supply reversed</strong> by the credit
+     * note issued for this return (V64). Distinct from {@link #refundAmount}:
+     * under GST a returned/RTO'd consignment reverses the <em>whole</em> supply,
+     * so the credit note carries the full invoice value plus its GST even when
+     * little or no cash was ever collected. Feeds the GSTR-1 CDNR/CDNUR sections.
+     *
+     * <p>{@code null} on legacy rows created before this split; the GSTR-1 builder
+     * then falls back to {@link #refundAmount} so already-filed periods keep
+     * reporting exactly what they reported before.
+     */
+    @Column(name = "credit_note_value", precision = 12, scale = 2)
+    private BigDecimal creditNoteValue;
 
     @Column(name = "restocked", nullable = false)
     private boolean restocked = false;
@@ -116,6 +135,29 @@ public class OrderReturn {
 
     public void setRefundAmount(BigDecimal refundAmount) {
         this.refundAmount = refundAmount;
+    }
+
+    /** The GST-inclusive value of supply reversed by the credit note, or {@code null} (V64). */
+    public BigDecimal getCreditNoteValue() {
+        return creditNoteValue;
+    }
+
+    /**
+     * Records the GST-inclusive value of supply reversed by this return's credit
+     * note — the full invoice value for a whole-consignment return/RTO, which is
+     * independent of how much cash was collected.
+     */
+    public void setCreditNoteValue(BigDecimal creditNoteValue) {
+        this.creditNoteValue = creditNoteValue;
+    }
+
+    /**
+     * The value to report on the GSTR-1 credit note: {@link #getCreditNoteValue()}
+     * when recorded, else {@link #getRefundAmount()} for legacy rows written before
+     * the two were separated (V64), so previously-filed periods are unchanged.
+     */
+    public BigDecimal creditNoteValueOrRefund() {
+        return creditNoteValue != null ? creditNoteValue : refundAmount;
     }
 
     public boolean isRestocked() {
