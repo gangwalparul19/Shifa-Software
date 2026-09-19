@@ -48,6 +48,14 @@ public class CourierStatusApplier {
     private static final String ACTOR = "COURIER_API";
     private static final String SOURCE = "COURIER";
 
+    /**
+     * Ledger auto-posting source key for the COD cash collected on delivery
+     * (mirrors {@code SourceType.ORDER_DELIVERY}; kept as a literal so the courier
+     * module does not depend on the ledger module, exactly like
+     * {@code AdminOrderService.LEDGER_SOURCE_ORDER}).
+     */
+    private static final String LEDGER_SOURCE_ORDER_DELIVERY = "ORDER_DELIVERY";
+
     private final OrderRepository orderRepository;
     private final CourierRecordRepository courierRecordRepository;
     private final CourierCompanyRepository courierCompanyRepository;
@@ -164,6 +172,26 @@ public class CourierStatusApplier {
         order.setCustomerOutstanding(BigDecimal.ZERO);
         result.receivable().ifPresent(r -> recordReceivable(
                 order, record, ReceivableType.COD_RECEIVABLE, order.getCodAmount()));
+        publishDeliveryLedgerPost(order);
+    }
+
+    /**
+     * Enqueues the delivery-receipt ledger posting for a COD order in this same
+     * transaction, so the COD cash collected is booked against Cash / Sundry Debtors
+     * dated the DELIVERY date.
+     *
+     * <p>Without this the order's sales voucher leaves Sundry Debtors permanently
+     * debited: nothing else ever credits it back for a pure-COD order. No-op for a
+     * prepaid order (nothing was collected on delivery). The outbox row commits
+     * atomically with the delivery and a downstream posting failure can never roll
+     * back or alter the order.
+     */
+    private void publishDeliveryLedgerPost(OrderEntity order) {
+        BigDecimal cod = order.getCodAmount();
+        if (cod == null || cod.signum() <= 0) {
+            return;
+        }
+        outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_ORDER_DELIVERY, order.getId());
     }
 
     private void applyRto(OrderEntity order, NotificationContext ctx) {

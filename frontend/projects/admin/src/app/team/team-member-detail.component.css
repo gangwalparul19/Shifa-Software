@@ -179,3 +179,13 @@
     font-size: 0.95rem;
   }
 }
+
+.tm-detail__tabs {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0.9rem 0;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid rgba(15, 51, 36, 0.08);
+}
+.tm-detail__tabs .btn { min-height: 40px; }

@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
 import { PaymentQueueRow } from './payments.model';
+import { PaymentScreenshot } from '../orders/orders.model';
 
 /**
  * Data access for the Payment Verifier dashboard ({@code /api/payments},
@@ -30,10 +31,23 @@ export class PaymentsService {
     return this.api.post('/api/payments/' + id + '/reject', { note: note ?? '' });
   }
 
-  /** Fetch the order's payment screenshot as a Blob for inline viewing. */
+  /** Fetch the order's PRIMARY payment screenshot as a Blob for inline viewing. */
   screenshot(orderId: number): Observable<Blob> {
     return this.http.get(this.api.url(`/api/orders/${orderId}/payment-screenshot`), {
       responseType: 'blob',
     });
+  }
+
+  /** List every payment proof attached to the order, in upload order (V65). */
+  screenshots(orderId: number): Observable<PaymentScreenshot[]> {
+    return this.api.get<PaymentScreenshot[]>(`/api/orders/${orderId}/payment-screenshots`);
+  }
+
+  /** Fetch one specific payment proof as a Blob for inline viewing (V65). */
+  screenshotById(orderId: number, screenshotId: number): Observable<Blob> {
+    return this.http.get(
+      this.api.url(`/api/orders/${orderId}/payment-screenshots/${screenshotId}`),
+      { responseType: 'blob' },
+    );
   }
 }

@@ -133,6 +133,8 @@ export interface LeadConvertRequest {
   items: CreateOrderLineItem[];
   amountReceived: number;
   paymentScreenshotKey?: string;
+  /** Additional payment-proof storage keys beyond the primary one (V65). */
+  paymentScreenshotKeys?: string[];
   /** Optional free-text order note captured at conversion (≤1000 chars). */
   notes?: string;
   /** Optional order-level discount carried to the created order (Flat/Percent). */

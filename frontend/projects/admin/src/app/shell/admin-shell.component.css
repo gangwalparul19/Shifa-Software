@@ -103,8 +103,27 @@
   flex: 0 1 auto;
 }
 
-/* The app-bar ghost rule intentionally makes top-bar controls white. The account
-   popover is a white card, so reset its action buttons to dark readable text. */
+
+/* The account menu is a white popover, so its actions must not inherit the
+   navbar's pale ghost-button color. */
+.shifa-usermenu__action {
+  color: #33443a !important;
+  text-decoration: none;
+}
+.shifa-usermenu__action .ti {
+  color: #1f5d3f !important;
+}
+.shifa-usermenu__action:hover,
+.shifa-usermenu__action:focus-visible {
+  color: #164632 !important;
+  background: rgba(31, 93, 63, 0.1);
+}
+.shifa-usermenu__action:hover .ti,
+.shifa-usermenu__action:focus-visible .ti {
+  color: #164632 !important;
+}
+
+/* Backward-compatible selector for any remaining secondary action in the panel. */
 .shifa-usermenu__panel .btn-ghost-secondary {
   color: #33443a !important;
 }
@@ -438,8 +457,40 @@
 .shifa-navdrawer__install:hover {
   background: var(--shifa-green-100);
 }
+/* Install action sits in the dark app bar beside Offline. Keep it from
+   shrinking away when search/bell/account controls compete for width. */
 .shifa-install-btn {
+  flex: 0 0 auto;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  min-width: 44px;
+  padding-inline: 0.65rem;
   white-space: nowrap;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.72) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  font-weight: 700;
+}
+.shifa-install-btn .ti {
+  color: #ffffff !important;
+}
+.shifa-install-btn:hover,
+.shifa-install-btn:focus-visible {
+  color: #164632 !important;
+  border-color: #ffffff !important;
+  background: #ffffff !important;
+}
+.shifa-install-btn:hover .ti,
+.shifa-install-btn:focus-visible .ti {
+  color: #164632 !important;
+}
+@media (max-width: 575.98px) {
+  .shifa-install-btn {
+    width: 40px;
+    padding-inline: 0;
+  }
 }
 .shifa-app-banner {
   margin-top: 0.75rem;

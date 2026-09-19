@@ -90,19 +90,19 @@
           </span>
         }
 
-        <!-- Install app (FEATURE-ROADMAP §8.1) — always available unless already
-             installed; falls back to instructions when the browser can't auto-prompt. -->
-        @if (!pwa.installed()) {
-          <button
-            type="button"
-            class="btn btn-sm btn-outline-primary shifa-install-btn"
-            (click)="installApp()"
-            title="Install Shifa OMS as an app"
-          >
-            <i class="ti ti-download me-1" aria-hidden="true"></i>
-            <span class="d-none d-sm-inline">Install app</span>
-          </button>
-        }
+        <!-- Install app (FEATURE-ROADMAP §8.1). Always render the action in a
+             normal browser; click-to-install uses the native prompt when available
+             and otherwise opens platform-specific instructions. -->
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-primary shifa-install-btn"
+          (click)="installApp()"
+          title="Install Shifa OMS as an app"
+          aria-label="Install Shifa OMS as an app"
+        >
+          <i class="ti ti-download me-1" aria-hidden="true"></i>
+          <span class="d-none d-sm-inline">Install app</span>
+        </button>
 
         <!-- Live SSE indicator -->
         <span
@@ -157,14 +157,14 @@
                   <div class="dropdown-divider my-1"></div>
                   <a
                     routerLink="/my-profile"
-                    class="btn btn-ghost-secondary w-100 justify-content-start"
+                    class="btn shifa-usermenu__action w-100 justify-content-start"
                     (click)="closeUserMenu()"
                   >
                     <i class="ti ti-user-circle me-2"></i> My Profile
                   </a>
                   <button
                     type="button"
-                    class="btn btn-ghost-secondary w-100 justify-content-start"
+                    class="btn shifa-usermenu__action w-100 justify-content-start"
                     (click)="closeUserMenu(); replayTour()"
                   >
                     <i class="ti ti-map-2 me-2"></i> Take the tour

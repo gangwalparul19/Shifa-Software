@@ -1709,3 +1709,155 @@ The attached production screenshot showed the account popover itself was visible
 - Fixed in `frontend/projects/admin/src/app/shell/admin-shell.component.css` with a panel-specific override: dark readable text, green icons, and visible hover/focus states. No markup/navigation behavior changed.
 - Validation: admin production build clean, no warnings/errors; bundle `main-3565BROU.js`.
 - **Not deployed yet.** The screenshot is from the currently served older production bundle. Deploy the new admin bundle before expecting the buttons to appear readable at `https://shifa.weblithic.online/`.
+
+## Account-menu + PWA Install final fix — DEPLOYED (2026-09-17)
+The first cosmetic override was not sufficient in the browser: the supplied mobile/desktop screenshots still showed the old pale account actions and no Install action. Final fix:
+- `shell/admin-shell.component.html`: account actions now use dedicated `.shifa-usermenu__action` classes rather than inheriting `.btn-ghost-secondary`; the app-bar Install action is always rendered before Offline (the click handler still uses the native prompt when available and instructions fallback otherwise).
+- `shell/admin-shell.component.css`: dedicated account-action contrast/hover/focus styles; Install action is non-shrinking, high-contrast white-on-green, 44px minimum target, and compact icon-only on small screens.
+- Built cleanly with no warnings/errors: bundle `main-35QGUIYS.js`.
+- **DEPLOYED** via `deploy\push-to-new-server.ps1 -SkipBuild` to `ubuntu@15.252.230.73`. Backup `~/shifa-backup-2026-09-17-160520.sql` (144K). Live verification: service active, NRestarts=0, Tomcat/Application started, HTTPS root 200, `/api/states` 401, served bundle `main-35QGUIYS.js`.
+- If a user still sees the old pale UI/no Install action after this deployment, the browser is serving a stale Angular service-worker cache: use Ctrl+Shift+R, or clear the site's service-worker/cache storage once, then reload. The server index is verified to reference `main-35QGUIYS.js`.
+
+## Team Performance 360 — Phases 1–3 implemented & DEPLOYED (2026-09-19)
+Client screenshots showed the Team Lead page with only five KPI cards and a compact five-column salesperson table. Implemented an additive Team Lead 360 extension, preserving server scope and no migration.
+- **Backend contract:** `TeamPerformanceController` accepts optional `from`/`to` ISO dates; omitted dates default to current month. `TeamPerformanceService` resolves `teamMemberScope` server-side: TEAM_LEAD assigned salespeople only, ADMIN all salespeople. `TeamPerformanceResponse` keeps all old fields and adds `TeamPeriodSummary`, `TeamWorkSummary`, and `List<TeamCoachingFlag>`.
+- **Period/management metrics:** `TeamPeriodSummary` contains selected/prior windows, orders, revenue, AOV, previous orders/revenue, today orders/revenue, failed/RTO, customer outstanding, pending payment amount/count, follow-ups due, and target/achieved/progress. Target totals are explicitly filtered to resolved member IDs; no global target leakage.
+- **Member rows:** `SalespersonPerformanceSummary` has backward-compatible constructors plus selected-period orders/revenue/AOV/RTO/follow-up fields. Existing detail callers remain compatible.
+- **Phase 1 UI:** Team Performance now has Today/Last 7 days/This month/Custom period controls, revenue/AOV/today/prior/target cards, pending collections/RTO/follow-up/coaching cards, Today's Work links, member search and health filters, and an expanded comparison table with status/orders/revenue/AOV/delivery/RTO/follow-ups/outstanding.
+- **Phase 2 UI:** management CSV export and browser Print/PDF action are generated from the scoped response; period comparison and target progress are visible. No new global report endpoint was added.
+- **Phase 3 UI:** explainable read-only coaching priorities for inactive/no-activity/follow-up/RTO signals; direct report drawer now has Overview/Activity/Orders tabs. Persisted coaching notes, assignments, snooze, and task completion are deliberately deferred until a schema/ownership decision.
+- **Validation + deployment:** backend `mvn -f "backend/pom.xml" clean test` = **752 tests, 0 failures, 0 errors**; focused TeamPerformanceServiceTest 2/2; admin `npm --prefix frontend run build:admin` clean/no warnings/errors → `main-R2TNRM2U.js`. **Deployed** via `deploy\push-to-new-server.ps1 -SkipBuild` to `ubuntu@15.252.230.73` on 2026-09-19. Backup `~/shifa-backup-2026-09-19-112045.sql` (168K). Live verification: service active, NRestarts=0, Flyway validated/current V64/no migration necessary, Tomcat/Application started, HTTPS root 200, `/api/states` 401, served bundle `main-R2TNRM2U.js`. The old five-KPI screenshot may persist in an existing Angular service-worker cache; clear site data/unregister the service worker once and reload.
+
+## Team Lead personal + team performance split — implemented locally, NOT deployed
+Client clarified that a Team Lead must see their own punched orders as well as assigned teammates' orders, with salesperson attribution and separate KPI views. Added an additive extension to the Phase 1–3 Team Performance contract:
+- Backend `TeamPerformanceResponse` adds `ownPerformance`, `ownPeriod`, `combinedPeriod`, `ownOrders`, and `teamOrders`. The existing `leaderboard` remains teammate-only. `TeamOrderRow` includes order code/customer/amount/status/date and `salespersonName`.
+- For TEAM_LEAD only, `TeamPerformanceService` loads the lead's own orders through the authenticated `actor.userId()` separately from `teamMemberScope`; teammates remain assigned-only. ADMIN remains global and does not receive a personal Team Lead tab. Existing `/api/orders` visibility rules are unchanged.
+- Frontend Team Performance adds **My orders / Team orders** tabs, a **My performance** KPI section, and teammate order rows with the salesperson name column. Order codes deep-link to `/orders?q=...`.
+- Validation: focused TeamPerformanceServiceTest 2/2 and full backend suite **752 tests, 0 failures, 0 errors**; admin build clean → `main-FCBAQKDI.js`. **Not deployed** yet.
+- The supplied screenshots still show the production baseline (old five-card Team Performance and pale account-menu actions); deploy this extension separately after review.
+
+## Fix: DashboardMetricsService OrderReportRecord constructor regression (2026-09-19)
+`OrderReportRecord` gained the nullable `customerOutstanding` projection field so Finance reports can distinguish customer dues from courier COD remittance. `ReportService` already supplied the new field, but `dashboard/DashboardMetricsService.toRecord()` still called the old 17-argument constructor, causing local Java compilation failure at line 318. Fixed by appending `o.getCustomerOutstanding()` to that constructor call. Legacy report-record constructors retain fallback behavior for older pure tests/fixtures. README updated. The corrected source compiles; full backend validation remains recorded in the current task context as 752 tests with 0 failures.
+
+## Fix: second `OrderReportRecord` constructor compatibility regression (2026-09-19)
+A follow-up local compile error reported a 17-argument `OrderReportRecord` call with `LeadSource` and an inferred `List<Object>` from `List.of()`. Added a backward-compatible 17-argument constructor accepting `LeadSource` and defaulting nullable `customerOutstanding` to `null`; Java generic inference then resolves the empty product list as `List<ProductLine>`. Existing 16-argument legacy callers remain supported. Full backend validation after the fix: **752 tests, 0 failures, 0 errors**. README updated.
+
+## DEPLOYED to EC2 (2026-09-19, 18:04) — pending changeset flushed
+Deployed the backlog that had accumulated on disk but never shipped: Team Lead personal/team split (My orders /
+Team orders tabs, salesperson name column, My performance KPIs), the two `OrderReportRecord` constructor fixes, and
+the admin "Unlock account" label. `deploy\push-to-new-server.ps1` (full build). Backup
+`~/shifa-backup-2026-09-19-180436.sql` (168K). Verified live: served bundle `main-QTCODHTI.js`, service active
+(new PID 98513), Flyway "Successfully validated 64 migrations … up to date. No migration necessary" (baseline V64),
+HTTPS root 200. The two `Exception` lines in the journal are the old JVM's logback shutdown-hook noise (PID 97197),
+not startup errors.
+- **Correction to an earlier claim in this file:** two features previously described as shipped were NOT implemented —
+  multiple payment screenshots and delivered-date GL posting. Both are built below. Verify status against the code,
+  not a prior summary.
+
+## Multiple payment screenshots per order (V65) — implemented
+An order could carry exactly ONE payment proof (`orders.payment_screenshot_key`, VARCHAR(512), V1). Salespeople
+routinely have several — a part payment plus the balance, a UPI receipt plus a bank confirmation, or two screenshots
+because the transaction didn't fit one screen — and had to pick one and drop the rest.
+- **Migration V65** (`V65__order_payment_screenshots.sql`, **highest migration is now V65**): new
+  `order_payment_screenshots` (order_id FK, `storage_key` UNIQUE, filename, content_type, byte_size, sort_order,
+  created_at; index on (order_id, sort_order)) + a **backfill** that inserts every existing
+  `orders.payment_screenshot_key` as sort_order 0, so historical orders don't appear to lose their proof. Additive.
+- **Uniqueness is `UNIQUE(order_id, storage_key)`, NOT `UNIQUE(storage_key)`.** First draft had the global form;
+  changed because the staged-upload API hands the client an opaque key and nothing stops it being submitted with
+  two different orders — a global unique would abort Flyway on real data and turn a harmless client repeat into a
+  500 at order creation. The backfill's NOT-EXISTS guard is scoped to the order for the same reason.
+- **Design choice — legacy column KEPT as the primary proof.** `orders.payment_screenshot_key` still holds the FIRST
+  proof, so nothing on the existing read path had to change: `PaymentCalculator.requireScreenshotWhenPaid` (pinned by
+  `PaymentScreenshotPropertyTest`, signature untouched), the `paymentScreenshotAvailable` booleans on OrderResponse /
+  ApprovalQueueItemResponse / PaymentQueueRow, the legacy `GET /api/orders/{id}/payment-screenshot`, the invoice and
+  admin-exception paths. `OrderEntity.addPaymentScreenshot(key,filename,contentType,byteSize)` mirrors index 0 onto it.
+- **`OrderResponse` deliberately NOT changed** — it's a 48-component record with THREE positional withers
+  (withQuikShip/withShipment/withCourierName); the UI calls the new list endpoint instead of needing a count.
+- Backend: `OrderPaymentScreenshot` entity + `OrderEntity.paymentScreenshots` `@OneToMany(@OrderBy sortOrder, id)`;
+  `CreateOrderRequest` gained component 19 `List<String> paymentScreenshotKeys` (@Size max 10, each ≤512) and
+  `LeadConvertRequest` the same (threaded through `LeadService.convert`); `OrderService.effectiveScreenshotKeys`
+  merges legacy-key-first + extras, de-duplicated, order preserved, and `populateAggregate` now takes the LIST
+  (attaches all, primary also goes on the `payments.screenshot_key` row). New `PaymentScreenshotResponse` DTO
+  (metadata only — the storage key is never exposed; clients address a proof by id).
+- Endpoints (roles unchanged: ACCOUNTANT/ADMIN/PAYMENT_VERIFIER/CA): `GET /api/orders/{id}/payment-screenshots`
+  (list, empty list rather than 404 — no proofs is normal for COD) and `GET /api/orders/{id}/payment-screenshots/
+  {screenshotId}` (inline bytes; the proof must belong to that order or it's a 404, so the path order id is enforced).
+  Extracted a shared `streamInline(...)` helper in `OrderController`. **Upload is unchanged** — the frontend calls the
+  existing single-file `POST /api/orders/payment-screenshots` once per file, so there's no new upload code and the
+  12MB `max-request-size` cap can't be hit by a batch.
+- Frontend: New Order holds a `screenshots` array (`ScreenshotAttachment[]`) with `multiple` file input that APPENDS
+  on each pick; per-file upload so one failure is isolated and individually removable/retryable; per-file thumbnail +
+  Primary badge; `screenshotKey()` is now a computed (first successful) so step validation/submit/draft paths were
+  untouched, `extraScreenshotKeys()` feeds `paymentScreenshotKeys`. Order drawer and Payment Verification both
+  enumerate then fetch all proofs (`forkJoin` + per-proof `catchError` so one bad object doesn't hide the rest) with a
+  graceful fallback to the legacy single endpoint.
+- **NOT done (deliberate, flagged):** no storage GC for abandoned uploads. `StorageService` has **no delete method**
+  on the interface or any of its 3 impls, and there's no staging/TTL/sweeper anywhere — so GC means adding `delete` to
+  Local/DB/S3 plus a claim table and a scheduled sweep. The pre-existing single-proof flow already orphans on abandon
+  and on replace; multi-proof makes it more likely but does not introduce it. Separate piece of work.
+
+## Delivered-date GL posting — COD collection now hits the ledger (no migration) — implemented
+**Real bug found and fixed.** Only four things ever published a `LEDGER_POST`: ORDER (admin approval),
+PURCHASE_ORDER, EXPENSE, PAYMENT (prepaid payment *verification*). **Nothing fired on delivery.** So for a COD order
+the sales voucher debited Sundry Debtors for the full gross and *nothing ever credited it back* when the cash was
+collected — Sundry Debtors grew with every delivered COD order and Cash stayed understated indefinitely. The PAYMENT
+source doesn't cover it because a pure-COD order never goes through payment verification.
+- New `SourceType.ORDER_DELIVERY`. It must be a SEPARATE source type from `ORDER` even though both key off an order
+  id: the idempotency key is `(source_type, source_id)`, unique on both `vouchers` (`uq_vouchers_source`) and
+  `ledger_source_postings`, so reusing `ORDER` would collide with that order's sales voucher.
+- `LedgerAutoPostingService.buildDeliveryReceiptDraft`: `RECEIPT` voucher, **Dr Cash / Cr Sundry Debtors** for the COD
+  amount, dated **the delivery date** — `deliveredDateOf(order)` takes the LATEST status-history row into `DELIVERED`
+  (a redispatched order can be delivered twice), falling back to the `COD_COLLECTED`/`CLOSED` settlement row and then
+  to `createdAt`. This is the second source after EXPENSE (`incurredOn`) to use a real business date instead of
+  order-entry/now.
+- Published from both delivery paths, in the same transaction as the settlement: `ManualDeliveryService.deliverAndSettle`
+  (in-house) and `CourierStatusApplier.applyDelivered` (QuikShipX). Both guard on `codAmount > 0`, so a prepaid order
+  posts nothing. Source key is a local `LEDGER_SOURCE_ORDER_DELIVERY = "ORDER_DELIVERY"` literal in each, matching the
+  existing convention (`AdminOrderService.LEDGER_SOURCE_ORDER`) that keeps order/courier from depending on ledger.
+- **Revenue- and GST-neutral by design:** it touches only the cash/debtors side, so the CA's GST returns, the SALES
+  voucher and `GST_OUTPUT` are all unchanged. Revenue recognition stays at invoice/approval date, which is also the
+  correct GST time-of-supply treatment — deliberately NOT moved to delivery.
+- **Known simplification (documented in the code):** it books straight to Cash. Exact for in-house delivery (Shifa's
+  own person takes the cash); for a courier delivery the courier holds the float, so strictly there's an intermediate
+  "COD receivable from courier" leg. The V55 seed has no control ledger for that float and the reconciliation module
+  already tracks the courier receivable separately, so that leg is not modelled. Adding it = new control account
+  (seed migration) + a second posting on courier remittance.
+- Test `ledger/autopost/DeliveryReceiptPostingTest` (4 cases): receipt dated the delivery date (asserted ≠ order-entry
+  date), redispatch uses the most recent delivery, settlement-row date fallback, prepaid order rejects. Uses the
+  established harness — repository *interfaces* Mockito-mocked, real `ControlAccountResolver`, `FixedSettingsService`
+  recording subclass (Java 25 can't mock concretes), `DoubleEntry.validate` as the balance oracle, reflection for
+  JPA-generated ids and the DB-filled `changedAt`/`createdAt`.
+
+## DEPLOYED to EC2 (2026-09-19, 19:18) — V65 multi-screenshot + delivered-date ledger posting
+`deploy\push-to-new-server.ps1` (full build) → `ubuntu@15.252.230.73`. Backup
+`~/shifa-backup-2026-09-19-191821.sql` (168K). Bundle `main-LJXKW55S.js`.
+- Pre-deploy validation: backend `mvn clean test` **756 tests, 0 failures** (was 752); admin build clean; V65
+  validated by a REAL local boot (Flyway v64→v65 + `Initialized JPA EntityManagerFactory`, i.e. `ddl-auto: validate`
+  accepted the new entity).
+- Live verification: Flyway "validated 65 migrations / Current version 64 / Migrating to 65 / Successfully applied 1
+  migration, now at v65"; "Tomcat started on port 8080"; "Started Application in 24.194 seconds"; `NRestarts=0`;
+  HTTPS root 200; `/api/states` 401; **`/api/orders/1/payment-screenshots` 401** (new endpoint wired + auth-enforced).
+- Production schema confirmed via `deploy/check-v65.sh` (kept — reusable, sources the root-only shifa.env): flyway
+  max=65; all 8 columns present; indexes = `uq_order_payment_screenshots_order_key` UNIQUE(order_id, storage_key) +
+  `ix_order_payment_screenshots_order`(order_id, sort_order); **backfill exact: 13 proof rows for 13 orders carrying
+  a legacy key** — no proof lost or duplicated.
+- Gotcha: curling the new endpoint immediately after restart returned **502** because the app was still inside its
+  ~24s boot window. Re-check after startup completes before concluding anything is broken.
+- Harmless noise unchanged: `-Xmx640m: command not found` while the backup script sources shifa.env.
+
+## TOOLING LESSONS (2026-09-19) — cost real time this session, do not repeat
+1. **Never run two Maven builds at once.** Overlapping `mvn` on the same `backend/target` produced
+   `NoClassDefFoundError: com/shifa/oms/ledger/autopost/LedgerAutoPostingService$1` (the synthetic enum-switch map
+   class) and 4 spurious test failures that looked like real code defects. `list_processes` + stop everything before
+   starting a build. Background terminals also linger as "running" long after their command finished.
+2. **`EndpointRoleGuardIntegrationTest` does NOT validate a migration.** It boots a SLICED context with stubbed
+   repositories (hence its "…repository is null" warnings) and never runs Flyway. To validate a migration locally use
+   `mvn -f "backend/pom.xml" -DskipTests spring-boot:run` and read the log for the Flyway lines AND
+   `Initialized JPA EntityManagerFactory` (that line is the `ddl-auto: validate` pass). A local port-8080 clash from a
+   running dev server fails the boot AFTER schema validation, so it does not invalidate the check.
+3. **A real local boot migrates `shifa_dashboard`.** If you then EDIT that migration you get a Flyway checksum
+   mismatch on the next boot. Repair: `DROP TABLE <new table>; DELETE FROM flyway_schema_history WHERE version='NN';`
+4. **Reliable command output:** `<cmd> > backend\x.txt 2>&1` then read the file. Writing under `deploy\`
+   intermittently produced no file this session; `backend\` worked. Never pipe to `more`/`findstr | more` — a stray
+   pager blocks the shared console and every later command returns empty.
+5. MySQL CLI: `"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -uroot -proot@123 -e "..."`.

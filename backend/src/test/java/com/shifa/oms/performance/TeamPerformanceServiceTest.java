@@ -121,7 +121,10 @@ class TeamPerformanceServiceTest {
         assertThat(res.leaderboard()).isEmpty();
         assertThat(res.leadSources()).isEmpty();
         assertThat(res.topSource()).isNull();
-        assertThat(res.topPerformerName()).isNull();
+        assertThat(res.period()).isNotNull();
+        assertThat(res.period().orders()).isZero();
+        assertThat(res.work()).isNotNull();
+        assertThat(res.coachingFlags()).isEmpty();
         assertThat(res.leadConversionRate()).isZero();
     }
 }

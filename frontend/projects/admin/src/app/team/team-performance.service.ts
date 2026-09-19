@@ -18,6 +18,11 @@ export interface TeamMemberPerformance {
   failedCount: number;
   successRate: number;
   codOutstanding: string;
+  ordersInPeriod: number;
+  revenueInPeriod: string;
+  averageOrderValue: string;
+  rtoCount: number;
+  dueFollowUps: number;
 }
 
 /** Per-source lead conversion for the team (mirrors backend TeamSourceConversion). */
@@ -26,6 +31,59 @@ export interface TeamSourceConversion {
   leads: number;
   won: number;
   conversionRate: number;
+}
+
+export interface TeamPeriodSummary {
+  from: string;
+  to: string;
+  previousFrom: string;
+  previousTo: string;
+  orders: number;
+  revenue: string;
+  averageOrderValue: string;
+  previousOrders: number;
+  previousRevenue: string;
+  ordersToday: number;
+  revenueToday: string;
+  failed: number;
+  rto: number;
+  customerOutstanding: string;
+  pendingPaymentCount: number;
+  pendingPaymentAmount: string;
+  followUpsDue: number;
+  target: string;
+  targetAchieved: string;
+  targetProgressPct: number | null;
+}
+
+export interface TeamWorkSummary {
+  pendingApproval: number;
+  pendingPaymentVerification: number;
+  failedDelivery: number;
+  rto: number;
+  followUpsDue: number;
+  inactiveMembers: number;
+  ordersWithoutRecentActivity: number;
+}
+
+export interface TeamCoachingFlag {
+  salespersonId: number;
+  salespersonName: string;
+  type: string;
+  severity: string;
+  title: string;
+  detail: string;
+}
+
+export interface TeamOrderRow {
+  id: number;
+  orderCode: string;
+  customerName: string;
+  salespersonName: string;
+  totalAmount: string;
+  orderStatus: string;
+  paymentStatus: string | null;
+  createdAt: string | null;
 }
 
 /** The team-lead performance rollup (mirrors backend TeamPerformanceResponse). */
@@ -46,6 +104,14 @@ export interface TeamPerformance {
   topSource: string | null;
   leaderboard: TeamMemberPerformance[];
   leadSources: TeamSourceConversion[];
+  period: TeamPeriodSummary | null;
+  work: TeamWorkSummary | null;
+  coachingFlags: TeamCoachingFlag[];
+  ownPerformance: TeamMemberPerformance | null;
+  ownPeriod: TeamPeriodSummary | null;
+  combinedPeriod: TeamPeriodSummary | null;
+  ownOrders: TeamOrderRow[];
+  teamOrders: TeamOrderRow[];
 }
 
 /** Safe, work-relevant profile information for a Team Lead's direct report. */
@@ -103,8 +169,12 @@ export interface DirectReportPerformance {
 export class TeamPerformanceService {
   private readonly api = inject(ApiClient);
 
-  performance(): Observable<TeamPerformance> {
-    return this.api.get<TeamPerformance>('/api/team/performance');
+  performance(from?: string, to?: string): Observable<TeamPerformance> {
+    const params: Record<string, string> = {};
+    if (from) params['from'] = from;
+    if (to) params['to'] = to;
+    return this.api.get<TeamPerformance>('/api/team/performance',
+      Object.keys(params).length ? { params } : undefined);
   }
 
   /** Detailed performance for one authorised direct report (max 60 daily points). */

@@ -39,7 +39,9 @@ public record OrderReportRecord(
         String codSettlementStatus,
         String claimStatus,
         String awb,
-        LeadSource leadSource) {
+        LeadSource leadSource,
+        /** Persisted customer balance; null means legacy projection fallback. */
+        BigDecimal customerOutstanding) {
 
     public OrderReportRecord {
         products = products == null ? List.of() : List.copyOf(products);
@@ -72,7 +74,31 @@ public record OrderReportRecord(
             String awb) {
         this(orderId, orderCode, orderDate, salespersonId, customerName, customerMobile, state,
                 products, totalAmount, amountReceived, codAmount, paymentStatus, orderStatus,
-                codSettlementStatus, claimStatus, awb, null);
+                codSettlementStatus, claimStatus, awb, null, null);
+    }
+
+    /** Backwards-compatible constructor for callers that already provide a lead source. */
+    public OrderReportRecord(
+            Long orderId,
+            String orderCode,
+            LocalDate orderDate,
+            Long salespersonId,
+            String customerName,
+            String customerMobile,
+            String state,
+            List<ProductLine> products,
+            BigDecimal totalAmount,
+            BigDecimal amountReceived,
+            BigDecimal codAmount,
+            PaymentStatus paymentStatus,
+            OrderStatus orderStatus,
+            String codSettlementStatus,
+            String claimStatus,
+            String awb,
+            LeadSource leadSource) {
+        this(orderId, orderCode, orderDate, salespersonId, customerName, customerMobile, state,
+                products, totalAmount, amountReceived, codAmount, paymentStatus, orderStatus,
+                codSettlementStatus, claimStatus, awb, leadSource, null);
     }
 
     private static BigDecimal nz(BigDecimal v) {

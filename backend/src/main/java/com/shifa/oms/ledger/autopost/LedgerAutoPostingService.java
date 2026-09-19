@@ -18,7 +18,9 @@ import com.shifa.oms.ledger.domain.VoucherType;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderRepository;
+import com.shifa.oms.order.OrderStatusHistory;
 import com.shifa.oms.order.domain.PaymentStatus;
+import com.shifa.oms.statemachine.OrderStatus;
 import com.shifa.oms.procurement.PurchaseOrder;
 import com.shifa.oms.procurement.PurchaseOrderRepository;
 import com.shifa.oms.settings.SettingsService;
@@ -121,6 +123,7 @@ public class LedgerAutoPostingService {
             case PURCHASE_ORDER -> buildPurchaseDraft(sourceId);
             case EXPENSE -> buildExpenseDraft(sourceId);
             case PAYMENT -> buildReceiptDraft(sourceId);
+            case ORDER_DELIVERY -> buildDeliveryReceiptDraft(sourceId);
         };
     }
 
@@ -252,6 +255,84 @@ public class LedgerAutoPostingService {
 
         String narration = "Customer receipt for order " + describe(order.getOrderCode(), paymentId);
         return new DraftVoucher(VoucherType.RECEIPT, dateOf(order.getCreatedAt()), narration, lines);
+    }
+
+    // --- Delivery receipt (COD collected on delivery) ------------------------
+
+    /**
+     * Receipt voucher for the COD cash collected when an order was DELIVERED, dated the DELIVERY date
+     * rather than the order-entry date: debit Cash and credit Sundry Debtors for the COD amount.
+     *
+     * <p>This closes the accounting loop for a COD order. The sales voucher posted at approval debits
+     * Sundry Debtors for the full gross (a COD order is not paid at entry), and nothing else ever credits
+     * that balance back — so without this posting Sundry Debtors accumulates every COD order ever
+     * delivered while Cash stays understated. The {@code PAYMENT} source does not cover it: that fires on
+     * prepaid payment VERIFICATION, which never happens for a pure-COD order.
+     *
+     * <p>The voucher date is the day the order actually reached {@code DELIVERED}, taken from the order's
+     * status history, so the collection lands in the period it occurred in (the point of this source).
+     *
+     * <p>Scope note: this books the collection straight to Cash. That is exact for an in-house delivery,
+     * where Shifa's own person takes the cash. For a courier delivery the courier holds the cash until it
+     * remits, so strictly there is a short-lived "COD receivable from courier" step; the V55 seed has no
+     * control ledger for that float and the reconciliation module already tracks the courier receivable
+     * separately, so the intermediate leg is deliberately not modelled here.
+     */
+    private DraftVoucher buildDeliveryReceiptDraft(Long orderId) {
+        OrderEntity order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order " + orderId + " was not found."));
+
+        BigDecimal collected = scale(nz(order.getCodAmount()));
+        if (collected.signum() <= 0) {
+            // Nothing was collected on delivery (a prepaid order): there is no receipt to post. The
+            // publisher only enqueues this source for orders carrying a COD amount, so this is a
+            // defensive guard rather than an expected path.
+            throw new ValidationException(
+                    "Order " + describe(order.getOrderCode(), orderId)
+                            + " collected no COD on delivery, so there is no delivery receipt to post.");
+        }
+
+        List<PostingLine> lines = new ArrayList<>();
+        lines.add(debit(ControlAccount.CASH, collected));
+        lines.add(credit(ControlAccount.SUNDRY_DEBTORS, collected));
+
+        String narration = "COD collected on delivery of order " + describe(order.getOrderCode(), orderId);
+        return new DraftVoucher(VoucherType.RECEIPT, deliveredDateOf(order), narration, lines);
+    }
+
+    /**
+     * The date an order was delivered, from its status history — the LATEST transition into
+     * {@code DELIVERED} (an order that was redispatched can be delivered more than once, and the most
+     * recent delivery is the one being settled).
+     *
+     * <p>Falls back to the settlement transition ({@code COD_COLLECTED} / {@code CLOSED}) when no
+     * {@code DELIVERED} row carries a timestamp, and finally to the order's creation date, so a voucher
+     * always has a usable business date instead of failing to post.
+     */
+    private static LocalDate deliveredDateOf(OrderEntity order) {
+        LocalDateTime delivered = latestTransitionInto(order, OrderStatus.DELIVERED);
+        if (delivered != null) {
+            return delivered.toLocalDate();
+        }
+        LocalDateTime settled = latestTransitionInto(order, OrderStatus.COD_COLLECTED);
+        if (settled == null) {
+            settled = latestTransitionInto(order, OrderStatus.CLOSED);
+        }
+        return settled != null ? settled.toLocalDate() : dateOf(order.getCreatedAt());
+    }
+
+    /** The timestamp of the most recent status-history row transitioning into {@code target}. */
+    private static LocalDateTime latestTransitionInto(OrderEntity order, OrderStatus target) {
+        LocalDateTime latest = null;
+        for (OrderStatusHistory history : order.getStatusHistory()) {
+            if (history.getToStatus() != target || history.getChangedAt() == null) {
+                continue;
+            }
+            if (latest == null || history.getChangedAt().isAfter(latest)) {
+                latest = history.getChangedAt();
+            }
+        }
+        return latest;
     }
 
     // --- Control-ledger resolution + line helpers ----------------------------

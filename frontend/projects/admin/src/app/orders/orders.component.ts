@@ -3,7 +3,15 @@ import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute } from '@angular/router';
-import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
+import {
+  Subject,
+  catchError,
+  debounceTime,
+  distinctUntilChanged,
+  forkJoin,
+  of,
+  takeUntil,
+} from 'rxjs';
 import { RouterLink } from '@angular/router';
 import { AuthService, Money, OrderStatus, PaymentStatus, Role, SortDir, SortState } from 'core';
 import { OrdersService } from './orders.service';
@@ -532,9 +540,13 @@ export class OrdersComponent implements OnInit, OnDestroy {
   /** Busy flag for single-order lifecycle actions in the detail drawer. */
   protected readonly detailBusy = signal(false);
 
-  // --- Payment screenshot (admin/accountant review) -----------------------
-  /** Object URL of the fetched payment screenshot for the open order, if any. */
-  protected readonly screenshotUrl = signal<string | null>(null);
+  // --- Payment screenshots (admin/accountant review) ----------------------
+  /**
+   * Object URLs of every payment proof fetched for the open order, in upload
+   * order (V65). An order may have several — a part payment plus the balance, or
+   * a UPI receipt plus a bank confirmation — so the reviewer sees all of them.
+   */
+  protected readonly screenshotUrls = signal<string[]>([]);
   protected readonly screenshotLoading = signal(false);
   /** True when a screenshot was expected but could not be fetched. */
   protected readonly screenshotMissing = signal(false);
@@ -1181,9 +1193,15 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Fetches the order's payment screenshot as a blob (admin/accountant only) so
-   * the reviewer can approve/reject based on the proof of payment. No-op when the
-   * role can't view it or the order has no screenshot.
+   * Fetches EVERY payment proof for the order as blobs (admin/accountant only) so
+   * the reviewer can approve/reject against all the proof on file (V65). No-op
+   * when the role can't view them.
+   *
+   * <p>Enumerates the proofs first, then fetches each one. A proof whose bytes
+   * cannot be loaded is skipped rather than failing the whole set, so one broken
+   * object never hides the others. If the listing itself fails we fall back to the
+   * legacy single-proof endpoint, which keeps the drawer working against an order
+   * whose proofs predate V65.
    */
   private loadScreenshot(order: OrderDetail): void {
     this.revokeScreenshot();
@@ -1191,15 +1209,45 @@ export class OrdersComponent implements OnInit, OnDestroy {
     if (!this.canViewScreenshot()) {
       return;
     }
-    // Always attempt the fetch for admin/accountant rather than trusting the
-    // `paymentScreenshotAvailable` flag alone: the flag can be stale (e.g. an
-    // order whose screenshot was stored under a different storage provider), so
-    // we ask the server and let the response decide. A 404 (no screenshot) shows
-    // the neutral empty state; any other error shows the "could not load" note.
+    // Always ask the server rather than trusting the `paymentScreenshotAvailable`
+    // flag alone: the flag can be stale (e.g. an order whose screenshot was stored
+    // under a different storage provider), so we let the response decide. No proofs
+    // shows the neutral empty state; a genuine failure shows "could not load".
     this.screenshotLoading.set(true);
+    this.service.paymentScreenshots(order.id).subscribe({
+      next: (shots) => {
+        if (shots.length === 0) {
+          this.screenshotLoading.set(false);
+          return;
+        }
+        forkJoin(
+          shots.map((shot) =>
+            this.service
+              .paymentScreenshotById(order.id, shot.id)
+              .pipe(catchError(() => of(null))),
+          ),
+        ).subscribe((blobs) => {
+          const urls = blobs
+            .filter((blob): blob is Blob => blob !== null)
+            .map((blob) => URL.createObjectURL(blob));
+          this.screenshotUrls.set(urls);
+          // Every proof was listed but none could be fetched — a real failure.
+          this.screenshotMissing.set(urls.length === 0);
+          this.screenshotLoading.set(false);
+        });
+      },
+      error: () => this.loadLegacyScreenshot(order),
+    });
+  }
+
+  /**
+   * Fallback to the pre-V65 single-proof endpoint when the proof listing is
+   * unavailable, so the drawer still shows the primary screenshot.
+   */
+  private loadLegacyScreenshot(order: OrderDetail): void {
     this.service.paymentScreenshot(order.id).subscribe({
       next: (blob) => {
-        this.screenshotUrl.set(URL.createObjectURL(blob));
+        this.screenshotUrls.set([URL.createObjectURL(blob)]);
         this.screenshotLoading.set(false);
       },
       error: (err) => {
@@ -1210,13 +1258,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Revokes and clears any object URL held for the payment screenshot. */
+  /** Revokes and clears every object URL held for the payment proofs. */
   private revokeScreenshot(): void {
-    const url = this.screenshotUrl();
-    if (url) {
+    for (const url of this.screenshotUrls()) {
       URL.revokeObjectURL(url);
     }
-    this.screenshotUrl.set(null);
+    this.screenshotUrls.set([]);
   }
 
   // --- Order-detail presentation helpers (mobile redesign) ---------------

@@ -161,7 +161,9 @@ public class ReportService {
                     || o.orderStatus() == com.shifa.oms.statemachine.OrderStatus.REJECTED;
             if (!writtenOff) {
                 received = received.add(o.amountReceived());
-                BigDecimal balance = o.totalAmount().subtract(o.amountReceived());
+                BigDecimal balance = o.customerOutstanding() != null
+                        ? o.customerOutstanding()
+                        : o.totalAmount().subtract(o.amountReceived());
                 if (balance.signum() > 0) {
                     outstanding = outstanding.add(balance);
                 }
@@ -265,7 +267,8 @@ public class ReportService {
                 codStatus,
                 claimStatus,
                 awb,
-                o.getLeadSource());
+                o.getLeadSource(),
+                o.getCustomerOutstanding());
     }
 
     /**

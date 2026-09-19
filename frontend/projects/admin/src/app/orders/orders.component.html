@@ -770,14 +770,35 @@
         <!-- (8b) Payment screenshot (admin/accountant) — proof for approve/reject -->
         @if (canViewScreenshot()) {
           <div class="shifa-od__section">
-            <div class="shifa-od__label mb-2"><i class="ti ti-photo me-1"></i>Payment Screenshot</div>
+            <div class="shifa-od__label mb-2">
+              <i class="ti ti-photo me-1"></i>Payment Screenshot@if (screenshotUrls().length > 1) {
+                <span>s</span>
+                <span class="badge bg-blue-lt ms-2">{{ screenshotUrls().length }}</span>
+              }
+            </div>
             <div class="shifa-od__card">
               @if (screenshotLoading()) {
                 <div class="skeleton" style="height: 180px; border-radius: 8px"></div>
-              } @else if (screenshotUrl(); as url) {
-                <a [href]="url" target="_blank" rel="noopener">
-                  <img class="img-fluid rounded border w-100" [src]="url" alt="Payment screenshot" />
-                </a>
+              } @else if (screenshotUrls().length > 0) {
+                <div class="d-flex flex-column gap-2">
+                  @for (url of screenshotUrls(); track url) {
+                    <div>
+                      @if (screenshotUrls().length > 1) {
+                        <div class="shifa-od__muted small mb-1">
+                          Proof {{ $index + 1 }} of {{ screenshotUrls().length }}
+                          @if ($first) { <span class="badge bg-green-lt ms-1">Primary</span> }
+                        </div>
+                      }
+                      <a [href]="url" target="_blank" rel="noopener">
+                        <img
+                          class="img-fluid rounded border w-100"
+                          [src]="url"
+                          [alt]="'Payment screenshot ' + ($index + 1)"
+                        />
+                      </a>
+                    </div>
+                  }
+                </div>
               } @else {
                 <div class="shifa-od__muted d-flex align-items-center">
                   <i class="ti ti-photo-off me-1"></i>

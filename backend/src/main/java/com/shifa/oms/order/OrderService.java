@@ -20,6 +20,7 @@ import com.shifa.oms.order.dto.DuplicateCheckResponse;
 import com.shifa.oms.order.dto.LineItemRequest;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
+import com.shifa.oms.order.dto.PaymentScreenshotResponse;
 import com.shifa.oms.order.dto.UpdateOrderRequest;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.platform.storage.StorageService;
@@ -152,8 +153,13 @@ public class OrderService {
         requirePositiveTotal(total);
 
         Money received = Money.of(request.amountReceived());
-        // Enforce screenshot-required rule before computing/persisting (Req 7.6).
-        PaymentCalculator.requireScreenshotWhenPaid(received, request.paymentScreenshotKey());
+        // Resolve the full ordered set of payment proofs (V65): the legacy single key
+        // followed by any additional keys, de-duplicated. The first is the primary
+        // proof. Sending only paymentScreenshotKey behaves exactly as before.
+        List<String> screenshotKeys = effectiveScreenshotKeys(request);
+        // Enforce screenshot-required rule before computing/persisting (Req 7.6). The
+        // rule is satisfied by ANY attached proof, so the primary key is the subject.
+        PaymentCalculator.requireScreenshotWhenPaid(received, primaryKey(screenshotKeys));
         // A fully-paid amount may have carried paise before the total was rounded
         // down; absorb ONLY that sub-rupee overage so a valid full payment isn't
         // rejected. A genuine over-payment (>= ₹1 above the total) still falls
@@ -205,7 +211,7 @@ public class OrderService {
             order.markPaymentPendingVerification();
         }
 
-        populateAggregate(order, priced, calc, request.paymentScreenshotKey(),
+        populateAggregate(order, priced, calc, screenshotKeys,
                 actor.username(), SOURCE_SALESPERSON);
 
         // Snapshot the order-level discount (type + raw value + resolved amount)
@@ -570,6 +576,45 @@ public class OrderService {
                         "The payment screenshot for order " + id + " could not be found."));
     }
 
+    /**
+     * Lists every payment proof attached to an order, in upload order (V65).
+     *
+     * <p>Returns metadata only; the bytes are streamed per proof by
+     * {@link #getPaymentScreenshot(Long, Long)}. Orders that predate V65 have their
+     * single legacy proof backfilled as the primary one, so this never regresses a
+     * historical order to "no proof". An order with no proof yields an empty list
+     * rather than a 404 — the absence of proofs is a normal state (pure COD).
+     */
+    @Transactional(readOnly = true)
+    public List<PaymentScreenshotResponse> listPaymentScreenshots(Long id) {
+        OrderEntity order = orderRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Order " + id + " does not exist."));
+        return order.getPaymentScreenshots().stream()
+                .map(PaymentScreenshotResponse::from)
+                .toList();
+    }
+
+    /**
+     * Loads one specific payment proof of an order by its id (V65).
+     *
+     * <p>The proof must belong to the given order; a proof id from another order
+     * yields a 404 rather than leaking it, so the order id in the path is an
+     * enforced part of the lookup and not merely decorative.
+     */
+    @Transactional(readOnly = true)
+    public StorageService.StoredObject getPaymentScreenshot(Long id, Long screenshotId) {
+        OrderEntity order = orderRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Order " + id + " does not exist."));
+        OrderPaymentScreenshot screenshot = order.getPaymentScreenshots().stream()
+                .filter(s -> s.getId() != null && s.getId().equals(screenshotId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Payment screenshot " + screenshotId + " does not exist for order " + id + "."));
+        return storageService.load(screenshot.getStorageKey())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "The payment screenshot for order " + id + " could not be found."));
+    }
+
     // --- Internal helpers ---------------------------------------------------
 
     /**
@@ -690,9 +735,42 @@ public class OrderService {
         }
     }
 
-    /** Fills line items, amounts, initial status, screenshot key, and the creation history row. */
+    /**
+     * The ordered, de-duplicated set of payment proofs for a new order (V65): the
+     * legacy single {@code paymentScreenshotKey} first (so it stays the primary
+     * proof), then any additional {@code paymentScreenshotKeys}. Null/blank entries
+     * are dropped. An order with no proofs yields an empty list.
+     */
+    private static List<String> effectiveScreenshotKeys(CreateOrderRequest request) {
+        List<String> keys = new ArrayList<>();
+        addKey(keys, request.paymentScreenshotKey());
+        if (request.paymentScreenshotKeys() != null) {
+            for (String extra : request.paymentScreenshotKeys()) {
+                addKey(keys, extra);
+            }
+        }
+        return keys;
+    }
+
+    /** Appends a trimmed, non-blank, not-already-present key. */
+    private static void addKey(List<String> keys, String key) {
+        if (key == null || key.isBlank()) {
+            return;
+        }
+        String trimmed = key.trim();
+        if (!keys.contains(trimmed)) {
+            keys.add(trimmed);
+        }
+    }
+
+    /** The primary (first) proof of an ordered proof set, or null when there are none. */
+    private static String primaryKey(List<String> screenshotKeys) {
+        return screenshotKeys.isEmpty() ? null : screenshotKeys.get(0);
+    }
+
+    /** Fills line items, amounts, initial status, payment proofs, and the creation history row. */
     private void populateAggregate(OrderEntity order, List<PricedLine> priced,
-                                   PaymentCalculation calc, String screenshotKey,
+                                   PaymentCalculation calc, List<String> screenshotKeys,
                                    String actor, String source) {
         for (PricedLine line : priced) {
             order.addLineItem(line.toEntity());
@@ -706,10 +784,19 @@ public class OrderService {
         // Amount the customer still owes at creation equals the COD amount.
         order.setCustomerOutstanding(calc.codAmount().toBigDecimal());
         order.setOrderStatus(OrderStatus.INITIAL);
-        order.setPaymentScreenshotKey(screenshotKey);
+        // Attach every payment proof in upload order (V65). The first one is mirrored
+        // onto the legacy orders.payment_screenshot_key column by the aggregate, so
+        // the screenshot-required rule and the paymentScreenshotAvailable projections
+        // keep working unchanged. Filename / MIME type / size are not known here (the
+        // upload was staged earlier and yields only an opaque key), so they stay null
+        // and the read path takes them from the storage layer.
+        for (String key : screenshotKeys) {
+            order.addPaymentScreenshot(key, null, null, null);
+        }
 
         if (!calc.amountReceived().isZero()) {
-            order.addPayment(new OrderPayment(calc.amountReceived().toBigDecimal(), screenshotKey));
+            order.addPayment(
+                    new OrderPayment(calc.amountReceived().toBigDecimal(), primaryKey(screenshotKeys)));
         }
 
         // Creation history row: null from-status → initial status (Req 8.2, 8.4).

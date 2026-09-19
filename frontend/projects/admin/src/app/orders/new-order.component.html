@@ -591,41 +591,76 @@
       </div>
 
       <div>
-        <label class="form-label" [class.required]="screenshotRequired()">Payment screenshot</label>
+        <label class="form-label" [class.required]="screenshotRequired()">Payment screenshots</label>
         @if (screenshotRequired()) {
-          <div class="form-hint mb-2">Required because an amount was received.</div>
+          <div class="form-hint mb-2">
+            Required because an amount was received. You can attach more than one — part
+            payment and balance, or a UPI receipt plus a bank confirmation.
+          </div>
         } @else {
-          <div class="form-hint mb-2">Optional when no amount is received.</div>
+          <div class="form-hint mb-2">
+            Optional when no amount is received. You can attach more than one.
+          </div>
         }
 
         <input
           type="file"
           class="form-control"
           accept="image/*"
+          multiple
           (change)="onScreenshotSelected($event)"
-          [disabled]="uploadState() === 'uploading'"
-          aria-label="Payment screenshot"
+          [disabled]="!canAddScreenshot()"
+          aria-label="Payment screenshots"
         />
+        @if (!canAddScreenshot()) {
+          <div class="form-hint mt-1">Maximum number of screenshots attached.</div>
+        } @else if (screenshots().length > 0) {
+          <div class="form-hint mt-1">
+            Choosing more files adds to the {{ screenshots().length }} already attached.
+          </div>
+        }
 
-        @if (uploadState() === 'uploading') {
-          <div class="d-flex align-items-center gap-2 mt-2 text-secondary">
-            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-            <span>Uploading {{ screenshotName() }}…</span>
-          </div>
-        } @else if (uploadState() === 'done') {
-          <div class="d-flex align-items-center gap-2 mt-2">
-            @if (screenshotPreview(); as url) {
-              <img [src]="url" alt="Payment screenshot" class="shifa-shot-thumb rounded border" />
+        @if (screenshots().length > 0) {
+          <ul class="list-unstyled mb-0 mt-2 d-flex flex-column gap-2">
+            @for (shot of screenshots(); track $index) {
+              <li class="d-flex align-items-center gap-2">
+                @if (shot.previewUrl) {
+                  <img
+                    [src]="shot.previewUrl"
+                    [alt]="'Payment screenshot ' + ($index + 1)"
+                    class="shifa-shot-thumb rounded border"
+                  />
+                }
+                <div class="flex-fill min-w-0">
+                  @if (shot.state === 'uploading') {
+                    <div class="text-secondary d-flex align-items-center gap-2">
+                      <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                      <span>Uploading…</span>
+                    </div>
+                  } @else if (shot.state === 'done') {
+                    <div class="text-success">
+                      <i class="ti ti-check me-1"></i>Uploaded
+                      @if ($index === 0) { <span class="badge bg-green-lt ms-1">Primary</span> }
+                    </div>
+                  } @else {
+                    <div class="text-danger"><i class="ti ti-alert-triangle me-1"></i>{{ shot.error }}</div>
+                  }
+                  <div class="text-secondary small text-truncate">{{ shot.name }}</div>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-ghost-danger"
+                  (click)="removeScreenshot($index)"
+                  [attr.aria-label]="'Remove ' + shot.name"
+                >
+                  <i class="ti ti-x"></i>
+                </button>
+              </li>
             }
-            <div class="flex-fill">
-              <div class="text-success"><i class="ti ti-check me-1"></i>Uploaded</div>
-              <div class="text-secondary small text-truncate">{{ screenshotName() }}</div>
-            </div>
-            <button type="button" class="btn btn-sm btn-ghost-danger" (click)="clearScreenshot()">
-              <i class="ti ti-x"></i>
-            </button>
-          </div>
-        } @else if (uploadState() === 'error') {
+          </ul>
+        }
+
+        @if (uploadError()) {
           <div class="text-danger small mt-2">{{ uploadError() }}</div>
         }
 

@@ -38,7 +38,7 @@ Shifa-Software/
 │  │  ├─ application.yml              # base config
 │  │  ├─ application-local.yml        # local profile (MySQL localhost, shifa_dashboard)
 │  │  ├─ application-prod.yml         # prod profile (env-driven)
-│  │  └─ db/migration/                # Flyway V1..V64 (see §6)
+│  │  └─ db/migration/                # Flyway V1..V65 (see §6)
 │  └─ pom.xml
 ├─ frontend/                    # Angular 21 workspace
 │  ├─ angular.json                    # projects: admin, core, ui
@@ -359,8 +359,14 @@ Migration history:
   history values to `REDISPATCH`, updates known user-facing admin-notification text and JSON outbox status/template
   payloads, and ensures immutable V22/V27 seed values also finish as `REDISPATCH`. The existing
   `CLAIM_RECEIVABLE`, cleared customer outstanding, and claim-required alert semantics are unchanged.
-- `V49`..`V64` — current GST/product/courier/in-house-delivery and failed-delivery-recovery additions. **V64 is the
-  highest migration.**
+- `V49`..`V64` — GST/product/courier/in-house-delivery and failed-delivery-recovery additions.
+- `V65__order_payment_screenshots.sql` — **multiple payment proofs per order**: new
+  `order_payment_screenshots` (order_id, `storage_key` UNIQUE, filename, content_type, byte_size,
+  sort_order, created_at) plus a backfill of every existing `orders.payment_screenshot_key` as the
+  order's first proof. Additive and backward compatible: `orders.payment_screenshot_key` is KEPT and
+  still holds the primary proof, so the screenshot-required rule, the `paymentScreenshotAvailable`
+  projections, and the original `GET /api/orders/{id}/payment-screenshot` endpoint are unchanged.
+  **V65 is the highest migration.**
 
 > Fresh DB required: because V22 seeds with explicit IDs, start against an **empty**
 > `shifa_dashboard`. If a half-migrated DB exists, drop & recreate it before starting.
@@ -416,5 +422,81 @@ Spring Boot started on `:8080`, `https://shifa.weblithic.online/` returned `200`
 - `feature/shifa-backend` — prior mainline.
 - `dashboard-only` — **current** working branch for the dashboard-only pivot.
 
-### Account-menu cosmetic fix (2026-09-17)
-The top-bar account popover had a contrast regression: the global dark-green navbar rule for `.shifa-navbar .btn-ghost-secondary` also matched the white popover's **My Profile** and **Take the tour** buttons, making their text/icons nearly invisible. The shell now explicitly resets `.shifa-usermenu__panel .btn-ghost-secondary` to dark readable text with green icons and visible hover/focus states. The menu markup and navigation behavior were unchanged. `npm --prefix frontend run build:admin` completes cleanly with no warnings/errors and produces `main-3565BROU.js`. The attached production screenshot still shows the old bundle; this cosmetic fix is local and **not deployed** yet.
+### Account-menu and PWA Install visibility fix (2026-09-17)
+The top-bar account popover had a contrast regression: the global dark-green navbar rule for `.shifa-navbar .btn-ghost-secondary` also matched the white popover's **My Profile** and **Take the tour** buttons. The final fix uses dedicated `.shifa-usermenu__action` styling with dark readable text, green icons, and visible hover/focus states. The app-bar **Install app** action is now always rendered before Offline, protected from flex shrinking, and opens the native prompt when available or the platform instructions otherwise. The menu/navigation behavior is unchanged.
+
+`npm --prefix frontend run build:admin` completed cleanly with no warnings/errors and produced `main-35QGUIYS.js`. Deployed via `deploy\push-to-new-server.ps1 -SkipBuild` on 2026-09-17. Backup: `~/shifa-backup-2026-09-17-160520.sql`. Live verification: service active, zero restarts, HTTPS root 200, `/api/states` 401, and served bundle `main-35QGUIYS.js`. If a browser still shows the pale old buttons, reload with Ctrl+Shift+R or clear the site's service-worker/cache storage once; the server is serving the new bundle.
+
+### Team Performance 360 — Phases 1–3 implemented & deployed (2026-09-19)
+The Team Lead performance page has been expanded beyond the five-card baseline shown in the client screenshots. This is additive and read-only; no migration was added and scope remains server-authoritative (`TEAM_LEAD` sees assigned salespeople only; `ADMIN` sees the whole sales force).
+- **Phase 1 operational view:** `/api/team/performance` accepts optional `from`/`to` dates (default current month) and returns selected-period orders, revenue, AOV, today values, previous-period comparison, failed/RTO outcomes, customer outstanding, pending payment amount/count, follow-ups due, and member-scoped target progress. The UI adds period chips/custom dates, action counters (approval/payment/follow-up/failed delivery), member search/health filters, expanded comparison columns, and a richer direct-report drawer with Overview/Activity/Orders tabs.
+- **Phase 2 management view:** the page includes revenue/previous-period/target cards, sortable-ready comparison data, explainable health status, CSV management export, and browser Print/PDF. The export is generated from the already scoped response and does not request or expose another team.
+- **Phase 3 coaching view:** read-only explainable coaching flags identify inactive members, no activity, follow-up backlog, and RTO/redispatch review priorities. No fake persisted coaching notes or task completion state was introduced; that remains a separate schema decision.
+- **Safety:** target totals are filtered by server-resolved member IDs; Team Lead self-punched orders remain excluded from manager performance rollups; direct-report profile privacy and existing 404 authorization behavior are unchanged.
+- **Validation + deployment:** backend clean suite **752 tests, 0 failures, 0 errors**; focused `TeamPerformanceServiceTest` 2/2; admin build clean with no warnings/errors, bundle `main-R2TNRM2U.js`. Deployed via `deploy\push-to-new-server.ps1 -SkipBuild` on 2026-09-19. Backup: `~/shifa-backup-2026-09-19-112045.sql` (168K). Live: service active, `NRestarts=0`, Flyway V64/no migration necessary, HTTPS root 200, `/api/states` 401, served bundle `main-R2TNRM2U.js`. If the old five-card page remains visible, clear the Angular service-worker/site cache once and reload.
+
+### Team Lead personal + team performance split (implemented locally, not deployed)
+Extended Team Performance so a `TEAM_LEAD` can distinguish their own punched orders from orders punched by assigned teammates:
+- Backend `TeamPerformanceResponse` now adds `ownPerformance`, `ownPeriod`, `combinedPeriod`, `ownOrders`, and `teamOrders`. The existing `leaderboard` and team period remain teammate-only; a Team Lead's own orders are loaded separately through the authenticated user id.
+- `TeamOrderRow` carries order code, customer, amount, status, date, and `salespersonName`. Team orders therefore identify the salesperson who punched each order; own-order rows are available in the My orders tab.
+- Frontend Team Performance adds **My orders / Team orders** tabs, separate **My performance** KPI cards, and teammate order rows with salesperson names. ADMIN continues to see the global team view without a personal Team Lead tab.
+- Existing Orders visibility semantics and server-side `teamMemberScope` are unchanged. This is additive/read-only, with no migration and no client-supplied team/user scope.
+- Validation: backend full suite **752 tests, 0 failures**; focused TeamPerformanceServiceTest passed; admin build clean → `main-FCBAQKDI.js`. **Not deployed** yet.
+
+### Reporting compatibility fix — `OrderReportRecord.customerOutstanding` (2026-09-19)
+Added the persisted `customerOutstanding` value to the pure reporting projection so Finance Outstanding and Payments reports distinguish customer dues from courier COD remittance. Legacy report-record constructors retain a fallback to `totalAmount - amountReceived`. Updated `DashboardMetricsService.toRecord()` to pass the new final field; this fixes the local Java constructor compilation error at `DashboardMetricsService.java:318` without changing payment or settlement invariants.
+
+### Second `OrderReportRecord` compatibility fix (2026-09-19)
+Added a backward-compatible constructor accepting the existing 17-argument shape that includes `LeadSource` while defaulting the newly added nullable `customerOutstanding` projection to `null`. This fixes report/property-test fixtures that pass `List.of()` plus a lead source without the new field; the compact report logic falls back to `totalAmount - amountReceived` for those legacy fixtures. Full backend validation: **752 tests, 0 failures, 0 errors**.
+
+### Multiple payment screenshots per order (V65)
+An order could previously carry exactly one payment proof. Salespeople routinely have several — a part
+payment plus the balance, a UPI receipt plus a bank confirmation, or two screenshots because the
+transaction did not fit one screen — and had to pick one and discard the rest.
+- **Capture:** the New Order payment step accepts multiple images and appends on each pick (up to 10 per
+  order). Each file uploads independently through the existing `POST /api/orders/payment-screenshots`, so
+  one slow or failed upload never blocks the others and a failed proof can be removed and retried on its
+  own. The first successful upload is labelled **Primary**.
+- **Review:** the order-detail drawer and the Payment Verification viewer both show every proof on file,
+  numbered, with the primary marked. A proof whose bytes cannot be loaded is skipped rather than hiding
+  the rest, and both surfaces fall back to the original single-proof endpoint if the listing is
+  unavailable.
+- **API:** `GET /api/orders/{id}/payment-screenshots` lists proof metadata (never the storage key — a
+  proof is addressed by id), and `GET /api/orders/{id}/payment-screenshots/{screenshotId}` streams one
+  inline. Both keep the existing ACCOUNTANT/ADMIN/PAYMENT_VERIFIER/CA gating; a proof id belonging to a
+  different order returns 404. `CreateOrderRequest`/`LeadConvertRequest` gained an optional
+  `paymentScreenshotKeys` list; sending only `paymentScreenshotKey` behaves exactly as before.
+- **Backward compatible by design:** `orders.payment_screenshot_key` still holds the primary proof, so
+  the screenshot-required rule, every `paymentScreenshotAvailable` projection, the invoice/approval
+  paths, and the original single-proof endpoint are untouched. Historical orders are backfilled as their
+  own first proof.
+- **Known gap (deliberate):** abandoned uploads are not garbage-collected. `StorageService` has no
+  delete operation on any of its three providers and there is no staging/TTL/sweeper, so adding GC is a
+  separate piece of work. The previous single-proof flow already orphaned objects on abandon and on
+  replace; multiple proofs make it more likely but do not introduce it.
+
+### Delivered-date ledger posting — COD collection now reaches the general ledger
+**Bug fixed.** Automatic ledger posting fired on order approval, purchase orders, expenses, and prepaid
+payment *verification* — but nothing fired on delivery. For a COD order the sales voucher debited Sundry
+Debtors for the full gross and nothing ever credited it back when the cash was collected, so Sundry
+Debtors grew with every delivered COD order while Cash stayed understated. The existing payment source
+could not cover it because a pure-COD order never goes through payment verification.
+- A new `ORDER_DELIVERY` posting source books the collection as a **Receipt voucher, Dr Cash / Cr Sundry
+  Debtors**, dated **the day the order was delivered** — taken from the order's status history (the most
+  recent transition into `DELIVERED`, since a redispatched order can be delivered twice), falling back to
+  the settlement row and then to the order date. It is a separate source type from `ORDER` because ledger
+  idempotency is keyed on `(source_type, source_id)`; reusing `ORDER` would collide with that order's own
+  sales voucher.
+- Published from both delivery paths in the same transaction as settlement — in-house
+  (`ManualDeliveryService`) and courier (`CourierStatusApplier`) — and skipped entirely when the order
+  carries no COD amount. As with every other ledger publish, the outbox row commits with the delivery and
+  a downstream posting failure can never roll back or alter the order.
+- **Revenue- and GST-neutral:** only the cash/debtors side is touched. Revenue recognition and GST output
+  stay at invoice/approval date, which is also the correct GST time-of-supply treatment, and were
+  deliberately not moved to delivery.
+- **Known simplification:** the collection is booked straight to Cash. That is exact for in-house
+  delivery; for a courier delivery the courier holds the float, so strictly there is an intermediate "COD
+  receivable from courier" leg. The seeded chart of accounts has no ledger for that float and the
+  reconciliation module already tracks the courier receivable separately, so that leg is not modelled.
+- No migration. Covered by `DeliveryReceiptPostingTest` (delivery-date voucher asserted to differ from
+  the order-entry date, redispatch uses the latest delivery, settlement-date fallback, prepaid rejected).

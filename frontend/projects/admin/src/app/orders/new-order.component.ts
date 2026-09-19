@@ -39,6 +39,26 @@ import {
 type UploadState = 'idle' | 'uploading' | 'done' | 'error';
 
 /**
+ * Maximum payment proofs per order, mirroring the server-side
+ * {@code @Size(max = 10)} on {@code CreateOrderRequest.paymentScreenshotKeys} so
+ * the limit is surfaced in the UI rather than as a 400 on submit.
+ */
+const MAX_PAYMENT_SCREENSHOTS = 10;
+
+/** One payment proof being attached to a new order (V65). */
+interface ScreenshotAttachment {
+  /** The chosen file's name, shown as the proof's label. */
+  readonly name: string;
+  /** Object URL for the local thumbnail, revoked when the proof is removed. */
+  previewUrl: string | null;
+  /** Storage key returned by the upload; null until it succeeds. */
+  key: string | null;
+  state: 'uploading' | 'done' | 'error';
+  /** Failure message for this specific proof, so one bad upload is retryable alone. */
+  error: string | null;
+}
+
+/**
  * Salesperson / admin order-entry page (Req 7) — the admin UI for
  * {@code POST /api/orders}.
  *
@@ -126,11 +146,60 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   protected readonly states = signal<string[]>([]);
 
   // --- Payment screenshot upload ------------------------------------------
-  protected readonly uploadState = signal<UploadState>('idle');
-  protected readonly screenshotKey = signal<string | null>(null);
-  protected readonly screenshotName = signal<string | null>(null);
-  protected readonly screenshotPreview = signal<string | null>(null);
+  /**
+   * Every payment proof attached to this order, in the order the salesperson
+   * picked them (V65). An order often has more than one proof — a part payment
+   * plus the balance, a UPI receipt plus a bank confirmation, or two screenshots
+   * because the transaction did not fit one screen.
+   *
+   * <p>Each file is uploaded independently through the existing single-file
+   * endpoint, so one slow or failed upload never blocks the others and a failed
+   * one can be removed and retried on its own.
+   */
+  protected readonly screenshots = signal<ScreenshotAttachment[]>([]);
+
+  /** Rejection message for a file that was never uploaded (e.g. not an image). */
   protected readonly uploadError = signal<string | null>(null);
+
+  /** Upload phase across all attachments, driving the shared status line. */
+  protected readonly uploadState = computed<UploadState>(() => {
+    const all = this.screenshots();
+    if (all.length === 0) {
+      return 'idle';
+    }
+    if (all.some((s) => s.state === 'uploading')) {
+      return 'uploading';
+    }
+    if (all.some((s) => s.state === 'done')) {
+      return 'done';
+    }
+    return 'error';
+  });
+
+  /**
+   * The PRIMARY proof's storage key — the first successfully uploaded one. Sent as
+   * {@code paymentScreenshotKey}, so an order with a single proof posts exactly the
+   * same payload as before V65 and the server's screenshot-required rule is
+   * satisfied by any one successful upload.
+   */
+  protected readonly screenshotKey = computed<string | null>(
+    () => this.screenshots().find((s) => s.state === 'done' && s.key)?.key ?? null,
+  );
+
+  /** Every successfully uploaded proof key, in attach order. */
+  protected readonly screenshotKeys = computed<string[]>(() =>
+    this.screenshots()
+      .filter((s) => s.state === 'done' && s.key)
+      .map((s) => s.key!),
+  );
+
+  /** The additional proofs beyond the primary, posted as {@code paymentScreenshotKeys}. */
+  protected readonly extraScreenshotKeys = computed<string[]>(() => this.screenshotKeys().slice(1));
+
+  /** Whether another proof may be attached (server accepts at most 10 per order). */
+  protected readonly canAddScreenshot = computed(
+    () => this.screenshots().length < MAX_PAYMENT_SCREENSHOTS,
+  );
 
   // --- Submit state -------------------------------------------------------
   protected readonly submitting = signal(false);
@@ -895,52 +964,110 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   // --- Payment screenshot -------------------------------------------------
 
+  /**
+   * Attaches one or more payment proofs (V65). The file input is `multiple`, so the
+   * salesperson can pick several at once, and may also add more in a later pass —
+   * each selection APPENDS rather than replacing what is already attached.
+   *
+   * <p>Non-image files are rejected up front, and anything beyond the per-order cap
+   * is refused with a message instead of being silently dropped. Each accepted file
+   * is uploaded on its own so one failure is isolated and individually retryable.
+   */
   onScreenshotSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) {
-      return;
-    }
-    if (!file.type.startsWith('image/')) {
-      this.uploadError.set('Please choose an image file.');
-      this.uploadState.set('error');
-      input.value = '';
-      return;
-    }
-    this.revokePreview();
-    this.screenshotPreview.set(URL.createObjectURL(file));
-    this.screenshotName.set(file.name);
-    this.screenshotKey.set(null);
-    this.uploadError.set(null);
-    this.uploadState.set('uploading');
-    this.orders.uploadPaymentScreenshot(file).subscribe({
-      next: (res) => {
-        this.screenshotKey.set(res.key);
-        this.uploadState.set('done');
-      },
-      error: (err: HttpErrorResponse) => {
-        this.uploadError.set(this.messageOf(err) ?? 'Upload failed. Please try again.');
-        this.uploadState.set('error');
-      },
-    });
-    // Allow re-selecting the same file after an error.
+    const chosen = Array.from(input.files ?? []);
+    // Always clear the input so re-picking the same file (after a failure or a
+    // removal) fires a fresh change event.
     input.value = '';
+    if (chosen.length === 0) {
+      return;
+    }
+
+    const images = chosen.filter((f) => f.type.startsWith('image/'));
+    const rejected = chosen.length - images.length;
+
+    const room = MAX_PAYMENT_SCREENSHOTS - this.screenshots().length;
+    const accepted = images.slice(0, Math.max(0, room));
+    const overflow = images.length - accepted.length;
+
+    const problems: string[] = [];
+    if (rejected > 0) {
+      problems.push(
+        rejected === 1
+          ? 'One file was skipped because it is not an image.'
+          : `${rejected} files were skipped because they are not images.`,
+      );
+    }
+    if (overflow > 0) {
+      problems.push(
+        `At most ${MAX_PAYMENT_SCREENSHOTS} screenshots can be attached, so ${overflow} more ${
+          overflow === 1 ? 'was' : 'were'
+        } not added.`,
+      );
+    }
+    this.uploadError.set(problems.length > 0 ? problems.join(' ') : null);
+
+    for (const file of accepted) {
+      this.attachScreenshot(file);
+    }
   }
 
+  /** Appends one proof in the uploading state and starts its upload. */
+  private attachScreenshot(file: File): void {
+    const attachment: ScreenshotAttachment = {
+      name: file.name,
+      previewUrl: URL.createObjectURL(file),
+      key: null,
+      state: 'uploading',
+      error: null,
+    };
+    this.screenshots.update((all) => [...all, attachment]);
+
+    this.orders.uploadPaymentScreenshot(file).subscribe({
+      next: (res) => this.updateScreenshot(attachment, { key: res.key, state: 'done', error: null }),
+      error: (err: HttpErrorResponse) =>
+        this.updateScreenshot(attachment, {
+          state: 'error',
+          error: this.messageOf(err) ?? 'Upload failed. Please try again.',
+        }),
+    });
+  }
+
+  /**
+   * Applies a patch to one attachment by identity. Identity matching (rather than an
+   * index) keeps the right proof updated even when the user removes another one while
+   * an upload is still in flight.
+   */
+  private updateScreenshot(target: ScreenshotAttachment, patch: Partial<ScreenshotAttachment>): void {
+    this.screenshots.update((all) => all.map((s) => (s === target ? { ...s, ...patch } : s)));
+  }
+
+  /** Removes one attached proof, releasing its local preview. */
+  removeScreenshot(index: number): void {
+    const attachment = this.screenshots()[index];
+    if (!attachment) {
+      return;
+    }
+    if (attachment.previewUrl) {
+      URL.revokeObjectURL(attachment.previewUrl);
+    }
+    this.screenshots.update((all) => all.filter((_, i) => i !== index));
+    this.uploadError.set(null);
+  }
+
+  /** Removes every attached proof. */
   clearScreenshot(): void {
     this.revokePreview();
-    this.screenshotName.set(null);
-    this.screenshotKey.set(null);
     this.uploadError.set(null);
-    this.uploadState.set('idle');
   }
 
   private revokePreview(): void {
-    const url = this.screenshotPreview();
-    if (url) {
-      URL.revokeObjectURL(url);
+    for (const attachment of this.screenshots()) {
+      if (attachment.previewUrl) {
+        URL.revokeObjectURL(attachment.previewUrl);
+      }
     }
-    this.screenshotPreview.set(null);
+    this.screenshots.set([]);
   }
 
   /** Sets a payment amount using one-hand quick actions in the payment step. */
@@ -1152,6 +1279,11 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       })),
       amountReceived: raw.amountReceived,
       ...(this.screenshotKey() ? { paymentScreenshotKey: this.screenshotKey()! } : {}),
+      // Additional payment proofs beyond the primary (V65), omitted when there is
+      // only one so the payload stays identical to the pre-V65 shape.
+      ...(this.extraScreenshotKeys().length > 0
+        ? { paymentScreenshotKeys: this.extraScreenshotKeys() }
+        : {}),
       leadSource: raw.leadSource as LeadSource,
       // Only send the note when OTHER is chosen (it's meaningless otherwise, Req 4.5).
       ...(isOther && note ? { leadSourceNote: note } : {}),
@@ -1236,6 +1368,11 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       })),
       amountReceived: raw.amountReceived,
       ...(this.screenshotKey() ? { paymentScreenshotKey: this.screenshotKey()! } : {}),
+      // Additional payment proofs beyond the primary (V65), omitted when there is
+      // only one so the payload stays identical to the pre-V65 shape.
+      ...(this.extraScreenshotKeys().length > 0
+        ? { paymentScreenshotKeys: this.extraScreenshotKeys() }
+        : {}),
       ...(this.form.controls.notes.value.trim()
         ? { notes: this.form.controls.notes.value.trim() }
         : {}),

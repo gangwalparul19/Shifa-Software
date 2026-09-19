@@ -1,5 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { catchError, forkJoin, of } from 'rxjs';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { InrPipe } from '../shared/inr.pipe';
@@ -30,8 +31,13 @@ export class PaymentsComponent implements OnInit, OnDestroy {
   protected readonly loadError = signal<string | null>(null);
   protected readonly busyId = signal<number | null>(null);
 
-  /** The screenshot currently open in the viewer (object URL), or null. */
-  protected readonly screenshotUrl = signal<string | null>(null);
+  /**
+   * Every proof for the order currently open in the viewer, as object URLs (V65).
+   * A verifier needs to see ALL the proof for a payment — a part payment plus the
+   * balance, or a UPI receipt plus a bank confirmation — not just the first one,
+   * since the decision is about whether the received amount is genuine.
+   */
+  protected readonly screenshotUrls = signal<string[]>([]);
   protected readonly screenshotLoading = signal(false);
 
   /** The row whose Verify/Reject decision modal is open, plus the decision kind. */
@@ -62,15 +68,50 @@ export class PaymentsComponent implements OnInit, OnDestroy {
 
   // --- Screenshot viewer --------------------------------------------------
 
+  /**
+   * Opens every payment proof on file for the order (V65). Proofs are enumerated
+   * first, then fetched; one unreadable proof is skipped rather than failing the
+   * whole set. If the listing is unavailable we fall back to the legacy
+   * single-proof endpoint so the viewer still works.
+   */
   viewScreenshot(row: PaymentQueueRow): void {
     if (!row.paymentScreenshotAvailable) {
       return;
     }
     this.screenshotLoading.set(true);
+    this.service.screenshots(row.id).subscribe({
+      next: (shots) => {
+        if (shots.length === 0) {
+          this.loadPrimaryScreenshot(row);
+          return;
+        }
+        forkJoin(
+          shots.map((shot) =>
+            this.service.screenshotById(row.id, shot.id).pipe(catchError(() => of(null))),
+          ),
+        ).subscribe((blobs) => {
+          const urls = blobs
+            .filter((blob): blob is Blob => blob !== null)
+            .map((blob) => URL.createObjectURL(blob));
+          this.screenshotLoading.set(false);
+          if (urls.length === 0) {
+            this.toasts.error('Could not load the payment screenshots.');
+            return;
+          }
+          this.revokeScreenshot();
+          this.screenshotUrls.set(urls);
+        });
+      },
+      error: () => this.loadPrimaryScreenshot(row),
+    });
+  }
+
+  /** Fallback to the pre-V65 single-proof endpoint. */
+  private loadPrimaryScreenshot(row: PaymentQueueRow): void {
     this.service.screenshot(row.id).subscribe({
       next: (blob) => {
         this.revokeScreenshot();
-        this.screenshotUrl.set(URL.createObjectURL(blob));
+        this.screenshotUrls.set([URL.createObjectURL(blob)]);
         this.screenshotLoading.set(false);
       },
       error: () => {
@@ -85,11 +126,10 @@ export class PaymentsComponent implements OnInit, OnDestroy {
   }
 
   private revokeScreenshot(): void {
-    const url = this.screenshotUrl();
-    if (url) {
+    for (const url of this.screenshotUrls()) {
       URL.revokeObjectURL(url);
     }
-    this.screenshotUrl.set(null);
+    this.screenshotUrls.set([]);
   }
 
   // --- Verify / Reject ----------------------------------------------------

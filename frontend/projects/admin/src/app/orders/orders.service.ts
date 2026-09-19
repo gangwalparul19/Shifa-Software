@@ -12,6 +12,7 @@ import {
   OrderDetail,
   OrderSummary,
   QuikShipPublishAck,
+  PaymentScreenshot,
   QuikShipShipment,
   QuikShipTracking,
   ScreenshotUploadResponse,
@@ -264,9 +265,21 @@ export class OrdersService {
     return this.api.post<OrderDetail>(`/api/orders/${id}/delivery-status`, body);
   }
 
-  /** Fetch the payment screenshot as a Blob for inline rendering (Req 21.2). */
+  /** Fetch the PRIMARY payment screenshot as a Blob for inline rendering (Req 21.2). */
   paymentScreenshot(id: number): Observable<Blob> {
     return this.http.get(this.api.url(`/api/orders/${id}/payment-screenshot`), {
+      responseType: 'blob',
+    });
+  }
+
+  /** List every payment proof attached to an order, in upload order (V65). */
+  paymentScreenshots(id: number): Observable<PaymentScreenshot[]> {
+    return this.api.get<PaymentScreenshot[]>(`/api/orders/${id}/payment-screenshots`);
+  }
+
+  /** Fetch one specific payment proof as a Blob for inline rendering (V65). */
+  paymentScreenshotById(id: number, screenshotId: number): Observable<Blob> {
+    return this.http.get(this.api.url(`/api/orders/${id}/payment-screenshots/${screenshotId}`), {
       responseType: 'blob',
     });
   }

@@ -323,7 +323,8 @@ public class LeadService {
                 request.discountType(),
                 request.discountValue(),
                 null,
-                request.deliveryMethod());
+                request.deliveryMethod(),
+                request.paymentScreenshotKeys());
 
         // Same transaction: a failure here rolls the whole convert back (Req 4.4).
         OrderResponse order = orderService.createSalespersonOrder(orderRequest, actor);

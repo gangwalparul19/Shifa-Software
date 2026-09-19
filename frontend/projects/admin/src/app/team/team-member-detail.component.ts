@@ -54,6 +54,13 @@ import {
               <span><i class="ti ti-shield-check me-1"></i>{{ d.profile.verificationStatus || 'Verification pending' }}</span>
             </div>
 
+            <div class="tm-detail__tabs" role="tablist">
+              <button type="button" class="btn btn-sm" [class.btn-primary]="detailTab() === 'overview'" [class.btn-outline-secondary]="detailTab() !== 'overview'" (click)="detailTab.set('overview')">Overview</button>
+              <button type="button" class="btn btn-sm" [class.btn-primary]="detailTab() === 'activity'" [class.btn-outline-secondary]="detailTab() !== 'activity'" (click)="detailTab.set('activity')">Activity</button>
+              <button type="button" class="btn btn-sm" [class.btn-primary]="detailTab() === 'orders'" [class.btn-outline-secondary]="detailTab() !== 'orders'" (click)="detailTab.set('orders')">Orders</button>
+            </div>
+
+            @if (detailTab() === 'overview') {
             <div class="tm-detail__section-title">Orders at a glance</div>
             <div class="tm-detail__grid">
               <div class="tm-detail__metric"><span>Lifetime orders</span><strong>{{ d.performance.summary.ordersTotal }}</strong><small>{{ money(d.performance.summary.revenueTotal) }}</small></div>
@@ -70,7 +77,9 @@ import {
               <div class="tm-detail__metric"><span>Follow-ups due</span><strong [class.text-danger]="d.performance.leads.dueFollowUps > 0">{{ d.performance.leads.dueFollowUps }}</strong><small>{{ d.performance.leads.active }} active leads</small></div>
               <div class="tm-detail__metric"><span>COD outstanding</span><strong>{{ money(d.performance.summary.codOutstanding) }}</strong><small>Across open orders</small></div>
             </div>
+            }
 
+            @if (detailTab() === 'activity') {
             <div class="tm-detail__section-title d-flex align-items-center justify-content-between">
               <span>Daily activity</span>
               <div class="btn-group btn-group-sm">
@@ -90,7 +99,9 @@ import {
                 <div class="text-secondary small">No order activity in this period.</div>
               }
             </div>
+            }
 
+            @if (detailTab() === 'orders') {
             <div class="tm-detail__section-title">Latest orders</div>
             <div class="tm-detail__orders">
               @for (order of d.performance.recentOrders; track order.orderCode) {
@@ -108,6 +119,7 @@ import {
                 <div class="text-secondary small">No orders have been created yet.</div>
               }
             </div>
+            }
           </div>
         }
       </aside>
@@ -123,6 +135,7 @@ export class TeamMemberDetailComponent implements OnInit {
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
   protected readonly activityDays = signal(7);
+  protected readonly detailTab = signal<'overview' | 'activity' | 'orders'>('overview');
 
   ngOnInit(): void {
     this.load();

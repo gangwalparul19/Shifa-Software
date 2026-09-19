@@ -10,6 +10,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.format.annotation.DateTimeFormat;
+
+import java.time.LocalDate;
 
 /**
  * Team-lead performance dashboard ({@code /api/team/performance}).
@@ -32,11 +35,13 @@ public class TeamPerformanceController {
         this.currentUserService = currentUserService;
     }
 
-    /** The calling team lead's performance rollup (KPIs + leaderboard + source conversion). */
+    /** The selected reporting window; omitted values default to the current month. */
     @GetMapping("/performance")
-    public TeamPerformanceResponse performance() {
+    public TeamPerformanceResponse performance(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
-        return teamPerformanceService.forCaller(actor);
+        return teamPerformanceService.forCaller(actor, from, to);
     }
 
     /** An authorised drill-down into one direct report's performance. */

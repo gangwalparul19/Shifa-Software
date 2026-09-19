@@ -87,6 +87,13 @@ public class ReportTableBuilder {
                 || o.orderStatus() == com.shifa.oms.statemachine.OrderStatus.REJECTED;
     }
 
+    /** Customer balance; legacy pure fixtures fall back to total minus received. */
+    private static BigDecimal customerBalance(OrderReportRecord o) {
+        return o.customerOutstanding() != null
+                ? o.customerOutstanding()
+                : o.totalAmount().subtract(o.amountReceived());
+    }
+
     /**
      * Daily money view: per order-date within the window, the order count, total
      * sales, amount received, COD amount, and outstanding (total − received).
@@ -106,7 +113,7 @@ public class ReportTableBuilder {
             acc[0] = acc[0].add(o.totalAmount());
             acc[1] = acc[1].add(o.amountReceived());
             acc[2] = acc[2].add(o.codAmount());
-            acc[3] = acc[3].add(o.totalAmount().subtract(o.amountReceived()));
+            acc[3] = acc[3].add(customerBalance(o));
             counts.computeIfAbsent(o.orderDate(), k -> new long[1])[0]++;
         }
         List<List<String>> rows = new ArrayList<>();
@@ -135,7 +142,7 @@ public class ReportTableBuilder {
             if (o.orderDate() == null || !window.contains(o.orderDate()) || isCancelledOrRejected(o)) {
                 continue;
             }
-            if (o.totalAmount().subtract(o.amountReceived()).signum() > 0) {
+            if (customerBalance(o).signum() > 0) {
                 due.add(o);
             }
         }
@@ -143,7 +150,7 @@ public class ReportTableBuilder {
         due.sort(java.util.Comparator.comparing(OrderReportRecord::orderDate));
         List<List<String>> rows = new ArrayList<>();
         for (OrderReportRecord o : due) {
-            BigDecimal balance = o.totalAmount().subtract(o.amountReceived());
+            BigDecimal balance = customerBalance(o);
             rows.add(List.of(
                     nullToEmpty(o.orderCode()),
                     nullToEmpty(o.customerName()),

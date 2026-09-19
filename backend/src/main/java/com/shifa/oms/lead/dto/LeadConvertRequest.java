@@ -74,6 +74,13 @@ public record LeadConvertRequest(
         // Optional per-order delivery method carried through to the created order:
         // "QUIKSHIPX" (default when null/blank) or "IN_HOUSE". Case-insensitive.
         @Pattern(regexp = "(?i)(QUIKSHIPX|IN_HOUSE)?", message = "deliveryMethod must be QUIKSHIPX or IN_HOUSE")
-        String deliveryMethod
+        String deliveryMethod,
+
+        // Additional payment proofs beyond the first (V65), carried through to the
+        // created order exactly like paymentScreenshotKey. Null/empty keeps the
+        // historical single-proof behaviour.
+        @Size(max = 10, message = "at most 10 payment screenshots may be attached to an order")
+        List<@Size(max = 512, message = "a payment screenshot key must be at most 512 characters") String>
+                paymentScreenshotKeys
 ) {
 }

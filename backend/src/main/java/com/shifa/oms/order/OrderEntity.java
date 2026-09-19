@@ -290,6 +290,16 @@ public class OrderEntity {
     @OrderBy("id ASC")
     private List<OrderStatusHistory> statusHistory = new ArrayList<>();
 
+    /**
+     * Every payment proof attached to this order, in upload order (V65). Index 0
+     * is the primary proof and is mirrored onto the legacy single-valued
+     * {@link #paymentScreenshotKey} so existing read paths stay correct.
+     */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id", nullable = false)
+    @OrderBy("sortOrder ASC, id ASC")
+    private List<OrderPaymentScreenshot> paymentScreenshots = new ArrayList<>();
+
     protected OrderEntity() {
         // Required by JPA.
     }
@@ -332,6 +342,31 @@ public class OrderEntity {
     /** Appends a status-history row to the aggregate. */
     public void addStatusHistory(OrderStatusHistory entry) {
         this.statusHistory.add(entry);
+    }
+
+    /**
+     * Attaches a payment proof to the aggregate (V65), assigning it the next
+     * position in the upload order. The FIRST proof attached is also mirrored
+     * onto the legacy {@link #paymentScreenshotKey} column, so the
+     * screenshot-required rule and every {@code paymentScreenshotAvailable}
+     * projection keep working with no change.
+     */
+    public void addPaymentScreenshot(String storageKey, String filename,
+                                     String contentType, Long byteSize) {
+        if (storageKey == null || storageKey.isBlank()) {
+            return;
+        }
+        int next = this.paymentScreenshots.size();
+        this.paymentScreenshots.add(
+                new OrderPaymentScreenshot(storageKey, filename, contentType, byteSize, next));
+        if (next == 0) {
+            this.paymentScreenshotKey = storageKey;
+        }
+    }
+
+    /** Every payment proof attached to this order, in upload order (V65). */
+    public List<OrderPaymentScreenshot> getPaymentScreenshots() {
+        return paymentScreenshots;
     }
 
     /** Applies the derived payment amounts and classification (Req 7.4, 7.5, 7.7-7.9). */

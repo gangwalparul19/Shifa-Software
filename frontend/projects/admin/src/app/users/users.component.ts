@@ -222,8 +222,8 @@ export class UsersComponent implements OnInit {
     const blockDeactivate = user.active && this.isSelf(user);
     actions.push({
       key: 'toggle',
-      label: user.active ? 'Deactivate' : 'Activate',
-      icon: user.active ? 'ti-user-off' : 'ti-user-check',
+      label: user.active ? 'Deactivate' : 'Unlock account',
+      icon: user.active ? 'ti-user-off' : 'ti-lock-open',
       variant: user.active ? 'danger' : 'success',
       disabled: this.actioningId() !== null || blockDeactivate,
     });

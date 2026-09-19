@@ -1,0 +1,9 @@
+:host { display: block; }
+.team-period-input { width: 150px; }
+.team-member-search { width: 190px; }
+.team-member-filter { width: 160px; }
+@media (max-width: 767.98px) {
+  .team-period-input,
+  .team-member-search,
+  .team-member-filter { width: 100%; }
+}

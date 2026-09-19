@@ -15,7 +15,14 @@ package com.shifa.oms.ledger.autopost;
  *   <li>{@link #PURCHASE_ORDER} — a recorded purchase bill (Purchase voucher, Req 9).</li>
  *   <li>{@link #EXPENSE} — a recorded expense (Payment/Journal voucher, Req 10).</li>
  *   <li>{@link #PAYMENT} — a customer receipt or supplier payment (Receipt/Payment voucher, Req 11).</li>
+ *   <li>{@link #ORDER_DELIVERY} — the COD cash collected when an order was delivered (Receipt voucher,
+ *       dated the delivery date).</li>
  * </ul>
+ *
+ * <p>Note that {@link #ORDER_DELIVERY} is a SEPARATE source type from {@link #ORDER} even though both
+ * are keyed by an order id. The idempotency key is {@code (source_type, source_id)} (unique on both
+ * {@code vouchers} and {@code ledger_source_postings}), so a delivery receipt needs its own source type
+ * to coexist with that order's sales voucher rather than colliding with it.
  */
 public enum SourceType {
 
@@ -29,5 +36,16 @@ public enum SourceType {
     EXPENSE,
 
     /** A customer receipt or supplier payment (Receipt/Payment voucher, Req 11). */
-    PAYMENT
+    PAYMENT,
+
+    /**
+     * The COD cash collected when an order was delivered — a Receipt voucher dated the DELIVERY date.
+     *
+     * <p>Closes the accounting loop for a COD order. The sales voucher posted at approval debits Sundry
+     * Debtors (the order is not paid at entry), but before this source existed nothing ever credited that
+     * balance back when the cash was actually collected on delivery: Sundry Debtors grew without bound and
+     * Cash was understated. This posts the collection on the day it happened, which is the delivery date
+     * rather than the order-entry date.
+     */
+    ORDER_DELIVERY
 }

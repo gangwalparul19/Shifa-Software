@@ -107,6 +107,19 @@ public record CreateOrderRequest(
         // or "IN_HOUSE" to skip the QuikShipX courier integration entirely and have
         // Shifa's own team deliver the order. Case-insensitive.
         @Pattern(regexp = "(?i)(QUIKSHIPX|IN_HOUSE)?", message = "deliveryMethod must be QUIKSHIPX or IN_HOUSE")
-        String deliveryMethod
+        String deliveryMethod,
+
+        // Additional payment proofs beyond the first (V65). An order may have several
+        // — a part payment plus the balance, a UPI receipt plus a bank confirmation,
+        // or two screenshots because the transaction did not fit one screen. Each
+        // entry is a storage key from a prior POST /api/orders/payment-screenshots.
+        //
+        // Null/empty keeps the historical single-proof behaviour. The effective set
+        // is paymentScreenshotKey followed by these, de-duplicated, order preserved;
+        // the first becomes the primary proof mirrored onto the legacy column, so
+        // sending only paymentScreenshotKey behaves exactly as before.
+        @Size(max = 10, message = "at most 10 payment screenshots may be attached to an order")
+        List<@Size(max = 512, message = "a payment screenshot key must be at most 512 characters") String>
+                paymentScreenshotKeys
 ) {
 }

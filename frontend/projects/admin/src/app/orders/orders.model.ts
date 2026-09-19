@@ -57,6 +57,12 @@ export interface CreateOrderRequest {
   items: CreateOrderLineItem[];
   amountReceived: number;
   paymentScreenshotKey?: string;
+  /**
+   * Additional payment-proof storage keys beyond {@link paymentScreenshotKey}
+   * (V65), for orders with more than one proof — a part payment plus the balance,
+   * a UPI receipt plus a bank confirmation, and so on. Omitted for a single proof.
+   */
+  paymentScreenshotKeys?: string[];
   leadSource: LeadSource;
   leadSourceNote?: string;
   /** Optional free-text order note captured at order entry (≤1000 chars). */
@@ -201,6 +207,21 @@ export const DELIVERY_METHOD_OPTIONS: { value: DeliveryMethod; label: string }[]
  * {@code ScreenshotUploadResponse}) — the storage {@code key} to attach to a
  * subsequent order.
  */
+/**
+ * One payment proof attached to an order (V65), from
+ * {@code GET /api/orders/{id}/payment-screenshots}. Metadata only — the bytes are
+ * fetched per proof as an authenticated Blob.
+ */
+export interface PaymentScreenshot {
+  id: number;
+  filename?: string | null;
+  contentType?: string | null;
+  byteSize?: number | null;
+  /** Whether this is the order's first proof (the one the legacy endpoint serves). */
+  primary: boolean;
+  createdAt?: string;
+}
+
 export interface ScreenshotUploadResponse {
   key: string;
 }

@@ -11,6 +11,7 @@ import com.shifa.oms.order.dto.DuplicateCheckResponse;
 import com.shifa.oms.order.dto.MarkDeliveredRequest;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
+import com.shifa.oms.order.dto.PaymentScreenshotResponse;
 import com.shifa.oms.order.dto.ScreenshotUploadResponse;
 import com.shifa.oms.order.dto.UpdateDeliveryStatusRequest;
 import com.shifa.oms.platform.storage.StorageService;
@@ -224,11 +225,46 @@ public class OrderController {
                 .body(invoice.content());
     }
 
-    /** View/download the payment screenshot for an order (Req 21.2), gated to ACCOUNTANT/ADMIN. */
+    /**
+     * View/download the order's PRIMARY payment screenshot (Req 21.2), gated to
+     * ACCOUNTANT/ADMIN.
+     *
+     * <p>Retained unchanged for backward compatibility now that an order may carry
+     * several proofs (V65): this serves the first one. Use
+     * {@link #paymentScreenshots(Long)} to enumerate them all.
+     */
     @GetMapping("/{id}/payment-screenshot")
     @PreAuthorize("hasAnyRole('ACCOUNTANT','ADMIN','PAYMENT_VERIFIER','CA')")
     public ResponseEntity<Resource> paymentScreenshot(@PathVariable Long id) {
-        StorageService.StoredObject object = orderService.getPaymentScreenshot(id);
+        return streamInline(orderService.getPaymentScreenshot(id));
+    }
+
+    /**
+     * List every payment proof attached to an order, in upload order (V65), so the
+     * order drawer and the payment-verification queue can show all of them instead
+     * of just the first. Metadata only — the bytes come from
+     * {@link #paymentScreenshot(Long, Long)}.
+     */
+    @GetMapping("/{id}/payment-screenshots")
+    @PreAuthorize("hasAnyRole('ACCOUNTANT','ADMIN','PAYMENT_VERIFIER','CA')")
+    public List<PaymentScreenshotResponse> paymentScreenshots(@PathVariable Long id) {
+        return orderService.listPaymentScreenshots(id);
+    }
+
+    /** View/download one specific payment proof of an order by its id (V65). */
+    @GetMapping("/{id}/payment-screenshots/{screenshotId}")
+    @PreAuthorize("hasAnyRole('ACCOUNTANT','ADMIN','PAYMENT_VERIFIER','CA')")
+    public ResponseEntity<Resource> paymentScreenshot(@PathVariable Long id,
+                                                     @PathVariable Long screenshotId) {
+        return streamInline(orderService.getPaymentScreenshot(id, screenshotId));
+    }
+
+    /**
+     * Streams a stored object inline with its best-known MIME type and filename,
+     * mirroring {@code StaffController.streamObject} so the browser renders the
+     * image in place rather than downloading it.
+     */
+    private ResponseEntity<Resource> streamInline(StorageService.StoredObject object) {
         MediaType mediaType = object.contentType() != null
                 ? MediaType.parseMediaType(object.contentType())
                 : MediaType.APPLICATION_OCTET_STREAM;

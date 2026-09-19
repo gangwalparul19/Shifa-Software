@@ -51,6 +51,14 @@ public class ManualDeliveryService {
     private static final Logger log = LoggerFactory.getLogger(ManualDeliveryService.class);
     private static final String SOURCE = "MANUAL_DELIVERY";
 
+    /**
+     * Ledger auto-posting source key for the COD cash collected on delivery
+     * (mirrors {@code SourceType.ORDER_DELIVERY}; kept as a literal so the order
+     * module does not depend on the ledger module, exactly like
+     * {@code AdminOrderService.LEDGER_SOURCE_ORDER}).
+     */
+    private static final String LEDGER_SOURCE_ORDER_DELIVERY = "ORDER_DELIVERY";
+
     private final OrderRepository orderRepository;
     private final OrderWorkflowService orderWorkflowService;
     private final ReceivableRepository receivableRepository;
@@ -236,6 +244,29 @@ public class ManualDeliveryService {
         orderWorkflowService.applyTransition(order, result.newStatus(), workflowActor);
         order.setCustomerOutstanding(BigDecimal.ZERO);
         result.receivable().ifPresent(r -> recordReceivable(order));
+        publishDeliveryLedgerPost(order);
+    }
+
+    /**
+     * Enqueues the delivery-receipt ledger posting for a COD order in this same
+     * transaction, so the COD cash collected is booked against Cash / Sundry Debtors
+     * dated the DELIVERY date.
+     *
+     * <p>Without this the order's sales voucher leaves Sundry Debtors permanently
+     * debited: nothing else ever credits it back for a pure-COD order. No-op for a
+     * prepaid order (nothing was collected on delivery). Like every other ledger
+     * publish, the outbox row commits atomically with the delivery and a downstream
+     * posting failure can never roll back or alter the order.
+     */
+    private void publishDeliveryLedgerPost(OrderEntity order) {
+        if (outboxEventPublisher == null) {
+            return;
+        }
+        BigDecimal cod = order.getCodAmount();
+        if (cod == null || cod.signum() <= 0) {
+            return;
+        }
+        outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_ORDER_DELIVERY, order.getId());
     }
 
     /** Trims a string and returns null when the result is empty/blank. */

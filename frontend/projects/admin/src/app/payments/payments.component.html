@@ -110,18 +110,39 @@
 }
 
 <!-- Screenshot viewer modal -->
-@if (screenshotUrl() || screenshotLoading()) {
+@if (screenshotUrls().length > 0 || screenshotLoading()) {
   <div class="pay-modal-backdrop" (click)="closeScreenshot()">
     <div class="card pay-modal-img" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
       <div class="card-header py-2">
-        <h3 class="card-title mb-0"><i class="ti ti-photo me-2"></i>Payment screenshot</h3>
+        <h3 class="card-title mb-0">
+          <i class="ti ti-photo me-2"></i>Payment screenshot@if (screenshotUrls().length > 1) {
+            <span>s</span>
+            <span class="badge bg-blue-lt ms-2">{{ screenshotUrls().length }}</span>
+          }
+        </h3>
         <button type="button" class="btn-close ms-auto" (click)="closeScreenshot()" aria-label="Close"></button>
       </div>
       <div class="card-body text-center">
         @if (screenshotLoading()) {
           <span class="spinner-border" role="status"></span>
-        } @else if (screenshotUrl(); as url) {
-          <img [src]="url" alt="Payment screenshot" class="img-fluid rounded" />
+        } @else {
+          <div class="d-flex flex-column gap-3">
+            @for (url of screenshotUrls(); track url) {
+              <div>
+                @if (screenshotUrls().length > 1) {
+                  <div class="text-secondary small mb-1 text-start">
+                    Proof {{ $index + 1 }} of {{ screenshotUrls().length }}
+                    @if ($first) { <span class="badge bg-green-lt ms-1">Primary</span> }
+                  </div>
+                }
+                <img
+                  [src]="url"
+                  [alt]="'Payment screenshot ' + ($index + 1)"
+                  class="img-fluid rounded"
+                />
+              </div>
+            }
+          </div>
         }
       </div>
     </div>
