@@ -15,9 +15,9 @@ describe('core model enums (PBT harness)', () => {
   const orderStatuses = Object.values(OrderStatus);
   const paymentStatuses = Object.values(PaymentStatus);
 
-  it('OrderStatus defines exactly the 18 lifecycle states', () => {
-    expect(orderStatuses).toHaveLength(18);
-    expect(new Set(orderStatuses).size).toBe(18);
+  it('OrderStatus defines exactly the 19 lifecycle states', () => {
+    expect(orderStatuses).toHaveLength(19);
+    expect(new Set(orderStatuses).size).toBe(19);
   });
 
   it('every OrderStatus value equals its backend enum name (UPPER_SNAKE wire format)', () => {

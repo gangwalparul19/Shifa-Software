@@ -9,6 +9,23 @@
     Converting <strong>{{ convertLeadName() }}</strong> — the customer details and source are carried
     over from the lead and locked. Add the shipping address, items, and payment below.
   </div>
+} @else if (resubmitMode()) {
+  <admin-page-header
+    title="Fix & Resubmit Order"
+    subtitle="Correct the flagged details and send this order back for approval."
+    [breadcrumbs]="[{ label: 'Orders', link: '/orders' }, { label: 'Resubmit' }]"
+  />
+  <div class="alert alert-warning anim-fade-up" role="status">
+    <i class="ti ti-rotate me-2"></i>
+    Reworking <strong>{{ resubmitFromCode() }}</strong> —
+    @if (resubmitPaymentRejected()) {
+      the payment was rejected. Fix the details (and re-check the payment), then resubmit; it goes back to the
+      approval queue and the payment is verified again.
+    } @else {
+      it was rejected by an admin. Fix the flagged details, then resubmit; it goes back to the approval queue with
+      the same order number.
+    }
+  </div>
 } @else {
   <admin-page-header
     title="Add New Order"
@@ -139,6 +156,26 @@
               <i class="ti ti-alert-triangle me-1"></i>
               Repeat customer — {{ prior }} previous order{{ prior === 1 ? '' : 's' }} on this number.
             </small>
+          }
+          <!-- Same-day duplicate warning: an active order for this customer was already
+               placed today (possibly by another salesperson). Creation is blocked. -->
+          @if (sameDayDuplicate(); as dup) {
+            <div class="alert alert-danger py-2 px-2 mt-2 mb-0 d-flex align-items-start" role="alert">
+              <i class="ti ti-alert-octagon me-2 mt-1"></i>
+              <div class="small">
+                <strong>Duplicate order — already placed today.</strong>
+                @if (dup.createdByMe) {
+                  You already placed an order for this customer today
+                } @else {
+                  {{ dup.salespersonName || 'Another salesperson' }} already placed an order for this customer today
+                }
+                @if (dup.orderCode) {
+                  (<strong>{{ dup.orderCode }}</strong>)
+                }.
+                Only one order per customer per day is allowed. Please check the existing
+                order before creating another.
+              </div>
+            </div>
           }
           <!-- Prefill-from-last-order banner: details were auto-filled and can be edited. -->
           @if (prefilledFromLast(); as who) {
@@ -573,21 +610,63 @@
     <div class="shifa-no__card">
       <div class="mb-3">
         <label class="form-label required" for="amountReceived">Amount received</label>
+
+        <!-- The amount field: type any value, including a partial payment with the
+             balance collected on delivery. The shortcuts below just fill it. -->
         <div class="input-group">
           <span class="input-group-text">₹</span>
-          <div class="shifa-payment-quick" role="group" aria-label="Payment shortcuts">
-            <button type="button" class="btn btn-sm btn-outline-secondary" (click)="setCodPayment()">
-              <i class="ti ti-truck-delivery me-1"></i> COD / ₹0
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-success" (click)="setPaidInFull()">
-              <i class="ti ti-check me-1"></i> Paid in full
-            </button>
-          </div>
+          <input
+            id="amountReceived"
+            type="number"
+            inputmode="decimal"
+            min="0"
+            step="0.01"
+            class="form-control"
+            formControlName="amountReceived"
+            placeholder="0.00"
+            [class.is-invalid]="invalid('amountReceived')"
+          />
         </div>
+
+        <!-- One-tap shortcut for a full prepaid order; partial is just typed.
+             There is no ₹0 option — at least the minimum must be collected. -->
+        <div class="shifa-payment-quick" role="group" aria-label="Payment shortcuts">
+          <button
+            type="button"
+            class="btn"
+            [class.btn-success]="paymentKind() === 'full'"
+            [class.btn-outline-secondary]="paymentKind() !== 'full'"
+            (click)="setPaidInFull()"
+          >
+            <i class="ti ti-check me-1"></i> Paid in full
+          </button>
+        </div>
+
         @if (invalid('amountReceived')) {
-          <div class="text-danger small mt-1">Enter a non-negative amount.</div>
+          <div class="text-danger small mt-1">Enter the amount collected (a positive number).</div>
+        } @else if (paymentBelowMinimum()) {
+          <div class="text-danger small mt-1">
+            At least {{ formatMoney(minUpfrontPaise()) }} must be collected upfront (full or partial payment).
+          </div>
+        } @else {
+          <!-- Live confirmation of what the entered amount means, so partial is obvious. -->
+          @switch (paymentKind()) {
+            @case ('full') {
+              <div class="form-hint text-success">Paid in full — nothing to collect on delivery.</div>
+            }
+            @case ('partial') {
+              <div class="form-hint">
+                Partial payment — {{ formatMoney(remainingPaise()) }} to be collected on delivery.
+              </div>
+            }
+            @default {
+              <div class="form-hint">
+                Enter the amount collected now — full payment, or a part payment of at least
+                {{ formatMoney(minUpfrontPaise()) }}.
+              </div>
+            }
+          }
         }
-        <div class="form-hint">Enter 0 for a full COD order.</div>
       </div>
 
       <div>
@@ -736,7 +815,7 @@
       } @else {
         <i class="ti ti-check me-1"></i>
       }
-      {{ convertMode() ? 'Convert Lead' : 'Save Order' }}
+      {{ convertMode() ? 'Convert Lead' : resubmitMode() ? 'Resubmit for Approval' : 'Save Order' }}
     </button>
   } @else {
     @if (step() === 1) {
@@ -760,7 +839,7 @@
         } @else {
           <i class="ti ti-check me-1"></i>
         }
-        {{ convertMode() ? 'Convert Lead' : 'Save Order' }}
+        {{ convertMode() ? 'Convert Lead' : resubmitMode() ? 'Resubmit for Approval' : 'Save Order' }}
       </button>
     }
   }

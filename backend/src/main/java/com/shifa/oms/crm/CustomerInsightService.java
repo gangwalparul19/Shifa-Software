@@ -61,7 +61,7 @@ public class CustomerInsightService {
 
     /** Orders that never shipped (rejected at approval / cancelled). */
     private static final Set<OrderStatus> CANCELLED_STATUSES =
-            EnumSet.of(OrderStatus.REJECTED, OrderStatus.CANCELLED);
+            EnumSet.of(OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED);
 
     /** How many products to surface on the profile. */
     private static final int TOP_PRODUCTS_LIMIT = 5;

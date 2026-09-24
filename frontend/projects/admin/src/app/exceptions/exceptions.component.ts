@@ -1,6 +1,6 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { DatePipe } from '@angular/common';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ExceptionsService } from './exceptions.service';
 import {
@@ -18,7 +18,7 @@ import { humanizeStatus } from '../shared/status-badge.component';
 
 @Component({
   selector: 'admin-exceptions',
-  imports: [RouterLink, DatePipe, PageHeaderComponent, StatePanelComponent],
+  imports: [RouterLink, IstDatePipe, PageHeaderComponent, StatePanelComponent],
   templateUrl: './exceptions.component.html',
   styleUrl: './exceptions.component.css',
 })

@@ -26,6 +26,8 @@ export interface ReturnResponse {
   creditNoteValue?: Money | null;
   restocked: boolean;
   createdBy?: string | null;
+  /** Name of the salesperson who punched the ORDER (created_by → display name); null when unknown. */
+  salespersonName?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }

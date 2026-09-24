@@ -53,10 +53,20 @@ public enum OrderStatusGroup {
             OrderStatus.RTO,
             OrderStatus.REDISPATCH),
 
-    /** Cancelled or rejected before shipping. */
+    /** Cancelled before shipping. */
     CANCELLED(
+            OrderStatus.CANCELLED),
+
+    /**
+     * Rejected before shipping (rejection-status feature): an admin rejection
+     * ({@code REJECTED}, with a Rate / Address-Pincode / Other reason) or a
+     * payment-panel rejection ({@code PAYMENT_REJECTED}, "Payment Issue"). Split
+     * out of {@code CANCELLED} so the salesperson sees rejections as a distinct
+     * business stage with the reason.
+     */
+    REJECTED(
             OrderStatus.REJECTED,
-            OrderStatus.CANCELLED);
+            OrderStatus.PAYMENT_REJECTED);
 
     private final List<OrderStatus> statuses;
 
@@ -88,6 +98,7 @@ public enum OrderStatusGroup {
             case "DELIVERED", "COMPLETED" -> DELIVERED;
             case "FAILED_RETURNED" -> FAILED_RETURNED;
             case "CANCELLED" -> CANCELLED;
+            case "REJECTED", "PAYMENT_REJECTED" -> REJECTED;
             default -> null;
         };
     }

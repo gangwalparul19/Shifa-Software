@@ -1,7 +1,8 @@
-import { DatePipe } from '@angular/common';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Money } from 'core';
+import { catchError, forkJoin, of } from 'rxjs';
+import { Money, RejectReason } from 'core';
 import { ApprovalService } from './approval.service';
 import { ApprovalQueueItem } from './approval.model';
 import { AdminEventsService } from '../dashboard/admin-events.service';
@@ -35,7 +36,7 @@ interface Toast {
   imports: [
     FormsModule,
     ReactiveFormsModule,
-    DatePipe,
+    IstDatePipe,
     PageHeaderComponent,
     PaginationComponent,
     StatusBadgeComponent,
@@ -170,9 +171,16 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
 
   /** The order shown in the detail drawer, or null when closed. */
   protected readonly selected = signal<ApprovalQueueItem | null>(null);
-  protected readonly screenshotUrl = signal<string | null>(null);
+  /**
+   * Object URLs of every payment proof for the order under review (V65). An order
+   * may carry several — a part payment plus the balance, a UPI receipt plus a bank
+   * confirmation — and the reviewing admin must see them all to approve/reject.
+   */
+  protected readonly screenshotUrls = signal<string[]>([]);
   protected readonly screenshotLoading = signal(false);
   protected readonly screenshotMissing = signal(false);
+  /** Index of the proof shown in the drawer, driven by the Snip tabs (V65). */
+  protected readonly activeSnip = signal(0);
 
   /**
    * The delivery method picked in the review drawer for the order currently
@@ -192,8 +200,18 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
   /** The order being rejected (reason modal open), or null. */
   protected readonly rejectTarget = signal<ApprovalQueueItem | null>(null);
   protected readonly rejectForm = this.fb.nonNullable.group({
+    // Categorized rejection reason (rejection-status feature): Rate Issue /
+    // Address-Pincode Issue / Other. Sent as `category` alongside the free-text note.
+    category: ['RATE_ISSUE' as RejectReason, [Validators.required]],
     reason: ['', [Validators.required, Validators.maxLength(500)]],
   });
+
+  /** The admin-facing reject categories (payment issue is set automatically by the payment panel). */
+  protected readonly rejectCategories: ReadonlyArray<{ value: RejectReason; label: string }> = [
+    { value: 'RATE_ISSUE', label: 'Rate Issue' },
+    { value: 'ADDRESS_PINCODE_ISSUE', label: 'Address / Pincode Issue' },
+    { value: 'OTHER', label: 'Other' },
+  ];
 
   private toastTimer?: ReturnType<typeof setTimeout>;
 
@@ -335,6 +353,14 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     this.screenshotMissing.set(false);
   }
 
+  /**
+   * Fetches EVERY payment proof for the order as blobs (V65) so the reviewing
+   * admin sees all the proof, not just the first. Proofs are enumerated first,
+   * then fetched; a proof whose bytes cannot be loaded is skipped rather than
+   * failing the whole set. If the listing itself is unavailable we fall back to
+   * the legacy single-proof endpoint, which keeps the drawer working for an
+   * order whose proofs predate V65.
+   */
   private loadScreenshot(item: ApprovalQueueItem): void {
     this.revokeScreenshot();
     this.screenshotMissing.set(false);
@@ -342,9 +368,36 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
       return;
     }
     this.screenshotLoading.set(true);
+    this.service.paymentScreenshots(item.id).subscribe({
+      next: (shots) => {
+        if (shots.length === 0) {
+          this.loadLegacyScreenshot(item);
+          return;
+        }
+        forkJoin(
+          shots.map((shot) =>
+            this.service.paymentScreenshotById(item.id, shot.id).pipe(catchError(() => of(null))),
+          ),
+        ).subscribe((blobs) => {
+          const urls = blobs
+            .filter((blob): blob is Blob => blob !== null)
+            .map((blob) => URL.createObjectURL(blob));
+          this.screenshotUrls.set(urls);
+          this.activeSnip.set(0);
+          this.screenshotMissing.set(urls.length === 0);
+          this.screenshotLoading.set(false);
+        });
+      },
+      error: () => this.loadLegacyScreenshot(item),
+    });
+  }
+
+  /** Fallback to the pre-V65 single-proof endpoint when the listing is unavailable. */
+  private loadLegacyScreenshot(item: ApprovalQueueItem): void {
     this.service.paymentScreenshot(item.id).subscribe({
       next: (blob) => {
-        this.screenshotUrl.set(URL.createObjectURL(blob));
+        this.screenshotUrls.set([URL.createObjectURL(blob)]);
+        this.activeSnip.set(0);
         this.screenshotLoading.set(false);
       },
       error: () => {
@@ -354,12 +407,17 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Shows the proof at the given tab index. */
+  selectSnip(index: number): void {
+    this.activeSnip.set(index);
+  }
+
   private revokeScreenshot(): void {
-    const url = this.screenshotUrl();
-    if (url) {
+    for (const url of this.screenshotUrls()) {
       URL.revokeObjectURL(url);
     }
-    this.screenshotUrl.set(null);
+    this.screenshotUrls.set([]);
+    this.activeSnip.set(0);
   }
 
   /** Download / open the PDF invoice for the reviewed order (auth-token blob fetch). */
@@ -428,7 +486,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
   // --- Reject -------------------------------------------------------------
 
   openReject(item: ApprovalQueueItem): void {
-    this.rejectForm.reset({ reason: '' });
+    this.rejectForm.reset({ category: 'RATE_ISSUE', reason: '' });
     this.rejectTarget.set(item);
   }
 
@@ -445,13 +503,15 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
       this.rejectForm.markAllAsTouched();
       return;
     }
-    const reason = this.rejectForm.getRawValue().reason.trim();
+    const raw = this.rejectForm.getRawValue();
+    const reason = raw.reason.trim();
+    const category = raw.category as RejectReason;
     if (!reason) {
       this.rejectForm.markAllAsTouched();
       return;
     }
     this.acting.set(true);
-    this.service.reject(item.id, reason).subscribe({
+    this.service.reject(item.id, reason, category).subscribe({
       next: () => {
         this.removeRow(item.id);
         this.acting.set(false);

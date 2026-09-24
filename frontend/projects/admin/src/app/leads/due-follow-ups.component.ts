@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { PageHeaderComponent } from '../shared/page-header.component';
@@ -25,7 +25,7 @@ import { openWhatsApp, whatsAppMessage } from '../shared/whatsapp.util';
  */
 @Component({
   selector: 'admin-due-follow-ups',
-  imports: [RouterLink, DatePipe, PageHeaderComponent, PaginationComponent, StatePanelComponent],
+  imports: [RouterLink, IstDatePipe, PageHeaderComponent, PaginationComponent, StatePanelComponent],
   templateUrl: './due-follow-ups.component.html',
   styleUrl: './due-follow-ups.component.css',
 })

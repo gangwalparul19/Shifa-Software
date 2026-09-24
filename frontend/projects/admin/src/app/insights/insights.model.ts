@@ -78,7 +78,7 @@ export const INSIGHT_TYPE_LABELS: Record<string, string> = {
   RTO_RISK: 'RTO risk',
   COURIER_SCORECARD: 'Courier scorecard',
   RETURN_RATE_ANOMALY: 'Return-rate anomaly',
-  COD_OUTSTANDING_BUILDUP: 'COD outstanding',
+  COD_OUTSTANDING_BUILDUP: 'On-delivery outstanding',
   LEAD_SOURCE_CONVERSION: 'Lead-source conversion',
 };
 

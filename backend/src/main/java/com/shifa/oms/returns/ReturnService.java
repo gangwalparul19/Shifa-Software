@@ -55,17 +55,34 @@ public class ReturnService {
     private final StockService stockService;
     private final AuditService auditService;
     private final CurrentUserService currentUserService;
+    /**
+     * Staff directory (nullable): resolves each order's {@code created_by} to the
+     * salesperson's display name for the returns list. Null under the legacy test
+     * constructor — the name is then omitted.
+     */
+    private final com.shifa.oms.auth.UserRepository userRepository;
 
     public ReturnService(OrderReturnRepository returnRepository,
                          OrderRepository orderRepository,
                          StockService stockService,
                          AuditService auditService,
                          CurrentUserService currentUserService) {
+        this(returnRepository, orderRepository, stockService, auditService, currentUserService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ReturnService(OrderReturnRepository returnRepository,
+                         OrderRepository orderRepository,
+                         StockService stockService,
+                         AuditService auditService,
+                         CurrentUserService currentUserService,
+                         com.shifa.oms.auth.UserRepository userRepository) {
         this.returnRepository = returnRepository;
         this.orderRepository = orderRepository;
         this.stockService = stockService;
         this.auditService = auditService;
         this.currentUserService = currentUserService;
+        this.userRepository = userRepository;
     }
 
     /**
@@ -263,9 +280,18 @@ public class ReturnService {
                                              LocalDateTime from, LocalDateTime to,
                                              Pageable pageable) {
         Page<OrderReturn> page = returnRepository.search(status, blankToNull(q), from, to, pageable);
-        Map<Long, String> codes = orderCodesFor(page.getContent().stream()
-                .map(OrderReturn::getOrderId).toList());
-        return PageResponse.of(page, r -> ReturnResponse.from(r, codes.get(r.getOrderId())));
+        List<Long> orderIds = page.getContent().stream().map(OrderReturn::getOrderId).toList();
+        // Batch-load the orders once to resolve BOTH the order code and the
+        // salesperson (created_by) name per row, avoiding an N+1.
+        Map<Long, OrderEntity> ordersById = ordersFor(orderIds);
+        Map<Long, String> names = salespersonNames(ordersById.values());
+        return PageResponse.of(page, r -> {
+            OrderEntity order = ordersById.get(r.getOrderId());
+            String code = order != null ? order.getOrderCode() : null;
+            String sp = (order != null && order.getCreatedBy() != null)
+                    ? names.get(order.getCreatedBy()) : null;
+            return ReturnResponse.from(r, code, sp);
+        });
     }
 
     /** All returns for a given order, newest first. */
@@ -357,6 +383,43 @@ public class ReturnService {
         }
         return orderRepository.findAllById(distinct).stream()
                 .collect(java.util.stream.Collectors.toMap(OrderEntity::getId, OrderEntity::getOrderCode));
+    }
+
+    /** Batch-loads the orders for a page of returns, keyed by id (avoids an N+1). */
+    private Map<Long, OrderEntity> ordersFor(List<Long> orderIds) {
+        List<Long> distinct = orderIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (distinct.isEmpty()) {
+            return Map.of();
+        }
+        return orderRepository.findAllById(distinct).stream()
+                .collect(java.util.stream.Collectors.toMap(OrderEntity::getId, java.util.function.Function.identity()));
+    }
+
+    /**
+     * Batch-resolves the display names of the salespeople who created the given
+     * orders (full name, else username). Empty when there is no staff directory
+     * (test/legacy) or no creators, so the name is simply omitted.
+     */
+    private Map<Long, String> salespersonNames(java.util.Collection<OrderEntity> orders) {
+        Map<Long, String> names = new java.util.HashMap<>();
+        if (userRepository == null) {
+            return names;
+        }
+        java.util.Set<Long> ids = new java.util.HashSet<>();
+        for (OrderEntity o : orders) {
+            if (o.getCreatedBy() != null) {
+                ids.add(o.getCreatedBy());
+            }
+        }
+        if (ids.isEmpty()) {
+            return names;
+        }
+        for (com.shifa.oms.auth.User u : userRepository.findAllById(ids)) {
+            String name = (u.getFullName() != null && !u.getFullName().isBlank())
+                    ? u.getFullName() : u.getUsername();
+            names.put(u.getId(), name);
+        }
+        return names;
     }
 
     private Long currentUserId() {

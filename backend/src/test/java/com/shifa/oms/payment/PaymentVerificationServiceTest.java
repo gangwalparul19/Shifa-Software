@@ -75,7 +75,7 @@ class PaymentVerificationServiceTest {
 
     @Test
     void queueReturnsPendingPaymentsAsRows() {
-        when(orderRepository.findByPaymentVerificationStatusOrderByCreatedAtAsc(
+        when(orderRepository.findByPaymentVerificationStatusOrderByCreatedAtDesc(
                 PaymentVerificationStatus.PENDING))
                 .thenReturn(List.of(prepaidPendingOrder()));
 

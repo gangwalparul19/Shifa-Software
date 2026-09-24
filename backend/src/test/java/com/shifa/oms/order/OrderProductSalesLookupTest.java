@@ -82,7 +82,8 @@ class OrderProductSalesLookupTest {
         assertThat(startCaptor.getValue()).isEqualTo(LocalDateTime.of(2025, 6, 1, 0, 0));
         assertThat(endCaptor.getValue()).isEqualTo(LocalDateTime.of(2025, 7, 1, 0, 0));
         assertThat(statusesCaptor.getValue())
-                .containsExactlyInAnyOrder(OrderStatus.REJECTED.name(), OrderStatus.CANCELLED.name());
+                .containsExactlyInAnyOrder(OrderStatus.REJECTED.name(),
+                        OrderStatus.PAYMENT_REJECTED.name(), OrderStatus.CANCELLED.name());
     }
 
     @Test

@@ -34,7 +34,7 @@
         <div class="subheader">Last successful backup</div>
         <div class="h2 m-0">
           @if (lastSuccess(); as ok) {
-            {{ ok.finishedAt || ok.startedAt | date: 'dd MMM yyyy · HH:mm' }}
+            {{ ok.finishedAt || ok.startedAt | istDate: 'dd MMM yyyy · HH:mm' }}
           } @else {
             —
           }
@@ -62,7 +62,7 @@
         <div class="shifa-bk" [class.is-failed]="isFailed(run.status)" [class.is-success]="isSuccess(run.status)">
           <div class="shifa-bk__r1">
             <span class="badge" [class]="statusBadgeClass(run.status)">{{ run.status }}</span>
-            <span class="shifa-bk__when">{{ run.startedAt | date: 'dd MMM, HH:mm' }}</span>
+            <span class="shifa-bk__when">{{ run.startedAt | istDate: 'dd MMM, HH:mm' }}</span>
           </div>
           @if (run.objectKey) {
             <div class="shifa-bk__key shifa-mono"><i class="ti ti-file-zip me-1"></i>{{ run.objectKey }}</div>
@@ -106,8 +106,8 @@
             @for (run of runs(); track run.id) {
               <tr>
                 <td><span class="badge" [class]="statusBadgeClass(run.status)">{{ run.status }}</span></td>
-                <td class="text-secondary">{{ run.startedAt | date: 'dd MMM yyyy, HH:mm' }}</td>
-                <td class="text-secondary">{{ run.finishedAt ? (run.finishedAt | date: 'dd MMM yyyy, HH:mm') : '—' }}</td>
+                <td class="text-secondary">{{ run.startedAt | istDate }}</td>
+                <td class="text-secondary">{{ run.finishedAt ? (run.finishedAt | istDate) : '—' }}</td>
                 <td class="shifa-mono text-secondary">{{ run.objectKey || '—' }}</td>
                 <td class="text-danger">{{ run.error || '—' }}</td>
                 <td class="text-end">

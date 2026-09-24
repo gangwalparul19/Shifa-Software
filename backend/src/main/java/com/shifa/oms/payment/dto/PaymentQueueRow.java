@@ -22,10 +22,19 @@ public record PaymentQueueRow(
         PaymentStatus paymentStatus,
         boolean paymentScreenshotAvailable,
         PaymentVerificationStatus verificationStatus,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        // The name of the salesperson who punched the order (resolved from
+        // created_by; full name, else username; null when unknown), so the
+        // verifier can see who triggered the payment.
+        String salespersonName
 ) {
 
+    /** Without a resolved salesperson name (null) — kept for callers that don't resolve it. */
     public static PaymentQueueRow from(OrderEntity order) {
+        return from(order, null);
+    }
+
+    public static PaymentQueueRow from(OrderEntity order, String salespersonName) {
         String key = order.getPaymentScreenshotKey();
         return new PaymentQueueRow(
                 order.getId(),
@@ -37,6 +46,7 @@ public record PaymentQueueRow(
                 order.getPaymentStatus(),
                 key != null && !key.isBlank(),
                 order.getPaymentVerificationStatus(),
-                order.getCreatedAt());
+                order.getCreatedAt(),
+                salespersonName);
     }
 }

@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, HostListener, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import {
@@ -56,7 +56,7 @@ type StatusLens = LeadStatus | 'ALL';
   imports: [
     ReactiveFormsModule,
     RouterLink,
-    DatePipe,
+    IstDatePipe,
     PageHeaderComponent,
     PaginationComponent,
     StatePanelComponent,

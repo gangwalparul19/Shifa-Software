@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
 import { OrderDetail } from '../orders/orders.model';
 import {
+  BulkDeliveryStatusResult,
   PackingQueue,
   PackingScanPreviewResponse,
   PackingScanResponse,
@@ -112,6 +113,20 @@ export class PackingService {
    */
   dispatch(id: number): Observable<OrderDetail> {
     return this.api.post<OrderDetail>(`/api/packing/${id}/dispatch`);
+  }
+
+  /**
+   * Multi-select in-house dispatch: set a delivery status (Out_For_Delivery /
+   * Delivered / …) on every selected IN-HOUSE order in one call. Courier orders
+   * and illegal moves come back in {@code skipped} with a reason (partial
+   * success). Reuses the same per-order rules as the order-detail status update.
+   */
+  bulkDeliveryStatus(ids: number[], status: string, note?: string): Observable<BulkDeliveryStatusResult> {
+    return this.api.post<BulkDeliveryStatusResult>('/api/packing/dispatch/bulk-status', {
+      ids,
+      status,
+      ...(note ? { note } : {}),
+    });
   }
 
   /**

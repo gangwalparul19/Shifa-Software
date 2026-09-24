@@ -288,8 +288,9 @@
           <span class="shifa-oc__amount">{{ money(order.totalAmount) }}</span>
         </div>
         <div class="shifa-oc__r2">
-          <span class="shifa-oc__meta" [title]="order.createdAt ? (order.createdAt | date: 'dd MMM yyyy, HH:mm') : ''">
+          <span class="shifa-oc__meta" [title]="order.createdAt ? (order.createdAt | istDate) : ''">
             {{ order.createdAt ? relativeTime(order.createdAt) : '—' }} · {{ order.customerName }}
+            @if (order.salespersonName) { · <i class="ti ti-user"></i> {{ order.salespersonName }} }
           </span>
           <span class="shifa-oc__pill" [class]="statusPillClass(order.orderStatus)">
             {{ useStageLabel() ? stageLabel(order.orderStatus) : humanize(order.orderStatus) }}
@@ -339,9 +340,10 @@
             </th>
             <th adminSortHeader field="orderCode" [sort]="sort()" (sortChange)="onSort($event)">Order</th>
             <th adminSortHeader field="customerName" [sort]="sort()" (sortChange)="onSort($event)">Customer</th>
+            <th class="d-none d-md-table-cell">Salesperson</th>
             <th class="d-none d-md-table-cell">Mobile</th>
             <th class="text-end" adminSortHeader field="totalAmount" [sort]="sort()" (sortChange)="onSort($event)">Total</th>
-            <th class="text-end d-none d-xl-table-cell">COD</th>
+            <th class="text-end d-none d-xl-table-cell">On Delivery</th>
             <th class="d-none d-md-table-cell" adminSortHeader field="paymentStatus" [sort]="sort()" (sortChange)="onSort($event)">Payment</th>
             <th adminSortHeader field="orderStatus" [sort]="sort()" (sortChange)="onSort($event)">Status</th>
             <th class="d-none d-xl-table-cell" adminSortHeader field="createdAt" [sort]="sort()" (sortChange)="onSort($event)">Date</th>
@@ -366,6 +368,7 @@
                 </button>
               </td>
               <td data-label="Customer">{{ order.customerName }}</td>
+              <td class="text-secondary d-none d-md-table-cell">{{ order.salespersonName || '—' }}</td>
               <td class="text-secondary d-none d-md-table-cell">{{ order.customerMobile }}</td>
               <td class="text-end" data-label="Total">{{ money(order.totalAmount) }}</td>
               <td class="text-end d-none d-xl-table-cell">{{ money(order.codAmount) }}</td>
@@ -391,7 +394,7 @@
                   </div>
                 }
               </td>
-              <td class="text-secondary d-none d-xl-table-cell" [title]="order.createdAt ? (order.createdAt | date: 'dd MMM yyyy, HH:mm') : ''">
+              <td class="text-secondary d-none d-xl-table-cell" [title]="order.createdAt ? (order.createdAt | istDate) : ''">
                 {{ order.createdAt ? relativeTime(order.createdAt) : '—' }}
               </td>
               <td class="text-end d-none d-xl-table-cell" (click)="stopRowClick($event)">
@@ -490,7 +493,7 @@
                 <div class="shifa-od__tlbody">
                   <div class="shifa-od__tllabel">{{ step.label }}</div>
                   @if (step.at) {
-                    <div class="shifa-od__tlwhen" [title]="step.at | date: 'dd MMM yyyy, HH:mm'">{{ relativeTime(step.at) }}</div>
+                    <div class="shifa-od__tlwhen" [title]="step.at | istDate">{{ relativeTime(step.at) }}</div>
                   }
                 </div>
               </div>
@@ -514,7 +517,7 @@
                     <i class="ti ti-arrow-right mx-1"></i>
                     <span class="shifa-mono">{{ humanize(entry.toStatus) }}</span>
                   </div>
-                  <div class="text-secondary small">{{ entry.actor }} · {{ entry.source }} · {{ entry.changedAt | date: 'dd MMM yyyy, HH:mm' }}</div>
+                  <div class="text-secondary small">{{ entry.actor }} · {{ entry.source }} · {{ entry.changedAt | istDate }}</div>
                 </div>
               } @empty {
                 <div class="text-secondary small">No action history recorded.</div>
@@ -542,9 +545,13 @@
         @if (detailTab() === 'details') {
         <!-- (3) Order date -->
         <div class="shifa-od__section">
+          @if (order.salespersonName) {
+            <div class="shifa-od__label">Salesperson</div>
+            <div class="shifa-od__value mb-2"><i class="ti ti-user me-1"></i>{{ order.salespersonName }}</div>
+          }
           <div class="shifa-od__label">Order Date</div>
           <div class="shifa-od__value">
-            {{ order.createdAt ? (order.createdAt | date: 'dd MMM yyyy · HH:mm') : '—' }}
+            {{ order.createdAt ? (order.createdAt | istDate: 'dd MMM yyyy · HH:mm') : '—' }}
             @if (order.createdAt) {
               <span class="text-secondary small ms-1">({{ relativeTime(order.createdAt) }})</span>
             }
@@ -630,11 +637,23 @@
           </div>
         }
 
-        <!-- (5a-i) Rejection reason — visible so the salesperson knows why and can rework it -->
-        @if (order.orderStatus === 'REJECTED' && order.rejectionReason) {
+        <!-- (5a-i) Rejection reason — visible so the salesperson knows why and can rework it.
+             Covers both an admin REJECTED and a payment-panel PAYMENT_REJECTED. -->
+        @if (isRejected(order.orderStatus)) {
           <div class="shifa-od__card border-danger">
-            <div class="shifa-od__label text-danger"><i class="ti ti-alert-triangle me-1"></i>Rejected — reason</div>
-            <div class="shifa-od__muted mt-1" style="white-space: pre-wrap">{{ order.rejectionReason }}</div>
+            <div class="shifa-od__label text-danger">
+              <i class="ti ti-alert-triangle me-1"></i>
+              {{ order.orderStatus === 'PAYMENT_REJECTED' ? 'Payment rejected' : 'Rejected' }} — reason
+            </div>
+            @if (rejectReasonLabel(order.rejectReason)) {
+              <div class="mt-1"><span class="badge bg-red-lt">{{ rejectReasonLabel(order.rejectReason) }}</span></div>
+            }
+            @if (order.rejectionReason) {
+              <div class="shifa-od__muted mt-1" style="white-space: pre-wrap">{{ order.rejectionReason }}</div>
+            }
+            @if (order.orderStatus === 'PAYMENT_REJECTED' && order.paymentVerificationNote && order.paymentVerificationNote !== order.rejectionReason) {
+              <div class="shifa-od__muted mt-1" style="white-space: pre-wrap">{{ order.paymentVerificationNote }}</div>
+            }
           </div>
         }
 
@@ -763,7 +782,7 @@
             }
             <div class="shifa-od__totline"><span>Amount received</span><span>{{ money(order.amountReceived) }}</span></div>
             <div class="shifa-od__totline"><span>Remaining</span><span>{{ money(order.remainingAmount) }}</span></div>
-            <div class="shifa-od__totline"><span>COD amount</span><span>{{ money(order.codAmount) }}</span></div>
+            <div class="shifa-od__totline"><span>To collect on delivery</span><span>{{ money(order.codAmount) }}</span></div>
           </div>
         </div>
 
@@ -846,7 +865,7 @@
                 </div>
               }
               @if (order.estimatedDelivery) {
-                <div class="shifa-od__totline"><span>Est. delivery</span><span>{{ order.estimatedDelivery | date: 'dd MMM yyyy' }}</span></div>
+                <div class="shifa-od__totline"><span>Est. delivery</span><span>{{ order.estimatedDelivery | istDate: 'dd MMM yyyy' }}</span></div>
               }
             </div>
           </div>
@@ -1023,7 +1042,7 @@
                   </div>
                   @if (quikShipTracking(); as t) {
                     @if (t.lastSyncedAt) {
-                      <div class="text-secondary small mb-2">Updated {{ t.lastSyncedAt | date: 'dd MMM, HH:mm' }}</div>
+                      <div class="text-secondary small mb-2">Updated {{ t.lastSyncedAt | istDate: 'dd MMM, HH:mm' }}</div>
                     }
                     @if (t.scans && t.scans.length) {
                       <ul class="shifa-qsx-timeline">
@@ -1120,6 +1139,31 @@
             >
               <i class="ti ti-arrow-back-up me-1"></i> Create return
             </button>
+          }
+
+          <!-- Edit: correct the order details while it's still editable (creator/admin) -->
+          @if (canEdit(order)) {
+            <a
+              class="btn btn-outline-primary shifa-od__action"
+              [routerLink]="['/orders', order.id, 'edit']"
+              (click)="closeDetail()"
+              title="Edit this order's details"
+            >
+              <i class="ti ti-pencil me-1"></i> Edit
+            </a>
+          }
+
+          <!-- Fix & resubmit: rework THIS rejected order back into the approval queue -->
+          @if (canResubmit(order)) {
+            <a
+              class="btn btn-warning shifa-od__action"
+              [routerLink]="['/orders/new']"
+              [queryParams]="{ resubmitFrom: order.id }"
+              (click)="closeDetail()"
+              title="Fix the flagged details and send this order back for approval"
+            >
+              <i class="ti ti-rotate me-1"></i> Fix &amp; resubmit
+            </a>
           }
 
           <!-- One-tap reorder: clone this order into a fresh New Order draft -->

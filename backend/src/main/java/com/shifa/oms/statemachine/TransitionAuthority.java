@@ -69,6 +69,25 @@ public final class TransitionAuthority {
         put(t, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.REJECTED, false, Role.ADMIN);
         put(t, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.CANCELLED, false, Role.ADMIN);
 
+        // Payment-panel rejection: the Payment Verifier (or an admin) rejects a
+        // prepaid order's payment, moving it to the distinct PAYMENT_REJECTED
+        // terminal status (rejection-status feature). Allowed both before approval
+        // (order still pending) and after (the payment check runs alongside the
+        // lifecycle). ADMIN is included so an admin can also reject a payment.
+        put(t, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.PAYMENT_REJECTED, false,
+                Role.PAYMENT_VERIFIER, Role.ADMIN);
+        put(t, OrderStatus.APPROVED, OrderStatus.PAYMENT_REJECTED, false,
+                Role.PAYMENT_VERIFIER, Role.ADMIN);
+
+        // Rework a rejected order back into the approval queue (rejection-status
+        // rework feature): the creating salesperson (or an admin) fixes the flagged
+        // issue and resubmits. Staff-only, no SYSTEM. Own-order scoping is enforced
+        // in the service layer.
+        put(t, OrderStatus.REJECTED, OrderStatus.PENDING_ADMIN_APPROVAL, false,
+                Role.SALESPERSON, Role.ADMIN);
+        put(t, OrderStatus.PAYMENT_REJECTED, OrderStatus.PENDING_ADMIN_APPROVAL, false,
+                Role.SALESPERSON, Role.ADMIN);
+
         // Auto label on approval — SYSTEM (label service) or ADMIN.
         put(t, OrderStatus.APPROVED, OrderStatus.LABEL_GENERATED, true, Role.ADMIN);
 

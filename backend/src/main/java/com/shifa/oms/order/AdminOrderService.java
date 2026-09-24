@@ -1,6 +1,7 @@
 package com.shifa.oms.order;
 
 import com.shifa.oms.auth.AuthPrincipal;
+import com.shifa.oms.auth.UserRepository;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.label.LabelService;
@@ -21,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Admin order-approval application service (Req 9).
@@ -59,11 +61,19 @@ public class AdminOrderService {
     /** QuikShipX shipment mirror (nullable): enriches the Orders list with the QuikShipX status chip. */
     private final OrderShipmentRepository orderShipmentRepository;
 
+    /**
+     * Staff directory (nullable): resolves each order's {@code created_by} to the
+     * salesperson's display name so the Orders list and Approval Queue show who
+     * punched each order. Null under the legacy test constructor — the name is
+     * then simply omitted.
+     */
+    private final UserRepository userRepository;
+
     /** Legacy constructor (unit tests): no QuikShipX approval hook / list enrichment. */
     public AdminOrderService(OrderRepository orderRepository, LabelService labelService,
                              OrderWorkflowService orderWorkflowService,
                              OutboxEventPublisher outboxEventPublisher) {
-        this(orderRepository, labelService, orderWorkflowService, outboxEventPublisher, null, null);
+        this(orderRepository, labelService, orderWorkflowService, outboxEventPublisher, null, null, null);
     }
 
     @Autowired
@@ -71,13 +81,15 @@ public class AdminOrderService {
                              OrderWorkflowService orderWorkflowService,
                              OutboxEventPublisher outboxEventPublisher,
                              QuikShipXProperties quikShipXProperties,
-                             OrderShipmentRepository orderShipmentRepository) {
+                             OrderShipmentRepository orderShipmentRepository,
+                             UserRepository userRepository) {
         this.orderRepository = orderRepository;
         this.labelService = labelService;
         this.orderWorkflowService = orderWorkflowService;
         this.outboxEventPublisher = outboxEventPublisher;
         this.quikShipXProperties = quikShipXProperties;
         this.orderShipmentRepository = orderShipmentRepository;
+        this.userRepository = userRepository;
     }
 
     /**
@@ -149,8 +161,42 @@ public class AdminOrderService {
                                                  Pageable pageable, java.util.Collection<Long> creatorIds) {
         Specification<OrderEntity> spec =
                 OrderListSpecifications.build(q, status, statusGroup, paymentStatus, from, to, creatorIds);
-        Page<OrderSummaryResponse> page = orderRepository.findAll(spec, pageable).map(OrderSummaryResponse::from);
+        Page<OrderEntity> entities = orderRepository.findAll(spec, pageable);
+        // Resolve each row's salesperson (created_by) name once for the whole page,
+        // so the Orders table shows who punched each order without an N+1.
+        Map<Long, String> names = resolveSalespersonNames(entities.getContent());
+        Page<OrderSummaryResponse> page = entities.map(order -> OrderSummaryResponse.from(order)
+                .withSalesperson(order.getCreatedBy() == null ? null : names.get(order.getCreatedBy())));
         return enrichWithQuikShipStatus(page);
+    }
+
+    /**
+     * Batch-resolves the display names of the salespeople who created the given
+     * orders (their {@code created_by}), mirroring the packing/reporting pattern:
+     * one {@code findAllById} query, full name when set, else username. Returns an
+     * empty map when there is no staff directory (legacy test constructor) or no
+     * creators to resolve, so the name is simply omitted.
+     */
+    private Map<Long, String> resolveSalespersonNames(java.util.Collection<OrderEntity> orders) {
+        Map<Long, String> names = new java.util.HashMap<>();
+        if (userRepository == null) {
+            return names;
+        }
+        java.util.Set<Long> ids = new java.util.HashSet<>();
+        for (OrderEntity o : orders) {
+            if (o.getCreatedBy() != null) {
+                ids.add(o.getCreatedBy());
+            }
+        }
+        if (ids.isEmpty()) {
+            return names;
+        }
+        for (com.shifa.oms.auth.User u : userRepository.findAllById(ids)) {
+            String name = (u.getFullName() != null && !u.getFullName().isBlank())
+                    ? u.getFullName() : u.getUsername();
+            names.put(u.getId(), name);
+        }
+        return names;
     }
 
     /**
@@ -185,10 +231,12 @@ public class AdminOrderService {
     /** Approval queue: all pending-approval orders with review details (Req 9.1, 9.2). */
     @Transactional(readOnly = true)
     public List<ApprovalQueueItemResponse> approvalQueue() {
-        return orderRepository
-                .findByOrderStatusOrderByCreatedAtDesc(OrderStatus.PENDING_ADMIN_APPROVAL)
-                .stream()
-                .map(ApprovalQueueItemResponse::from)
+        List<OrderEntity> pending = orderRepository
+                .findByOrderStatusOrderByCreatedAtDesc(OrderStatus.PENDING_ADMIN_APPROVAL);
+        Map<Long, String> names = resolveSalespersonNames(pending);
+        return pending.stream()
+                .map(o -> ApprovalQueueItemResponse.from(
+                        o, o.getCreatedBy() == null ? null : names.get(o.getCreatedBy())))
                 .toList();
     }
 
@@ -253,13 +301,26 @@ public class AdminOrderService {
      */
     @Transactional
     public OrderResponse reject(Long id, String reason, AuthPrincipal admin) {
+        return reject(id, null, reason, admin);
+    }
+
+    /**
+     * Rejects a pending order with a categorized reason (rejection-status
+     * feature): {@code Pending_Admin_Approval → REJECTED} via the state machine,
+     * storing both the {@link RejectReason} category (Rate Issue / Address-Pincode
+     * Issue / Other) and the free-text note on the order so the salesperson can
+     * see why. A blank note is rejected with 400 and the order left unchanged.
+     * Rejected with 409 if the transition is not legal.
+     */
+    @Transactional
+    public OrderResponse reject(Long id, RejectReason category, String reason, AuthPrincipal admin) {
         if (reason == null || reason.isBlank()) {
             throw new ValidationException("A rejection reason is required.");
         }
         OrderEntity order = requireOrder(id);
         orderWorkflowService.applyTransition(
                 order, OrderStatus.REJECTED, Actor.user(admin, SOURCE_ADMIN));
-        order.setRejectionReason(reason.trim());
+        order.setRejectReason(category, reason.trim());
         return OrderResponse.from(orderRepository.save(order));
     }
 

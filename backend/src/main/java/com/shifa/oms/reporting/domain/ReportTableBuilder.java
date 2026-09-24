@@ -35,10 +35,10 @@ public class ReportTableBuilder {
             "Products",
             "Total Amount",
             "Amount Received",
-            "COD Amount",
+            "On-Delivery Amount",
             "Payment Status",
             "Order Status",
-            "COD Settlement Status",
+            "On-Delivery Collection Status",
             "Loss Claim Status",
             "AWB",
             "Order Date");
@@ -84,7 +84,8 @@ public class ReportTableBuilder {
     /** Order statuses whose money is written off (never collectible) — excluded from dues. */
     private static boolean isCancelledOrRejected(OrderReportRecord o) {
         return o.orderStatus() == com.shifa.oms.statemachine.OrderStatus.CANCELLED
-                || o.orderStatus() == com.shifa.oms.statemachine.OrderStatus.REJECTED;
+                || o.orderStatus() == com.shifa.oms.statemachine.OrderStatus.REJECTED
+                || o.orderStatus() == com.shifa.oms.statemachine.OrderStatus.PAYMENT_REJECTED;
     }
 
     /** Customer balance; legacy pure fixtures fall back to total minus received. */
@@ -100,7 +101,7 @@ public class ReportTableBuilder {
      */
     private TabularData payments(List<OrderReportRecord> orders, DateRange window) {
         List<String> headers = List.of(
-                "Date", "Orders", "Total Sales", "Amount Received", "COD Amount", "Outstanding");
+                "Date", "Orders", "Total Sales", "Amount Received", "On-Delivery Amount", "Outstanding");
         // Ordered by date so the daily cash trend reads top-to-bottom.
         java.util.TreeMap<java.time.LocalDate, BigDecimal[]> byDate = new java.util.TreeMap<>();
         java.util.TreeMap<java.time.LocalDate, long[]> counts = new java.util.TreeMap<>();
@@ -135,7 +136,7 @@ public class ReportTableBuilder {
     private TabularData outstanding(List<OrderReportRecord> orders, DateRange window) {
         List<String> headers = List.of(
                 "Order", "Customer", "Mobile", "Order Date", "Days", "Total",
-                "Received", "Balance Due", "Order Status", "COD Status");
+                "Received", "Balance Due", "Order Status", "On-Delivery Status");
         java.time.LocalDate reference = referenceDate(orders, window);
         List<OrderReportRecord> due = new ArrayList<>();
         for (OrderReportRecord o : orders) {
@@ -173,7 +174,7 @@ public class ReportTableBuilder {
      */
     private TabularData codRemittance(List<OrderReportRecord> orders, DateRange window) {
         List<String> headers = List.of(
-                "Order", "Customer", "AWB", "Order Date", "Days", "COD Amount", "Order Status");
+                "Order", "Customer", "AWB", "Order Date", "Days", "On-Delivery Amount", "Order Status");
         java.time.LocalDate reference = referenceDate(orders, window);
         List<OrderReportRecord> pending = new ArrayList<>();
         for (OrderReportRecord o : orders) {

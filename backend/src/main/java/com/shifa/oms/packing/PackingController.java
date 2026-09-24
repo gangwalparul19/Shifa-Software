@@ -37,10 +37,13 @@ public class PackingController {
 
     private final PackingService packingService;
     private final CurrentUserService currentUserService;
+    private final com.shifa.oms.order.BulkOrderService bulkOrderService;
 
-    public PackingController(PackingService packingService, CurrentUserService currentUserService) {
+    public PackingController(PackingService packingService, CurrentUserService currentUserService,
+                             com.shifa.oms.order.BulkOrderService bulkOrderService) {
         this.packingService = packingService;
         this.currentUserService = currentUserService;
+        this.bulkOrderService = bulkOrderService;
     }
 
     /**
@@ -106,6 +109,23 @@ public class PackingController {
     public OrderResponse dispatch(@PathVariable Long id) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return packingService.dispatch(id, actor);
+    }
+
+    /**
+     * Multi-select in-house dispatch status update: sets the chosen delivery
+     * status (Out_For_Delivery / Delivered / …) on every selected IN-HOUSE order,
+     * skipping courier-partner orders (tracked by the partner) and any order the
+     * move is illegal for, with a per-order reason (partial success). Reuses the
+     * same per-order rules as the order-detail "Update status" action, including
+     * settlement on Delivered.
+     */
+    @PostMapping("/dispatch/bulk-status")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public com.shifa.oms.order.dto.BulkActionResult bulkDeliveryStatus(
+            @Valid @RequestBody com.shifa.oms.packing.dto.BulkDeliveryStatusRequest request) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return bulkOrderService.bulkUpdateInHouseDeliveryStatus(
+                request.ids(), request.status(), request.note(), actor);
     }
 
     /**

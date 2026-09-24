@@ -332,7 +332,9 @@
   font-size: 0.8rem;
 }
 
-/* One-hand payment shortcuts: keep the two common choices thumb-reachable. */
+/* One-hand payment shortcuts: sit BELOW the amount field (they only fill it) and
+   stay thumb-reachable. The amount field itself is where a partial payment is
+   typed, so these are a convenience for the two common cases, not the only input. */
 .shifa-payment-quick {
   display: flex;
   flex-wrap: wrap;
@@ -343,6 +345,10 @@
   min-height: 44px;
   flex: 1 1 9rem;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
 }
 
 @media (max-width: 480px) {

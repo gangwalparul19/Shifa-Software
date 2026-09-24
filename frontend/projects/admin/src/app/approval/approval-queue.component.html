@@ -77,7 +77,8 @@
           <div class="shifa-appr__idwrap">
             <span class="shifa-appr__code">{{ item.orderCode }}</span>
             <span class="shifa-appr__meta">
-              {{ item.customerName }} · {{ item.createdAt ? (item.createdAt | date: 'dd MMM, HH:mm') : '—' }}
+              {{ item.customerName }} · {{ item.createdAt ? (item.createdAt | istDate: 'dd MMM, HH:mm') : '—' }}
+              @if (item.salespersonName) { · <i class="ti ti-user"></i> {{ item.salespersonName }} }
             </span>
             @if (itemsSummary(item) !== '—') {
               <span class="shifa-appr__items">
@@ -110,8 +111,8 @@
                 aria-label="Select all on this page"
               />
             </th>
-            <th>Order</th><th>Customer</th><th>Mobile</th><th>Items</th>
-            <th class="text-end">Total</th><th class="text-end">Paid</th><th class="text-end">COD</th>
+            <th>Order</th><th>Customer</th><th>Salesperson</th><th>Mobile</th><th>Items</th>
+            <th class="text-end">Total</th><th class="text-end">Paid</th><th class="text-end">On Delivery</th>
             <th>Payment</th><th>Date</th><th class="text-end">Actions</th>
           </tr>
         </thead>
@@ -132,13 +133,14 @@
                 <div><span class="badge bg-secondary-lt">{{ humanize(item.source) }}</span></div>
               </td>
               <td>{{ item.customerName }}</td>
+              <td class="text-secondary">{{ item.salespersonName || '—' }}</td>
               <td class="text-secondary">{{ item.customerMobile }}</td>
               <td class="text-secondary">{{ itemsSummary(item) }}</td>
               <td class="text-end">{{ money(item.totalAmount) }}</td>
               <td class="text-end">{{ money(item.amountReceived) }}</td>
               <td class="text-end">{{ money(item.codAmount) }}</td>
               <td><admin-status-badge [status]="item.paymentStatus" kind="payment" /></td>
-              <td class="text-secondary">{{ item.createdAt ? (item.createdAt | date: 'dd MMM, HH:mm') : '—' }}</td>
+              <td class="text-secondary">{{ item.createdAt ? (item.createdAt | istDate: 'dd MMM, HH:mm') : '—' }}</td>
               <td class="text-end" (click)="$event.stopPropagation()">
                 <admin-row-actions [actions]="rowActions()" ariaLabel="Order actions" (select)="onRowAction($event, item)" />
               </td>
@@ -170,7 +172,7 @@
         <div class="sa-dr__code">{{ item.orderCode }}</div>
         <div class="sa-dr__sub">
           {{ item.customerName }}
-          @if (item.createdAt) { · {{ item.createdAt | date: 'dd MMM, HH:mm' }} }
+          @if (item.createdAt) { · {{ item.createdAt | istDate: 'dd MMM, HH:mm' }} }
         </div>
       </div>
       <span class="sa-dr__pill">{{ formatStatus(item.paymentStatus) }}</span>
@@ -188,6 +190,11 @@
               <a class="sa-dr__mobile" href="tel:{{ item.customerMobile }}">
                 <i class="ti ti-phone me-1"></i>{{ item.customerMobile }}
               </a>
+              @if (item.salespersonName) {
+                <div class="text-secondary small mt-1">
+                  <i class="ti ti-user me-1"></i>Salesperson: {{ item.salespersonName }}
+                </div>
+              }
             </div>
             <a
               class="sa-dr__round"
@@ -244,7 +251,7 @@
             <span>Amount received</span><strong class="text-success">{{ money(item.amountReceived) }}</strong>
           </div>
           <div class="sa-dr__totline sa-dr__totline--cod">
-            <span>COD to collect</span><strong>{{ money(item.codAmount) }}</strong>
+            <span>To collect on delivery</span><strong>{{ money(item.codAmount) }}</strong>
           </div>
         </div>
       </section>
@@ -272,14 +279,40 @@
         </div>
       </section>
 
-      <!-- Payment screenshot -->
+      <!-- Payment screenshots (all proofs on file, V65) -->
       <section class="sa-dr__section">
-        <div class="sa-dr__label"><i class="ti ti-photo me-1"></i>Payment screenshot</div>
+        <div class="sa-dr__label">
+          <i class="ti ti-photo me-1"></i>Payment screenshot@if (screenshotUrls().length > 1) {
+            <span>s</span>
+            <span class="badge bg-blue-lt ms-2">{{ screenshotUrls().length }}</span>
+          }
+        </div>
         @if (screenshotLoading()) {
           <div class="skeleton sa-dr__shot" style="height: 180px"></div>
-        } @else if (screenshotUrl(); as url) {
-          <a [href]="url" target="_blank" rel="noopener">
-            <img class="img-fluid rounded border sa-dr__shot" [src]="url" alt="Payment screenshot" />
+        } @else if (screenshotUrls().length > 0) {
+          <!-- Snip tabs: browse each proof by tab instead of scrolling a stack. -->
+          @if (screenshotUrls().length > 1) {
+            <div class="shifa-snip-tabs" role="tablist" aria-label="Payment screenshots">
+              @for (url of screenshotUrls(); track url) {
+                <button
+                  type="button"
+                  class="shifa-snip-tab"
+                  [class.active]="activeSnip() === $index"
+                  role="tab"
+                  [attr.aria-selected]="activeSnip() === $index"
+                  (click)="selectSnip($index)"
+                >
+                  Snip {{ $index + 1 }}@if ($first) { <span class="badge bg-green-lt ms-1">Primary</span> }
+                </button>
+              }
+            </div>
+          }
+          <a [href]="screenshotUrls()[activeSnip()]" target="_blank" rel="noopener">
+            <img
+              class="img-fluid rounded border sa-dr__shot"
+              [src]="screenshotUrls()[activeSnip()]"
+              [alt]="'Payment screenshot ' + (activeSnip() + 1)"
+            />
           </a>
         } @else {
           <div class="sa-dr__empty">
@@ -311,10 +344,17 @@
     <div class="card">
       <div class="card-header"><h3 class="card-title mb-0">Reject {{ item.orderCode }}</h3></div>
       <div class="card-body">
-        <p class="text-secondary">Provide a reason for rejecting this order. This is required.</p>
+        <p class="text-secondary">Choose a reason category and add a note. Both are required, and the salesperson will see them.</p>
         <form [formGroup]="rejectForm" (ngSubmit)="confirmReject()" novalidate>
-          <textarea class="form-control" formControlName="reason" rows="4"
-            placeholder="e.g. Payment screenshot does not match the amount received"
+          <label class="form-label" for="rejectCategory">Reason</label>
+          <select id="rejectCategory" class="form-select mb-2" formControlName="category">
+            @for (c of rejectCategories; track c.value) {
+              <option [value]="c.value">{{ c.label }}</option>
+            }
+          </select>
+          <label class="form-label" for="rejectNote">Details</label>
+          <textarea id="rejectNote" class="form-control" formControlName="reason" rows="4"
+            placeholder="e.g. Rate quoted is below the minimum for this product"
             [class.is-invalid]="rejectForm.controls.reason.touched && rejectForm.controls.reason.invalid"></textarea>
           @if (rejectForm.controls.reason.touched && rejectForm.controls.reason.invalid) {
             <div class="invalid-feedback">A rejection reason is required (max 500 characters).</div>

@@ -45,7 +45,7 @@
           </span>
           <span class="shifa-due__date" [class.is-overdue]="isOverdue(lead)">
             <i class="ti ti-calendar-event me-1"></i>
-            {{ lead.followUpDate ? (lead.followUpDate | date: 'dd MMM yyyy') : '—' }}
+            {{ lead.followUpDate ? (lead.followUpDate | istDate: 'dd MMM yyyy') : '—' }}
             @if (isOverdue(lead)) { · Overdue }
           </span>
         </div>

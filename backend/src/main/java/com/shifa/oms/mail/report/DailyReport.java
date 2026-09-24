@@ -138,7 +138,8 @@ public record DailyReport(
             if (o.status() == OrderStatus.DELIVERED) {
                 deliveredCount++;
             }
-            if (o.status() == OrderStatus.CANCELLED || o.status() == OrderStatus.REJECTED) {
+            if (o.status() == OrderStatus.CANCELLED || o.status() == OrderStatus.REJECTED
+                    || o.status() == OrderStatus.PAYMENT_REJECTED) {
                 cancelledRejectedCount++;
             }
             String mobile = o.customerMobile();

@@ -51,7 +51,7 @@ public class SalespersonPerformanceService {
 
     /** Orders that never shipped are excluded from revenue (matches P&L). */
     private static final Set<OrderStatus> NON_REVENUE =
-            EnumSet.of(OrderStatus.REJECTED, OrderStatus.CANCELLED);
+            EnumSet.of(OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED);
 
     /** Concluded successful deliveries. */
     private static final Set<OrderStatus> DELIVERED =

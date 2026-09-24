@@ -1,10 +1,10 @@
 <admin-page-header
   title="Reconciliation"
-  subtitle="Track COD and loss-claim amounts owed by courier companies."
+  subtitle="Track on-delivery collections and loss-claim amounts owed by courier companies."
   [breadcrumbs]="[{ label: 'Reconciliation' }]"
 >
   <admin-density-toggle />
-  <button type="button" class="btn btn-outline-secondary" (click)="openRemittanceImport()" title="Import courier COD remittance" aria-label="Import courier COD remittance">
+  <button type="button" class="btn btn-outline-secondary" (click)="openRemittanceImport()" title="Import courier delivery-collection remittance" aria-label="Import courier delivery-collection remittance">
     <i class="ti ti-file-import"></i><span class="d-none d-sm-inline ms-1">Import remittance</span>
   </button>
   <button type="button" class="btn btn-icon btn-outline-secondary" (click)="loadAll()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
@@ -24,7 +24,7 @@
     <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
       <div class="card-body d-flex align-items-center justify-content-between">
         <div>
-          <div class="subheader">COD to collect</div>
+          <div class="subheader">To collect on delivery</div>
           <div class="h2 m-0">{{ totalCodOutstanding() }}</div>
         </div>
         <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-cash"></i></span>
@@ -67,7 +67,7 @@
       <div class="card"><div class="empty">
         <div class="empty-icon"><i class="ti ti-cash-off"></i></div>
         <p class="empty-title">No courier receivables yet</p>
-        <p class="empty-subtitle text-secondary">COD collections and loss claims will appear here.</p>
+        <p class="empty-subtitle text-secondary">On-delivery collections and loss claims will appear here.</p>
       </div></div>
     </div>
   } @else {
@@ -79,7 +79,7 @@
               <span class="stat-icon me-2" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-truck"></i></span>
               <h3 class="card-title m-0">{{ courierLabel(c.courierName) }}</h3>
             </div>
-            <div class="d-flex justify-content-between py-1"><span class="text-secondary">COD receivable</span><strong>{{ money(c.codOutstanding) }}</strong></div>
+            <div class="d-flex justify-content-between py-1"><span class="text-secondary">On-delivery receivable</span><strong>{{ money(c.codOutstanding) }}</strong></div>
             <div class="d-flex justify-content-between py-1"><span class="text-secondary">Claim receivable</span><strong>{{ money(c.claimOutstanding) }}</strong></div>
             <div class="d-flex justify-content-between py-1 border-top pt-2 mt-1"><span class="fw-medium">Total outstanding</span><strong class="text-primary">{{ money(c.totalOutstanding) }}</strong></div>
           </div>
@@ -223,7 +223,7 @@
                   <i class="ti ti-check me-1"></i> Settle
                 </button>
               } @else if (r.settledDate) {
-                <span class="shifa-rc__settled">Settled {{ r.settledDate | date: 'dd MMM yyyy' }}</span>
+                <span class="shifa-rc__settled">Settled {{ r.settledDate | istDate: 'dd MMM yyyy' }}</span>
               }
             </div>
           </div>
@@ -234,6 +234,7 @@
         <table class="table table-vcenter card-table table-hover stagger-rows">
           <thead><tr>
             <th>Order</th>
+            <th>Salesperson</th>
             <th adminSortHeader field="type" [sort]="recvSort()" (sortChange)="onReceivablesSort($event)">Type</th>
             <th>Courier</th>
             <th>AWB</th>
@@ -246,6 +247,7 @@
             @for (r of receivables(); track r.id) {
               <tr>
                 <td class="fw-medium">{{ r.orderCode ?? '—' }}</td>
+                <td class="text-secondary">{{ r.salespersonName || '—' }}</td>
                 <td><span class="badge" [attr.data-type]="r.type">{{ r.type === ReceivableType.COD_RECEIVABLE ? 'COD' : 'Claim' }}</span></td>
                 <td>{{ courierLabel(r.courierName) }}</td>
                 <td><span class="shifa-mono text-secondary">{{ r.awb ?? '—' }}</span></td>
@@ -253,7 +255,7 @@
                 <td>
                   @if (r.settled) { <span class="badge settled">Settled</span> } @else { <span class="badge outstanding">Outstanding</span> }
                 </td>
-                <td class="text-secondary">{{ r.settledDate ? (r.settledDate | date: 'dd MMM yyyy') : '—' }}</td>
+                <td class="text-secondary">{{ r.settledDate ? (r.settledDate | istDate: 'dd MMM yyyy') : '—' }}</td>
                 <td class="text-end">
                   @if (!r.settled) {
                     <button type="button" class="btn btn-sm btn-primary" (click)="openSettle(r)" [disabled]="acting()">Settle</button>
@@ -289,7 +291,7 @@
               <span class="shifa-rc__amount">{{ money(u.amount) }}</span>
             </div>
             <div class="shifa-rc__r2">
-              <span class="shifa-rc__meta">{{ u.customerName ?? '—' }} · {{ courierLabel(u.courierName) }}</span>
+              <span class="shifa-rc__meta">{{ u.customerName ?? '—' }} · {{ courierLabel(u.courierName) }}@if (u.salespersonName) { · {{ u.salespersonName }} }</span>
               <span class="shifa-rc__pill is-amber">Unsettled</span>
             </div>
             <div class="shifa-rc__foot">
@@ -306,12 +308,13 @@
 
       <div class="table-responsive d-none d-md-block">
         <table class="table table-vcenter card-table table-hover stagger-rows">
-          <thead><tr><th>Order</th><th>Customer</th><th>Courier</th><th>AWB</th><th class="text-end">COD amount</th><th class="text-end">Actions</th></tr></thead>
+          <thead><tr><th>Order</th><th>Customer</th><th>Salesperson</th><th>Courier</th><th>AWB</th><th class="text-end">COD amount</th><th class="text-end">Actions</th></tr></thead>
           <tbody>
             @for (u of unsettled(); track u.receivableId) {
               <tr>
                 <td class="fw-medium">{{ u.orderCode ?? '—' }}</td>
                 <td>{{ u.customerName ?? '—' }}</td>
+                <td class="text-secondary">{{ u.salespersonName || '—' }}</td>
                 <td>{{ courierLabel(u.courierName) }}</td>
                 <td><span class="shifa-mono text-secondary">{{ u.awb ?? '—' }}</span></td>
                 <td class="text-end">{{ money(u.amount) }}</td>
@@ -383,7 +386,7 @@
             </div>
             <div class="shifa-rc__r2">
               <span class="shifa-rc__meta">
-                {{ courierLabel(c.courierName) }} · {{ c.createdAt ? (c.createdAt | date: 'dd MMM yyyy') : '—' }}
+                {{ courierLabel(c.courierName) }} · {{ c.createdAt ? (c.createdAt | istDate: 'dd MMM yyyy') : '—' }}
               </span>
               <span class="shifa-rc__pill is-red">Claim</span>
             </div>
@@ -409,7 +412,7 @@
                 <td>{{ courierLabel(c.courierName) }}</td>
                 <td><span class="shifa-mono text-secondary">{{ c.awb ?? '—' }}</span></td>
                 <td class="text-end">{{ money(c.amount) }}</td>
-                <td class="text-secondary">{{ c.createdAt ? (c.createdAt | date: 'dd MMM yyyy') : '—' }}</td>
+                <td class="text-secondary">{{ c.createdAt ? (c.createdAt | istDate: 'dd MMM yyyy') : '—' }}</td>
                 <td class="text-end"><button type="button" class="btn btn-sm btn-primary" (click)="openSettle(c)" [disabled]="acting()">Mark settled</button></td>
               </tr>
             }

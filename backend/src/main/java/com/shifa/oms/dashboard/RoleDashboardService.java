@@ -55,7 +55,7 @@ public class RoleDashboardService {
 
     /** Terminal/exception outcomes surfaced as their own counts for the admin overview (Req 3.3). */
     private static final Set<OrderStatus> EXCEPTION_STATES = EnumSet.of(
-            OrderStatus.REJECTED, OrderStatus.CANCELLED, OrderStatus.CUSTOMER_REJECTED,
+            OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED, OrderStatus.CUSTOMER_REJECTED,
             OrderStatus.DELIVERY_FAILED, OrderStatus.RTO, OrderStatus.REDISPATCH);
 
     private final OrderRepository orderRepository;

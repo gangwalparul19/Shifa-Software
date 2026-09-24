@@ -54,7 +54,7 @@ public class GstAccountingService {
     private static final ZoneId ZONE = ZoneId.of("Asia/Kolkata");
     /** Orders excluded from tax and sales figures (Req 3.3). */
     private static final Set<OrderStatus> NON_REVENUE =
-            EnumSet.of(OrderStatus.CANCELLED, OrderStatus.REJECTED);
+            EnumSet.of(OrderStatus.CANCELLED, OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED);
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2);
 
     private final OrderRepository orderRepository;

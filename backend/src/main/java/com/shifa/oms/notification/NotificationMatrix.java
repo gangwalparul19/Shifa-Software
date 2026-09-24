@@ -74,6 +74,12 @@ public class NotificationMatrix {
         m.put(OrderStatus.REJECTED, specs(
                 inAppCreator()));
 
+        // PAYMENT_REJECTED (rejection-status feature) — salesperson-creator only,
+        // mirroring REJECTED so the salesperson is told their order's payment was
+        // rejected and can rework it.
+        m.put(OrderStatus.PAYMENT_REJECTED, specs(
+                inAppCreator()));
+
         // PACKED (Req 8.4, 8.5).
         m.put(OrderStatus.PACKED, specs(
                 customerWhatsApp(),

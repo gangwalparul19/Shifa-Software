@@ -31,7 +31,7 @@
           <strong>{{ list.orderCount }}</strong> order{{ list.orderCount === 1 ? '' : 's' }} awaiting packing ·
           <strong>{{ list.lines.length }}</strong> distinct product{{ list.lines.length === 1 ? '' : 's' }}
           @if (generatedAt()) {
-            · generated {{ generatedAt() | date: 'HH:mm' }}
+            · generated {{ generatedAt() | istDate: 'HH:mm' }}
           }
         </div>
       </div>

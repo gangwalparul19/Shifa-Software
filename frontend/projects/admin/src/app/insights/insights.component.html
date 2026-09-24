@@ -103,7 +103,7 @@
             <!-- Footer: date (left) + dismiss (right) -->
             <div class="shifa-ic__r2">
               <span class="shifa-ic__date">
-                <i class="ti ti-calendar-event me-1"></i>{{ insight.computedDate | date: 'dd MMM yyyy' }}
+                <i class="ti ti-calendar-event me-1"></i>{{ insight.computedDate | istDate: 'dd MMM yyyy' }}
               </span>
               <admin-row-actions [actions]="rowActions(insight)" ariaLabel="Insight actions" (select)="onRowAction($event, insight)" />
             </div>

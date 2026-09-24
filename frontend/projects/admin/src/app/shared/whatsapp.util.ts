@@ -171,7 +171,7 @@ function orderSummaryBlock(ctx: WhatsAppContext): string {
     lines.push(`Paid: ${money(paid)}`);
   }
   if (pending > 0) {
-    lines.push(`Balance to pay on delivery (COD): ${money(pending)}`);
+    lines.push(`Balance to pay on delivery: ${money(pending)}`);
   } else if (paid > 0) {
     lines.push(`Payment: received in full ✅`);
   }

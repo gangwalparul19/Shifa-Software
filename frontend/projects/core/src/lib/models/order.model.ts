@@ -32,6 +32,7 @@ export enum OrderStatus {
   PENDING_ADMIN_APPROVAL = 'PENDING_ADMIN_APPROVAL',
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
+  PAYMENT_REJECTED = 'PAYMENT_REJECTED',
   CANCELLED = 'CANCELLED',
   LABEL_GENERATED = 'LABEL_GENERATED',
   PACKED = 'PACKED',
@@ -54,6 +55,14 @@ export enum OrderSource {
   STOREFRONT = 'STOREFRONT',
   SALESPERSON = 'SALESPERSON',
 }
+
+/**
+ * The categorized reason an order was rejected (rejection-status feature).
+ * Admin rejections carry RATE_ISSUE / ADDRESS_PINCODE_ISSUE / OTHER; a payment-
+ * panel rejection is always PAYMENT_ISSUE (set server-side). Matches the backend
+ * RejectReason enum name() on the wire.
+ */
+export type RejectReason = 'RATE_ISSUE' | 'ADDRESS_PINCODE_ISSUE' | 'PAYMENT_ISSUE' | 'OTHER';
 
 /** Mirrors the backend Order DTO (`orders` table + line items). */
 export interface Order {

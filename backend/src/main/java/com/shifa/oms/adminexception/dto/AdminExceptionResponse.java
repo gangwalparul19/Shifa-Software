@@ -27,7 +27,11 @@ public record AdminExceptionResponse(
             OrderStatus orderStatus,
             BigDecimal amount,
             LocalDateTime createdAt,
-            String actionPath
+            String actionPath,
+            // Name of the salesperson who punched the order (resolved from
+            // created_by; full name, else username; null for non-order-backed
+            // rows like INSIGHT), so the admin sees who triggered each exception.
+            String salespersonName
     ) {
     }
 }

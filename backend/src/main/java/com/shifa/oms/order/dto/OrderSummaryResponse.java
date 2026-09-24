@@ -30,7 +30,12 @@ public record OrderSummaryResponse(
         // QuikShipX's own order id (the number quoted to track on their portal) and
         // the allotted AWB, surfaced so the Orders list/chip can show them too.
         String quikShipXOrderId,
-        String quikShipXAwb
+        String quikShipXAwb,
+        // The name of the salesperson who punched the order (resolved from
+        // created_by; full name, else username; null when unknown), so the Orders
+        // table can show who triggered each order. Batch-loaded by the admin list
+        // read path; null on the lightweight search results.
+        String salespersonName
 ) {
 
     public static OrderSummaryResponse from(OrderEntity order) {
@@ -46,6 +51,7 @@ public record OrderSummaryResponse(
                 order.getCreatedAt(),
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -54,6 +60,13 @@ public record OrderSummaryResponse(
                                              String quikShipXAwb) {
         return new OrderSummaryResponse(id, orderCode, customerName, customerMobile, orderStatus,
                 paymentStatus, totalAmount, codAmount, createdAt,
-                quikShipXStatus, quikShipXOrderId, quikShipXAwb);
+                quikShipXStatus, quikShipXOrderId, quikShipXAwb, salespersonName);
+    }
+
+    /** Returns a copy carrying the resolved salesperson name (Orders-list enrichment). */
+    public OrderSummaryResponse withSalesperson(String salespersonName) {
+        return new OrderSummaryResponse(id, orderCode, customerName, customerMobile, orderStatus,
+                paymentStatus, totalAmount, codAmount, createdAt,
+                quikShipXStatus, quikShipXOrderId, quikShipXAwb, salespersonName);
     }
 }

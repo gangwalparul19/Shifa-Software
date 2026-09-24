@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { PackingService } from './packing.service';
 import { PickList } from './packing.model';
@@ -15,7 +15,7 @@ import { StatePanelComponent } from '../shared/state-panel.component';
  */
 @Component({
   selector: 'admin-pick-list',
-  imports: [DatePipe, PageHeaderComponent, StatePanelComponent],
+  imports: [IstDatePipe, PageHeaderComponent, StatePanelComponent],
   templateUrl: './pick-list.component.html',
   styleUrl: './pick-list.component.css',
 })

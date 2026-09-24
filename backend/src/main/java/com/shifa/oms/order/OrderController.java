@@ -14,6 +14,7 @@ import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.order.dto.PaymentScreenshotResponse;
 import com.shifa.oms.order.dto.ScreenshotUploadResponse;
 import com.shifa.oms.order.dto.UpdateDeliveryStatusRequest;
+import com.shifa.oms.order.dto.UpdateOrderRequest;
 import com.shifa.oms.platform.storage.StorageService;
 import com.shifa.oms.product.ProductService;
 import com.shifa.oms.product.dto.ProductResponse;
@@ -28,6 +29,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -116,6 +118,40 @@ public class OrderController {
     }
 
     /**
+     * Rework a REJECTED / PAYMENT_REJECTED order back into the approval queue
+     * (rejection-status rework feature): the creating salesperson (or an admin)
+     * fixes the flagged details and resubmits. The order moves back to
+     * {@code Pending_Admin_Approval} with the same code + full history. Own-order
+     * scoped inside {@link OrderService#resubmit} (a salesperson can only resubmit
+     * an order they created; anything else is a 404); a non-rejected order yields
+     * a 400.
+     */
+    @PostMapping("/{id}/resubmit")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN','TEAM_LEAD')")
+    public OrderResponse resubmit(@PathVariable Long id, @Valid @RequestBody UpdateOrderRequest request) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return orderService.resubmit(id, request, actor);
+    }
+
+    /**
+     * Edit an order the caller punched, while it is still awaiting approval
+     * (own-pending-edit feature): the salesperson / team lead corrects the
+     * customer / shipping / line-item / lead-source / note / GSTIN / discount
+     * details (a change from the customer or the agent before an admin reviews it).
+     * Own-order scoped inside {@link OrderService#updateOwnOrder} (a salesperson
+     * can only edit an order they created; a team lead their team's — anything else
+     * is a 404), and only while {@code Pending_Admin_Approval} (a 400 once approved,
+     * directing to an admin). Records a field-level audit entry. Payment capture is
+     * not editable here.
+     */
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN','TEAM_LEAD')")
+    public OrderResponse update(@PathVariable Long id, @Valid @RequestBody UpdateOrderRequest request) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return orderService.updateOwnOrder(id, request, actor);
+    }
+
+    /**
      * Manual one-shot "Mark Delivered" for an in-house (non-QuikShipX) order:
      * jumps the order straight to {@code Delivered} and settles it (Closed /
      * COD_Collected) in the same action (in-house-delivery feature). Restricted
@@ -182,11 +218,17 @@ public class OrderController {
         return orderService.search(search, actor);
     }
 
-    /** Whether prior orders exist for a mobile number (Req 22.2). */
+    /**
+     * Whether prior orders exist for a mobile number (Req 22.2), and whether an
+     * ACTIVE order already exists for it TODAY (same-day duplicate detection). The
+     * acting user is passed so the response can say whether today's order was
+     * placed by the caller or by another salesperson.
+     */
     @GetMapping("/duplicate-check")
     @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN','TEAM_LEAD')")
     public DuplicateCheckResponse duplicateCheck(@RequestParam("mobile") String mobile) {
-        return orderService.duplicateCheck(mobile);
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return orderService.duplicateCheck(mobile, actor);
     }
 
     /**

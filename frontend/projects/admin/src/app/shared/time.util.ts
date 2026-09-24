@@ -30,5 +30,7 @@ export function relativeTime(iso: string | null | undefined, now: number = Date.
   if (diffDay < 7) {
     return `${diffDay}d ago`;
   }
-  return new Date(then).toLocaleDateString();
+  // Older than a week: show the date in IST (Asia/Kolkata) so it matches the rest
+  // of the app regardless of the viewer's device timezone.
+  return new Date(then).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
 }

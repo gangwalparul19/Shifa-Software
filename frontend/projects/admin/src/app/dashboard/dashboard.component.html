@@ -299,7 +299,7 @@
       <div class="card card-hover stat-accent" style="--accent: #0ca678; --accent-soft: #e3f7f0">
         <div class="card-body d-flex align-items-center justify-content-between">
           <div>
-            <div class="subheader">COD to collect</div>
+            <div class="subheader">To collect on delivery</div>
             <div class="h2 m-0 count-up" [shifaCountUp]="ls.totalCodToCollect" countFormat="inr"></div>
           </div>
           <span class="stat-icon" style="--accent: #0ca678; --accent-soft: #e3f7f0"><i class="ti ti-truck-return"></i></span>
@@ -492,7 +492,7 @@
       <div class="card card-hover stat-accent" style="--accent: #17a2b8; --accent-soft: #e2f4f7">
         <div class="card-body d-flex align-items-center justify-content-between">
           <div>
-            <div class="subheader">COD Pending (Courier)</div>
+            <div class="subheader">Pending from Courier</div>
             <div class="h2 m-0 count-up" [shifaCountUp]="m.cards.totalCodPendingFromCourier" countFormat="inr"></div>
           </div>
           <span class="stat-icon" style="--accent: #17a2b8; --accent-soft: #e2f4f7"><i class="ti ti-cash-banknote"></i></span>
@@ -724,7 +724,7 @@
             <div class="col-6 col-md-4">
               <div class="shifa-act">
                 <div class="h2 m-0 count-up" [shifaCountUp]="a.codSettlementsPending" countFormat="int"></div>
-                <div class="text-secondary small">COD settlements pending</div>
+                <div class="text-secondary small">Delivery collections pending</div>
               </div>
             </div>
             <div class="col-6 col-md-4">
@@ -1154,13 +1154,13 @@
 
 <!-- Accountant (Req 3.5) -->
 @if (summary()?.accountant; as ac) {
-  <div class="shifa-section-title">COD &amp; receivables</div>
+  <div class="shifa-section-title">Delivery collections &amp; receivables</div>
   <div class="row row-cards g-2 g-md-3 mb-3 stagger">
     <div class="col-6 col-md-4">
       <div class="card card-hover stat-accent" style="--accent: #17a2b8; --accent-soft: #e2f4f7">
         <div class="card-body d-flex align-items-center justify-content-between">
           <div>
-            <div class="subheader">COD pending</div>
+            <div class="subheader">On-delivery pending</div>
             <div class="h2 m-0">{{ inr(ac.codPending) }}</div>
           </div>
           <span class="stat-icon" style="--accent: #17a2b8; --accent-soft: #e2f4f7"><i class="ti ti-cash-banknote"></i></span>

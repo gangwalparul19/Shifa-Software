@@ -200,6 +200,16 @@ public class OrderEntity {
     private String rejectionReason;
 
     /**
+     * The categorized reason an order was rejected (rejection-status feature):
+     * Rate Issue / Address-Pincode Issue (admin) or Payment Issue (payment panel).
+     * Null for orders never rejected. Mapped to {@code orders.reject_reason} (V66);
+     * {@link #rejectionReason} above is the accompanying free-text note.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reject_reason", length = 30)
+    private RejectReason rejectReason;
+
+    /**
      * The categorized reason this order was marked RTO when done manually by a
      * packer/admin scanning the label (label redesign feature); null for orders
      * that were never RTO'd, or RTO'd automatically via the courier webhook/poll
@@ -412,6 +422,19 @@ public class OrderEntity {
     /** Stores the admin's rejection reason when an order is rejected (Req 9.4). */
     public void setRejectionReason(String rejectionReason) {
         this.rejectionReason = rejectionReason;
+    }
+
+    public RejectReason getRejectReason() {
+        return rejectReason;
+    }
+
+    /**
+     * Records why this order was rejected (rejection-status feature): a category
+     * (Rate / Address-Pincode / Payment / Other) plus an optional free-text note.
+     */
+    public void setRejectReason(RejectReason rejectReason, String note) {
+        this.rejectReason = rejectReason;
+        this.rejectionReason = note;
     }
 
     public RtoReason getRtoReason() {

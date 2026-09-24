@@ -1,7 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { DatePipe } from '@angular/common';
 import { AuthService, Role } from 'core';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { PageHeaderComponent, } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import {
@@ -26,7 +26,7 @@ type HealthFilter = 'ALL' | 'INACTIVE' | 'NO_ACTIVITY' | 'FOLLOW_UPS' | 'RTO';
 
 @Component({
   selector: 'admin-team-performance',
-  imports: [RouterLink, DatePipe, PageHeaderComponent, StatePanelComponent, TeamMemberDetailComponent],
+  imports: [RouterLink, IstDatePipe, PageHeaderComponent, StatePanelComponent, TeamMemberDetailComponent],
   styleUrl: './team-performance.component.css',
   template: `
     <admin-page-header
@@ -130,11 +130,11 @@ type HealthFilter = 'ALL' | 'INACTIVE' | 'NO_ACTIVITY' | 'FOLLOW_UPS' | 'RTO';
             }
             @if (orderTab() === 'own' && isTeamLead()) {
               @if (d.ownOrders.length === 0) { <div class="text-secondary small py-2">No personal orders in this period.</div> } @else {
-                <div class="table-responsive"><table class="table table-sm table-vcenter"><thead><tr><th>Order</th><th>Customer</th><th class="text-end">Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>@for (order of d.ownOrders; track order.id) { <tr><td><a class="shifa-mono" [routerLink]="['/orders']" [queryParams]="{ q: order.orderCode }">{{ order.orderCode }}</a></td><td>{{ order.customerName }}</td><td class="text-end">{{ inr(order.totalAmount) }}</td><td>{{ statusLabel(order.orderStatus) }}</td><td>{{ order.createdAt | date:'dd MMM, HH:mm' }}</td></tr> }</tbody></table></div>
+                <div class="table-responsive"><table class="table table-sm table-vcenter"><thead><tr><th>Order</th><th>Customer</th><th class="text-end">Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>@for (order of d.ownOrders; track order.id) { <tr><td><a class="shifa-mono" [routerLink]="['/orders']" [queryParams]="{ q: order.orderCode }">{{ order.orderCode }}</a></td><td>{{ order.customerName }}</td><td class="text-end">{{ inr(order.totalAmount) }}</td><td>{{ statusLabel(order.orderStatus) }}</td><td>{{ order.createdAt | istDate:'dd MMM, HH:mm' }}</td></tr> }</tbody></table></div>
               }
             } @else {
               @if (d.teamOrders.length === 0) { <div class="text-secondary small py-2">No teammate orders in this period.</div> } @else {
-                <div class="table-responsive"><table class="table table-sm table-vcenter"><thead><tr><th>Order</th><th>Salesperson</th><th>Customer</th><th class="text-end">Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>@for (order of d.teamOrders; track order.id) { <tr><td><a class="shifa-mono" [routerLink]="['/orders']" [queryParams]="{ q: order.orderCode }">{{ order.orderCode }}</a></td><td class="fw-medium">{{ order.salespersonName }}</td><td>{{ order.customerName }}</td><td class="text-end">{{ inr(order.totalAmount) }}</td><td>{{ statusLabel(order.orderStatus) }}</td><td>{{ order.createdAt | date:'dd MMM, HH:mm' }}</td></tr> }</tbody></table></div>
+                <div class="table-responsive"><table class="table table-sm table-vcenter"><thead><tr><th>Order</th><th>Salesperson</th><th>Customer</th><th class="text-end">Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>@for (order of d.teamOrders; track order.id) { <tr><td><a class="shifa-mono" [routerLink]="['/orders']" [queryParams]="{ q: order.orderCode }">{{ order.orderCode }}</a></td><td class="fw-medium">{{ order.salespersonName }}</td><td>{{ order.customerName }}</td><td class="text-end">{{ inr(order.totalAmount) }}</td><td>{{ statusLabel(order.orderStatus) }}</td><td>{{ order.createdAt | istDate:'dd MMM, HH:mm' }}</td></tr> }</tbody></table></div>
               }
             }
           </div>

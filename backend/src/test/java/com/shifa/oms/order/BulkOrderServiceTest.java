@@ -170,4 +170,46 @@ class BulkOrderServiceTest {
                 });
         assertThat(ready.getOrderStatus()).isEqualTo(OrderStatus.PACKED);
     }
+
+    // --- bulk in-house dispatch status update -------------------------------
+
+    @Test
+    void bulkDeliveryStatusUpdatesInHouseAndSkipsCourierOrders() {
+        // A real ManualDeliveryService is the per-order primitive; wire a
+        // BulkOrderService through the 4-arg constructor so the bulk method works.
+        com.shifa.oms.audit.AuditService auditService = new com.shifa.oms.audit.AuditService(
+                org.mockito.Mockito.mock(com.shifa.oms.audit.AuditEventRepository.class),
+                new com.shifa.oms.auth.CurrentUserService());
+        OrderWorkflowService workflowService = new OrderWorkflowService(auditService);
+        ManualDeliveryService manualDelivery = new ManualDeliveryService(
+                orderRepository, workflowService,
+                org.mockito.Mockito.mock(com.shifa.oms.reconciliation.ReceivableRepository.class),
+                new OutboxEventPublisher(outboxEventRepository));
+        BulkOrderService bulk = new BulkOrderService(
+                new AdminOrderService(orderRepository,
+                        new LabelService(orderRepository, inMemoryStorage()), workflowService,
+                        new OutboxEventPublisher(outboxEventRepository)),
+                new PackingService(orderRepository, new OutboxEventPublisher(outboxEventRepository),
+                        workflowService, org.mockito.Mockito.mock(com.shifa.oms.auth.UserRepository.class)),
+                orderRepository, manualDelivery);
+
+        OrderEntity inHouse = orderIn(1L, OrderStatus.HANDED_TO_DELIVERY);
+        inHouse.setDeliveryMethod(DeliveryMethod.IN_HOUSE);
+        OrderEntity courier = orderIn(2L, OrderStatus.HANDED_TO_DELIVERY);
+        courier.setDeliveryMethod(DeliveryMethod.QUIKSHIPX);
+        lenient().when(orderRepository.findById(1L)).thenReturn(Optional.of(inHouse));
+        lenient().when(orderRepository.findById(2L)).thenReturn(Optional.of(courier));
+
+        BulkActionResult result = bulk.bulkUpdateInHouseDeliveryStatus(
+                List.of(1L, 2L), OrderStatus.OUT_FOR_DELIVERY, null, admin);
+
+        // The in-house order advanced; the courier order was skipped (partner-tracked).
+        assertThat(result.succeeded()).containsExactly(1L);
+        assertThat(inHouse.getOrderStatus()).isEqualTo(OrderStatus.OUT_FOR_DELIVERY);
+        assertThat(result.skipped()).singleElement().satisfies(s -> {
+            assertThat(s.id()).isEqualTo(2L);
+            assertThat(s.reason()).contains("courier");
+        });
+        assertThat(courier.getOrderStatus()).isEqualTo(OrderStatus.HANDED_TO_DELIVERY);
+    }
 }

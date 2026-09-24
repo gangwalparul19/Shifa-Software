@@ -223,6 +223,27 @@ export class OrdersService {
   }
 
   /**
+   * Edit an order the caller punched, while it is still awaiting approval
+   * (own-pending-edit feature), via {@code PUT /api/orders/{id}} (SALESPERSON/
+   * ADMIN/TEAM_LEAD, own-order scoped, PENDING only). Distinct from the ADMIN
+   * {@link updateOrder} which can also edit an APPROVED order.
+   */
+  updateOwnOrder(id: number, payload: UpdateOrderRequest): Observable<OrderDetail> {
+    return this.api.put<OrderDetail>(`/api/orders/${id}`, payload);
+  }
+
+  /**
+   * Rework a REJECTED / PAYMENT_REJECTED order back into the approval queue
+   * (rejection-status rework feature), via {@code POST /api/orders/{id}/resubmit}
+   * (SALESPERSON/ADMIN/TEAM_LEAD, own-order scoped). Re-applies the corrected
+   * details and moves the order back to {@code Pending_Admin_Approval} with the
+   * same order code + full history.
+   */
+  resubmit(id: number, payload: UpdateOrderRequest): Observable<OrderDetail> {
+    return this.api.post<OrderDetail>(`/api/orders/${id}/resubmit`, payload);
+  }
+
+  /**
    * Manually attaches a courier name + AWB to an order (ADMIN-only; "assign
    * courier early" enhancement), via
    * {@code POST /api/admin/orders/{id}/assign-courier}. Usable any time before

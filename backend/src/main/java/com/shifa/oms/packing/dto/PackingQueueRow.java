@@ -22,6 +22,9 @@ import java.time.LocalDateTime;
  * @param createdAt      when the order was created
  * @param orderStatus    current lifecycle status
  * @param paymentStatus  payment classification
+ * @param deliveryMethod QUIKSHIPX (courier partner) or IN_HOUSE — the dispatch
+ *                       queue uses this to offer manual status updates only for
+ *                       in-house orders (courier orders are tracked by the partner)
  */
 public record PackingQueueRow(
         Long id,
@@ -31,7 +34,8 @@ public record PackingQueueRow(
         BigDecimal totalAmount,
         LocalDateTime createdAt,
         OrderStatus orderStatus,
-        PaymentStatus paymentStatus
+        PaymentStatus paymentStatus,
+        com.shifa.oms.order.DeliveryMethod deliveryMethod
 ) {
 
     public static PackingQueueRow from(OrderEntity order, String salespersonName) {
@@ -43,6 +47,7 @@ public record PackingQueueRow(
                 order.getTotalAmount(),
                 order.getCreatedAt(),
                 order.getOrderStatus(),
-                order.getPaymentStatus());
+                order.getPaymentStatus(),
+                order.getDeliveryMethod());
     }
 }

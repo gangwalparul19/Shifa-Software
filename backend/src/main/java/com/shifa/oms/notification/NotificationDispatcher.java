@@ -152,6 +152,7 @@ public class NotificationDispatcher {
         return switch (event) {
             case APPROVED -> "Order approved" + suffix;
             case REJECTED -> "Order rejected" + suffix;
+            case PAYMENT_REJECTED -> "Payment rejected" + suffix;
             case PACKED -> "Order packed" + suffix;
             case HANDED_TO_DELIVERY -> "Order handed to delivery" + suffix;
             case DISPATCHED -> "Order dispatched" + suffix;
@@ -169,7 +170,7 @@ public class NotificationDispatcher {
     private static String severityFor(OrderStatus event) {
         return switch (event) {
             case APPROVED, PACKED, DISPATCHED, DELIVERED -> AdminNotification.SEVERITY_SUCCESS;
-            case REJECTED, CUSTOMER_REJECTED, DELIVERY_FAILED, RTO, REDISPATCH, CANCELLED ->
+            case REJECTED, PAYMENT_REJECTED, CUSTOMER_REJECTED, DELIVERY_FAILED, RTO, REDISPATCH, CANCELLED ->
                     AdminNotification.SEVERITY_DANGER;
             default -> AdminNotification.SEVERITY_INFO;
         };

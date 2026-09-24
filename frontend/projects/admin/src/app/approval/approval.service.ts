@@ -1,8 +1,9 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { ApiClient, Order } from 'core';
+import { ApiClient, Order, RejectReason } from 'core';
 import { ApprovalQueueItem, BulkApproveResult } from './approval.model';
+import { PaymentScreenshot } from '../orders/orders.model';
 
 /**
  * Data access for the admin order-approval workflow (Req 9).
@@ -45,16 +46,33 @@ export class ApprovalService {
     return this.api.post<BulkApproveResult>('/api/admin/orders/bulk-approve', { ids });
   }
 
-  /** Reject an order with a mandatory reason → Rejected (Req 9.4). */
-  reject(orderId: number, reason: string): Observable<Order> {
-    return this.api.post<Order>(`/api/admin/orders/${orderId}/reject`, { reason });
+  /**
+   * Reject an order with a mandatory reason → Rejected (Req 9.4). The optional
+   * {@code category} records a concrete reason (Rate / Address-Pincode / Other,
+   * rejection-status feature) alongside the free-text note.
+   */
+  reject(orderId: number, reason: string, category?: RejectReason): Observable<Order> {
+    return this.api.post<Order>(`/api/admin/orders/${orderId}/reject`, { reason, category });
   }
 
-  /** Fetch the payment screenshot as a Blob for inline rendering (Req 9.2, 21.2). */
+  /** Fetch the PRIMARY payment screenshot as a Blob for inline rendering (Req 9.2, 21.2). */
   paymentScreenshot(orderId: number): Observable<Blob> {
     return this.http.get(this.api.url(`/api/orders/${orderId}/payment-screenshot`), {
       responseType: 'blob',
     });
+  }
+
+  /** List every payment proof attached to the order, in upload order (V65). */
+  paymentScreenshots(orderId: number): Observable<PaymentScreenshot[]> {
+    return this.api.get<PaymentScreenshot[]>(`/api/orders/${orderId}/payment-screenshots`);
+  }
+
+  /** Fetch one specific payment proof as a Blob for inline rendering (V65). */
+  paymentScreenshotById(orderId: number, screenshotId: number): Observable<Blob> {
+    return this.http.get(
+      this.api.url(`/api/orders/${orderId}/payment-screenshots/${screenshotId}`),
+      { responseType: 'blob' },
+    );
   }
 
   /**

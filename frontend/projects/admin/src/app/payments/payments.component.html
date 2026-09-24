@@ -37,6 +37,9 @@
             <div>
               <div class="fw-bold shifa-mono">{{ row.orderCode }}</div>
               <div class="text-secondary small">{{ row.customerName }} · {{ row.customerMobile }}</div>
+              @if (row.salespersonName) {
+                <div class="text-secondary small"><i class="ti ti-user me-1"></i>{{ row.salespersonName }}</div>
+              }
             </div>
             <div class="text-end">
               <div class="fw-semibold">{{ row.amountReceived | inr }}</div>
@@ -70,6 +73,7 @@
           <tr>
             <th>Order ID</th>
             <th>Customer</th>
+            <th>Salesperson</th>
             <th class="text-end">Received</th>
             <th class="text-end">Total</th>
             <th>Received on</th>
@@ -81,9 +85,10 @@
             <tr>
               <td class="shifa-mono fw-bold">{{ row.orderCode }}</td>
               <td>{{ row.customerName }}<div class="text-secondary small">{{ row.customerMobile }}</div></td>
+              <td class="text-secondary">{{ row.salespersonName || '—' }}</td>
               <td class="text-end fw-semibold">{{ row.amountReceived | inr }}</td>
               <td class="text-end text-secondary">{{ row.totalAmount | inr }}</td>
-              <td class="text-secondary">{{ row.createdAt ? (row.createdAt | date: 'dd MMM yyyy, HH:mm') : '—' }}</td>
+              <td class="text-secondary">{{ row.createdAt ? (row.createdAt | istDate) : '—' }}</td>
               <td class="text-end">
                 <div class="btn-list justify-content-end">
                   <button type="button" class="btn btn-sm btn-outline-secondary"
@@ -122,26 +127,33 @@
         </h3>
         <button type="button" class="btn-close ms-auto" (click)="closeScreenshot()" aria-label="Close"></button>
       </div>
-      <div class="card-body text-center">
+      <div class="card-body">
         @if (screenshotLoading()) {
-          <span class="spinner-border" role="status"></span>
+          <div class="text-center"><span class="spinner-border" role="status"></span></div>
         } @else {
-          <div class="d-flex flex-column gap-3">
-            @for (url of screenshotUrls(); track url) {
-              <div>
-                @if (screenshotUrls().length > 1) {
-                  <div class="text-secondary small mb-1 text-start">
-                    Proof {{ $index + 1 }} of {{ screenshotUrls().length }}
-                    @if ($first) { <span class="badge bg-green-lt ms-1">Primary</span> }
-                  </div>
-                }
-                <img
-                  [src]="url"
-                  [alt]="'Payment screenshot ' + ($index + 1)"
-                  class="img-fluid rounded"
-                />
-              </div>
-            }
+          <!-- Snip tabs: one per proof, so several are browsable without scrolling. -->
+          @if (screenshotUrls().length > 1) {
+            <div class="shifa-snip-tabs" role="tablist" aria-label="Payment screenshots">
+              @for (url of screenshotUrls(); track url) {
+                <button
+                  type="button"
+                  class="shifa-snip-tab"
+                  [class.active]="activeSnip() === $index"
+                  role="tab"
+                  [attr.aria-selected]="activeSnip() === $index"
+                  (click)="selectSnip($index)"
+                >
+                  Snip {{ $index + 1 }}@if ($first) { <span class="badge bg-green-lt ms-1">Primary</span> }
+                </button>
+              }
+            </div>
+          }
+          <div class="text-center">
+            <img
+              [src]="screenshotUrls()[activeSnip()]"
+              [alt]="'Payment screenshot ' + (activeSnip() + 1)"
+              class="img-fluid rounded"
+            />
           </div>
         }
       </div>
@@ -166,6 +178,13 @@
         <p class="text-secondary small mb-2">
           {{ d.row.customerName }} paid <strong>{{ d.row.amountReceived | inr }}</strong> of {{ d.row.totalAmount | inr }}.
         </p>
+        @if (d.kind === 'reject') {
+          <div class="alert alert-danger py-2 small mb-2">
+            <i class="ti ti-alert-triangle me-1"></i>
+            Rejecting marks the order <strong>Payment Rejected</strong> (reason: Payment Issue) — the salesperson
+            will see it under Rejected with your note.
+          </div>
+        }
         <label class="form-label" for="payNote">Note <span class="text-secondary">(optional)</span></label>
         <textarea #payNote id="payNote" class="form-control" rows="2" maxlength="500"
           placeholder="e.g. Matches UPI ref, or reason for rejecting"></textarea>

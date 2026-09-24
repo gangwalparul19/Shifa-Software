@@ -16,6 +16,8 @@ export interface AdminExceptionItem {
   amount?: string | number | null;
   createdAt?: string | null;
   actionPath: string;
+  /** Name of the salesperson who punched the order (created_by → display name); null for non-order rows. */
+  salespersonName?: string | null;
 }
 
 export interface AdminExceptionResponse {

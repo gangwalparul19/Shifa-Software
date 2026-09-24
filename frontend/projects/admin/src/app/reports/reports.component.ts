@@ -114,7 +114,7 @@ export class ReportsComponent implements OnInit {
     // Money & receivables (accountant)
     { value: 'payments', label: 'Payments (daily money)', group: 'Money & Receivables' },
     { value: 'outstanding', label: 'Outstanding dues (chase list)', group: 'Money & Receivables' },
-    { value: 'cod-remittance', label: 'COD pending from courier', group: 'Money & Receivables' },
+    { value: 'cod-remittance', label: 'Pending from courier', group: 'Money & Receivables' },
     // Operations (admin / accountant) — per-module drill-downs
     { value: 'expenses', label: 'Expenses', group: 'Operations' },
     { value: 'purchase-orders', label: 'Purchase orders', group: 'Operations' },

@@ -66,7 +66,7 @@
             <div>
               <div>{{ a.message }}</div>
               <div class="small text-secondary mt-1">
-                {{ a.createdByName || 'Admin' }} · {{ a.createdAt | date: 'dd MMM yyyy, HH:mm' }}
+                {{ a.createdByName || 'Admin' }} · {{ a.createdAt | istDate }}
                 @if (!a.active) { · <span class="fw-semibold">inactive</span> }
               </div>
             </div>

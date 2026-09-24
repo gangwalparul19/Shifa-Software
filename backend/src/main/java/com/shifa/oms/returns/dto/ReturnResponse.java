@@ -31,16 +31,25 @@ public record ReturnResponse(
         boolean restocked,
         Long createdBy,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        // Name of the salesperson who punched the ORDER (resolved from the order's
+        // created_by; full name, else username; null when unknown). Distinct from
+        // createdBy above, which is the actor who raised the RETURN.
+        String salespersonName
 ) {
 
     /** Builds a response without a resolved order code (rare fallback path). */
     public static ReturnResponse from(OrderReturn r) {
-        return from(r, null);
+        return from(r, null, null);
     }
 
     /** Builds a response with the order code resolved by the caller (batch-friendly). */
     public static ReturnResponse from(OrderReturn r, String orderCode) {
+        return from(r, orderCode, null);
+    }
+
+    /** Builds a response with the order code + order's salesperson name resolved by the caller. */
+    public static ReturnResponse from(OrderReturn r, String orderCode, String salespersonName) {
         return new ReturnResponse(
                 r.getId(),
                 r.getOrderId(),
@@ -53,6 +62,7 @@ public record ReturnResponse(
                 r.isRestocked(),
                 r.getCreatedBy(),
                 r.getCreatedAt(),
-                r.getUpdatedAt());
+                r.getUpdatedAt(),
+                salespersonName);
     }
 }

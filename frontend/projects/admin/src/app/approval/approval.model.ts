@@ -19,6 +19,8 @@ export interface ApprovalQueueItem {
   orderCode: string;
   source: OrderSource;
   createdBy?: number;
+  /** Name of the salesperson who punched the order (created_by → display name). */
+  salespersonName?: string | null;
   customerName: string;
   customerMobile: string;
   addressLine: string;

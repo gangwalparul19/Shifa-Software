@@ -1,5 +1,7 @@
 package com.shifa.oms.order;
 
+import com.shifa.oms.audit.AuditActions;
+import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.common.ResourceNotFoundException;
@@ -36,6 +38,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -82,8 +87,27 @@ public class OrderService {
     private final QuikShipXProperties quikShipXProperties;
     /** QuikShipX shipment mirror (nullable): enriches order-detail reads. */
     private final OrderShipmentRepository orderShipmentRepository;
+    /**
+     * Staff directory (nullable): resolves the order's {@code created_by} to the
+     * salesperson's display name for the order-detail drawer. Null under the
+     * legacy test constructor — the name is then omitted.
+     */
+    private final com.shifa.oms.auth.UserRepository userRepository;
+    /**
+     * Central workflow (nullable): used by {@link #resubmit} to transition a
+     * reworked REJECTED/PAYMENT_REJECTED order back to PENDING_ADMIN_APPROVAL via
+     * the authority + history + audit pipeline. Null under the legacy test
+     * constructor — resubmit then requires the full constructor.
+     */
+    private final OrderWorkflowService orderWorkflowService;
+    /**
+     * Audit trail (nullable): records a field-level "what changed" ORDER_UPDATED
+     * entry (who/what/when) whenever an order's details are edited or resubmitted.
+     * Null under the legacy test constructor — the audit is then skipped.
+     */
+    private final AuditService auditService;
 
-    /** Legacy constructor (unit tests): no QuikShipX punch hook / enrichment. */
+    /** Legacy constructor (unit tests): no QuikShipX punch hook / enrichment / workflow / audit. */
     public OrderService(OrderRepository orderRepository,
                         ProductRepository productRepository,
                         OrderCodeGenerator orderCodeGenerator,
@@ -93,7 +117,7 @@ public class OrderService {
                         StockService stockService,
                         ProductImageRepository productImageRepository) {
         this(orderRepository, productRepository, orderCodeGenerator, storageService, scopeResolver,
-                trackingService, stockService, productImageRepository, null, null, null);
+                trackingService, stockService, productImageRepository, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -107,7 +131,10 @@ public class OrderService {
                         ProductImageRepository productImageRepository,
                         OutboxEventPublisher outboxEventPublisher,
                         QuikShipXProperties quikShipXProperties,
-                        OrderShipmentRepository orderShipmentRepository) {
+                        OrderShipmentRepository orderShipmentRepository,
+                        com.shifa.oms.auth.UserRepository userRepository,
+                        OrderWorkflowService orderWorkflowService,
+                        AuditService auditService) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.orderCodeGenerator = orderCodeGenerator;
@@ -119,6 +146,9 @@ public class OrderService {
         this.outboxEventPublisher = outboxEventPublisher;
         this.quikShipXProperties = quikShipXProperties;
         this.orderShipmentRepository = orderShipmentRepository;
+        this.userRepository = userRepository;
+        this.orderWorkflowService = orderWorkflowService;
+        this.auditService = auditService;
     }
 
     // --- Creation: salesperson order entry (Req 7) --------------------------
@@ -152,13 +182,26 @@ public class OrderService {
         Money total = Money.of(pricedOrder.total());
         requirePositiveTotal(total);
 
+        // Same-day duplicate guard (client): a customer can reach two salespeople
+        // the same day and get the same order punched twice. Reject a second active
+        // order for the same mobile on the same calendar day (IST), naming the
+        // existing order + who placed it so the salesperson understands why. This is
+        // the authoritative block; the New Order form also warns before submit.
+        requireNoSameDayDuplicate(request.customerMobile(), actor);
+
         Money received = Money.of(request.amountReceived());
+        // Minimum-upfront-payment policy (client: no COD/₹0 orders — only Full or
+        // Partial payment, with at least ₹100 collected before the order proceeds).
+        // Enforced at the order-entry boundary (the pure PaymentCalculator/COD model
+        // is intentionally left intact for historical orders + derived reporting).
+        requireMinimumUpfront(received, total);
         // Resolve the full ordered set of payment proofs (V65): the legacy single key
         // followed by any additional keys, de-duplicated. The first is the primary
         // proof. Sending only paymentScreenshotKey behaves exactly as before.
         List<String> screenshotKeys = effectiveScreenshotKeys(request);
-        // Enforce screenshot-required rule before computing/persisting (Req 7.6). The
-        // rule is satisfied by ANY attached proof, so the primary key is the subject.
+        // Enforce screenshot-required rule before computing/persisting (Req 7.6). A
+        // screenshot is now ALWAYS required because a payment (≥ ₹100 / full) is
+        // always collected upfront; the rule below reads naturally from any proof.
         PaymentCalculator.requireScreenshotWhenPaid(received, primaryKey(screenshotKeys));
         // A fully-paid amount may have carried paise before the total was rounded
         // down; absorb ONLY that sub-rupee overage so a valid full payment isn't
@@ -306,7 +349,132 @@ public class OrderService {
             throw new OrderNotEditableException(order.getOrderCode(), order.getOrderStatus());
         }
 
+        String diff = applyEditedFields(order, request, admin.userId());
+
+        OrderEntity saved = orderRepository.save(order);
+        auditOrderEdit(saved, diff, admin, "Edited");
+        return OrderResponse.from(saved);
+    }
+
+    /**
+     * Statuses in which the creating salesperson / team lead may edit their OWN
+     * order (own-pending-edit feature). Restricted to before approval: once an
+     * admin has approved it, only an admin may edit (via {@link #updateOrder}),
+     * so a salesperson can't silently change an approved order.
+     */
+    private static final java.util.Set<OrderStatus> OWN_EDITABLE_STATUSES =
+            java.util.EnumSet.of(OrderStatus.PENDING_ADMIN_APPROVAL);
+
+    /**
+     * Edit of an order by the person who punched it (own-pending-edit feature):
+     * a salesperson / team lead corrects the customer / shipping / line-item /
+     * lead-source / note / GSTIN / discount details of their OWN order while it is
+     * still {@code Pending_Admin_Approval} (a change may come from the customer or
+     * the agent before an admin reviews it). Payment capture is not editable here.
+     *
+     * <p>Own-order scoped via {@link #loadScoped} (a salesperson sees only their
+     * own order, a team lead their team's — anything else is a 404). Rejected with
+     * a {@link ValidationException} (400) once the order has left
+     * {@code Pending_Admin_Approval} (approved / in fulfilment), directing the user
+     * to an admin. Records a field-level ORDER_UPDATED audit entry (who/what/when).
+     */
+    @Transactional
+    public OrderResponse updateOwnOrder(Long id, UpdateOrderRequest request, AuthPrincipal actor) {
+        OrderEntity order = loadScoped(id, actor);
+        if (!OWN_EDITABLE_STATUSES.contains(order.getOrderStatus())) {
+            throw new ValidationException("Order " + order.getOrderCode()
+                    + " can no longer be edited because it is no longer awaiting approval."
+                    + " Ask an admin to make changes.");
+        }
+
+        String diff = applyEditedFields(order, request, actor.userId());
+
+        OrderEntity saved = orderRepository.save(order);
+        auditOrderEdit(saved, diff, actor, "Edited");
+        return OrderResponse.from(saved);
+    }
+
+    /**
+     * Statuses from which a salesperson (or admin) may rework a REJECTED order
+     * back into the approval queue (rejection-status rework feature).
+     */
+    private static final java.util.Set<OrderStatus> RESUBMITTABLE_STATUSES =
+            java.util.EnumSet.of(OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED);
+
+    /** Source recorded on the resubmit status-history row. */
+    private static final String SOURCE_RESUBMIT = "SALESPERSON";
+
+    /**
+     * Reworks a rejected order back into the approval queue (rejection-status
+     * rework feature): the creating salesperson (or an admin) fixes the flagged
+     * details and resubmits, moving the order
+     * {@code REJECTED | PAYMENT_REJECTED → PENDING_ADMIN_APPROVAL}.
+     *
+     * <p>Own-order scoped via {@link #loadScoped} (a salesperson can only resubmit
+     * an order they created; anything else is a 404). Rejected with a
+     * {@link ValidationException} (400) when the order is not in a resubmittable
+     * status. On success it: re-applies the edited customer/shipping/line/discount
+     * details (re-priced + stock-reconciled exactly like an edit), clears the
+     * rejection category + note, resets a prepaid order's payment verification to
+     * PENDING (so the payment is re-checked), transitions to
+     * {@code PENDING_ADMIN_APPROVAL} through the central workflow (authority +
+     * one history row + audit + notification fan-out), and re-fires the admin
+     * "awaiting approval" nudge.
+     */
+    @Transactional
+    public OrderResponse resubmit(Long id, UpdateOrderRequest request, AuthPrincipal actor) {
+        OrderEntity order = loadScoped(id, actor);
+        if (!RESUBMITTABLE_STATUSES.contains(order.getOrderStatus())) {
+            throw new ValidationException("Order " + order.getOrderCode()
+                    + " is not rejected, so it cannot be resubmitted for approval.");
+        }
+        if (orderWorkflowService == null) {
+            // Defensive: the full (Spring) constructor always supplies the workflow.
+            throw new IllegalStateException("Workflow service is required to resubmit an order.");
+        }
+
+        boolean wasPaymentRejected = order.getOrderStatus() == OrderStatus.PAYMENT_REJECTED;
+
+        // Re-apply the corrected details (same re-price + stock reconcile as an edit).
+        String diff = applyEditedFields(order, request, actor.userId());
+
+        // Clear the rejection so the reworked order carries no stale reason.
+        order.setRejectReason(null, null);
+
+        // A payment-rejected order's proof was disputed — send it back for a fresh
+        // authenticity check when it still carries a payment (prepaid/partial).
+        if (wasPaymentRejected && order.getPaymentStatus() != PaymentStatus.COD) {
+            order.markPaymentPendingVerification();
+        }
+
+        // Transition back to the approval queue through the central workflow so the
+        // authority check, single history row, audit, and notification fan-out all
+        // apply. The acting salesperson/admin is recorded as the actor.
+        orderWorkflowService.applyTransition(
+                order, OrderStatus.PENDING_ADMIN_APPROVAL, Actor.user(actor, SOURCE_RESUBMIT));
+
+        OrderEntity saved = orderRepository.save(order);
+        // Record what the salesperson changed while reworking (audit trail). The
+        // workflow already audited the status transition; this adds the field diff.
+        auditOrderEdit(saved, diff, actor, "Resubmitted");
+        // Re-nudge admins that an order is (again) awaiting approval.
+        publishAwaitingApproval(saved);
+        return OrderResponse.from(saved);
+    }
+
+    /**
+     * Shared field-apply used by both {@link #updateOrder} and {@link #resubmit}:
+     * validates + re-prices the edited line items through {@link OrderPricing},
+     * reconciles tracked-product stock against the previously-committed quantities,
+     * and overwrites the customer / shipping / lead-source / note / GSTIN /
+     * discount fields and amounts on the order. Does NOT save or change status.
+     */
+    private String applyEditedFields(OrderEntity order, UpdateOrderRequest request, Long actorUserId) {
         OrderCreationValidator.validateLeadSourceNote(request.leadSourceNote());
+
+        // Snapshot the old field values BEFORE mutating so we can build a concise
+        // "what changed" diff for the audit trail (who/what/when).
+        Map<String, String> before = fieldSnapshot(order);
 
         // Snapshot the quantity previously committed per tracked product so the
         // stock ledger can be reconciled to the new lines below (stock was
@@ -327,7 +495,7 @@ public class OrderService {
         requirePositiveTotal(total);
 
         // Re-run the payment classification against the ALREADY-received amount
-        // (edit-order never touches payment capture) so remaining/COD stay correct
+        // (edit never touches payment capture) so remaining/COD stay correct
         // if the re-priced total differs from the original.
         PaymentCalculation calc = PaymentCalculator.classify(total, Money.of(order.getAmountReceived()));
 
@@ -343,7 +511,7 @@ public class OrderService {
         // old or new lines, apply the signed delta (old qty − new qty) so on-hand
         // reflects exactly the new lines, rejecting when a tracked product lacks
         // enough stock to cover an increase.
-        reconcileStockForEdit(previousQuantities, priced, order.getOrderCode(), admin.userId());
+        reconcileStockForEdit(previousQuantities, priced, order.getOrderCode(), actorUserId);
 
         order.setCustomerName(request.customerName());
         order.setCustomerMobile(request.customerMobile());
@@ -374,8 +542,83 @@ public class OrderService {
                 discountType == DiscountType.NONE ? null : discountSpec.value(),
                 pricedOrder.discount());
 
-        OrderEntity saved = orderRepository.save(order);
-        return OrderResponse.from(saved);
+        // Build the field-level diff from the before/after snapshots (audit trail).
+        return diffSummary(before, fieldSnapshot(order));
+    }
+
+    /**
+     * Captures the audited scalar fields of an order into an ordered label→value
+     * map, so an edit can be diffed old→new for the audit trail. Amounts/status/
+     * payment-verification are intentionally excluded (payment capture is not
+     * editable here); the line-item set is summarised as a single "Items" entry.
+     */
+    private static Map<String, String> fieldSnapshot(OrderEntity order) {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("Customer", nz(order.getCustomerName()));
+        m.put("Mobile", nz(order.getCustomerMobile()));
+        m.put("Alt mobile", nz(order.getAlternateMobile()));
+        m.put("Email", nz(order.getCustomerEmail()));
+        m.put("Address", nz(order.getAddressLine()));
+        m.put("City", nz(order.getCity()));
+        m.put("State", nz(order.getState()));
+        m.put("Pincode", nz(order.getPostalCode()));
+        m.put("Lead source", order.getLeadSource() == null ? "" : order.getLeadSource().name());
+        m.put("Lead note", nz(order.getLeadSourceNote()));
+        m.put("Notes", nz(order.getNotes()));
+        m.put("GSTIN", nz(order.getBuyerGstin()));
+        m.put("Discount", order.getDiscountAmount() == null ? "0" : order.getDiscountAmount().toPlainString());
+        m.put("Total", order.getTotalAmount() == null ? "0" : order.getTotalAmount().toPlainString());
+        m.put("Items", itemsSummary(order.getLineItems()));
+        return m;
+    }
+
+    /** A compact "product×qty@rate; …" summary of the order lines for diffing. */
+    private static String itemsSummary(List<OrderLineItem> lines) {
+        if (lines == null || lines.isEmpty()) {
+            return "";
+        }
+        return lines.stream()
+                .map(li -> nz(li.getProductName()) + "×" + li.getQuantity()
+                        + "@" + (li.getRate() == null ? "0" : li.getRate().toPlainString()))
+                .collect(java.util.stream.Collectors.joining("; "));
+    }
+
+    /**
+     * Builds a concise human-readable diff of the changed fields (label:
+     * old→new), or an empty string when nothing changed. Used as the audit
+     * summary so the trail shows exactly what an edit changed.
+     */
+    private static String diffSummary(Map<String, String> before, Map<String, String> after) {
+        List<String> changes = new ArrayList<>();
+        for (Map.Entry<String, String> e : after.entrySet()) {
+            String old = before.getOrDefault(e.getKey(), "");
+            String now = e.getValue();
+            if (!java.util.Objects.equals(old, now)) {
+                changes.add(e.getKey() + ": '" + old + "' → '" + now + "'");
+            }
+        }
+        return String.join("; ", changes);
+    }
+
+    private static String nz(String value) {
+        return value == null ? "" : value;
+    }
+
+    /**
+     * Records the field-level ORDER_UPDATED audit entry for an edit/resubmit,
+     * naming who changed what. No-op when the audit service is absent (legacy
+     * tests) or nothing actually changed. Best-effort — never blocks the edit.
+     */
+    private void auditOrderEdit(OrderEntity order, String diff, AuthPrincipal actor, String context) {
+        if (auditService == null || diff == null || diff.isBlank()) {
+            return;
+        }
+        String summary = context + " order " + order.getOrderCode() + " — " + diff;
+        auditService.record(
+                actor == null ? null : actor.userId(),
+                actor == null ? null : actor.username(),
+                AuditActions.ORDER_UPDATED, AuditActions.ENTITY_ORDER,
+                String.valueOf(order.getId()), summary);
     }
 
     /**
@@ -469,17 +712,63 @@ public class OrderService {
     }
 
     /**
+     * IST is the business day boundary used for same-day duplicate detection, so
+     * "today" matches how the team reads dates (the app renders all timestamps in
+     * IST). The DB stores {@code created_at} in the JVM/DB zone; converting the
+     * IST calendar day to a timestamp window is a close enough approximation for
+     * this warning/guard (the authoritative block on submit uses the same window).
+     */
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Kolkata");
+
+    /**
      * Duplicate detection for order entry (Req 22.2): whether prior orders exist
-     * for a mobile number, and how many. Counts across all salespeople so a
-     * repeat customer is recognised regardless of who entered the earlier order.
+     * for a mobile number, and how many (all-time, across all salespeople so a
+     * repeat customer is recognised regardless of who entered the earlier order).
+     *
+     * <p>Also flags a SAME-DAY duplicate: an active (not rejected/cancelled) order
+     * already placed TODAY for this mobile — the case a customer reaching two
+     * salespeople the same day would create. The response names who placed it and
+     * whether that was the current user, so the form can warn before submit. The
+     * hard block still lives in {@link #createSalespersonOrder}.
      */
     @Transactional(readOnly = true)
-    public DuplicateCheckResponse duplicateCheck(String mobile) {
+    public DuplicateCheckResponse duplicateCheck(String mobile, AuthPrincipal actor) {
         if (mobile == null || mobile.isBlank()) {
             throw new ValidationException("A mobile number is required for duplicate detection.");
         }
-        long count = orderRepository.countByCustomerMobile(mobile.trim());
-        return new DuplicateCheckResponse(mobile.trim(), count > 0, count);
+        String trimmed = mobile.trim();
+        long count = orderRepository.countByCustomerMobile(trimmed);
+
+        Optional<OrderEntity> todayOrder = latestActiveTodayOrder(trimmed);
+        if (todayOrder.isEmpty()) {
+            return new DuplicateCheckResponse(trimmed, count > 0, count, false, null, null, false);
+        }
+        OrderEntity existing = todayOrder.get();
+        boolean mine = actor != null && actor.userId() != null
+                && actor.userId().equals(existing.getCreatedBy());
+        String placedBy = resolveSalespersonName(existing.getCreatedBy());
+        return new DuplicateCheckResponse(
+                trimmed, count > 0, count, true, existing.getOrderCode(), placedBy, mine);
+    }
+
+    /** Backward-compatible overload (no actor) used by non-salesperson callers/tests. */
+    @Transactional(readOnly = true)
+    public DuplicateCheckResponse duplicateCheck(String mobile) {
+        return duplicateCheck(mobile, null);
+    }
+
+    /**
+     * The most recent ACTIVE (not rejected/cancelled) order placed TODAY (IST) for
+     * a mobile, or empty when none. Backs both the pre-submit warning and the
+     * authoritative same-day duplicate guard so they agree on what "today" means.
+     */
+    private Optional<OrderEntity> latestActiveTodayOrder(String mobile) {
+        LocalDate today = LocalDate.now(BUSINESS_ZONE);
+        LocalDateTime from = today.atStartOfDay();
+        LocalDateTime to = today.plusDays(1).atStartOfDay();
+        List<OrderEntity> todays =
+                orderRepository.findActiveByCustomerMobileInWindow(mobile, from, to);
+        return todays.isEmpty() ? Optional.empty() : Optional.of(todays.get(0));
     }
 
     /**
@@ -531,7 +820,25 @@ public class OrderService {
                             s.getQuikShipXStatus(), s.getLabelUrl(), s.getShipperOrderId(), s.isTest()))
                     .orElse(withCourier);
         }
+        // Surface who punched the order (created_by → display name), so the
+        // order-detail drawer shows the salesperson. Best-effort: omitted when the
+        // staff directory is unavailable or the creator no longer exists.
+        String salespersonName = resolveSalespersonName(order.getCreatedBy());
+        if (salespersonName != null) {
+            response = response.withSalesperson(salespersonName);
+        }
         return response;
+    }
+
+    /** The display name (full name, else username) of the given user id, or null. */
+    private String resolveSalespersonName(Long userId) {
+        if (userRepository == null || userId == null) {
+            return null;
+        }
+        return userRepository.findById(userId)
+                .map(u -> (u.getFullName() != null && !u.getFullName().isBlank())
+                        ? u.getFullName() : u.getUsername())
+                .orElse(null);
     }
 
     /**
@@ -733,6 +1040,58 @@ public class OrderService {
         if (total.isZero() || total.isNegative()) {
             throw new ValidationException("An order must have a positive Total_Amount.");
         }
+    }
+
+    /**
+     * The minimum amount that must be collected upfront on a new order (client
+     * policy: no COD/₹0 orders — Full or Partial payment only, with at least ₹100
+     * paid before the order proceeds).
+     */
+    private static final Money MIN_UPFRONT_PAYMENT = Money.of(100L);
+
+    /**
+     * Enforces the minimum-upfront-payment policy at order entry: the amount
+     * received must be at least ₹100, or the full total when the total is under
+     * ₹100 (a small order can't require more than it costs). A ₹0 order is no
+     * longer permitted. Rejected with a 400 before anything is persisted.
+     */
+    private void requireMinimumUpfront(Money received, Money total) {
+        Money floor = total.compareTo(MIN_UPFRONT_PAYMENT) < 0 ? total : MIN_UPFRONT_PAYMENT;
+        if (received.compareTo(floor) < 0) {
+            throw new ValidationException(
+                    "At least ₹" + floor.toBigDecimal().toPlainString()
+                            + " must be collected upfront (full or partial payment) — a ₹0 order is not allowed.");
+        }
+    }
+
+    /**
+     * Rejects a same-day duplicate order (client): if an active (not
+     * rejected/cancelled) order already exists TODAY for this customer mobile,
+     * creation is blocked with a 400 that names the existing order and who placed
+     * it — so a salesperson learns another salesperson already punched the same
+     * customer today, rather than silently creating a duplicate. A blank mobile is
+     * left to the existing field validation.
+     */
+    private void requireNoSameDayDuplicate(String mobile, AuthPrincipal actor) {
+        if (mobile == null || mobile.isBlank()) {
+            return;
+        }
+        Optional<OrderEntity> existing = latestActiveTodayOrder(mobile.trim());
+        if (existing.isEmpty()) {
+            return;
+        }
+        OrderEntity order = existing.get();
+        boolean mine = actor != null && actor.userId() != null
+                && actor.userId().equals(order.getCreatedBy());
+        String placedBy = resolveSalespersonName(order.getCreatedBy());
+        String who = mine
+                ? "you"
+                : (placedBy != null ? placedBy : "another salesperson");
+        throw new ValidationException(
+                "A duplicate order for this customer was already placed today ("
+                        + order.getOrderCode() + ", by " + who
+                        + "). Only one order per customer per day is allowed — please check "
+                        + "the existing order before creating another.");
     }
 
     /**

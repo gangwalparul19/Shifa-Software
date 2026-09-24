@@ -71,11 +71,13 @@ class DeterministicOrderCreationPropertyTest {
         OrderService service = OrderCreationTestSupport.service(orderRepository, productRepository);
         AuthPrincipal actor = new AuthPrincipal(actorUserId, "sales-" + actorUserId, Role.SALESPERSON);
 
-        // COD order (amountReceived = 0) so no payment screenshot is required.
+        // Min-upfront policy: at least ₹100 is collected (product is ₹100 so total
+        // = 100 × quantity ≥ 100), with a payment screenshot attached.
         CreateOrderRequest request = new CreateOrderRequest(
                 "Asha", "9812345678", "12 MG Road", "Pune", "Maharashtra", "411001",
                 List.of(new LineItemRequest(1L, quantity, null)),
-                BigDecimal.ZERO, null, leadSource, null, null, null, null, null, null, null, null,
+                new BigDecimal("100.00"), "payments/x.jpg", leadSource,
+                null, null, null, null, null, null, null, null,
                 null);
 
         OrderResponse response = service.createSalespersonOrder(request, actor);

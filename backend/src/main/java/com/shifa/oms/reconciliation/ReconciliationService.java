@@ -66,15 +66,44 @@ public class ReconciliationService {
     private final OrderRepository orderRepository;
     private final CourierCompanyRepository courierCompanyRepository;
     private final CourierRecordRepository courierRecordRepository;
+    /**
+     * Staff directory (nullable): resolves each order's {@code created_by} to the
+     * salesperson's display name for the reconciliation rows. Null under the
+     * legacy test constructor — the name is then omitted.
+     */
+    private final com.shifa.oms.auth.UserRepository userRepository;
 
+    /** Legacy constructor (tests): no staff directory, so the salesperson name is omitted. */
     public ReconciliationService(ReceivableRepository receivableRepository,
                                  OrderRepository orderRepository,
                                  CourierCompanyRepository courierCompanyRepository,
                                  CourierRecordRepository courierRecordRepository) {
+        this(receivableRepository, orderRepository, courierCompanyRepository,
+                courierRecordRepository, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ReconciliationService(ReceivableRepository receivableRepository,
+                                 OrderRepository orderRepository,
+                                 CourierCompanyRepository courierCompanyRepository,
+                                 CourierRecordRepository courierRecordRepository,
+                                 com.shifa.oms.auth.UserRepository userRepository) {
         this.receivableRepository = receivableRepository;
         this.orderRepository = orderRepository;
         this.courierCompanyRepository = courierCompanyRepository;
         this.courierRecordRepository = courierRecordRepository;
+        this.userRepository = userRepository;
+    }
+
+    /** The salesperson display name for an order (full name, else username), or null. */
+    private String salespersonNameOf(OrderEntity order) {
+        if (userRepository == null || order == null || order.getCreatedBy() == null) {
+            return null;
+        }
+        return userRepository.findById(order.getCreatedBy())
+                .map(u -> (u.getFullName() != null && !u.getFullName().isBlank())
+                        ? u.getFullName() : u.getUsername())
+                .orElse(null);
     }
 
     /**
@@ -194,7 +223,8 @@ public class ReconciliationService {
                     courierName(courierIdOf(e)),
                     awb,
                     e.getAmount(),
-                    e.getCreatedAt()));
+                    e.getCreatedAt(),
+                    salespersonNameOf(order)));
         }
         return result;
     }
@@ -276,7 +306,8 @@ public class ReconciliationService {
                 e.getAmount(),
                 e.isSettled(),
                 e.getSettledDate(),
-                e.getCreatedAt());
+                e.getCreatedAt(),
+                salespersonNameOf(order));
     }
 
     private Receivable toDomain(ReceivableEntity e) {

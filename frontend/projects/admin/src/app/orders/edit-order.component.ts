@@ -2,7 +2,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
-import { ApiError, Product, paiseToMoney, toPaise } from 'core';
+import { ApiError, AuthService, Product, Role, paiseToMoney, toPaise } from 'core';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { StateTypeaheadComponent } from '../shared/state-typeahead.component';
@@ -54,6 +54,7 @@ import {
 export class EditOrderComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly orders = inject(OrdersService);
+  private readonly auth = inject(AuthService);
   private readonly catalog = inject(CatalogService);
   private readonly statesService = inject(StatesService);
   private readonly confirm = inject(ConfirmService);
@@ -440,7 +441,13 @@ export class EditOrderComponent implements OnInit {
     };
 
     this.submitting.set(true);
-    this.orders.updateOrder(id, payload).subscribe({
+    // An admin edits via the admin endpoint (can also edit an APPROVED order);
+    // the creating salesperson / team lead edits their OWN order via the
+    // own-order endpoint (PENDING only). The server enforces both in either case.
+    const save$ = this.auth.hasAnyRole(Role.ADMIN)
+      ? this.orders.updateOrder(id, payload)
+      : this.orders.updateOwnOrder(id, payload);
+    save$.subscribe({
       next: (order) => {
         this.submitting.set(false);
         this.toasts.success(`Order ${order.orderCode} updated.`);

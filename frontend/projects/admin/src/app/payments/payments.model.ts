@@ -18,4 +18,6 @@ export interface PaymentQueueRow {
   paymentScreenshotAvailable: boolean;
   verificationStatus: PaymentVerificationStatus;
   createdAt?: string;
+  /** Name of the salesperson who punched the order (created_by → display name). */
+  salespersonName?: string | null;
 }

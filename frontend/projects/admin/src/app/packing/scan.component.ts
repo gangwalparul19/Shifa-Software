@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { AfterViewInit, Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -8,6 +8,7 @@ import { ApiError } from 'core';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { PackingService } from './packing.service';
 import { PackingQueueRow, PackingScanResponse, ScanLogEntry, ScanOutcome } from './packing.model';
+import { MANUAL_DELIVERY_STAGE_OPTIONS } from '../orders/orders.model';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { InrPipe } from '../shared/inr.pipe';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
@@ -66,7 +67,7 @@ interface PackWorkItem {
   imports: [
     ReactiveFormsModule,
     RouterLink,
-    DatePipe,
+    IstDatePipe,
     PageHeaderComponent,
     StatusBadgeComponent,
     CameraScannerComponent,
@@ -394,82 +395,131 @@ export class ScanComponent implements OnInit, AfterViewInit {
     });
   }
 
-  // --- Bulk dispatch (HANDED_TO_DELIVERY "awaiting dispatch" queue) -------
+  // --- Bulk in-house dispatch status update (HANDED_TO_DELIVERY queue) -----
+  //
+  // Dispatch is manual only for IN-HOUSE orders — a courier-partner order is
+  // tracked by the partner, so it is not selectable here. The packer multi-selects
+  // in-house orders and sets a delivery status (Out for delivery / Delivered / …),
+  // mirroring the order-detail "Update status" dropdown.
 
-  /** Order ids selected for a bulk dispatch from the "awaiting dispatch" queue. */
+  /** Order ids selected for the bulk in-house status update. */
   protected readonly selectedForDispatch = signal<Set<number>>(new Set<number>());
-  /** True while the bulk dispatch is running. */
+  /** True while the bulk update is running. */
   protected readonly bulkDispatchBusy = signal(false);
+  /** The status to apply to the selection (empty until the packer picks one). */
+  protected readonly dispatchStatus = signal<string>('');
 
-  /** How many orders are currently selected for bulk dispatch. */
+  /**
+   * The statuses a packer can set from the dispatch queue. Every row here is
+   * {@code HANDED_TO_DELIVERY}, so the legal next in-house stages are Dispatched /
+   * In transit / Out for delivery / Delivered (mirrors the order-detail dropdown;
+   * the backend still re-checks legality + the in-house rule per order).
+   */
+  protected readonly dispatchStatusOptions = MANUAL_DELIVERY_STAGE_OPTIONS.filter((o) =>
+    ['DISPATCHED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(o.value),
+  );
+
+  /** How many orders are currently selected. */
   protected readonly selectedDispatchCount = computed(() => this.selectedForDispatch().size);
+
+  /** Whether a row is an in-house order (only these can be manually dispatched). */
+  isInHouseRow(row: PackingQueueRow): boolean {
+    return row.deliveryMethod === 'IN_HOUSE';
+  }
+
+  /** The in-house subset of a dispatch queue (the only selectable rows). */
+  private inHouseRows(rows: PackingQueueRow[]): PackingQueueRow[] {
+    return rows.filter((o) => this.isInHouseRow(o));
+  }
 
   isSelectedForDispatch(id: number): boolean {
     return this.selectedForDispatch().has(id);
   }
 
-  /** True when every order in the dispatch queue is selected. */
+  /** True when every IN-HOUSE order in the dispatch queue is selected. */
   allSelectedForDispatch(rows: PackingQueueRow[]): boolean {
-    if (rows.length === 0) {
+    const selectable = this.inHouseRows(rows);
+    if (selectable.length === 0) {
       return false;
     }
     const sel = this.selectedForDispatch();
-    return rows.every((o) => sel.has(o.id));
+    return selectable.every((o) => sel.has(o.id));
   }
 
-  /** Header "select all" toggle for the awaiting-dispatch queue. */
+  /** Header "select all" toggle — selects only the IN-HOUSE rows. */
   toggleSelectAllForDispatch(rows: PackingQueueRow[]): void {
+    const selectable = this.inHouseRows(rows);
     const next = new Set(this.selectedForDispatch());
-    const allSelected = rows.length > 0 && rows.every((o) => next.has(o.id));
+    const allSelected = selectable.length > 0 && selectable.every((o) => next.has(o.id));
     if (allSelected) {
-      rows.forEach((o) => next.delete(o.id));
+      selectable.forEach((o) => next.delete(o.id));
     } else {
-      rows.forEach((o) => next.add(o.id));
+      selectable.forEach((o) => next.add(o.id));
     }
     this.selectedForDispatch.set(next);
   }
 
-  /** Toggle an order's selection for bulk dispatch. */
-  toggleDispatchSelection(id: number): void {
+  /** Toggle an in-house order's selection (courier rows are not selectable). */
+  toggleDispatchSelection(row: PackingQueueRow): void {
+    if (!this.isInHouseRow(row)) {
+      return;
+    }
     const next = new Set(this.selectedForDispatch());
-    if (next.has(id)) {
-      next.delete(id);
+    if (next.has(row.id)) {
+      next.delete(row.id);
     } else {
-      next.add(id);
+      next.add(row.id);
     }
     this.selectedForDispatch.set(next);
+  }
+
+  /** Sets the status the bulk action will apply. */
+  setDispatchStatus(status: string): void {
+    this.dispatchStatus.set(status);
   }
 
   /**
-   * Dispatches every selected order (enqueues courier assignment for each) via
-   * the existing per-order dispatch endpoint; partial failures are reported,
-   * not fatal — mirrors {@link runBulkHandover}.
+   * Applies the chosen delivery status to every selected IN-HOUSE order in one
+   * call. Courier orders / illegal moves come back skipped with a reason (partial
+   * success); reuses the order-detail per-order rules incl. settlement on Delivered.
    */
   dispatchSelected(): void {
     const ids = Array.from(this.selectedForDispatch());
-    if (ids.length === 0 || this.bulkDispatchBusy()) {
+    const status = this.dispatchStatus();
+    if (ids.length === 0 || !status || this.bulkDispatchBusy()) {
       return;
     }
     this.bulkDispatchBusy.set(true);
-    const calls = ids.map((id) =>
-      this.service.dispatch(id).pipe(
-        map(() => ({ id, ok: true })),
-        catchError(() => of({ id, ok: false })),
-      ),
-    );
-    forkJoin(calls).subscribe((results) => {
-      const okCount = results.filter((r) => r.ok).length;
-      const failCount = results.length - okCount;
-      this.bulkDispatchBusy.set(false);
-      this.selectedForDispatch.set(new Set<number>());
-      if (failCount === 0) {
-        this.toasts.success(`Dispatched ${okCount} order${okCount === 1 ? '' : 's'} for courier assignment`);
-      } else {
-        this.toasts.error(`Dispatched ${okCount}, ${failCount} failed (status may have changed).`);
-      }
-      this.loadQueue();
-      this.loadQueues();
+    this.service.bulkDeliveryStatus(ids, status).subscribe({
+      next: (result) => {
+        const ok = result.succeeded.length;
+        const failed = result.skipped.length;
+        this.bulkDispatchBusy.set(false);
+        this.selectedForDispatch.set(new Set<number>());
+        const label = this.dispatchStatusOptions.find((o) => o.value === status)?.label ?? status;
+        if (failed === 0) {
+          this.toasts.success(`Set ${ok} order${ok === 1 ? '' : 's'} to ${label}`);
+        } else if (ok === 0) {
+          this.toasts.error(
+            `None updated — ${failed} skipped (${result.skipped[0]?.reason ?? 'not eligible'}).`,
+          );
+        } else {
+          this.toasts.error(`Set ${ok} to ${label}, ${failed} skipped (see order status).`);
+        }
+        this.loadQueue();
+        this.loadQueues();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.bulkDispatchBusy.set(false);
+        this.toasts.error(this.messageOf(err) ?? 'Could not update the selected orders.');
+      },
     });
+  }
+
+  /** Extracts a human message from an error response, if any. */
+  private messageOf(err: HttpErrorResponse): string | null {
+    const body = err?.error as { message?: string } | undefined;
+    return body?.message ?? null;
   }
 
   /** Opens the order detail (via the Orders page filtered to this order code). */

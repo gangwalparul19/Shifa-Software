@@ -1214,6 +1214,50 @@ a:focus-visible,
   box-shadow: 0 1px 3px rgba(15, 51, 36, 0.12);
 }
 
+/* =====================================================================
+   Snip tabs — browse multiple payment screenshots (Snip 1, Snip 2 …) as
+   tabs instead of an endless vertical scroll. Used by the Payment
+   Verification modal and the Approval Queue review drawer. Unlike
+   .shifa-formtabs these WRAP (an order can have several proofs) and size to
+   content rather than stretching. Global so both components share it.
+   ===================================================================== */
+.shifa-snip-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 0.75rem;
+}
+.shifa-snip-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid #cfd8d4;
+  border-radius: 8px;
+  background: #fff;
+  color: #64726b;
+  font-weight: 600;
+  font-size: 0.85rem;
+  line-height: 1.1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.shifa-snip-tab:hover {
+  border-color: var(--shifa-green-700, #1a4f38);
+  color: var(--shifa-green-700, #1a4f38);
+}
+.shifa-snip-tab.active {
+  background: var(--shifa-green-700, #1f5d3f);
+  border-color: var(--shifa-green-700, #1f5d3f);
+  color: #fff;
+}
+.shifa-snip-tab.active .badge {
+  background: rgba(255, 255, 255, 0.25) !important;
+  color: #fff !important;
+}
+
 /* ==========================================================================
    Mobile-fit — no horizontal page scrollbar, app-wide.
 

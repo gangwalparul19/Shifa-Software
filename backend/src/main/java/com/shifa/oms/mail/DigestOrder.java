@@ -46,6 +46,7 @@ public record DigestOrder(
      * orders, which never produced revenue.
      */
     public boolean countsAsSale() {
-        return status != OrderStatus.REJECTED && status != OrderStatus.CANCELLED;
+        return status != OrderStatus.REJECTED && status != OrderStatus.PAYMENT_REJECTED
+                && status != OrderStatus.CANCELLED;
     }
 }

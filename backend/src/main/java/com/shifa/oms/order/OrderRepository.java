@@ -56,6 +56,14 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             PaymentVerificationStatus paymentVerificationStatus);
 
     /**
+     * All orders in a given payment-verification state, NEWEST first. The Payment
+     * Verification queue lists the most recently punched orders first (client
+     * request: every order screen defaults to newest-first).
+     */
+    List<OrderEntity> findByPaymentVerificationStatusOrderByCreatedAtDesc(
+            PaymentVerificationStatus paymentVerificationStatus);
+
+    /**
      * All orders in any of the given lifecycle statuses, most recent first. Backs
      * the reconciliation prepaid/COD segregation view over fulfilled orders
      * (Req 18.4).
@@ -131,6 +139,27 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
      * lookup by mobile). May match several orders for a repeat customer.
      */
     List<OrderEntity> findByCustomerMobileOrderByCreatedAtDesc(String customerMobile);
+
+    /**
+     * Active (not REJECTED/CANCELLED) orders for a customer mobile created within
+     * a timestamp window, most recent first. Backs same-day duplicate detection at
+     * order entry (a customer may reach two salespeople the same day and get the
+     * same order punched twice). A REJECTED/CANCELLED prior order is deliberately
+     * excluded so a legitimate re-punch after a rejection is not blocked.
+     */
+    @Query("""
+            select o from OrderEntity o
+            where o.customerMobile = :mobile
+              and o.createdAt >= :from and o.createdAt < :to
+              and o.orderStatus not in (
+                  com.shifa.oms.statemachine.OrderStatus.REJECTED,
+                  com.shifa.oms.statemachine.OrderStatus.CANCELLED)
+            order by o.createdAt desc, o.id desc
+            """)
+    List<OrderEntity> findActiveByCustomerMobileInWindow(
+            @Param("mobile") String mobile,
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to") java.time.LocalDateTime to);
 
     /** An order visible to a salesperson only when they created it (Req 5.5). */
     Optional<OrderEntity> findByIdAndCreatedBy(Long id, Long createdBy);

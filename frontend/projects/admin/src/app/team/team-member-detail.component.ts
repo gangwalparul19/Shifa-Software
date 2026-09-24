@@ -75,7 +75,7 @@ import {
             <div class="tm-detail__grid tm-detail__grid--three">
               <div class="tm-detail__metric"><span>Lead conversion</span><strong>{{ d.performance.leads.conversionRate }}%</strong><small>{{ d.performance.leads.won }} won of {{ d.performance.leads.total }}</small></div>
               <div class="tm-detail__metric"><span>Follow-ups due</span><strong [class.text-danger]="d.performance.leads.dueFollowUps > 0">{{ d.performance.leads.dueFollowUps }}</strong><small>{{ d.performance.leads.active }} active leads</small></div>
-              <div class="tm-detail__metric"><span>COD outstanding</span><strong>{{ money(d.performance.summary.codOutstanding) }}</strong><small>Across open orders</small></div>
+              <div class="tm-detail__metric"><span>Outstanding on delivery</span><strong>{{ money(d.performance.summary.codOutstanding) }}</strong><small>Across open orders</small></div>
             </div>
             }
 
@@ -209,7 +209,13 @@ export class TeamMemberDetailComponent implements OnInit {
     if (!value) {
       return 'Date not recorded';
     }
-    return new Date(value).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    return new Date(value).toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    });
   }
 
   protected statusLabel(value: string | null | undefined): string {

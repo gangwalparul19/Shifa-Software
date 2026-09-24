@@ -951,6 +951,12 @@ class EndpointRoleGuardIntegrationTest {
         public OrderResponse reject(Long id, String reason, AuthPrincipal admin) {
             return sampleOrderResponse();
         }
+
+        @Override
+        public OrderResponse reject(Long id, com.shifa.oms.order.RejectReason category,
+                                    String reason, AuthPrincipal admin) {
+            return sampleOrderResponse();
+        }
     }
 
     /** Returns a canned result for the edit-order write so a permitted call yields 2xx. */

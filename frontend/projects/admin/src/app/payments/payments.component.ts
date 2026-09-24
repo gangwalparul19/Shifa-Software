@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { catchError, forkJoin, of } from 'rxjs';
 import { PageHeaderComponent } from '../shared/page-header.component';
@@ -18,7 +18,7 @@ import { PaymentQueueRow } from './payments.model';
  */
 @Component({
   selector: 'admin-payments',
-  imports: [DatePipe, PageHeaderComponent, StatePanelComponent, InrPipe],
+  imports: [IstDatePipe, PageHeaderComponent, StatePanelComponent, InrPipe],
   templateUrl: './payments.component.html',
   styleUrl: './payments.component.css',
 })
@@ -39,6 +39,8 @@ export class PaymentsComponent implements OnInit, OnDestroy {
    */
   protected readonly screenshotUrls = signal<string[]>([]);
   protected readonly screenshotLoading = signal(false);
+  /** Index of the proof shown in the viewer, driven by the Snip tabs (V65). */
+  protected readonly activeSnip = signal(0);
 
   /** The row whose Verify/Reject decision modal is open, plus the decision kind. */
   protected readonly decision = signal<{ row: PaymentQueueRow; kind: 'verify' | 'reject' } | null>(null);
@@ -100,6 +102,7 @@ export class PaymentsComponent implements OnInit, OnDestroy {
           }
           this.revokeScreenshot();
           this.screenshotUrls.set(urls);
+          this.activeSnip.set(0);
         });
       },
       error: () => this.loadPrimaryScreenshot(row),
@@ -112,6 +115,7 @@ export class PaymentsComponent implements OnInit, OnDestroy {
       next: (blob) => {
         this.revokeScreenshot();
         this.screenshotUrls.set([URL.createObjectURL(blob)]);
+        this.activeSnip.set(0);
         this.screenshotLoading.set(false);
       },
       error: () => {
@@ -119,6 +123,11 @@ export class PaymentsComponent implements OnInit, OnDestroy {
         this.toasts.error('Could not load the payment screenshot.');
       },
     });
+  }
+
+  /** Shows the proof at the given tab index. */
+  selectSnip(index: number): void {
+    this.activeSnip.set(index);
   }
 
   closeScreenshot(): void {
@@ -130,6 +139,7 @@ export class PaymentsComponent implements OnInit, OnDestroy {
       URL.revokeObjectURL(url);
     }
     this.screenshotUrls.set([]);
+    this.activeSnip.set(0);
   }
 
   // --- Verify / Reject ----------------------------------------------------

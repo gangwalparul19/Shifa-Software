@@ -42,6 +42,16 @@ class TransitionAuthorityPropertyTest {
         r.add(rule(OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.APPROVED, false, Role.ADMIN));
         r.add(rule(OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.REJECTED, false, Role.ADMIN));
         r.add(rule(OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.CANCELLED, false, Role.ADMIN));
+        // Payment-panel rejection (rejection-status feature): staff-only, no SYSTEM.
+        r.add(rule(OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.PAYMENT_REJECTED, false,
+                Role.PAYMENT_VERIFIER, Role.ADMIN));
+        r.add(rule(OrderStatus.APPROVED, OrderStatus.PAYMENT_REJECTED, false,
+                Role.PAYMENT_VERIFIER, Role.ADMIN));
+        // Rework a rejected order back to Pending_Admin_Approval — salesperson / admin, no SYSTEM.
+        r.add(rule(OrderStatus.REJECTED, OrderStatus.PENDING_ADMIN_APPROVAL, false,
+                Role.SALESPERSON, Role.ADMIN));
+        r.add(rule(OrderStatus.PAYMENT_REJECTED, OrderStatus.PENDING_ADMIN_APPROVAL, false,
+                Role.SALESPERSON, Role.ADMIN));
         r.add(rule(OrderStatus.APPROVED, OrderStatus.LABEL_GENERATED, true, Role.ADMIN));
         r.add(rule(OrderStatus.LABEL_GENERATED, OrderStatus.PACKED, false,
                 Role.PACKING_USER, Role.ADMIN));

@@ -143,7 +143,7 @@
           </span>
           @if (lead.followUpDate) {
             <span class="shifa-lc__followup">
-              <i class="ti ti-calendar-event me-1"></i>{{ lead.followUpDate | date: 'dd MMM' }}
+              <i class="ti ti-calendar-event me-1"></i>{{ lead.followUpDate | istDate: 'dd MMM' }}
             </span>
           }
         </div>
@@ -309,7 +309,7 @@
         <!-- Status pill + created date -->
         <div class="shifa-ld__toprow">
           <span class="shifa-ld__pill" [class]="pillClass(lead.status)">{{ statusLabels[lead.status] }}</span>
-          <span class="shifa-ld__code">{{ lead.createdAt ? (lead.createdAt | date: 'dd MMM yyyy') : '—' }}</span>
+          <span class="shifa-ld__code">{{ lead.createdAt ? (lead.createdAt | istDate: 'dd MMM yyyy') : '—' }}</span>
         </div>
 
         <!-- Customer -->
@@ -381,7 +381,7 @@
         } @else if (lead.followUpDate) {
           <div class="shifa-ld__section">
             <div class="shifa-ld__label mb-1">Follow-up date</div>
-            <div class="shifa-ld__card"><div class="shifa-ld__value">{{ lead.followUpDate | date: 'dd MMM yyyy' }}</div></div>
+            <div class="shifa-ld__card"><div class="shifa-ld__value">{{ lead.followUpDate | istDate: 'dd MMM yyyy' }}</div></div>
           </div>
         }
 
@@ -402,7 +402,7 @@
                     <strong>{{ statusLabels[h.toStatus] }}</strong>
                   </div>
                   <div class="shifa-ld__muted">
-                    {{ h.actor }} · {{ h.changedAt ? (h.changedAt | date: 'dd MMM yyyy · HH:mm') : '' }}
+                    {{ h.actor }} · {{ h.changedAt ? (h.changedAt | istDate: 'dd MMM yyyy · HH:mm') : '' }}
                   </div>
                 </div>
               </div>

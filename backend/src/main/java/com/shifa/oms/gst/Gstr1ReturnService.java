@@ -63,7 +63,7 @@ public class Gstr1ReturnService {
 
     /** Orders excluded from outward tax figures (Req 2.6 for returns, revenue window). */
     private static final Set<OrderStatus> NON_REVENUE =
-            EnumSet.of(OrderStatus.CANCELLED, OrderStatus.REJECTED);
+            EnumSet.of(OrderStatus.CANCELLED, OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED);
 
     private static final String DOC_NATURE = "Invoices for outward supply";
     /** Table-13 nature-of-document label for credit notes issued in the period (Req 4.1). */

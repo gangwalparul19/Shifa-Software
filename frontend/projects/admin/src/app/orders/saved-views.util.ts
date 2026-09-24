@@ -57,7 +57,7 @@ const DEFAULT_VIEWS: SavedView[] = [
   },
   {
     id: 'seed-cod-pending',
-    name: 'COD pending',
+    name: 'Pay on delivery',
     q: '',
     status: '',
     paymentStatus: PaymentStatus.COD,

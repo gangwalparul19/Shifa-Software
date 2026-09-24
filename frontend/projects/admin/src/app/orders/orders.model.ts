@@ -1,4 +1,4 @@
-import { Money, OrderSource, OrderStatus, PaymentStatus } from 'core';
+import { Money, OrderSource, OrderStatus, PaymentStatus, RejectReason } from 'core';
 
 /**
  * A single line in a new salesperson order (mirrors the backend
@@ -151,7 +151,7 @@ export const MANUAL_DELIVERY_STAGE_OPTIONS: {
   { value: 'DISPATCHED', label: 'Dispatched', hint: 'Parcel has left with the carrier / vehicle.' },
   { value: 'IN_TRANSIT', label: 'In transit', hint: 'On the way to the destination city.' },
   { value: 'OUT_FOR_DELIVERY', label: 'Out for delivery', hint: 'Being delivered to the customer today.' },
-  { value: 'DELIVERED', label: 'Delivered', hint: 'Handed to the customer — also settles the order (COD collected / closed).' },
+  { value: 'DELIVERED', label: 'Delivered', hint: 'Handed to the customer — also settles the order (payment collected / closed).' },
   { value: 'CUSTOMER_REJECTED', label: 'Customer refused', hint: 'Customer declined the parcel at the door.' },
   { value: 'DELIVERY_FAILED', label: 'Delivery failed', hint: 'Attempted but could not be delivered.' },
 ];
@@ -236,6 +236,18 @@ export interface DuplicateCheckResponse {
   mobile: string;
   hasPriorOrders: boolean;
   priorOrderCount: number;
+  /**
+   * Whether an ACTIVE (not rejected/cancelled) order already exists for this
+   * mobile TODAY — a same-day duplicate. When true the New Order form warns the
+   * salesperson (and the server hard-blocks creating a second one).
+   */
+  hasTodayOrder: boolean;
+  /** The existing today order's code (null when none). */
+  todayOrderCode: string | null;
+  /** Display name of who placed today's order (null when none/unknown). */
+  todaySalespersonName: string | null;
+  /** Whether today's order was placed by the current user (vs another salesperson). */
+  todayCreatedByMe: boolean;
 }
 
 /**
@@ -283,6 +295,8 @@ export interface OrderSummary {
   quikShipXOrderId?: string | null;
   /** The allotted AWB; null until a tracking id is assigned. */
   quikShipXAwb?: string | null;
+  /** Name of the salesperson who punched the order (created_by → display name). */
+  salespersonName?: string | null;
 }
 
 /** A single line within a full order detail. */
@@ -426,6 +440,20 @@ export interface OrderDetail {
    * timeline), oldest first, mirroring the backend {@code StatusHistoryEntryResponse}.
    */
   statusHistory?: OrderStatusHistoryEntry[];
+  /** Name of the salesperson who punched the order (created_by → display name). */
+  salespersonName?: string | null;
+  /**
+   * The categorized rejection reason (rejection-status feature): RATE_ISSUE /
+   * ADDRESS_PINCODE_ISSUE (admin REJECTED) or PAYMENT_ISSUE (PAYMENT_REJECTED
+   * from the payment panel). Null unless the order was rejected. The
+   * accompanying free-text is {@code rejectionReason}.
+   */
+  rejectReason?: RejectReason | null;
+  /**
+   * The payment verifier's free-text note when the payment was rejected, so the
+   * salesperson sees why the payment failed. Null when there's no note.
+   */
+  paymentVerificationNote?: string | null;
 }
 
 /** One status-history row, mirroring the backend {@code StatusHistoryEntryResponse}. */

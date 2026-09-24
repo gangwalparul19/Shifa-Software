@@ -106,7 +106,21 @@ public record OrderResponse(
         // The order's full status-history timeline (enhancement: order status
         // timeline), oldest first, so the order-detail drawer can render a
         // visual stepper with real timestamps instead of just the current pill.
-        List<StatusHistoryEntryResponse> statusHistory
+        List<StatusHistoryEntryResponse> statusHistory,
+        // The name of the salesperson who punched the order (resolved from
+        // created_by; full name, else username; null when unknown), so the
+        // order-detail drawer shows who triggered it. Populated on the detail read
+        // path via withSalesperson; null on build paths that don't resolve it.
+        String salespersonName,
+        // The categorized rejection reason (rejection-status feature): RATE_ISSUE /
+        // ADDRESS_PINCODE_ISSUE (admin REJECTED) or PAYMENT_ISSUE (PAYMENT_REJECTED
+        // from the payment panel). Null unless the order was rejected. The
+        // free-text note is `rejectionReason` above.
+        com.shifa.oms.order.RejectReason rejectReason,
+        // The payment verifier's free-text note when the payment was rejected
+        // (payment_verification_note). Surfaced so the salesperson sees why the
+        // payment was rejected. Null when there's no note / no payment to verify.
+        String paymentVerificationNote
 ) {
 
     /**
@@ -263,7 +277,27 @@ public record OrderResponse(
                 order.getRtoReasonNote(),
                 order.getVehicleNumber(),
                 order.getHandoverPhone(),
-                order.getStatusHistory().stream().map(StatusHistoryEntryResponse::from).toList());
+                order.getStatusHistory().stream().map(StatusHistoryEntryResponse::from).toList(),
+                null,
+                order.getRejectReason(),
+                order.getPaymentVerificationNote());
+    }
+
+    /**
+     * Returns a copy of this response with the resolved salesperson name set
+     * (order-detail only). All other fields are preserved.
+     */
+    public OrderResponse withSalesperson(String salespersonName) {
+        return new OrderResponse(
+                id, orderCode, source, deliveryMethod, leadSource, leadSourceNote, customerEmail, notes, orderStatus,
+                paymentStatus, customerName, customerMobile, alternateMobile, addressLine, city, state,
+                postalCode, totalAmount, amountReceived, remainingAmount, codAmount, customerOutstanding,
+                couponCode, discountAmount, paymentScreenshotAvailable, items, createdAt, awb, courierName,
+                trackingUrl, estimatedDelivery, handoverName, packageCount, paymentVerificationStatus,
+                subtotalAmount, gstAmount, discountType, discountValue, buyerGstin,
+                quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest, rejectionReason,
+                rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory, salespersonName,
+                rejectReason, paymentVerificationNote);
     }
 
     /**
@@ -280,7 +314,8 @@ public record OrderResponse(
                 trackingUrl, estimatedDelivery, handoverName, packageCount, paymentVerificationStatus,
                 subtotalAmount, gstAmount, discountType, discountValue, buyerGstin,
                 quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest, rejectionReason,
-                rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory);
+                rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory, salespersonName,
+                rejectReason, paymentVerificationNote);
     }
 
     /**
@@ -338,7 +373,10 @@ public record OrderResponse(
                 rtoReasonNote,
                 vehicleNumber,
                 handoverPhone,
-                statusHistory);
+                statusHistory,
+                salespersonName,
+                rejectReason,
+                paymentVerificationNote);
     }
 
     /**
@@ -357,6 +395,7 @@ public record OrderResponse(
                 createdAt, awb, courierName, trackingUrl, estimatedDelivery, handoverName, packageCount,
                 paymentVerificationStatus, subtotalAmount, gstAmount, discountType, discountValue,
                 buyerGstin, quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest,
-                rejectionReason, rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory);
+                rejectionReason, rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory,
+                salespersonName, rejectReason, paymentVerificationNote);
     }
 }

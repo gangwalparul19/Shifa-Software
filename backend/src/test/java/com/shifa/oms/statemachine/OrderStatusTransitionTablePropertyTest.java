@@ -53,15 +53,17 @@ class OrderStatusTransitionTablePropertyTest {
      * it can be re-attempted or returned to origin. Only the true end states are here.
      */
     private static final Set<OrderStatus> TERMINAL = EnumSet.of(
-            OrderStatus.REJECTED, OrderStatus.CANCELLED,
+            OrderStatus.CANCELLED,
             OrderStatus.RTO, OrderStatus.REDISPATCH,
             OrderStatus.COD_COLLECTED, OrderStatus.CLOSED);
 
     private static Map<OrderStatus, Set<OrderStatus>> expectedTable() {
         Map<OrderStatus, Set<OrderStatus>> t = new EnumMap<>(OrderStatus.class);
         t.put(OrderStatus.PENDING_ADMIN_APPROVAL,
-                EnumSet.of(OrderStatus.APPROVED, OrderStatus.REJECTED, OrderStatus.CANCELLED));
-        t.put(OrderStatus.APPROVED, EnumSet.of(OrderStatus.LABEL_GENERATED));
+                EnumSet.of(OrderStatus.APPROVED, OrderStatus.REJECTED,
+                        OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED));
+        t.put(OrderStatus.APPROVED,
+                EnumSet.of(OrderStatus.LABEL_GENERATED, OrderStatus.PAYMENT_REJECTED));
         t.put(OrderStatus.LABEL_GENERATED,
                 EnumSet.of(OrderStatus.PACKED, OrderStatus.COURIER_ASSIGNED));
         t.put(OrderStatus.PACKED, EnumSet.of(OrderStatus.HANDED_TO_DELIVERY));
@@ -89,8 +91,10 @@ class OrderStatusTransitionTablePropertyTest {
                 EnumSet.of(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO));
         t.put(OrderStatus.DELIVERY_FAILED,
                 EnumSet.of(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO));
+        // A rejected order can be reworked back to Pending_Admin_Approval.
+        t.put(OrderStatus.REJECTED, EnumSet.of(OrderStatus.PENDING_ADMIN_APPROVAL));
+        t.put(OrderStatus.PAYMENT_REJECTED, EnumSet.of(OrderStatus.PENDING_ADMIN_APPROVAL));
         // Terminal states.
-        t.put(OrderStatus.REJECTED, EnumSet.noneOf(OrderStatus.class));
         t.put(OrderStatus.CANCELLED, EnumSet.noneOf(OrderStatus.class));
         t.put(OrderStatus.RTO, EnumSet.noneOf(OrderStatus.class));
         t.put(OrderStatus.REDISPATCH, EnumSet.noneOf(OrderStatus.class));

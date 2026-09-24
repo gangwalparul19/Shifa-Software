@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ApiError } from 'core';
@@ -52,7 +52,7 @@ interface SeverityGroup {
 @Component({
   selector: 'admin-insights',
   imports: [
-    DatePipe,
+    IstDatePipe,
     PageHeaderComponent,
     PaginationComponent,
     StatePanelComponent,

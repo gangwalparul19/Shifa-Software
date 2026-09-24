@@ -45,7 +45,7 @@ import java.util.Set;
 public class TeamPerformanceService {
 
     private static final Set<OrderStatus> NON_REVENUE =
-            EnumSet.of(OrderStatus.REJECTED, OrderStatus.CANCELLED);
+            EnumSet.of(OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED);
     private static final Set<OrderStatus> DELIVERED = EnumSet.of(
             OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED, OrderStatus.CLOSED);
     private static final Set<OrderStatus> FAILED = EnumSet.of(
@@ -54,6 +54,7 @@ public class TeamPerformanceService {
     private static final Set<OrderStatus> RTO = EnumSet.of(OrderStatus.RTO, OrderStatus.REDISPATCH);
     private static final Set<OrderStatus> OPEN = EnumSet.complementOf(EnumSet.of(
             OrderStatus.CLOSED, OrderStatus.COD_COLLECTED, OrderStatus.REJECTED,
+            OrderStatus.PAYMENT_REJECTED,
             OrderStatus.CANCELLED, OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED,
             OrderStatus.RTO, OrderStatus.REDISPATCH));
 

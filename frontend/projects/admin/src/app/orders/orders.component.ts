@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -52,6 +51,7 @@ import { toggleSort, sortParam } from '../shared/sort.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { WHATSAPP_TEMPLATES, openWhatsApp, renderTemplate, whatsAppMessage } from '../shared/whatsapp.util';
 import { relativeTime } from '../shared/time.util';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { WhatsappTemplate, WhatsappTemplatesService } from '../whatsapp/whatsapp-templates.service';
 import {
   SavedView,
@@ -88,6 +88,7 @@ const TIMELINE_ICONS: Record<OrderStatusGroupKey, string> = {
   DELIVERED: 'ti-circle-check',
   FAILED_RETURNED: 'ti-rotate-2',
   CANCELLED: 'ti-x',
+  REJECTED: 'ti-ban',
 };
 
 /** Friendly label per stage for the timeline (slightly warmer than the filter-tab labels). */
@@ -98,6 +99,7 @@ const TIMELINE_LABELS: Record<OrderStatusGroupKey, string> = {
   DELIVERED: 'Delivered',
   FAILED_RETURNED: 'Returned / Failed',
   CANCELLED: 'Cancelled',
+  REJECTED: 'Rejected',
 };
 
 /** The happy-path stage order (excludes the two terminal-exception groups). */
@@ -170,7 +172,7 @@ export const ORDER_STATUS_TABS: { key: OrderStatusFilter; label: string }[] = [
     ReactiveFormsModule,
     FormsModule,
     RouterLink,
-    DatePipe,
+    IstDatePipe,
     PageHeaderComponent,
     StatusBadgeComponent,
     StatePanelComponent,
@@ -196,6 +198,44 @@ export class OrdersComponent implements OnInit, OnDestroy {
   protected readonly canCreateOrder = computed(() =>
     this.auth.hasAnyRole(Role.SALESPERSON, Role.ADMIN, Role.TEAM_LEAD),
   );
+
+  /**
+   * Whether the "Fix & resubmit" action is offered for the given order
+   * (rejection-status rework feature): only for a REJECTED / PAYMENT_REJECTED
+   * order and an order-entry role. The backend enforces own-order ownership
+   * (a salesperson can only resubmit an order they created), so this is just the
+   * affordance gate.
+   */
+  canResubmit(order: OrderDetail | null | undefined): boolean {
+    return (
+      !!order &&
+      (order.orderStatus === OrderStatus.REJECTED ||
+        order.orderStatus === OrderStatus.PAYMENT_REJECTED) &&
+      this.auth.hasAnyRole(Role.SALESPERSON, Role.ADMIN, Role.TEAM_LEAD)
+    );
+  }
+
+  /**
+   * Whether the "Edit" action is offered for the given order (own-pending-edit
+   * feature). An ADMIN may edit while PENDING or APPROVED; a SALESPERSON/TEAM_LEAD
+   * may edit only while PENDING (their own order — the backend enforces ownership
+   * + status, so this is just the affordance gate).
+   */
+  canEdit(order: OrderDetail | null | undefined): boolean {
+    if (!order) {
+      return false;
+    }
+    if (this.auth.hasAnyRole(Role.ADMIN)) {
+      return (
+        order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL ||
+        order.orderStatus === OrderStatus.APPROVED
+      );
+    }
+    return (
+      order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL &&
+      this.auth.hasAnyRole(Role.SALESPERSON, Role.TEAM_LEAD)
+    );
+  }
 
   /** Creating a return is ADMIN-only (Set B — Feature 2, mutations = ADMIN). */
   protected readonly canCreateReturn = computed(() => this.auth.hasAnyRole(Role.ADMIN));
@@ -1332,6 +1372,27 @@ export class OrdersComponent implements OnInit, OnDestroy {
   /** Human label for a manually-marked RTO reason (label redesign feature). */
   rtoReasonLabel(reason: RtoReasonValue | null | undefined): string {
     return reason ? RTO_REASON_LABELS[reason] ?? reason : '';
+  }
+
+  /** Human label for a categorized rejection reason (rejection-status feature). */
+  rejectReasonLabel(reason: string | null | undefined): string {
+    switch (reason) {
+      case 'RATE_ISSUE':
+        return 'Rate Issue';
+      case 'ADDRESS_PINCODE_ISSUE':
+        return 'Address / Pincode Issue';
+      case 'PAYMENT_ISSUE':
+        return 'Payment Issue';
+      case 'OTHER':
+        return 'Other';
+      default:
+        return '';
+    }
+  }
+
+  /** Whether this order is in a rejected state (admin or payment-panel). */
+  isRejected(status: string | null | undefined): boolean {
+    return status === 'REJECTED' || status === 'PAYMENT_REJECTED';
   }
 
   /** Short relative time (enhancement: relative timestamps) — shown alongside the exact date, not instead of it. */

@@ -158,7 +158,8 @@ public class ReportService {
                 continue;
             }
             boolean writtenOff = o.orderStatus() == com.shifa.oms.statemachine.OrderStatus.CANCELLED
-                    || o.orderStatus() == com.shifa.oms.statemachine.OrderStatus.REJECTED;
+                    || o.orderStatus() == com.shifa.oms.statemachine.OrderStatus.REJECTED
+                    || o.orderStatus() == com.shifa.oms.statemachine.OrderStatus.PAYMENT_REJECTED;
             if (!writtenOff) {
                 received = received.add(o.amountReceived());
                 BigDecimal balance = o.customerOutstanding() != null

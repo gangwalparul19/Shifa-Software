@@ -17,6 +17,8 @@ export interface ReceivableRow {
   settled: boolean;
   settledDate?: string;
   createdAt?: string;
+  /** Name of the salesperson who punched the order (created_by → display name). */
+  salespersonName?: string | null;
 }
 
 /**
@@ -45,6 +47,8 @@ export interface UnsettledCod {
   awb: string | null;
   amount: Money;
   createdAt?: string;
+  /** Name of the salesperson who punched the order (created_by → display name). */
+  salespersonName?: string | null;
 }
 
 /** A single order within a prepaid/COD segregation group (Req 18.4). */

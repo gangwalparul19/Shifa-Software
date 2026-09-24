@@ -1861,3 +1861,406 @@ source doesn't cover it because a pure-COD order never goes through payment veri
    intermittently produced no file this session; `backend\` worked. Never pipe to `more`/`findstr | more` — a stray
    pager blocks the shared console and every later command returns empty.
 5. MySQL CLI: `"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -uroot -proot@123 -e "..."`.
+
+## Fix: New Order "Amount received" lost its input + Approval Queue showed only 1 screenshot — DEPLOYED (2026-09-22)
+Two client-reported regressions from the multi-screenshot/UI-feedback work, both frontend-only, no migration.
+- **Amount received field was gone.** A UI-feedback commit rewrote the New Order payment step and DELETED the real
+  `<input formControlName="amountReceived">`, leaving only the COD/₹0 + Paid-in-full shortcut buttons wedged inside the
+  ₹ input-group — so a salesperson could no longer type a PARTIAL amount (some now, balance COD). The logic never broke
+  (`setAmountReceived` already clamps to [0,total]); only the field was missing. Fix (`new-order.component.html`/`.ts`/
+  `.css`): restored the number input inside the ₹ group; moved the two shortcuts to their own row below (they only fill
+  the field) with rounded styling + green active-state highlight when they match; added a `paymentKind()` computed
+  ('cod'|'partial'|'full'|'none') driving a live hint ("Partial payment — ₹X to be collected on delivery (COD)").
+- **Approval Queue drawer showed only the primary proof.** The multi-screenshot rollout updated the order-detail drawer
+  and the Payment Verification viewer but MISSED the third viewer — the admin Approval Queue review drawer
+  (`approval-queue.component`), which still called the single `paymentScreenshot(id)` endpoint. Verified the data was
+  fine: order SHR-20260922-7VJF had `proof_rows=2` in the DB — purely a display gap. Fix: `approval.service` gained
+  `paymentScreenshots(id)` + `paymentScreenshotById(id, sid)`; the drawer now enumerates then fetches ALL proofs
+  (`forkJoin` + per-proof `catchError` → skip a broken one; fall back to the legacy single endpoint if the listing
+  fails), rendering each numbered ("Proof N of M", Primary marked) with a count badge — same pattern as the other two
+  viewers. **All three payment-proof viewers now show every screenshot.**
+- Verified: admin `build:admin` clean → bundle `main-JOGIHMK7.js`. **DEPLOYED** via `push-to-new-server.ps1 -SkipBuild`
+  (frontend-only; backend JAR unchanged). Backup `~/shifa-backup-2026-09-22-050254.sql` (184K). Live: service active,
+  NRestarts=0, "Started Application in 22.698 seconds", HTTPS root 200, `/api/states` 401, served bundle
+  `main-JOGIHMK7.js`. No migration (still V65). Reminder: clients on a stale Angular service-worker cache need a hard
+  refresh (Ctrl+Shift+R) — and test the deployed site, not localhost:4300.
+
+## Screenshot "Snip" tabs + salesperson name across order views — DEPLOYED (2026-09-22)
+Two client asks. Frontend + additive backend (no migration, still V65).
+- **Snip tabs (no more endless scroll):** the Approval Queue review drawer and the Payment Verification viewer
+  previously stacked all payment proofs vertically. Now each shows ONE active proof with a "Snip 1 / Snip 2 …" tab
+  strip (first tab badged **Primary**), driven by an `activeSnip()` signal + `selectSnip(i)`, reset to 0 on load/close.
+  Shared global CSS `.shifa-snip-tabs`/`.shifa-snip-tab` in `styles.css` (wraps, sizes to content, brand-green active) —
+  used by both components. The multi-proof fetch (forkJoin + per-proof catchError + legacy-endpoint fallback) is
+  unchanged; only the presentation switched from stack to tabs. The order-detail drawer's screenshot section was left as
+  its existing stack (not part of the ask).
+- **Salesperson name everywhere orders show:** added `salespersonName` to 4 backend DTOs and surfaced it in every order
+  table + drawer.
+  - Backend: `PaymentQueueRow` + `ApprovalQueueItemResponse` gained an overloaded `from(order, salespersonName)`;
+    `OrderSummaryResponse` + `OrderResponse` gained a `withSalesperson(name)` wither (appended-last component). Resolved
+    via the **PackingService pattern**: batch `userRepository.findAllById(created_by ids) → Map<Long,String>`, full name
+    else username, no N+1. `AdminOrderService.listOrders` maps the entity Page then `.withSalesperson(...)` (parallels
+    `enrichWithQuikShipStatus`); `approvalQueue()` resolves per row; `OrderService.getOrder` resolves the single creator +
+    `.withSalesperson`; `PaymentVerificationService.queue` resolves per row.
+  - **Nullable `UserRepository` injection** kept every test green: AdminOrderService/OrderService legacy constructors pass
+    `null` (guard-test `StubAdminOrderService super(null,null,null,null)` + `OrderServiceTest` 8-arg ctor unaffected);
+    PaymentVerificationService kept its old 4-arg ctor as NON-`@Autowired` (so `PaymentVerificationServiceTest`'s 4-arg
+    call still compiles) and added a new `@Autowired` 5-arg ctor with `UserRepository` + a 6-arg internal ctor (userRepo +
+    Clock). When `userRepository` is null the name is simply omitted.
+  - Frontend: `salespersonName` added to `OrderSummary`/`OrderDetail`/`ApprovalQueueItem`/`PaymentQueueRow` models; shown
+    in the Orders table (`d-none d-md-table-cell` column, preserves mobile-fit) + mobile card meta + detail drawer;
+    Approval table column + mobile meta + drawer customer section; Payments table column + mobile card.
+- Verified: backend `mvn clean test` = **756 tests, 0 failures** (unchanged count → fully backward compatible); admin
+  build clean. **DEPLOYED** full build via `push-to-new-server.ps1`. Backup `~/shifa-backup-2026-09-22-080340.sql`. Live:
+  Flyway "No migration necessary" (V65), Tomcat 8080, "Started Application in 21.738s", NRestarts=0, root 200,
+  `/api/admin/orders` + `/api/payments/queue` 401, served bundle `main-A7DXYRSY.js`. Hard-refresh (Ctrl+Shift+R) to clear
+  the service-worker cache.
+
+## Salesperson name extended to Exception Center + Reconciliation + Returns — DEPLOYED (2026-09-22)
+Follow-up to the prior salesperson-name work: client confirmed the name should show on ALL order views (and it's the
+order's `created_by` → so admin-punched orders correctly show "Platform Administrator", etc.). Note: the earlier "—" the
+client saw was the STALE localhost:4300 dev bundle — verified order SHR-20260819-4XPH is `created_by=1` (admin), which the
+deployed build renders correctly. Added the name to the three remaining order-list screens (Packing + Team Performance
+already had it; Customer 360 order-history intentionally skipped — it's one customer's own orders).
+- **Exception Center** (`adminexception`): `AdminExceptionResponse.AdminExceptionItem` gained `salespersonName` (last
+  component). `AdminExceptionService` now has a nullable `UserRepository` (@Autowired 4-arg ctor; legacy 3-arg → null),
+  resolves names once over all order-backed rows (approval/payment/delivery/claim) via `resolveSalespersonNames(varargs)`
+  and passes it through the now-`names`-aware `addOrder`; INSIGHT rows (not order-backed) keep null. Frontend
+  `exceptions.model` + `exceptions.component.html` facts row shows it.
+- **Reconciliation** (`reconciliation`): `ReceivableResponse` + `UnsettledCodResponse` gained `salespersonName` (last
+  component). `ReconciliationService` nullable `UserRepository` (@Autowired 5-arg; legacy 4-arg → null; the test uses the
+  4-arg). Per-row `salespersonNameOf(order)` (the row already loads the OrderEntity via findById, so created_by is there —
+  low row counts, acceptable per-row user lookup). Frontend `reconciliation.model` (ReceivableRow + UnsettledCod) +
+  Receivables table col, Unsettled-COD table col + mobile card meta.
+- **Returns** (`returns`): `ReturnResponse` gained `salespersonName` (last component; NOTE distinct from its existing
+  `createdBy`, which is the RETURN's actor, not the order's salesperson) + a new `from(r, orderCode, salespersonName)`
+  overload (old 1-/2-arg kept). `ReturnService` nullable `UserRepository` (@Autowired 6-arg; legacy 5-arg → null; test uses
+  5-arg). `list()` now batch-loads the page's orders once (`ordersFor`) to resolve BOTH order code and salesperson name
+  (`salespersonNames`), no N+1. Frontend `returns.model` + returns table col + mobile card.
+- All four services keep the legacy constructor so every test call site + guard-test stub compiles unchanged; name is
+  omitted when userRepository is null.
+- Verified: backend `mvn clean test` = **756 tests, 0 failures** (unchanged → backward compatible;
+  ReconciliationServiceTest 10/10, ReturnServiceTest 15/15, EndpointRoleGuard green); admin build clean →
+  `main-ELMM7OH5.js`. **DEPLOYED** full build via `push-to-new-server.ps1`. Backup `~/shifa-backup-2026-09-22-083148.sql`.
+  Live: Flyway "No migration necessary" (V65), Tomcat 8080, "Started Application in 21.575s", NRestarts=0, root 200,
+  exceptions/receivables/returns endpoints 401, served bundle `main-ELMM7OH5.js`. Hard-refresh to clear the SW cache.
+- **All order-list screens now show the salesperson**: Orders, Approval Queue, Payments, Packing, Team Performance,
+  Exception Center, Reconciliation (receivables + unsettled COD), Returns. Only Customer 360 order-history omits it (by
+  design — single-customer view).
+
+## Dispatch reworked: in-house-only multi-select status update — DEPLOYED (2026-09-22)
+Client: the Packing "Awaiting dispatch" queue should be a MULTI-SELECT that only dispatches IN-HOUSE orders (courier-
+partner orders are tracked by the partner) and lets the user set the status (Out for Delivery / Delivered / etc.), like
+the order-detail "Update status" dropdown. Previously the per-row + bulk "Dispatch" just enqueued courier assignment for
+ANY HANDED_TO_DELIVERY order regardless of delivery method.
+- **Backend**: `PackingQueueRow` gained `deliveryMethod` (from `order.getDeliveryMethod()`) so the UI knows in-house vs
+  courier. New `BulkOrderService.bulkUpdateInHouseDeliveryStatus(ids, target, note, actor)` delegates per-id to the
+  EXISTING `ManualDeliveryService.updateDeliveryStatus` (own transaction each) — which already enforces the in-house-only
+  gate, state-machine legality, and settlement-on-DELIVERED — returning a partial-success `BulkActionResult` (courier
+  orders + illegal moves skipped with a reason). `BulkOrderService` got a nullable `ManualDeliveryService` via a new
+  `@Autowired` 4-arg ctor; the legacy 3-arg ctor passes null (so `BulkOrderServiceTest` + the guard test's
+  `new BulkOrderService(null,null,null)` still compile). New endpoint `POST /api/packing/dispatch/bulk-status`
+  (`hasAnyRole PACKING_USER,ADMIN`) on `PackingController` (now injects `BulkOrderService`) + `BulkDeliveryStatusRequest`
+  DTO `{ids, status, note?}`. The old per-order courier-assign `POST /api/packing/{id}/dispatch` is untouched (still used
+  by the in-session work-items panel).
+- **Frontend** (`packing/scan.component`): the awaiting-dispatch queue is now IN-HOUSE-ONLY selectable — `isInHouseRow`,
+  `toggleDispatchSelection(row)` ignores courier rows, select-all operates on the in-house subset. Courier rows show a
+  🔒 lock (not a checkbox) and an "In-house"/"Partner" badge instead of a per-row Dispatch button. The bulk bar gained a
+  status `<select>` (`dispatchStatusOptions` = `MANUAL_DELIVERY_STAGE_OPTIONS` filtered to DISPATCHED / IN_TRANSIT /
+  OUT_FOR_DELIVERY / DELIVERED — every row is HANDED_TO_DELIVERY) + an "Update N" button calling
+  `PackingService.bulkDeliveryStatus(ids, status, note)`; partial-success toast. `packing.model` `PackingQueueRow`
+  +`deliveryMethod`, new `BulkDeliveryStatusResult`.
+- Test `BulkOrderServiceTest.bulkDeliveryStatusUpdatesInHouseAndSkipsCourierOrders` (real `ManualDeliveryService`, 4-arg
+  `BulkOrderService`): in-house HANDED_TO_DELIVERY → OUT_FOR_DELIVERY succeeds; courier order skipped ("courier partner").
+- Verified: backend `mvn clean test` = **757 tests, 0 failures** (was 756; +1); admin build clean → `main-Z7V4GNLM.js`.
+  **DEPLOYED** full build via `push-to-new-server.ps1`. Backup `~/shifa-backup-2026-09-22-090327.sql`. Live: Flyway "No
+  migration necessary" (V65), Tomcat 8080, "Started Application in 22.224s", NRestarts=0, root 200, `/api/packing/queue`
+  + `/api/packing/dispatch/bulk-status` 401. Hard-refresh to clear the SW cache.
+
+## All order screens default to newest-punched-first (created_at DESC) — implemented
+Client: every order-listing screen should show orders newest-punched-first. Audited all order-list finders/sorts:
+- Already DESC (no change): Orders list (`AdminOrderController` DEFAULT_SORT createdAt DESC), Approval Queue
+  (`AdminOrderService.approvalQueue` → `findByOrderStatusOrderByCreatedAtDesc`), Returns (`AdminReturnController`
+  DEFAULT_SORT createdAt DESC), Reconciliation receivables/claims (`findByTypeAndSettledFalseOrderByCreatedAtDescIdDesc`),
+  Packing queues (`findByOrderStatusOrderByCreatedAtDesc`).
+- Changed ASC→DESC: **Payment Verification** queue used `findByPaymentVerificationStatusOrderByCreatedAtAsc` (oldest
+  first). Added `OrderRepository.findByPaymentVerificationStatusOrderByCreatedAtDesc` and repointed
+  `PaymentVerificationService.queue`. **Exception Center** approval + payment rows used the ASC finders
+  (`findByOrderStatusOrderByCreatedAtAsc` / `...PaymentVerificationStatusOrderByCreatedAtAsc`) → switched both to the DESC
+  finders in `AdminExceptionService`. (The old ASC finders are kept — still used by the packing FIFO queues.)
+- Updated `PaymentVerificationServiceTest` to mock the DESC finder (the ASC one is no longer called by queue()).
+- Frontend renders server order as-is (no client re-sort), so no frontend change. Backend-only, no migration.
+- **DEPLOYED (2026-09-22)** full build via `push-to-new-server.ps1`. Backup `~/shifa-backup-2026-09-22-091538.sql`.
+  Backend suite **757 tests, 0 failures** (unchanged — pure sort change). Live: Flyway "No migration necessary" (V65),
+  "Started Application in 23.193s", NRestarts=0, root 200, `/api/payments/queue` 401, bundle `main-Z7V4GNLM.js`
+  (unchanged — no frontend change). Payment Verification + Exception Center now list newest-punched-first like the rest.
+
+## Distinct Payment-Rejected status + categorized reject reasons (V66) — implemented & DEPLOYED (2026-09-22)
+Client: a payment-panel rejection was invisible (only `paymentVerificationStatus=REJECTED`, order status never changed),
+and admin rejections stored only free text. Now BOTH show as distinct, visible order statuses with a categorized reason,
+surfaced to the salesperson under a dedicated "Rejected" filter group. Backend **757 tests, 0 failures**; admin bundle
+`main-FTYHEL7Z.js`. **Highest migration is now V66.**
+- **New terminal `OrderStatus.PAYMENT_REJECTED`** (after REJECTED): incoming edges from `PENDING_ADMIN_APPROVAL` AND
+  `APPROVED` (the payment check runs alongside the lifecycle), staff-only (no SYSTEM), triggered by `Role.PAYMENT_VERIFIER`
+  + `Role.ADMIN` (`TransitionAuthority`). Terminal (no outgoing edges). `humanizeStatus` auto-labels "Payment Rejected".
+- **`order/RejectReason` enum** (RATE_ISSUE, ADDRESS_PINCODE_ISSUE, PAYMENT_ISSUE, OTHER), mirrors the `RtoReason`
+  pattern; persisted `orders.reject_reason VARCHAR(30)` (**V66**, additive/nullable — no status-column change since
+  `order_status` is a VARCHAR storing the enum name). `OrderEntity.rejectReason` + `setRejectReason(reason, note)` (sets
+  category AND the free-text `rejection_reason` note together).
+- **Admin reject** (`AdminOrderService`): kept the 3-arg `reject(id,reason,admin)` (delegates, category null — keeps
+  `RejectionReasonPropertyTest` unchanged) + new 4-arg `reject(id,category,reason,admin)`. `RejectOrderRequest` gained
+  optional `category`; `AdminOrderController` passes it. Approval-queue reject modal now has a **Reason category dropdown**
+  (Rate Issue / Address-Pincode Issue / Other) + note; `approval.service.reject(id,reason,category)`.
+- **Payment-panel reject** (`PaymentVerificationService.reject`): now records the verification decision AND transitions the
+  order to `PAYMENT_REJECTED` via the central `OrderWorkflowService` (actor = verifier, source "PAYMENT"), tagging
+  `RejectReason.PAYMENT_ISSUE` + the verifier note. Guarded: transition only fires when the workflow is injected (prod) AND
+  status ∈ {PENDING_ADMIN_APPROVAL, APPROVED} — so the 4-arg test ctor (null workflow, null status) still just records the
+  decision. Injected `OrderWorkflowService` via a new `@Autowired` 6-arg ctor (test 4-arg ctor preserved). Payments reject
+  modal shows a hint that it marks the order "Payment Rejected (Payment Issue)".
+- **New "Rejected" status group** split out of "Cancelled": backend `OrderStatusGroup.REJECTED` = {REJECTED,
+  PAYMENT_REJECTED}; `CANCELLED` = {CANCELLED} only. Frontend `orders/order-status-groups.ts` mirrors it (new `REJECTED`
+  key + `TIMELINE_ICONS`/`TIMELINE_LABELS` entries in `orders.component.ts`). `from()`/`normalizeGroupKey` resolve
+  REJECTED/PAYMENT_REJECTED.
+- **PAYMENT_REJECTED added alongside REJECTED at every non-revenue/excluded/exception site**: `Gstr1ReturnService`,
+  `GstAccountingService`, `ProfitLossService`, `RoleDashboardService` (EXCEPTION_STATES), `CustomerInsightService`,
+  `MyDayService`, `TeamPerformanceService` (NON_REVENUE + OPEN complement), `SalespersonPerformanceService`,
+  `OrderProductSalesLookup` (name set), `InsightComputationService`, `DigestOrder`/`ReportOrder`/`DailyReport`
+  (countsAsSale), `ReportService`/`ReportTableBuilder` (write-off). `NotificationMatrix` gained a PAYMENT_REJECTED spec
+  (in-app to creator, mirrors REJECTED); `NotificationDispatcher` title "Payment rejected" + danger severity.
+- **Frontend surfacing**: core `OrderStatus.PAYMENT_REJECTED` + `RejectReason` type; `status-badge` tone 'bad' for
+  PAYMENT_REJECTED; `OrderDetail` model gained `rejectReason` + `paymentVerificationNote`; order-detail drawer shows the
+  rejection reason for BOTH REJECTED and PAYMENT_REJECTED (category badge + free-text note + payment note), so the
+  salesperson sees why under the Rejected group. `models.pbt.ts` count 18→19.
+- **Tests updated**: `OrderStatusTransitionTablePropertyTest` (TERMINAL + EXPECTED table add PAYMENT_REJECTED),
+  `TransitionAuthorityPropertyTest` (2 payment-reject rules), `OrderWorkflowHistoryAppendPropertyTest` (2 staff cases),
+  `OrderStatusGroupTest` (Cancelled=CANCELLED-only, new REJECTED group), `OrderProductSalesLookupTest` (3-status set),
+  `EndpointRoleGuardIntegrationTest.StubAdminOrderService` (override the new 4-arg reject → the 500 that surfaced was the
+  stub not overriding it).
+- **DEPLOYED** via `deploy\push-to-new-server.ps1 -SkipBuild` (JAR + admin bundle prebuilt). DB backup
+  `~/shifa-backup-2026-09-22-121621.sql` (280K). Verified live: Flyway "Migrating schema to version 66 - order reject
+  reason … now at version v66", "Tomcat started on 8080", "Started Application in 23.2s", HTTPS root 200, `/api/states`
+  401. The old JVM's shutdown-hook `NoClassDefFoundError: ThrowableProxy` + Fontconfig lines are harmless shutdown noise.
+- **BUILD GOTCHA (bit us hard this session)**: the Kiro IDE's redhat.java **Eclipse JDT language server** (a background
+  `java.exe`, auto-respawned by the extension host) continuously holds handles on `backend\target\classes`, so
+  `mvn clean` / `rmdir` FAIL with "Failed to delete target" / `NoSuchFileException` — and killing it just makes it respawn.
+  Also THREE stale `push-to-new-server.ps1` background terminals from prior sessions were still "running" and kept
+  re-spawning mvn/java, compounding the target corruption. Fixes that worked: (a) `list_processes` → stop every lingering
+  background terminal; (b) build the tests to a RELOCATED build dir that the IDE isn't watching:
+  `mvn -f "backend/pom.xml" -Dproject.build.directory="C:\shifa-build\target" test` (the jar plugin still writes the fat
+  JAR to `backend\target` when the lock momentarily releases, which is where `-SkipBuild` expects it). LESSON: when
+  `mvn clean` can't delete target on Windows, it's the IDE Java language server — build to a relocated `-Dproject.build.directory`
+  rather than fighting the lock, and always audit `list_processes` for stale running deploy/build terminals first.
+
+## Fix & resubmit a rejected order back into the approval queue (no migration) — implemented & DEPLOYED (2026-09-22)
+Client: once an order is REJECTED (admin) or PAYMENT_REJECTED (payment panel), the salesperson could only SEE the
+reason — the status was terminal, and edit was ADMIN-only + limited to PENDING/APPROVED. Added a **rework flow** so the
+creating salesperson (or admin) fixes the flagged issue and resubmits the SAME order (same code + full history) back to
+PENDING_ADMIN_APPROVAL. No migration; backend **757 tests, 0 failures**; admin bundle `main-LHYIWRW6.js`. Prod still V66.
+- **State machine**: `OrderStatus.REJECTED` and `PAYMENT_REJECTED` are **no longer terminal** — each now has ONE outgoing
+  edge back to `PENDING_ADMIN_APPROVAL`. `TransitionAuthority`: both edges authorized for `SALESPERSON` + `ADMIN`
+  (staff-only, no SYSTEM); own-order scoping enforced in the service, not the authority map.
+- **Backend** `OrderService.resubmit(id, UpdateOrderRequest, actor)`: loads the order via `loadScoped` (salesperson →
+  own order only, else 404); 400 if not in {REJECTED, PAYMENT_REJECTED}; re-applies the corrected fields via a new shared
+  `applyEditedFields(order, request, userId)` helper (extracted from `updateOrder` — same re-price + per-product stock
+  reconcile); `order.setRejectReason(null, null)` clears the category + free-text; for a **PAYMENT_REJECTED** order still
+  carrying a payment (non-COD) it calls `markPaymentPendingVerification()` so the payment is re-checked; transitions to
+  PENDING_ADMIN_APPROVAL through the injected `OrderWorkflowService` (authority + one history row + audit + notification
+  fan-out); re-fires `publishAwaitingApproval`. `OrderService` gained `OrderWorkflowService` (nullable; the legacy 8-arg
+  test ctor passes null — resubmit then throws IllegalStateException, but tests use the Spring 13-arg ctor). Endpoint
+  `POST /api/orders/{id}/resubmit` on `OrderController` (`hasAnyRole SALESPERSON,ADMIN,TEAM_LEAD`) reusing `UpdateOrderRequest`.
+- **Frontend**: `OrdersService.resubmit(id, payload)`; **New Order resubmit mode** via `/orders/new?resubmitFrom=<id>`
+  (`new-order.component` `initResubmitMode` — mutually exclusive with convert/reorder, guards the order is actually
+  rejected else bounces, prefills the SAME order's customer/shipping/lines/discount, keeps `resubmitOrderId` so `submit()`
+  branches to `submitResubmit` → `POST /resubmit` instead of create; skips draft autosave; amber "Reworking <code>" banner
+  with copy that differs for admin-rejected vs payment-rejected; save button reads "Resubmit for Approval"). Orders detail
+  drawer gets a **"Fix & resubmit"** button (`canResubmit(order)` = rejected status + order-entry role; backend enforces
+  ownership) that routes to the resubmit New Order. Reuses the existing reorder-clone pattern.
+- **Tests updated** (all still green): `OrderStatusTransitionTablePropertyTest` (dropped REJECTED/PAYMENT_REJECTED from
+  TERMINAL, EXPECTED table maps each to {PENDING_ADMIN_APPROVAL}), `TransitionAuthorityPropertyTest` (2 rework rules),
+  `OrderWorkflowHistoryAppendPropertyTest` (2 staff rework cases). No test ctor churn (legacy 8-arg OrderService ctor kept).
+- **DEPLOYED** via `push-to-new-server.ps1 -SkipBuild`. DB backup `~/shifa-backup-2026-09-22-125016.sql` (284K). Verified
+  live: Flyway "validated 66 migrations … No migration necessary" (data untouched), "Tomcat started on 8080", "Started
+  Application in 21.2s", HTTPS root 200, `POST /api/orders/1/resubmit` 401 (wired + auth). Old-JVM shutdown-hook
+  `NoClassDefFoundError: ThrowableProxy` = harmless.
+- **UX flow for the client**: rejected order → open it → "Fix & resubmit" → New Order opens prefilled with the reason
+  context → salesperson corrects the rate/address/payment → "Resubmit for Approval" → same order (same code) reappears in
+  the admin approval queue with its full history; a payment rejection additionally re-enters the payment-verification queue.
+- Build note (reinforced): built via relocated `-Dproject.build.directory="C:\shifa-build\target"` because the IDE JDT
+  language server locks `backend\target`; the fat JAR still lands in `backend\target` for `-SkipBuild`. Avoid PowerShell
+  `.Replace`+`Set-Content` on source (used once on new-order HTML this session, verified uncorrupted, but use str_replace).
+
+## Fix: "Authentication is required to access this resource" mid-task (expired access token, no silent refresh) — fixed & DEPLOYED (2026-09-22)
+Symptom (user screenshot): on the New Order / Fix-&-Resubmit form a payment-screenshot upload showed
+"⚠ Authentication is required to access this resource" next to the attached file, and "A payment screenshot is
+required." blocked Next — even though a file was picked. Root cause was NOT the upload or resubmit code: the
+**access token (15-min TTL, `JwtProperties.accessTokenTtl=PT15M`) expired while the user filled the multi-step
+form**, so the upload POST `/api/orders/payment-screenshots` came back 401. The frontend `authInterceptor` did NOT
+attempt a token refresh — on any 401 it just `tokens.clear()` + emitted `unauthorized`, and **nothing in the admin
+app subscribed to that event to redirect**, so the user was stranded seeing inline 401s (the upload never got a key →
+"screenshot required"). There IS a 7-day refresh token + `AuthService.refresh()` + `/api/auth/refresh`, just unused by
+the interceptor.
+- **Fix 1 — silent refresh in the interceptor** (`core/auth/auth.interceptor.ts`, frontend-only): on a 401 for our own
+  API (not the auth endpoints, and only when both an access + refresh token exist), it now POSTs the refresh token to
+  `/api/auth/refresh` via the same handler chain, stores the new pair, and **retries the original request once** with the
+  new bearer. Concurrent 401s share ONE in-flight refresh (module-level `refreshInFlight` + `shareReplay(1)` + `finalize`
+  reset) so they don't race/rotate the refresh token repeatedly. Only when the refresh ITSELF fails (refresh token gone/
+  expired) does it clear the session + emit `unauthorized`. The refresh POST goes through the downstream `next`, so it
+  does NOT re-enter the interceptor (no recursion); the retried request likewise doesn't re-loop. Token SCOPING unchanged
+  (`isApiRequest`/`isPublicAuthRequest` intact — the pbt still holds).
+- **Fix 2 — redirect on genuine session end** (`shell/admin-shell.component.ts`): the shell now subscribes to
+  `AuthEventsService.events` (injected from core) and, on `unauthorized`, shows a toast + `router.navigateByUrl('/login')`
+  (guarded against looping when already on /login). So a truly-expired session routes to login instead of stranding the
+  user. `takeUntilDestroyed()` for cleanup.
+- Net effect: a normal 15-min access-token expiry is now recovered transparently (user keeps working through the 7-day
+  refresh window); only a real session end sends them to login. Fixes the payment-screenshot 401 AND the same class of
+  mid-task 401 on every screen.
+- **DEPLOYED** frontend-only via `push-to-new-server.ps1 -SkipBuild` (backend JAR unchanged = the V66 resubmit JAR).
+  Admin bundle `main-XELKFHHN.js`. DB backup `~/shifa-backup-2026-09-22-132633.sql`. Verified live: service active,
+  HTTPS root 200, served index references `main-XELKFHHN.js`. No migration; prod remains V66.
+- POSSIBLE FUTURE HARDENING (not done): proactively refresh the access token shortly before its 15-min expiry (timer) so
+  even the first post-expiry request never 401s; and/or raise `accessTokenTtl`. Current reactive refresh is sufficient.
+
+## Own-pending order edit + order-edit audit diff + IST timestamps everywhere — implemented & DEPLOYED (2026-09-24)
+Three client asks in one batch. Backend **757 tests, 0 failures**; admin bundle `main-FTBZ2UYR.js`. No migration (prod
+still V66). All deployed to AWS.
+### 1) Salesperson / team lead can edit their OWN order while it's still PENDING
+Previously editing was ADMIN-only (`PUT /api/admin/orders/{id}`, `hasRole('ADMIN')`, editable in PENDING+APPROVED). Now
+the person who punched an order can correct it before an admin reviews it (customer change / agent fix).
+- **Backend**: new `OrderService.updateOwnOrder(id, req, actor)` — `loadScoped` (own-order → 404 otherwise; team lead sees
+  their team's), restricted to **PENDING_ADMIN_APPROVAL only** (`OWN_EDITABLE_STATUSES`; a 400 once approved, directing to
+  an admin). Reuses the same `applyEditedFields` (re-price + stock reconcile). Endpoint `PUT /api/orders/{id}` on
+  `OrderController` (`hasAnyRole SALESPERSON,ADMIN,TEAM_LEAD`). Payment capture (amount/screenshot) NOT editable here.
+  Admin `updateOrder` (PENDING+APPROVED) unchanged.
+- **Frontend**: edit route `orders/:id/edit` guard changed `adminOnlyGuard`→`orderEntryGuard`; `edit-order.component`
+  picks the endpoint by role (`auth.hasAnyRole(ADMIN)` → `updateOrder` [admin], else `updateOwnOrder`); `OrdersService.
+  updateOwnOrder` (`PUT /api/orders/{id}`). **Edit button** on the order-detail drawer via `canEdit(order)` (ADMIN:
+  PENDING|APPROVED; SALESPERSON/TEAM_LEAD: PENDING only — backend enforces ownership+status).
+### 2) Field-level "what changed" audit trail for order edits
+Edits previously wrote only a bare "Updated order {code}". Now the ORDER_UPDATED audit names WHO changed WHAT (old→new)
+and WHEN.
+- `applyEditedFields` now returns a **diff string**: it snapshots the audited scalar fields BEFORE mutating
+  (`fieldSnapshot`: Customer/Mobile/Alt mobile/Email/Address/City/State/Pincode/Lead source/Lead note/Notes/GSTIN/
+  Discount/Total/Items) and diffs old→new after (`diffSummary` → "Field: 'old' → 'new'; …"; Items summarised as
+  "name×qty@rate; …"). `auditOrderEdit(order, diff, actor, context)` records ORDER_UPDATED via the (newly injected,
+  nullable) `AuditService` naming the real actor; no-op when nothing changed. Wired into `updateOrder` ("Edited"),
+  `updateOwnOrder` ("Edited"), and `resubmit` ("Resubmitted", in addition to the workflow's ORDER_STATUS_CHANGED).
+  `AdminOrderController.update` no longer records its own bare audit (the service now does the detailed one → no dupes).
+- `OrderService` ctor gained `AuditService` (nullable in the legacy 8-arg test ctor — audit then skipped; the 2 test call
+  sites use that ctor unchanged).
+### 3) All displayed times in IST (Asia/Kolkata) regardless of device timezone
+Root cause: JVM was already pinned to `Asia/Kolkata` (`Application.main`) and MySQL uses `serverTimezone=Asia/Kolkata`, so
+persisted timestamps hold IST wall-clock — BUT `LocalDateTime` serialized as an **offset-less** ISO string, which a
+browser interprets in ITS OWN zone (a non-IST device showed shifted times).
+- **Backend fix (the key one)**: new `common/JacksonTimeConfig` — a `Jackson2ObjectMapperBuilderCustomizer` that
+  serializes every `LocalDateTime` WITH the `+05:30` offset (e.g. `2026-09-24T14:50:15+05:30`) via a custom
+  `IstLocalDateTimeSerializer`. Deserialization unchanged (request bodies still read offset-less). Now the wire value is
+  unambiguous so any client renders the correct IST instant. **Verified live**: `GET /api/admin/audit` returns
+  `"createdAt":"2026-09-24T14:50:15+05:30"`.
+- **Frontend**: new shared `shared/ist-date.pipe.ts` `IstDatePipe` (`| istDate[:format]`) — wraps a self-contained
+  `new DatePipe('en-US')` with `timezone: '+0530'` so it always renders IST even on a non-IST device (default format
+  `dd MMM yyyy, HH:mm`). Applied to the Audit page (both card + table) and the Orders list + detail drawer (created-at,
+  status-timeline, raw history, order date, est. delivery, QuikShip synced-at), replacing `| date` + dropping `DatePipe`
+  imports. `shared/time.util.ts` `relativeTime` fallback now formats the >1-week date with `toLocaleDateString('en-IN',
+  {timeZone:'Asia/Kolkata'})`. NOTE: other feature pages still use plain `| date` (reconciliation, payments, returns,
+  purchase-orders, customers, leads, announcements, packing, salespeople) — with the backend `+05:30` offset they show the
+  correct instant, just in the device's zone; migrate those `| date`→`| istDate` later for guaranteed-IST rendering there
+  too (the pipe + offset are the foundation).
+- **DEPLOYED** via `push-to-new-server.ps1 -SkipBuild` (JAR + bundle prebuilt). DB backup `~/shifa-backup-2026-09-24-091735.sql`
+  (780K). Verified: Flyway "No migration necessary" (V66), Tomcat 8080, "Started in 22.5s", audit API shows `+05:30`,
+  `PUT /api/orders/1` = 401 (wired). Built via relocated `-Dproject.build.directory` (IDE JDT locks backend/target).
+
+## IST timezone sweep — every remaining `| date` → `| istDate` across the admin app — DEPLOYED (2026-09-24)
+Follow-through to the earlier IST work (JacksonTimeConfig `+05:30` offset + `IstDatePipe` on audit/orders): converted
+EVERY remaining Angular `DatePipe` usage in the admin app to the shared IST-locked `istDate` pipe, so all displayed
+times are Asia/Kolkata regardless of the viewer's device timezone. Frontend-only; admin bundle `main-JTEC5RZY.js`.
+- **17 component HTML templates** switched `| date[:fmt]` → `| istDate[:fmt]` and their `.ts` swapped
+  `import { DatePipe }` + `imports:[DatePipe]` → `IstDatePipe` (`../shared/ist-date.pipe`): announcements,
+  approval-queue (3), backups (4), customers (5), exceptions (2), expenses (3), insights, inventory, leads (4),
+  due-follow-ups, packing/scan (2), packing/pick-list, payments, purchase-orders (5), reconciliation (4), returns,
+  salespeople (2), team/team-performance (inline template, 2). Plus the earlier audit + orders pages.
+- **`toLocale*` in `.ts` given `timeZone:'Asia/Kolkata'`**: `salespeople`/`profile-approvals`/`my-profile`
+  `toLocaleDateString('en-IN', …)` and `team/team-member-detail` `toLocaleString('en-IN', …)` — these render dates in
+  code (not via the pipe), so they needed the explicit IST zone. (Money `toLocaleString('en-IN')` calls left as-is —
+  currency, not dates.)
+- **Verified**: `grep "| date"` across admin templates = 0 matches; the only remaining `import { DatePipe }` is inside
+  `ist-date.pipe.ts` itself (correct — the pipe wraps it). `build:admin` clean → `main-JTEC5RZY.js`. Deployed via
+  `push-to-new-server.ps1 -SkipBuild` (backend JAR unchanged from the 2026-09-24 edit/IST deploy); DB backup
+  `~/shifa-backup-2026-09-24-095436.sql` (788K); HTTPS root 200, served index references `main-JTEC5RZY.js`.
+- Going forward: **use `| istDate` (never `| date`) for any new timestamp display**, and pass `timeZone:'Asia/Kolkata'`
+  to any in-code `toLocaleDateString/toLocaleString` that formats a date/time. Backend already emits `+05:30` on every
+  `LocalDateTime` (`JacksonTimeConfig`) + JVM pinned Asia/Kolkata, so the instant is unambiguous; the pipe pins the render.
+- **DEPLOY GOTCHA (bit this run)**: the `control_pwsh_process` background runner REUSED a prior terminal's cwd
+  (`…/src/app` from earlier findstr calls), so `npm --prefix frontend …` resolved to a non-existent nested path (ENOENT).
+  Fix: pass an ABSOLUTE `--prefix "c:\E Drive\Shifa-Software\frontend"` (and absolute paths for the deploy script/log).
+
+## Order-entry "Option B": remove COD entry option + min ₹100 upfront + screenshot always — implemented & DEPLOYED (2026-09-24)
+Client: order entry showed three payment options (Full / Partial / **COD ₹0**), but they only offer Full or Partial —
+and a minimum ₹100 must be collected upfront with a payment screenshot before proceeding. Removed the ₹0/COD entry
+option app-wide, enforced min-upfront + screenshot-always, and reworded ALL user-facing "COD" text. The **internal COD
+domain model is intentionally kept** (wire/persisted values unchanged) — only DISPLAY text changed.
+- **Backend rule** (`OrderService.createSalespersonOrder`): new `requireMinimumUpfront(received, total)` after `received`
+  is computed → requires `amountReceived >= min(₹100, total)` (full payment when total < ₹100). `MIN_UPFRONT_PAYMENT =
+  Money.of(100L)` near `requirePositiveTotal`; error message contains "collected upfront". Enforced at the service
+  boundary, NOT in the pure `PaymentCalculator` (keeps its property tests intact).
+- **Kept internal (do NOT rename — breaks persistence/wire)**: `PaymentStatus.COD`, `OrderStatus.COD_COLLECTED`,
+  `codAmount`, reconciliation/remittance, `ReceivableType.COD_RECEIVABLE`.
+- **Display wording map** (applied across all modules): payment status `COD`→"Pay on Delivery"; `COD_COLLECTED`→
+  "Collected on Delivery"; "COD to collect"→"To collect on delivery"; "COD pending (courier)"→"Pending from courier";
+  "COD outstanding"→"Outstanding on delivery"; report headers "COD Amount"→"On-Delivery Amount", "COD Settlement Status"→
+  "On-Delivery Collection Status", "COD Status"→"On-Delivery Status", `COD_REMITTANCE`→"Pending from Courier"; orders
+  column "COD"→"On Delivery". Frontend override maps in `shared/status-badge.component.ts` (`STATUS_LABEL_OVERRIDES`,
+  applied before generic humanize; removed the old `.replace(/\bCod\b/i,'COD')`) + `dashboard.component.ts humanizeStatus`.
+  Backend headers in `reporting/domain/ReportTableBuilder.java` (3 header lists) + `reporting/ReportController.java`.
+- **Frontend order entry** (`new-order.component.*`): removed the "COD / ₹0" button; `paymentKind` 'cod'→'below';
+  `minUpfrontPaise`/`paymentBelowMinimum` computeds; `screenshotRequired` always true when total>0; min-check in
+  `validateStep(3)` + `submit`; **offline order creation DISABLED** (replaced the localStorage enqueue with a block —
+  can't collect ₹100 + upload a screenshot offline). Reworded COD labels across orders, approval-queue, dashboard,
+  reports, reconciliation, analytics, finance/profit-loss, salespeople, team-member-detail, insights.model,
+  saved-views.util, orders.model, whatsapp.util.
+- **Tests**: `OrderServiceTest` zero-payment cases converted to ₹100+screenshot or repurposed to assert rejection
+  (`zeroPaymentOrderIsRejectedByMinimumUpfrontPolicy`, `partialPaymentBelowHundredIsRejectedByMinimumUpfrontPolicy`,
+  `smallOrderUnderHundredMustBePaidInFull`, renamed `salespersonOrderStartsPendingApprovalWithBalanceOnDelivery`);
+  `salespersonOrderRequiresScreenshotWhenAmountReceived` uses qty 2 / total 200 / pay ₹100 / no screenshot. Fixed
+  property tests `DeterministicOrderCreationPropertyTest`, `LeadSourceRoundTripPropertyTest`,
+  `OrderRequiresLineItemPropertyTest` (₹0→₹100+screenshot). Backend **759 tests, 0 failures**; admin bundle
+  `main-44N6MOGC.js`.
+- **DEPLOYED to AWS 2026-09-24** (`https://shifa.weblithic.online/`, IP 15.252.230.73) via
+  `deploy\push-to-new-server.ps1 -SkipBuild`. DB backup `~/shifa-backup-2026-09-24-113616.sql`. Verified: Flyway validated
+  66 migrations, "No migration necessary" (V66 highest), Tomcat on 8080, "Started Application in 21.362s", root=200,
+  `/api/states`=401, served index references `main-44N6MOGC.js`. Client: hard-refresh (Ctrl+Shift+R) to pick up the new bundle.
+- **BUILD GOTCHA (bit us hard this session)**: the IDE's Eclipse JDT language server (`redhat.java`, a ~1.1GB `java.exe`
+  that respawns) LOCKS `backend\target\classes`, stalling/breaking `mvn clean` in-workspace. Workaround: copy the backend to
+  an out-of-workspace dir (`C:\shifa-buildsrc\backend`) and run `mvn clean test`/`package` there, then copy the JAR back to
+  `backend\target`. `-Dproject.build.directory` override did NOT relocate compiler output; killing JDT respawns too fast.
+
+## Same-day duplicate-order guard (one order per customer per day) — implemented (NOT yet deployed)
+Client: the same customer can reach two different salespeople and get a duplicate order punched the same day. Detect
+it AT ENTRY (warn the salesperson, naming the other salesperson) and BLOCK creating a second same-day order.
+- **"Duplicate" = same `customer_mobile` with an ACTIVE (not REJECTED/CANCELLED) order created TODAY (IST).** Rejected/
+  cancelled prior orders are excluded so a legitimate re-punch after a rejection isn't blocked; convert-from-lead and
+  resubmit-rejected flows are also exempt (resubmit's own prior order is REJECTED → excluded anyway).
+- **Backend** (`order`): `OrderRepository.findActiveByCustomerMobileInWindow(mobile, from, to)` — JPQL, excludes
+  REJECTED/CANCELLED, newest first. `OrderService`: `latestActiveTodayOrder(mobile)` computes the IST day window
+  (`BUSINESS_ZONE = Asia/Kolkata`, `LocalDate.now → [startOfDay, nextDay)`); `requireNoSameDayDuplicate(mobile, actor)`
+  throws `ValidationException` (400, message contains "already placed today" + order code + who) in
+  `createSalespersonOrder` (placed just before `requireMinimumUpfront`) = authoritative block. `duplicateCheck(mobile,
+  actor)` overload now also returns the same-day signal; kept the no-arg `duplicateCheck(mobile)` overload (→ null actor)
+  for back-compat. Reuses existing `resolveSalespersonName(userId)` (userRepository is nullable → falls back to "another
+  salesperson" under the legacy test ctor). `OrderController.duplicateCheck` now passes
+  `currentUserService.requireCurrentUser()`.
+- **DTO** `DuplicateCheckResponse` extended (appended, back-compat): `hasTodayOrder`, `todayOrderCode`,
+  `todaySalespersonName`, `todayCreatedByMe` + static `of(mobile, priorOrderCount)` factory.
+- **Frontend** (`orders/new-order`): `orders.model.ts` `DuplicateCheckResponse` extended; `new-order.component.ts`
+  `sameDayDuplicate` signal set from the debounced `checkDuplicateCustomer` response (cleared on invalid mobile), blocks
+  `validateStep(1)` + `submit()` (skips convert/resubmit) and jumps back to step 1 with a toast; `new-order.component.html`
+  prominent **danger alert** after the repeat-customer hint: "Duplicate order — already placed today. {you|<name>|Another
+  salesperson} already placed an order for this customer today (<code>). Only one order per customer per day is allowed."
+- **Tests**: `OrderServiceTest` +4 (`duplicateCheckFlagsSameDayOrderAndNamesTheOtherSalesperson`,
+  `duplicateCheckMarksTodayOrderAsMineWhenSameSalesperson`, `createSalespersonOrderRejectsSameDayDuplicate`,
+  `createSalespersonOrderAllowsWhenNoActiveOrderToday`) → **34/34 green**. Admin `build:admin` clean (`main-F3Q4UCMN.js`).
+  Existing creation tests unaffected (`findActiveByCustomerMobileInWindow` unstubbed → Mockito empty list).
+- **BUILD-COPY GOTCHA (new)**: when building in the isolated `C:\shifa-buildsrc\backend` copy (JDT locks in-workspace
+  `target\classes`), robocopy `/XD storage` **wrongly excludes the `com/shifa/oms/platform/storage` SOURCE package** (dir
+  named "storage"), causing a cascade of "package com.shifa.oms.platform.storage does not exist" compile errors. Fix:
+  after the copy, re-copy that one package explicitly. Don't `/XD storage`.
+- Ships with next deploy (no migration).

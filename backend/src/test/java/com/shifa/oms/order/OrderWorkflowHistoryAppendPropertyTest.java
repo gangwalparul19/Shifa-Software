@@ -97,6 +97,16 @@ class OrderWorkflowHistoryAppendPropertyTest {
         addStaff(cases, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.APPROVED, Role.ADMIN);
         addStaff(cases, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.REJECTED, Role.ADMIN);
         addStaff(cases, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.CANCELLED, Role.ADMIN);
+        // Payment-panel rejection (rejection-status feature) — payment verifier / admin, no SYSTEM.
+        addStaff(cases, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.PAYMENT_REJECTED,
+                Role.PAYMENT_VERIFIER, Role.ADMIN);
+        addStaff(cases, OrderStatus.APPROVED, OrderStatus.PAYMENT_REJECTED,
+                Role.PAYMENT_VERIFIER, Role.ADMIN);
+        // Rework a rejected order back to the approval queue — salesperson / admin.
+        addStaff(cases, OrderStatus.REJECTED, OrderStatus.PENDING_ADMIN_APPROVAL,
+                Role.SALESPERSON, Role.ADMIN);
+        addStaff(cases, OrderStatus.PAYMENT_REJECTED, OrderStatus.PENDING_ADMIN_APPROVAL,
+                Role.SALESPERSON, Role.ADMIN);
         // Auto label on approval — SYSTEM or ADMIN.
         addStaff(cases, OrderStatus.APPROVED, OrderStatus.LABEL_GENERATED, Role.ADMIN);
         addSystem(cases, OrderStatus.APPROVED, OrderStatus.LABEL_GENERATED);

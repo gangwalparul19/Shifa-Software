@@ -109,7 +109,7 @@
               <td class="text-secondary">{{ c.mobile }}</td>
               <td class="text-end">{{ c.orderCount }}</td>
               <td class="text-end">{{ money(c.totalSpent) }}</td>
-              <td class="text-secondary">{{ c.lastOrderAt ? (c.lastOrderAt | date: 'dd MMM, HH:mm') : '—' }}</td>
+              <td class="text-secondary">{{ c.lastOrderAt ? (c.lastOrderAt | istDate: 'dd MMM, HH:mm') : '—' }}</td>
               <td>
                 <div class="d-flex flex-wrap gap-1">
                   @if (c.repeatBuyer) {
@@ -308,11 +308,11 @@
         <div class="cust-dr__facts">
           <div class="cust-dr__fact">
             <span class="cust-dr__fact-k">First order</span>
-            <span class="cust-dr__fact-v">{{ profile.summary.firstOrderAt ? (profile.summary.firstOrderAt | date: 'dd MMM yyyy') : '—' }}</span>
+            <span class="cust-dr__fact-v">{{ profile.summary.firstOrderAt ? (profile.summary.firstOrderAt | istDate: 'dd MMM yyyy') : '—' }}</span>
           </div>
           <div class="cust-dr__fact">
             <span class="cust-dr__fact-k">Last order</span>
-            <span class="cust-dr__fact-v">{{ profile.summary.lastOrderAt ? (profile.summary.lastOrderAt | date: 'dd MMM yyyy') : '—' }}</span>
+            <span class="cust-dr__fact-v">{{ profile.summary.lastOrderAt ? (profile.summary.lastOrderAt | istDate: 'dd MMM yyyy') : '—' }}</span>
           </div>
           <div class="cust-dr__fact">
             <span class="cust-dr__fact-k">Account</span>
@@ -347,7 +347,7 @@
                 <div class="cust-note__text">{{ n.note }}</div>
                 <div class="cust-note__meta">
                   <i class="ti ti-user me-1"></i>{{ n.authorName || 'Staff' }}
-                  · {{ n.createdAt | date: 'dd MMM yyyy, HH:mm' }}
+                  · {{ n.createdAt | istDate }}
                 </div>
               </div>
             }
@@ -381,7 +381,7 @@
               <a class="cust-oh" [routerLink]="['/orders']" [queryParams]="{ q: o.orderCode }" (click)="closeDetail()">
                 <div class="cust-oh__main">
                   <span class="cust-oh__code shifa-mono">{{ o.orderCode }}</span>
-                  <span class="cust-oh__date">{{ o.date ? (o.date | date: 'dd MMM yyyy, HH:mm') : '—' }}</span>
+                  <span class="cust-oh__date">{{ o.date ? (o.date | istDate) : '—' }}</span>
                   <div class="cust-oh__pills">
                     <admin-status-badge [status]="o.orderStatus" />
                     <admin-status-badge [status]="o.paymentStatus" kind="payment" />

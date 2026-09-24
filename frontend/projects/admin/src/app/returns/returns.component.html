@@ -131,6 +131,9 @@
           }
         </div>
         <div class="shifa-ret__reason">{{ r.reason }}</div>
+        @if (r.salespersonName) {
+          <div class="text-secondary small"><i class="ti ti-user me-1"></i>{{ r.salespersonName }}</div>
+        }
         @if (r.notes) {
           <div class="shifa-ret__notes">{{ r.notes }}</div>
         }
@@ -159,6 +162,7 @@
           <tr>
             <th>Return</th>
             <th>Order</th>
+            <th>Salesperson</th>
             <th>Reason</th>
             <th adminSortHeader field="status" [sort]="sort()" (sortChange)="onSort($event)">Status</th>
             <th class="text-end" adminSortHeader field="refundAmount" [sort]="sort()" (sortChange)="onSort($event)">Refund</th>
@@ -176,6 +180,7 @@
                   <span class="shifa-mono">{{ r.orderCode || ('#' + r.orderId) }}</span>
                 </a>
               </td>
+              <td class="text-secondary">{{ r.salespersonName || '—' }}</td>
               <td>
                 <div>{{ r.reason }}</div>
                 @if (r.notes) {
@@ -191,7 +196,7 @@
                   <span class="text-secondary">—</span>
                 }
               </td>
-              <td class="text-secondary" [title]="r.createdAt ? (r.createdAt | date: 'dd MMM yyyy, HH:mm') : ''">
+              <td class="text-secondary" [title]="r.createdAt ? (r.createdAt | istDate) : ''">
                 {{ r.createdAt ? relativeTime(r.createdAt) : '—' }}
               </td>
               <td class="text-end">

@@ -133,7 +133,12 @@ export class ProfileApprovalsComponent implements OnInit {
     if (Number.isNaN(d.getTime())) {
       return iso;
     }
-    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    return d.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'Asia/Kolkata',
+    });
   }
 
   /** Fields that differ between current and proposed. */

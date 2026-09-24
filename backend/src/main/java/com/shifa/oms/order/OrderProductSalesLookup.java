@@ -34,7 +34,8 @@ public class OrderProductSalesLookup implements ProductSalesLookup {
      * since {@code order_status} is persisted as a string.
      */
     private static final Set<String> NON_REVENUE_STATUS_NAMES =
-            Set.of(OrderStatus.REJECTED.name(), OrderStatus.CANCELLED.name());
+            Set.of(OrderStatus.REJECTED.name(), OrderStatus.PAYMENT_REJECTED.name(),
+                    OrderStatus.CANCELLED.name());
 
     private final OrderRepository orderRepository;
     private final Clock clock;

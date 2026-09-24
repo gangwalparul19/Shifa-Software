@@ -33,6 +33,7 @@ public enum OrderStatus {
     PENDING_ADMIN_APPROVAL,
     APPROVED,
     REJECTED,
+    PAYMENT_REJECTED,
     LABEL_GENERATED,
     PACKED,
     HANDED_TO_DELIVERY,
@@ -61,10 +62,14 @@ public enum OrderStatus {
     private static Map<OrderStatus, Set<OrderStatus>> buildTransitions() {
         Map<OrderStatus, Set<OrderStatus>> table = new EnumMap<>(OrderStatus.class);
 
-        // Admin approval outcomes (Req 9.3, 9.4).
-        table.put(PENDING_ADMIN_APPROVAL, EnumSet.of(APPROVED, REJECTED, CANCELLED));
-        // Label service generates the internal label (Req 10.3).
-        table.put(APPROVED, EnumSet.of(LABEL_GENERATED));
+        // Admin approval outcomes (Req 9.3, 9.4). PAYMENT_REJECTED is the payment
+        // verifier's rejection of a prepaid order awaiting verification — a distinct
+        // terminal rejection from the admin's REJECTED (rejection-status feature).
+        table.put(PENDING_ADMIN_APPROVAL, EnumSet.of(APPROVED, REJECTED, PAYMENT_REJECTED, CANCELLED));
+        // Label service generates the internal label (Req 10.3). A prepaid order
+        // may also be payment-rejected by the verifier after approval (the payment
+        // check runs alongside the lifecycle), so allow that terminal edge here too.
+        table.put(APPROVED, EnumSet.of(LABEL_GENERATED, PAYMENT_REJECTED));
         // Packing barcode scan (Req 8.2). QuikShipX orders instead fast-forward
         // straight to Courier_Assigned when a tracking id is allotted at approval
         // (SYSTEM only), skipping the manual pack/handover/dispatch steps.
@@ -105,10 +110,17 @@ public enum OrderStatus {
         table.put(CUSTOMER_REJECTED, EnumSet.of(OUT_FOR_DELIVERY, RTO));
         table.put(DELIVERY_FAILED, EnumSet.of(OUT_FOR_DELIVERY, RTO));
 
+        // A rejected order is NOT a dead end (rejection-status rework feature): the
+        // salesperson who created it can fix the flagged issue (rate / address /
+        // payment) and resubmit it back to Pending_Admin_Approval for a fresh
+        // review. Both admin REJECTED and payment-panel PAYMENT_REJECTED allow this
+        // single recovery edge.
+        table.put(REJECTED, EnumSet.of(PENDING_ADMIN_APPROVAL));
+        table.put(PAYMENT_REJECTED, EnumSet.of(PENDING_ADMIN_APPROVAL));
+
         // Terminal states — no outgoing transitions (Req 12.7).
         table.put(COD_COLLECTED, EnumSet.noneOf(OrderStatus.class));
         table.put(CLOSED, EnumSet.noneOf(OrderStatus.class));
-        table.put(REJECTED, EnumSet.noneOf(OrderStatus.class));
         table.put(CANCELLED, EnumSet.noneOf(OrderStatus.class));
         table.put(RTO, EnumSet.noneOf(OrderStatus.class));
         table.put(REDISPATCH, EnumSet.noneOf(OrderStatus.class));

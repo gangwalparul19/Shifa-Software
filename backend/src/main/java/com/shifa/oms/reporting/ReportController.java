@@ -153,7 +153,7 @@ public class ReportController {
             case DELIVERY_OUTCOME -> "Delivery Outcome Report";
             case PAYMENTS -> "Daily Payments Report";
             case OUTSTANDING -> "Outstanding Dues Report";
-            case COD_REMITTANCE -> "COD Pending from Courier";
+            case COD_REMITTANCE -> "Pending from Courier";
             case EXPENSES -> "Expenses Report";
             case PURCHASE_ORDERS -> "Purchase Orders Report";
             case RETURNS -> "Returns & Refunds Report";

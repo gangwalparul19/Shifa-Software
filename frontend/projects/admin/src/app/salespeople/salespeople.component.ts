@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -33,7 +33,7 @@ type StatusFilter = 'ALL' | VerificationStatus;
 @Component({
   selector: 'admin-salespeople',
   standalone: true,
-  imports: [ReactiveFormsModule, DatePipe, PageHeaderComponent, StatePanelComponent],
+  imports: [ReactiveFormsModule, IstDatePipe, PageHeaderComponent, StatePanelComponent],
   templateUrl: './salespeople.component.html',
   styleUrl: './salespeople.component.css',
 })
@@ -462,7 +462,12 @@ export class SalespeopleComponent implements OnInit {
     if (Number.isNaN(d.getTime())) {
       return iso;
     }
-    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    return d.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'Asia/Kolkata',
+    });
   }
 
   /** Replaces the selected + list row with the server's updated copy. */

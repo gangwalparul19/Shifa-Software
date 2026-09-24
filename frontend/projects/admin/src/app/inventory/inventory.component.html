@@ -403,7 +403,7 @@
               <tbody>
                 @for (m of movements(); track m.id) {
                   <tr>
-                    <td class="text-nowrap">{{ m.createdAt | date: 'dd MMM yyyy, HH:mm' }}</td>
+                    <td class="text-nowrap">{{ m.createdAt | istDate }}</td>
                     <td><span class="badge bg-secondary-lt">{{ humanize(m.type) }}</span></td>
                     <td class="text-end fw-medium" [class.text-success]="m.delta > 0" [class.text-danger]="m.delta < 0">
                       {{ m.delta > 0 ? '+' : '' }}{{ m.delta }}

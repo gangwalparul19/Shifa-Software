@@ -296,7 +296,7 @@ public class InsightComputationService {
         BigDecimal total = BigDecimal.ZERO;
         for (OrderEntity o : orders) {
             OrderStatus s = o.getOrderStatus();
-            if (s == OrderStatus.REJECTED || s == OrderStatus.CANCELLED) {
+            if (s == OrderStatus.REJECTED || s == OrderStatus.PAYMENT_REJECTED || s == OrderStatus.CANCELLED) {
                 continue;
             }
             total = total.add(nz(o.getTotalAmount()));

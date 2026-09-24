@@ -17,6 +17,12 @@ export interface PackingQueueRow {
   createdAt?: string;
   orderStatus: OrderStatus | string;
   paymentStatus: PaymentStatus | string;
+  /**
+   * QUIKSHIPX (courier partner) or IN_HOUSE. The dispatch queue offers manual
+   * status updates only for IN_HOUSE orders — courier orders are tracked by the
+   * partner.
+   */
+  deliveryMethod?: 'QUIKSHIPX' | 'IN_HOUSE' | string;
 }
 
 /**
@@ -30,6 +36,17 @@ export interface PackingQueue {
   awaitingHandover: PackingQueueRow[];
   /** Orders in {@code Handed_To_Delivery} — ready to dispatch. */
   awaitingDispatch: PackingQueueRow[];
+}
+
+/**
+ * Result of a bulk delivery-status update, mirroring the backend
+ * {@code BulkActionResult}: {@code succeeded} holds the ids that were updated;
+ * {@code skipped} holds those that could not (with a reason — e.g. courier order,
+ * or the move is illegal from the current status).
+ */
+export interface BulkDeliveryStatusResult {
+  succeeded: number[];
+  skipped: { id: number; reason: string }[];
 }
 
 /**

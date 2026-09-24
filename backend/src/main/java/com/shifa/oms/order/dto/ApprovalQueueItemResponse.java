@@ -43,7 +43,11 @@ public record ApprovalQueueItemResponse(
         // The order's current delivery method (default IN_HOUSE at entry), shown
         // to the admin so they can review/override it as part of approving
         // (in-house-delivery feature: admin decides the delivery partner).
-        DeliveryMethod deliveryMethod
+        DeliveryMethod deliveryMethod,
+        // The name of the salesperson who punched the order (resolved from
+        // created_by; full name, else username; null when unknown), so the
+        // reviewing admin can see who triggered it.
+        String salespersonName
 ) {
 
     /** A single order line in the review projection. */
@@ -64,7 +68,12 @@ public record ApprovalQueueItemResponse(
         }
     }
 
+    /** Without a resolved salesperson name (null) — kept for callers that don't resolve it. */
     public static ApprovalQueueItemResponse from(OrderEntity order) {
+        return from(order, null);
+    }
+
+    public static ApprovalQueueItemResponse from(OrderEntity order, String salespersonName) {
         List<LineItemResponse> items = order.getLineItems().stream()
                 .map(LineItemResponse::from)
                 .toList();
@@ -87,6 +96,7 @@ public record ApprovalQueueItemResponse(
                 screenshotKey != null && !screenshotKey.isBlank(),
                 items,
                 order.getCreatedAt(),
-                order.getDeliveryMethod());
+                order.getDeliveryMethod(),
+                salespersonName);
     }
 }

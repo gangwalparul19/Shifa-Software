@@ -52,7 +52,7 @@ public class MyDayService {
 
     /** Orders excluded from revenue/targets (matches the P&L / performance rules). */
     private static final Set<OrderStatus> EXCLUDED =
-            EnumSet.of(OrderStatus.REJECTED, OrderStatus.CANCELLED);
+            EnumSet.of(OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED);
 
     /** Default lapsed-window (days) for the win-back list. */
     private static final int DEFAULT_WINBACK_DAYS = 60;

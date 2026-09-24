@@ -202,7 +202,7 @@
             </div>
             <div class="sp-perf">
               <span class="sp-perf__v">{{ money(d.summary.codOutstanding) }}</span>
-              <span class="sp-perf__k">COD outstanding</span>
+              <span class="sp-perf__k">Outstanding on delivery</span>
             </div>
           </div>
 
@@ -215,7 +215,7 @@
                   class="sp-trend__bar"
                   [style.height.%]="pt.orders ? (pt.orders / trendMax()) * 100 : 4"
                   [class.is-empty]="!pt.orders"
-                  [title]="(pt.date | date: 'dd MMM') + ': ' + pt.orders + ' orders'"
+                  [title]="(pt.date | istDate: 'dd MMM') + ': ' + pt.orders + ' orders'"
                 ></span>
               }
             </div>
@@ -249,7 +249,7 @@
                 <div class="sp-recent__row">
                   <span class="shifa-mono fw-semibold">{{ o.orderCode }}</span>
                   <span class="text-truncate flex-fill mx-2">{{ o.customerName }}</span>
-                  <span class="text-secondary me-2">{{ o.createdAt | date: 'dd MMM' }}</span>
+                  <span class="text-secondary me-2">{{ o.createdAt | istDate: 'dd MMM' }}</span>
                   <span class="fw-semibold">{{ money(o.totalAmount) }}</span>
                 </div>
               }

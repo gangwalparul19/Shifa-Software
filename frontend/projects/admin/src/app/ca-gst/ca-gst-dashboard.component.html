@@ -100,7 +100,7 @@
       <div class="gst-kpi acc-teal">
         <div class="gst-kpi__head"><span class="gst-kpi__icon"><i class="ti ti-wallet"></i></span><span class="gst-kpi__label">Amount received</span></div>
         <div class="gst-kpi__value">{{ money(d.money.amountReceived) }}</div>
-        <div class="gst-kpi__sub">COD collected: {{ money(d.money.codCollected) }}</div>
+        <div class="gst-kpi__sub">Collected on delivery: {{ money(d.money.codCollected) }}</div>
       </div>
     </div>
   </div>
@@ -129,7 +129,7 @@
     <div class="col-6 col-md-3">
       <div class="gst-kpi acc-orange is-clickable" (click)="drillAll('Orders — outstanding dues')">
         <i class="ti ti-external-link gst-kpi__link"></i>
-        <div class="gst-kpi__head"><span class="gst-kpi__icon"><i class="ti ti-clock-dollar"></i></span><span class="gst-kpi__label">Outstanding COD</span></div>
+        <div class="gst-kpi__head"><span class="gst-kpi__icon"><i class="ti ti-clock-dollar"></i></span><span class="gst-kpi__label">Outstanding on delivery</span></div>
         <div class="gst-kpi__value">{{ money(d.money.outstandingCod) }}</div>
         <div class="gst-kpi__sub">Net cash: {{ money(d.money.netCash) }}</div>
       </div>
@@ -532,12 +532,12 @@
         <div class="gst-due-strip">
           <div class="pill"><span class="lbl">Orders</span><span class="val">{{ drillOrders().length }}</span></div>
           <div class="pill"><span class="lbl">Customer due</span><span class="val text-danger">{{ money(drillCustomerRemaining()) }}</span></div>
-          <div class="pill"><span class="lbl">COD pending (courier)</span><span class="val text-warning">{{ money(drillCodPending()) }}</span></div>
+          <div class="pill"><span class="lbl">Pending (courier)</span><span class="val text-warning">{{ money(drillCodPending()) }}</span></div>
         </div>
         <div class="table-responsive">
           <table class="gst-table">
             <thead>
-              <tr><th>Order</th><th>Date</th><th>Customer</th><th>State</th><th class="num">Total</th><th class="num">Customer due</th><th class="num">COD (courier)</th><th>Status</th></tr>
+              <tr><th>Order</th><th>Date</th><th>Customer</th><th>State</th><th class="num">Total</th><th class="num">Customer due</th><th class="num">On delivery (courier)</th><th>Status</th></tr>
             </thead>
             <tbody>
               @for (o of drillOrders(); track o.orderId) {

@@ -736,12 +736,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   /** Humanises a backend status name ("HANDED_TO_DELIVERY" → "Handed To Delivery"). */
   humanizeStatus(status: string): string {
+    // Client dropped "COD" from the UI — show these in plain language (enum names unchanged).
+    const key = String(status).toUpperCase();
+    if (key === 'COD') {
+      return 'Pay on Delivery';
+    }
+    if (key === 'COD_COLLECTED') {
+      return 'Collected on Delivery';
+    }
     return status
       .toLowerCase()
       .replaceAll('_', ' ')
       .replace(/\b\w/g, (c) => c.toUpperCase())
-      .replace(/\bRto\b/i, 'RTO')
-      .replace(/\bCod\b/i, 'COD');
+      .replace(/\bRto\b/i, 'RTO');
   }
 
   // --- Period selection ---------------------------------------------------

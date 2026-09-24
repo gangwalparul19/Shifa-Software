@@ -33,6 +33,7 @@ import {
   LEAD_SOURCE_OPTIONS,
   LeadSource,
   OrderDiscountType,
+  UpdateOrderRequest,
 } from './orders.model';
 
 /** The three phases the payment-screenshot upload can be in. */
@@ -124,6 +125,20 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private reorderActive = false;
 
   /**
+   * Resubmit mode: opened as {@code /orders/new?resubmitFrom=<orderId>} for a
+   * REJECTED / PAYMENT_REJECTED order the salesperson created. It loads the SAME
+   * order's details (everything editable) so they can fix what the admin/payment
+   * verifier flagged, and on save it calls {@code POST /api/orders/{id}/resubmit}
+   * — moving the SAME order back to the approval queue (not creating a new one).
+   */
+  protected readonly resubmitOrderId = signal<number | null>(null);
+  protected readonly resubmitFromCode = signal<string | null>(null);
+  /** True when the form is in resubmit mode (set synchronously so autosave/draft logic can skip it). */
+  private resubmitActive = false;
+  /** Whether the resubmitted order was payment-rejected (drives the banner copy). */
+  protected readonly resubmitPaymentRejected = signal(false);
+
+  /**
    * Abandoned-order recovery: the form is auto-saved to localStorage as the
    * salesperson types, so a half-filled order survives an accidental navigation /
    * refresh. On a fresh New Order we OFFER to resume it (never auto-apply); the
@@ -213,6 +228,19 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   protected readonly priorOrderCount = signal<number | null>(null);
 
   /**
+   * Same-day duplicate warning: set when an ACTIVE order for the entered mobile
+   * already exists TODAY (possibly punched by a different salesperson). Holds the
+   * existing order's code, who placed it, and whether that was the current user,
+   * so the form warns before submit and blocks proceeding. Null = no same-day
+   * duplicate. The server also hard-blocks this, so it is defense-in-depth.
+   */
+  protected readonly sameDayDuplicate = signal<{
+    orderCode: string | null;
+    salespersonName: string | null;
+    createdByMe: boolean;
+  } | null>(null);
+
+  /**
    * Delivery-reliability risk for the entered customer mobile (FEATURE-ROADMAP
    * §1.2). Null until a valid mobile has been checked; drives a prepaid nudge for
    * MEDIUM/HIGH-risk customers so a salesperson can avoid a likely COD failure.
@@ -291,6 +319,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   /** Whether the form is converting a lead (drives titles, locked fields, submit path). */
   protected readonly convertMode = computed(() => this.convertLeadId() !== null);
 
+  /** Whether the form is reworking a rejected order (drives titles + submit path). */
+  protected readonly resubmitMode = computed(() => this.resubmitOrderId() !== null);
+
   /** Whether the free-text lead-source note is shown (only for {@code OTHER}, Req 4.5). */
   protected readonly showLeadSourceNote = computed(() => this.model().leadSource === 'OTHER');
 
@@ -332,8 +363,12 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Whether a payment screenshot is mandatory (mirrors the backend rule). */
-  protected readonly screenshotRequired = computed(() => this.model().amountReceived > 0);
+  /**
+   * Whether a payment screenshot is mandatory. Under the min-upfront policy a
+   * payment (≥ ₹100 / full) is ALWAYS collected, so a screenshot is always
+   * required once there is an order total to pay for.
+   */
+  protected readonly screenshotRequired = computed(() => this.orderTotalPaise() > 0);
 
   /** Per-line totals in paise (rate × quantity), aligned to the item rows. */
   protected readonly lineTotals = computed(() =>
@@ -376,6 +411,52 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   protected readonly remainingPaise = computed(
     () => this.orderTotalPaise() - toPaise(this.model().amountReceived),
   );
+
+  /**
+   * How the currently entered amount classifies the payment, used to highlight
+   * the matching shortcut and show a plain-language hint:
+   * <ul>
+   *   <li>{@code 'cod'}   — nothing received, full amount collected on delivery;</li>
+   *   <li>{@code 'full'}  — the whole order total received now;</li>
+   *   <li>{@code 'partial'} — some received now, the balance collected on delivery;</li>
+   *   <li>{@code 'none'}  — no order total yet (no items), so nothing to classify.</li>
+   * </ul>
+   */
+  protected readonly paymentKind = computed<'below' | 'partial' | 'full' | 'none'>(() => {
+    const total = this.orderTotalPaise();
+    if (total <= 0) {
+      return 'none';
+    }
+    const received = toPaise(this.model().amountReceived);
+    if (received < this.minUpfrontPaise()) {
+      // Below the minimum upfront — not a valid Full/Partial payment (no ₹0/COD).
+      return 'below';
+    }
+    if (received >= total) {
+      return 'full';
+    }
+    return 'partial';
+  });
+
+  /**
+   * Minimum amount (paise) that must be collected upfront — the client policy is
+   * no ₹0/COD orders: at least ₹100, or the full total when the total is under
+   * ₹100 (a small order can't require more than it costs). Mirrors the backend
+   * {@code requireMinimumUpfront}.
+   */
+  protected readonly minUpfrontPaise = computed<number>(() => {
+    const total = this.orderTotalPaise();
+    return Math.min(10000, total); // ₹100 = 10000 paise
+  });
+
+  /** Whether the entered amount meets the minimum-upfront policy (blocks submit). */
+  protected readonly paymentBelowMinimum = computed<boolean>(() => {
+    const total = this.orderTotalPaise();
+    if (total <= 0) {
+      return false; // total handled separately; nothing to validate yet
+    }
+    return toPaise(this.model().amountReceived) < this.minUpfrontPaise();
+  });
 
   ngOnInit(): void {
     this.loadProducts();
@@ -429,6 +510,18 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // Fix & resubmit a rejected order: load the SAME order for editing and, on
+    // save, resubmit it (mutually exclusive with convert/reorder).
+    const resubmitParam = this.route.snapshot.queryParamMap.get('resubmitFrom');
+    const resubmitId = resubmitParam ? Number(resubmitParam) : NaN;
+    if (Number.isFinite(resubmitId) && resubmitId > 0) {
+      this.resubmitActive = true;
+      this.initResubmitMode(resubmitId);
+      // Autosave the in-progress edits (debounced); resubmit mode skips draft save.
+      this.form.valueChanges.pipe(debounceTime(800)).subscribe(() => this.saveDraft());
+      return;
+    }
+
     // One-tap reorder: clone a past order into this draft (mutually exclusive
     // with convert mode).
     const reorderParam = this.route.snapshot.queryParamMap.get('reorderFrom');
@@ -459,7 +552,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   /** Persists the current form to localStorage (skipped in convert/reorder mode). */
   private saveDraft(): void {
-    if (this.convertMode() || this.reorderActive || this.submitting()) {
+    if (this.convertMode() || this.reorderActive || this.resubmitActive || this.submitting()) {
       return;
     }
     try {
@@ -591,6 +684,68 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Loads a REJECTED / PAYMENT_REJECTED order for rework (rejection-status rework
+   * feature): pre-fills the SAME order's customer / shipping / line-item /
+   * discount details for editing, keeping the order id so {@link submit} resubmits
+   * it (rather than creating a new order). Guards that the order is actually
+   * rejected; otherwise it bounces the user back to the order.
+   */
+  private initResubmitMode(orderId: number): void {
+    this.orders.detail(orderId).subscribe({
+      next: (o) => {
+        if (o.orderStatus !== 'REJECTED' && o.orderStatus !== 'PAYMENT_REJECTED') {
+          this.toasts.error(`Order ${o.orderCode} is not rejected, so it can't be resubmitted.`);
+          void this.router.navigate(['/orders'], { queryParams: { q: o.orderCode } });
+          return;
+        }
+        this.resubmitOrderId.set(o.id);
+        this.resubmitFromCode.set(o.orderCode);
+        this.resubmitPaymentRejected.set(o.orderStatus === 'PAYMENT_REJECTED');
+        this.form.patchValue(
+          {
+            customerName: o.customerName ?? '',
+            customerMobile: o.customerMobile ?? '',
+            customerEmail: o.customerEmail ?? '',
+            alternateMobile: o.alternateMobile ?? '',
+            addressLine: o.addressLine ?? '',
+            city: o.city ?? '',
+            state: o.state ?? '',
+            postalCode: o.postalCode ?? '',
+            leadSource: o.leadSource ?? this.form.controls.leadSource.value,
+            leadSourceNote: o.leadSourceNote ?? '',
+            notes: o.notes ?? '',
+            buyerGstin: o.buyerGstin ?? '',
+            discountType: (o.discountType as OrderDiscountType | undefined) ?? '',
+            discountValue: o.discountValue != null ? Number(o.discountValue) : 0,
+          },
+          { emitEvent: false },
+        );
+        // Rebuild the items list from the order's current lines.
+        const arr = this.items;
+        while (arr.length) {
+          arr.removeAt(0);
+        }
+        const lines = (o.items ?? []).filter((li) => li.productId != null);
+        if (lines.length === 0) {
+          arr.push(this.newItem());
+        } else {
+          for (const li of lines) {
+            const g = this.newItem();
+            g.controls['productId'].setValue(li.productId as number);
+            g.controls['quantity'].setValue(Math.min(999, Math.max(1, li.quantity || 1)));
+            g.controls['rate'].setValue(li.rate != null ? Number(li.rate) : null);
+            arr.push(g);
+          }
+        }
+        this.model.set(this.snapshot());
+        this.syncExpandersFromForm();
+        this.toasts.success(`Loaded ${o.orderCode} — fix the flagged details and resubmit for approval.`);
+      },
+      error: () => this.toasts.error('Could not load that order to resubmit.'),
+    });
+  }
+
+  /**
    * Loads the lead being converted and pre-fills the customer identity + lead
    * source (Req 4, design §Convert Flow step 1). Those fields are then locked
    * because the convert endpoint forces them from the lead server-side.
@@ -666,13 +821,30 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private checkDuplicateCustomer(mobile: string | null): void {
     if (!mobile || !/^\d{10}$/.test(mobile)) {
       this.priorOrderCount.set(null);
+      this.sameDayDuplicate.set(null);
       this.customerRisk.set(null);
       this.prefilledFromLast.set(null);
       return;
     }
     this.orders.duplicateCheck(mobile).subscribe({
-      next: (res) => this.priorOrderCount.set(res.priorOrderCount),
-      error: () => this.priorOrderCount.set(null),
+      next: (res) => {
+        this.priorOrderCount.set(res.priorOrderCount);
+        // Same-day duplicate: warn (and block) when an active order for this
+        // mobile was already placed today, possibly by a different salesperson.
+        this.sameDayDuplicate.set(
+          res.hasTodayOrder
+            ? {
+                orderCode: res.todayOrderCode,
+                salespersonName: res.todaySalespersonName,
+                createdByMe: res.todayCreatedByMe,
+              }
+            : null,
+        );
+      },
+      error: () => {
+        this.priorOrderCount.set(null);
+        this.sameDayDuplicate.set(null);
+      },
     });
     // Delivery-reliability risk nudge (FEATURE-ROADMAP §1.2): non-fatal, hidden on failure.
     this.customers.risk(mobile).subscribe({
@@ -1080,11 +1252,6 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     this.model.set(this.snapshot());
   }
 
-  /** COD means no amount was collected at order entry. */
-  setCodPayment(): void {
-    this.setAmountReceived(0);
-  }
-
   /** Convenience action for a fully prepaid order. */
   setPaidInFull(): void {
     this.setAmountReceived(this.orderTotalPaise() / 100);
@@ -1196,6 +1363,13 @@ export class NewOrderComponent implements OnInit, OnDestroy {
         ok = false;
       }
     }
+    if (step === 1 && this.sameDayDuplicate()) {
+      // Same-day duplicate: an active order for this customer already exists today
+      // (possibly by another salesperson). Block proceeding so no duplicate is
+      // punched; the server enforces the same rule on submit.
+      this.submitAttempted.set(true);
+      ok = false;
+    }
     if (step === 2) {
       this.items.controls.forEach((group) => group.markAllAsTouched());
       // Block advancing when a line's price is outside its product band (Req 5.2),
@@ -1204,9 +1378,17 @@ export class NewOrderComponent implements OnInit, OnDestroy {
         ok = false;
       }
     }
-    if (step === 3 && this.screenshotRequired() && !this.screenshotKey()) {
-      this.submitAttempted.set(true);
-      ok = false;
+    if (step === 3) {
+      // Min-upfront policy: a Full or Partial payment of at least ₹100 (or the
+      // full total when under ₹100) must be collected — no ₹0 orders.
+      if (this.paymentBelowMinimum()) {
+        this.submitAttempted.set(true);
+        ok = false;
+      }
+      if (this.screenshotRequired() && !this.screenshotKey()) {
+        this.submitAttempted.set(true);
+        ok = false;
+      }
     }
     if (!ok) {
       this.toasts.error('Please complete this step before continuing.');
@@ -1233,20 +1415,44 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       this.toasts.error('Please fix the highlighted fields before submitting.');
       return;
     }
+    if (this.paymentBelowMinimum()) {
+      this.toasts.error(
+        `At least ${this.formatMoney(this.minUpfrontPaise())} must be collected upfront (full or partial payment).`,
+      );
+      return;
+    }
     if (this.screenshotRequired() && !this.screenshotKey()) {
-      this.toasts.error('A payment screenshot is required when an amount is received.');
+      this.toasts.error('A payment screenshot is required to place the order.');
+      return;
+    }
+    // Same-day duplicate block (client-side mirror of the server rule). Skipped
+    // for convert-from-lead and resubmit flows: convert comes from a lead, and a
+    // resubmit's own prior order is REJECTED (excluded from the duplicate check).
+    if (!this.convertMode() && !this.resubmitMode() && this.sameDayDuplicate()) {
+      const dup = this.sameDayDuplicate()!;
+      const who = dup.createdByMe
+        ? 'you'
+        : dup.salespersonName ?? 'another salesperson';
+      this.toasts.error(
+        `A duplicate order for this customer was already placed today (${dup.orderCode ?? 'existing order'}, by ${who}). Only one order per customer per day is allowed.`,
+      );
+      this.step.set(1);
+      this.scrollTop();
       return;
     }
 
     const raw = this.snapshot();
     const converting = this.convertMode();
+    const resubmitting = this.resubmitMode();
     const confirmed = await this.confirm.confirm({
-      title: converting ? 'Convert lead to order' : 'Create order',
+      title: converting ? 'Convert lead to order' : resubmitting ? 'Resubmit for approval' : 'Create order',
       message: converting
         ? `Convert ${this.convertLeadName()} into an order with a total of ${this.formatMoney(this.orderTotalPaise())}? The lead will be marked Won.`
-        : `Create this order for ${this.form.controls.customerName.value} with a total of ${this.formatMoney(this.orderTotalPaise())}?`,
-      confirmLabel: converting ? 'Convert' : 'Create order',
-      icon: converting ? 'ti-shopping-cart-plus' : 'ti-receipt',
+        : resubmitting
+          ? `Resubmit order ${this.resubmitFromCode()} (total ${this.formatMoney(this.orderTotalPaise())}) back to the approval queue?`
+          : `Create this order for ${this.form.controls.customerName.value} with a total of ${this.formatMoney(this.orderTotalPaise())}?`,
+      confirmLabel: converting ? 'Convert' : resubmitting ? 'Resubmit' : 'Create order',
+      icon: converting ? 'ti-shopping-cart-plus' : resubmitting ? 'ti-send' : 'ti-receipt',
     });
     if (!confirmed) {
       return;
@@ -1254,6 +1460,11 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
     if (converting) {
       this.submitConvert(raw);
+      return;
+    }
+
+    if (resubmitting) {
+      this.submitResubmit(raw);
       return;
     }
 
@@ -1300,22 +1511,14 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       deliveryMethod: 'IN_HOUSE',
     };
 
-    // Offline capture (FEATURE-ROADMAP §8.1): a COD order (no money collected) is
-    // queued locally and synced on reconnect. An order that takes payment needs a
-    // screenshot upload, which requires a connection — so it's blocked offline.
+    // Offline order creation is no longer possible: every order now collects an
+    // upfront payment (≥ ₹100 / full) AND requires the payment screenshot to be
+    // uploaded, both of which need a connection. (The old offline path only
+    // supported ₹0/COD orders, which are no longer allowed.)
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      if (raw.amountReceived > 0) {
-        this.toasts.error(
-          'You are offline. A paid order needs its payment screenshot uploaded — please try again when back online.',
-        );
-        return;
-      }
-      this.offlineQueue.enqueue(payload, this.orderTotalPaise());
-      this.clearDraft();
-      this.toasts.success(
-        `Saved offline for ${payload.customerName} — it will sync automatically when you reconnect.`,
+      this.toasts.error(
+        'You are offline. Placing an order needs a connection to collect the upfront payment and upload its screenshot — please try again when back online.',
       );
-      void this.router.navigate(['/orders']);
       return;
     }
 
@@ -1333,6 +1536,71 @@ export class NewOrderComponent implements OnInit, OnDestroy {
         const details = body?.details ?? [];
         this.serverErrors.set(details.length ? details : []);
         this.toasts.error(this.messageOf(err) ?? 'Could not create the order. Please try again.');
+      },
+    });
+  }
+
+  /**
+   * Resubmit-mode save (rejection-status rework feature): posts the corrected
+   * order details (an {@link UpdateOrderRequest} — same shape as an edit, no
+   * payment capture) to {@code POST /api/orders/{id}/resubmit}. The server
+   * re-prices, clears the rejection, resets a prepaid order's payment
+   * verification to PENDING, and moves the SAME order back to
+   * {@code Pending_Admin_Approval}. Requires a connection (a server transaction),
+   * so it can't be queued offline.
+   */
+  private submitResubmit(raw: ReturnType<NewOrderComponent['snapshot']>): void {
+    const orderId = this.resubmitOrderId();
+    if (orderId === null) {
+      return;
+    }
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      this.toasts.error('You are offline. Resubmitting an order needs a connection — please try again online.');
+      return;
+    }
+
+    const email = this.form.controls.customerEmail.value.trim();
+    const altMobile = this.form.controls.alternateMobile.value.trim();
+    const note = this.form.controls.leadSourceNote.value.trim();
+    const orderNotes = this.form.controls.notes.value.trim();
+    const buyerGstin = this.form.controls.buyerGstin.value.trim().toUpperCase();
+    const isOther = raw.leadSource === 'OTHER';
+    const payload: UpdateOrderRequest = {
+      customerName: this.form.controls.customerName.value.trim(),
+      customerMobile: this.form.controls.customerMobile.value.trim(),
+      ...(altMobile ? { alternateMobile: altMobile } : {}),
+      ...(email ? { customerEmail: email } : {}),
+      addressLine: this.form.controls.addressLine.value.trim(),
+      city: this.form.controls.city.value.trim(),
+      state: this.form.controls.state.value.trim(),
+      postalCode: this.form.controls.postalCode.value.trim(),
+      items: raw.items.map<CreateOrderLineItem>((it) => ({
+        productId: it.productId as number,
+        quantity: it.quantity,
+        ...(it.rate != null ? { rate: it.rate } : {}),
+      })),
+      leadSource: raw.leadSource as LeadSource,
+      ...(isOther && note ? { leadSourceNote: note } : {}),
+      ...(orderNotes ? { notes: orderNotes } : {}),
+      ...(buyerGstin ? { buyerGstin } : {}),
+      ...(raw.discountType
+        ? { discountType: raw.discountType as OrderDiscountType, discountValue: raw.discountValue || 0 }
+        : {}),
+    };
+
+    this.submitting.set(true);
+    this.orders.resubmit(orderId, payload).subscribe({
+      next: (order) => {
+        this.submitting.set(false);
+        this.toasts.success(`Order ${order.orderCode} resubmitted for approval`);
+        void this.router.navigate(['/orders'], { queryParams: { q: order.orderCode } });
+      },
+      error: (err: HttpErrorResponse) => {
+        this.submitting.set(false);
+        const body = err.error as ApiError | undefined;
+        const details = body?.details ?? [];
+        this.serverErrors.set(details.length ? details : []);
+        this.toasts.error(this.messageOf(err) ?? 'Could not resubmit the order. Please try again.');
       },
     });
   }

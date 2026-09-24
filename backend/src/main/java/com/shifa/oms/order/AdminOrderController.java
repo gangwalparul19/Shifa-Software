@@ -166,7 +166,7 @@ public class AdminOrderController {
     @PostMapping("/{id}/reject")
     public OrderResponse reject(@PathVariable Long id, @Valid @RequestBody RejectOrderRequest request) {
         AuthPrincipal admin = currentUserService.requireCurrentUser();
-        OrderResponse response = adminOrderService.reject(id, request.reason(), admin);
+        OrderResponse response = adminOrderService.reject(id, request.category(), request.reason(), admin);
         auditService.record(AuditActions.ORDER_REJECTED, AuditActions.ENTITY_ORDER,
                 String.valueOf(id), "Rejected order " + response.orderCode() + ": " + request.reason());
         return response;
@@ -183,10 +183,10 @@ public class AdminOrderController {
     @PutMapping("/{id}")
     public OrderResponse update(@PathVariable Long id, @Valid @RequestBody UpdateOrderRequest request) {
         AuthPrincipal admin = currentUserService.requireCurrentUser();
-        OrderResponse response = orderService.updateOrder(id, request, admin);
-        auditService.record(AuditActions.ORDER_UPDATED, AuditActions.ENTITY_ORDER,
-                String.valueOf(id), "Updated order " + response.orderCode());
-        return response;
+        // The field-level "what changed" ORDER_UPDATED audit is recorded inside
+        // OrderService.updateOrder (co-located with the actual field mutation, so
+        // it captures the real old→new diff). No duplicate bare audit here.
+        return orderService.updateOrder(id, request, admin);
     }
 
     /**

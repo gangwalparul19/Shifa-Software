@@ -85,9 +85,12 @@ class OrderStatusGroupTest {
     }
 
     @Test
-    void cancelledAndFailedReturnedSplitThePreAndPostShipFailures() {
+    void cancelledRejectedAndFailedReturnedSplitThePreAndPostShipFailures() {
+        // Cancelled is now cancellation-only; rejections have their own group.
         assertThat(OrderStatusGroup.CANCELLED.statuses())
-                .containsExactlyInAnyOrder(OrderStatus.REJECTED, OrderStatus.CANCELLED);
+                .containsExactly(OrderStatus.CANCELLED);
+        assertThat(OrderStatusGroup.REJECTED.statuses())
+                .containsExactlyInAnyOrder(OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED);
         assertThat(OrderStatusGroup.FAILED_RETURNED.statuses())
                 .containsExactlyInAnyOrder(
                         OrderStatus.CUSTOMER_REJECTED,
@@ -117,6 +120,8 @@ class OrderStatusGroupTest {
         assertThat(OrderStatusGroup.from("IN_TRANSIT")).isEqualTo(OrderStatusGroup.SHIPPED);
         assertThat(OrderStatusGroup.from("COMPLETED")).isEqualTo(OrderStatusGroup.DELIVERED);
         assertThat(OrderStatusGroup.from("SHIPPED")).isEqualTo(OrderStatusGroup.SHIPPED);
+        assertThat(OrderStatusGroup.from("REJECTED")).isEqualTo(OrderStatusGroup.REJECTED);
+        assertThat(OrderStatusGroup.from("PAYMENT_REJECTED")).isEqualTo(OrderStatusGroup.REJECTED);
         assertThat(OrderStatusGroup.from("unknown")).isNull();
         assertThat(OrderStatusGroup.from(null)).isNull();
         assertThat(OrderStatusGroup.from("  ")).isNull();

@@ -206,13 +206,14 @@ export const routes: Routes = [
         canActivate: [orderEntryGuard],
       },
       {
-        // Admin edit-order (edit-order feature): corrects the details a
-        // salesperson entered. ADMIN-only, mirrors PUT /api/admin/orders/{id}.
-        // Registered before the all-orders view; the server enforces the same
-        // role + editable-status restriction (409 once fulfilment has begun).
+        // Edit-order: an ADMIN may correct any editable order (PENDING/APPROVED,
+        // PUT /api/admin/orders/{id}); the creating SALESPERSON/TEAM_LEAD may edit
+        // their OWN order while it is still PENDING (PUT /api/orders/{id}). The
+        // component picks the endpoint by role; the server enforces ownership +
+        // editable-status (404 out-of-scope, 400/409 once past the editable window).
         path: 'orders/:id/edit',
         component: EditOrderComponent,
-        canActivate: [adminOnlyGuard],
+        canActivate: [orderEntryGuard],
       },
       {
         // All-orders view; any staff may reach it (the backend scopes a

@@ -18,7 +18,8 @@ export type OrderStatusGroupKey =
   | 'SHIPPED'
   | 'DELIVERED'
   | 'FAILED_RETURNED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  | 'REJECTED';
 
 /** A single lifecycle group: its server key, display label, and member statuses. */
 export interface OrderStatusGroupDef {
@@ -71,7 +72,12 @@ export const ORDER_STATUS_GROUPS: readonly OrderStatusGroupDef[] = [
       OrderStatus.REDISPATCH,
     ],
   },
-  { key: 'CANCELLED', label: 'Cancelled', statuses: [OrderStatus.REJECTED, OrderStatus.CANCELLED] },
+  { key: 'CANCELLED', label: 'Cancelled', statuses: [OrderStatus.CANCELLED] },
+  {
+    key: 'REJECTED',
+    label: 'Rejected',
+    statuses: [OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED],
+  },
 ];
 
 /**
@@ -102,6 +108,9 @@ export function normalizeGroupKey(key: string | null | undefined): OrderStatusGr
       return 'FAILED_RETURNED';
     case 'CANCELLED':
       return 'CANCELLED';
+    case 'REJECTED':
+    case 'PAYMENT_REJECTED':
+      return 'REJECTED';
     default:
       return '';
   }

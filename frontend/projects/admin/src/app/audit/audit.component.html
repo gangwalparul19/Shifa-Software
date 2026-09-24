@@ -102,7 +102,7 @@
           <div class="shifa-ac__summary">{{ e.summary }}</div>
         }
         <div class="shifa-ac__time">
-          <i class="ti ti-clock me-1"></i>{{ e.createdAt ? (e.createdAt | date: 'dd MMM yyyy, HH:mm') : '—' }}
+          <i class="ti ti-clock me-1"></i>{{ e.createdAt ? (e.createdAt | istDate) : '—' }}
         </div>
       </div>
     }
@@ -146,7 +146,7 @@
                 }
               </td>
               <td class="text-secondary">{{ e.summary || '—' }}</td>
-              <td class="text-secondary">{{ e.createdAt ? (e.createdAt | date: 'dd MMM yyyy, HH:mm') : '—' }}</td>
+              <td class="text-secondary">{{ e.createdAt ? (e.createdAt | istDate) : '—' }}</td>
             </tr>
           }
         </tbody>

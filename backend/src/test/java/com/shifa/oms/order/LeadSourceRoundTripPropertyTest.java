@@ -71,7 +71,8 @@ class LeadSourceRoundTripPropertyTest {
         CreateOrderRequest request = new CreateOrderRequest(
                 "Asha", "9812345678", "12 MG Road", "Pune", "Maharashtra", "411001",
                 List.of(new LineItemRequest(1L, 1, null)),
-                BigDecimal.ZERO, null, leadSource, note, customerEmail, null, null, null, null, null, null,
+                new BigDecimal("100.00"), "payments/x.jpg", leadSource, note, customerEmail,
+                null, null, null, null, null, null,
                 null);
 
         OrderResponse response = service.createSalespersonOrder(request, actor);

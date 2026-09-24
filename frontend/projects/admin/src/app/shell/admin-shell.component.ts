@@ -1,5 +1,5 @@
 import { Component, HostListener, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import {
   NavigationEnd,
   Router,
@@ -8,7 +8,7 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { filter, map, startWith } from 'rxjs';
-import { AuthService, Role } from 'core';
+import { AuthEventsService, AuthService, Role } from 'core';
 import { AdminEventsService } from '../dashboard/admin-events.service';
 import { AdminNotification } from '../dashboard/dashboard.model';
 import { routeFade } from '../shared/animations';
@@ -138,6 +138,7 @@ export class AdminShellComponent {
   /** Human-readable role label for the user chip/menus (never the raw enum). */
   protected readonly roleLabel = roleLabel;
   private readonly announcementsService = inject(AnnouncementsService);
+  private readonly authEvents = inject(AuthEventsService);
   private readonly router = inject(Router);
   private readonly confirm = inject(ConfirmService);
   private readonly toasts = inject(ToastService);
@@ -199,6 +200,20 @@ export class AdminShellComponent {
     // is not an ADMIN or EventSource is unavailable) so new-order approval nudges
     // reach admins on any screen, not just the dashboard/orders/approval pages.
     this.events.connect();
+
+    // Session-end safety net: the auth interceptor now silently refreshes an
+    // expired access token, so a normal API 401 is recovered transparently. It
+    // only emits `unauthorized` when the refresh ALSO fails (refresh token gone
+    // or expired) — i.e. the session is genuinely over. In that case, route the
+    // user to login instead of leaving them stranded on a page with failing
+    // requests (the bug where a mid-form 401 showed "Authentication is required"
+    // inline with no way forward).
+    this.authEvents.events.pipe(takeUntilDestroyed()).subscribe((event) => {
+      if (event.kind === 'unauthorized' && !this.router.url.startsWith('/login')) {
+        this.toasts.error('Your session has expired. Please sign in again.');
+        void this.router.navigateByUrl('/login');
+      }
+    });
 
     // First-run guided tour: only ever auto-starts once per browser (tracked in
     // localStorage), and only for a signed-in user. A short delay lets the shell

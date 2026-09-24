@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
@@ -17,7 +17,7 @@ import { BackupRun } from './backups.model';
  */
 @Component({
   selector: 'admin-backups',
-  imports: [DatePipe, PageHeaderComponent, StatePanelComponent],
+  imports: [IstDatePipe, PageHeaderComponent, StatePanelComponent],
   templateUrl: './backups.component.html',
   styleUrl: './backups.component.css',
 })
