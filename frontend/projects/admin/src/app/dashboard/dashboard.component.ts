@@ -65,7 +65,11 @@ const STAGE_GROUP_STYLE: Record<string, { accent: string; accentSoft: string; ic
   DELIVERED: { accent: '#2fb344', accentSoft: '#e5f6e8', icon: 'ti ti-circle-check' },
   FAILED_RETURNED: { accent: '#d63939', accentSoft: '#fbe7e7', icon: 'ti ti-alert-triangle' },
   CANCELLED: { accent: '#868e96', accentSoft: '#f1f3f5', icon: 'ti ti-ban' },
+  REJECTED: { accent: '#d63939', accentSoft: '#fbe7e7', icon: 'ti ti-circle-x' },
 };
+
+/** Fallback style for any group key missing from the map (defensive — never crash). */
+const DEFAULT_STAGE_STYLE = { accent: '#868e96', accentSoft: '#f1f3f5', icon: 'ti ti-circle' };
 
 /** A laid-out bar + comparison-point for the hand-rolled SVG sales chart. */
 interface ChartBar {
@@ -294,7 +298,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       if (value <= 0) {
         continue;
       }
-      const style = STAGE_GROUP_STYLE[group.key];
+      const style = STAGE_GROUP_STYLE[group.key] ?? DEFAULT_STAGE_STYLE;
       result.push({
         key: group.key,
         label: group.label,

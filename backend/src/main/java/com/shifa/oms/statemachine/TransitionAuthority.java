@@ -80,13 +80,14 @@ public final class TransitionAuthority {
                 Role.PAYMENT_VERIFIER, Role.ADMIN);
 
         // Rework a rejected order back into the approval queue (rejection-status
-        // rework feature): the creating salesperson (or an admin) fixes the flagged
-        // issue and resubmits. Staff-only, no SYSTEM. Own-order scoping is enforced
-        // in the service layer.
+        // rework feature): the creating salesperson/team lead (or an admin) fixes the
+        // flagged issue and resubmits. Staff-only, no SYSTEM. Own-order scoping is
+        // enforced in the service layer (a team lead can resubmit their own or their
+        // team's orders; TEAM_LEAD can punch orders, so they can also rework rejected ones).
         put(t, OrderStatus.REJECTED, OrderStatus.PENDING_ADMIN_APPROVAL, false,
-                Role.SALESPERSON, Role.ADMIN);
+                Role.SALESPERSON, Role.TEAM_LEAD, Role.ADMIN);
         put(t, OrderStatus.PAYMENT_REJECTED, OrderStatus.PENDING_ADMIN_APPROVAL, false,
-                Role.SALESPERSON, Role.ADMIN);
+                Role.SALESPERSON, Role.TEAM_LEAD, Role.ADMIN);
 
         // Auto label on approval — SYSTEM (label service) or ADMIN.
         put(t, OrderStatus.APPROVED, OrderStatus.LABEL_GENERATED, true, Role.ADMIN);

@@ -501,15 +501,18 @@ export class ProductsComponent implements OnInit, OnDestroy {
     this.formError.set(null);
     this.formTab.set('basics');
     this.creating.set(false);
+    // The price/rate/gst form controls are string-typed (they mirror text inputs and
+    // are .trim()'d on save). The backend returns them as numbers/Money, so coerce to
+    // string here — otherwise save() calls .trim() on a number and throws.
     this.form.reset({
       sku: product.sku,
       name: product.name,
       description: product.description ?? '',
-      mrp: product.mrp,
-      salePrice: product.salePrice,
-      minimumRate: product.minimumRate ?? '',
+      mrp: this.toFormString(product.mrp),
+      salePrice: this.toFormString(product.salePrice),
+      minimumRate: this.toFormString(product.minimumRate),
       hsnCode: product.hsnCode ?? '',
-      gstRate: product.gstRate ?? '',
+      gstRate: this.toFormString(product.gstRate),
       wtMl: product.wtMl ?? '',
       visibility: product.visibility,
       categoryId: product.category ? String(product.category.id) : '',
@@ -518,6 +521,14 @@ export class ProductsComponent implements OnInit, OnDestroy {
       featured: product.featured ?? false,
     });
     this.editing.set(product);
+  }
+
+  /**
+   * Coerces a price/rate value (which the API returns as a number or Money string,
+   * and may be null/undefined) to the string the string-typed form controls expect.
+   */
+  private toFormString(value: number | string | null | undefined): string {
+    return value === null || value === undefined ? '' : String(value);
   }
 
   closeForm(): void {
@@ -541,16 +552,19 @@ export class ProductsComponent implements OnInit, OnDestroy {
       return;
     }
     const raw = this.form.getRawValue();
+    // Coerce to string before trimming: the price/rate controls are string-typed,
+    // but a patched edit value could be a number — String(...).trim() is safe for both.
+    const s = (v: unknown): string => (v === null || v === undefined ? '' : String(v)).trim();
     const request: ProductRequest = {
-      sku: raw.sku.trim(),
-      name: raw.name.trim(),
-      description: raw.description.trim() || undefined,
-      mrp: raw.mrp.trim(),
-      salePrice: raw.salePrice.trim(),
-      minimumRate: raw.minimumRate.trim() || null,
-      hsnCode: raw.hsnCode.trim() || undefined,
-      gstRate: raw.gstRate.trim() || null,
-      wtMl: raw.wtMl.trim() || null,
+      sku: s(raw.sku),
+      name: s(raw.name),
+      description: s(raw.description) || undefined,
+      mrp: s(raw.mrp),
+      salePrice: s(raw.salePrice),
+      minimumRate: s(raw.minimumRate) || null,
+      hsnCode: s(raw.hsnCode) || undefined,
+      gstRate: s(raw.gstRate) || null,
+      wtMl: s(raw.wtMl) || null,
       visibility: raw.visibility,
       categoryId: raw.categoryId ? Number(raw.categoryId) : null,
       stockQuantity: raw.stockQuantity ? Number(raw.stockQuantity) : 0,

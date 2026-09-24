@@ -47,11 +47,12 @@ class TransitionAuthorityPropertyTest {
                 Role.PAYMENT_VERIFIER, Role.ADMIN));
         r.add(rule(OrderStatus.APPROVED, OrderStatus.PAYMENT_REJECTED, false,
                 Role.PAYMENT_VERIFIER, Role.ADMIN));
-        // Rework a rejected order back to Pending_Admin_Approval — salesperson / admin, no SYSTEM.
+        // Rework a rejected order back to Pending_Admin_Approval — salesperson / team lead
+        // / admin, no SYSTEM (team leads can punch orders, so they can rework rejected ones).
         r.add(rule(OrderStatus.REJECTED, OrderStatus.PENDING_ADMIN_APPROVAL, false,
-                Role.SALESPERSON, Role.ADMIN));
+                Role.SALESPERSON, Role.TEAM_LEAD, Role.ADMIN));
         r.add(rule(OrderStatus.PAYMENT_REJECTED, OrderStatus.PENDING_ADMIN_APPROVAL, false,
-                Role.SALESPERSON, Role.ADMIN));
+                Role.SALESPERSON, Role.TEAM_LEAD, Role.ADMIN));
         r.add(rule(OrderStatus.APPROVED, OrderStatus.LABEL_GENERATED, true, Role.ADMIN));
         r.add(rule(OrderStatus.LABEL_GENERATED, OrderStatus.PACKED, false,
                 Role.PACKING_USER, Role.ADMIN));
