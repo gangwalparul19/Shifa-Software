@@ -73,7 +73,7 @@ class LeadSourceRoundTripPropertyTest {
                 List.of(new LineItemRequest(1L, 1, null)),
                 new BigDecimal("100.00"), "payments/x.jpg", leadSource, note, customerEmail,
                 null, null, null, null, null, null,
-                null);
+                null, null);
 
         OrderResponse response = service.createSalespersonOrder(request, actor);
 

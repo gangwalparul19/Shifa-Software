@@ -120,6 +120,14 @@ public record CreateOrderRequest(
         // sending only paymentScreenshotKey behaves exactly as before.
         @Size(max = 10, message = "at most 10 payment screenshots may be attached to an order")
         List<@Size(max = 512, message = "a payment screenshot key must be at most 512 characters") String>
-                paymentScreenshotKeys
+                paymentScreenshotKeys,
+
+        // Optional "place on behalf of" attribution (admin only): when an ADMIN
+        // punches an order for a salesperson/team lead, this is that user's id and
+        // the order's created_by is set to them (so it shows in their scoped lists
+        // and counts toward their performance). Ignored/omitted for a self order.
+        // ONLY an ADMIN may set it, and the target must be an active SALESPERSON or
+        // TEAM_LEAD — both enforced in the service (a non-admin sending it is rejected).
+        Long onBehalfOfUserId
 ) {
 }

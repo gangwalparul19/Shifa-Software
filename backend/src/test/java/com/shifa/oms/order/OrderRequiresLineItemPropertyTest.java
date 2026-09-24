@@ -61,7 +61,7 @@ class OrderRequiresLineItemPropertyTest {
                 "Asha", "9812345678", "12 MG Road", "Pune", "Maharashtra", "411001",
                 List.<LineItemRequest>of(),
                 BigDecimal.ZERO, null, leadSource, null, null, null, null, null, null, null, null,
-                null);
+                null, null);
 
         assertThatThrownBy(() -> service.createSalespersonOrder(request, actor))
                 .isInstanceOf(ValidationException.class);
@@ -92,7 +92,7 @@ class OrderRequiresLineItemPropertyTest {
                 List.of(new LineItemRequest(1L, 1, null)),
                 new BigDecimal("100.00"), "payments/x.jpg", leadSource,
                 null, null, null, null, null, null, null, null,
-                null);
+                null, null);
 
         assertThat(service.createSalespersonOrder(request, actor)).isNotNull();
         verify(orderRepository).save(any(OrderEntity.class));

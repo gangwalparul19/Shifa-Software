@@ -29,6 +29,7 @@ import com.shifa.oms.statemachine.OrderStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -77,6 +78,8 @@ class OrderServiceTest {
     private com.shifa.oms.inventory.StockMovementRepository stockMovementRepository;
     @Mock
     private com.shifa.oms.product.ProductImageRepository productImageRepository;
+    @Mock
+    private com.shifa.oms.auth.UserRepository userRepository;
 
     private OrderService service;
 
@@ -134,7 +137,7 @@ class OrderServiceTest {
         // payment/creation edge-case tests use WHATSAPP with no note/email.
         return new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
                 "Pune", "Maharashtra", "411001", items, amountReceived, screenshotKey,
-                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null);
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, null);
     }
 
     // --- Order total round-off to nearest rupee (product-audit §4.6) --------
@@ -245,7 +248,7 @@ class OrderServiceTest {
         CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
                 "Pune", "Maharashtra", "411001",
                 List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("100.00"), "payments/x.jpg",
-                LeadSource.WHATSAPP, null, null, null, "9800011122", null, null, null, null, null);
+                LeadSource.WHATSAPP, null, null, null, "9800011122", null, null, null, null, null, null);
 
         OrderResponse response = service.createSalespersonOrder(request, salesperson);
 
@@ -453,6 +456,103 @@ class OrderServiceTest {
         OrderResponse response = service.createSalespersonOrder(request, salesperson);
 
         assertThat(response.orderStatus()).isEqualTo(OrderStatus.PENDING_ADMIN_APPROVAL);
+    }
+
+    // --- Place on behalf of (ADMIN attributes an order to a salesperson) ----
+
+    /** A service whose staff directory (UserRepository) is wired, for on-behalf tests. */
+    private OrderService serviceWithUsers() {
+        TrackingService trackingService = new TrackingService(
+                orderRepository, courierRecordRepository, courierCompanyRepository);
+        com.shifa.oms.settings.SettingsService settingsService =
+                new com.shifa.oms.settings.SettingsService(appSettingsRepository);
+        com.shifa.oms.inventory.StockService stockService = new com.shifa.oms.inventory.StockService(
+                productRepository, stockMovementRepository,
+                new OutboxEventPublisher(outboxEventRepository), settingsService);
+        return new OrderService(
+                orderRepository, productRepository, new OrderCodeGenerator(), storageService,
+                new SalespersonScopeResolver(), trackingService, stockService, productImageRepository,
+                null, null, null, userRepository, null, null);
+    }
+
+    /** Builds an active user of the given role for the staff-directory lookup. */
+    private com.shifa.oms.auth.User staffUser(long id, String username, Role role) {
+        com.shifa.oms.auth.User u =
+                new com.shifa.oms.auth.User(username, "hash", role, "Full " + username, true);
+        ReflectionTestUtils.setField(u, "id", id);
+        return u;
+    }
+
+    @Test
+    void adminCanPlaceOrderOnBehalfOfSalesperson() {
+        OrderService svc = serviceWithUsers();
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        when(userRepository.findById(7L))
+                .thenReturn(Optional.of(staffUser(7L, "sales7", Role.SALESPERSON)));
+
+        CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
+                "Pune", "Maharashtra", "411001",
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg",
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 7L);
+
+        svc.createSalespersonOrder(request, admin);
+
+        // created_by is attributed to the chosen salesperson (id 7), not the admin.
+        ArgumentCaptor<OrderEntity> captor = ArgumentCaptor.forClass(OrderEntity.class);
+        verify(orderRepository).save(captor.capture());
+        assertThat(captor.getValue().getCreatedBy()).isEqualTo(7L);
+    }
+
+    @Test
+    void adminCanPlaceOrderOnBehalfOfTeamLead() {
+        OrderService svc = serviceWithUsers();
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        when(userRepository.findById(9L))
+                .thenReturn(Optional.of(staffUser(9L, "lead9", Role.TEAM_LEAD)));
+
+        CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
+                "Pune", "Maharashtra", "411001",
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg",
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 9L);
+
+        svc.createSalespersonOrder(request, admin);
+
+        ArgumentCaptor<OrderEntity> captor = ArgumentCaptor.forClass(OrderEntity.class);
+        verify(orderRepository).save(captor.capture());
+        assertThat(captor.getValue().getCreatedBy()).isEqualTo(9L);
+    }
+
+    @Test
+    void nonAdminCannotPlaceOrderOnBehalfOfAnother() {
+        OrderService svc = serviceWithUsers();
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+
+        // A salesperson tries to attribute the order to someone else → rejected.
+        CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
+                "Pune", "Maharashtra", "411001",
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg",
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 7L);
+
+        assertThatThrownBy(() -> svc.createSalespersonOrder(request, salesperson))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Only an admin");
+    }
+
+    @Test
+    void adminCannotPlaceOrderOnBehalfOfNonSalesperson() {
+        OrderService svc = serviceWithUsers();
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        when(userRepository.findById(3L))
+                .thenReturn(Optional.of(staffUser(3L, "acct", Role.ACCOUNTANT)));
+
+        CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
+                "Pune", "Maharashtra", "411001",
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg",
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 3L);
+
+        assertThatThrownBy(() -> svc.createSalespersonOrder(request, admin))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("salesperson or team lead");
     }
 
     // --- Order-detail shipment fields (AWB / courier tracking) --------------

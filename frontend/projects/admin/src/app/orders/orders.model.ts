@@ -82,6 +82,26 @@ export interface CreateOrderRequest {
    * Shifa's own team deliver the order (mirrors the backend).
    */
   deliveryMethod?: DeliveryMethod;
+  /**
+   * Optional "place on behalf of" attribution (ADMIN only): the id of the
+   * salesperson/team lead the order is being punched for. When set, the order's
+   * created_by is that user (so it shows in their lists + counts toward their
+   * performance). Omitted for a self order; the server rejects a non-admin
+   * sending it. Populated from {@link AssignableCreator}.
+   */
+  onBehalfOfUserId?: number;
+}
+
+/**
+ * A user an ADMIN may place a New Order on behalf of, from
+ * {@code GET /api/orders/assignable-creators} (active salespeople + team leads).
+ * Mirrors the backend {@code AssignableCreatorResponse}.
+ */
+export interface AssignableCreator {
+  id: number;
+  name: string;
+  /** 'SALESPERSON' or 'TEAM_LEAD' — used to label/group the dropdown. */
+  role: string;
 }
 
 /** The kind of order-level discount (mirrors the backend). */

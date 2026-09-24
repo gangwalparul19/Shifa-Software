@@ -214,10 +214,17 @@ public class OrderService {
         // Classify (also rejects amountReceived > total, Req 7.10).
         PaymentCalculation calc = PaymentCalculator.classify(total, received);
 
+        // "Place on behalf of" (admin only): when an ADMIN punches the order for a
+        // salesperson/team lead, attribute the order to that user (created_by +
+        // creation-history actor + stock-movement credit) so it shows in their
+        // scoped lists and counts toward their performance. A self order (or any
+        // non-admin) resolves to the acting user.
+        EffectiveCreator creator = resolveEffectiveCreator(request.onBehalfOfUserId(), actor);
+
         OrderEntity order = new OrderEntity(
                 orderCodeGenerator.generate(orderRepository::existsByOrderCode),
                 OrderSource.SALESPERSON,
-                actor.userId(),
+                creator.userId(),
                 request.customerName(),
                 request.customerMobile(),
                 request.addressLine(),
@@ -255,7 +262,7 @@ public class OrderService {
         }
 
         populateAggregate(order, priced, calc, screenshotKeys,
-                actor.username(), SOURCE_SALESPERSON);
+                creator.username(), SOURCE_SALESPERSON);
 
         // Snapshot the order-level discount (type + raw value + resolved amount)
         // so history and the response reflect it (Req 6.4). No-op amount when none.
@@ -267,7 +274,7 @@ public class OrderService {
 
         // Reserve stock for tracked products within this transaction (Feature 1):
         // decrements on_hand + records a SALE movement, rejecting insufficient stock.
-        reserveStock(priced, actor.userId(), order.getOrderCode());
+        reserveStock(priced, creator.userId(), order.getOrderCode());
 
         OrderEntity saved = orderRepository.save(order);
         // Real-time admin nudge: a freshly punched order lands in the approval
@@ -758,6 +765,28 @@ public class OrderService {
     }
 
     /**
+     * Active salespeople + team leads an ADMIN may place an order on behalf of
+     * (the "place on behalf of" picker on the New Order form). Team leads are
+     * listed first, then salespeople, each alphabetical by display name; inactive
+     * users are omitted. Returns empty when the staff directory is unavailable.
+     */
+    @Transactional(readOnly = true)
+    public List<com.shifa.oms.order.dto.AssignableCreatorResponse> assignableCreators() {
+        if (userRepository == null) {
+            return List.of();
+        }
+        List<com.shifa.oms.auth.User> users = new ArrayList<>();
+        users.addAll(userRepository.findByRoleOrderByCreatedAtDescIdDesc(
+                com.shifa.oms.auth.Role.TEAM_LEAD));
+        users.addAll(userRepository.findByRoleOrderByCreatedAtDescIdDesc(
+                com.shifa.oms.auth.Role.SALESPERSON));
+        return users.stream()
+                .filter(com.shifa.oms.auth.User::isActive)
+                .map(com.shifa.oms.order.dto.AssignableCreatorResponse::from)
+                .toList();
+    }
+
+    /**
      * The most recent ACTIVE (not rejected/cancelled) order placed TODAY (IST) for
      * a mobile, or empty when none. Backs both the pre-submit warning and the
      * authoritative same-day duplicate guard so they agree on what "today" means.
@@ -1092,6 +1121,51 @@ public class OrderService {
                         + order.getOrderCode() + ", by " + who
                         + "). Only one order per customer per day is allowed — please check "
                         + "the existing order before creating another.");
+    }
+
+    /** The user an order is attributed to (created_by + history actor + stock credit). */
+    private record EffectiveCreator(Long userId, String username) {
+    }
+
+    /**
+     * Resolves who a new order is attributed to. Normally this is the acting user
+     * (a salesperson/team lead/admin punching their own order). When an ADMIN uses
+     * "place on behalf of" with {@code onBehalfOfUserId}, the order is attributed
+     * to that chosen user instead — validated to be an ACTIVE {@code SALESPERSON}
+     * or {@code TEAM_LEAD}. Only an admin may set the field; a non-admin sending it,
+     * an unknown/inactive user, or an ineligible role is rejected with a 400.
+     */
+    private EffectiveCreator resolveEffectiveCreator(Long onBehalfOfUserId, AuthPrincipal actor) {
+        if (onBehalfOfUserId == null) {
+            return new EffectiveCreator(actor.userId(), actor.username());
+        }
+        // Only an admin may attribute an order to someone else.
+        if (actor.role() != com.shifa.oms.auth.Role.ADMIN) {
+            throw new ValidationException(
+                    "Only an admin can place an order on behalf of another user.");
+        }
+        // Attributing to yourself is fine (no-op); skip the directory lookup.
+        if (onBehalfOfUserId.equals(actor.userId())) {
+            return new EffectiveCreator(actor.userId(), actor.username());
+        }
+        if (userRepository == null) {
+            throw new ValidationException(
+                    "Placing an order on behalf of another user is not available in this context.");
+        }
+        com.shifa.oms.auth.User target = userRepository.findById(onBehalfOfUserId)
+                .orElseThrow(() -> new ValidationException(
+                        "The selected user does not exist."));
+        com.shifa.oms.auth.Role role = target.getRole();
+        if (role != com.shifa.oms.auth.Role.SALESPERSON
+                && role != com.shifa.oms.auth.Role.TEAM_LEAD) {
+            throw new ValidationException(
+                    "An order can only be placed on behalf of a salesperson or team lead.");
+        }
+        if (!target.isActive()) {
+            throw new ValidationException(
+                    "The selected user is inactive and cannot be assigned new orders.");
+        }
+        return new EffectiveCreator(target.getId(), target.getUsername());
     }
 
     /**

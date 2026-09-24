@@ -324,7 +324,8 @@ public class LeadService {
                 request.discountValue(),
                 null,
                 request.deliveryMethod(),
-                request.paymentScreenshotKeys());
+                request.paymentScreenshotKeys(),
+                null); // onBehalfOfUserId: convert is never an on-behalf flow
 
         // Same transaction: a failure here rolls the whole convert back (Req 4.4).
         OrderResponse order = orderService.createSalespersonOrder(orderRequest, actor);

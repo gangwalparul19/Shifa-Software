@@ -2263,4 +2263,37 @@ it AT ENTRY (warn the salesperson, naming the other salesperson) and BLOCK creat
   `target\classes`), robocopy `/XD storage` **wrongly excludes the `com/shifa/oms/platform/storage` SOURCE package** (dir
   named "storage"), causing a cascade of "package com.shifa.oms.platform.storage does not exist" compile errors. Fix:
   after the copy, re-copy that one package explicitly. Don't `/XD storage`.
-- Ships with next deploy (no migration).
+- **DEPLOYED to AWS 2026-09-24** (`https://shifa.weblithic.online/`, IP 15.252.230.73) via `push-to-new-server.ps1
+  -SkipBuild`. Fresh JAR built in `C:\shifa-buildsrc` copy (JDT lock workaround) + copied to `backend\target`; admin
+  bundle `main-F3Q4UCMN.js`. DB backup `~/shifa-backup-2026-09-24-124646.sql`. Verified: Flyway "No migration necessary"
+  (V66), Tomcat on 8080, "Started Application in 22.493s", root=200, `/api/states`=401, served index references
+  `main-F3Q4UCMN.js`. No migration.
+- **VERIFY GOTCHA (this session)**: shell stdout rendering was flaky/empty for many commands; use `list_directory` +
+  redirect-to-file-then-read_file to confirm build/JAR/deploy results reliably rather than trusting inline console output.
+
+## Admin "place order on behalf of" a salesperson/team lead — implemented (NOT yet deployed)
+Client: when an ADMIN punches a New Order they should be able to place it on behalf of a salesperson (or team lead),
+attributing the order to that person; first choose Myself vs On-behalf, then pick the person, then place.
+- **Attribution follows `created_by`** (no schema change): the order's `created_by` is set to the chosen user, so it
+  appears in that user's (and their team lead's) scoped lists (`SalespersonScopeResolver.creatorScope`) and counts toward
+  their performance. Also stamped on the creation status-history actor + the SALE stock-movement credit.
+- **Backend**: `CreateOrderRequest.onBehalfOfUserId` (Long) appended LAST (back-compat; `LeadService.convert` passes a
+  trailing null). `OrderService.resolveEffectiveCreator(onBehalfOfUserId, actor)` → `EffectiveCreator{userId,username}`:
+  null → the acting user; **admin-only** (non-admin sending it → ValidationException 400); self-id → no-op; else load via
+  `userRepository.findById` and require an **active SALESPERSON or TEAM_LEAD** (else 400). Used as `OrderEntity` ctor arg 3
+  (created_by), `populateAggregate` username, and `reserveStock` userId. New **`GET /api/orders/assignable-creators`**
+  (`@PreAuthorize hasRole('ADMIN')`) → `List<AssignableCreatorResponse{id,name,role}>` via `OrderService.assignableCreators()`
+  (active TEAM_LEAD then SALESPERSON). New DTO `AssignableCreatorResponse.from(User)`. OrderService uses fully-qualified
+  `com.shifa.oms.auth.{User,Role}` (no new imports).
+- **Frontend** (`orders/new-order`): model `CreateOrderRequest.onBehalfOfUserId?:number` + `AssignableCreator{id,name,role}`;
+  `OrdersService.assignableCreators()`. Component injects `AuthService`; signals `isAdmin`, `placeFor('self'|'other')`,
+  `assignableCreators`, `onBehalfUserId`, `showOnBehalfPicker` (admin && !convert && !resubmit), `onBehalfMissing`; loads the
+  list in ngOnInit when admin; `setPlaceFor()`/`onBehalfSelected()`; payload sends `onBehalfOfUserId` ONLY when the admin
+  picked "on behalf of" + a person; `validateStep(1)` + `submit()` block when a person isn't chosen. HTML: an admin-only
+  **"Placing this order for"** card at the TOP of the Customer step — Myself / On behalf of button-group + a
+  salesperson/team-lead `<select>` (labelled "(Team Lead)"/"(Salesperson)"), invalid state + hint.
+- **Tests**: `OrderServiceTest` +4 (admin→salesperson & →team-lead set created_by via ArgumentCaptor; non-admin rejected;
+  admin→ACCOUNTANT rejected) using a `serviceWithUsers()` full-ctor instance + mocked `UserRepository`. Fixed all 5
+  positional `new CreateOrderRequest(...)` call sites (OrderServiceTest helper + alt-mobile test + 3 property tests) with a
+  trailing `null`. **OrderServiceTest 38/38, EndpointRoleGuard 39/39, Deterministic/RequiresLineItem/LeadSourceRoundTrip
+  green.** Admin `build:admin` clean → bundle `main-PTXOKZLL.js`. No migration. Ships with next deploy.

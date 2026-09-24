@@ -9,7 +9,7 @@ import {
 } from '@angular/forms';
 import { debounceTime, distinctUntilChanged, map } from 'rxjs';
 import { ActivatedRoute, Router } from '@angular/router';
-import { ApiError, Product, paiseToMoney, toPaise } from 'core';
+import { ApiError, AuthService, Product, Role, paiseToMoney, toPaise } from 'core';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { StateTypeaheadComponent } from '../shared/state-typeahead.component';
@@ -28,6 +28,7 @@ import { CustomerRisk, riskLabel, riskPillClass } from '../customers/customers.m
 import { LeadsService } from '../leads/leads.service';
 import { LeadConvertRequest } from '../leads/leads.model';
 import {
+  AssignableCreator,
   CreateOrderLineItem,
   CreateOrderRequest,
   LEAD_SOURCE_OPTIONS,
@@ -102,6 +103,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private readonly toasts = inject(ToastService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly auth = inject(AuthService);
 
   // --- Convert-from-lead mode (design §Convert Flow, Req 4) --------------
   /**
@@ -322,6 +324,37 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   /** Whether the form is reworking a rejected order (drives titles + submit path). */
   protected readonly resubmitMode = computed(() => this.resubmitOrderId() !== null);
 
+  // --- Place on behalf of (ADMIN only) ------------------------------------
+  /**
+   * Whether the acting user is an admin, who may place an order on behalf of a
+   * salesperson/team lead. The picker is hidden for everyone else (and in
+   * convert/resubmit modes, which have their own attribution).
+   */
+  protected readonly isAdmin = computed(() => this.auth.hasAnyRole(Role.ADMIN));
+
+  /**
+   * Who the order is being placed for: the admin themselves ('self') or another
+   * user ('other'). Only meaningful when {@link isAdmin} and not converting/
+   * resubmitting. Defaults to 'self'.
+   */
+  protected readonly placeFor = signal<'self' | 'other'>('self');
+
+  /** Active salespeople + team leads the admin can attribute the order to. */
+  protected readonly assignableCreators = signal<AssignableCreator[]>([]);
+
+  /** The selected on-behalf user id (null until one is picked). */
+  protected readonly onBehalfUserId = signal<number | null>(null);
+
+  /** Whether the on-behalf picker should be shown at all. */
+  protected readonly showOnBehalfPicker = computed(
+    () => this.isAdmin() && !this.convertMode() && !this.resubmitMode(),
+  );
+
+  /** True when the admin chose "on behalf of" but hasn't picked a person yet. */
+  protected readonly onBehalfMissing = computed(
+    () => this.showOnBehalfPicker() && this.placeFor() === 'other' && this.onBehalfUserId() == null,
+  );
+
   /** Whether the free-text lead-source note is shown (only for {@code OTHER}, Req 4.5). */
   protected readonly showLeadSourceNote = computed(() => this.model().leadSource === 'OTHER');
 
@@ -501,6 +534,16 @@ export class NewOrderComponent implements OnInit, OnDestroy {
         /* storage unavailable — non-fatal */
       }
     });
+
+    // Place-on-behalf-of picker (ADMIN only): load the active salespeople +
+    // team leads the admin can attribute the order to. Non-fatal — the picker
+    // just stays empty on failure and the order defaults to a self order.
+    if (this.isAdmin()) {
+      this.orders.assignableCreators().subscribe({
+        next: (people) => this.assignableCreators.set(people),
+        error: () => this.assignableCreators.set([]),
+      });
+    }
 
     // Convert-from-lead mode: seed customer + source from the lead and lock them.
     const leadIdParam = this.route.snapshot.queryParamMap.get('leadId');
@@ -818,6 +861,20 @@ export class NewOrderComponent implements OnInit, OnDestroy {
    * show a repeat-customer hint (Req 22.2). Only runs for a well-formed 10-digit
    * number; anything else clears the hint. Failures are non-fatal (hint hidden).
    */
+  /** Admin picks whether the order is for themselves or on behalf of someone. */
+  setPlaceFor(who: 'self' | 'other'): void {
+    this.placeFor.set(who);
+    if (who === 'self') {
+      this.onBehalfUserId.set(null);
+    }
+  }
+
+  /** Admin picks the salesperson/team lead to attribute the order to. */
+  onBehalfSelected(value: string): void {
+    const id = value ? Number(value) : NaN;
+    this.onBehalfUserId.set(Number.isFinite(id) && id > 0 ? id : null);
+  }
+
   private checkDuplicateCustomer(mobile: string | null): void {
     if (!mobile || !/^\d{10}$/.test(mobile)) {
       this.priorOrderCount.set(null);
@@ -1370,6 +1427,11 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       this.submitAttempted.set(true);
       ok = false;
     }
+    if (step === 1 && this.onBehalfMissing()) {
+      // Admin chose "on behalf of" but hasn't picked a person yet.
+      this.submitAttempted.set(true);
+      ok = false;
+    }
     if (step === 2) {
       this.items.controls.forEach((group) => group.markAllAsTouched());
       // Block advancing when a line's price is outside its product band (Req 5.2),
@@ -1436,6 +1498,13 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       this.toasts.error(
         `A duplicate order for this customer was already placed today (${dup.orderCode ?? 'existing order'}, by ${who}). Only one order per customer per day is allowed.`,
       );
+      this.step.set(1);
+      this.scrollTop();
+      return;
+    }
+    // Admin chose "on behalf of" but didn't pick a person.
+    if (this.onBehalfMissing()) {
+      this.toasts.error('Select the salesperson or team lead to place this order on behalf of.');
       this.step.set(1);
       this.scrollTop();
       return;
@@ -1509,6 +1578,11 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       // here defaults to in-house; the admin picks/overrides the delivery
       // partner (QuikShipX vs in-house) at approval time.
       deliveryMethod: 'IN_HOUSE',
+      // Place on behalf of (ADMIN only): attribute the order to the chosen
+      // salesperson/team lead. Sent only when the admin picked "on behalf of".
+      ...(this.showOnBehalfPicker() && this.placeFor() === 'other' && this.onBehalfUserId() != null
+        ? { onBehalfOfUserId: this.onBehalfUserId()! }
+        : {}),
     };
 
     // Offline order creation is no longer possible: every order now collects an

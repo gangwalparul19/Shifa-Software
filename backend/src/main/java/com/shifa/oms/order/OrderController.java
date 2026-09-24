@@ -232,6 +232,16 @@ public class OrderController {
     }
 
     /**
+     * Active salespeople + team leads an ADMIN may place an order on behalf of
+     * (the "place on behalf of" picker on the New Order form). ADMIN-only.
+     */
+    @GetMapping("/assignable-creators")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<com.shifa.oms.order.dto.AssignableCreatorResponse> assignableCreators() {
+        return orderService.assignableCreators();
+    }
+
+    /**
      * Customer + shipping details from the customer's most recent order, to
      * pre-fill the New Order form when a known mobile is entered (overridable).
      */

@@ -130,6 +130,65 @@
   <!-- ===================== Customer Details ===================== -->
   <section class="shifa-no__section">
     <h2 class="shifa-no__title">Customer Details</h2>
+
+    <!-- Place on behalf of (ADMIN only): first choose whether this order is for
+         yourself or on behalf of a salesperson/team lead, then place it. -->
+    @if (showOnBehalfPicker()) {
+      <div class="shifa-no__card mb-2">
+        <label class="form-label">Placing this order for</label>
+        <div class="btn-group w-100 mb-1" role="group" aria-label="Place order for">
+          <button
+            type="button"
+            class="btn"
+            [class.btn-success]="placeFor() === 'self'"
+            [class.btn-outline-secondary]="placeFor() !== 'self'"
+            (click)="setPlaceFor('self')"
+          >
+            <i class="ti ti-user me-1"></i>Myself
+          </button>
+          <button
+            type="button"
+            class="btn"
+            [class.btn-success]="placeFor() === 'other'"
+            [class.btn-outline-secondary]="placeFor() !== 'other'"
+            (click)="setPlaceFor('other')"
+          >
+            <i class="ti ti-users me-1"></i>On behalf of
+          </button>
+        </div>
+        @if (placeFor() === 'other') {
+          <select
+            class="form-select"
+            [class.is-invalid]="submitAttempted() && onBehalfMissing()"
+            [value]="onBehalfUserId() ?? ''"
+            (change)="onBehalfSelected($any($event.target).value)"
+            aria-label="Salesperson or team lead"
+          >
+            <option value="" disabled>Select a salesperson or team lead…</option>
+            @for (person of assignableCreators(); track person.id) {
+              <option [value]="person.id">
+                {{ person.name }} ({{ person.role === 'TEAM_LEAD' ? 'Team Lead' : 'Salesperson' }})
+              </option>
+            }
+          </select>
+          @if (submitAttempted() && onBehalfMissing()) {
+            <div class="text-danger small mt-1">
+              Select who this order is being placed on behalf of.
+            </div>
+          } @else {
+            <small class="form-hint mt-1">
+              The order will be recorded under this person and count toward their performance.
+            </small>
+          }
+          @if (assignableCreators().length === 0) {
+            <small class="form-hint text-warning mt-1 d-block">
+              No active salespeople or team leads found.
+            </small>
+          }
+        }
+      </div>
+    }
+
     <div class="shifa-no__card">
       <div class="row g-2 g-md-3">
         <!-- Phone number FIRST: entering a known number auto-fills the rest so

@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient, OrderStatus, PageResponse, PaymentStatus } from 'core';
 import {
+  AssignableCreator,
   CourierCompanyOption,
   CreateOrderRequest,
   CustomerPrefillResponse,
@@ -122,6 +123,14 @@ export class OrdersService {
     return this.api.get<CustomerPrefillResponse>('/api/orders/last-by-mobile', {
       params: { mobile },
     });
+  }
+
+  /**
+   * Active salespeople + team leads an ADMIN may place an order on behalf of
+   * (the "place on behalf of" picker on the New Order form). ADMIN-only endpoint.
+   */
+  assignableCreators(): Observable<AssignableCreator[]> {
+    return this.api.get<AssignableCreator[]>('/api/orders/assignable-creators');
   }
 
   /** Search orders by name / mobile / order code / AWB, role-scoped (Req 22.1). */
