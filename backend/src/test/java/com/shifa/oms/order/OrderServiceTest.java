@@ -128,6 +128,9 @@ class OrderServiceTest {
         // (auto-fetch) rate is within band for these pricing/rounding tests.
         Product p = new Product("SKU-" + id, "Product " + id, "d",
                 sp.max(new BigDecimal("999.00")), sp, ProductVisibility.PUBLISHED);
+        // Give the product its persistent id so line items carry a product id (as in
+        // production) — the same-day duplicate guard keys off product-id overlap.
+        ReflectionTestUtils.setField(p, "id", id);
         return p;
     }
 
@@ -137,7 +140,7 @@ class OrderServiceTest {
         // payment/creation edge-case tests use WHATSAPP with no note/email.
         return new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
                 "Pune", "Maharashtra", "411001", items, amountReceived, screenshotKey,
-                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, null);
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     // --- Order total round-off to nearest rupee (product-audit §4.6) --------
@@ -248,7 +251,7 @@ class OrderServiceTest {
         CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
                 "Pune", "Maharashtra", "411001",
                 List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("100.00"), "payments/x.jpg",
-                LeadSource.WHATSAPP, null, null, null, "9800011122", null, null, null, null, null, null);
+                LeadSource.WHATSAPP, null, null, null, "9800011122", null, null, null, null, null, null, null);
 
         OrderResponse response = service.createSalespersonOrder(request, salesperson);
 
@@ -432,18 +435,36 @@ class OrderServiceTest {
     }
 
     @Test
-    void createSalespersonOrderRejectsSameDayDuplicate() {
+    void createSalespersonOrderRejectsSameDayDuplicateOfSameProduct() {
         when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
-        // An active order for this customer already exists today.
+        // Today's order for this customer already includes product 1 — the new order
+        // repeats product 1, so it's a real duplicate → rejected.
         when(orderRepository.findActiveByCustomerMobileInWindow(
-                anyString(), any(), any())).thenReturn(List.of(persistedOrder(1L)));
+                anyString(), any(), any())).thenReturn(List.of(todayOrderWithProduct(1L, "PetKam")));
 
         CreateOrderRequest request = orderRequest(
                 List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg");
 
         assertThatThrownBy(() -> service.createSalespersonOrder(request, salesperson))
                 .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("already placed today");
+                .hasMessageContaining("already has an order today");
+    }
+
+    @Test
+    void createSalespersonOrderAllowsSameDayOrderWithDifferentProducts() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        // Today's order for this customer is for product 2; the new order is for
+        // product 1 (different item) → allowed (a customer may order different items
+        // multiple times a day).
+        when(orderRepository.findActiveByCustomerMobileInWindow(
+                anyString(), any(), any())).thenReturn(List.of(todayOrderWithProduct(2L, "Face Cream")));
+
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg");
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.orderStatus()).isEqualTo(OrderStatus.PENDING_ADMIN_APPROVAL);
     }
 
     @Test
@@ -493,7 +514,7 @@ class OrderServiceTest {
         CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
                 "Pune", "Maharashtra", "411001",
                 List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg",
-                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 7L);
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 7L, null);
 
         svc.createSalespersonOrder(request, admin);
 
@@ -513,7 +534,7 @@ class OrderServiceTest {
         CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
                 "Pune", "Maharashtra", "411001",
                 List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg",
-                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 9L);
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 9L, null);
 
         svc.createSalespersonOrder(request, admin);
 
@@ -531,7 +552,7 @@ class OrderServiceTest {
         CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
                 "Pune", "Maharashtra", "411001",
                 List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg",
-                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 7L);
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 7L, null);
 
         assertThatThrownBy(() -> svc.createSalespersonOrder(request, salesperson))
                 .isInstanceOf(ValidationException.class)
@@ -548,11 +569,52 @@ class OrderServiceTest {
         CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
                 "Pune", "Maharashtra", "411001",
                 List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg",
-                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 3L);
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 3L, null);
 
         assertThatThrownBy(() -> svc.createSalespersonOrder(request, admin))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("salesperson or team lead");
+    }
+
+    // --- India vs Outside India (destination) -------------------------------
+
+    @Test
+    void internationalOrderStoresCountryAndFreeTextAddressWithoutCityStatePincode() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        // Outside-India order: city/state/postalCode blank, full address in addressLine,
+        // destination country set. The domestic city/state/pincode rule must NOT apply.
+        CreateOrderRequest request = new CreateOrderRequest(
+                "John", "9812345678", "742 Evergreen Terrace, Springfield, OR 97403",
+                "", "", "", List.of(new LineItemRequest(1L, 1, null)),
+                new BigDecimal("120.00"), "payments/x.jpg", LeadSource.WHATSAPP,
+                null, null, null, null, null, null, null, null, null, null, "United States");
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        ArgumentCaptor<OrderEntity> captor = ArgumentCaptor.forClass(OrderEntity.class);
+        verify(orderRepository).save(captor.capture());
+        OrderEntity saved = captor.getValue();
+        assertThat(saved.getCountry()).isEqualTo("United States");
+        assertThat(saved.getAddressLine()).contains("Springfield");
+        assertThat(saved.getCity()).isEmpty();
+        assertThat(saved.getState()).isEmpty();
+        assertThat(saved.getPostalCode()).isEmpty();
+        assertThat(response.country()).isEqualTo("United States");
+    }
+
+    @Test
+    void domesticOrderStillRequiresCityStateAndPincode() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        // India (country null) with a blank city/state/pincode → rejected.
+        CreateOrderRequest request = new CreateOrderRequest(
+                "Asha", "9812345678", "12 MG Road",
+                "", "", "", List.of(new LineItemRequest(1L, 1, null)),
+                new BigDecimal("120.00"), "payments/x.jpg", LeadSource.WHATSAPP,
+                null, null, null, null, null, null, null, null, null, null, null);
+
+        assertThatThrownBy(() -> service.createSalespersonOrder(request, salesperson))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("within India");
     }
 
     // --- Order-detail shipment fields (AWB / courier tracking) --------------
@@ -565,6 +627,17 @@ class OrderServiceTest {
                 new BigDecimal("240.00"), PaymentStatus.COD);
         order.setOrderStatus(OrderStatus.COURIER_ASSIGNED);
         ReflectionTestUtils.setField(order, "id", id);
+        return order;
+    }
+
+    /** An active order placed today carrying a single line item for the given product. */
+    private OrderEntity todayOrderWithProduct(long productId, String productName) {
+        OrderEntity order = new OrderEntity("SHR-000123", OrderSource.SALESPERSON, 5L,
+                "Asha", "9812345678", "12 MG Road", "Pune", "Maharashtra", "411001");
+        order.setOrderStatus(OrderStatus.PENDING_ADMIN_APPROVAL);
+        order.addLineItem(new OrderLineItem(productId, productName, 1,
+                new BigDecimal("120.00"), new BigDecimal("120.00")));
+        ReflectionTestUtils.setField(order, "id", 1L);
         return order;
     }
 

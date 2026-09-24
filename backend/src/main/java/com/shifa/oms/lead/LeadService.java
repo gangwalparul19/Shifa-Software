@@ -325,7 +325,8 @@ public class LeadService {
                 null,
                 request.deliveryMethod(),
                 request.paymentScreenshotKeys(),
-                null); // onBehalfOfUserId: convert is never an on-behalf flow
+                null, // onBehalfOfUserId: convert is never an on-behalf flow
+                null); // country: lead conversion is always a domestic order
 
         // Same transaction: a failure here rolls the whole convert back (Req 4.4).
         OrderResponse order = orderService.createSalespersonOrder(orderRequest, actor);

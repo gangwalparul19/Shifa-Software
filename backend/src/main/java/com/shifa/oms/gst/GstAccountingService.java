@@ -111,7 +111,7 @@ public class GstAccountingService {
                 new GstReportResponse.Seller(
                         seller.getLegalName(), seller.getGstin(), seller.getState(), seller.getStateCode()),
                 p.from(), p.to(), stateConfigured,
-                comp.rateWise(), comp.hsn(), comp.stateWise(), comp.summary());
+                comp.rateWise(), comp.hsn(), comp.stateWise(), comp.summary(), comp.export());
     }
 
     /** The CA dashboard: the GST report plus every money in/out for the period (Req 6). */
@@ -187,8 +187,15 @@ public class GstAccountingService {
         String hsnFilter = hsn == null || hsn.isBlank() ? null : hsn.trim();
         List<GstOrderRow> rows = new ArrayList<>();
         for (OrderEntity o : revenueOrders(p)) {
-            if (stateFilter != null && !matchesState(o.getState(), stateFilter)) {
-                continue;
+            // The "Export" pseudo-state groups all outside-India orders (their real
+            // state is blank); every other filter matches the order's actual state.
+            if (stateFilter != null) {
+                boolean matches = "Export".equalsIgnoreCase(stateFilter)
+                        ? o.isInternational()
+                        : (!o.isInternational() && matchesState(o.getState(), stateFilter));
+                if (!matches) {
+                    continue;
+                }
             }
             if (rate != null && !hasLineRate(o, rate)) {
                 continue;
@@ -196,7 +203,7 @@ public class GstAccountingService {
             if (hsnFilter != null && !hasLineHsn(o, hsnFilter)) {
                 continue;
             }
-            SupplyType type = GstEngine.classify(o.getState(), sellerState);
+            SupplyType type = GstEngine.classify(o.getState(), sellerState, o.isInternational());
             BigDecimal taxable = ZERO;
             BigDecimal tax = ZERO;
             for (OrderLineItem li : o.getLineItems()) {
@@ -285,7 +292,7 @@ public class GstAccountingService {
                         li.getQuantity(), li.getLineTotal()));
             }
             LocalDate date = o.getCreatedAt() != null ? o.getCreatedAt().toLocalDate() : LocalDate.now(clock);
-            result.add(new GstOrder(o.getId(), o.getState(), date, lines));
+            result.add(new GstOrder(o.getId(), o.getState(), date, lines, o.isInternational()));
         }
         return result;
     }

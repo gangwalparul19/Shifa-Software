@@ -26,7 +26,14 @@ export interface HsnRow {
   igst: number | string;
 }
 
-export type SupplyType = 'INTRA' | 'INTER';
+export type SupplyType = 'INTRA' | 'INTER' | 'EXPORT';
+
+/** The export segment: outside-India supplies taxed as 18% IGST (no LUT). */
+export interface ExportSummary {
+  taxable: number | string;
+  igst: number | string;
+  orderCount: number;
+}
 
 export interface StateWiseRow {
   state: string;
@@ -55,6 +62,8 @@ export interface GstReport {
   hsn: HsnRow[];
   stateWise: StateWiseRow[];
   summary: Gstr3bSummary;
+  /** Export (outside-India) segment — taxed as 18% IGST, shown separately. */
+  export?: ExportSummary | null;
 }
 
 export interface CategoryAmount {

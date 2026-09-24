@@ -1,5 +1,6 @@
 package com.shifa.oms.gst.dto;
 
+import com.shifa.oms.gst.domain.GstEngine.ExportSummary;
 import com.shifa.oms.gst.domain.GstEngine.Gstr3bSummary;
 import com.shifa.oms.gst.domain.GstEngine.HsnRow;
 import com.shifa.oms.gst.domain.GstEngine.RateWiseRow;
@@ -11,7 +12,8 @@ import java.util.List;
 /**
  * The filing-ready outward GST report for a period (CA GST dashboard, Reqs 4, 5,
  * 7): seller identity, the period, and the rate-wise / HSN-wise / state-wise
- * summaries plus the GSTR-3B-style total.
+ * summaries plus the GSTR-3B-style total. {@code export} is the outside-India
+ * (export) slice — taxed as 18% IGST, shown as a separate segment.
  */
 public record GstReportResponse(
         Seller seller,
@@ -21,7 +23,8 @@ public record GstReportResponse(
         List<RateWiseRow> rateWise,
         List<HsnRow> hsn,
         List<StateWiseRow> stateWise,
-        Gstr3bSummary summary
+        Gstr3bSummary summary,
+        ExportSummary export
 ) {
 
     /** The seller's statutory identity used on the report header. */

@@ -36,6 +36,15 @@ public final class GstReportExporter {
                 money(r.summary().outputTotal()), money(r.summary().invoiceValue()));
         sb.append('\n');
 
+        // Export segment (outside-India supplies, taxed as 18% IGST — no LUT).
+        if (r.export() != null && r.export().orderCount() > 0) {
+            line(sb, "Export (outside India) — taxed as 18% IGST");
+            line(sb, "Export orders", "Taxable", "IGST");
+            line(sb, String.valueOf(r.export().orderCount()),
+                    money(r.export().taxable()), money(r.export().igst()));
+            sb.append('\n');
+        }
+
         // Rate-wise.
         line(sb, "Rate-wise summary");
         line(sb, "Rate %", "Taxable", "CGST", "SGST", "IGST", "Invoice value");

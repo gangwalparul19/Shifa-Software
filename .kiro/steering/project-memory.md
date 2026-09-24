@@ -2297,3 +2297,115 @@ attributing the order to that person; first choose Myself vs On-behalf, then pic
   positional `new CreateOrderRequest(...)` call sites (OrderServiceTest helper + alt-mobile test + 3 property tests) with a
   trailing `null`. **OrderServiceTest 38/38, EndpointRoleGuard 39/39, Deterministic/RequiresLineItem/LeadSourceRoundTrip
   green.** Admin `build:admin` clean → bundle `main-PTXOKZLL.js`. No migration. Ships with next deploy.
+
+## Order entry: India vs Outside India destination (V67) — implemented (NOT yet deployed)
+Client: a few orders/month ship OUTSIDE India, but the form forced city/state/6-digit pincode. Added a destination
+picker: **India (default)** keeps the structured city/state/pincode; **Outside India** captures a single free-text
+address (no city/state/zip) + a country name, then proceeds.
+- **Migration V67**: `ALTER TABLE orders ADD COLUMN country VARCHAR(60) NULL AFTER postal_code`. Null/`India` = domestic;
+  a country name = international. Additive/nullable. **Highest migration is now V67.**
+- **Model choice**: kept city/state/postal_code NOT NULL — an international order stores **empty strings** for them
+  (DB-safe; every downstream consumer is blank-safe) and the full address in `address_line`, with `country` set. Chose an
+  explicit country column over stuffing everything in address_line (cleaner for reporting/label/invoice + future export GST).
+- **Backend**: `OrderEntity.country` (+getter/setter). `OrderResponse.country` appended LAST (updated all 5
+  `new OrderResponse(...)` sites: `from` + 4 `with*` copy methods). `CreateOrderRequest`: dropped `@NotBlank` on city/state
+  (kept `@Size`), postalCode `@Pattern("(\\d{6})?")`, appended `country` (`@Size 60`) LAST. `LeadService.convert` passes
+  trailing `null,null` (onBehalf,country). `OrderService.createSalespersonOrder` → `resolveAddress(request)` returns
+  `ResolvedAddress{addressLine,city,state,postalCode,country}`: addressLine always required; international
+  (`country != null && !equalsIgnoreCase("India")`) → free-text addressLine + empty city/state/postalCode + country;
+  domestic → require city/state/6-digit postalCode (ValidationException "…within India" else). Entity gets the resolved
+  values + `setCountry`.
+- **GST (deliberately NOT changed)**: an international order has a blank state, which the GST engine already treats as
+  inter-state (IGST). A proper export / zero-rated treatment is a **follow-up** (noted in the V67 comment) — out of scope
+  for this order-taking request.
+- **Frontend**: `orders.model.ts` `CreateOrderRequest.country?` + `OrderDetail.country?`. `new-order.component.ts`:
+  signals `destination('india'|'outside')` / `isInternational` / `countryName`; `setDestination()` clears+disables+
+  de-validates city/state/postalCode for outside (re-adds required validators for india — disabled controls also skip the
+  pincode auto-fill and don't block the wizard); `onCountryChange()`; `submit()` blocks an international order with no
+  country (toast + jump to step 1); create payload sends `country` only when international (city/state/postalCode ride as
+  '' from the disabled controls). `new-order.component.html`: an India / Outside India button-group before the address;
+  `@if(isInternational)` shows a Country input + a larger free-text address textarea (label switches); the City/Pincode/
+  State block is wrapped in `@if(!isInternational())`; the review step "Deliver to" branches. `orders.component.html`
+  order-detail "Delivery Address" shows a country badge + "addressLine — country" for international (skips empty
+  city/state/zip). Resubmit/edit flows left as-is (fields are now optional server-side).
+- **Tests**: `OrderServiceTest` +2 (`internationalOrderStoresCountryAndFreeTextAddressWithoutCityStatePincode`,
+  `domesticOrderStillRequiresCityStateAndPincode`) → **40/40**. Fixed all positional `new CreateOrderRequest(...)` sites
+  (+trailing `null` for country) in OrderServiceTest (helper + alt-mobile + 4 on-behalf) and the 3 property tests
+  (Deterministic/RequiresLineItem/LeadSourceRoundTrip = green). Admin `build:admin` clean → bundle `main-S5W3SAP7.js`.
+  Ships with next deploy (applies V67 on restart).
+- **BUILD gotcha (again)**: `copy /Y` silently failed to overwrite the isolated-copy (`C:\shifa-buildsrc`) test file — use
+  `robocopy <srcdir> <destdir> <file>` for a single file. Verify test results by reading the surefire report .txt with an
+  offset (the tool caches the whole-file read; console stdout was unreliable all session).
+
+## Export GST treatment: outside-India orders = taxable 18% IGST + separate Export segment — implemented (NOT deployed)
+Client: the business does NOT file a LUT, so exports can't be zero-rated. Treat outside-India orders as a TAXABLE
+inter-state supply **charged at a flat 18% IGST**, and show a separate **Export** segment in the CA GST reports.
+(Builds on V67 `orders.country`; an order is international when `OrderEntity.isInternational()` = country non-blank & != India.)
+- **GstEngine** (`gst/domain`): `SupplyType.EXPORT` added; `GstEngine.EXPORT_RATE = 18`; `GstOrder` gains
+  `boolean international` (+ back-compat 4-arg ctor); `classify(state, seller, international)` returns EXPORT first when
+  international (2-arg overload kept → international=false); `splitLine` FORCES 18% (`effectiveRate`) for EXPORT lines and
+  routes to IGST (INTER+EXPORT share the IGST branch); `compute` uses `order.international()`, buckets export lines at the
+  effective 18% rate, groups them under a single state-wise row **"Export"** typed EXPORT, and builds
+  `ExportSummary{taxable, igst, orderCount}`. `GstComputation` gains `export`. "Charge 18%" = a deliberate client policy
+  (export lines taxed at 18% regardless of the product's own domestic rate).
+- **Threaded** `o.isInternational()` into `GstAccountingService.toGstOrders` + its drill-down `classify`, and
+  `Gstr1ReturnService.toGstOrder` + its 2 `classify` calls. `GstReportResponse` gains `export` (ExportSummary); CSV
+  (`GstReportExporter`) + PDF (`GstPdfExporter`) render an **Export** section when orderCount>0. Drill-down `orders(...)`:
+  the **"Export"** pseudo-state filter matches `o.isInternational()`; a real-state filter excludes international orders.
+- **GSTR-1**: `DocumentCategory.EXPORT` added; `GstDocumentClassifier` returns EXPORT FIRST for an EXPORT supply (so
+  exports NEVER misfile as B2CS/B2CL, even without a GSTIN); `Gstr1Builder` has an explicit `case EXPORT` — kept OUT of
+  B2B/B2CL/B2CS but still contributing to the HSN Table-12 + reconciliation totals. NOTE: a dedicated portal **Table-6A
+  (EXPWP) section** is a deliberate FOLLOW-UP (not emitted as a GSTR-1 row list yet). Credit-note-on-export still
+  classifies by state (`CreditNoteProjection` uses the 2-arg classify) — rare edge, left as-is.
+- **Invoice** (`InvoiceContentBuilder.buildGst`): an export order is `intraState=false` and every line uses
+  `GstEngine.EXPORT_RATE` (18%) → a single 18% IGST group; `assemble()` passes `order.getCountry()` as the invoice's
+  `state` for exports so **Place of Supply shows the country** (IGST already rendered for a blank state).
+- **Frontend CA GST dashboard** (`ca-gst`): `gst.model.ts` `SupplyType += 'EXPORT'`, `ExportSummary` iface,
+  `GstReport.export?`. Component: `exportTaxable`/`exportIgst`/`exportOrders`/`hasExports` computeds + `typeLabel()`
+  (Intra/Inter/Export); an **Export KPI tile** (green, clickable → `drillByState('Export')`) in the "Taxable by supply
+  type" row when there are exports; the state-wise type badge uses `typeLabel` + a `.export` (green) badge class.
+- **Tests**: `GstEngineTest` +3 (export line forced 18% IGST even for a 5% product; international→EXPORT classify;
+  compute export segment) → **8/8**. GstEnginePropertyTest 2/2, GstDocumentClassifierTest 9/9, Gstr1BuilderPropertyTest
+  6/6, Gstr1ExporterTest 13/13, InvoiceContentBuilderTest 14/14, EndpointRoleGuardIntegrationTest 39/39 — all green
+  (no existing test needed changes: kept 2-arg classify + 4-arg GstOrder + unchanged Gstr1Return/GstAccountingService
+  ctors). Admin `build:admin` clean → bundle `main-GKKMDQBW.js`. No migration (uses V67). Ships with next deploy.
+
+## DEPLOYED to AWS (2026-09-24, evening) — V67 batch: India/Outside-India entry + export 18% IGST + on-behalf + same-day-duplicate
+Deployed the full pending batch to prod (`https://shifa.weblithic.online/`, IP 15.252.230.73) via
+`push-to-new-server.ps1 -SkipBuild`. Fresh JAR built in `C:\shifa-buildsrc` (JDT-lock workaround) + robocopied to
+`backend\target`; admin bundle `main-GKKMDQBW.js`. DB backup `~/shifa-backup-2026-09-24-152754.sql` (816K). Contents:
+- Admin "place order on behalf of" a salesperson/team lead.
+- Same-day duplicate-order guard.
+- India vs Outside India order entry (**migration V67** `orders.country`).
+- Export GST treatment: outside-India = taxable 18% IGST + separate Export segment (CA dashboard/report/invoice/GSTR-1 category).
+- **Verified live**: Flyway "Successfully validated 67 migrations" + "Migrating … to version 67 - order country" +
+  "Successfully applied 1 migration … now at version v67"; Tomcat on 8080; "Started Application in 23.842s"; root=200,
+  `/api/states`=401; served index references `main-GKKMDQBW.js`. **Highest migration in prod is now V67.**
+- Client reminder: hard-refresh (Ctrl+Shift+R) to pick up the new bundle.
+
+## Same-day duplicate rule refined to PRODUCT-aware (same mobile + same item) — implemented & DEPLOYED (2026-09-24)
+Client: the same-day duplicate guard was blocking on mobile ALONE, but a customer can legitimately place 2-3 orders
+the same day for DIFFERENT items. Fixed so it blocks ONLY when the same mobile repeats at least one PRODUCT on the same
+day; different-item same-day orders are allowed.
+- **Backend** (`OrderService`): `requireNoSameDayDuplicate(mobile, actor, Set<Long> newProductIds)` now scans ALL of the
+  customer's active orders today (via `findActiveByCustomerMobileInWindow`) and blocks only when one shares ≥1 productId
+  with the new order (`firstRepeatedProductName` helper); the 400 message names the existing order + the repeated product
+  ("This customer already has an order today (CODE, by X) that includes \"Product\". A repeat order for the same item on
+  the same day isn't allowed…"). Call site builds `newProductIds` from `priced` (`pl.product().getId()`). A blank mobile
+  or empty product set skips the check.
+- **Frontend** (`new-order.component`): removed the mobile-only hard blocks in `validateStep(1)` + `submit()` (the items
+  aren't known until step 2, so the authoritative block is the server's product-overlap 400 at submit, surfaced via the
+  existing serverErrors/toast). The mobile-entry banner is now INFORMATIONAL (danger→warning): "…already placed an order
+  today. That's fine for different items — but re-ordering the same item on the same day isn't allowed."
+- **Tests**: `OrderServiceTest` — `product(id,...)` helper now sets the entity id via `ReflectionTestUtils` (so test line
+  items carry a productId like production); `createSalespersonOrderRejectsSameDayDuplicateOfSameProduct` (same product →
+  blocked) + `createSalespersonOrderAllowsSameDayOrderWithDifferentProducts` (different product → allowed) + a
+  `todayOrderWithProduct(id,name)` helper. **41/41 green.** Admin `build:admin` clean → bundle `main-OKDPN4VS.js`.
+- **DEPLOYED to AWS 2026-09-24 (21:34 IST)** via `push-to-new-server.ps1 -SkipBuild`. DB backup
+  `~/shifa-backup-2026-09-24-160424.sql`. Verified: Flyway "No migration necessary" (V67 unchanged), Tomcat on 8080,
+  "Started Application in 22.074s", root=200, `/api/states`=401, served index references `main-OKDPN4VS.js`. No migration.
+- **BUILD/SHELL note (this session)**: the `execute_pwsh` shell went intermittently silent (commands returned -1 with no
+  effect) WHILE a background `mvn package` held the terminal; it recovered once that process finished. Verify JAR
+  freshness by comparing SRC (`C:\shifa-buildsrc\...target`) vs DST (`backend\target`) LastWriteTime via a tiny PS script
+  writing to a workspace file — the isolated build produced the fresh JAR at 21:29 but it had to be explicitly Copy-Item'd
+  to the workspace before `-SkipBuild` deploy (robocopy/`copy` calls silently no-op'd during the shell-stall window).

@@ -610,9 +610,18 @@
         <!-- (5) Delivery address -->
         <div class="shifa-od__card shifa-od__contact">
           <div class="shifa-od__contact-main">
-            <div class="shifa-od__label">Delivery Address</div>
+            <div class="shifa-od__label">
+              Delivery Address
+              @if (order.country) {
+                <span class="badge bg-blue-lt ms-1"><i class="ti ti-world me-1"></i>{{ order.country }}</span>
+              }
+            </div>
             <div class="shifa-od__muted mt-1">
-              {{ order.addressLine }}, {{ order.city }}, {{ order.state }} — {{ order.postalCode }}
+              @if (order.country) {
+                {{ order.addressLine }} — {{ order.country }}
+              } @else {
+                {{ order.addressLine }}, {{ order.city }}, {{ order.state }} — {{ order.postalCode }}
+              }
             </div>
           </div>
           <a

@@ -355,6 +355,20 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     () => this.showOnBehalfPicker() && this.placeFor() === 'other' && this.onBehalfUserId() == null,
   );
 
+  // --- India vs Outside India (destination) -------------------------------
+  /**
+   * Order destination: 'india' (default — structured city/state/pincode) or
+   * 'outside' (a single free-text address, no city/state/pincode). Toggling this
+   * enables/disables + (de)validates the structured address controls.
+   */
+  protected readonly destination = signal<'india' | 'outside'>('india');
+
+  /** Whether the order ships outside India (drives the address layout + payload). */
+  protected readonly isInternational = computed(() => this.destination() === 'outside');
+
+  /** The destination country name for an international order (free text). */
+  protected readonly countryName = signal<string>('');
+
   /** Whether the free-text lead-source note is shown (only for {@code OTHER}, Req 4.5). */
   protected readonly showLeadSourceNote = computed(() => this.model().leadSource === 'OTHER');
 
@@ -873,6 +887,43 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   onBehalfSelected(value: string): void {
     const id = value ? Number(value) : NaN;
     this.onBehalfUserId.set(Number.isFinite(id) && id > 0 ? id : null);
+  }
+
+  /**
+   * Switches the order destination between India (structured city/state/pincode)
+   * and Outside India (a single free-text address). For an international order the
+   * structured controls are cleared, de-validated and disabled — so they don't
+   * block the form and the pincode auto-fill (guarded by `enabled`) is skipped;
+   * switching back to India restores their required validators.
+   */
+  setDestination(dest: 'india' | 'outside'): void {
+    this.destination.set(dest);
+    const city = this.form.controls.city;
+    const state = this.form.controls.state;
+    const postalCode = this.form.controls.postalCode;
+    if (dest === 'outside') {
+      for (const c of [city, state, postalCode]) {
+        c.clearValidators();
+        c.setValue('');
+        c.disable();
+        c.updateValueAndValidity();
+      }
+      this.detectedLocation.set(null);
+    } else {
+      city.setValidators([Validators.required, Validators.maxLength(100)]);
+      state.setValidators([Validators.required, Validators.maxLength(100)]);
+      postalCode.setValidators([Validators.required, Validators.pattern(/^\d{6}$/)]);
+      for (const c of [city, state, postalCode]) {
+        c.enable();
+        c.updateValueAndValidity();
+      }
+      this.countryName.set('');
+    }
+  }
+
+  /** Captures the destination country name for an international order. */
+  onCountryChange(value: string): void {
+    this.countryName.set(value ?? '');
   }
 
   private checkDuplicateCustomer(mobile: string | null): void {
@@ -1420,13 +1471,10 @@ export class NewOrderComponent implements OnInit, OnDestroy {
         ok = false;
       }
     }
-    if (step === 1 && this.sameDayDuplicate()) {
-      // Same-day duplicate: an active order for this customer already exists today
-      // (possibly by another salesperson). Block proceeding so no duplicate is
-      // punched; the server enforces the same rule on submit.
-      this.submitAttempted.set(true);
-      ok = false;
-    }
+    // NOTE: a same-day order for this mobile is only INFORMATIONAL here — it no
+    // longer blocks advancing. A real duplicate (same customer + same item on the
+    // same day) is enforced by the server at submit, since the items aren't known
+    // until step 2. A customer may place several same-day orders for different items.
     if (step === 1 && this.onBehalfMissing()) {
       // Admin chose "on behalf of" but hasn't picked a person yet.
       this.submitAttempted.set(true);
@@ -1487,24 +1535,21 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       this.toasts.error('A payment screenshot is required to place the order.');
       return;
     }
-    // Same-day duplicate block (client-side mirror of the server rule). Skipped
-    // for convert-from-lead and resubmit flows: convert comes from a lead, and a
-    // resubmit's own prior order is REJECTED (excluded from the duplicate check).
-    if (!this.convertMode() && !this.resubmitMode() && this.sameDayDuplicate()) {
-      const dup = this.sameDayDuplicate()!;
-      const who = dup.createdByMe
-        ? 'you'
-        : dup.salespersonName ?? 'another salesperson';
-      this.toasts.error(
-        `A duplicate order for this customer was already placed today (${dup.orderCode ?? 'existing order'}, by ${who}). Only one order per customer per day is allowed.`,
-      );
+    // Same-day duplicate is NOT blocked client-side: it's only a real duplicate
+    // when the same customer repeats the same ITEM on the same day, which the
+    // server checks against this order's line items and rejects with a clear 400
+    // (surfaced via serverErrors/toast). Different-item same-day orders are allowed.
+    // Admin chose "on behalf of" but didn't pick a person.
+    if (this.onBehalfMissing()) {
+      this.toasts.error('Select the salesperson or team lead to place this order on behalf of.');
       this.step.set(1);
       this.scrollTop();
       return;
     }
-    // Admin chose "on behalf of" but didn't pick a person.
-    if (this.onBehalfMissing()) {
-      this.toasts.error('Select the salesperson or team lead to place this order on behalf of.');
+    // Outside-India order needs the destination country named.
+    if (this.isInternational() && !this.countryName().trim()) {
+      this.submitAttempted.set(true);
+      this.toasts.error('Enter the destination country for an order outside India.');
       this.step.set(1);
       this.scrollTop();
       return;
@@ -1549,9 +1594,13 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       ...(altMobile ? { alternateMobile: altMobile } : {}),
       ...(email ? { customerEmail: email } : {}),
       addressLine: this.form.controls.addressLine.value.trim(),
+      // For an international order the structured parts are blank (disabled controls
+      // hold '') and the free-text address is in addressLine; the server accepts this.
       city: this.form.controls.city.value.trim(),
       state: this.form.controls.state.value.trim(),
       postalCode: this.form.controls.postalCode.value.trim(),
+      // Destination country: only sent for an Outside-India order (domestic = India).
+      ...(this.isInternational() ? { country: this.countryName().trim() } : {}),
       items: raw.items.map<CreateOrderLineItem>((it) => ({
         productId: it.productId as number,
         quantity: it.quantity,

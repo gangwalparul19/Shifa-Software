@@ -155,7 +155,7 @@ public class Gstr1ReturnService {
 
     private ClassifiedOrder classify(OrderEntity o, String sellerState) {
         GstOrder gstOrder = toGstOrder(o);
-        SupplyType type = GstEngine.classify(o.getState(), sellerState);
+        SupplyType type = GstEngine.classify(o.getState(), sellerState, o.isInternational());
         BigDecimal invoiceValue = invoiceValue(o);
         DocumentCategory category =
                 GstDocumentClassifier.classify(o.getBuyerGstin(), type, invoiceValue);
@@ -180,7 +180,7 @@ public class Gstr1ReturnService {
                 continue;
             }
             GstOrder gstOrder = toGstOrder(original);
-            SupplyType type = GstEngine.classify(original.getState(), sellerState);
+            SupplyType type = GstEngine.classify(original.getState(), sellerState, original.isInternational());
             DocumentCategory category =
                     GstDocumentClassifier.classify(original.getBuyerGstin(), type, invoiceValue(original));
             String stateCode = stateCodes.resolve(original.getState()).orElse("");
@@ -327,7 +327,7 @@ public class Gstr1ReturnService {
                     li.getQuantity(), li.getLineTotal()));
         }
         LocalDate date = o.getCreatedAt() != null ? o.getCreatedAt().toLocalDate() : LocalDate.now(clock);
-        return new GstOrder(o.getId(), o.getState(), date, lines);
+        return new GstOrder(o.getId(), o.getState(), date, lines, o.isInternational());
     }
 
     /** GST-inclusive invoice value = Σ line totals (Req 1.5 threshold + invoice-level rows). */

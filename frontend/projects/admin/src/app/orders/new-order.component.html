@@ -218,11 +218,12 @@
           }
           <!-- Same-day duplicate warning: an active order for this customer was already
                placed today (possibly by another salesperson). Creation is blocked. -->
+          <!-- Same-day order note: informational only. A repeat is blocked at submit
+               ONLY if it includes the same item(s); different items are fine. -->
           @if (sameDayDuplicate(); as dup) {
-            <div class="alert alert-danger py-2 px-2 mt-2 mb-0 d-flex align-items-start" role="alert">
-              <i class="ti ti-alert-octagon me-2 mt-1"></i>
+            <div class="alert alert-warning py-2 px-2 mt-2 mb-0 d-flex align-items-start" role="alert">
+              <i class="ti ti-alert-triangle me-2 mt-1"></i>
               <div class="small">
-                <strong>Duplicate order — already placed today.</strong>
                 @if (dup.createdByMe) {
                   You already placed an order for this customer today
                 } @else {
@@ -231,8 +232,8 @@
                 @if (dup.orderCode) {
                   (<strong>{{ dup.orderCode }}</strong>)
                 }.
-                Only one order per customer per day is allowed. Please check the existing
-                order before creating another.
+                That's fine for <strong>different items</strong> — but re-ordering the same item
+                on the same day isn't allowed. Please check the existing order first.
               </div>
             </div>
           }
@@ -390,14 +391,63 @@
           </div>
         }
 
-        <!-- Delivery address (required by the create-order API) -->
+        <!-- Destination: India (structured address) vs Outside India (free text). -->
         <div class="col-12">
-          <label class="form-label required" for="addressLine">Delivery address</label>
+          <label class="form-label">Delivery destination</label>
+          <div class="btn-group w-100 mb-1" role="group" aria-label="Delivery destination">
+            <button
+              type="button"
+              class="btn"
+              [class.btn-success]="!isInternational()"
+              [class.btn-outline-secondary]="isInternational()"
+              (click)="setDestination('india')"
+            >
+              <i class="ti ti-map-pin me-1"></i>India
+            </button>
+            <button
+              type="button"
+              class="btn"
+              [class.btn-success]="isInternational()"
+              [class.btn-outline-secondary]="!isInternational()"
+              (click)="setDestination('outside')"
+            >
+              <i class="ti ti-world me-1"></i>Outside India
+            </button>
+          </div>
+        </div>
+
+        @if (isInternational()) {
+          <!-- Outside India: destination country + a single free-text address. -->
+          <div class="col-12">
+            <label class="form-label required" for="country">Country</label>
+            <input
+              id="country"
+              type="text"
+              class="form-control"
+              maxlength="60"
+              autocomplete="off"
+              placeholder="e.g. United States, UAE, UK"
+              [value]="countryName()"
+              (input)="onCountryChange($any($event.target).value)"
+              [class.is-invalid]="submitAttempted() && isInternational() && !countryName().trim()"
+            />
+            @if (submitAttempted() && isInternational() && !countryName().trim()) {
+              <div class="invalid-feedback d-block">A destination country is required.</div>
+            }
+          </div>
+        }
+
+        <!-- Delivery address (required by the create-order API). For an
+             international order this is the full free-text address. -->
+        <div class="col-12">
+          <label class="form-label required" for="addressLine">
+            {{ isInternational() ? 'Full address (free text)' : 'Delivery address' }}
+          </label>
           <textarea
             id="addressLine"
             class="form-control"
             formControlName="addressLine"
-            rows="2"
+            [rows]="isInternational() ? 4 : 2"
             maxlength="250"
             autocomplete="off"
             [class.is-invalid]="invalid('addressLine')"
@@ -407,7 +457,9 @@
           }
         </div>
 
-        <!-- City + Pincode share a row; State typeahead gets full width for its menu. -->
+        <!-- City + Pincode share a row; State typeahead gets full width for its menu.
+             Shown only for a domestic (India) order — hidden for Outside India. -->
+        @if (!isInternational()) {
         <div class="col-7">
           <label class="form-label required" for="city">City</label>
           <input
@@ -462,6 +514,7 @@
             <div class="text-danger small mt-1">A state is required.</div>
           }
         </div>
+        }
       </div>
     </div>
   </section>
@@ -817,7 +870,12 @@
     <div class="shifa-no__card">
       <dl class="shifa-review">
         <dt>Customer</dt><dd>{{ form.controls.customerName.value || '—' }} · {{ form.controls.customerMobile.value || '—' }}</dd>
-        <dt>Deliver to</dt><dd>{{ form.controls.addressLine.value }}, {{ form.controls.city.value }}, {{ form.controls.state.value }} — {{ form.controls.postalCode.value }}</dd>
+        <dt>Deliver to</dt>
+        @if (isInternational()) {
+          <dd>{{ form.controls.addressLine.value }} — {{ countryName() || 'Outside India' }}</dd>
+        } @else {
+          <dd>{{ form.controls.addressLine.value }}, {{ form.controls.city.value }}, {{ form.controls.state.value }} — {{ form.controls.postalCode.value }}</dd>
+        }
         <dt>Items</dt><dd>{{ items.length }} item{{ items.length === 1 ? '' : 's' }}</dd>
         <dt>Order total</dt><dd class="fw-bold">{{ formatMoney(orderTotalPaise()) }}</dd>
         <dt>Amount received</dt><dd>{{ form.controls.amountReceived.value | inr }}</dd>

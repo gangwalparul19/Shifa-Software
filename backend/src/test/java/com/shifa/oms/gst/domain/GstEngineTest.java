@@ -54,6 +54,51 @@ class GstEngineTest {
     }
 
     @Test
+    void internationalOrderClassifiesAsExportRegardlessOfState() {
+        // An international order is EXPORT even when its state would otherwise match.
+        assertThat(GstEngine.classify("Madhya Pradesh", "Madhya Pradesh", true))
+                .isEqualTo(SupplyType.EXPORT);
+        assertThat(GstEngine.classify("", "Madhya Pradesh", true)).isEqualTo(SupplyType.EXPORT);
+        // Not international → the usual intra/inter rule.
+        assertThat(GstEngine.classify("Madhya Pradesh", "Madhya Pradesh", false))
+                .isEqualTo(SupplyType.INTRA);
+    }
+
+    @Test
+    void exportLineIsChargedFlat18PercentIgstRegardlessOfProductRate() {
+        // A 5% product on an export order is taxed at 18% IGST (no LUT → taxable).
+        // 1180 inclusive @18% -> taxable 1000, IGST 180.
+        TaxSplit s = GstEngine.splitLine(line("3004", "P", "5", 1, "1180.00"), SupplyType.EXPORT);
+        assertThat(s.igst()).isEqualByComparingTo("180.00");
+        assertThat(s.cgst()).isEqualByComparingTo("0.00");
+        assertThat(s.sgst()).isEqualByComparingTo("0.00");
+        assertThat(s.taxable()).isEqualByComparingTo("1000.00");
+    }
+
+    @Test
+    void computeSummarisesExportSegmentSeparatelyAt18Percent() {
+        String seller = "Madhya Pradesh";
+        List<GstOrder> orders = List.of(
+                new GstOrder(1L, "Madhya Pradesh", LocalDate.now(),
+                        List.of(line("3004", "PetKam", "5", 1, "1050.00"))),          // intra @5
+                new GstOrder(2L, "", LocalDate.now(),
+                        List.of(line("3004", "PetKam", "5", 1, "1180.00")), true));   // export @18
+        GstComputation c = GstEngine.compute(orders, seller);
+
+        // Export segment: one order, taxable 1000, IGST 180.
+        assertThat(c.export().orderCount()).isEqualTo(1);
+        assertThat(c.export().taxable()).isEqualByComparingTo("1000.00");
+        assertThat(c.export().igst()).isEqualByComparingTo("180.00");
+        // The export order shows under an "Export" state-wise row typed EXPORT.
+        assertThat(c.stateWise()).anySatisfy(row -> {
+            assertThat(row.state()).isEqualTo("Export");
+            assertThat(row.type()).isEqualTo(SupplyType.EXPORT);
+        });
+        // Export IGST is included in the GSTR-3B total.
+        assertThat(c.summary().outputIgst()).isEqualByComparingTo("180.00");
+    }
+
+    @Test
     void computeAggregatesAndReconcilesAcrossSummaries() {
         String seller = "Madhya Pradesh";
         List<GstOrder> orders = List.of(

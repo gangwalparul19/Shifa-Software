@@ -9,6 +9,10 @@ package com.shifa.oms.gst.domain;
  *       buyer with invoice value greater than ₹2,50,000; reported invoice-level.</li>
  *   <li>{@link #B2CS} — B2C Small: any other unregistered-buyer supply; reported summarised
  *       (rate + place-of-supply).</li>
+ *   <li>{@link #EXPORT} — a supply shipped OUTSIDE India (GSTR-1 Table 6A, exports).
+ *       The business does not file a LUT, so these are taxable exports charged at
+ *       18% IGST (WPAY — with payment of tax), reported separately, never as
+ *       B2CS/B2CL.</li>
  * </ul>
  *
  * <p>{@code B2C = {B2CL, B2CS}} — the two unregistered-buyer categories.
@@ -16,5 +20,6 @@ package com.shifa.oms.gst.domain;
 public enum DocumentCategory {
     B2B,
     B2CL,
-    B2CS
+    B2CS,
+    EXPORT
 }

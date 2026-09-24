@@ -78,7 +78,7 @@ class DeterministicOrderCreationPropertyTest {
                 List.of(new LineItemRequest(1L, quantity, null)),
                 new BigDecimal("100.00"), "payments/x.jpg", leadSource,
                 null, null, null, null, null, null, null, null,
-                null, null);
+                null, null, null);
 
         OrderResponse response = service.createSalespersonOrder(request, actor);
 

@@ -182,12 +182,18 @@ public class OrderService {
         Money total = Money.of(pricedOrder.total());
         requirePositiveTotal(total);
 
-        // Same-day duplicate guard (client): a customer can reach two salespeople
-        // the same day and get the same order punched twice. Reject a second active
-        // order for the same mobile on the same calendar day (IST), naming the
-        // existing order + who placed it so the salesperson understands why. This is
-        // the authoritative block; the New Order form also warns before submit.
-        requireNoSameDayDuplicate(request.customerMobile(), actor);
+        // Same-day duplicate guard: a customer can reach two salespeople the same
+        // day and get the SAME items punched twice. Reject a second active order for
+        // the same mobile on the same calendar day (IST) ONLY when it repeats at
+        // least one product from an existing order today — a customer may legitimately
+        // place several orders the same day for DIFFERENT items. The message names the
+        // existing order + who placed it. Authoritative block; the server 400 also
+        // surfaces on the New Order form at submit.
+        java.util.Set<Long> newProductIds = priced.stream()
+                .map(pl -> pl.product().getId())
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        requireNoSameDayDuplicate(request.customerMobile(), actor, newProductIds);
 
         Money received = Money.of(request.amountReceived());
         // Minimum-upfront-payment policy (client: no COD/₹0 orders — only Full or
@@ -221,16 +227,24 @@ public class OrderService {
         // non-admin) resolves to the acting user.
         EffectiveCreator creator = resolveEffectiveCreator(request.onBehalfOfUserId(), actor);
 
+        // India vs Outside India (V67): a domestic order keeps the structured
+        // city/state/6-digit pincode; an international order captures a single
+        // free-text address (in addressLine) with the destination country and
+        // leaves the structured parts empty. This resolves + validates the address
+        // for the chosen destination and yields the values to persist.
+        ResolvedAddress addr = resolveAddress(request);
+
         OrderEntity order = new OrderEntity(
                 orderCodeGenerator.generate(orderRepository::existsByOrderCode),
                 OrderSource.SALESPERSON,
                 creator.userId(),
                 request.customerName(),
                 request.customerMobile(),
-                request.addressLine(),
-                request.city(),
-                request.state(),
-                request.postalCode());
+                addr.addressLine(),
+                addr.city(),
+                addr.state(),
+                addr.postalCode());
+        order.setCountry(addr.country());
 
         // Lead-source fields persist on the order aggregate, distinct from Order_Source.
         order.setLeadSource(request.leadSource());
@@ -1101,26 +1115,46 @@ public class OrderService {
      * customer today, rather than silently creating a duplicate. A blank mobile is
      * left to the existing field validation.
      */
-    private void requireNoSameDayDuplicate(String mobile, AuthPrincipal actor) {
-        if (mobile == null || mobile.isBlank()) {
+    private void requireNoSameDayDuplicate(String mobile, AuthPrincipal actor,
+                                           java.util.Set<Long> newProductIds) {
+        if (mobile == null || mobile.isBlank() || newProductIds == null || newProductIds.isEmpty()) {
             return;
         }
-        Optional<OrderEntity> existing = latestActiveTodayOrder(mobile.trim());
-        if (existing.isEmpty()) {
-            return;
+        LocalDate today = LocalDate.now(BUSINESS_ZONE);
+        LocalDateTime from = today.atStartOfDay();
+        LocalDateTime to = today.plusDays(1).atStartOfDay();
+        // Scan every active order the customer already has today; block only when
+        // one of them contains a product also in this new order (same mobile + same
+        // item = a real duplicate). Different-item orders the same day are allowed.
+        for (OrderEntity existing : orderRepository.findActiveByCustomerMobileInWindow(
+                mobile.trim(), from, to)) {
+            String repeated = firstRepeatedProductName(existing, newProductIds);
+            if (repeated == null) {
+                continue;
+            }
+            boolean mine = actor != null && actor.userId() != null
+                    && actor.userId().equals(existing.getCreatedBy());
+            String placedBy = resolveSalespersonName(existing.getCreatedBy());
+            String who = mine ? "you" : (placedBy != null ? placedBy : "another salesperson");
+            throw new ValidationException(
+                    "This customer already has an order today (" + existing.getOrderCode()
+                            + ", by " + who + ") that includes \"" + repeated
+                            + "\". A repeat order for the same item on the same day isn't allowed — "
+                            + "please check the existing order, or change the items before creating another.");
         }
-        OrderEntity order = existing.get();
-        boolean mine = actor != null && actor.userId() != null
-                && actor.userId().equals(order.getCreatedBy());
-        String placedBy = resolveSalespersonName(order.getCreatedBy());
-        String who = mine
-                ? "you"
-                : (placedBy != null ? placedBy : "another salesperson");
-        throw new ValidationException(
-                "A duplicate order for this customer was already placed today ("
-                        + order.getOrderCode() + ", by " + who
-                        + "). Only one order per customer per day is allowed — please check "
-                        + "the existing order before creating another.");
+    }
+
+    /**
+     * The name of the first line item in {@code existing} whose product id is also
+     * in {@code newProductIds}, or null when there is no product overlap.
+     */
+    private static String firstRepeatedProductName(OrderEntity existing, java.util.Set<Long> newProductIds) {
+        for (OrderLineItem li : existing.getLineItems()) {
+            if (li.getProductId() != null && newProductIds.contains(li.getProductId())) {
+                return li.getProductName();
+            }
+        }
+        return null;
     }
 
     /** The user an order is attributed to (created_by + history actor + stock credit). */
@@ -1166,6 +1200,47 @@ public class OrderService {
                     "The selected user is inactive and cannot be assigned new orders.");
         }
         return new EffectiveCreator(target.getId(), target.getUsername());
+    }
+
+    /** The resolved shipping address to persist (domestic or international). */
+    private record ResolvedAddress(String addressLine, String city, String state,
+                                   String postalCode, String country) {
+    }
+
+    /**
+     * Resolves and validates the shipping address for the order's destination
+     * (India/Outside India, V67). {@code addressLine} is always required. For a
+     * DOMESTIC order (blank country, or "India") the structured city + state +
+     * 6-digit postal code are required (mirroring the historical rule, enforced
+     * here so the DTO can accept a blank address for international orders). For an
+     * INTERNATIONAL order the country is recorded and city/state/postalCode are
+     * stored empty (the full address lives in {@code addressLine}).
+     */
+    private ResolvedAddress resolveAddress(CreateOrderRequest request) {
+        String addressLine = trimToNull(request.addressLine());
+        if (addressLine == null) {
+            throw new ValidationException("A delivery address is required.");
+        }
+        String country = trimToNull(request.country());
+        boolean international = country != null && !country.equalsIgnoreCase("India");
+        if (international) {
+            // Structured parts are meaningless for an international address; store
+            // them empty (columns are NOT NULL) and keep the free-text in addressLine.
+            return new ResolvedAddress(addressLine, "", "", "", country);
+        }
+        // Domestic (India): the structured address is required.
+        String city = trimToNull(request.city());
+        String state = trimToNull(request.state());
+        String postalCode = trimToNull(request.postalCode());
+        if (city == null || state == null || postalCode == null) {
+            throw new ValidationException(
+                    "City, state and a 6-digit pincode are required for an order within India.");
+        }
+        if (!postalCode.matches("\\d{6}")) {
+            throw new ValidationException("postalCode must be exactly 6 digits.");
+        }
+        // country stays null for a domestic order.
+        return new ResolvedAddress(addressLine, city, state, postalCode, null);
     }
 
     /**

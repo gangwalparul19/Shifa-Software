@@ -175,6 +175,7 @@
 .gst-type-badge { border-radius: 6px; padding: 0.12rem 0.5rem; font-size: 0.76rem; font-weight: 600; }
 .gst-type-badge.intra { background: #eaf1fe; color: #2563eb; }
 .gst-type-badge.inter { background: #fef3e6; color: #d97706; }
+.gst-type-badge.export { background: #eaf5ef; color: #1f5d3f; }
 
 .gst-empty { text-align: center; color: var(--gst-muted); padding: 2rem 1rem; }
 

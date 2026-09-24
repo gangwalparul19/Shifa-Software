@@ -77,6 +77,17 @@ public class GstPdfExporter {
             doc.add(sum);
             doc.add(gap());
 
+            // Export segment (outside-India supplies, taxed as 18% IGST — no LUT).
+            if (r.export() != null && r.export().orderCount() > 0) {
+                doc.add(new Paragraph("Export (outside India) — taxed as 18% IGST", SECTION));
+                PdfPTable exp = table(new float[]{2, 2, 2},
+                        "Export orders", "Taxable", "IGST");
+                body(exp, String.valueOf(r.export().orderCount()),
+                        money(r.export().taxable()), money(r.export().igst()));
+                doc.add(exp);
+                doc.add(gap());
+            }
+
             // Rate-wise
             doc.add(new Paragraph("Rate-wise summary", SECTION));
             PdfPTable rate = table(new float[]{1.2f, 2, 2, 2, 2, 2},

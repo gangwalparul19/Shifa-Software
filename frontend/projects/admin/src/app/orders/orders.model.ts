@@ -90,6 +90,13 @@ export interface CreateOrderRequest {
    * sending it. Populated from {@link AssignableCreator}.
    */
   onBehalfOfUserId?: number;
+  /**
+   * Destination country for an international order (India/Outside India entry).
+   * Omitted/undefined for a domestic (India) order — the default. When set to a
+   * country name, the full address is in {@link addressLine} and city/state/
+   * postalCode may be blank.
+   */
+  country?: string;
 }
 
 /**
@@ -377,6 +384,8 @@ export interface OrderDetail {
   city: string;
   state: string;
   postalCode: string;
+  /** Destination country for an international order; null/undefined = India (domestic). */
+  country?: string | null;
   totalAmount: Money;
   amountReceived: Money;
   remainingAmount: Money;

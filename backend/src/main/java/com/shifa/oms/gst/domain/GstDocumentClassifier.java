@@ -44,6 +44,11 @@ public final class GstDocumentClassifier {
      */
     public static DocumentCategory classify(String buyerGstin, SupplyType supplyType,
                                             BigDecimal invoiceValue) {
+        // An export (outside India) is always Table 6A, regardless of any GSTIN —
+        // a foreign buyer has no Indian GSTIN, and it must never fall into B2CS/B2CL.
+        if (supplyType == SupplyType.EXPORT) {
+            return DocumentCategory.EXPORT;
+        }
         if (Gstin.isValid(buyerGstin)) {
             return DocumentCategory.B2B;
         }

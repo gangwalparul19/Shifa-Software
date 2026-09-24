@@ -172,7 +172,9 @@ public class InvoiceContentBuilder {
                 order.getCustomerMobile(),
                 order.getAddressLine(),
                 order.getCity(),
-                order.getState(),
+                // For an export order the structured state is blank; show the
+                // destination country as the place of supply instead.
+                order.isInternational() ? order.getCountry() : order.getState(),
                 order.getPostalCode(),
                 prettify(order.getOrderStatus() != null ? order.getOrderStatus().name() : null),
                 prettify(order.getPaymentStatus() != null ? order.getPaymentStatus().name() : null),
@@ -235,17 +237,25 @@ public class InvoiceContentBuilder {
      */
     private InvoiceGstDetails buildGst(OrderEntity order, AppSettings settings,
                                        Map<Long, BigDecimal> gstRateByProductId) {
-        boolean intraState = isIntraState(order.getState(), settings.getState());
+        // An export (outside-India) order is a taxable inter-state supply charged
+        // at a flat 18% IGST (business policy — no LUT, so not zero-rated). It is
+        // never intra-state, and every line uses the 18% export rate regardless of
+        // the product's domestic rate — matching the GST engine/report.
+        boolean export = order.isInternational();
+        boolean intraState = !export && isIntraState(order.getState(), settings.getState());
         boolean inclusive = settings.isPricesIncludeGst();
         BigDecimal defaultRate = settings.getGstRatePercent();
 
         List<OrderLineItem> lines = order.getLineItems();
         List<BigDecimal> shares = discountShares(order);
 
-        // Group the discounted net by GST rate, preserving first-seen order.
+        // Group the discounted net by GST rate, preserving first-seen order. An
+        // export order collapses to a single 18% group.
         java.util.LinkedHashMap<BigDecimal, BigDecimal> netByRate = new java.util.LinkedHashMap<>();
         for (int i = 0; i < lines.size(); i++) {
-            BigDecimal rate = resolveLineRate(lines.get(i), gstRateByProductId, defaultRate);
+            BigDecimal rate = export
+                    ? com.shifa.oms.gst.domain.GstEngine.EXPORT_RATE
+                    : resolveLineRate(lines.get(i), gstRateByProductId, defaultRate);
             BigDecimal base = lines.get(i).getLineTotal() != null
                     ? lines.get(i).getLineTotal() : BigDecimal.ZERO;
             BigDecimal net = base.subtract(shares.get(i));

@@ -40,9 +40,26 @@ public final class GstEngine {
                           BigDecimal lineTotal) {
     }
 
-    /** One outward order in the period: place-of-supply state, order date, and its lines. */
-    public record GstOrder(Long orderId, String state, LocalDate date, List<GstLine> lines) {
+    /**
+     * One outward order in the period: place-of-supply state, order date, its
+     * lines, and whether it is an EXPORT (destination outside India). An export
+     * order is taxed as IGST at {@link #EXPORT_RATE}% (no LUT → taxable, not
+     * zero-rated) and reported in a separate Export segment.
+     */
+    public record GstOrder(Long orderId, String state, LocalDate date, List<GstLine> lines,
+                           boolean international) {
+        /** Back-compat: a domestic (non-export) order. */
+        public GstOrder(Long orderId, String state, LocalDate date, List<GstLine> lines) {
+            this(orderId, state, date, lines, false);
+        }
     }
+
+    /**
+     * The GST rate charged on an EXPORT supply. The business does not file a LUT,
+     * so exports are taxed (not zero-rated); per business policy they are charged
+     * at a flat 18% IGST regardless of the product's domestic rate.
+     */
+    public static final BigDecimal EXPORT_RATE = new BigDecimal("18");
 
     // --- Outputs -------------------------------------------------------------
 
@@ -73,8 +90,18 @@ public final class GstEngine {
                                 BigDecimal outputIgst, BigDecimal outputTotal, BigDecimal invoiceValue) {
     }
 
+    /**
+     * The export segment: taxable + IGST charged on outward EXPORT supplies in the
+     * period, and the number of export orders. Zeroes when there were no exports.
+     * These figures are ALSO included in {@code summary} (GSTR-3B) and the
+     * rate/state-wise rows — this is a labelled slice, not a separate total.
+     */
+    public record ExportSummary(BigDecimal taxable, BigDecimal igst, int orderCount) {
+    }
+
     public record GstComputation(List<RateWiseRow> rateWise, List<HsnRow> hsn,
-                                 List<StateWiseRow> stateWise, Gstr3bSummary summary) {
+                                 List<StateWiseRow> stateWise, Gstr3bSummary summary,
+                                 ExportSummary export) {
     }
 
     // --- Core ----------------------------------------------------------------
@@ -86,7 +113,10 @@ public final class GstEngine {
      */
     public static TaxSplit splitLine(GstLine line, SupplyType type) {
         BigDecimal total = line.lineTotal() == null ? ZERO : line.lineTotal().setScale(SCALE, ROUND);
-        BigDecimal rate = line.gstRate();
+        // An EXPORT line is charged a flat 18% IGST (business policy — no LUT, so
+        // taxable, not zero-rated), regardless of the product's domestic rate. Every
+        // other supply uses the line's own snapshot rate.
+        BigDecimal rate = type == SupplyType.EXPORT ? EXPORT_RATE : line.gstRate();
         if (rate == null || rate.signum() <= 0 || total.signum() <= 0) {
             return new TaxSplit(total, ZERO, ZERO, ZERO);
         }
@@ -99,11 +129,31 @@ public final class GstEngine {
             BigDecimal taxable = total.subtract(tax).setScale(SCALE, ROUND);
             return new TaxSplit(taxable, half, half, ZERO);
         }
+        // INTER and EXPORT → all IGST.
         return new TaxSplit(taxable0, ZERO, ZERO, tax0);
+    }
+
+    /** The effective GST rate applied to a line under a supply type (18% for EXPORT). */
+    private static BigDecimal effectiveRate(GstLine line, SupplyType type) {
+        BigDecimal rate = type == SupplyType.EXPORT ? EXPORT_RATE : line.gstRate();
+        return rate == null ? ZERO : rate.setScale(SCALE, ROUND);
     }
 
     /** Classifies an order by comparing its state to the seller state (blank seller → INTER, Req 2.3). */
     public static SupplyType classify(String orderState, String sellerState) {
+        return classify(orderState, sellerState, false);
+    }
+
+    /**
+     * Classifies an order's supply type. An INTERNATIONAL (outside-India) order is
+     * an {@link SupplyType#EXPORT} regardless of state; otherwise it is INTRA when
+     * the destination state equals the seller state, else INTER (blank seller/state
+     * → INTER, Req 2.3).
+     */
+    public static SupplyType classify(String orderState, String sellerState, boolean international) {
+        if (international) {
+            return SupplyType.EXPORT;
+        }
         if (sellerState == null || sellerState.isBlank() || orderState == null || orderState.isBlank()) {
             return SupplyType.INTER;
         }
@@ -125,14 +175,24 @@ public final class GstEngine {
         BigDecimal totSgst = ZERO;
         BigDecimal totIgst = ZERO;
         BigDecimal totInvoice = ZERO;
+        // Export segment accumulators (labelled slice of the totals above).
+        BigDecimal expTaxable = ZERO;
+        BigDecimal expIgst = ZERO;
+        int expOrders = 0;
 
         for (GstOrder order : orders) {
-            SupplyType type = classify(order.state(), sellerState);
-            String stateKey = order.state() == null || order.state().isBlank()
-                    ? "(unknown)" : order.state().trim();
+            SupplyType type = classify(order.state(), sellerState, order.international());
+            // Export orders are grouped under a single "Export" bucket in the
+            // state-wise summary (their real destination is a foreign country).
+            String stateKey = type == SupplyType.EXPORT
+                    ? "Export"
+                    : (order.state() == null || order.state().isBlank()
+                        ? "(unknown)" : order.state().trim());
+            boolean orderHadTax = false;
             for (GstLine line : order.lines()) {
                 TaxSplit s = splitLine(line, type);
-                BigDecimal rate = line.gstRate() == null ? ZERO : line.gstRate().setScale(SCALE, ROUND);
+                // The rate bucket reflects the EFFECTIVE rate (18% for an export line).
+                BigDecimal rate = effectiveRate(line, type);
 
                 RateAcc ra = byRate.computeIfAbsent(rate.toPlainString(), k -> new RateAcc(rate));
                 ra.add(s);
@@ -150,6 +210,15 @@ public final class GstEngine {
                 totSgst = totSgst.add(s.sgst());
                 totIgst = totIgst.add(s.igst());
                 totInvoice = totInvoice.add(s.invoiceValue());
+
+                if (type == SupplyType.EXPORT) {
+                    expTaxable = expTaxable.add(s.taxable());
+                    expIgst = expIgst.add(s.igst());
+                    orderHadTax = true;
+                }
+            }
+            if (type == SupplyType.EXPORT && orderHadTax) {
+                expOrders++;
             }
         }
 
@@ -180,7 +249,10 @@ public final class GstEngine {
                 totCgst.add(totSgst).add(totIgst).setScale(SCALE, ROUND),
                 totInvoice.setScale(SCALE, ROUND));
 
-        return new GstComputation(rateRows, hsnRows, stateRows, summary);
+        ExportSummary export = new ExportSummary(
+                expTaxable.setScale(SCALE, ROUND), expIgst.setScale(SCALE, ROUND), expOrders);
+
+        return new GstComputation(rateRows, hsnRows, stateRows, summary, export);
     }
 
     // --- Accumulators --------------------------------------------------------

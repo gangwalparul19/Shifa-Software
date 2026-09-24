@@ -93,6 +93,17 @@ export class CaGstDashboardComponent implements OnInit {
       .reduce((sum, r) => sum + this.n(r.taxable), 0),
   );
 
+  /** Export (outside-India) segment — taxable, 18% IGST, and order count. */
+  protected readonly exportTaxable = computed(() => this.n(this.data()?.report.export?.taxable ?? 0));
+  protected readonly exportIgst = computed(() => this.n(this.data()?.report.export?.igst ?? 0));
+  protected readonly exportOrders = computed(() => this.data()?.report.export?.orderCount ?? 0);
+  protected readonly hasExports = computed(() => this.exportOrders() > 0);
+
+  /** Short badge label for a supply type (Intra / Inter / Export). */
+  protected typeLabel(type: string): string {
+    return type === 'INTRA' ? 'Intra' : type === 'EXPORT' ? 'Export' : 'Inter';
+  }
+
   // --- Drill-down (orders behind a summary figure) ------------------------
   protected readonly drillOpen = signal(false);
   protected readonly drillTitle = signal('');

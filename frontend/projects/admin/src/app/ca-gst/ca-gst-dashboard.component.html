@@ -151,6 +151,19 @@
         <div class="gst-kpi__value">{{ money(interTaxable()) }}</div>
       </div>
     </div>
+    @if (hasExports()) {
+      <div class="col-12 col-md-12">
+        <div class="gst-kpi acc-green is-clickable" (click)="drillByState('Export')">
+          <div class="gst-kpi__head">
+            <span class="gst-kpi__icon"><i class="ti ti-world"></i></span>
+            <span class="gst-kpi__label">Export (outside India) — taxable, 18% IGST</span>
+          </div>
+          <div class="gst-kpi__value">{{ money(exportTaxable()) }}
+            <small class="text-secondary">· IGST {{ money(exportIgst()) }} · {{ exportOrders() }} order{{ exportOrders() === 1 ? '' : 's' }}</small>
+          </div>
+        </div>
+      </div>
+    }
   </div>
 
   <!-- ============ GSTR-3B summary + net ============ -->
@@ -235,7 +248,7 @@
           @for (s of d.report.stateWise; track $index) {
             <tr class="is-clickable" (click)="drillByState(s.state)">
               <td class="fw-bold">{{ s.state }}</td>
-              <td><span class="gst-type-badge" [class.intra]="s.type === 'INTRA'" [class.inter]="s.type === 'INTER'">{{ s.type === 'INTRA' ? 'Intra' : 'Inter' }}</span></td>
+              <td><span class="gst-type-badge" [class.intra]="s.type === 'INTRA'" [class.inter]="s.type === 'INTER'" [class.export]="s.type === 'EXPORT'">{{ typeLabel(s.type) }}</span></td>
               <td class="num">{{ money(s.taxable) }}</td>
               <td class="num">{{ money(s.cgst) }}</td>
               <td class="num">{{ money(s.sgst) }}</td>

@@ -144,6 +144,15 @@ public class OrderEntity {
     @Column(name = "postal_code", nullable = false, length = 6)
     private String postalCode;
 
+    /**
+     * Destination country for an international order (India/Outside India order
+     * entry, V67). NULL for a domestic (India) order — the default. An
+     * international order stores the free-text address in {@link #addressLine} and
+     * leaves {@link #city}/{@link #state}/{@link #postalCode} empty.
+     */
+    @Column(name = "country", length = 60)
+    private String country;
+
     @Column(name = "total_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal totalAmount = BigDecimal.ZERO;
 
@@ -668,6 +677,23 @@ public class OrderEntity {
     /** Corrects the shipping postal code (admin edit-order feature). */
     public void setPostalCode(String postalCode) {
         this.postalCode = postalCode;
+    }
+
+    public String getCountry() {
+        return country;
+    }
+
+    /** Records the destination country for an international order (V67); null = India. */
+    public void setCountry(String country) {
+        this.country = country;
+    }
+
+    /**
+     * Whether this is an international (outside-India) order — a non-blank country
+     * other than India. Drives GST export treatment (taxed as IGST, segmented).
+     */
+    public boolean isInternational() {
+        return country != null && !country.isBlank() && !"India".equalsIgnoreCase(country.trim());
     }
 
     public BigDecimal getTotalAmount() {

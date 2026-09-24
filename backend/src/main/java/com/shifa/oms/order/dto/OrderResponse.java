@@ -120,7 +120,11 @@ public record OrderResponse(
         // The payment verifier's free-text note when the payment was rejected
         // (payment_verification_note). Surfaced so the salesperson sees why the
         // payment was rejected. Null when there's no note / no payment to verify.
-        String paymentVerificationNote
+        String paymentVerificationNote,
+        // Destination country for an international order (India/Outside India order
+        // entry, V67). Null for a domestic (India) order. When set, the structured
+        // city/state/postalCode are empty and the full address is in addressLine.
+        String country
 ) {
 
     /**
@@ -280,7 +284,8 @@ public record OrderResponse(
                 order.getStatusHistory().stream().map(StatusHistoryEntryResponse::from).toList(),
                 null,
                 order.getRejectReason(),
-                order.getPaymentVerificationNote());
+                order.getPaymentVerificationNote(),
+                order.getCountry());
     }
 
     /**
@@ -297,7 +302,7 @@ public record OrderResponse(
                 subtotalAmount, gstAmount, discountType, discountValue, buyerGstin,
                 quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest, rejectionReason,
                 rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory, salespersonName,
-                rejectReason, paymentVerificationNote);
+                rejectReason, paymentVerificationNote, country);
     }
 
     /**
@@ -315,7 +320,7 @@ public record OrderResponse(
                 subtotalAmount, gstAmount, discountType, discountValue, buyerGstin,
                 quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest, rejectionReason,
                 rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory, salespersonName,
-                rejectReason, paymentVerificationNote);
+                rejectReason, paymentVerificationNote, country);
     }
 
     /**
@@ -376,7 +381,8 @@ public record OrderResponse(
                 statusHistory,
                 salespersonName,
                 rejectReason,
-                paymentVerificationNote);
+                paymentVerificationNote,
+                country);
     }
 
     /**
@@ -396,6 +402,6 @@ public record OrderResponse(
                 paymentVerificationStatus, subtotalAmount, gstAmount, discountType, discountValue,
                 buyerGstin, quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest,
                 rejectionReason, rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory,
-                salespersonName, rejectReason, paymentVerificationNote);
+                salespersonName, rejectReason, paymentVerificationNote, country);
     }
 }

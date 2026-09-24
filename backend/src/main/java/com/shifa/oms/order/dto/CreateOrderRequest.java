@@ -44,16 +44,19 @@ public record CreateOrderRequest(
         @Size(max = 250, message = "addressLine must be at most 250 characters")
         String addressLine,
 
-        @NotBlank(message = "city is required")
+        // city/state/postalCode are required for a DOMESTIC (India) order but
+        // OPTIONAL for an international order (India/Outside India entry, V67), so
+        // the presence rule is enforced in the service based on `country` — here we
+        // only bound the length/format when a value IS supplied. The postalCode
+        // pattern matches empty-or-6-digits (@Pattern treats null as valid), the
+        // same "optional field" trick used by alternateMobile.
         @Size(max = 100, message = "city must be at most 100 characters")
         String city,
 
-        @NotBlank(message = "state is required")
         @Size(max = 100, message = "state must be at most 100 characters")
         String state,
 
-        @NotBlank(message = "postalCode is required")
-        @Pattern(regexp = "\\d{6}", message = "postalCode must be exactly 6 digits")
+        @Pattern(regexp = "(\\d{6})?", message = "postalCode must be exactly 6 digits")
         String postalCode,
 
         @NotEmpty(message = "at least one line item is required")
@@ -128,6 +131,13 @@ public record CreateOrderRequest(
         // and counts toward their performance). Ignored/omitted for a self order.
         // ONLY an ADMIN may set it, and the target must be an active SALESPERSON or
         // TEAM_LEAD — both enforced in the service (a non-admin sending it is rejected).
-        Long onBehalfOfUserId
+        Long onBehalfOfUserId,
+
+        // Destination country for an international order (India/Outside India entry,
+        // V67). Null/blank or "India" = a domestic order (city/state/6-digit pincode
+        // required). Any other value = an international order: the full address is in
+        // addressLine and city/state/postalCode may be blank.
+        @Size(max = 60, message = "country must be at most 60 characters")
+        String country
 ) {
 }

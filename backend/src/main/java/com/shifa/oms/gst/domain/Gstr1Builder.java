@@ -139,6 +139,14 @@ public final class Gstr1Builder {
                                 .add(a);
                     }
                 }
+                case EXPORT -> {
+                    // Exports (outside India) belong in GSTR-1 Table 6A (EXPWP — export
+                    // with payment of tax, 18% IGST). They are deliberately NOT routed
+                    // into B2B/B2CL/B2CS (that would misfile them). Their taxable value
+                    // and IGST still flow into the HSN Table-12 summary and the
+                    // reconciliation total above; a dedicated portal Table-6A section is
+                    // a follow-up (the CA sees the export segment on the dashboard/report).
+                }
                 default -> {
                     // DocumentCategory is exhaustive; no other value is possible.
                 }
