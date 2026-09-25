@@ -204,11 +204,25 @@ public class LabelService {
             String brand = s.getLegalName() != null && !s.getLegalName().isBlank()
                     ? s.getLegalName() : "Shifa Herbal Remedies";
             String pickup = joinNonBlank(", ", s.getAddressLine(), s.getCity(), s.getState());
-            return new LabelCompany(brand, brand, pickup.isBlank() ? null : pickup);
+            // Seller GST No + header address so the label header mirrors the invoice
+            // (brand + address + GST No under it). Shown only when GST is enabled.
+            String gstin = s.isGstEnabled() ? blankToNull(s.getGstin()) : null;
+            String stateWithCode = s.getState() != null ? s.getState() : "";
+            if (s.getStateCode() != null && !s.getStateCode().isBlank()) {
+                stateWithCode = (stateWithCode.isBlank() ? "" : stateWithCode + " ")
+                        + "(" + s.getStateCode() + ")";
+            }
+            String headerAddress = joinNonBlank(", ", s.getAddressLine(), s.getCity(), stateWithCode);
+            return new LabelCompany(brand, brand, pickup.isBlank() ? null : pickup,
+                    gstin, headerAddress.isBlank() ? null : headerAddress);
         } catch (Exception e) {
             log.debug("Falling back to default label company (settings unavailable): {}", e.getMessage());
             return LabelCompany.defaults();
         }
+    }
+
+    private static String blankToNull(String v) {
+        return (v != null && !v.isBlank()) ? v.trim() : null;
     }
 
     private static String joinNonBlank(String sep, String... parts) {

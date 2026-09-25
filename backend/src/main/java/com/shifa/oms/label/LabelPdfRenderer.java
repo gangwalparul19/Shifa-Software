@@ -42,14 +42,16 @@ public class LabelPdfRenderer {
     private static final Color BORDER = new Color(30, 30, 30);
     private static final Color CAPTION_GREY = new Color(110, 110, 110);
 
-    private static final Font HEADER_WHITE = white(FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9));
-    private static final Font NAME_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 13);
-    private static final Font BRAND_DARK = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 13);
-    private static final Font BODY_FONT = FontFactory.getFont(FontFactory.HELVETICA, 10);
-    private static final Font SMALL_FONT = FontFactory.getFont(FontFactory.HELVETICA, 9);
-    private static final Font CAPTION_FONT = grey(FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7));
-    private static final Font CODE_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11);
-    private static final Font BIG_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 15);
+    // Fonts sized for an A6 quadrant (four labels to an A4 sheet): compact but
+    // still legible after the sheet is cut into four.
+    private static final Font HEADER_WHITE = white(FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8));
+    private static final Font NAME_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10);
+    private static final Font BRAND_DARK = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10);
+    private static final Font BODY_FONT = FontFactory.getFont(FontFactory.HELVETICA, 8);
+    private static final Font SMALL_FONT = FontFactory.getFont(FontFactory.HELVETICA, 7);
+    private static final Font CAPTION_FONT = grey(FontFactory.getFont(FontFactory.HELVETICA_BOLD, 6));
+    private static final Font CODE_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9);
+    private static final Font BIG_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12);
 
     private static Font white(Font f) {
         f.setColor(Color.WHITE);
@@ -101,22 +103,66 @@ public class LabelPdfRenderer {
             throw new ApiException(HttpStatus.BAD_REQUEST, "NO_LABELS",
                     "At least one label is required to produce a PDF.");
         }
-        Document document = new Document(PageSize.A5, 36, 36, 36, 36);
+        // Four labels per A4 sheet, laid out as a 2x2 grid (each label ~A6, an
+        // A4 quadrant) — matches how the packing team physically prints and cuts
+        // labels four-up. Blocks fill the grid left-to-right, top-to-bottom; a
+        // fresh A4 page starts after every fourth label, and a partial final
+        // page is padded with empty grid cells so the 2x2 shape is preserved.
+        Document document = new Document(PageSize.A4, 18, 18, 18, 18);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
             PdfWriter.getInstance(document, out);
             document.open();
+            PdfPTable grid = newGrid();
             for (int i = 0; i < contents.size(); i++) {
-                if (i > 0) {
+                if (i > 0 && i % LABELS_PER_PAGE == 0) {
+                    // The grid holds a full 2x2 page; flush it and start fresh.
+                    document.add(grid);
                     document.newPage();
+                    grid = newGrid();
                 }
-                writeLabelBlock(document, contents.get(i), logoPng);
+                grid.addCell(quadrantCell(writeLabelBlock(contents.get(i), logoPng)));
             }
+            // Pad the last page's grid so any unused quadrants render as empty
+            // cells, keeping the 2x2 layout intact, then flush it.
+            int placed = contents.size() % LABELS_PER_PAGE;
+            if (placed != 0) {
+                fillEmptyCells(grid, LABELS_PER_PAGE - placed);
+            }
+            document.add(grid);
             document.close();
             return out.toByteArray();
         } catch (DocumentException e) {
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "LABEL_PDF_FAILED",
                     "Failed to render the internal company label PDF.");
+        }
+    }
+
+    private static final int COLUMNS = 2;
+    private static final int LABELS_PER_PAGE = 4;
+
+    /** A fresh empty 2-column outer grid spanning the full A4 content width. */
+    private PdfPTable newGrid() {
+        PdfPTable grid = new PdfPTable(COLUMNS);
+        grid.setWidthPercentage(100);
+        grid.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+        return grid;
+    }
+
+    /** Wraps one label block into a padded quadrant cell of the outer A4 grid. */
+    private PdfPCell quadrantCell(PdfPTable block) {
+        PdfPCell cell = new PdfPCell(block);
+        cell.setBorder(Rectangle.NO_BORDER);
+        cell.setPadding(6f);
+        return cell;
+    }
+
+    /** Adds {@code count} empty (borderless) cells to keep the 2x2 grid shape. */
+    private void fillEmptyCells(PdfPTable grid, int count) {
+        for (int i = 0; i < count; i++) {
+            PdfPCell empty = new PdfPCell();
+            empty.setBorder(Rectangle.NO_BORDER);
+            grid.addCell(empty);
         }
     }
 
@@ -127,23 +173,19 @@ public class LabelPdfRenderer {
      * a grid of item description/total, order id/payment, ordered-on/COD, the
      * pickup-and-return address and the seller name — all populated from our data.
      */
-    private void writeLabelBlock(Document document, InternalLabelContent content, byte[] logoPng)
-            throws DocumentException {
+    private PdfPTable writeLabelBlock(InternalLabelContent content, byte[] logoPng) {
         PdfPTable main = new PdfPTable(1);
         main.setWidthPercentage(100);
         main.getDefaultCell().setBorder(Rectangle.NO_BORDER);
 
         String brand = nz(content.sellerName(), "Shifa Herbal Remedies");
 
-        // 1) Dark header bar — "<BRAND> · DELIVERY TO".
-        PdfPCell header = new PdfPCell(new Phrase(brand.toUpperCase() + "  \u00b7  DELIVERY TO", HEADER_WHITE));
-        header.setBackgroundColor(DARK);
-        header.setPadding(7f);
-        header.setBorderColor(BORDER);
-        main.addCell(header);
+        // 1) Seller header (letterhead) — brand + address + GST No under it, logo on
+        // the right. Mirrors the invoice header so the label reads as the same doc.
+        main.addCell(boxWrap(sellerHeaderTable(content, logoPng, brand), 7f));
 
-        // 2) Recipient block (left) + logo/brand (right).
-        main.addCell(boxWrap(recipientTable(content, logoPng, brand), 8f));
+        // 2) Recipient "To :" block (boxed, full width) — like the invoice To block.
+        main.addCell(boxWrap(recipientTable(content), 8f));
 
         // 3) Single scannable barcode (label redesign feature): when a delivery
         // partner + AWB have been allotted, print ONLY their barcode (name + AWB)
@@ -182,13 +224,19 @@ public class LabelPdfRenderer {
         // 8) Seller name (full width).
         main.addCell(captionBox("SELLER NAME", brand));
 
-        document.add(main);
+        return main;
     }
 
     // --- Section builders ---------------------------------------------------
 
-    private PdfPTable recipientTable(InternalLabelContent content, byte[] logoPng, String brand) {
-        PdfPTable t = new PdfPTable(new float[] {3f, 1f});
+    /**
+     * Seller letterhead — brand name + address + "GST No : …" under it on the left,
+     * the company logo on the right. Mirrors the invoice header (matches the
+     * client's approved invoice design).
+     */
+    private PdfPTable sellerHeaderTable(InternalLabelContent content, byte[] logoPng, String brand) {
+        Image logo = logoImage(logoPng);
+        PdfPTable t = new PdfPTable(logo != null ? new float[] {3.2f, 1f} : new float[] {1f});
         t.setWidthPercentage(100);
         t.getDefaultCell().setBorder(Rectangle.NO_BORDER);
 
@@ -196,30 +244,43 @@ public class LabelPdfRenderer {
         left.setWidthPercentage(100);
         left.getDefaultCell().setBorder(Rectangle.NO_BORDER);
         left.getDefaultCell().setPaddingBottom(1f);
-        left.addCell(new Phrase(nz(content.customerName(), "\u2014"), NAME_FONT));
-        if (content.addressLine() != null && !content.addressLine().isBlank()) {
-            left.addCell(new Phrase(content.addressLine(), SMALL_FONT));
+        left.addCell(new Phrase(brand, BRAND_DARK));
+        if (content.sellerAddress() != null && !content.sellerAddress().isBlank()) {
+            left.addCell(new Phrase(content.sellerAddress(), SMALL_FONT));
         }
-        left.addCell(new Phrase(cityStatePin(content), SMALL_FONT));
-        if (content.customerMobile() != null && !content.customerMobile().isBlank()) {
-            left.addCell(new Phrase("+91 " + content.customerMobile(), SMALL_FONT));
+        // GST No directly under the seller address (client requirement, as on the invoice).
+        if (content.sellerGstin() != null && !content.sellerGstin().isBlank()) {
+            left.addCell(new Phrase("GST No : " + content.sellerGstin(), CODE_FONT));
         }
         PdfPCell lc = new PdfPCell(left);
         lc.setBorder(Rectangle.NO_BORDER);
         t.addCell(lc);
 
-        PdfPCell rc;
-        Image logo = logoImage(logoPng);
         if (logo != null) {
-            logo.scaleToFit(90, 45);
-            rc = new PdfPCell(logo, false);
-        } else {
-            rc = new PdfPCell(new Phrase(brand.toUpperCase(), BRAND_DARK));
+            logo.scaleToFit(64, 34);
+            PdfPCell rc = new PdfPCell(logo, false);
+            rc.setBorder(Rectangle.NO_BORDER);
+            rc.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            rc.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            t.addCell(rc);
         }
-        rc.setBorder(Rectangle.NO_BORDER);
-        rc.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        rc.setVerticalAlignment(Element.ALIGN_TOP);
-        t.addCell(rc);
+        return t;
+    }
+
+    /** The recipient ("To :") block — name + address + mobile, boxed like the invoice. */
+    private PdfPTable recipientTable(InternalLabelContent content) {
+        PdfPTable t = new PdfPTable(1);
+        t.setWidthPercentage(100);
+        t.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+        t.getDefaultCell().setPaddingBottom(1f);
+        t.addCell(new Phrase("To : " + nz(content.customerName(), "\u2014").toUpperCase(), NAME_FONT));
+        if (content.addressLine() != null && !content.addressLine().isBlank()) {
+            t.addCell(new Phrase(content.addressLine(), SMALL_FONT));
+        }
+        t.addCell(new Phrase(cityStatePin(content), SMALL_FONT));
+        if (content.customerMobile() != null && !content.customerMobile().isBlank()) {
+            t.addCell(new Phrase("Mobile : +91 " + content.customerMobile(), SMALL_FONT));
+        }
         return t;
     }
 
@@ -244,7 +305,7 @@ public class LabelPdfRenderer {
         t.addCell(caption);
 
         Image barcode = imageOf(barcodeGenerator.code128Png(content.courierBarcodeValue()));
-        barcode.scaleToFit(330, 70);
+        barcode.scaleToFit(230, 48);
         PdfPCell bc = new PdfPCell(barcode, false);
         bc.setBorder(Rectangle.NO_BORDER);
         bc.setHorizontalAlignment(Element.ALIGN_CENTER);
@@ -272,7 +333,7 @@ public class LabelPdfRenderer {
         t.getDefaultCell().setHorizontalAlignment(Element.ALIGN_CENTER);
 
         Image barcode = imageOf(barcodeGenerator.code128Png(content.orderCode()));
-        barcode.scaleToFit(330, 70);
+        barcode.scaleToFit(230, 48);
         PdfPCell bc = new PdfPCell(barcode, false);
         bc.setBorder(Rectangle.NO_BORDER);
         bc.setHorizontalAlignment(Element.ALIGN_CENTER);

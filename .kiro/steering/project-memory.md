@@ -2409,3 +2409,52 @@ day; different-item same-day orders are allowed.
   freshness by comparing SRC (`C:\shifa-buildsrc\...target`) vs DST (`backend\target`) LastWriteTime via a tiny PS script
   writing to a workspace file — the isolated build produced the fresh JAR at 21:29 but it had to be explicitly Copy-Item'd
   to the workspace before `-SkipBuild` deploy (robocopy/`copy` calls silently no-op'd during the shell-stall window).
+
+## Invoice PDF redesign → boxed layout (client sample) — implemented & DEPLOYED (2026-09-25)
+Client wanted the admin "Download invoice" PDF redesigned to their boxed sample, with the seller **GST No shown at the
+top directly under the company address** (NOT in the customer block, NOT in the footer), and the customer block's
+**State + HSN/SKU rows removed**. NOTE: the previous `InvoicePdfRenderer` was a green-branded layout that didn't match
+the sample at all (the sample was from an older/external template); this is a full rewrite to the boxed design.
+- **`InvoicePdfRenderer.java` fully rewritten** to a compact fully-bordered "boxed" tax invoice:
+  - Header: LEFT = seller legal name + address + **`GST No : <gstin>` directly under the address** + contact; RIGHT =
+    a bordered 2-col meta box (Invoice No / Date / Mode / COD Amt). Mode = "COD" when `codApplicable()` else "PREPAID";
+    COD Amt = amountDueOnDelivery (else 0) "/-".
+  - **To** block: full-width `To : <NAME>` + full address + Mobile — **no GST/State/HSN box** (removed per client).
+  - Items table: Product Name / HSN·SKU / SL Price / QTY / Discount / **Inc.GST (rate%)** / Net Amount. Per-line Inc.GST
+    computed in the renderer = `amount − amount/(1+rate/100)` from the line's GST-inclusive amount + `gstRatePercent`.
+  - ID + Order AMT + Total row; **amount-in-words** row (new pure `RupeeWords.toWords` — Indian numbering, no "AND",
+    matches sample "… RUPEES NINETY NINE PAISE ONLY").
+  - GST breakup table: Taxable Value / CGST(rate%) / SGST(rate%) / IGST(rate%) / Tax Value — from the aggregate
+    `gst.computation()`.
+  - Footer: **"Thank You For Choosing Shifa Herbal"** (brand-green bold italic) + "This is a computer-generated invoice."
+    + Weblithic credit — **NO GST No line** (removed per client).
+  - Plain (non-GST) invoice renders the same frame without the Inc.GST column + GST breakup. Kept the money/₹-embedded-
+    font/logo helpers unchanged.
+- **New `RupeeWords.java`** — pure amount-in-words util (crore/lakh/thousand; rupees + paise; "ONLY" suffix).
+- **Verified**: InvoiceContentBuilderTest 14, InvoiceServiceTest 6, **InvoiceRupeeFontTest 2** (confirms the rewritten
+  renderer still emits valid PDF bytes with the ₹ glyph), InvoiceLogoRenderTest 3 = 25 green. No test parses PDF text so
+  the label changes needed no test updates. Backend-only — no frontend/model/migration change (admin just downloads the
+  server-generated PDF via `GET /api/orders/{id}/invoice`).
+- **DEPLOYED to AWS 2026-09-25 (~15:46 IST)** via `push-to-new-server.ps1 -SkipBuild`. DB backup
+  `~/shifa-backup-2026-09-25-101601.sql`. Verified: Flyway "No migration necessary" (V67), Tomcat on 8080, "Started
+  Application in 21.954s", root=200. No cache concern — just re-download an invoice to see the new layout.
+
+## Packing label: 4 labels per A4 sheet (2x2 grid) — implemented & DEPLOYED (2026-09-25)
+Client prints labels four-up (four labels on one A4 sheet, then cut). Reworked `label/LabelPdfRenderer` from
+one-label-per-A5-page to a **2x2 grid on A4** (each label ~A6, an A4 quadrant):
+- `render(List, logoPng)` now uses `PageSize.A4` (18pt margins) + an outer 2-column `PdfPTable` (`newGrid()`,
+  full A4 width). Each label block goes in a padded borderless quadrant cell (`quadrantCell`, 6pt pad); a fresh A4
+  page starts after every 4th label (`LABELS_PER_PAGE=4`, `COLUMNS=2`); a partial final page is padded with empty
+  borderless cells (`fillEmptyCells`) so every 2-col row is complete (PdfPTable needs full rows to render) and the
+  2x2 shape holds. 1 label → 1 A4 with a single top-left quadrant (fine for the order-detail "Print label").
+- `writeLabelBlock` was changed to **RETURN its `PdfPTable main`** (no longer `document.add` / takes no Document /
+  no `throws`). Block content unchanged (seller letterhead + boxed To + one barcode + item/order/payment/COD grid +
+  pickup/return + seller name).
+- Fonts shrunk for the A6 quadrant (brand/name 10, body 8, small 7, caption 6, code 9, big 12); logo
+  `scaleToFit(64,34)`, both barcodes `scaleToFit(230,48)`.
+- Renderer-only change (content model untouched) → label tests stay green: LabelServiceTest 13,
+  BulkLabelOutputPropertyTest 1 (Property 19 = one block per order), LabelContentCompletenessPropertyTest 1. No PDF
+  text is parsed by any test. No migration (V67 remains highest).
+- Built in isolated `C:\shifa-buildsrc` (BUILD SUCCESS 16:49), JAR → workspace target, DEPLOYED via
+  `push-to-new-server.ps1 -SkipBuild` (backup `~/shifa-backup-2026-09-25-112500.sql`). Verified: Flyway "validated
+  67 migrations … No migration necessary", Tomcat on 8080, "Started Application", root=200, /api/states=401.

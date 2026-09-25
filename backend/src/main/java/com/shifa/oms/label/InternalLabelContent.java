@@ -63,11 +63,25 @@ public record InternalLabelContent(
         BigDecimal totalAmount,
         String paymentLabel,
         String sellerName,
-        String pickupReturnAddress) {
+        String pickupReturnAddress,
+        String sellerGstin,
+        String sellerAddress) {
 
     public InternalLabelContent {
         Objects.requireNonNull(orderCode, "orderCode");
         lineItems = List.copyOf(Objects.requireNonNull(lineItems, "lineItems"));
+    }
+
+    /** Back-compat constructor without seller GST No / address (existing callers/tests). */
+    public InternalLabelContent(
+            String orderCode, String courierName, String courierBarcodeValue,
+            String customerName, String customerMobile, String addressLine, String city,
+            String state, String postalCode, List<LabelLineItem> lineItems,
+            boolean codApplicable, BigDecimal codAmount, String orderedOn, BigDecimal totalAmount,
+            String paymentLabel, String sellerName, String pickupReturnAddress) {
+        this(orderCode, courierName, courierBarcodeValue, customerName, customerMobile, addressLine,
+                city, state, postalCode, lineItems, codApplicable, codAmount, orderedOn, totalAmount,
+                paymentLabel, sellerName, pickupReturnAddress, null, null);
     }
 
     /** Whether a courier + AWB have been allotted, so the courier barcode section should render. */

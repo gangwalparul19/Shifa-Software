@@ -97,7 +97,9 @@ public class LabelContentBuilder {
                 order.getTotalAmount(),
                 paymentLabel(order.getPaymentStatus()),
                 c.sellerName(),
-                c.pickupReturnAddress());
+                c.pickupReturnAddress(),
+                c.sellerGstin(),
+                c.sellerAddress());
     }
 
     private static String blankToNull(String value) {
