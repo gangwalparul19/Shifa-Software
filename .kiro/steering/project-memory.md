@@ -2458,3 +2458,51 @@ one-label-per-A5-page to a **2x2 grid on A4** (each label ~A6, an A4 quadrant):
 - Built in isolated `C:\shifa-buildsrc` (BUILD SUCCESS 16:49), JAR → workspace target, DEPLOYED via
   `push-to-new-server.ps1 -SkipBuild` (backup `~/shifa-backup-2026-09-25-112500.sql`). Verified: Flyway "validated
   67 migrations … No migration necessary", Tomcat on 8080, "Started Application", root=200, /api/states=401.
+
+### 4-up label fix: third label spilled to next page — FIXED & DEPLOYED (2026-09-25)
+The first 4-up attempt only put 2 labels on page 1 and pushed the 3rd/4th to the next page. Root cause: the outer
+2x2 `PdfPTable` rows were auto-height, so a taller label (long address) grew its row and the two rows together
+exceeded the A4 printable height → the second row (labels 3-4) reflowed to a new page. Fix in `LabelPdfRenderer`:
+give each quadrant a **fixed height** and forbid row-splitting so exactly 2 uniform rows always fit on one A4:
+- `QUADRANT_HEIGHT = 396f` (A4 printable ≈ 806pt tall with 18pt margins → 2 rows × 396 = 792 < 806, fits).
+  `quadrantCell` + `fillEmptyCells` both call `setFixedHeight(QUADRANT_HEIGHT)`; quadrant is `ALIGN_TOP`.
+- `newGrid()` sets `grid.setSplitLate(false)` + `grid.setSplitRows(false)` so a 2-cell row is never broken across
+  pages. Combined with the fixed height, the 2x2 always lands on one sheet; page break stays after every 4th label.
+- Renderer-only (label tests unaffected). Built (BUILD SUCCESS 17:18), DEPLOYED via `push-to-new-server.ps1
+  -SkipBuild` (backup `~/shifa-backup-2026-09-25-115306.sql`); verified no-migration/Tomcat 8080/Started/root=200.
+- LESSON: for a fixed N-up PDF grid, pin cell heights + disable row splitting; auto-height rows overflow the page.
+
+### Label redesign: bundled logo fallback + square barcode beside order date/payment — DEPLOYED (2026-09-25)
+Client asks on the 4-up label: (1) show the Shifa logo top-right in the company section (it wasn't showing — no
+logo uploaded in Settings), (2) make the barcode a SQUARE box (not a full-width strip) and put order date +
+payment in the SAME row to save vertical space so multi-item orders don't push the label down. All in
+`label/LabelPdfRenderer` (+ a new bundled resource). No migration, no model change.
+- **Bundled logo fallback**: copied `shifa_logo_1.png` → `backend/src/main/resources/brand/shifa_logo_1.png`.
+  `logoImage(logoPng)` now falls back to the classpath resource `/brand/shifa_logo_1.png` (decoded once, cached in
+  `bundledLogo`/`bundledLogoLoaded`) when no Settings logo is passed — so the mark ALWAYS prints. A Settings-uploaded
+  logo still wins. In `sellerHeaderTable` the header ratio is `{4f,1f}`, logo `scaleToFit(46,46)`, ALIGN_TOP/RIGHT.
+- **Compact barcode+info row** (new `barcodeInfoRow`): a 2-col bordered row — LEFT `barcodeSquare` (caption ORDER /
+  "COURIER: name", barcode `scaleToFit(120,90)` ≈ square box, human value under it: ORDER code or "AWB: …"); RIGHT
+  `barcodeSideInfo` stacks ORDERED ON, PAYMENT badge, and COLLECT ON DELIVERY ₹ (or "Prepaid — do not collect").
+  Barcode value = courier AWB when `hasCourierBarcode()` else our order code (unchanged scan semantics).
+- **Removed** the old full-width `courierBarcodeTable`/`orderBarcodeTable`, the separate `orderPaymentRow` +
+  `orderedCodRow` rows, the redundant "SELLER NAME" bottom row, and the now-unused `BIG_FONT`. New fixed-row order:
+  1 letterhead → 2 To → 3 barcode+info → 4 item desc+total → 5 pickup/return. Fewer fixed rows = more room for items
+  inside the fixed 396pt quadrant (still 4-up on A4, 2x2, fixed-height cells + no row split from the prior fix).
+- Renderer-only → label tests green (LabelServiceTest 13, BulkLabelOutputPropertyTest 1, LabelContentCompleteness 1).
+  Built (BUILD SUCCESS 17:49, JAR ~107.28MB incl. logo), DEPLOYED via `push-to-new-server.ps1 -SkipBuild` (backup
+  `~/shifa-backup-2026-09-25-122443.sql`); verified no-migration/Tomcat 8080/Started/root=200.
+
+### Label: pickup address pinned last + item row absorbs leftover space — DEPLOYED (2026-09-25)
+Client: on the 4-up label put the pickup/return address at the VERY LAST position so leftover quadrant space is
+usable for more products. Pickup was already the last section, but the item-description row was only as tall as its
+content, leaving a blank gap below pickup. Fix in `label/LabelPdfRenderer`: new `itemDescriptionRow(content)` (a
+2-col ITEM DESCRIPTION | TOTAL row) whose left cell has `setMinimumHeight(ITEM_ROW_MIN_HEIGHT=110f)` and ALIGN_TOP,
+so it soaks up the fixed 396pt quadrant's spare height and pushes the pickup box to the bottom — a longer product
+list grows downward into that reclaimed area instead of overflowing. Replaced the old `twoColRow(...)` item call.
+Section order unchanged (letterhead→To→barcode+info→item desc→pickup). Renderer-only → label tests green (13+1+1).
+Built (BUILD SUCCESS 18:24), DEPLOYED via `push-to-new-server.ps1 -SkipBuild` (backup
+`~/shifa-backup-2026-09-25-130032.sql`); verified Tomcat 8080/Started/root=200. (Journal also showed a pre-existing,
+UNRELATED runtime ERROR: `NoResourceFoundException POST /api/webhooks/shopify/orders` — a Shopify webhook hitting a
+non-existent endpoint; not from the label change. The `Lifecycle$SingleUse`/`GracefulShutdownCallback`
+ClassNotFound lines are the old JVM's shutdown-hook noise, harmless.)

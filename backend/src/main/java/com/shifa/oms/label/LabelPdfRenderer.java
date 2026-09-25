@@ -37,6 +37,10 @@ public class LabelPdfRenderer {
 
     private final BarcodeGenerator barcodeGenerator;
 
+    // Bundled brand logo (fallback when no Settings logo is uploaded), decoded lazily once.
+    private Image bundledLogo;
+    private boolean bundledLogoLoaded;
+
     // Shipping-label palette + fonts (modelled on the reference courier label).
     private static final Color DARK = new Color(33, 37, 41);
     private static final Color BORDER = new Color(30, 30, 30);
@@ -51,7 +55,6 @@ public class LabelPdfRenderer {
     private static final Font SMALL_FONT = FontFactory.getFont(FontFactory.HELVETICA, 7);
     private static final Font CAPTION_FONT = grey(FontFactory.getFont(FontFactory.HELVETICA_BOLD, 6));
     private static final Font CODE_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9);
-    private static final Font BIG_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12);
 
     private static Font white(Font f) {
         f.setColor(Color.WHITE);
@@ -141,27 +144,49 @@ public class LabelPdfRenderer {
     private static final int COLUMNS = 2;
     private static final int LABELS_PER_PAGE = 4;
 
+    // A4 is 595x842pt. With 18pt margins the printable area is ~559x806pt, so a
+    // 2x2 grid gives quadrants of ~279x403pt. We pin each quadrant to a FIXED
+    // height so the two rows are uniform and always fit on ONE page — otherwise a
+    // taller label (long address) grows its row and pushes the second row (and
+    // labels 3-4) onto a following page, which is exactly the "goes to next page"
+    // bug. The height is set a touch under half the printable height for safety.
+    private static final float QUADRANT_HEIGHT = 396f;
+
+    // Minimum height of the item-description row so it absorbs the quadrant's
+    // leftover vertical space (the other sections are compact), pushing the
+    // pickup address to the bottom and giving the product list room to grow.
+    private static final float ITEM_ROW_MIN_HEIGHT = 110f;
+
     /** A fresh empty 2-column outer grid spanning the full A4 content width. */
     private PdfPTable newGrid() {
         PdfPTable grid = new PdfPTable(COLUMNS);
         grid.setWidthPercentage(100);
+        // Keep each 2-cell row intact on one page; never split a row across pages.
+        grid.setSplitLate(false);
+        grid.setSplitRows(false);
         grid.getDefaultCell().setBorder(Rectangle.NO_BORDER);
         return grid;
     }
 
-    /** Wraps one label block into a padded quadrant cell of the outer A4 grid. */
+    /**
+     * Wraps one label block into a fixed-height, top-aligned quadrant cell so all
+     * four cells are the same size and exactly two rows fit on one A4 page.
+     */
     private PdfPCell quadrantCell(PdfPTable block) {
         PdfPCell cell = new PdfPCell(block);
         cell.setBorder(Rectangle.NO_BORDER);
         cell.setPadding(6f);
+        cell.setFixedHeight(QUADRANT_HEIGHT);
+        cell.setVerticalAlignment(Element.ALIGN_TOP);
         return cell;
     }
 
-    /** Adds {@code count} empty (borderless) cells to keep the 2x2 grid shape. */
+    /** Adds {@code count} empty (borderless) fixed-height cells to hold the 2x2 shape. */
     private void fillEmptyCells(PdfPTable grid, int count) {
         for (int i = 0; i < count; i++) {
             PdfPCell empty = new PdfPCell();
             empty.setBorder(Rectangle.NO_BORDER);
+            empty.setFixedHeight(QUADRANT_HEIGHT);
             grid.addCell(empty);
         }
     }
@@ -187,42 +212,27 @@ public class LabelPdfRenderer {
         // 2) Recipient "To :" block (boxed, full width) — like the invoice To block.
         main.addCell(boxWrap(recipientTable(content), 8f));
 
-        // 3) Single scannable barcode (label redesign feature): when a delivery
-        // partner + AWB have been allotted, print ONLY their barcode (name + AWB)
-        // so the courier team scans the parcel straight into their own system at
-        // pickup — printing our own order barcode alongside it would be a second,
-        // redundant barcode on the same label. Our own order code is still
-        // resolvable later: the packing/RTO scan flow also recognises a courier
-        // AWB and resolves it back to the order (see PackingService's barcode
-        // resolution), so scanning the printed courier barcode at RTO still finds
-        // the order.
-        // Only when no courier/AWB has been allotted yet (e.g. in-house delivery,
-        // or a QuikShipX order still awaiting allotment) do we fall back to
-        // printing our own order barcode, so there is always exactly one
-        // scannable barcode on the label.
-        if (content.hasCourierBarcode()) {
-            main.addCell(boxWrap(courierBarcodeTable(content), 8f));
-        } else {
-            main.addCell(boxWrap(orderBarcodeTable(content), 8f));
-        }
+        // 3) Compact barcode + info row (space-saving redesign): a SQUARE barcode
+        // box on the left and, in the SAME row, the order date + payment badge +
+        // COD/prepaid stacked on the right. This keeps the fixed sections tight so
+        // that when an order has several items the item list has room to grow
+        // downward instead of the barcode eating a whole row of its own.
+        //
+        // Barcode value: the allotted courier AWB when present (so the courier team
+        // scans straight into their own system at pickup), otherwise our own order
+        // code (so the godown/RTO flow can always scan a parcel back to the order).
+        main.addCell(barcodeInfoRow(content));
 
-        // 4) Item description + order total.
-        main.addCell(twoColRow(
-                "ITEM DESCRIPTION", nz(content.itemSummary(), "\u2014"), Element.ALIGN_LEFT,
-                "TOTAL", money(content.totalAmount()), Element.ALIGN_RIGHT,
-                3.2f, 1f));
+        // 4) Item description + order total. This row is given a minimum height so
+        // it absorbs the leftover vertical space of the fixed-height quadrant —
+        // the product list therefore has room to grow downward, and any unused
+        // space stays here (above the pickup address) rather than as a blank gap
+        // at the very bottom of the label.
+        main.addCell(itemDescriptionRow(content));
 
-        // 5) Order id + prominent payment badge (Pre-Paid / COD).
-        main.addCell(orderPaymentRow(content));
-
-        // 6) Ordered-on + COD-collect amount (or "Prepaid").
-        main.addCell(orderedCodRow(content));
-
-        // 7) Pickup & return address (full width).
+        // 5) Pickup & return address — kept as the VERY LAST section so all the
+        // remaining space above it is available for a longer product list.
         main.addCell(captionBox("PICKUP & RETURN ADDRESS", nz(content.pickupReturnAddress(), "\u2014")));
-
-        // 8) Seller name (full width).
-        main.addCell(captionBox("SELLER NAME", brand));
 
         return main;
     }
@@ -236,7 +246,7 @@ public class LabelPdfRenderer {
      */
     private PdfPTable sellerHeaderTable(InternalLabelContent content, byte[] logoPng, String brand) {
         Image logo = logoImage(logoPng);
-        PdfPTable t = new PdfPTable(logo != null ? new float[] {3.2f, 1f} : new float[] {1f});
+        PdfPTable t = new PdfPTable(logo != null ? new float[] {4f, 1f} : new float[] {1f});
         t.setWidthPercentage(100);
         t.getDefaultCell().setBorder(Rectangle.NO_BORDER);
 
@@ -257,11 +267,12 @@ public class LabelPdfRenderer {
         t.addCell(lc);
 
         if (logo != null) {
-            logo.scaleToFit(64, 34);
+            // Square-ish mark, aligned to the top-right of the company section.
+            logo.scaleToFit(46, 46);
             PdfPCell rc = new PdfPCell(logo, false);
             rc.setBorder(Rectangle.NO_BORDER);
             rc.setHorizontalAlignment(Element.ALIGN_RIGHT);
-            rc.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            rc.setVerticalAlignment(Element.ALIGN_TOP);
             t.addCell(rc);
         }
         return t;
@@ -285,75 +296,139 @@ public class LabelPdfRenderer {
     }
 
     /**
-     * The courier barcode block (label redesign feature): the courier partner's
-     * display name as a small caption above a Code128 barcode of the allotted
-     * AWB, with the AWB digits repeated below for a human read — so the courier
-     * team scans this straight into their own system at pickup. Only rendered
-     * when {@link InternalLabelContent#hasCourierBarcode()} is {@code true}.
+     * Compact "barcode + info" row (space-saving redesign): a bordered SQUARE
+     * barcode box on the left (Code128 of the courier AWB when allotted, else our
+     * own order code, with a small caption + human-readable value under it) and,
+     * in the SAME row, a right column stacking Ordered-on, the Payment badge and
+     * the COD-collect amount (or a "prepaid — do not collect" note). Sitting the
+     * barcode beside this info — rather than in a full-width row of its own —
+     * saves a whole row of height so multi-item orders have room to expand.
      */
-    private PdfPTable courierBarcodeTable(InternalLabelContent content) {
-        PdfPTable t = new PdfPTable(1);
+    private PdfPCell barcodeInfoRow(InternalLabelContent content) {
+        PdfPTable t = new PdfPTable(new float[] {1.15f, 1f});
         t.setWidthPercentage(100);
-        t.getDefaultCell().setBorder(Rectangle.NO_BORDER);
-        t.getDefaultCell().setHorizontalAlignment(Element.ALIGN_CENTER);
 
-        PdfPCell caption = new PdfPCell(
-                new Phrase("COURIER: " + nz(content.courierName(), "\u2014").toUpperCase(), CAPTION_FONT));
-        caption.setBorder(Rectangle.NO_BORDER);
-        caption.setHorizontalAlignment(Element.ALIGN_CENTER);
-        caption.setPaddingBottom(2f);
-        t.addCell(caption);
+        // Left: square barcode box.
+        PdfPCell left = new PdfPCell(barcodeSquare(content));
+        left.setBorder(Rectangle.RIGHT);
+        left.setBorderColor(BORDER);
+        left.setPadding(6f);
+        left.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        t.addCell(left);
 
-        Image barcode = imageOf(barcodeGenerator.code128Png(content.courierBarcodeValue()));
-        barcode.scaleToFit(230, 48);
-        PdfPCell bc = new PdfPCell(barcode, false);
-        bc.setBorder(Rectangle.NO_BORDER);
-        bc.setHorizontalAlignment(Element.ALIGN_CENTER);
-        bc.setPadding(3f);
-        t.addCell(bc);
+        // Right: order date + payment badge + COD amount, stacked.
+        PdfPCell right = new PdfPCell(barcodeSideInfo(content));
+        right.setBorder(Rectangle.NO_BORDER);
+        right.setPadding(6f);
+        right.setVerticalAlignment(Element.ALIGN_MIDDLE);
+        t.addCell(right);
 
-        PdfPCell awb = new PdfPCell(new Phrase("AWB: " + content.courierBarcodeValue(), CODE_FONT));
-        awb.setBorder(Rectangle.NO_BORDER);
-        awb.setHorizontalAlignment(Element.ALIGN_CENTER);
-        awb.setPaddingTop(2f);
-        t.addCell(awb);
-        return t;
+        PdfPCell wrap = new PdfPCell(t);
+        wrap.setBorderColor(BORDER);
+        wrap.setPadding(0f);
+        return wrap;
     }
 
     /**
-     * The order barcode block (label redesign feature): always present, a
-     * Code128 barcode of our own {@code orderCode} — so the godown/RTO flow can
-     * scan a returned parcel straight back to the order regardless of whether a
-     * courier/AWB was ever allotted.
+     * The square barcode cell: caption (COURIER awb / ORDER) + a barcode scaled to
+     * a roughly square footprint + the human-readable value beneath it.
      */
-    private PdfPTable orderBarcodeTable(InternalLabelContent content) {
+    private PdfPTable barcodeSquare(InternalLabelContent content) {
+        boolean courier = content.hasCourierBarcode();
+        String value = courier ? content.courierBarcodeValue() : content.orderCode();
+        String caption = courier
+                ? "COURIER: " + nz(content.courierName(), "\u2014").toUpperCase()
+                : "ORDER";
+        String human = courier ? "AWB: " + value : content.orderCode();
+
         PdfPTable t = new PdfPTable(1);
         t.setWidthPercentage(100);
         t.getDefaultCell().setBorder(Rectangle.NO_BORDER);
         t.getDefaultCell().setHorizontalAlignment(Element.ALIGN_CENTER);
 
-        Image barcode = imageOf(barcodeGenerator.code128Png(content.orderCode()));
-        barcode.scaleToFit(230, 48);
+        PdfPCell cap = new PdfPCell(new Phrase(caption, CAPTION_FONT));
+        cap.setBorder(Rectangle.NO_BORDER);
+        cap.setHorizontalAlignment(Element.ALIGN_CENTER);
+        cap.setPaddingBottom(2f);
+        t.addCell(cap);
+
+        Image barcode = imageOf(barcodeGenerator.code128Png(value));
+        // Roughly square footprint so it reads as a "box" rather than a wide strip.
+        barcode.scaleToFit(120, 90);
         PdfPCell bc = new PdfPCell(barcode, false);
         bc.setBorder(Rectangle.NO_BORDER);
         bc.setHorizontalAlignment(Element.ALIGN_CENTER);
-        bc.setPadding(3f);
+        bc.setPadding(1f);
         t.addCell(bc);
 
-        PdfPTable sub = new PdfPTable(new float[] {1f, 1f});
-        sub.setWidthPercentage(100);
-        PdfPCell dest = new PdfPCell(new Phrase(nz(content.city(), nz(content.postalCode(), "")), SMALL_FONT));
-        dest.setBorder(Rectangle.NO_BORDER);
-        dest.setHorizontalAlignment(Element.ALIGN_LEFT);
-        PdfPCell code = new PdfPCell(new Phrase("ORDER: " + content.orderCode(), CODE_FONT));
-        code.setBorder(Rectangle.NO_BORDER);
-        code.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        sub.addCell(dest);
-        sub.addCell(code);
-        PdfPCell subWrap = new PdfPCell(sub);
-        subWrap.setBorder(Rectangle.NO_BORDER);
-        t.addCell(subWrap);
+        PdfPCell hv = new PdfPCell(new Phrase(human, CODE_FONT));
+        hv.setBorder(Rectangle.NO_BORDER);
+        hv.setHorizontalAlignment(Element.ALIGN_CENTER);
+        hv.setPaddingTop(2f);
+        t.addCell(hv);
         return t;
+    }
+
+    /** The stacked info shown beside the barcode: ordered-on, payment, COD/prepaid. */
+    private PdfPTable barcodeSideInfo(InternalLabelContent content) {
+        PdfPTable t = new PdfPTable(1);
+        t.setWidthPercentage(100);
+        t.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+
+        t.addCell(new Phrase("ORDERED ON", CAPTION_FONT));
+        t.addCell(new Phrase(nz(content.orderedOn(), "\u2014"), BODY_FONT));
+
+        t.addCell(spacer());
+        t.addCell(new Phrase("PAYMENT", CAPTION_FONT));
+        t.addCell(new Phrase(paymentBadge(content), NAME_FONT));
+
+        t.addCell(spacer());
+        if (content.codApplicable()) {
+            t.addCell(new Phrase("COLLECT ON DELIVERY", CAPTION_FONT));
+            t.addCell(new Phrase(money(content.codAmount()), NAME_FONT));
+        } else {
+            t.addCell(new Phrase("Prepaid \u2014 do not collect", SMALL_FONT));
+        }
+        return t;
+    }
+
+    /** A thin vertical gap phrase used between stacked info groups. */
+    private static Phrase spacer() {
+        return new Phrase("\n", SMALL_FONT);
+    }
+
+    /**
+     * Item description (left) + order total (right), given a minimum height so it
+     * soaks up the leftover space of the fixed-height quadrant. A short item list
+     * simply leaves whitespace HERE (above the pickup address), and a long list
+     * grows downward into the same area — either way the blank space is available
+     * for the products rather than dangling below the pickup address.
+     */
+    private PdfPCell itemDescriptionRow(InternalLabelContent content) {
+        PdfPTable t = new PdfPTable(new float[] {3.2f, 1f});
+        t.setWidthPercentage(100);
+
+        PdfPCell l = new PdfPCell(
+                captionValue("ITEM DESCRIPTION", nz(content.itemSummary(), "\u2014"), Element.ALIGN_LEFT));
+        l.setBorder(Rectangle.RIGHT);
+        l.setBorderColor(BORDER);
+        l.setPadding(6f);
+        l.setMinimumHeight(ITEM_ROW_MIN_HEIGHT);
+        l.setVerticalAlignment(Element.ALIGN_TOP);
+
+        PdfPCell r = new PdfPCell(
+                captionValue("TOTAL", money(content.totalAmount()), Element.ALIGN_RIGHT));
+        r.setBorder(Rectangle.NO_BORDER);
+        r.setPadding(6f);
+        r.setVerticalAlignment(Element.ALIGN_TOP);
+
+        t.addCell(l);
+        t.addCell(r);
+
+        PdfPCell wrap = new PdfPCell(t);
+        wrap.setBorderColor(BORDER);
+        wrap.setPadding(0f);
+        return wrap;
     }
 
     /** A full-width bordered section wrapping a nested table with the given padding. */
@@ -391,47 +466,6 @@ public class LabelPdfRenderer {
         wrap.setBorderColor(BORDER);
         wrap.setPadding(0f);
         return wrap;
-    }
-
-    /** Order id (left) + big payment badge (right). */
-    private PdfPCell orderPaymentRow(InternalLabelContent content) {
-        PdfPTable t = new PdfPTable(new float[] {1.6f, 1f});
-        t.setWidthPercentage(100);
-
-        PdfPCell l = new PdfPCell(captionValue("ORDER ID", content.orderCode(), Element.ALIGN_LEFT));
-        l.setBorder(Rectangle.RIGHT);
-        l.setBorderColor(BORDER);
-        l.setPadding(6f);
-
-        PdfPCell r = new PdfPCell(new Phrase(paymentBadge(content), BIG_FONT));
-        r.setBorder(Rectangle.NO_BORDER);
-        r.setHorizontalAlignment(Element.ALIGN_CENTER);
-        r.setVerticalAlignment(Element.ALIGN_MIDDLE);
-        r.setPadding(6f);
-        t.addCell(l);
-        t.addCell(r);
-
-        PdfPCell wrap = new PdfPCell(t);
-        wrap.setBorderColor(BORDER);
-        wrap.setPadding(0f);
-        return wrap;
-    }
-
-    /** Ordered-on (left) + COD collect amount / prepaid note (right). */
-    private PdfPCell orderedCodRow(InternalLabelContent content) {
-        String rightCap;
-        String rightVal;
-        if (content.codApplicable()) {
-            rightCap = "COLLECT ON DELIVERY";
-            rightVal = money(content.codAmount());
-        } else {
-            rightCap = "PAYMENT";
-            rightVal = "Prepaid — do not collect";
-        }
-        return twoColRow(
-                "ORDERED ON", nz(content.orderedOn(), "\u2014"), Element.ALIGN_LEFT,
-                rightCap, rightVal, Element.ALIGN_LEFT,
-                1f, 1.4f);
     }
 
     // --- Small helpers ------------------------------------------------------
@@ -489,15 +523,37 @@ public class LabelPdfRenderer {
         }
     }
 
-    /** Builds a logo Image from bytes, or {@code null} when absent/undecodable. */
+    /**
+     * Builds a logo Image from the given bytes, falling back to the bundled
+     * {@code brand/shifa_logo_1.png} classpath resource when no Settings logo is
+     * supplied (so the label always carries the Shifa mark top-right, even before
+     * a logo is uploaded in Settings). Returns {@code null} only when both the
+     * supplied bytes and the bundled resource are absent/undecodable.
+     */
     private Image logoImage(byte[] logoPng) {
-        if (logoPng == null || logoPng.length == 0) {
-            return null;
+        if (logoPng != null && logoPng.length > 0) {
+            try {
+                return Image.getInstance(logoPng);
+            } catch (Exception ignored) {
+                // Fall through to the bundled brand logo below.
+            }
         }
-        try {
-            return Image.getInstance(logoPng);
+        return bundledLogo();
+    }
+
+    /** The bundled brand logo, decoded once and cached (or {@code null} if missing). */
+    private Image bundledLogo() {
+        if (bundledLogoLoaded) {
+            return bundledLogo;
+        }
+        bundledLogoLoaded = true;
+        try (java.io.InputStream in = getClass().getResourceAsStream("/brand/shifa_logo_1.png")) {
+            if (in != null) {
+                bundledLogo = Image.getInstance(in.readAllBytes());
+            }
         } catch (Exception e) {
-            return null;
+            bundledLogo = null;
         }
+        return bundledLogo;
     }
 }
