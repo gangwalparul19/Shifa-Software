@@ -82,6 +82,18 @@ public class QuikShipXController {
         return new PublishAck(true, "Queued for publication to QuikShipX.");
     }
 
+    /**
+     * Admin per-order QuikShipX recovery: pushes a stuck order (no tracking id yet)
+     * forward — re-queues its FAILED QuikShipX events, or re-enqueues the missing
+     * create/allot step. Generalizes the Shopify-only recover to any order (portal
+     * or Shopify). Idempotent; a no-op (with a message) when the order already has
+     * a tracking id, is in-house, or the integration is off.
+     */
+    @PostMapping("/retry")
+    public QuikShipXService.RetryResult retry(@PathVariable Long orderId) {
+        return quikShipXService.retryForOrder(orderId);
+    }
+
     /** Read projection of an {@link OrderShipment}. */
     public record ShipmentView(
             Long orderId,

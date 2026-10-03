@@ -106,7 +106,8 @@ class NotificationMatrixEnqueuePropertyTest {
             MailNotificationPublisher mail = new MailNotificationPublisher(outboxPublisher);
             StaffNotificationDispatcher staff = new StaffNotificationDispatcher(adminRepo,
                     new com.shifa.oms.push.WebPushService(
-                            null, new com.fasterxml.jackson.databind.ObjectMapper(), "", "", ""));
+                            null, new com.fasterxml.jackson.databind.ObjectMapper(), "", "", ""),
+                    new com.shifa.oms.dashboard.AdminSseBroker());
             return new NotificationDispatcher(matrix, whatsApp, mail, staff);
         }
 

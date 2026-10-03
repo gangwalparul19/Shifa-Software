@@ -18,24 +18,36 @@ export interface PackingQueueRow {
   orderStatus: OrderStatus | string;
   paymentStatus: PaymentStatus | string;
   /**
-   * QUIKSHIPX (courier partner) or IN_HOUSE. The dispatch queue offers manual
-   * status updates only for IN_HOUSE orders — courier orders are tracked by the
-   * partner.
+   * QUIKSHIPX (courier partner) or IN_HOUSE. Drives which label buttons show on
+   * the Orders-to-Pack row and which status section the order lands in after
+   * handover (auto QuickShip vs manual In-House).
    */
   deliveryMethod?: 'QUIKSHIPX' | 'IN_HOUSE' | string;
+  /** The order/packaging note (null when none) — shown so the packer sees special instructions. */
+  notes?: string | null;
+  /** QuikShipX tracking id / AWB (null for in-house or not yet allotted). */
+  awb?: string | null;
+  /** The QuikShipX-hosted shipping-label PDF URL (null when none) — the "Print QuikShip label" target. */
+  quikShipXLabelUrl?: string | null;
+  /** Whether the QuikShipX courier label has already been printed. */
+  quikShipXLabelPrinted?: boolean;
+  /** The QuikShipX-side status string (e.g. "Tracking ID Assigned", "In Transit"), null for in-house. */
+  quikShipXStatus?: string | null;
 }
 
 /**
- * The packing team's work queues (Req 9-11), mirroring the backend
- * {@code PackingQueueResponse}. Each list is oldest-first (FIFO).
+ * The packing team's work queues + shipment-status sections (packing-workflow
+ * redesign), mirroring the backend {@code PackingQueueResponse}. Newest-first.
  */
 export interface PackingQueue {
-  /** Orders in {@code Label_Generated} — label printed, ready to be packed. */
-  awaitingPacking: PackingQueueRow[];
-  /** Orders in {@code Packed} — ready to hand over to the courier. */
+  /** Orders in {@code Label_Generated} — ready to be packed (QuikShipX + in-house). */
+  ordersToPack: PackingQueueRow[];
+  /** Orders in {@code Packed} — ready to hand over. */
   awaitingHandover: PackingQueueRow[];
-  /** Orders in {@code Handed_To_Delivery} — ready to dispatch. */
-  awaitingDispatch: PackingQueueRow[];
+  /** Handed-over COURIER orders (read-only) — QuikShipX pickup + tracking drives these. */
+  quikShipStatus: PackingQueueRow[];
+  /** Handed-over IN-HOUSE orders — the team advances these manually. */
+  inHouseDeliveries: PackingQueueRow[];
 }
 
 /**
@@ -87,6 +99,8 @@ export interface PackingScanPreviewResponse {
   order: ScannedOrderSummary;
   nextAction: PackingNextAction;
   nextStatus: OrderStatus | string | null;
+  /** The order/packaging note (null when none) — shown right away on scan for the packer. */
+  notes?: string | null;
 }
 
 /** How a single scan resolved, for the in-session scan log. */

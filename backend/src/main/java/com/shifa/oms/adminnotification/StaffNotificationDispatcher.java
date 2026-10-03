@@ -31,11 +31,37 @@ public class StaffNotificationDispatcher {
 
     private final AdminNotificationRepository repository;
     private final com.shifa.oms.push.WebPushService webPushService;
+    private final com.shifa.oms.dashboard.AdminSseBroker sseBroker;
 
     public StaffNotificationDispatcher(AdminNotificationRepository repository,
-                                       com.shifa.oms.push.WebPushService webPushService) {
+                                       com.shifa.oms.push.WebPushService webPushService,
+                                       com.shifa.oms.dashboard.AdminSseBroker sseBroker) {
         this.repository = repository;
         this.webPushService = webPushService;
+        this.sseBroker = sseBroker;
+    }
+
+    /**
+     * Pushes a lightweight {@code NOTIFICATION} SSE event to the matching connected
+     * staff so their bell badge updates live. The payload intentionally carries no
+     * roll-backable detail — it is a "refresh your unread count" nudge; the client
+     * re-reads the committed {@code /api/notifications} state.
+     */
+    private void pushLive(AdminNotification saved, Role role, Long userId) {
+        if (saved == null) {
+            return;
+        }
+        try {
+            sseBroker.sendToRecipients(
+                    "NOTIFICATION",
+                    java.util.Map.of(
+                            "type", saved.getType() == null ? "" : saved.getType(),
+                            "title", saved.getTitle() == null ? "" : saved.getTitle(),
+                            "severity", saved.getSeverity() == null ? "info" : saved.getSeverity()),
+                    role, userId);
+        } catch (RuntimeException e) {
+            // Live push is best-effort; the durable row + bell query are the source of truth.
+        }
     }
 
     /** Deep-link a push to the order (when known), else the app home. */
@@ -65,6 +91,8 @@ public class StaffNotificationDispatcher {
         AdminNotification saved = repository.save(notification);
         // Best-effort browser push (FEATURE-ROADMAP §8.3); no-op unless configured.
         webPushService.sendToRole(role, title, detail, linkFor(orderCode));
+        // Live bell update over SSE to connected users of this role (best-effort).
+        pushLive(saved, role, null);
         return saved;
     }
 
@@ -90,6 +118,8 @@ public class StaffNotificationDispatcher {
         AdminNotification saved = repository.save(notification);
         // Best-effort browser push (FEATURE-ROADMAP §8.3); no-op unless configured.
         webPushService.sendToUser(userId, title, detail, linkFor(orderCode));
+        // Live bell update over SSE to this connected user (best-effort).
+        pushLive(saved, null, userId);
         return saved;
     }
 

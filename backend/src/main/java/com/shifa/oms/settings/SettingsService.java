@@ -102,6 +102,12 @@ public class SettingsService {
         settings.setBankIfsc(bankIfsc != null ? bankIfsc.toUpperCase(java.util.Locale.ROOT) : null);
         settings.setBankBranch(trimToNull(request.bankBranch()));
         settings.setGstSlabs(gstSlabs);
+        // Config-driven auto-approval (V73): switch defaults to OFF when the field
+        // is absent; the threshold is stored as-is (service treats null/non-positive
+        // as "nothing qualifies"). Negative values are already rejected by bean
+        // validation on the request.
+        settings.setAutoApproveEnabled(Boolean.TRUE.equals(request.autoApproveEnabled()));
+        settings.setAutoApproveMaxAmount(request.autoApproveMaxAmount());
         return repository.save(settings);
     }
 
@@ -135,6 +141,20 @@ public class SettingsService {
             slabs.add(slab.stripTrailingZeros().toPlainString());
         }
         return slabs.isEmpty() ? null : String.join(",", slabs);
+    }
+
+    /** Whether incoming Shopify orders are imported (the Shopify integration switch). */
+    @Transactional
+    public boolean isShopifySyncEnabled() {
+        return getSettings().isShopifySyncEnabled();
+    }
+
+    /** Turns the Shopify integration on or off; returns the persisted settings. */
+    @Transactional
+    public AppSettings setShopifySyncEnabled(boolean enabled) {
+        AppSettings settings = getSettings();
+        settings.setShopifySyncEnabled(enabled);
+        return repository.save(settings);
     }
 
     /**

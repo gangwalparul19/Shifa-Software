@@ -174,7 +174,7 @@ class LedgerPostingDrainerFailureTest {
         final List<RoleNotification> roleNotifications = new ArrayList<>();
 
         RecordingNotificationDispatcher() {
-            super(null, null);
+            super(null, null, null);
         }
 
         @Override

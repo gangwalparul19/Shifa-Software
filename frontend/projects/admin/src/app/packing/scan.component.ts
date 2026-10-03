@@ -10,8 +10,11 @@ import { PackingService } from './packing.service';
 import { PackingQueueRow, PackingScanResponse, ScanLogEntry, ScanOutcome } from './packing.model';
 import { MANUAL_DELIVERY_STAGE_OPTIONS } from '../orders/orders.model';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { InrPipe } from '../shared/inr.pipe';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
+import { ChannelLogoComponent } from '../shared/channel-logo.component';
 import { ToastService } from '../shared/toast.service';
 import { CameraScannerComponent } from './camera-scanner.component';
 
@@ -69,9 +72,11 @@ interface PackWorkItem {
     RouterLink,
     IstDatePipe,
     PageHeaderComponent,
+    PaginationComponent,
     StatusBadgeComponent,
     CameraScannerComponent,
     InrPipe,
+    ChannelLogoComponent,
   ],
   templateUrl: './scan.component.html',
   styleUrl: './scan.component.css',
@@ -92,6 +97,19 @@ export class ScanComponent implements OnInit, AfterViewInit {
   protected readonly submitting = signal(false);
   protected readonly banner = signal<ScanBanner | null>(null);
 
+  /** The dismissible "how packing works" strip — hidden once dismissed (per browser). */
+  protected readonly showGuide = signal(
+    typeof localStorage === 'undefined' || localStorage.getItem('shifa:packing-guide-dismissed') !== '1',
+  );
+  dismissGuide(): void {
+    this.showGuide.set(false);
+    try {
+      localStorage.setItem('shifa:packing-guide-dismissed', '1');
+    } catch {
+      /* ignore storage errors (private mode) */
+    }
+  }
+
   /** Whether the phone-camera scanner overlay is open (FEATURE-ROADMAP §8.2). */
   protected readonly cameraOpen = signal(false);
   protected readonly log = signal<ScanLogEntry[]>([]);
@@ -105,59 +123,144 @@ export class ScanComponent implements OnInit, AfterViewInit {
   /** The awaiting-* queue cards surfaced above the scan area. */
   protected readonly queues = computed<QueueCard[]>(() => this.queueSummary());
 
-  // --- Work queue lists (orders to pack / hand over / dispatch) -----------
-  protected readonly awaitingPacking = signal<PackingQueueRow[]>([]);
+  // --- Work queues (to pack / hand over) + read-only status sections ------
+  protected readonly ordersToPack = signal<PackingQueueRow[]>([]);
   protected readonly awaitingHandover = signal<PackingQueueRow[]>([]);
-  protected readonly awaitingDispatch = signal<PackingQueueRow[]>([]);
+  /** Handed-over COURIER orders — QuikShipX pickup + tracking drives these (read-only). */
+  protected readonly quikShipStatus = signal<PackingQueueRow[]>([]);
+  /** Handed-over IN-HOUSE orders — the team advances these manually. */
+  protected readonly inHouseDeliveries = signal<PackingQueueRow[]>([]);
   protected readonly queueLoading = signal(true);
-  /** The order currently running a queue action (pack/handover/dispatch), for spinners. */
+  /** The order currently running a queue action (pack/handover), for spinners. */
   protected readonly busyOrderId = signal<number | null>(null);
   /** The order whose label is currently being fetched/opened. */
   protected readonly labelBusyId = signal<number | null>(null);
+  /** The order whose QuikShip courier label is currently being opened. */
+  protected readonly quikLabelBusyId = signal<number | null>(null);
 
-  /** The three work-queue sections rendered as lists, in workflow order. */
-  protected readonly queueSections = computed(() => [
-    {
-      kind: 'pack' as const,
-      title: 'Orders to pack',
-      short: 'To pack',
-      icon: 'ti-box',
-      accent: '#1f5d3f',
-      accentSoft: '#e4f2ea',
-      actionLabel: 'Pack',
-      actionIcon: 'ti-checkbox',
-      hint: 'Print the label, then mark the order packed.',
-      orders: this.awaitingPacking(),
-    },
-    {
-      kind: 'handover' as const,
-      title: 'Awaiting handover',
-      short: 'Handover',
-      icon: 'ti-package',
-      accent: '#0284c7',
-      accentSoft: '#e0f2fe',
-      actionLabel: 'Handover',
-      actionIcon: 'ti-truck-loading',
-      hint: 'Hand these packed orders to the delivery courier.',
-      orders: this.awaitingHandover(),
-    },
-    {
-      kind: 'dispatch' as const,
-      title: 'Awaiting dispatch',
-      short: 'Dispatch',
-      icon: 'ti-truck-delivery',
-      accent: '#b7791f',
-      accentSoft: '#fdf0d5',
-      actionLabel: 'Dispatch',
-      actionIcon: 'ti-truck-delivery',
-      hint: 'Dispatch to enqueue courier assignment.',
-      orders: this.awaitingDispatch(),
-    },
-  ]);
+  // --- Client-side paging (per queue, shared page size) -------------------
+  /** Zero-based current page for each work queue. */
+  protected readonly packPage = signal(0);
+  protected readonly handoverPage = signal(0);
+  /** Rows per page, shared across the two work queues (persisted per table). */
+  protected readonly queueSize = signal(readPageSize('packingQueue', 10));
 
-  /** Total orders waiting across all three work queues (hero context). */
+  /** Slices a full queue list to the current page. */
+  private pageSlice(all: PackingQueueRow[], page: number): PackingQueueRow[] {
+    const size = this.queueSize();
+    const start = page * size;
+    return all.slice(start, start + size);
+  }
+
+  /** The two work-queue sections rendered as lists, in workflow order. */
+  protected readonly queueSections = computed(() => {
+    const size = this.queueSize();
+    const totalPages = (all: PackingQueueRow[]) => Math.max(1, Math.ceil(all.length / size));
+    const pack = this.ordersToPack();
+    const handover = this.awaitingHandover();
+    return [
+      {
+        kind: 'pack' as const,
+        title: 'Orders to pack',
+        short: 'To pack',
+        icon: 'ti-box',
+        accent: '#1f5d3f',
+        accentSoft: '#e4f2ea',
+        actionLabel: 'Pack',
+        actionIcon: 'ti-checkbox',
+        hint: 'Print the label, then mark the order packed. Printing the QuikShip label moves it to Awaiting Handover automatically.',
+        orders: this.pageSlice(pack, this.packPage()),
+        allOrders: pack,
+        page: this.packPage(),
+        totalElements: pack.length,
+        totalPages: totalPages(pack),
+      },
+      {
+        kind: 'handover' as const,
+        title: 'Awaiting handover',
+        short: 'Handover',
+        icon: 'ti-package',
+        accent: '#0284c7',
+        accentSoft: '#e0f2fe',
+        actionLabel: 'Handover',
+        actionIcon: 'ti-truck-loading',
+        hint: 'Hand these packed orders to the courier (QuikShip) or your in-house driver.',
+        orders: this.pageSlice(handover, this.handoverPage()),
+        allOrders: handover,
+        page: this.handoverPage(),
+        totalElements: handover.length,
+        totalPages: totalPages(handover),
+      },
+    ];
+  });
+
+  /** Go to a page within one of the two work queues. */
+  goToQueuePage(kind: 'pack' | 'handover', page: number): void {
+    switch (kind) {
+      case 'pack':
+        this.packPage.set(page);
+        break;
+      case 'handover':
+        this.handoverPage.set(page);
+        break;
+    }
+  }
+
+  /** Change the shared rows-per-page for the work queues (resets to first page). */
+  setQueueSize(size: number): void {
+    this.queueSize.set(size);
+    writePageSize('packingQueue', size);
+    this.packPage.set(0);
+    this.handoverPage.set(0);
+  }
+
+  /** After a reload shrinks a queue, avoid being stranded on a now-empty trailing page. */
+  private clampQueuePages(): void {
+    const size = this.queueSize();
+    const clamp = (all: PackingQueueRow[], page: ReturnType<typeof signal<number>>) => {
+      const maxPage = Math.max(0, Math.ceil(all.length / size) - 1);
+      if (page() > maxPage) {
+        page.set(maxPage);
+      }
+    };
+    clamp(this.ordersToPack(), this.packPage);
+    clamp(this.awaitingHandover(), this.handoverPage);
+  }
+
+  // --- Read-only status sections paging (QuickShip + In-House) ------------
+  protected readonly quikShipPage = signal(0);
+  protected readonly inHousePage = signal(0);
+  protected readonly statusSize = signal(readPageSize('packingStatus', 10));
+  protected readonly quikShipTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.quikShipStatus().length / this.statusSize())),
+  );
+  protected readonly inHouseTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.inHouseDeliveries().length / this.statusSize())),
+  );
+  protected readonly quikShipPageItems = computed<PackingQueueRow[]>(() => {
+    const s = this.quikShipPage() * this.statusSize();
+    return this.quikShipStatus().slice(s, s + this.statusSize());
+  });
+  protected readonly inHousePageItems = computed<PackingQueueRow[]>(() => {
+    const s = this.inHousePage() * this.statusSize();
+    return this.inHouseDeliveries().slice(s, s + this.statusSize());
+  });
+  goToQuikShipPage(p: number): void {
+    this.quikShipPage.set(p);
+  }
+  goToInHousePage(p: number): void {
+    this.inHousePage.set(p);
+  }
+  setStatusSize(size: number): void {
+    this.statusSize.set(size);
+    writePageSize('packingStatus', size);
+    this.quikShipPage.set(0);
+    this.inHousePage.set(0);
+  }
+
+  /** Total orders waiting across both work queues (hero context). */
   protected readonly totalInQueues = computed(
-    () => this.awaitingPacking().length + this.awaitingHandover().length + this.awaitingDispatch().length,
+    () => this.ordersToPack().length + this.awaitingHandover().length,
   );
 
   /** Scroll to a work-queue section when its KPI tile is tapped. */
@@ -173,18 +276,143 @@ export class ScanComponent implements OnInit, AfterViewInit {
     this.loadQueue();
   }
 
-  /** Loads the awaiting-packing / handover / dispatch work-queue lists. */
+  /** Loads the orders-to-pack / awaiting-handover queues + the two status sections. */
   loadQueue(): void {
     this.queueLoading.set(true);
     this.service.queue().subscribe({
       next: (q) => {
-        this.awaitingPacking.set(q.awaitingPacking);
+        this.ordersToPack.set(q.ordersToPack);
         this.awaitingHandover.set(q.awaitingHandover);
-        this.awaitingDispatch.set(q.awaitingDispatch);
+        this.quikShipStatus.set(q.quikShipStatus);
+        this.inHouseDeliveries.set(q.inHouseDeliveries);
+        this.clampQueuePages();
         this.queueLoading.set(false);
       },
       error: () => {
         this.queueLoading.set(false);
+      },
+    });
+  }
+
+  // --- QuikShip courier labels on the Orders-to-Pack rows -----------------
+  //
+  // QuikShip (courier) orders in the "orders to pack" queue carry a
+  // QuikShipX-hosted shipping-label PDF (quikShipXLabelUrl). The packer opens it
+  // to print; opening it marks it printed and auto-advances the order to PACKED
+  // on the backend, so we reload the queue after.
+
+  /** Order ids selected for QuikShipX label printing / marking printed. */
+  protected readonly selectedQuikLabel = signal<Set<number>>(new Set<number>());
+  /** True while marking selected labels printed. */
+  protected readonly markingPrinted = signal(false);
+
+  protected readonly selectedQuikLabelCount = computed(() => this.selectedQuikLabel().size);
+
+  isQuikLabelSelected(id: number): boolean {
+    return this.selectedQuikLabel().has(id);
+  }
+
+  toggleQuikLabelSelection(id: number): void {
+    const next = new Set(this.selectedQuikLabel());
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    this.selectedQuikLabel.set(next);
+  }
+
+  /** Only rows that actually have a QuikShip label are selectable (in-house rows have none). */
+  private quikLabelRows(rows: PackingQueueRow[]): PackingQueueRow[] {
+    return rows.filter((r) => !!r.quikShipXLabelUrl);
+  }
+
+  /** True when every QuikShip-label row on the page is selected. */
+  allQuikLabelSelected(rows: PackingQueueRow[]): boolean {
+    const selectable = this.quikLabelRows(rows);
+    if (selectable.length === 0) {
+      return false;
+    }
+    const sel = this.selectedQuikLabel();
+    return selectable.every((r) => sel.has(r.id));
+  }
+
+  /** Header "select all" toggle — selects only the rows that have a QuikShip label. */
+  toggleSelectAllQuikLabel(rows: PackingQueueRow[]): void {
+    const selectable = this.quikLabelRows(rows);
+    const next = new Set(this.selectedQuikLabel());
+    const allSelected = selectable.length > 0 && selectable.every((r) => next.has(r.id));
+    if (allSelected) {
+      selectable.forEach((r) => next.delete(r.id));
+    } else {
+      selectable.forEach((r) => next.add(r.id));
+    }
+    this.selectedQuikLabel.set(next);
+  }
+
+  /**
+   * Opens a single order's QuikShipX label in a new tab and marks it printed.
+   * Printing the QuikShip label auto-advances the order to Packed on the backend,
+   * so the queue is reloaded once the label is marked printed.
+   */
+  openQuikLabel(row: PackingQueueRow): void {
+    if (!row.quikShipXLabelUrl) {
+      this.toasts.error('This order has no QuikShip label URL yet.');
+      return;
+    }
+    if (this.quikLabelBusyId() !== null) {
+      return;
+    }
+    window.open(row.quikShipXLabelUrl, '_blank', 'noopener');
+    this.quikLabelBusyId.set(row.id);
+    this.markPrinted([row.id]);
+  }
+
+  /**
+   * Prints every selected order's QuikShipX label — opens each label PDF in its
+   * own tab (QuikShipX serves one PDF per order), then marks them printed. The
+   * browser may block multiple pop-ups; the count toast confirms how many opened.
+   */
+  printSelectedQuikLabels(): void {
+    const rows = this.ordersToPack().filter(
+      (r) => !!r.quikShipXLabelUrl && this.selectedQuikLabel().has(r.id),
+    );
+    if (rows.length === 0) {
+      this.toasts.error('None of the selected orders have a QuikShip label yet.');
+      return;
+    }
+    for (const row of rows) {
+      window.open(row.quikShipXLabelUrl as string, '_blank', 'noopener');
+    }
+    this.markPrinted(rows.map((r) => r.id));
+  }
+
+  /**
+   * Marks the given orders' QuikShipX labels printed. Because printing the
+   * QuikShip label auto-advances the order to Packed on the backend, the queues
+   * are reloaded on completion so the row moves to Awaiting Handover.
+   */
+  markPrinted(ids: number[]): void {
+    if (ids.length === 0 || this.markingPrinted()) {
+      this.quikLabelBusyId.set(null);
+      return;
+    }
+    this.markingPrinted.set(true);
+    this.service.markLabelsPrinted(ids).subscribe({
+      next: (res) => {
+        this.markingPrinted.set(false);
+        this.quikLabelBusyId.set(null);
+        if (res.marked > 0) {
+          this.toasts.success(`Marked ${res.marked} label${res.marked === 1 ? '' : 's'} printed`);
+        }
+        this.selectedQuikLabel.set(new Set<number>());
+        this.loadQueue();
+      },
+      error: () => {
+        this.markingPrinted.set(false);
+        this.quikLabelBusyId.set(null);
+        this.toasts.error('Could not update label status. Please try again.');
+        this.loadQueue();
       },
     });
   }
@@ -528,16 +756,13 @@ export class ScanComponent implements OnInit, AfterViewInit {
   }
 
   /** Runs the primary action for a work-queue row based on its section kind. */
-  queueAction(kind: 'pack' | 'handover' | 'dispatch', order: PackingQueueRow): void {
+  queueAction(kind: 'pack' | 'handover', order: PackingQueueRow): void {
     switch (kind) {
       case 'pack':
         this.markPacked(order);
         break;
       case 'handover':
         this.handoverOrder(order);
-        break;
-      case 'dispatch':
-        this.dispatchOrder(order);
         break;
     }
   }
@@ -579,6 +804,8 @@ export class ScanComponent implements OnInit, AfterViewInit {
     order: PackingScanResponse['order'];
     nextAction: 'PACK' | 'HANDOVER' | 'DISPATCH' | 'NONE';
     nextStatus: string | null;
+    /** The order/packaging note (null when none) — shown to the packer on scan. */
+    notes?: string | null;
   } | null>(null);
 
   /** Opens the "handed to" popup for an order; the callback runs on confirm. */
@@ -636,27 +863,6 @@ export class ScanComponent implements OnInit, AfterViewInit {
       error: (err: HttpErrorResponse) => {
         this.busyOrderId.set(null);
         this.toasts.error((err.error as ApiError | undefined)?.message ?? 'Handover failed.');
-        this.loadQueue();
-      },
-    });
-  }
-
-  /** Dispatch a handed-over order (enqueues courier assignment), from the queue. */
-  dispatchOrder(order: PackingQueueRow): void {
-    if (this.busyOrderId() !== null) {
-      return;
-    }
-    this.busyOrderId.set(order.id);
-    this.service.dispatch(order.id).subscribe({
-      next: () => {
-        this.busyOrderId.set(null);
-        this.toasts.success(`Order ${order.orderCode} dispatched for courier assignment`);
-        this.loadQueue();
-        this.loadQueues();
-      },
-      error: (err: HttpErrorResponse) => {
-        this.busyOrderId.set(null);
-        this.toasts.error((err.error as ApiError | undefined)?.message ?? 'Dispatch failed.');
         this.loadQueue();
       },
     });

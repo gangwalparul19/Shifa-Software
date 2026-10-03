@@ -69,14 +69,23 @@ public enum OrderStatus {
         // Label service generates the internal label (Req 10.3). A prepaid order
         // may also be payment-rejected by the verifier after approval (the payment
         // check runs alongside the lifecycle), so allow that terminal edge here too.
-        table.put(APPROVED, EnumSet.of(LABEL_GENERATED, PAYMENT_REJECTED));
-        // Packing barcode scan (Req 8.2). QuikShipX orders instead fast-forward
-        // straight to Courier_Assigned when a tracking id is allotted at approval
-        // (SYSTEM only), skipping the manual pack/handover/dispatch steps.
-        table.put(LABEL_GENERATED, EnumSet.of(PACKED, COURIER_ASSIGNED));
+        // An admin may also CANCEL the order at any fulfilment stage up to (but not
+        // including) delivery — e.g. the payment never arrived, or the customer
+        // cancels after a partial payment. When the order has already been handed to
+        // the courier, cancelling here also tells the courier to abort the pickup
+        // (order-cancellation feature). The CANCELLED edge is therefore added to
+        // every pre-delivery fulfilment state below.
+        table.put(APPROVED, EnumSet.of(LABEL_GENERATED, PAYMENT_REJECTED, CANCELLED));
+        // Packing barcode scan (Req 8.2). Every order — QuikShipX and in-house
+        // alike — now flows through the warehouse's manual packing queue: the
+        // courier tracking id/label are allotted on approval but the order stays
+        // Label_Generated ("Orders to Pack") until it is physically packed. The old
+        // Label_Generated → Courier_Assigned fast-forward was removed (packing-
+        // workflow redesign); courier assignment runs on handover instead.
+        table.put(LABEL_GENERATED, EnumSet.of(PACKED, CANCELLED));
         // Handover to the delivery courier (Req 9.2, 9.3). Courier assignment no
         // longer runs directly from Packed — it moves to the handover step.
-        table.put(PACKED, EnumSet.of(HANDED_TO_DELIVERY));
+        table.put(PACKED, EnumSet.of(HANDED_TO_DELIVERY, CANCELLED));
         // Dispatch enqueues courier assignment (Req 9.5, 10.1); a failed/retried
         // assignment self-retains Handed_To_Delivery (Req 10.4). An in-house
         // (non-QuikShipX) order never gets a courier assignment — its own team
@@ -86,19 +95,19 @@ public enum OrderStatus {
         // webhook will ever do it (in-house-delivery feature).
         table.put(HANDED_TO_DELIVERY, EnumSet.of(
                 COURIER_ASSIGNED, HANDED_TO_DELIVERY,
-                DISPATCHED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED));
+                DISPATCHED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, CANCELLED));
         // Pickup (Req 10.2) + forward courier progressions so a QuikShipX tracking
         // poll never stalls when an intermediate scan (e.g. picked-up) is skipped
         // between polls — all SYSTEM-driven.
         table.put(COURIER_ASSIGNED, EnumSet.of(
-                DISPATCHED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, RTO, REDISPATCH));
+                DISPATCHED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, RTO, REDISPATCH, CANCELLED));
         // Courier webhook/tracking progressions (Req 10.3) + a direct Delivered
         // for a skipped in-transit scan.
-        table.put(DISPATCHED, EnumSet.of(IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, RTO, REDISPATCH));
-        table.put(IN_TRANSIT, EnumSet.of(OUT_FOR_DELIVERY, DELIVERED, RTO, REDISPATCH));
+        table.put(DISPATCHED, EnumSet.of(IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, RTO, REDISPATCH, CANCELLED));
+        table.put(IN_TRANSIT, EnumSet.of(OUT_FOR_DELIVERY, DELIVERED, RTO, REDISPATCH, CANCELLED));
         // New delivery outcomes Customer_Rejected / Delivery_Failed (Req 11.1, 11.2).
         table.put(OUT_FOR_DELIVERY,
-                EnumSet.of(DELIVERED, CUSTOMER_REJECTED, DELIVERY_FAILED, RTO, REDISPATCH));
+                EnumSet.of(DELIVERED, CUSTOMER_REJECTED, DELIVERY_FAILED, RTO, REDISPATCH, CANCELLED));
         // Settlement outcomes (Req 16.1, 16.2).
         table.put(DELIVERED, EnumSet.of(CLOSED, COD_COLLECTED));
 

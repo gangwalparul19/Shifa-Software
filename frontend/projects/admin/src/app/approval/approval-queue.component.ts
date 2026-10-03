@@ -14,6 +14,7 @@ import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
+import { ChannelLogoComponent } from '../shared/channel-logo.component';
 import { DELIVERY_METHOD_OPTIONS, DeliveryMethod } from '../orders/orders.model';
 
 interface Toast {
@@ -43,6 +44,7 @@ interface Toast {
     StatePanelComponent,
     DensityToggleComponent,
     RowActionsMenuComponent,
+    ChannelLogoComponent,
   ],
   templateUrl: './approval-queue.component.html',
   styleUrl: './approval-queue.component.css',

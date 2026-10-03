@@ -1,0 +1,41 @@
+# Profile for the context-load smoke test (ApplicationContextLoadsTest).
+# Boots the FULL application context against an in-memory H2 database so a
+# missing @Autowired / broken bean wiring fails the build, WITHOUT needing a
+# live MySQL. Flyway is off; Hibernate generates the schema from the entities so
+# the startup seeders (LedgerSeedService on ApplicationReadyEvent) have tables.
+spring:
+  datasource:
+    url: jdbc:h2:mem:shifa_smoke;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+    hikari:
+      # H2 does not support MySQL's "SET NAMES"; override the base init SQL.
+      connection-init-sql: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+    properties:
+      hibernate:
+        format_sql: false
+  flyway:
+    enabled: false
+
+# Keep integrations inert so no network/credentials are needed at boot.
+app:
+  mail:
+    mode: MOCK
+  whatsapp:
+    mode: MOCK
+  courier:
+    mode: MOCK
+  quikshipx:
+    enabled: false
+    mode: MOCK
+  storage:
+    provider: LOCAL
+  push:
+    vapid:
+      public-key: ""
+      private-key: ""

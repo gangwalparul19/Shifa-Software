@@ -26,7 +26,18 @@ public class OrderNotEditableException extends ApiException {
         this.currentStatus = currentStatus;
     }
 
-    /** The order's current status at the time the edit was rejected. */
+    /**
+     * Rejects an edit for a reason other than lifecycle status (e.g. a
+     * Shopify-managed order whose details are driven automatically from the
+     * store). Carries no {@code currentStatus}.
+     */
+    public OrderNotEditableException(String orderCode, String reason) {
+        super(HttpStatus.CONFLICT, "ORDER_NOT_EDITABLE",
+                "Order '" + orderCode + "' cannot be edited. " + reason);
+        this.currentStatus = null;
+    }
+
+    /** The order's current status at the time the edit was rejected, or null for a non-status reason. */
     public OrderStatus getCurrentStatus() {
         return currentStatus;
     }

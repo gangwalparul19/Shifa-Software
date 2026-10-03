@@ -14,7 +14,6 @@ import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
-import com.shifa.oms.reconciliation.ReceivableEntity;
 import com.shifa.oms.reconciliation.ReceivableRepository;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
 import com.shifa.oms.reporting.domain.DateRange;
@@ -324,17 +323,13 @@ public class DashboardMetricsService {
     }
 
     private BigDecimal unsettledTotal(ReceivableType type) {
-        BigDecimal total = BigDecimal.ZERO;
-        for (ReceivableEntity e : receivableRepository
-                .findByTypeAndSettledFalseOrderByCreatedAtDescIdDesc(type)) {
-            total = total.add(nz(e.getAmount()));
-        }
-        return scale(total);
+        // SQL SUM of unsettled amounts (V71 (type, settled) index) rather than
+        // loading rows and summing in Java.
+        return scale(nz(receivableRepository.sumAmountByTypeAndSettled(type, false)));
     }
 
     private long countUnsettled(ReceivableType type) {
-        return receivableRepository
-                .findByTypeAndSettledFalseOrderByCreatedAtDescIdDesc(type).size();
+        return receivableRepository.countByTypeAndSettledFalse(type);
     }
 
     /** WhatsApp messages successfully delivered (SENT {@code WHATSAPP_NOTIFY} outbox rows, Req 19.6). */

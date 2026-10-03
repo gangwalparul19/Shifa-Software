@@ -71,3 +71,46 @@
   font-size: 0.8rem;
   margin-top: 0.5rem;
 }
+
+/* Before/after field diff (audit-diff-viewer enhancement) */
+.shifa-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.shifa-diff__row {
+  display: grid;
+  grid-template-columns: minmax(90px, auto) 1fr auto 1fr;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
+}
+.shifa-diff__field {
+  font-weight: 600;
+  color: var(--tblr-body-color, #1a2434);
+  white-space: nowrap;
+}
+.shifa-diff__before {
+  color: #b42318;
+  background: #fef3f2;
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+  text-decoration: line-through;
+  overflow-wrap: anywhere;
+}
+.shifa-diff__after {
+  color: #067647;
+  background: #ecfdf3;
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+  overflow-wrap: anywhere;
+}
+.shifa-diff__arrow {
+  color: var(--tblr-secondary, #868e96);
+  font-size: 0.9rem;
+}
+.shifa-ac__difftoggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}

@@ -99,6 +99,10 @@ public class SecurityConfig {
                                 "/", "/index.html", "/favicon.ico",
                                 "/manifest.webmanifest", "/ngsw-worker.js", "/ngsw.json",
                                 "/assets/**", "/*.js", "/*.css").permitAll()
+                        // Liveness/readiness health check is public (load balancers,
+                        // uptime monitors); all other actuator endpoints require auth.
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers("/actuator/**").authenticated()
                         // Everything else under the API requires authentication.
                         .requestMatchers("/api/**").authenticated()
                         // Non-API paths (served static shell) are open.

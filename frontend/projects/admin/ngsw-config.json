@@ -7,7 +7,7 @@
       "updateMode": "prefetch",
       "resources": {
         "files": [
-          "/favicon.ico",
+          "/logo.png",
           "/index.html",
           "/manifest.webmanifest",
           "/*.css",
@@ -21,7 +21,6 @@
       "updateMode": "prefetch",
       "resources": {
         "files": [
-          "/icons/**",
           "/products/**",
           "/media/**",
           "/*.(svg|woff2|woff|ttf|eot|jpg|jpeg|png|webp|gif)"

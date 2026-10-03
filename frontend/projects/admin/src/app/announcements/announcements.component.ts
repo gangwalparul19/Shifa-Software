@@ -1,7 +1,9 @@
 import { IstDatePipe } from '../shared/ist-date.pipe';
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ToastService } from '../shared/toast.service';
@@ -25,6 +27,7 @@ import {
     ReactiveFormsModule,
     IstDatePipe,
     PageHeaderComponent,
+    PaginationComponent,
     StatePanelComponent,
     RowActionsMenuComponent,
   ],
@@ -41,6 +44,26 @@ export class AnnouncementsComponent implements OnInit {
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
   protected readonly saving = signal(false);
+
+  // --- Client-side paging -------------------------------------------------
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('announcements', 10));
+  protected readonly totalElements = computed(() => this.items().length);
+  protected readonly totalPages = computed(() => Math.max(1, Math.ceil(this.totalElements() / this.size())));
+  protected readonly pageItems = computed<Announcement[]>(() => {
+    const s = this.page() * this.size();
+    return this.items().slice(s, s + this.size());
+  });
+
+  goToPage(p: number): void {
+    this.page.set(p);
+  }
+
+  setSize(s: number): void {
+    this.size.set(s);
+    writePageSize('announcements', s);
+    this.page.set(0);
+  }
 
   protected readonly alertClass = announcementAlertClass;
   protected readonly icon = announcementIcon;

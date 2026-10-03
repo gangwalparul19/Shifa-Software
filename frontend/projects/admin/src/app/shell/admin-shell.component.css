@@ -64,6 +64,23 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.shifa-appbar__titlewrap {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.05;
+}
+.shifa-appbar__eyebrow {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* --- Dark-bar account controls (white text/icons for contrast) ---------- */
 .shifa-usermenu__btn {

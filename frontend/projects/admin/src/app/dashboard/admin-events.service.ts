@@ -53,16 +53,28 @@ export class AdminEventsService {
   readonly status = signal<SseStatus>('closed');
 
   /**
-   * Opens the stream (idempotent). No-op when not authenticated, or when the
-   * user isn't an ADMIN — the {@code /api/admin/events} feed is ADMIN-only
-   * server-side, so non-admin roles (salesperson, team lead, accountant, packing)
-   * must NOT attempt it (it would 403 the text/event-stream request repeatedly).
+   * Opens the stream (idempotent). No-op when not authenticated or not a staff
+   * role. Every staff role connects now: the server scopes delivery per
+   * connection, so admins get the operational signals + LIVE_STATS/ACTIVITY while
+   * every role gets a lightweight {@code NOTIFICATION} event for the bell items
+   * addressed to them (their badge updates live). A storefront CUSTOMER never
+   * connects.
    */
   connect(): void {
     if (this.source || typeof EventSource === 'undefined') {
       return;
     }
-    if (!this.auth.hasAnyRole(Role.ADMIN)) {
+    if (
+      !this.auth.hasAnyRole(
+        Role.ADMIN,
+        Role.ACCOUNTANT,
+        Role.CA,
+        Role.SALESPERSON,
+        Role.TEAM_LEAD,
+        Role.PACKING_USER,
+        Role.PAYMENT_VERIFIER,
+      )
+    ) {
       return;
     }
     const token = this.tokens.getAccessToken();
@@ -89,6 +101,9 @@ export class AdminEventsService {
     this.listenNotification(es, 'CLAIM_FILED_REQUIRED');
     this.listenNotification(es, 'COURIER_ASSIGN_FAILED');
     this.listenNotification(es, 'WHATSAPP_FAILED');
+    // Per-recipient bell nudge (all roles). Pushing it into the feed bumps the
+    // bell badge live via the bell's existing effect on notifications().
+    this.listenNotification(es, 'NOTIFICATION');
   }
 
   /** Closes the stream and resets state. */
@@ -167,6 +182,12 @@ export class AdminEventsService {
           'danger',
           orderCode,
         );
+      case 'NOTIFICATION': {
+        // A per-recipient bell nudge: title/severity come straight from the row.
+        const title = (payload['title'] as string | undefined) ?? 'New notification';
+        const sev = (payload['severity'] as AdminNotification['severity'] | undefined) ?? 'info';
+        return this.build(type, title, '', sev, orderCode);
+      }
       default:
         return this.build(type, 'Notification', codeText, 'info', orderCode);
     }

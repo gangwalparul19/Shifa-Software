@@ -62,29 +62,39 @@ class OrderStatusTransitionTablePropertyTest {
         t.put(OrderStatus.PENDING_ADMIN_APPROVAL,
                 EnumSet.of(OrderStatus.APPROVED, OrderStatus.REJECTED,
                         OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED));
+        // Order-cancellation feature: an admin can CANCEL at any pre-delivery
+        // fulfilment stage (APPROVED .. OUT_FOR_DELIVERY), so CANCELLED is a target
+        // of each of those states in addition to its PENDING_ADMIN_APPROVAL edge.
         t.put(OrderStatus.APPROVED,
-                EnumSet.of(OrderStatus.LABEL_GENERATED, OrderStatus.PAYMENT_REJECTED));
+                EnumSet.of(OrderStatus.LABEL_GENERATED, OrderStatus.PAYMENT_REJECTED,
+                        OrderStatus.CANCELLED));
+        // Packing-workflow redesign: every order flows through the packing queue,
+        // so LABEL_GENERATED advances only to PACKED (the old LABEL_GENERATED ->
+        // COURIER_ASSIGNED fast-forward was removed; courier assignment runs on
+        // handover instead).
         t.put(OrderStatus.LABEL_GENERATED,
-                EnumSet.of(OrderStatus.PACKED, OrderStatus.COURIER_ASSIGNED));
-        t.put(OrderStatus.PACKED, EnumSet.of(OrderStatus.HANDED_TO_DELIVERY));
+                EnumSet.of(OrderStatus.PACKED, OrderStatus.CANCELLED));
+        t.put(OrderStatus.PACKED, EnumSet.of(OrderStatus.HANDED_TO_DELIVERY, OrderStatus.CANCELLED));
         // An in-house order has no courier, so besides the courier-assignment edge
         // it may also be advanced manually straight into the in-transit stages or
         // to Delivered (in-house-delivery feature).
         t.put(OrderStatus.HANDED_TO_DELIVERY,
                 EnumSet.of(OrderStatus.COURIER_ASSIGNED, OrderStatus.HANDED_TO_DELIVERY,
                         OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT,
-                        OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED));
+                        OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED,
+                        OrderStatus.CANCELLED));
         t.put(OrderStatus.COURIER_ASSIGNED, EnumSet.of(OrderStatus.DISPATCHED,
                 OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED,
-                OrderStatus.RTO, OrderStatus.REDISPATCH));
+                OrderStatus.RTO, OrderStatus.REDISPATCH, OrderStatus.CANCELLED));
         t.put(OrderStatus.DISPATCHED, EnumSet.of(OrderStatus.IN_TRANSIT,
                 OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED,
-                OrderStatus.RTO, OrderStatus.REDISPATCH));
+                OrderStatus.RTO, OrderStatus.REDISPATCH, OrderStatus.CANCELLED));
         t.put(OrderStatus.IN_TRANSIT, EnumSet.of(OrderStatus.OUT_FOR_DELIVERY,
-                OrderStatus.DELIVERED, OrderStatus.RTO, OrderStatus.REDISPATCH));
+                OrderStatus.DELIVERED, OrderStatus.RTO, OrderStatus.REDISPATCH,
+                OrderStatus.CANCELLED));
         t.put(OrderStatus.OUT_FOR_DELIVERY, EnumSet.of(OrderStatus.DELIVERED,
                 OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED,
-                OrderStatus.RTO, OrderStatus.REDISPATCH));
+                OrderStatus.RTO, OrderStatus.REDISPATCH, OrderStatus.CANCELLED));
         t.put(OrderStatus.DELIVERED, EnumSet.of(OrderStatus.CLOSED, OrderStatus.COD_COLLECTED));
         // A failed/refused attempt can be re-attempted or given up on (returned).
         t.put(OrderStatus.CUSTOMER_REJECTED,

@@ -1,7 +1,8 @@
 package com.shifa.oms.auth;
 
 /**
- * The five platform user roles (Requirement 5.1).
+ * The platform user roles (Requirement 5.1): ADMIN, ACCOUNTANT, CA, SALESPERSON,
+ * TEAM_LEAD, PACKING_USER, PAYMENT_VERIFIER, and CUSTOMER (storefront only).
  *
  * <p>Each role maps to a Spring Security authority of the form
  * {@code ROLE_<name>} (see {@link #authority()}), so method-level checks such as

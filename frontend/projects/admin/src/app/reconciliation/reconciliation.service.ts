@@ -1,10 +1,16 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient, PageResponse, ReceivableType } from 'core';
-import { CourierSummary, ReceivableRow, Segregation, UnsettledCod } from './reconciliation.model';
+import { CodAging, CourierSummary, ReceivableRow, Segregation, UnsettledCod } from './reconciliation.model';
 
-/** The outcome classification for a single courier remittance CSV row. */
-export type RemittanceRowStatus = 'SETTLED' | 'MISMATCH' | 'ORDER_NOT_FOUND' | 'NO_RECEIVABLE' | 'ERROR';
+/** The outcome classification for a single courier remittance row. */
+export type RemittanceRowStatus =
+  | 'SETTLED'
+  | 'MISMATCH'
+  | 'ALREADY_SETTLED'
+  | 'ORDER_NOT_FOUND'
+  | 'NO_RECEIVABLE'
+  | 'ERROR';
 
 /** A single row's outcome in a courier COD remittance import (dry-run or real). */
 export interface RemittanceRowResult {
@@ -28,6 +34,7 @@ export interface RemittanceImportResult {
   totalRows: number;
   settled: number;
   mismatched: number;
+  alreadySettled: number;
   notFound: number;
   noReceivable: number;
   errors: number;
@@ -126,6 +133,11 @@ export class ReconciliationService {
     return this.api.get<UnsettledCod[]>('/api/recon/cod/unsettled');
   }
 
+  /** COD aging buckets + courier-SLA flag (cod-aging enhancement). */
+  codAging(): Observable<CodAging> {
+    return this.api.get<CodAging>('/api/recon/cod-aging');
+  }
+
   /** Prepaid vs COD segregation of fulfilled orders (Req 18.4). */
   segregation(): Observable<Segregation> {
     return this.api.get<Segregation>('/api/recon/segregation');
@@ -148,12 +160,13 @@ export class ReconciliationService {
   }
 
   /**
-   * Imports (or previews) a courier COD remittance CSV via
-   * {@code POST /api/recon/remittance/import} (ADMIN + ACCOUNTANT). Posts the
-   * file as the multipart part {@code file}; pass {@code dryRun=true} first to
-   * preview the auto-match, then {@code false} to commit the settlements.
-   * Angular sets the multipart {@code Content-Type} itself for a
-   * {@link FormData} body.
+   * Imports (or previews) a courier COD remittance sheet — CSV or a real Excel
+   * workbook ({@code .xlsx}/{@code .xls}, e.g. QuikShipX's own remittance
+   * export) — via {@code POST /api/recon/remittance/import} (ADMIN +
+   * ACCOUNTANT). Posts the file as the multipart part {@code file}; pass
+   * {@code dryRun=true} first to preview the auto-match, then {@code false} to
+   * commit the settlements. Angular sets the multipart {@code Content-Type}
+   * itself for a {@link FormData} body.
    */
   importRemittance(file: File, dryRun: boolean): Observable<RemittanceImportResult> {
     const form = new FormData();

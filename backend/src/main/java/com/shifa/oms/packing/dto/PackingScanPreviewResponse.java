@@ -14,7 +14,8 @@ public record PackingScanPreviewResponse(
         String message,
         OrderSummaryResponse order,
         PackingNextAction nextAction,
-        OrderStatus nextStatus
+        OrderStatus nextStatus,
+        String notes
 ) {
 
     public static PackingScanPreviewResponse from(OrderEntity order) {
@@ -29,6 +30,7 @@ public record PackingScanPreviewResponse(
                 message,
                 OrderSummaryResponse.from(order),
                 action,
-                action.targetStatus());
+                action.targetStatus(),
+                order.getNotes());
     }
 }

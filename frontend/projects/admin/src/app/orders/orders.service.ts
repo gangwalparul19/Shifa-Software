@@ -27,6 +27,8 @@ export interface OrderPageQuery {
   /** Coarse lifecycle group key (e.g. PENDING_APPROVAL); expands server-side to a status set. */
   statusGroup?: string | null;
   paymentStatus?: PaymentStatus | string | null;
+  /** Exact order provenance filter (e.g. SHOPIFY to show only Shopify-imported orders). */
+  source?: string | null;
   /** Inclusive lower bound, yyyy-MM-dd. */
   from?: string | null;
   /** Inclusive upper bound, yyyy-MM-dd. */
@@ -35,6 +37,12 @@ export interface OrderPageQuery {
   size?: number;
   /** `field,dir` sort expression (e.g. "createdAt,desc"). */
   sort?: string | null;
+  /**
+   * ADMIN-only drill-down: narrow the listing to a single salesperson's orders
+   * (their user id). Ignored by the backend for non-admins (they are already
+   * scoped to their own orders).
+   */
+  createdBy?: number | null;
 }
 
 /** One skipped row in a bulk operation, with the reason it was skipped. */
@@ -61,6 +69,17 @@ export interface BulkPreview {
   requested: number;
   eligible: BulkPreviewItem[];
   ineligible: BulkPreviewItem[];
+}
+
+/** Result of an admin order cancellation (order-cancellation feature). */
+export interface CancelOrderResult {
+  order: OrderDetail;
+  /** Whether a QuikShipX cancel was attempted (false for in-house / not-yet-shipped). */
+  courierCancelAttempted: boolean;
+  /** Whether QuikShipX confirmed the cancellation (courier pickup aborted). */
+  courierCancelAccepted: boolean;
+  /** Detail from the courier (why it was/wasn't confirmed), for a follow-up note. */
+  courierMessage?: string | null;
 }
 
 /**
@@ -162,6 +181,9 @@ export class OrdersService {
     if (query.paymentStatus) {
       params['paymentStatus'] = query.paymentStatus;
     }
+    if (query.source) {
+      params['source'] = query.source;
+    }
     if (query.from) {
       params['from'] = query.from;
     }
@@ -171,7 +193,49 @@ export class OrdersService {
     if (query.sort) {
       params['sort'] = query.sort;
     }
+    if (query.createdBy != null) {
+      params['createdBy'] = query.createdBy;
+    }
     return this.api.get<PageResponse<OrderSummary>>('/api/admin/orders', { params });
+  }
+
+  /**
+   * Downloads the CURRENT filtered + scoped orders list as a file
+   * ({@code GET /api/admin/orders/export}). Sends the same filters as
+   * {@link page} (minus paging) plus the format; the server applies the
+   * identical role scope and returns a CSV/Excel attachment as a Blob.
+   */
+  exportOrders(query: OrderPageQuery, format: 'csv' | 'xlsx'): Observable<Blob> {
+    const params: Record<string, string> = { format };
+    const q = query.q?.trim();
+    if (q) {
+      params['q'] = q;
+    }
+    if (query.status) {
+      params['status'] = String(query.status);
+    }
+    if (query.statusGroup) {
+      params['statusGroup'] = query.statusGroup;
+    }
+    if (query.paymentStatus) {
+      params['paymentStatus'] = String(query.paymentStatus);
+    }
+    if (query.source) {
+      params['source'] = String(query.source);
+    }
+    if (query.from) {
+      params['from'] = query.from;
+    }
+    if (query.to) {
+      params['to'] = query.to;
+    }
+    if (query.createdBy != null) {
+      params['createdBy'] = String(query.createdBy);
+    }
+    return this.http.get(this.api.url('/api/admin/orders/export'), {
+      params,
+      responseType: 'blob',
+    });
   }
 
   /**
@@ -250,6 +314,18 @@ export class OrdersService {
    */
   resubmit(id: number, payload: UpdateOrderRequest): Observable<OrderDetail> {
     return this.api.post<OrderDetail>(`/api/orders/${id}/resubmit`, payload);
+  }
+
+  /**
+   * Cancel an order with a mandatory note (order-cancellation feature), via
+   * {@code POST /api/admin/orders/{id}/cancel} (ADMIN-only). Works at any
+   * pre-delivery stage — including after a QuikShipX tracking id (AWB) has been
+   * generated — and, for a QuikShipX order, tells the courier to abort the
+   * pickup. Returns the cancelled order plus whether the courier-side cancel was
+   * attempted/confirmed so the UI can flag a needed follow-up.
+   */
+  cancel(id: number, note: string): Observable<CancelOrderResult> {
+    return this.api.post<CancelOrderResult>(`/api/admin/orders/${id}/cancel`, { note });
   }
 
   /**
@@ -351,6 +427,15 @@ export class OrdersService {
    */
   quikShipPublish(id: number): Observable<QuikShipPublishAck> {
     return this.api.post<QuikShipPublishAck>(`/api/orders/${id}/quikshipx/publish`, {});
+  }
+
+  /**
+   * Admin per-order QuikShipX recovery for a stuck order (no tracking id yet):
+   * re-queues its failed QuikShipX events / re-enqueues the missing step
+   * ({@code POST /api/orders/{id}/quikshipx/retry}, ADMIN). Idempotent.
+   */
+  quikShipRetry(id: number): Observable<QuikShipPublishAck> {
+    return this.api.post<QuikShipPublishAck>(`/api/orders/${id}/quikshipx/retry`, {});
   }
 
   /**

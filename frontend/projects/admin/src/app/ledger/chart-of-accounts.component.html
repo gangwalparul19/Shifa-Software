@@ -150,57 +150,64 @@
   />
 } @else {
   <div class="card">
-    <div class="list-group list-group-flush shifa-coa">
+    <div class="shifa-coa">
       @for (node of flatNodes(); track node.group.id) {
         <!-- Account group row -->
-        <div class="list-group-item shifa-coa__group">
-          <div class="shifa-coa__row" [style.padding-left]="indentStyle(node.depth)">
-            <span class="shifa-coa__name">
-              <i class="ti ti-folder text-muted me-2" aria-hidden="true"></i>
-              <strong>{{ node.group.name }}</strong>
-            </span>
-            <span class="d-flex align-items-center gap-2">
+        <div
+          class="shifa-coa__row shifa-coa__group"
+          [class.shifa-coa__group--root]="node.depth === 0"
+          [class.shifa-coa__indented]="node.depth > 0"
+          [style.padding-left]="indentStyle(node.depth)"
+        >
+          <span class="shifa-coa__name">
+            <i class="ti ti-folder shifa-coa__folder" aria-hidden="true"></i>
+            <strong>{{ node.group.name }}</strong>
+          </span>
+          <span class="shifa-coa__trailing">
+            <!-- Nature is shown once, on the root group only — children + ledgers inherit it. -->
+            @if (node.depth === 0) {
               <span class="badge" [class]="naturePillClass(node.group.nature)">{{ natureLabel(node.group.nature) }}</span>
-              @if (canManage()) {
-                <button
-                  type="button"
-                  class="btn btn-sm btn-ghost-secondary"
-                  (click)="openLedgerForm(node.group.id)"
-                  title="Add ledger to this group"
-                >
-                  <i class="ti ti-plus"></i>
-                </button>
-              }
-            </span>
-          </div>
+            }
+            @if (canManage()) {
+              <button
+                type="button"
+                class="btn btn-sm btn-ghost-secondary btn-icon shifa-coa__action"
+                (click)="openLedgerForm(node.group.id)"
+                title="Add ledger to this group"
+                aria-label="Add ledger to this group"
+              >
+                <i class="ti ti-plus"></i>
+              </button>
+            }
+          </span>
         </div>
 
         <!-- Ledgers directly under this group -->
         @for (ledger of node.ledgers; track ledger.id) {
-          <div class="list-group-item shifa-coa__ledger">
-            <div class="shifa-coa__row" [style.padding-left]="indentStyle(node.depth + 1)">
-              <span class="shifa-coa__name">
-                <i class="ti ti-file-invoice text-muted me-2" aria-hidden="true"></i>
-                {{ ledger.name }}
-                @if (ledger.controlKey) {
-                  <span class="badge bg-secondary-lt ms-2" title="Auto-posting control account">{{ ledger.controlKey }}</span>
-                }
-              </span>
-              <span class="d-flex align-items-center gap-2">
-                <span class="badge" [class]="naturePillClass(ledger.nature)">{{ natureLabel(ledger.nature) }}</span>
-                @if (canManage() && !ledger.systemGenerated) {
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-ghost-danger"
-                    (click)="deleteLedger(ledger)"
-                    title="Delete ledger"
-                    aria-label="Delete ledger"
-                  >
-                    <i class="ti ti-trash"></i>
-                  </button>
-                }
-              </span>
-            </div>
+          <div
+            class="shifa-coa__row shifa-coa__ledger shifa-coa__indented"
+            [style.padding-left]="indentStyle(node.depth + 1)"
+          >
+            <span class="shifa-coa__name">
+              <i class="ti ti-file-invoice shifa-coa__leaf" aria-hidden="true"></i>
+              {{ ledger.name }}
+              @if (ledger.controlKey) {
+                <span class="shifa-coa__chip" title="Auto-posting control account">{{ ledger.controlKey }}</span>
+              }
+            </span>
+            <span class="shifa-coa__trailing">
+              @if (canManage() && !ledger.systemGenerated) {
+                <button
+                  type="button"
+                  class="btn btn-sm btn-ghost-danger btn-icon shifa-coa__action"
+                  (click)="deleteLedger(ledger)"
+                  title="Delete ledger"
+                  aria-label="Delete ledger"
+                >
+                  <i class="ti ti-trash"></i>
+                </button>
+              }
+            </span>
           </div>
         }
       }

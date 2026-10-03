@@ -55,26 +55,26 @@
         <div class="shifa-cust__avatar" aria-hidden="true">{{ customerInitials(c.name) }}</div>
         <div class="shifa-cust__main">
           <div class="shifa-cust__name">
-            {{ c.name || '—' }}
+            <span class="shifa-cust__nametext">{{ c.name || '—' }}</span>
             @if (c.repeatBuyer) {
               <span class="shifa-cust__tag"><i class="ti ti-repeat"></i> Repeat</span>
             }
           </div>
           <div class="shifa-cust__phone">{{ c.mobile }}</div>
           <div class="shifa-cust__meta">
-            <i class="ti ti-shopping-bag me-1"></i>{{ c.orderCount }} orders
-            · <span class="fw-semibold">{{ money(c.totalSpent) }}</span>
-          </div>
-          <div class="shifa-list-actions mt-2" (click)="stopRowClick($event)">
-            <a class="btn btn-sm btn-outline-secondary" [href]="'tel:' + c.mobile" aria-label="Call customer">
-              <i class="ti ti-phone me-1"></i>Call
-            </a>
-            <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsAppSummary(c, $event)">
-              <i class="ti ti-brand-whatsapp me-1"></i>WhatsApp
-            </button>
+            <i class="ti ti-shopping-bag"></i>{{ c.orderCount }} order{{ c.orderCount === 1 ? '' : 's' }}
+            <span class="shifa-cust__dot">·</span>
+            <span class="shifa-cust__spent">{{ money(c.totalSpent) }}</span>
           </div>
         </div>
-        <i class="ti ti-chevron-right shifa-cust__view text-secondary" aria-hidden="true"></i>
+        <div class="shifa-cust__actions" (click)="stopRowClick($event)">
+          <a class="shifa-cust__act" [href]="'tel:' + c.mobile" aria-label="Call customer" title="Call">
+            <i class="ti ti-phone"></i>
+          </a>
+          <button type="button" class="shifa-cust__act shifa-cust__act--wa" (click)="sendWhatsAppSummary(c, $event)" aria-label="WhatsApp customer" title="WhatsApp">
+            <i class="ti ti-brand-whatsapp"></i>
+          </button>
+        </div>
       </div>
     }
     <admin-pagination

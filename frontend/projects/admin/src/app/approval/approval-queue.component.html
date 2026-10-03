@@ -75,7 +75,10 @@
             [attr.aria-label]="'Select order ' + item.orderCode"
           />
           <div class="shifa-appr__idwrap">
-            <span class="shifa-appr__code">{{ item.orderCode }}</span>
+            <span class="shifa-appr__code">
+              {{ item.orderCode }}
+              @if (item.source === 'SHOPIFY') { <admin-channel-logo class="ms-1" [source]="item.source" /> }
+            </span>
             <span class="shifa-appr__meta">
               {{ item.customerName }} · {{ item.createdAt ? (item.createdAt | istDate: 'dd MMM, HH:mm') : '—' }}
               @if (item.salespersonName) { · <i class="ti ti-user"></i> {{ item.salespersonName }} }
@@ -130,7 +133,13 @@
               </td>
               <td>
                 <span class="fw-medium">{{ item.orderCode }}</span>
-                <div><span class="badge bg-secondary-lt">{{ humanize(item.source) }}</span></div>
+                <div class="mt-1">
+                  @if (item.source === 'SHOPIFY') {
+                    <admin-channel-logo [source]="item.source" />
+                  } @else {
+                    <span class="badge bg-secondary-lt">{{ humanize(item.source) }}</span>
+                  }
+                </div>
               </td>
               <td>{{ item.customerName }}</td>
               <td class="text-secondary">{{ item.salespersonName || '—' }}</td>

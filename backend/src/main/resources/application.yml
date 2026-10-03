@@ -10,11 +10,16 @@ spring:
     default: local
   datasource:
     hikari:
-      # Force utf8mb4 on every pooled connection (character_set_client/connection/
-      # results) so 4-byte characters — emoji in WhatsApp templates — read back
-      # intact, independent of the JDBC characterEncoding negotiation. Without this
-      # the value is stored correctly (utf8mb4 column) but returned mangled ("�").
-      connection-init-sql: "SET NAMES utf8mb4"
+      # Pin two things on every pooled connection, in ONE statement:
+      #  1. utf8mb4 (character_set_client/connection/results — same as SET NAMES
+      #     utf8mb4) so 4-byte characters (emoji in WhatsApp templates) read back
+      #     intact, independent of the JDBC characterEncoding negotiation.
+      #  2. time_zone = IST (+05:30) so MySQL-generated CURRENT_TIMESTAMP defaults
+      #     (orders.created_at, status-history, audit, …) are written as IST
+      #     wall-clock. The host OS + MySQL run in UTC; without this they'd store
+      #     UTC and the app (which treats every persisted LocalDateTime as IST and
+      #     stamps +05:30 on it) would render every timestamp ~5h30m behind.
+      connection-init-sql: "SET time_zone='+05:30', character_set_client=utf8mb4, character_set_connection=utf8mb4, character_set_results=utf8mb4"
   servlet:
     multipart:
       # Payment screenshots from phones are commonly 2-5 MB; the Spring default
@@ -53,6 +58,27 @@ server:
     include-message: never
     include-stacktrace: never
 
+# Actuator: expose only the health endpoint over HTTP. Health DETAILS are shown
+# only to authenticated callers (the liveness/readiness status itself is public
+# via SecurityConfig so load balancers / uptime monitors can probe it).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: when_authorized
+      probes:
+        enabled: true
+  health:
+    # Don't let the public health check depend on an optional OUTBOUND SMTP probe:
+    # the mail indicator opens an SMTP connection on every call and reports DOWN
+    # when egress/creds aren't available, which would wrongly mark a fully
+    # functional app as unhealthy. DB + disk + ping still gate health.
+    mail:
+      enabled: false
+
 # -----------------------------------------------------------------------------
 # Application-specific settings. Values are placeholders resolved per profile
 # and/or from environment variables in production.
@@ -84,6 +110,10 @@ app:
     # drives the report via POST /api/admin/reports/daily-digest/run to avoid a
     # double-send. The ADMIN trigger endpoint always works regardless of this flag.
     digest-enabled: ${REPORT_DIGEST_ENABLED:true}
+    # Optional WEEKLY consolidated report (scheduled-report-delivery). OFF by
+    # default — an admin opts in by setting REPORT_WEEKLY_ENABLED=true (and a
+    # digest-to recipient). Cron via REPORT_WEEKLY_CRON (default Mon 08:30).
+    weekly-enabled: ${REPORT_WEEKLY_ENABLED:false}
     # Milestone-email send retry policy for the email outbox drainer (Req 14.5).
     max-attempts: ${MAIL_MAX_ATTEMPTS:3}
     retry-backoff: PT30S
@@ -130,6 +160,13 @@ app:
     # Scheduler intervals (ms): outbox drain and missed-webhook poll fallback.
     drain-interval-ms: ${COURIER_DRAIN_INTERVAL_MS:15000}
     poll-interval-ms: ${COURIER_POLL_INTERVAL_MS:300000}
+  shopify:
+    # Shopify storefront integration: the orders/create webhook
+    # (POST /api/webhooks/shopify/orders) mirrors each Shopify order into this OMS
+    # automatically, tagged OrderSource.SHOPIFY. The shared secret verifies the
+    # inbound HMAC-SHA256 signature (base64, header X-Shopify-Hmac-Sha256). Blank =
+    # accept without verification (local dev only); production MUST set it.
+    webhook-hmac-secret: ${SHOPIFY_WEBHOOK_HMAC_SECRET:}
   quikshipx:
     # QuikShipX courier integration (create-order on punch, allot-tracking-id on
     # dispatch, track-order polling). OFF by default — the internal label/packing
@@ -162,10 +199,19 @@ app:
     # Confirmed locally only).
     confirm-order-path: ${QUIKSHIPX_CONFIRM_ORDER_PATH:}
     request-timeout: PT15S
-    max-attempts: ${QUIKSHIPX_MAX_ATTEMPTS:5}
-    retry-backoff: PT30S
-    # Scheduler interval (ms) for draining create/confirm events.
+    # Retry tolerance for create/confirm/allot. QuikShipX occasionally returns a
+    # transient HTTP 500 (e.g. allot-tracking-id during a brief outage); a short
+    # ladder would exhaust in ~2 min and strand the order permanently. 12 attempts
+    # at a 2-min backoff gives the API ~24 min to recover before an event is marked
+    # FAILED — after which the self-healing re-drive below picks it back up.
+    max-attempts: ${QUIKSHIPX_MAX_ATTEMPTS:12}
+    retry-backoff: ${QUIKSHIPX_RETRY_BACKOFF:PT2M}
+    # Scheduler interval (ms) for draining create/confirm/allot events.
     drain-interval-ms: ${QUIKSHIPX_DRAIN_INTERVAL_MS:15000}
+    # Self-healing: how often to re-queue transiently-FAILED QuikShipX events back
+    # to PENDING so a longer courier outage still recovers automatically once the
+    # API is healthy (the operations are idempotent). Default every 10 minutes.
+    redrive-interval-ms: ${QUIKSHIPX_REDRIVE_INTERVAL_MS:600000}
   payment:
     # Online payment gateway (Phase E). Swappable behind the PaymentGateway
     # interface and selected by `mode`:

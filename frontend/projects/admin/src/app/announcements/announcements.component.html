@@ -58,7 +58,7 @@
   />
 } @else {
   <div class="d-flex flex-column gap-2">
-    @for (a of items(); track a.id) {
+    @for (a of pageItems(); track a.id) {
       <div class="card" [class.opacity-60]="!a.active">
         <div class="card-body d-flex align-items-start gap-2 py-2">
           <div class="alert {{ alertClass(a.severity) }} mb-0 flex-fill d-flex align-items-start">
@@ -76,5 +76,15 @@
         </div>
       </div>
     }
+    <div class="card">
+      <admin-pagination
+        [page]="page()"
+        [totalPages]="totalPages()"
+        [totalElements]="totalElements()"
+        [size]="size()"
+        (pageChange)="goToPage($event)"
+        (sizeChange)="setSize($event)"
+      />
+    </div>
   </div>
 }

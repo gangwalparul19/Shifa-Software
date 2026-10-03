@@ -13,9 +13,7 @@ import com.shifa.oms.lead.dto.LeadReports.ConversionReport;
 import com.shifa.oms.lead.dto.LeadReports.ConversionRow;
 import com.shifa.oms.lead.dto.LeadReports.PipelineCount;
 import com.shifa.oms.lead.dto.LeadReports.PipelineReport;
-import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
-import com.shifa.oms.reconciliation.ReceivableEntity;
 import com.shifa.oms.reconciliation.ReceivableRepository;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
 import com.shifa.oms.statemachine.OrderStatus;
@@ -114,15 +112,13 @@ public class RoleDashboardService {
     private RoleDashboardSummary.Salesperson salesperson(AuthPrincipal principal) {
         // Scope to the caller's own orders (Req 3.2, 2.6): a salesperson's
         // creatorConstraint is their own id, applied at the repository layer.
+        // Count statuses in SQL (GROUP BY) rather than loading every order.
         Long createdBy = scopeResolver.creatorConstraint(principal).orElse(null);
-        List<OrderEntity> orders = orderRepository.findAllScoped(createdBy);
+        Map<OrderStatus, Long> counts =
+                toStatusMap(orderRepository.statusCountsForCreator(createdBy));
 
-        Map<String, Long> byStatus = new LinkedHashMap<>();
-        for (OrderEntity o : orders) {
-            String key = o.getOrderStatus() == null ? "" : o.getOrderStatus().name();
-            byStatus.merge(key, 1L, Long::sum);
-        }
-        long awaitingApproval = DashboardQueue.APPROVAL.count(orders, OrderEntity::getOrderStatus);
+        Map<String, Long> byStatus = byStatusNames(counts);
+        long awaitingApproval = DashboardQueue.APPROVAL.countFrom(counts);
 
         // Lead pipeline-by-stage counts + due-follow-up count for the caller (Req 6.6).
         Map<String, Long> leadPipeline = new LinkedHashMap<>();
@@ -143,42 +139,34 @@ public class RoleDashboardService {
      */
     private RoleDashboardSummary.Salesperson teamLead(AuthPrincipal principal) {
         List<Long> memberIds = scopeResolver.creatorScope(principal).orElse(List.of());
-        List<OrderEntity> orders = memberIds.isEmpty()
-                ? List.of()
-                : orderRepository.findAllScopedIn(memberIds);
+        // Empty team → scoped to nothing (never all); otherwise SQL-count the
+        // team's orders by status rather than loading them.
+        Map<OrderStatus, Long> counts = memberIds.isEmpty()
+                ? Map.of()
+                : toStatusMap(orderRepository.statusCountsForCreatorIn(memberIds));
 
-        Map<String, Long> byStatus = new LinkedHashMap<>();
-        for (OrderEntity o : orders) {
-            String key = o.getOrderStatus() == null ? "" : o.getOrderStatus().name();
-            byStatus.merge(key, 1L, Long::sum);
-        }
-        long awaitingApproval = DashboardQueue.APPROVAL.count(orders, OrderEntity::getOrderStatus);
+        Map<String, Long> byStatus = byStatusNames(counts);
+        long awaitingApproval = DashboardQueue.APPROVAL.countFrom(counts);
         return new RoleDashboardSummary.Salesperson(
                 byStatus, awaitingApproval, new LinkedHashMap<>(), 0L);
     }
 
     private RoleDashboardSummary.Admin admin(AuthPrincipal principal) {
-        List<OrderEntity> orders = orderRepository.findAll();
+        // Count orders by status in SQL (GROUP BY) rather than loading every order
+        // and tallying in Java — same figures, a single aggregate query.
+        Map<OrderStatus, Long> counts = toStatusMap(orderRepository.statusCounts());
 
-        long pendingApproval = DashboardQueue.APPROVAL.count(orders, OrderEntity::getOrderStatus);
+        long pendingApproval = DashboardQueue.APPROVAL.countFrom(counts);
         Map<String, Long> perActiveStage = new LinkedHashMap<>();
         for (OrderStatus s : ACTIVE_STAGES) {
-            perActiveStage.put(s.name(), 0L);
+            perActiveStage.put(s.name(), counts.getOrDefault(s, 0L));
         }
         Map<String, Long> exceptionStates = new LinkedHashMap<>();
         for (OrderStatus s : EXCEPTION_STATES) {
-            exceptionStates.put(s.name(), 0L);
+            exceptionStates.put(s.name(), counts.getOrDefault(s, 0L));
         }
-        for (OrderEntity o : orders) {
-            OrderStatus s = o.getOrderStatus();
-            if (ACTIVE_STAGES.contains(s)) {
-                perActiveStage.merge(s.name(), 1L, Long::sum);
-            } else if (EXCEPTION_STATES.contains(s)) {
-                exceptionStates.merge(s.name(), 1L, Long::sum);
-            }
-        }
-        long awaitingHandover = DashboardQueue.AWAITING_HANDOVER.count(orders, OrderEntity::getOrderStatus);
-        long awaitingDispatch = DashboardQueue.AWAITING_DISPATCH.count(orders, OrderEntity::getOrderStatus);
+        long awaitingHandover = DashboardQueue.AWAITING_HANDOVER.countFrom(counts);
+        long awaitingDispatch = DashboardQueue.AWAITING_DISPATCH.countFrom(counts);
         return new RoleDashboardSummary.Admin(
                 pendingApproval, perActiveStage, exceptionStates, awaitingHandover, awaitingDispatch,
                 adminLeads(principal), adminInsights());
@@ -261,26 +249,39 @@ public class RoleDashboardService {
     }
 
     private RoleDashboardSummary.Packing packing() {
-        List<OrderEntity> orders = orderRepository.findAll();
-        long awaitingPacking = DashboardQueue.PACKING.count(orders, OrderEntity::getOrderStatus);
-        long awaitingHandover = DashboardQueue.AWAITING_HANDOVER.count(orders, OrderEntity::getOrderStatus);
-        long awaitingDispatch = DashboardQueue.AWAITING_DISPATCH.count(orders, OrderEntity::getOrderStatus);
-        long packedToday = packedToday(orders);
+        // SQL GROUP BY for the queue tallies + a dedicated count for "packed today"
+        // (no findAll).
+        Map<OrderStatus, Long> counts = toStatusMap(orderRepository.statusCounts());
+        long awaitingPacking = DashboardQueue.PACKING.countFrom(counts);
+        long awaitingHandover = DashboardQueue.AWAITING_HANDOVER.countFrom(counts);
+        long awaitingDispatch = DashboardQueue.AWAITING_DISPATCH.countFrom(counts);
+        long packedToday = packedToday();
         return new RoleDashboardSummary.Packing(
-                awaitingPacking, packedToday, awaitingHandover, awaitingDispatch);
+                awaitingPacking, packedToday, awaitingHandover, awaitingDispatch, packedPerHour(packedToday));
+    }
+
+    /**
+     * Packing throughput (packing-throughput enhancement): today's packed count
+     * over the hours elapsed so far today (minimum 1h so an early-morning burst
+     * isn't divided by a fraction), rounded to 1 dp. A floor-productivity signal.
+     */
+    private double packedPerHour(long packedToday) {
+        if (packedToday <= 0) {
+            return 0.0;
+        }
+        int hour = java.time.LocalTime.now(clock).getHour();
+        double hoursElapsed = Math.max(1, hour); // 0..23 → at least 1
+        return java.math.BigDecimal.valueOf(packedToday / hoursElapsed)
+                .setScale(1, RoundingMode.HALF_UP).doubleValue();
     }
 
     private RoleDashboardSummary.Accountant accountant() {
-        BigDecimal codPending = BigDecimal.ZERO;
-        BigDecimal codSettled = BigDecimal.ZERO;
-        for (ReceivableEntity e : receivableRepository
-                .findByTypeOrderByCreatedAtDescIdDesc(ReceivableType.COD_RECEIVABLE)) {
-            if (e.isSettled()) {
-                codSettled = codSettled.add(nz(e.getAmount()));
-            } else {
-                codPending = codPending.add(nz(e.getAmount()));
-            }
-        }
+        // SQL SUM grouped by settlement status (V71 (type, settled) index) rather
+        // than loading every receivable row and summing in Java.
+        BigDecimal codPending = nz(receivableRepository
+                .sumAmountByTypeAndSettled(ReceivableType.COD_RECEIVABLE, false));
+        BigDecimal codSettled = nz(receivableRepository
+                .sumAmountByTypeAndSettled(ReceivableType.COD_RECEIVABLE, true));
         BigDecimal outstanding = codPending.add(unsettledTotal(ReceivableType.CLAIM_RECEIVABLE));
         return new RoleDashboardSummary.Accountant(
                 scale(codPending), scale(codSettled), scale(outstanding));
@@ -288,27 +289,59 @@ public class RoleDashboardService {
 
     // --- Helpers ------------------------------------------------------------
 
-    /** Count of orders that reached {@code PACKED} (or beyond handover) today. */
-    private long packedToday(List<OrderEntity> orders) {
+    /**
+     * Count of orders currently in {@code PACKED} last updated today, counted in
+     * SQL over the clock's calendar day {@code [startOfDay, startOfNextDay)} —
+     * identical to the previous in-memory {@code updatedAt.toLocalDate() == today}
+     * check, but without loading every order.
+     */
+    private long packedToday() {
         LocalDate today = LocalDate.now(clock);
-        long count = 0;
-        for (OrderEntity o : orders) {
-            if (o.getOrderStatus() == OrderStatus.PACKED
-                    && o.getUpdatedAt() != null
-                    && o.getUpdatedAt().toLocalDate().equals(today)) {
-                count++;
+        return orderRepository.countPackedBetween(
+                today.atStartOfDay(), today.plusDays(1).atStartOfDay());
+    }
+
+    /**
+     * Folds a {@link OrderRepository.StatusCountRow} list into a map keyed by the
+     * parsed {@link OrderStatus}. Any unrecognised status name (defensive — the
+     * column is a known enum) is skipped so a stray value can never break the
+     * dashboard.
+     */
+    private static Map<OrderStatus, Long> toStatusMap(List<OrderRepository.StatusCountRow> rows) {
+        Map<OrderStatus, Long> counts = new java.util.EnumMap<>(OrderStatus.class);
+        for (OrderRepository.StatusCountRow row : rows) {
+            if (row.getStatus() == null) {
+                continue;
+            }
+            try {
+                counts.merge(OrderStatus.valueOf(row.getStatus()), row.getCount(), Long::sum);
+            } catch (IllegalArgumentException ignored) {
+                // Unknown status name — skip (never happens for a valid enum column).
             }
         }
-        return count;
+        return counts;
+    }
+
+    /**
+     * The order-status breakdown keyed by status name, in lifecycle (enum
+     * declaration) order, including only statuses that have at least one order —
+     * matching the shape the salesperson/team-lead sections previously built from
+     * the loaded orders.
+     */
+    private static Map<String, Long> byStatusNames(Map<OrderStatus, Long> counts) {
+        Map<String, Long> byStatus = new LinkedHashMap<>();
+        for (OrderStatus status : OrderStatus.values()) {
+            Long c = counts.get(status);
+            if (c != null && c > 0) {
+                byStatus.put(status.name(), c);
+            }
+        }
+        return byStatus;
     }
 
     private BigDecimal unsettledTotal(ReceivableType type) {
-        BigDecimal total = BigDecimal.ZERO;
-        for (ReceivableEntity e : receivableRepository
-                .findByTypeAndSettledFalseOrderByCreatedAtDescIdDesc(type)) {
-            total = total.add(nz(e.getAmount()));
-        }
-        return total;
+        // SQL SUM of unsettled amounts (V71 (type, settled) index).
+        return nz(receivableRepository.sumAmountByTypeAndSettled(type, false));
     }
 
     private static BigDecimal nz(BigDecimal v) {

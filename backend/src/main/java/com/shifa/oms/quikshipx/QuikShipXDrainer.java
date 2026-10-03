@@ -32,13 +32,30 @@ public class QuikShipXDrainer {
     private final OutboxEventRepository outboxEventRepository;
     private final QuikShipXService quikShipXService;
     private final QuikShipXProperties properties;
+    /**
+     * Optional admin-notification service so a PERMANENTLY-failed QuikShipX event
+     * (create/confirm/allot exhausted its retries) raises an admin alert instead
+     * of silently stranding the order — the packing/admin team then knows a Shopify
+     * order did not get its tracking id and can recover it. Nullable in tests.
+     */
+    private final com.shifa.oms.adminnotification.AdminNotificationService adminNotificationService;
 
+    /** Test constructor without the admin-alert collaborator (no alert on permanent failure). */
     public QuikShipXDrainer(OutboxEventRepository outboxEventRepository,
                             QuikShipXService quikShipXService,
                             QuikShipXProperties properties) {
+        this(outboxEventRepository, quikShipXService, properties, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public QuikShipXDrainer(OutboxEventRepository outboxEventRepository,
+                            QuikShipXService quikShipXService,
+                            QuikShipXProperties properties,
+                            com.shifa.oms.adminnotification.AdminNotificationService adminNotificationService) {
         this.outboxEventRepository = outboxEventRepository;
         this.quikShipXService = quikShipXService;
         this.properties = properties;
+        this.adminNotificationService = adminNotificationService;
     }
 
     /** Scheduled entry point: drains due QuikShipX events every 15 seconds. */
@@ -49,6 +66,62 @@ public class QuikShipXDrainer {
         } catch (RuntimeException e) {
             log.warn("QuikShipX drain cycle failed: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Self-healing re-drive: periodically re-queues permanently-FAILED QuikShipX
+     * events whose failure looks transient (e.g. the courier API returned HTTP 500
+     * / timed out / "not ready" during a brief outage) back to {@code PENDING} so
+     * the normal drainer retries them once QuikShipX recovers. Without this, a
+     * transient outage that outlasts the retry ladder would strand an order at
+     * "Confirmed" with no tracking id forever (observed in production). All
+     * QuikShipX operations are idempotent, so re-driving an already-completed one
+     * is safe. Genuinely permanent failures (bad address/HSN) do not match the
+     * transient-error allow-list and are left FAILED for manual review.
+     */
+    @Scheduled(fixedDelayString = "${app.quikshipx.redrive-interval-ms:600000}")
+    public void scheduledRedrive() {
+        try {
+            redriveFailedTransient();
+        } catch (RuntimeException e) {
+            log.warn("QuikShipX re-drive cycle failed: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Resets transient-looking FAILED QuikShipX events to PENDING (attempts 0,
+     * due now). Returns the number re-queued. Exposed for direct invocation from
+     * tests and the admin recover action.
+     */
+    public int redriveFailedTransient() {
+        int requeued = 0;
+        for (OutboxEvent event : outboxEventRepository.findByStatusAndEventTypePrefix(
+                OutboxEvent.STATUS_FAILED, "QUIKSHIPX")) {
+            if (!looksTransient(event.getLastError())) {
+                continue; // a genuinely permanent failure — leave for manual review
+            }
+            // Back to PENDING with a fresh retry ladder (attempts 0, due now), so the
+            // full tolerance window is available again for this recovery attempt.
+            event.requeue();
+            outboxEventRepository.save(event);
+            requeued++;
+        }
+        if (requeued > 0) {
+            log.info("QuikShipX self-heal: re-queued {} transiently-failed event(s) to PENDING", requeued);
+        }
+        return requeued;
+    }
+
+    /** Whether a FAILED event's last error looks like a transient/retryable cause worth re-driving. */
+    private static boolean looksTransient(String lastError) {
+        if (lastError == null) {
+            return true; // unknown cause — safe to retry (operations are idempotent)
+        }
+        String e = lastError.toLowerCase(java.util.Locale.ROOT);
+        return e.contains("http 500") || e.contains("http 502") || e.contains("http 503")
+                || e.contains("http 504") || e.contains("http 408") || e.contains("http 429")
+                || e.contains("timed out") || e.contains("timeout") || e.contains("failed to connect")
+                || e.contains("not ready") || e.contains("not created yet") || e.contains("will retry");
     }
 
     /**
@@ -94,12 +167,43 @@ public class QuikShipXDrainer {
             outboxEventRepository.save(event);
             log.warn("QuikShipX {} for order {} failed permanently after {} attempt(s): {}",
                     event.getEventType(), orderId, event.getAttempts() + 1, error);
+            alertPermanentFailure(event, orderId, error);
         } else {
             LocalDateTime next = LocalDateTime.now().plus(properties.retryBackoff());
             event.recordRetry(error, next);
             outboxEventRepository.save(event);
             log.debug("QuikShipX {} for order {} will retry at {} ({})",
                     event.getEventType(), orderId, next, error);
+        }
+    }
+
+    /**
+     * Raises an admin alert when a QuikShipX event fails permanently, so an order
+     * that could not get its shipment/tracking id is surfaced rather than silently
+     * stranded. Best-effort: never lets an alerting failure disturb the drainer.
+     */
+    private void alertPermanentFailure(OutboxEvent event, Long orderId, String error) {
+        if (adminNotificationService == null) {
+            return;
+        }
+        try {
+            String step = switch (event.getEventType()) {
+                case OutboxEvent.EVENT_QUIKSHIPX_CREATE -> "create shipment";
+                case OutboxEvent.EVENT_QUIKSHIPX_CONFIRM -> "confirm shipment";
+                case OutboxEvent.EVENT_QUIKSHIPX_ALLOT -> "allot tracking id";
+                default -> event.getEventType();
+            };
+            adminNotificationService.record(
+                    "QUIKSHIPX_FAILED",
+                    "QuikShipX " + step + " failed for order " + orderId,
+                    "The QuikShipX step '" + step + "' could not complete after retries: " + error
+                            + ". The order did not get its tracking id — recover it from the Shopify "
+                            + "recover action or investigate QuikShipX.",
+                    com.shifa.oms.adminnotification.AdminNotification.SEVERITY_DANGER,
+                    orderId, null, event.getId());
+        } catch (RuntimeException alertEx) {
+            log.warn("Failed to raise admin alert for QuikShipX failure on order {}: {}",
+                    orderId, alertEx.getMessage());
         }
     }
 }

@@ -23,6 +23,7 @@ import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.statemachine.OrderStatus;
 
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -188,13 +189,137 @@ public class PackingService {
      */
     @Transactional(readOnly = true)
     public PackingQueueResponse queue() {
-        List<OrderEntity> pack = orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.LABEL_GENERATED);
+        // Orders to Pack = Label_Generated (both QuikShipX + in-house). Awaiting
+        // handover = Packed. After handover an order leaves the packing queues and
+        // shows in one of the two read-only status sections, split by partner:
+        //   QuikShip status  = COURIER orders in the shipping stages (auto),
+        //   In-house deliveries = IN_HOUSE orders in the shipping stages (manual).
+        List<OrderEntity> toPack = orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.LABEL_GENERATED);
         List<OrderEntity> handover = orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.PACKED);
-        List<OrderEntity> dispatch = orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.HANDED_TO_DELIVERY);
-        // Batch-resolve salesperson (created_by) names once for all three queues,
-        // mirroring the reporting module's name resolution (full name, else username).
-        Map<Long, String> names = resolveSalespersonNames(pack, handover, dispatch);
-        return new PackingQueueResponse(rows(pack, names), rows(handover, names), rows(dispatch, names));
+        List<OrderEntity> inFlight = orderRepository.findByOrderStatusInOrderByCreatedAtDesc(SHIPPING_STATUSES);
+
+        // Split the handed-over/in-flight orders by delivery partner.
+        List<OrderEntity> quikShip = new java.util.ArrayList<>();
+        List<OrderEntity> inHouse = new java.util.ArrayList<>();
+        for (OrderEntity o : inFlight) {
+            (o.isInHouseDelivery() ? inHouse : quikShip).add(o);
+        }
+
+        // Batch-resolve salesperson (created_by) names once across every list.
+        Map<Long, String> names = resolveSalespersonNames(toPack, handover, inFlight);
+        // Batch-load QuikShipX shipments for the to-pack list so each row can carry
+        // its courier label details (print button + printed flag). The other lists
+        // don't need label details.
+        Map<Long, com.shifa.oms.quikshipx.OrderShipment> shipments = shipmentsByOrderId(toPack);
+
+        return new PackingQueueResponse(
+                rowsWithLabels(toPack, names, shipments),
+                rows(handover, names),
+                rows(quikShip, names),
+                rows(inHouse, names));
+    }
+
+    /** The shipping-lifecycle statuses shown (read-only) in the two status sections. */
+    private static final Set<OrderStatus> SHIPPING_STATUSES = EnumSet.of(
+            OrderStatus.HANDED_TO_DELIVERY, OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED,
+            OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY);
+
+    /**
+     * Legacy "Print Labels" projection, kept for backward compatibility. Since the
+     * packing-workflow redesign the QuikShipX label details are surfaced directly on
+     * the "Orders to Pack" rows ({@link #queue()} → {@code ordersToPack}), so the
+     * dedicated section is no longer the primary UI. This now lists COURIER
+     * (non-in-house) orders still awaiting packing ({@code Label_Generated}) that
+     * have a QuikShipX shipment, split into those whose courier label still needs
+     * printing and those already printed. Read-only.
+     */
+    @Transactional(readOnly = true)
+    public com.shifa.oms.packing.dto.PrintLabelQueueResponse printLabelQueue() {
+        List<OrderEntity> labelGenerated =
+                orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.LABEL_GENERATED);
+        List<OrderEntity> orders = labelGenerated.stream()
+                .filter(o -> !o.isInHouseDelivery())
+                .toList();
+        Map<Long, com.shifa.oms.quikshipx.OrderShipment> shipments = shipmentsByOrderId(orders);
+
+        List<com.shifa.oms.packing.dto.PrintLabelRow> toPrint = new java.util.ArrayList<>();
+        List<com.shifa.oms.packing.dto.PrintLabelRow> printed = new java.util.ArrayList<>();
+        for (OrderEntity order : orders) {
+            com.shifa.oms.quikshipx.OrderShipment s = shipments.get(order.getId());
+            com.shifa.oms.packing.dto.PrintLabelRow row = printLabelRow(order, s);
+            (row.labelPrinted() ? printed : toPrint).add(row);
+        }
+        return new com.shifa.oms.packing.dto.PrintLabelQueueResponse(toPrint, printed);
+    }
+
+    /**
+     * Marks the given orders' QuikShipX labels as printed (Packaging "Print Labels"
+     * section). Idempotent and tolerant: only Shopify {@code Courier_Assigned}
+     * orders with a QuikShipX shipment are marked; anything else (wrong status /
+     * no shipment / already printed) is skipped. Does NOT change the order's
+     * lifecycle status — the marker only moves the row into the "printed" list.
+     * Returns how many were newly marked.
+     */
+    @Transactional
+    public int markLabelsPrinted(List<Long> orderIds) {
+        if (orderIds == null || orderIds.isEmpty() || orderShipmentRepository == null) {
+            return 0;
+        }
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        int marked = 0;
+        for (com.shifa.oms.quikshipx.OrderShipment s
+                : orderShipmentRepository.findByOrderIdIn(new HashSet<>(orderIds))) {
+            if (!s.isLabelPrinted()) {
+                s.markLabelPrinted(now);
+                orderShipmentRepository.save(s);
+                marked++;
+            }
+            // Packing-workflow redesign (Q4): printing the QuikShipX label is the
+            // signal that the parcel has been prepared, so the order AUTO-ADVANCES
+            // Label_Generated → Packed ("Awaiting Handover"). Idempotent + legality-
+            // gated: an order already past Label_Generated (re-print) is left alone.
+            OrderEntity order = orderRepository.findById(s.getOrderId()).orElse(null);
+            if (order != null && order.getOrderStatus() == OrderStatus.LABEL_GENERATED) {
+                orderWorkflowService.applyTransition(
+                        order, OrderStatus.PACKED, Actor.system("PACKING", "SYSTEM"));
+                orderRepository.save(order);
+                outboxEventPublisher.publishOrderPacked(
+                        order.getId(), order.getOrderCode(), order.getCustomerName(), "SYSTEM");
+                log.debug("Order {} auto-advanced to PACKED on QuikShip label print", order.getOrderCode());
+            }
+        }
+        return marked;
+    }
+
+    /** Batch-loads the QuikShipX shipment for each order (no N+1); empty when the mirror is unwired. */
+    private Map<Long, com.shifa.oms.quikshipx.OrderShipment> shipmentsByOrderId(List<OrderEntity> orders) {
+        Map<Long, com.shifa.oms.quikshipx.OrderShipment> byOrderId = new HashMap<>();
+        if (orderShipmentRepository == null || orders.isEmpty()) {
+            return byOrderId;
+        }
+        Set<Long> ids = new HashSet<>();
+        for (OrderEntity o : orders) {
+            ids.add(o.getId());
+        }
+        for (com.shifa.oms.quikshipx.OrderShipment s : orderShipmentRepository.findByOrderIdIn(ids)) {
+            byOrderId.put(s.getOrderId(), s);
+        }
+        return byOrderId;
+    }
+
+    private static com.shifa.oms.packing.dto.PrintLabelRow printLabelRow(
+            OrderEntity order, com.shifa.oms.quikshipx.OrderShipment s) {
+        return new com.shifa.oms.packing.dto.PrintLabelRow(
+                order.getId(),
+                order.getOrderCode(),
+                order.getCustomerName(),
+                order.getTotalAmount(),
+                order.getCreatedAt(),
+                s == null ? null : s.getAwb(),
+                s == null ? null : s.getShipperOrderId(),
+                s == null ? null : s.getLabelUrl(),
+                s != null && s.isLabelPrinted(),
+                s == null ? null : s.getLabelPrintedAt());
     }
 
     private Map<Long, String> resolveSalespersonNames(List<OrderEntity> pack,
@@ -228,6 +353,18 @@ public class PackingService {
         return orders.stream()
                 .map(o -> PackingQueueRow.from(
                         o, o.getCreatedBy() == null ? null : names.get(o.getCreatedBy())))
+                .toList();
+    }
+
+    /** Like {@link #rows} but attaches each order's QuikShipX shipment label details. */
+    private static List<PackingQueueRow> rowsWithLabels(
+            List<OrderEntity> orders, Map<Long, String> names,
+            Map<Long, com.shifa.oms.quikshipx.OrderShipment> shipments) {
+        return orders.stream()
+                .map(o -> PackingQueueRow.from(
+                        o,
+                        o.getCreatedBy() == null ? null : names.get(o.getCreatedBy()),
+                        shipments.get(o.getId())))
                 .toList();
     }
 
@@ -463,7 +600,20 @@ public class PackingService {
                 order, OrderStatus.HANDED_TO_DELIVERY, Actor.user(actor, SOURCE_PACKING));
         OrderEntity saved = orderRepository.save(order);
 
-        log.debug("Order {} handed to delivery by {}", saved.getOrderCode(), actor.username());
+        // Packing-workflow redesign: handover is the single step out of the packing
+        // queues (the separate "dispatch" queue was removed). For a COURIER order we
+        // now enqueue courier assignment right here, so the order advances
+        // HANDED_TO_DELIVERY → COURIER_ASSIGNED ("Ready For Pickup") out-of-band and
+        // shows up in the auto "QuickShip Status" section. An IN-HOUSE order has no
+        // courier partner, so it stays HANDED_TO_DELIVERY and the team advances it
+        // manually from the "In-House Deliveries" section.
+        if (!saved.isInHouseDelivery()) {
+            outboxEventPublisher.publishCourierAssign(saved.getId(), saved.getOrderCode());
+            log.debug("Order {} handed over + courier assignment enqueued by {}",
+                    saved.getOrderCode(), actor.username());
+        } else {
+            log.debug("Order {} handed to in-house delivery by {}", saved.getOrderCode(), actor.username());
+        }
         return OrderResponse.from(saved);
     }
 

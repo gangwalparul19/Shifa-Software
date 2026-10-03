@@ -1,7 +1,7 @@
 import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   Subject,
   catchError,
@@ -52,6 +52,7 @@ import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { WHATSAPP_TEMPLATES, openWhatsApp, renderTemplate, whatsAppMessage } from '../shared/whatsapp.util';
 import { relativeTime } from '../shared/time.util';
 import { IstDatePipe } from '../shared/ist-date.pipe';
+import { ChannelLogoComponent } from '../shared/channel-logo.component';
 import { WhatsappTemplate, WhatsappTemplatesService } from '../whatsapp/whatsapp-templates.service';
 import {
   SavedView,
@@ -66,6 +67,23 @@ import {
   normalizeGroupKey,
   stageLabelForStatus,
 } from './order-status-groups';
+
+/**
+ * The pre-delivery statuses an order can be cancelled from (order-cancellation
+ * feature; mirrors the backend state machine's CANCELLED edges). A delivered /
+ * closed / returned / already-rejected order is deliberately excluded.
+ */
+const CANCELLABLE_STATUSES = new Set<string>([
+  OrderStatus.PENDING_ADMIN_APPROVAL,
+  OrderStatus.APPROVED,
+  OrderStatus.LABEL_GENERATED,
+  OrderStatus.PACKED,
+  OrderStatus.HANDED_TO_DELIVERY,
+  OrderStatus.COURIER_ASSIGNED,
+  OrderStatus.DISPATCHED,
+  OrderStatus.IN_TRANSIT,
+  OrderStatus.OUT_FOR_DELIVERY,
+]);
 
 /** One rendered step in the order-detail visual status timeline. */
 interface OrderTimelineStep {
@@ -180,6 +198,7 @@ export const ORDER_STATUS_TABS: { key: OrderStatusFilter; label: string }[] = [
     HelpTipComponent,
     PaginationComponent,
     SortableHeaderComponent,
+    ChannelLogoComponent,
   ],
   templateUrl: './orders.component.html',
   styleUrl: './orders.component.css',
@@ -190,6 +209,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   private readonly confirm = inject(ConfirmService);
   private readonly toasts = inject(ToastService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly auth = inject(AuthService);
   protected readonly events = inject(AdminEventsService);
   private readonly waTemplates = inject(WhatsappTemplatesService);
@@ -207,6 +227,10 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * affordance gate.
    */
   canResubmit(order: OrderDetail | null | undefined): boolean {
+    // A Shopify order is managed automatically from the store — never editable/resubmittable here.
+    if (order?.source === 'SHOPIFY') {
+      return false;
+    }
     return (
       !!order &&
       (order.orderStatus === OrderStatus.REJECTED ||
@@ -225,6 +249,10 @@ export class OrdersComponent implements OnInit, OnDestroy {
     if (!order) {
       return false;
     }
+    // A Shopify order is managed automatically from the store — never editable here.
+    if (order.source === 'SHOPIFY') {
+      return false;
+    }
     if (this.auth.hasAnyRole(Role.ADMIN)) {
       return (
         order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL ||
@@ -235,6 +263,29 @@ export class OrdersComponent implements OnInit, OnDestroy {
       order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL &&
       this.auth.hasAnyRole(Role.SALESPERSON, Role.TEAM_LEAD)
     );
+  }
+
+  /**
+   * Whether the "Cancel order" action is offered in the drawer (order-cancellation
+   * feature). ADMIN only, and only for a pre-delivery order — a delivered /
+   * closed / returned / already-cancelled / rejected order can't be cancelled
+   * (a delivered order is a Return). Mirrors the backend's cancellable states.
+   */
+  canCancel(order: OrderDetail | null | undefined): boolean {
+    if (!order || !this.auth.hasAnyRole(Role.ADMIN)) {
+      return false;
+    }
+    return CANCELLABLE_STATUSES.has(order.orderStatus);
+  }
+
+  /**
+   * Opens the dedicated Cancel Order page pre-filtered to this order (so the
+   * mandatory-note modal + courier/GST warnings live in one place), then closes
+   * the drawer.
+   */
+  cancelFromDrawer(order: OrderDetail): void {
+    this.router.navigate(['/order-cancellation'], { queryParams: { q: order.orderCode } });
+    this.closeDetail();
   }
 
   /** Creating a return is ADMIN-only (Set B — Feature 2, mutations = ADMIN). */
@@ -270,6 +321,21 @@ export class OrdersComponent implements OnInit, OnDestroy {
     );
   }
 
+  /**
+   * Whether "retry delivery" should be surfaced for this order: it's in RTO
+   * (returned to origin) or REDISPATCH (lost/damaged by the courier) — both are
+   * final for this order (RTO already raised a GST credit note; REDISPATCH
+   * already zeroed the customer's outstanding and filed a claim), so the only
+   * way to get the customer their order is a NEW order via the existing one-tap
+   * Reorder flow (`reorderFrom`), not reopening this one.
+   */
+  isRetryEligible(order: OrderDetail | null): boolean {
+    return (
+      !!order &&
+      (order.orderStatus === OrderStatus.RTO || order.orderStatus === OrderStatus.REDISPATCH)
+    );
+  }
+
   protected readonly OrderStatus = OrderStatus;
   protected readonly PaymentStatus = PaymentStatus;
   protected readonly humanize = humanizeStatus;
@@ -289,6 +355,15 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * is server-side, so the loaded page already only contains matching orders.
    */
   protected readonly activeStatusGroup = signal<OrderStatusFilter>('ALL');
+
+  /**
+   * ADMIN-only salesperson drill-down (from the Leaderboard / Salespeople
+   * pages): when set, the listing is narrowed to this user's orders via the
+   * backend {@code ?createdBy=} param. {@link createdByName} is just the label
+   * for the dismissible chip.
+   */
+  protected readonly createdByFilter = signal<number | null>(null);
+  protected readonly createdByName = signal<string | null>(null);
   /**
    * The orders to render. Filtering is now done server-side (grouped
    * {@code statusGroup} query param), so this simply surfaces the loaded page —
@@ -308,6 +383,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
   protected readonly filters = new FormGroup({
     statusGroup: new FormControl<string>('', { nonNullable: true }),
     paymentStatus: new FormControl<string>('', { nonNullable: true }),
+    // Exact order provenance filter ('' = any; 'SHOPIFY' = only Shopify-imported).
+    source: new FormControl<string>('', { nonNullable: true }),
     from: new FormControl<string>('', { nonNullable: true }),
     to: new FormControl<string>('', { nonNullable: true }),
   });
@@ -386,12 +463,81 @@ export class OrdersComponent implements OnInit, OnDestroy {
     if (order.courierName) {
       return order.courierName;
     }
-    return this.isInHouse(order) ? 'In-House' : 'QuikShipX';
+    return this.isInHouse(order) ? 'Ishika Enterprise' : 'QuikShipX';
   }
 
   /** Whether this order is fulfilled by Shifa's own team (no courier partner, no AWB). */
   isInHouse(order: OrderDetail | null): boolean {
     return !!order && order.deliveryMethod === 'IN_HOUSE';
+  }
+
+  // --- Source / courier-partner / tracking (Orders list columns) -----------
+
+  /** Builds the Delhivery public tracking URL for an AWB (QuikShipX ships via Delhivery). */
+  trackUrl(awb: string | null | undefined): string | null {
+    const trimmed = (awb ?? '').trim();
+    return trimmed ? `https://www.delhivery.com/track-v2/package/${encodeURIComponent(trimmed)}` : null;
+  }
+
+  /** Opens the courier tracking page for an AWB in a new tab (stops the row click). */
+  openTracking(awb: string | null | undefined, event?: Event): void {
+    event?.stopPropagation();
+    const url = this.trackUrl(awb);
+    if (url) {
+      window.open(url, '_blank', 'noopener');
+    }
+  }
+
+  /** Business label for the order source column: Sales / Store / Shopify. */
+  sourceLabel(source: string | null | undefined): string {
+    switch (source) {
+      case 'SHOPIFY':
+        return 'Shopify';
+      case 'STOREFRONT':
+        return 'Store';
+      case 'SALESPERSON':
+        return 'Sales';
+      default:
+        return source ? humanizeStatus(source) : '—';
+    }
+  }
+
+  /** Tabler icon for the order source (non-Shopify sources, which use a logo). */
+  sourceIcon(source: string | null | undefined): string {
+    switch (source) {
+      case 'STOREFRONT':
+        return 'ti-building-store';
+      case 'SALESPERSON':
+        return 'ti-user';
+      default:
+        return 'ti-circle';
+    }
+  }
+
+  /**
+   * The courier partner for a list row: 'IN_HOUSE' when the order is delivered
+   * by Shifa's own team, else 'QUIKSHIPX' (the default). A future Blue Dart
+   * value would surface here once the backend models it.
+   */
+  courierPartner(order: OrderSummary): 'IN_HOUSE' | 'QUIKSHIPX' {
+    return order.deliveryMethod === 'IN_HOUSE' ? 'IN_HOUSE' : 'QUIKSHIPX';
+  }
+
+  /** Human label for the courier partner column. */
+  courierPartnerLabel(order: OrderSummary): string {
+    return this.courierPartner(order) === 'IN_HOUSE' ? 'In-House' : 'QuikShip';
+  }
+
+  /**
+   * What to show in the "Salesperson / Shopify ID" column: for a Shopify order,
+   * the Shopify order id (so staff can cross-reference the Shopify admin); for a
+   * salesperson order, the salesperson's name; else a dash.
+   */
+  salespersonCell(order: OrderSummary): string {
+    if (order.source === 'SHOPIFY') {
+      return order.shopifyOrderId ? `#${order.shopifyOrderId}` : 'Shopify';
+    }
+    return order.salespersonName || '—';
   }
 
   // --- In-house manual delivery status (in-house-delivery feature) ----------
@@ -647,6 +793,9 @@ export class OrdersComponent implements OnInit, OnDestroy {
   private lastSeenActivityTs = 0;
 
   // --- Saved views (A4) ---------------------------------------------------
+  /** Busy flag for the CSV/Excel export download (list-export enhancement). */
+  protected readonly exporting = signal(false);
+
   protected readonly savedViews = signal<SavedView[]>([]);
   protected readonly savingView = signal(false);
   protected readonly newViewName = new FormControl<string>('', { nonNullable: true });
@@ -718,7 +867,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   private updateActiveFilterCount(): void {
     const f = this.filters.getRawValue();
     this.activeFilterCount.set(
-      [f.statusGroup, f.paymentStatus, f.from, f.to].filter((v) => !!v).length,
+      [f.statusGroup, f.paymentStatus, f.source, f.from, f.to].filter((v) => !!v).length,
     );
   }
 
@@ -743,10 +892,22 @@ export class OrdersComponent implements OnInit, OnDestroy {
       ? ''
       : (normalizeGroupKey(qp.get('statusGroup')) || groupForStatus(qp.get('status')));
     const paymentStatus = qp.get('paymentStatus') ?? '';
+    // Optional ?source= deep link (e.g. drilling into Shopify orders).
+    const source = qp.get('source') ?? '';
     const from = qp.get('from') ?? '';
     const to = qp.get('to') ?? '';
-    if (statusGroup || paymentStatus || from || to) {
-      this.filters.setValue({ statusGroup, paymentStatus, from, to }, { emitEvent: false });
+    if (statusGroup || paymentStatus || source || from || to) {
+      this.filters.setValue({ statusGroup, paymentStatus, source, from, to }, { emitEvent: false });
+    }
+    // ADMIN-only salesperson drill-down (?createdBy=&name=) from the Leaderboard
+    // / Salespeople pages.
+    const createdByRaw = qp.get('createdBy');
+    if (createdByRaw) {
+      const parsed = Number(createdByRaw);
+      if (Number.isFinite(parsed)) {
+        this.createdByFilter.set(parsed);
+        this.createdByName.set(qp.get('name'));
+      }
     }
   }
 
@@ -766,11 +927,13 @@ export class OrdersComponent implements OnInit, OnDestroy {
         q: this.search.value,
         statusGroup: f.statusGroup || null,
         paymentStatus: f.paymentStatus || null,
+        source: f.source || null,
         from: f.from || null,
         to: f.to || null,
         page: this.page(),
         size: this.size(),
         sort: sortParam(this.sort()),
+        createdBy: this.createdByFilter(),
       })
       .subscribe({
         next: (res) => {
@@ -786,6 +949,48 @@ export class OrdersComponent implements OnInit, OnDestroy {
         error: () => {
           this.loadError.set('Could not load orders. Please try again.');
           this.loading.set(false);
+        },
+      });
+  }
+
+  /**
+   * Downloads the current filtered + scoped orders list as CSV or Excel
+   * (list-export enhancement). Reuses the exact filter values driving the table
+   * so the file matches what's on screen; the server re-applies the role scope.
+   */
+  exportOrders(format: 'csv' | 'xlsx'): void {
+    if (this.exporting()) {
+      return;
+    }
+    this.exporting.set(true);
+    const f = this.filters.getRawValue();
+    this.service
+      .exportOrders(
+        {
+          q: this.search.value,
+          statusGroup: f.statusGroup || null,
+          paymentStatus: f.paymentStatus || null,
+          source: f.source || null,
+          from: f.from || null,
+          to: f.to || null,
+          createdBy: this.createdByFilter(),
+        },
+        format,
+      )
+      .subscribe({
+        next: (blob) => {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `orders.${format}`;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 60_000);
+          this.exporting.set(false);
+          this.toasts.success('Export ready.');
+        },
+        error: () => {
+          this.toasts.error('Could not export orders. Please try again.');
+          this.exporting.set(false);
         },
       });
   }
@@ -829,13 +1034,42 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   clearFilters(): void {
-    this.filters.reset({ statusGroup: '', paymentStatus: '', from: '', to: '' });
+    this.filters.reset({ statusGroup: '', paymentStatus: '', source: '', from: '', to: '' });
     this.search.setValue('');
+    this.clearCreatedBy();
   }
 
   hasFilters(): boolean {
     const f = this.filters.getRawValue();
-    return !!(this.search.value || f.statusGroup || f.paymentStatus || f.from || f.to);
+    return !!(
+      this.search.value ||
+      f.statusGroup ||
+      f.paymentStatus ||
+      f.source ||
+      f.from ||
+      f.to ||
+      this.createdByFilter() != null
+    );
+  }
+
+  /**
+   * Clears the ADMIN-only salesperson drill-down: drops the signals, strips the
+   * {@code createdBy}/{@code name} query params from the URL, and reloads from
+   * the first page.
+   */
+  clearCreatedBy(): void {
+    const wasActive = this.createdByFilter() != null;
+    this.createdByFilter.set(null);
+    this.createdByName.set(null);
+    // Remove the drill-down params from the URL so a refresh doesn't re-apply them.
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { createdBy: null, name: null },
+      queryParamsHandling: 'merge',
+    });
+    if (wasActive) {
+      this.resetAndLoad();
+    }
   }
 
   // --- Bulk selection -----------------------------------------------------
@@ -1091,6 +1325,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
       {
         statusGroup,
         paymentStatus: view.paymentStatus ?? '',
+        // Saved views don't carry a source filter; clear it when applying one.
+        source: '',
         from: view.from ?? '',
         to: view.to ?? '',
       },
@@ -1572,6 +1808,10 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * guard, so this is a UI convenience — the server enforces it regardless).
    */
   canEditOrder(order: OrderDetail | null): boolean {
+    // A Shopify order is managed automatically from the store — never editable here.
+    if (order?.source === 'SHOPIFY') {
+      return false;
+    }
     return (
       !!order &&
       (order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL ||
@@ -1725,6 +1965,56 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
 
+
+  /** Whether the open order has a QuikShip courier label available to print. */
+  hasQuikShipLabel(order: OrderDetail | null): boolean {
+    return !!order && !!order.quikShipXLabelUrl;
+  }
+
+  /**
+   * Whether a QuikShipX order is published but still has no tracking id (its
+   * courier label — only produced at allot time — is absent while a QuikShipX
+   * status exists). This is the "stuck at Confirmed, no AWB" state the admin can
+   * recover with the retry action. In-house orders never go through QuikShipX.
+   */
+  needsTrackingId(order: OrderDetail | null): boolean {
+    return !!order && !!order.quikShipXStatus && !order.quikShipXLabelUrl && !this.isInHouse(order);
+  }
+
+  /** Opens the QuikShipX-hosted courier label PDF in a new tab (when allotted). */
+  printQuikShipLabel(order: OrderDetail): void {
+    if (!order.quikShipXLabelUrl) {
+      this.toasts.error('No QuikShip label is available yet — the tracking id is still being allotted.');
+      return;
+    }
+    window.open(order.quikShipXLabelUrl, '_blank', 'noopener');
+  }
+
+  /**
+   * Admin recovery for a stuck QuikShipX order (no tracking id yet): re-queues the
+   * failed/missing QuikShipX step so the drainer allots the tracking id. Idempotent.
+   */
+  retryQuikShip(order: OrderDetail): void {
+    if (!this.canManageQuikShip() || this.quikShipBusy()) {
+      return;
+    }
+    this.quikShipBusy.set(true);
+    this.service.quikShipRetry(order.id).subscribe({
+      next: (ack) => {
+        this.quikShipBusy.set(false);
+        if (ack.queued) {
+          this.toasts.success(ack.message);
+          this.loadTracking(order, { silent: true });
+        } else {
+          this.toasts.info(ack.message);
+        }
+      },
+      error: () => {
+        this.quikShipBusy.set(false);
+        this.toasts.error('Could not retry QuikShipX for this order. Please try again.');
+      },
+    });
+  }
 
   /** (Re)queues the open order for publication to QuikShipX (ADMIN). */
   publishToQuikShip(order: OrderDetail): void {

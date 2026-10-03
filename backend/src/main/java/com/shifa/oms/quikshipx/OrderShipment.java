@@ -37,6 +37,8 @@ public class OrderShipment {
     public static final String STATUS_CONFIRMED = "Confirmed";
     /** QuikShipX status after a tracking id (AWB) has been allotted. */
     public static final String STATUS_TRACKING_ID_ASSIGNED = "Tracking ID Assigned";
+    /** QuikShipX status after the shipment is cancelled (order-cancellation feature). */
+    public static final String STATUS_CANCELLED = "Cancelled";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -73,6 +75,27 @@ public class OrderShipment {
     /** Whether this shipment was booked with the TEST secret (QuikShipX Test section). */
     @Column(name = "is_test", nullable = false)
     private boolean test;
+
+    /**
+     * When the packing team printed this order's QuikShipX shipping label from the
+     * Packaging "Print Labels" section (Shopify orders that reached Tracking ID
+     * Assigned). Null until printed. This is an additive marker only — it does NOT
+     * change the order's lifecycle status (the order stays Courier_Assigned so the
+     * QuikShipX tracking poll keeps driving it forward); it just moves the row out
+     * of the "to print" list into the "printed" list. Mapped to
+     * {@code order_shipments.label_printed_at} (V69).
+     */
+    @Column(name = "label_printed_at")
+    private LocalDateTime labelPrintedAt;
+
+    /**
+     * When the shipment was cancelled on our side (order-cancellation feature).
+     * Set together with {@link #quikShipXStatus} = {@link #STATUS_CANCELLED} when
+     * an admin cancels the order after it reached the courier. Null for every
+     * non-cancelled shipment. Mapped to {@code order_shipments.cancelled_at} (V74).
+     */
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
 
     /** The raw QuikShipX {@code order_status} text last seen while tracking. */
     @Column(name = "last_status_raw", length = 120)
@@ -115,6 +138,31 @@ public class OrderShipment {
     /** Mirrors a QuikShipX status label onto the shipment. */
     public void setQuikShipXStatus(String status) {
         this.quikShipXStatus = status;
+    }
+
+    /** Records that the packing team printed this order's QuikShipX label at {@code at} (idempotent). */
+    public void markLabelPrinted(LocalDateTime at) {
+        this.labelPrintedAt = at;
+    }
+
+    /** Whether the QuikShipX label has been printed by the packing team. */
+    public boolean isLabelPrinted() {
+        return labelPrintedAt != null;
+    }
+
+    /**
+     * Marks the shipment cancelled at {@code at} (order-cancellation feature):
+     * sets {@link #quikShipXStatus} to {@link #STATUS_CANCELLED} and records
+     * {@link #cancelledAt}. Idempotent — a second call just re-stamps the time.
+     */
+    public void recordCancelled(LocalDateTime at) {
+        this.quikShipXStatus = STATUS_CANCELLED;
+        this.cancelledAt = at;
+    }
+
+    /** Whether the shipment has been cancelled on our side. */
+    public boolean isCancelled() {
+        return cancelledAt != null;
     }
 
     /** Records the latest raw tracking status seen and the sync time. */
@@ -160,6 +208,14 @@ public class OrderShipment {
 
     public String getLabelUrl() {
         return labelUrl;
+    }
+
+    public LocalDateTime getLabelPrintedAt() {
+        return labelPrintedAt;
+    }
+
+    public LocalDateTime getCancelledAt() {
+        return cancelledAt;
     }
 
     public boolean isTest() {

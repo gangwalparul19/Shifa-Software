@@ -4,6 +4,8 @@ import com.shifa.oms.auth.dto.LoginRequest;
 import com.shifa.oms.auth.dto.RefreshRequest;
 import com.shifa.oms.auth.dto.RegisterRequest;
 import com.shifa.oms.auth.dto.TokenResponse;
+import com.shifa.oms.common.ApiException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,9 +32,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final LoginRateLimiter loginRateLimiter;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, LoginRateLimiter loginRateLimiter) {
         this.authService = authService;
+        this.loginRateLimiter = loginRateLimiter;
     }
 
     @PostMapping("/register")
@@ -42,8 +46,33 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public TokenResponse login(@Valid @RequestBody LoginRequest request) {
-        return authService.login(request);
+    public TokenResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+        String ip = clientIp(httpRequest);
+        // Reject up front if this username|IP is locked out (throws 429).
+        loginRateLimiter.checkNotLocked(request.username(), ip);
+        try {
+            TokenResponse response = authService.login(request);
+            loginRateLimiter.recordSuccess(request.username(), ip);
+            return response;
+        } catch (ApiException ex) {
+            // Count credential/account failures toward the lockout; re-throw as-is
+            // so the caller still sees the original 401.
+            loginRateLimiter.recordFailure(request.username(), ip);
+            throw ex;
+        }
+    }
+
+    /**
+     * Best-effort client IP. Behind Nginx the real client is the first entry of
+     * {@code X-Forwarded-For}; fall back to the socket address otherwise.
+     */
+    private static String clientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            int comma = forwarded.indexOf(',');
+            return (comma > 0 ? forwarded.substring(0, comma) : forwarded).trim();
+        }
+        return request.getRemoteAddr();
     }
 
     @PostMapping("/refresh")

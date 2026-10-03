@@ -149,7 +149,23 @@
           <span class="shifa-inv__kv">Threshold <strong>{{ row.trackInventory ? row.lowStockThreshold : '—' }}</strong></span>
         </div>
         <div class="shifa-inv__actions">
-          <admin-row-actions [actions]="rowActions(row)" ariaLabel="Inventory actions" (select)="onRowAction($event, row)" />
+          @if (row.trackInventory) {
+            <button type="button" class="btn btn-primary" (click)="openRestock(row)">
+              <i class="ti ti-package-import me-1" aria-hidden="true"></i> Restock
+            </button>
+            <button type="button" class="btn btn-outline-secondary" (click)="openAdjust(row)">
+              <i class="ti ti-adjustments me-1" aria-hidden="true"></i> Adjust
+            </button>
+          }
+          <button
+            type="button"
+            class="btn btn-icon btn-outline-secondary"
+            (click)="openHistory(row)"
+            title="Stock history"
+            aria-label="Stock history"
+          >
+            <i class="ti ti-history" aria-hidden="true"></i>
+          </button>
         </div>
       </div>
     }

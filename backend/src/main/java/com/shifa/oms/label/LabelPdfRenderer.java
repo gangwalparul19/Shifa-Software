@@ -375,6 +375,15 @@ public class LabelPdfRenderer {
         t.setWidthPercentage(100);
         t.getDefaultCell().setBorder(Rectangle.NO_BORDER);
 
+        // Always show our own order code, even once a courier AWB has been
+        // allotted and the barcode above has switched to encoding the AWB
+        // instead — the order code must never disappear from the label.
+        if (content.hasCourierBarcode()) {
+            t.addCell(new Phrase("ORDER #", CAPTION_FONT));
+            t.addCell(new Phrase(content.orderCode(), NAME_FONT));
+            t.addCell(spacer());
+        }
+
         t.addCell(new Phrase("ORDERED ON", CAPTION_FONT));
         t.addCell(new Phrase(nz(content.orderedOn(), "\u2014"), BODY_FONT));
 
@@ -525,7 +534,7 @@ public class LabelPdfRenderer {
 
     /**
      * Builds a logo Image from the given bytes, falling back to the bundled
-     * {@code brand/shifa_logo_1.png} classpath resource when no Settings logo is
+     * {@code brand/LOGO.png} classpath resource when no Settings logo is
      * supplied (so the label always carries the Shifa mark top-right, even before
      * a logo is uploaded in Settings). Returns {@code null} only when both the
      * supplied bytes and the bundled resource are absent/undecodable.
@@ -547,7 +556,7 @@ public class LabelPdfRenderer {
             return bundledLogo;
         }
         bundledLogoLoaded = true;
-        try (java.io.InputStream in = getClass().getResourceAsStream("/brand/shifa_logo_1.png")) {
+        try (java.io.InputStream in = getClass().getResourceAsStream("/brand/LOGO.png")) {
             if (in != null) {
                 bundledLogo = Image.getInstance(in.readAllBytes());
             }

@@ -81,7 +81,17 @@ public record RoleDashboardSummary(
             long approvedAwaitingPacking,
             long packedToday,
             long awaitingHandover,
-            long awaitingDispatch) {
+            long awaitingDispatch,
+            // Packing throughput (packing-throughput enhancement): today's packed
+            // count divided by the hours elapsed so far today, rounded to 1 dp —
+            // a floor-productivity signal ("packed/hour"). 0 before anything is packed.
+            double packedPerHour) {
+
+        /** Backward-compatible 4-arg factory (throughput defaults to 0). */
+        public Packing(long approvedAwaitingPacking, long packedToday,
+                       long awaitingHandover, long awaitingDispatch) {
+            this(approvedAwaitingPacking, packedToday, awaitingHandover, awaitingDispatch, 0.0);
+        }
     }
 
     /**

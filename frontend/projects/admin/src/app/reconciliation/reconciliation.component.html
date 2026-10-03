@@ -55,6 +55,37 @@
   </div>
 </div>
 
+<!-- COD aging (cod-aging enhancement): how overdue the unsettled COD is, plus a
+     courier-SLA alert when money has been owed beyond the payout window. -->
+@if (codAging(); as aging) {
+  @if (aging.buckets.length) {
+    <div class="shifa-section-title">COD aging</div>
+    @if (aging.overSlaCount > 0) {
+      <div class="alert alert-warning d-flex align-items-center mb-3" role="alert">
+        <i class="ti ti-alert-triangle me-2"></i>
+        <div>
+          <strong>{{ money(aging.overSlaAmount) }}</strong> across
+          <strong>{{ aging.overSlaCount }}</strong> COD order{{ aging.overSlaCount === 1 ? '' : 's' }}
+          has been owed for more than {{ aging.slaDays }} days — chase the courier for payout.
+        </div>
+      </div>
+    }
+    <div class="row row-cards g-2 g-md-3 mb-3">
+      @for (b of aging.buckets; track b.label) {
+        <div class="col-6 col-lg-3">
+          <div class="card" [class.border-warning]="b.minDays > aging.slaDays && b.count > 0">
+            <div class="card-body py-2">
+              <div class="subheader">{{ b.label }}</div>
+              <div class="h3 m-0">{{ money(b.amount) }}</div>
+              <div class="text-secondary small">{{ b.count }} order{{ b.count === 1 ? '' : 's' }}</div>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  }
+}
+
 <!-- Per-courier summary cards -->
 <div class="shifa-section-title">Courier receivables</div>
 <div class="row row-cards g-2 g-md-3 mb-3 stagger">
@@ -284,7 +315,7 @@
     } @else {
       <!-- Mobile (<768px): unsettled-COD cards with a Settle action. -->
       <div class="shifa-recon-cards d-md-none">
-        @for (u of unsettled(); track u.receivableId) {
+        @for (u of unsettledPageItems(); track u.receivableId) {
           <div class="shifa-rc">
             <div class="shifa-rc__r1">
               <span class="shifa-rc__code">{{ u.orderCode ?? '—' }}</span>
@@ -310,7 +341,7 @@
         <table class="table table-vcenter card-table table-hover stagger-rows">
           <thead><tr><th>Order</th><th>Customer</th><th>Salesperson</th><th>Courier</th><th>AWB</th><th class="text-end">COD amount</th><th class="text-end">Actions</th></tr></thead>
           <tbody>
-            @for (u of unsettled(); track u.receivableId) {
+            @for (u of unsettledPageItems(); track u.receivableId) {
               <tr>
                 <td class="fw-medium">{{ u.orderCode ?? '—' }}</td>
                 <td>{{ u.customerName ?? '—' }}</td>
@@ -324,6 +355,14 @@
           </tbody>
         </table>
       </div>
+      <admin-pagination
+        [page]="unsettledPage()"
+        [totalPages]="unsettledTotalPages()"
+        [totalElements]="unsettled().length"
+        [size]="unsettledSize()"
+        (pageChange)="goToUnsettledPage($event)"
+        (sizeChange)="setUnsettledSize($event)"
+      />
     }
   }
 
@@ -378,7 +417,7 @@
     } @else {
       <!-- Mobile (<768px): pending-claim cards with a Mark settled action. -->
       <div class="shifa-recon-cards d-md-none">
-        @for (c of claims(); track c.id) {
+        @for (c of claimsPageItems(); track c.id) {
           <div class="shifa-rc">
             <div class="shifa-rc__r1">
               <span class="shifa-rc__code">{{ c.orderCode ?? '—' }}</span>
@@ -406,7 +445,7 @@
         <table class="table table-vcenter card-table table-hover stagger-rows">
           <thead><tr><th>Order</th><th>Courier</th><th>AWB</th><th class="text-end">Claim amount</th><th>Recorded</th><th class="text-end">Actions</th></tr></thead>
           <tbody>
-            @for (c of claims(); track c.id) {
+            @for (c of claimsPageItems(); track c.id) {
               <tr>
                 <td class="fw-medium">{{ c.orderCode ?? '—' }}</td>
                 <td>{{ courierLabel(c.courierName) }}</td>
@@ -419,6 +458,14 @@
           </tbody>
         </table>
       </div>
+      <admin-pagination
+        [page]="claimsPage()"
+        [totalPages]="claimsTotalPages()"
+        [totalElements]="claims().length"
+        [size]="claimsSize()"
+        (pageChange)="goToClaimsPage($event)"
+        (sizeChange)="setClaimsSize($event)"
+      />
     }
   }
 </div>
@@ -453,7 +500,7 @@
   <div class="shifa-modal shifa-modal-wide" role="dialog" aria-label="Import courier COD remittance">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-file-import me-2"></i>Import courier COD remittance</h3>
+        <h3 class="card-title mb-0"><i class="ti ti-file-import me-2"></i>Import courier COD remittance (CSV / Excel)</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeRemittanceImport()" aria-label="Close">
             <i class="ti ti-x"></i>
@@ -468,24 +515,29 @@
         }
 
         <div class="alert alert-info" role="note">
-          <div class="fw-medium mb-1">Expected columns</div>
-          <code class="shifa-mono d-block text-wrap">awb,orderCode,amount</code>
+          <div class="fw-medium mb-1">Supported files</div>
+          <div class="small text-secondary">
+            Upload the courier's remittance sheet as-is — CSV or Excel (.xlsx/.xls), e.g. the QuikShipX
+            remittance export with columns <strong>Tracking ID</strong>, <strong>Client Order ID</strong>,
+            <strong>COD Amount</strong>, <strong>Remitted Amount</strong>, <strong>Remitted Date</strong> — or a
+            plain <code class="shifa-mono">awb,orderCode,amount</code> CSV.
+          </div>
           <div class="small text-secondary mt-1">
-            Each row needs an <strong>amount</strong> and at least one of <strong>awb</strong> /
-            <strong>orderCode</strong>. A row is auto-settled only when it matches exactly one unsettled
-            COD receivable AND the amount agrees (within ₹1) — anything else is reported for manual review,
-            never guessed at.
+            Each row is matched to an order by tracking id (AWB) first, then order code, then QuikShipX's
+            client order id. A row is auto-settled only when it resolves to exactly one order AND the amount
+            agrees (within ₹1) — including catching up an order that never got a courier delivery webhook (it's
+            marked Delivered + COD Collected). Anything else is reported for manual review, never guessed at.
           </div>
         </div>
 
         <div class="mb-3">
-          <label class="form-label required">Remittance CSV</label>
+          <label class="form-label required">Remittance file</label>
           <input
             type="file"
             class="form-control"
-            accept=".csv,text/csv"
+            accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             (change)="onRemittanceFileChange($event)"
-            aria-label="Choose a CSV file"
+            aria-label="Choose a CSV or Excel file"
           />
         </div>
 
@@ -496,6 +548,9 @@
             </div></div></div>
             <div class="col"><div class="card card-sm"><div class="card-body py-2">
               <div class="text-secondary small">Settled</div><div class="h3 mb-0 text-success">{{ res.settled }}</div>
+            </div></div></div>
+            <div class="col"><div class="card card-sm"><div class="card-body py-2">
+              <div class="text-secondary small">Already settled</div><div class="h3 mb-0">{{ res.alreadySettled }}</div>
             </div></div></div>
             <div class="col"><div class="card card-sm"><div class="card-body py-2">
               <div class="text-secondary small">Mismatch</div><div class="h3 mb-0 text-warning">{{ res.mismatched }}</div>

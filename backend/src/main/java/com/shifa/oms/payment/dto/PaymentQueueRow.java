@@ -26,7 +26,11 @@ public record PaymentQueueRow(
         // The name of the salesperson who punched the order (resolved from
         // created_by; full name, else username; null when unknown), so the
         // verifier can see who triggered the payment.
-        String salespersonName
+        String salespersonName,
+        // Other order codes whose payment proof is byte-identical to this one
+        // (duplicate-screenshot detection, V72). Empty when the proof is unique —
+        // a non-empty list is a fraud/mistake flag for the verifier.
+        java.util.List<String> duplicateOrderCodes
 ) {
 
     /** Without a resolved salesperson name (null) — kept for callers that don't resolve it. */
@@ -35,6 +39,11 @@ public record PaymentQueueRow(
     }
 
     public static PaymentQueueRow from(OrderEntity order, String salespersonName) {
+        return from(order, salespersonName, java.util.List.of());
+    }
+
+    public static PaymentQueueRow from(OrderEntity order, String salespersonName,
+                                       java.util.List<String> duplicateOrderCodes) {
         String key = order.getPaymentScreenshotKey();
         return new PaymentQueueRow(
                 order.getId(),
@@ -47,6 +56,7 @@ public record PaymentQueueRow(
                 key != null && !key.isBlank(),
                 order.getPaymentVerificationStatus(),
                 order.getCreatedAt(),
-                salespersonName);
+                salespersonName,
+                duplicateOrderCodes == null ? java.util.List.of() : duplicateOrderCodes);
     }
 }

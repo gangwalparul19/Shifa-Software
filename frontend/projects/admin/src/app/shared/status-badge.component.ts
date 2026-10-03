@@ -50,14 +50,37 @@ export function paymentStatusTone(status: PaymentStatus | string): StatusTone {
 
 /**
  * Explicit display labels for statuses whose enum name shouldn't be shown to
- * users verbatim. The client dropped the term "COD" from the UI (orders are Full
- * or Partial payment now), so the payment status {@code COD} and the lifecycle
- * status {@code COD_COLLECTED} render in plain language. The underlying enum
- * names are unchanged (wire/persistence); only the display text differs.
+ * users verbatim. Two reasons:
+ *  - the client dropped "COD" from the UI (orders are Full/Partial payment now);
+ *  - the lifecycle statuses are shown in the courier/business vocabulary the team
+ *    actually uses (per the status dropdown): e.g. {@code COURIER_ASSIGNED} reads
+ *    "Tracking ID Assigned", {@code DISPATCHED} reads "In Transit", {@code RTO}
+ *    reads "Returned", {@code REDISPATCH} reads "Lost". The underlying enum names
+ *    are unchanged (wire/persistence); only the display text differs.
  */
 const STATUS_LABEL_OVERRIDES: Record<string, string> = {
+  // Payment
   COD: 'Pay on Delivery',
   COD_COLLECTED: 'Collected on Delivery',
+  // Order lifecycle — business/courier vocabulary (see status dropdown)
+  PENDING_ADMIN_APPROVAL: 'Pending',
+  APPROVED: 'Confirmed',
+  LABEL_GENERATED: 'Tracking ID Assigned',
+  PACKED: 'Awaiting Handover',
+  HANDED_TO_DELIVERY: 'Handed to Delivery',
+  COURIER_ASSIGNED: 'Ready For Pickup',
+  DISPATCHED: 'In Transit',
+  IN_TRANSIT: 'In Transit',
+  OUT_FOR_DELIVERY: 'Out For Delivery',
+  DELIVERED: 'Delivered',
+  CUSTOMER_REJECTED: 'Returned',
+  DELIVERY_FAILED: 'Delivery Failed',
+  RTO: 'Returned',
+  REDISPATCH: 'Lost',
+  CLOSED: 'Closed',
+  REJECTED: 'Rejected',
+  PAYMENT_REJECTED: 'Payment Rejected',
+  CANCELLED: 'Cancelled',
 };
 
 /** Humanises an enum-ish status value ("Pending_Admin_Approval" → "Pending Admin Approval"). */

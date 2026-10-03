@@ -55,6 +55,17 @@ public final class QuikShipXModels {
     }
 
     /**
+     * The outcome of a cancel-order call (order-cancellation feature).
+     *
+     * @param accepted whether QuikShipX acknowledged the cancellation (so the
+     *                 courier will NOT be sent to pick the parcel up)
+     * @param message  a human-readable detail (QuikShipX message, or why it could
+     *                 not be confirmed) for the audit trail / admin UI
+     */
+    public record CancelResult(boolean accepted, String message) {
+    }
+
+    /**
      * The outcome of a track-order call (documented response:
      * {@code response[0].shipment_details} + {@code response[0].shipment_scanning}).
      *

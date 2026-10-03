@@ -83,14 +83,16 @@ export class SettingsComponent implements OnInit, OnDestroy {
     { key: 'gst', label: 'GST & Invoice', icon: 'ti-receipt-tax' },
     { key: 'company', label: 'Company', icon: 'ti-building-store' },
     { key: 'bank', label: 'Bank', icon: 'ti-building-bank' },
+    { key: 'automation', label: 'Automation', icon: 'ti-robot' },
     { key: 'states', label: 'States', icon: 'ti-map-pin' },
   ] as const;
 
   /** Which settings category is currently shown. */
-  protected readonly activeTab = signal<'gst' | 'company' | 'bank' | 'states'>('gst');
+  protected readonly activeTab =
+    signal<'gst' | 'company' | 'bank' | 'automation' | 'states'>('gst');
 
   /** Switch the visible settings category. */
-  setTab(key: 'gst' | 'company' | 'bank' | 'states'): void {
+  setTab(key: 'gst' | 'company' | 'bank' | 'automation' | 'states'): void {
     this.activeTab.set(key);
   }
 
@@ -138,6 +140,9 @@ export class SettingsComponent implements OnInit, OnDestroy {
     bankAccountNumber: ['', [Validators.maxLength(40)]],
     bankIfsc: ['', [Validators.maxLength(20), Validators.pattern(IFSC_PATTERN)]],
     bankBranch: ['', [Validators.maxLength(120)]],
+    // --- Order auto-approval (V73, DEFAULT OFF) ----------------------------
+    autoApproveEnabled: [false],
+    autoApproveMaxAmount: ['', [Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
   });
 
   ngOnInit(): void {
@@ -292,6 +297,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
           bankAccountNumber: s.bankAccountNumber ?? '',
           bankIfsc: s.bankIfsc ?? '',
           bankBranch: s.bankBranch ?? '',
+          autoApproveEnabled: s.autoApproveEnabled ?? false,
+          autoApproveMaxAmount: s.autoApproveMaxAmount ?? '',
         });
         this.applyGstinValidators(s.gstEnabled);
         this.loading.set(false);
@@ -334,6 +341,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
       bankAccountNumber: raw.bankAccountNumber.trim() || null,
       bankIfsc: raw.bankIfsc.trim().toUpperCase() || null,
       bankBranch: raw.bankBranch.trim() || null,
+      autoApproveEnabled: raw.autoApproveEnabled,
+      autoApproveMaxAmount: raw.autoApproveMaxAmount.trim() || null,
     };
 
     this.saving.set(true);

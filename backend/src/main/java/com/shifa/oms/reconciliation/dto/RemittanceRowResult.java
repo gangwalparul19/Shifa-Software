@@ -30,13 +30,25 @@ public record RemittanceRowResult(
 
     /** The outcome classification for a single remittance row. */
     public enum Status {
-        /** Matched an unsettled COD receivable and the amount matched — settled. */
+        /**
+         * Matched an order and the amount agreed — either an existing unsettled COD
+         * receivable was settled, or (when the order had no receivable yet because
+         * the courier's own delivery webhook never arrived) the order was walked
+         * forward to Delivered/COD_Collected and a fresh receivable was created and
+         * settled in the same action.
+         */
         SETTLED,
         /** Matched an unsettled COD receivable but the amount differs — needs review, not settled. */
         MISMATCH,
-        /** No order could be resolved from the row's AWB/order code. */
+        /** Every receivable for this order was already settled (e.g. a re-sent/duplicate remittance row). */
+        ALREADY_SETTLED,
+        /** No order could be resolved from the row's AWB/order code/client order id. */
         ORDER_NOT_FOUND,
-        /** The order was found but has no unsettled COD receivable (e.g. prepaid, or already settled). */
+        /**
+         * The order was found but has no COD receivable at all AND is not awaiting
+         * delivery (e.g. prepaid, cancelled, RTO) — nothing to settle, reported for
+         * manual review.
+         */
         NO_RECEIVABLE,
         /** The row itself was malformed (missing AWB/order code, or an unparsable amount). */
         ERROR

@@ -170,6 +170,8 @@ export interface PackingSummary {
   packedToday: number;
   awaitingHandover: number;
   awaitingDispatch: number;
+  /** Packing throughput so far today (packed ÷ hours elapsed), packing-throughput enhancement. */
+  packedPerHour?: number;
 }
 
 /** The accountant's money overview (Req 3.5); amounts are decimal rupee values. */
@@ -186,7 +188,9 @@ export type AdminEventType =
   | 'ORDER_STATUS_CHANGED'
   | 'CLAIM_FILED_REQUIRED'
   | 'COURIER_ASSIGN_FAILED'
-  | 'WHATSAPP_FAILED';
+  | 'WHATSAPP_FAILED'
+  /** A per-recipient bell notification pushed live to the addressed role/user. */
+  | 'NOTIFICATION';
 
 /** A real-time notification surfaced in the dashboard feed. */
 export interface AdminNotification {

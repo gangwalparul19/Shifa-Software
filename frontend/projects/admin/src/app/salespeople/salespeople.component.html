@@ -64,7 +64,7 @@
     />
   } @else {
     <div class="row row-cards">
-      @for (member of filtered(); track member.id) {
+      @for (member of pageItems(); track member.id) {
         <div class="col-sm-6 col-lg-4">
           <div class="card card-sm salesperson-card" (click)="open(member)" tabindex="0"
                (keydown.enter)="open(member)">
@@ -79,24 +79,20 @@
                   {{ statusLabel(member.verificationStatus) }}
                 </span>
               </div>
-              <div class="mt-3 small text-secondary d-flex flex-column gap-1">
-                <span><i class="ti ti-phone me-1" aria-hidden="true"></i>{{ member.mobile || '—' }}</span>
-                <span class="d-flex align-items-center">
-                  <i class="ti ti-id me-1" aria-hidden="true"></i>
-                  @if (member.hasIdProof) {
-                    {{ idProofLabel(member.idProofType) }} on file
-                  } @else {
-                    <span class="text-danger">No govt ID</span>
-                  }
-                </span>
-                <span class="d-flex align-items-center">
-                  <i class="ti ti-camera me-1" aria-hidden="true"></i>
-                  @if (member.hasProfileImage) {
-                    Photo on file
-                  } @else {
-                    <span class="text-secondary">No photo</span>
-                  }
-                </span>
+              <div class="mt-3">
+                <div class="sp-phone small text-secondary">
+                  <i class="ti ti-phone me-1" aria-hidden="true"></i>{{ member.mobile || '—' }}
+                </div>
+                <div class="sp-chips mt-2">
+                  <span class="sp-chip" [class.sp-chip--on]="member.hasIdProof">
+                    <i class="ti ti-id" aria-hidden="true"></i>
+                    ID {{ member.hasIdProof ? '✓' : '—' }}
+                  </span>
+                  <span class="sp-chip" [class.sp-chip--on]="member.hasProfileImage">
+                    <i class="ti ti-camera" aria-hidden="true"></i>
+                    Photo {{ member.hasProfileImage ? '✓' : '—' }}
+                  </span>
+                </div>
               </div>
               <!-- Performance snapshot (Salesperson 360) -->
               @if (perfFor(member.id); as p) {
@@ -110,7 +106,7 @@
                     <span class="sp-kpi__k">Revenue (mo)</span>
                   </div>
                   <div class="sp-kpi">
-                    <span class="sp-kpi__v" [class]="rateClass(p.successRate)">{{ p.successRate }}%</span>
+                    <span class="sp-kpi__v" [class]="successClass(member.id)">{{ p.successRate }}%</span>
                     <span class="sp-kpi__k">Success</span>
                   </div>
                 </div>
@@ -120,11 +116,30 @@
                   <span class="badge bg-secondary-lt">Inactive</span>
                 </div>
               }
+              @if (isAdmin()) {
+                <div class="mt-3">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-primary w-100 sp-vieworders"
+                    (click)="viewOrders(member, $event)"
+                  >
+                    <i class="ti ti-list-details me-1" aria-hidden="true"></i> View orders
+                  </button>
+                </div>
+              }
             </div>
           </div>
         </div>
       }
     </div>
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
   }
 }
 

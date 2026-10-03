@@ -20,4 +20,9 @@ export interface PaymentQueueRow {
   createdAt?: string;
   /** Name of the salesperson who punched the order (created_by → display name). */
   salespersonName?: string | null;
+  /**
+   * Other order codes whose payment proof is byte-identical to this one
+   * (duplicate-screenshot detection, V72). Non-empty = a fraud/mistake flag.
+   */
+  duplicateOrderCodes?: string[];
 }

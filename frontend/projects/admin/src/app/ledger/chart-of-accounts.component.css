@@ -1,13 +1,32 @@
-/* Chart-of-Accounts tree rows. Groups and ledgers share one flush list; the
-   hierarchy is conveyed by a left indent driven by the node depth (set inline).
-   Mobile-first: rows stay full-width and wrap gracefully on narrow screens. */
+/* Chart-of-Accounts tree. Groups and ledgers share one list; the hierarchy is
+   conveyed by a left indent (set inline from the node depth) plus a thin "tree"
+   guide on every indented row, so folder → ledger nesting reads clearly without
+   repeating the account nature on every row (it is shown once, on the root
+   group only). Mobile-first: rows stay full-width and wrap gracefully. */
+
+.shifa-coa {
+  display: flex;
+  flex-direction: column;
+}
 
 .shifa-coa__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  min-height: 2.5rem;
+  min-height: 2.75rem;
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+  padding-right: 1rem;
+  border-top: 1px solid var(--tblr-border-color, #e6e7e9);
+}
+.shifa-coa__row:first-child {
+  border-top: 0;
+}
+
+/* A thin left-border "tree" guide on every indented row makes nesting obvious. */
+.shifa-coa__indented {
+  border-left: 2px solid var(--shifa-green-100, #e4f2ea);
 }
 
 .shifa-coa__name {
@@ -17,11 +36,65 @@
   overflow-wrap: anywhere;
 }
 
-/* Group rows read a touch stronger than the ledger leaves beneath them. */
-.shifa-coa__group {
-  background: var(--tblr-bg-surface-secondary, rgba(0, 0, 0, 0.02));
+.shifa-coa__trailing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
 }
 
+/* ---- Group rows: bolder, with a brand-green folder + a subtle tint -------- */
+.shifa-coa__group {
+  background: var(--shifa-green-050, #f2f9f5);
+  font-weight: 600;
+}
+.shifa-coa__group--root {
+  background: var(--shifa-green-100, #e4f2ea);
+}
+.shifa-coa__folder {
+  color: var(--shifa-green-600, #1f5d3f);
+  margin-right: 0.5rem;
+  flex: 0 0 auto;
+}
+
+/* ---- Ledger (leaf) rows: lighter than their parent group ------------------ */
+.shifa-coa__ledger {
+  background: #fff;
+}
 .shifa-coa__ledger .shifa-coa__name {
   font-size: 0.9375rem;
+}
+.shifa-coa__leaf {
+  color: var(--tblr-secondary, #9aa4af);
+  margin-right: 0.5rem;
+  flex: 0 0 auto;
+}
+
+/* Control-account key chip — a small, muted monospace tag that stays quiet. */
+.shifa-coa__chip {
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.3rem;
+  font-family: var(--tblr-font-monospace, ui-monospace, monospace);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--tblr-secondary, #6b7b72);
+  background: var(--tblr-bg-surface-secondary, rgba(0, 0, 0, 0.04));
+}
+
+/* Action buttons stay quiet and only draw attention on hover/focus. */
+.shifa-coa__action {
+  opacity: 0.35;
+  transition: opacity 0.12s ease-in-out;
+}
+.shifa-coa__row:hover .shifa-coa__action,
+.shifa-coa__action:focus-visible {
+  opacity: 1;
+}
+/* Touch devices can't hover — keep the actions discoverable there. */
+@media (hover: none) {
+  .shifa-coa__action {
+    opacity: 0.7;
+  }
 }

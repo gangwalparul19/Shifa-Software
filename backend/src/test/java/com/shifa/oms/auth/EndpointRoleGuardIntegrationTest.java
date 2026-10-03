@@ -158,8 +158,13 @@ class EndpointRoleGuardIntegrationTest {
     // --- Approve / reject: ADMIN only (design §6.2, class-level hasRole('ADMIN')) ------
 
     @Test
-    void approveIsAdminOnly() throws Exception {
-        assertRoleMatrix(post("/api/admin/orders/5/approve"), List.of(Role.ADMIN));
+    void approveIsAdminOrAccountant() throws Exception {
+        assertRoleMatrix(post("/api/admin/orders/5/approve"), List.of(Role.ADMIN, Role.ACCOUNTANT));
+    }
+
+    @Test
+    void channelSummaryIsAdminOnly() throws Exception {
+        assertRoleMatrix(get("/api/admin/orders/channel-summary"), List.of(Role.ADMIN));
     }
 
     @Test
@@ -637,6 +642,17 @@ class EndpointRoleGuardIntegrationTest {
         }
 
         @Bean
+        com.shifa.oms.order.ChannelSummaryService channelSummaryService() {
+            return new StubChannelSummaryService();
+        }
+
+        @Bean
+        com.shifa.oms.order.OrderExportService orderExportService() {
+            return new com.shifa.oms.order.OrderExportService(
+                    new StubAdminOrderService(), new CsvReportExporter(), new ExcelReportExporter());
+        }
+
+        @Bean
         OrderService orderService() {
             return new StubOrderService();
         }
@@ -956,6 +972,35 @@ class EndpointRoleGuardIntegrationTest {
         public OrderResponse reject(Long id, com.shifa.oms.order.RejectReason category,
                                     String reason, AuthPrincipal admin) {
             return sampleOrderResponse();
+        }
+
+        /** Empty page so the orders list + export endpoints return 2xx without a DB. */
+        @Override
+        public org.springframework.data.domain.Page<com.shifa.oms.order.dto.OrderSummaryResponse> listOrders(
+                String q, com.shifa.oms.statemachine.OrderStatus status,
+                com.shifa.oms.order.OrderStatusGroup statusGroup,
+                com.shifa.oms.order.domain.PaymentStatus paymentStatus,
+                java.time.LocalDate from, java.time.LocalDate to,
+                org.springframework.data.domain.Pageable pageable,
+                java.util.Collection<Long> creatorIds, com.shifa.oms.order.OrderSource source) {
+            return org.springframework.data.domain.Page.empty(pageable);
+        }
+    }
+
+    /** Returns a canned empty summary so a permitted (ADMIN) channel-summary call yields 2xx. */
+    static class StubChannelSummaryService extends com.shifa.oms.order.ChannelSummaryService {
+        StubChannelSummaryService() {
+            super(null);
+        }
+
+        @Override
+        public com.shifa.oms.order.dto.ChannelSummaryResponse summary(
+                java.time.LocalDate from, java.time.LocalDate to) {
+            com.shifa.oms.order.dto.ChannelSummaryResponse.ChannelStats zero =
+                    new com.shifa.oms.order.dto.ChannelSummaryResponse.ChannelStats(
+                            0L, java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO,
+                            0L, java.math.BigDecimal.ZERO, java.util.List.of());
+            return new com.shifa.oms.order.dto.ChannelSummaryResponse(null, null, zero, zero, zero);
         }
     }
 

@@ -74,7 +74,7 @@ public class OutboxSseRelay {
     @Scheduled(fixedDelayString = "${app.dashboard.sse.relay-interval-ms:5000}")
     @Transactional
     public int relayPending() {
-        if (!broker.hasActiveEmitters()) {
+        if (!broker.hasActiveAdmins()) {
             return 0;
         }
         int relayed = 0;
@@ -83,7 +83,7 @@ public class OutboxSseRelay {
             if (!ADMIN_NOTIFICATION_TYPES.contains(event.getEventType())) {
                 continue;
             }
-            broker.broadcast(event.getEventType(), toSseData(event));
+            broker.broadcastToAdmins(event.getEventType(), toSseData(event));
             event.markSent();
             outboxEventRepository.save(event);
             relayed++;
@@ -101,11 +101,11 @@ public class OutboxSseRelay {
      */
     @Scheduled(fixedDelayString = "${app.dashboard.sse.stats-interval-ms:15000}")
     public void pushLiveStats() {
-        if (!broker.hasActiveEmitters()) {
+        if (!broker.hasActiveAdmins()) {
             return;
         }
-        broker.broadcast("LIVE_STATS", metricsService.liveStats());
-        broker.broadcast("ACTIVITY", metricsService.activityCards());
+        broker.broadcastToAdmins("LIVE_STATS", metricsService.liveStats());
+        broker.broadcastToAdmins("ACTIVITY", metricsService.activityCards());
     }
 
     /** Builds the SSE payload for a relayed event: its id/type plus its stored payload. */

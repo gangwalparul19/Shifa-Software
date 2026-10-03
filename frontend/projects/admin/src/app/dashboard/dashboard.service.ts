@@ -10,6 +10,7 @@ import {
   RoleDashboardSummary,
   SalesBucket,
 } from './dashboard.model';
+import { ChannelDashboardData, DashboardChannel } from './channel-dashboard.model';
 
 /**
  * Data access for the admin dashboard metrics API (Req 19.1-19.7).
@@ -44,6 +45,32 @@ export class DashboardService {
       }
     }
     return this.api.get<DashboardMetrics>('/api/admin/metrics', { params });
+  }
+
+  /**
+   * The channel-aware admin dashboard (Portal / Shopify / All) for a period.
+   * For {@code CUSTOM}, pass {@code from}/{@code to} as ISO dates.
+   */
+  channelDashboard(
+    channel: DashboardChannel,
+    period: MetricsPeriod,
+    bucket: SalesBucket | null,
+    from: string | null,
+    to: string | null,
+  ): Observable<ChannelDashboardData> {
+    let params = new HttpParams().set('channel', channel).set('period', period);
+    if (bucket) {
+      params = params.set('bucket', bucket);
+    }
+    if (period === 'CUSTOM') {
+      if (from) {
+        params = params.set('from', from);
+      }
+      if (to) {
+        params = params.set('to', to);
+      }
+    }
+    return this.api.get<ChannelDashboardData>('/api/admin/dashboard/channel', { params });
   }
 
   /** Real-time live statistics (Req 19.5). */

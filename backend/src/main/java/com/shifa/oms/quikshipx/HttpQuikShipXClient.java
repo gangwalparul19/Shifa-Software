@@ -3,6 +3,7 @@ package com.shifa.oms.quikshipx;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shifa.oms.quikshipx.QuikShipXModels.AllotResult;
+import com.shifa.oms.quikshipx.QuikShipXModels.CancelResult;
 import com.shifa.oms.quikshipx.QuikShipXModels.CreatePayload;
 import com.shifa.oms.quikshipx.QuikShipXModels.CreateResult;
 import com.shifa.oms.quikshipx.QuikShipXModels.TrackResult;
@@ -139,6 +140,31 @@ public class HttpQuikShipXClient implements QuikShipXClient {
         } catch (QuikShipXResponseParser.MalformedResponse e) {
             throw new QuikShipXException(e.getMessage(), false, e);
         }
+    }
+
+    @Override
+    public CancelResult cancelOrder(String shipperOrderId) throws QuikShipXException {
+        // Mirrors the allot-tracking-id body shape (order_details keyed by the
+        // QuikShipX order id + shipper_details). QuikShipX returns HTTP 200 even on
+        // a soft rejection, so a non-empty failure list is a NON-accepted result
+        // (e.g. "already cancelled" / "not found") rather than an exception — the
+        // OMS-side cancellation still proceeds; only transport/timeout errors throw.
+        Map<String, Object> orderDetails = new LinkedHashMap<>();
+        orderDetails.put("id_value", shipperOrderId);
+        orderDetails.put("id_type", "shipper_order_id");
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("order_details", orderDetails);
+        body.put("shipper_details", shipperDetails());
+
+        String responseBody = post(properties.cancelOrderUrl(), body, "cancel-order");
+        List<String> soft = QuikShipXResponseParser.detectFailure(responseBody);
+        if (!soft.isEmpty()) {
+            String message = String.join("; ", soft);
+            log.warn("QuikShipX cancel-order not accepted for {}: {}", shipperOrderId, message);
+            return new CancelResult(false, message);
+        }
+        log.info("QuikShipX cancel-order accepted for {}", shipperOrderId);
+        return new CancelResult(true, "QuikShipX accepted the cancellation.");
     }
 
     /** The shipper_details credentials block (never logged — carries the secret). */

@@ -69,3 +69,25 @@ export interface Segregation {
   prepaidTotal: Money;
   codTotal: Money;
 }
+
+/** One COD aging bucket (backend {@code CodAgingResponse.Bucket}). */
+export interface CodAgingBucket {
+  label: string;
+  minDays: number;
+  maxDays: number | null;
+  count: number;
+  amount: Money;
+}
+
+/**
+ * COD aging summary (backend {@code CodAgingResponse}, cod-aging enhancement):
+ * unsettled COD grouped into aging buckets plus a courier-SLA flag for money
+ * owed beyond the expected payout window.
+ */
+export interface CodAging {
+  buckets: CodAgingBucket[];
+  totalOutstanding: Money;
+  slaDays: number;
+  overSlaCount: number;
+  overSlaAmount: Money;
+}

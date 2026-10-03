@@ -26,7 +26,7 @@ import java.time.Duration;
  */
 @ConfigurationProperties(prefix = "app.mail")
 public record MailProperties(String mode, String from, String digestTo, Boolean digestEnabled, Brand brand,
-                             Integer maxAttempts, Duration retryBackoff) {
+                             Integer maxAttempts, Duration retryBackoff, Boolean weeklyEnabled) {
 
     public MailProperties {
         if (mode == null || mode.isBlank()) {
@@ -50,6 +50,21 @@ public record MailProperties(String mode, String from, String digestTo, Boolean 
         if (retryBackoff == null) {
             retryBackoff = Duration.ofSeconds(30);
         }
+        // Weekly consolidated report is OFF by default — an admin opts in via
+        // app.mail.weekly-enabled / REPORT_WEEKLY_ENABLED (scheduled-report-delivery).
+        if (weeklyEnabled == null) {
+            weeklyEnabled = Boolean.FALSE;
+        }
+    }
+
+    /**
+     * Whether the internal scheduler may send the WEEKLY consolidated report
+     * ({@code app.mail.weekly-enabled} / {@code REPORT_WEEKLY_ENABLED}). Default
+     * {@code false} — the weekly digest is opt-in so it never starts emailing
+     * unexpectedly (scheduled-report-delivery enhancement).
+     */
+    public boolean isWeeklyEnabled() {
+        return weeklyEnabled != null && weeklyEnabled;
     }
 
     /** Whether the mock (log-only) backend is selected. */

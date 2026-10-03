@@ -87,7 +87,8 @@
                 </button>
               </div>
             </div>
-            <div class="table-responsive">
+            <!-- Desktop (≥768px): compact table -->
+            <div class="table-responsive d-none d-md-block">
               <table class="table card-table table-vcenter">
                 <thead>
                   <tr>
@@ -154,33 +155,82 @@
               </table>
             </div>
 
-            <!-- Live Dr/Cr balance indicator (Req 5.2) -->
-            <div class="card-footer">
-              <div class="row align-items-center g-2">
-                <div class="col">
-                  <div class="d-flex flex-wrap gap-3">
-                    <span>
-                      <span class="text-secondary">Total Dr</span>
-                      <strong class="ms-1">{{ balance().debitTotal | number: '1.2-2' }}</strong>
-                    </span>
-                    <span>
-                      <span class="text-secondary">Total Cr</span>
-                      <strong class="ms-1">{{ balance().creditTotal | number: '1.2-2' }}</strong>
-                    </span>
+            <!-- Mobile (<768px): stacked line cards -->
+            <div class="card-body d-md-none" formArrayName="lines">
+              @for (line of lines.controls; track line; let i = $index) {
+                <div class="ve-linecard" [formGroupName]="i">
+                  <div class="ve-linecard__head">
+                    <span class="ve-linecard__label">Line {{ i + 1 }}</span>
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-ghost-danger btn-icon"
+                      (click)="removeLine(i)"
+                      [disabled]="lines.length <= 2"
+                      [attr.aria-label]="'Remove line ' + (i + 1)"
+                    >
+                      <i class="ti ti-trash"></i>
+                    </button>
+                  </div>
+                  <select
+                    class="form-select"
+                    formControlName="ledgerAccountId"
+                    [class.is-invalid]="lineInvalid(i, 'ledgerAccountId')"
+                    [attr.aria-label]="'Ledger account for line ' + (i + 1)"
+                  >
+                    <option [ngValue]="null" disabled>Select a ledger…</option>
+                    @for (l of ledgers(); track l.id) {
+                      <option [ngValue]="l.id">{{ l.name }}</option>
+                    }
+                  </select>
+                  <div class="ve-linecard__row">
+                    <button
+                      type="button"
+                      class="btn ve-linecard__side"
+                      [class.btn-blue]="line.controls['side'].value === 'DEBIT'"
+                      [class.btn-green]="line.controls['side'].value === 'CREDIT'"
+                      (click)="toggleSide(i)"
+                      [attr.aria-label]="'Toggle side for line ' + (i + 1)"
+                    >
+                      {{ drcrLabel(line.controls['side'].value) }}
+                    </button>
+                    <input
+                      type="number"
+                      class="form-control text-end ve-linecard__amount"
+                      formControlName="amount"
+                      min="0.01"
+                      step="0.01"
+                      placeholder="0.00"
+                      [class.is-invalid]="lineInvalid(i, 'amount')"
+                      [attr.aria-label]="'Amount for line ' + (i + 1)"
+                    />
                   </div>
                 </div>
-                <div class="col-auto">
-                  @if (balance().balanced) {
-                    <span class="badge bg-green-lt">
-                      <i class="ti ti-scale me-1"></i> Balanced
-                    </span>
-                  } @else {
-                    <span class="badge bg-red-lt">
-                      <i class="ti ti-alert-triangle me-1"></i>
-                      Difference {{ balance().difference | number: '1.2-2' }}
-                    </span>
-                  }
-                </div>
+              }
+            </div>
+
+            <!-- Live Dr/Cr balance indicator (Req 5.2) -->
+            <div class="card-footer ve-footer">
+              <div class="ve-footer__totals">
+                <span class="ve-footer__total">
+                  <span class="ve-footer__key">Total Dr</span>
+                  <strong class="ve-balance__total">{{ balance().debitTotal | number: '1.2-2' }}</strong>
+                </span>
+                <span class="ve-footer__total">
+                  <span class="ve-footer__key">Total Cr</span>
+                  <strong class="ve-balance__total">{{ balance().creditTotal | number: '1.2-2' }}</strong>
+                </span>
+              </div>
+              <div class="ve-footer__status">
+                @if (balance().balanced) {
+                  <span class="badge bg-green-lt">
+                    <i class="ti ti-scale me-1"></i> Balanced
+                  </span>
+                } @else {
+                  <span class="badge bg-red-lt">
+                    <i class="ti ti-alert-triangle me-1"></i>
+                    Difference {{ balance().difference | number: '1.2-2' }}
+                  </span>
+                }
               </div>
             </div>
           </div>

@@ -33,6 +33,15 @@ export class PackingService {
   }
 
   /**
+   * Mark the given orders' QuikShipX labels as printed — moves them from the "to
+   * print" list into the "printed" list ({@code POST /api/packing/mark-label-printed}).
+   * Idempotent; returns how many were newly marked.
+   */
+  markLabelsPrinted(ids: number[]): Observable<{ marked: number }> {
+    return this.api.post<{ marked: number }>('/api/packing/mark-label-printed', { ids });
+  }
+
+  /**
    * The daily pick-list / packing manifest (enhancement): every product needed
    * across all orders currently awaiting packing, aggregated into one sheet.
    */

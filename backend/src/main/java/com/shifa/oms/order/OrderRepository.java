@@ -28,6 +28,13 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     boolean existsByOrderCode(String orderCode);
 
     /**
+     * The order already imported from a given Shopify order id, or empty when none.
+     * Backs idempotency for the Shopify {@code orders/create} webhook so a retry /
+     * redelivery of the same Shopify order is recognised and not duplicated (V68).
+     */
+    Optional<OrderEntity> findByShopifyOrderId(String shopifyOrderId);
+
+    /**
      * The order whose {@code order_code} equals this value (the value encoded in
      * the internal-label barcode), or empty when no order matches. Backs the
      * packing barcode scan lookup (Req 11.1, 11.3).
@@ -39,6 +46,14 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
      * the admin approval queue of {@code Pending_Admin_Approval} orders (Req 9.1).
      */
     List<OrderEntity> findByOrderStatusOrderByCreatedAtDesc(OrderStatus orderStatus);
+
+    /**
+     * All orders in a given status AND from a given origin channel, most recent
+     * first. Backs the Packaging "Print Labels" section (Shopify orders that
+     * reached {@code Courier_Assigned} / Tracking ID Assigned) and the
+     * Shopify-recovery backfill (Shopify orders stuck at an earlier status).
+     */
+    List<OrderEntity> findBySourceAndOrderStatusOrderByCreatedAtDesc(OrderSource source, OrderStatus orderStatus);
 
     /**
      * All orders in a given lifecycle status, oldest first (FIFO). Backs the
@@ -472,4 +487,69 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             WHERE o.order_status = 'COD_COLLECTED' AND o.updated_at >= :since
             """, nativeQuery = true)
     java.math.BigDecimal sumCodCollectedSince(@Param("since") java.time.LocalDateTime since);
+
+    // --- Dashboard status-count aggregates (perf: avoid findAll + Java counting) ---
+
+    /**
+     * Count of orders grouped by {@code order_status} across ALL orders — the
+     * SQL replacement for loading every order just to tally statuses on the admin
+     * / packing dashboards. One row per present status; absent statuses simply do
+     * not appear (callers default them to zero).
+     */
+    @Query(value = """
+            SELECT o.order_status AS status, COUNT(*) AS count
+            FROM orders o
+            GROUP BY o.order_status
+            """, nativeQuery = true)
+    List<StatusCountRow> statusCounts();
+
+    /**
+     * As {@link #statusCounts()} but scoped to a single creator (salesperson
+     * dashboard). A {@code null} {@code createdBy} means "no scope" (admin acting
+     * as a salesperson) and counts across all orders — matching
+     * {@link #findAllScoped(Long)} semantics exactly.
+     */
+    @Query(value = """
+            SELECT o.order_status AS status, COUNT(*) AS count
+            FROM orders o
+            WHERE (:createdBy IS NULL OR o.created_by = :createdBy)
+            GROUP BY o.order_status
+            """, nativeQuery = true)
+    List<StatusCountRow> statusCountsForCreator(@Param("createdBy") Long createdBy);
+
+    /**
+     * As {@link #statusCounts()} but scoped to a set of creators (team-lead
+     * dashboard). Callers must pass a non-empty collection — mirrors
+     * {@link #findAllScopedIn(java.util.Collection)}.
+     */
+    @Query(value = """
+            SELECT o.order_status AS status, COUNT(*) AS count
+            FROM orders o
+            WHERE o.created_by IN (:createdByIds)
+            GROUP BY o.order_status
+            """, nativeQuery = true)
+    List<StatusCountRow> statusCountsForCreatorIn(
+            @Param("createdByIds") java.util.Collection<Long> createdByIds);
+
+    /** Projection over the dashboard status-count aggregates (status name + count). */
+    interface StatusCountRow {
+
+        /** The {@code order_status} value as its stored name, e.g. {@code "PACKED"}. */
+        String getStatus();
+
+        long getCount();
+    }
+
+    /**
+     * Count of orders currently in {@code PACKED} that were last updated within
+     * the given half-open day window {@code [dayStart, dayEnd)} — the SQL form of
+     * the packing dashboard's "packed today" tally.
+     */
+    @Query(value = """
+            SELECT COUNT(*) FROM orders o
+            WHERE o.order_status = 'PACKED'
+              AND o.updated_at >= :dayStart AND o.updated_at < :dayEnd
+            """, nativeQuery = true)
+    long countPackedBetween(@Param("dayStart") java.time.LocalDateTime dayStart,
+                            @Param("dayEnd") java.time.LocalDateTime dayEnd);
 }

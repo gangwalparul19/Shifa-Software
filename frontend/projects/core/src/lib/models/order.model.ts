@@ -54,6 +54,8 @@ export enum OrderStatus {
 export enum OrderSource {
   STOREFRONT = 'STOREFRONT',
   SALESPERSON = 'SALESPERSON',
+  /** Imported automatically from the Shopify storefront via webhook. */
+  SHOPIFY = 'SHOPIFY',
 }
 
 /**

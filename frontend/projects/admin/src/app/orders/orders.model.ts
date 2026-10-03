@@ -22,7 +22,8 @@ export type LeadSource =
   | 'FACEBOOK'
   | 'GOOGLE'
   | 'OFFLINE'
-  | 'OTHER';
+  | 'OTHER'
+  | 'COUNTER_SALE';
 
 /** The selectable lead-source options for the New Order picker (Req 4.1). */
 export const LEAD_SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
@@ -32,7 +33,15 @@ export const LEAD_SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
   { value: 'GOOGLE', label: 'Google' },
   { value: 'OFFLINE', label: 'Offline' },
   { value: 'OTHER', label: 'Other' },
+  // Walk-in / in-shop sale — no delivery partner is ever involved (the
+  // backend forces deliveryMethod=IN_HOUSE for this lead source).
+  { value: 'COUNTER_SALE', label: 'Counter Sale' },
 ];
+
+/** True for a lead source that never involves a delivery partner (walk-in shop sale). */
+export function isCounterSale(leadSource: LeadSource | null | undefined): boolean {
+  return leadSource === 'COUNTER_SALE';
+}
 
 /**
  * Salesperson order-entry payload posted to {@code POST /api/orders} (mirrors
@@ -226,7 +235,7 @@ export interface CourierCompanyOption {
  */
 export const DELIVERY_METHOD_OPTIONS: { value: DeliveryMethod; label: string }[] = [
   { value: 'QUIKSHIPX', label: 'QuikShipX (courier partner)' },
-  { value: 'IN_HOUSE', label: 'In-house delivery (own team)' },
+  { value: 'IN_HOUSE', label: 'Ishika Enterprise (own team)' },
 ];
 
 /**
@@ -324,6 +333,21 @@ export interface OrderSummary {
   quikShipXAwb?: string | null;
   /** Name of the salesperson who punched the order (created_by → display name). */
   salespersonName?: string | null;
+  /**
+   * The order's provenance (SALESPERSON / STOREFRONT / SHOPIFY). Drives the
+   * "Source" column on the Orders list (Sales / Store / Shopify order).
+   */
+  source?: OrderSource;
+  /**
+   * How the order is fulfilled (QUIKSHIPX / IN_HOUSE). Drives the "Courier
+   * Partner" column on the Orders list.
+   */
+  deliveryMethod?: 'QUIKSHIPX' | 'IN_HOUSE' | string | null;
+  /**
+   * The originating Shopify order id (for a Shopify-imported order; null
+   * otherwise), shown in the salesperson column for a Shopify order.
+   */
+  shopifyOrderId?: string | null;
 }
 
 /** A single line within a full order detail. */

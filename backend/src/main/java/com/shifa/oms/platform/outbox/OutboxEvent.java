@@ -292,6 +292,20 @@ public class OutboxEvent {
         this.nextAttemptAt = null;
     }
 
+    /**
+     * Re-queues a (typically {@code FAILED}) event for a fresh delivery attempt:
+     * status back to {@code PENDING}, attempts reset to 0, error cleared, and due
+     * immediately. Used by the self-healing re-drive so a transiently-failed
+     * integration event (e.g. a courier API that briefly returned HTTP 500) gets
+     * the full retry ladder again once the dependency recovers.
+     */
+    public void requeue() {
+        this.status = STATUS_PENDING;
+        this.attempts = 0;
+        this.lastError = null;
+        this.nextAttemptAt = null;
+    }
+
     private static String truncate(String error) {
         if (error == null) {
             return null;

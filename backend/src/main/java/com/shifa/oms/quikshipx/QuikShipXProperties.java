@@ -80,6 +80,16 @@ public record QuikShipXProperties(
     public static final String ALLOT_TRACKING_PATH = "/api/allot-tracking-id-v1";
     /** The track-order path, appended to {@link #baseUrl()}. */
     public static final String TRACK_ORDER_PATH = "/api/track-order-v1";
+    /**
+     * The cancel-order path, appended to {@link #baseUrl()} (order-cancellation
+     * feature). QuikShipX's v1 API set documented to us is create / allot / track;
+     * their cancel endpoint follows the same {@code -v1} convention and the same
+     * {@code order_details + shipper_details} body shape as allot-tracking-id. Kept
+     * as a constant (not a bound property) so the properties record signature is
+     * unchanged; the cancel call is best-effort — the OMS-side cancellation always
+     * succeeds and the courier-side cancel is attempted and flagged.
+     */
+    public static final String CANCEL_ORDER_PATH = "/api/cancel-order-v1";
 
     public QuikShipXProperties {
         if (enabled == null) {
@@ -173,6 +183,10 @@ public record QuikShipXProperties(
 
     public String trackOrderUrl() {
         return baseUrl + TRACK_ORDER_PATH;
+    }
+
+    public String cancelOrderUrl() {
+        return baseUrl + CANCEL_ORDER_PATH;
     }
 
     private static boolean isNotBlank(String value) {

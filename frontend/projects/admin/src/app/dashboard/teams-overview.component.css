@@ -1,0 +1,77 @@
+.min-w-0 {
+  min-width: 0;
+}
+
+/* Team cards are clickable (drill-down 1: team detail panel). */
+.teams-ov__card {
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.teams-ov__card:hover,
+.teams-ov__card:focus-visible {
+  box-shadow: 0 6px 18px rgba(15, 51, 36, 0.14);
+  transform: translateY(-1px);
+}
+.teams-ov__card:focus-visible {
+  outline: 2px solid var(--shifa-green-400, #4e9670);
+  outline-offset: 2px;
+}
+
+/* Team detail panel (right-side drawer, same pattern as the salesperson 360 drawer). */
+.teams-ov__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1070;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(15, 51, 36, 0.4);
+  backdrop-filter: blur(2px);
+}
+.teams-ov__panel {
+  width: min(640px, 100%);
+  height: 100%;
+  overflow-y: auto;
+  background: #fff;
+  box-shadow: -18px 0 40px rgba(15, 51, 36, 0.22);
+}
+.teams-ov__panel-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  color: #fff;
+  background: linear-gradient(135deg, #1f5d3f, #0f3324);
+}
+.teams-ov__panel-title {
+  margin: 0.1rem 0;
+  font-size: 1.3rem;
+  color: inherit;
+}
+.teams-ov__panel-head .subheader,
+.teams-ov__panel-head .text-secondary {
+  color: rgba(255, 255, 255, 0.74) !important;
+}
+.teams-ov__panel-head .btn {
+  color: #fff;
+}
+.teams-ov__panel-body {
+  padding: 1rem;
+}
+
+@media (max-width: 575.98px) {
+  .teams-ov__panel {
+    width: 100vw;
+  }
+}
+
+/* Clickable salesperson rows inside the team detail panel (drill-down 2). */
+.shifa-card-link {
+  cursor: pointer;
+}
+.shifa-card-link:focus-visible {
+  outline: 2px solid var(--shifa-green-500, #2b7a52);
+  outline-offset: 2px;
+}

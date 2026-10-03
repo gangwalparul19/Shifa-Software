@@ -68,6 +68,36 @@ public class PackingController {
     }
 
     /**
+     * The "Print Labels" section (Shopify integration): Shopify orders that
+     * reached QuikShipX "Tracking ID Assigned", split into those whose QuikShipX
+     * label still needs printing and those already printed. Each row carries the
+     * QuikShipX label URL so the packer can open/print it (single or multi-select).
+     */
+    @GetMapping("/print-labels")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public com.shifa.oms.packing.dto.PrintLabelQueueResponse printLabels() {
+        return packingService.printLabelQueue();
+    }
+
+    /**
+     * Marks the given orders' QuikShipX labels as printed (moves them from the
+     * "to print" list into the "printed" list). Idempotent; skips anything that
+     * is not a Shopify Tracking-ID-Assigned order with a shipment. Returns the
+     * count newly marked. Does not change the order's lifecycle status.
+     */
+    @PostMapping("/mark-label-printed")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public MarkLabelPrintedResponse markLabelPrinted(
+            @Valid @RequestBody com.shifa.oms.order.dto.BulkOrderIdsRequest request) {
+        int marked = packingService.markLabelsPrinted(request.ids());
+        return new MarkLabelPrintedResponse(marked);
+    }
+
+    /** Response for the mark-label-printed action: how many rows were newly marked printed. */
+    public record MarkLabelPrintedResponse(int marked) {
+    }
+
+    /**
      * Resolves a scanned internal-label barcode without changing the order. The
      * response tells the packing UI which authorised operation can be confirmed:
      * pack, handover, dispatch, or no further packing action.

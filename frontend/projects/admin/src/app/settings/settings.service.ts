@@ -39,6 +39,14 @@ export interface AppSettings {
   bankIfsc?: string | null;
   /** Bank branch. */
   bankBranch?: string | null;
+  // --- Order auto-approval (V73, DEFAULT OFF) -----------------------------
+  /**
+   * When true, low-value fully-prepaid orders from low-risk customers are
+   * auto-approved at creation (skip the manual approval queue).
+   */
+  autoApproveEnabled?: boolean;
+  /** Max order total (₹) eligible for auto-approval; null/0 means nothing qualifies. */
+  autoApproveMaxAmount?: string | null;
 }
 
 /**

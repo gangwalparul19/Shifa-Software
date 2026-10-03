@@ -10,9 +10,9 @@
   "theme_color": "#1F5D3F",
   "icons": [
     {
-      "src": "icons/shifa-icon.svg",
+      "src": "logo.png",
       "sizes": "any",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

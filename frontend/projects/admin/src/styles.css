@@ -111,35 +111,13 @@ a {
   gap: 0.6rem;
   color: inherit;
 }
-.shifa-brand__mark {
-  display: grid;
-  place-items: center;
-  width: 2.15rem;
+/* Single consolidated logo image (replaces the old leaf-icon + wordmark lockup). */
+.shifa-brand__logo {
   height: 2.15rem;
-  border-radius: 0.6rem;
-  background: var(--shifa-green-600);
-  color: #eafff2;
-  font-size: 1.2rem;
-  box-shadow: 0 2px 6px rgba(31, 93, 63, 0.25);
-}
-.shifa-brand__text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.05;
-}
-.shifa-brand__title {
-  font-family: var(--shifa-font-display);
-  font-weight: 700;
-  font-size: 1.02rem;
-  color: #14231c;
-  letter-spacing: 0.01em;
-}
-.shifa-brand__subtitle {
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--shifa-green-500);
-  font-weight: 600;
+  width: auto;
+  max-width: 11rem;
+  object-fit: contain;
+  display: block;
 }
 
 /* Brand-green avatar chip */
@@ -765,34 +743,16 @@ tr.clickable {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.65rem;
   margin-bottom: 1.5rem;
   color: #14231c;
 }
-.shifa-auth__mark {
-  display: grid;
-  place-items: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: 0.75rem;
-  background: var(--shifa-green-600);
-  color: #eafff2;
-  font-size: 1.55rem;
-  box-shadow: 0 4px 14px rgba(31, 93, 63, 0.28);
-}
-.shifa-auth__name {
-  font-family: var(--shifa-font-display);
-  font-size: 1.3rem;
-  font-weight: 700;
-  line-height: 1;
-  color: #14231c;
-}
-.shifa-auth__tag {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--shifa-green-500);
-  font-weight: 600;
+/* Single consolidated logo image (replaces the old leaf-icon + wordmark lockup). */
+.shifa-auth__logo {
+  height: 4rem;
+  width: auto;
+  max-width: 16rem;
+  object-fit: contain;
+  display: block;
 }
 
 /* --------------------------------------------------------------------------

@@ -50,6 +50,10 @@ public class OrderPaymentScreenshot {
     @Column(name = "byte_size")
     private Long byteSize;
 
+    /** SHA-256 hex of the proof's bytes (V72); used to flag the same image reused across orders. */
+    @Column(name = "content_hash", length = 64)
+    private String contentHash;
+
     @Column(name = "sort_order", nullable = false)
     private int sortOrder;
 
@@ -62,10 +66,16 @@ public class OrderPaymentScreenshot {
 
     public OrderPaymentScreenshot(String storageKey, String filename, String contentType,
                                  Long byteSize, int sortOrder) {
+        this(storageKey, filename, contentType, byteSize, null, sortOrder);
+    }
+
+    public OrderPaymentScreenshot(String storageKey, String filename, String contentType,
+                                 Long byteSize, String contentHash, int sortOrder) {
         this.storageKey = storageKey;
         this.filename = filename;
         this.contentType = contentType;
         this.byteSize = byteSize;
+        this.contentHash = contentHash;
         this.sortOrder = sortOrder;
     }
 
@@ -87,6 +97,10 @@ public class OrderPaymentScreenshot {
 
     public Long getByteSize() {
         return byteSize;
+    }
+
+    public String getContentHash() {
+        return contentHash;
     }
 
     public int getSortOrder() {

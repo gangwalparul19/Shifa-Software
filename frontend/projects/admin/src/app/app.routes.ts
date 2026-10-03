@@ -35,7 +35,10 @@ import { BackupsComponent } from './backups/backups.component';
 import { PaymentsComponent } from './payments/payments.component';
 import { AnnouncementsComponent } from './announcements/announcements.component';
 import { AnalyticsComponent } from './analytics/analytics.component';
+import { ShopifySyncComponent } from './shopify-sync/shopify-sync.component';
+import { OrderCancellationComponent } from './order-cancellation/order-cancellation.component';
 import { TeamComponent } from './team/team.component';
+import { TeamsOverviewComponent } from './dashboard/teams-overview.component';
 import { WhatsappTemplatesComponent } from './whatsapp/whatsapp-templates.component';
 import { CaGstDashboardComponent } from './ca-gst/ca-gst-dashboard.component';
 import { GstFilingComponent } from './ca-gst/gst-filing.component';
@@ -411,6 +414,26 @@ export const routes: Routes = [
         canActivate: [adminOnlyGuard],
       },
       {
+        // Retired: the Portal / Shopify / All split now lives on the main
+        // dashboard. Old bookmarks land there.
+        path: 'channel-dashboard',
+        redirectTo: 'dashboard',
+        pathMatch: 'full',
+      },
+      {
+        // Shopify sync: list stuck Shopify orders + one-click recover to QuikShipX (ADMIN only).
+        path: 'shopify-sync',
+        component: ShopifySyncComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Order cancellation: cancel an order (even after an AWB) with a note,
+        // propagating the cancellation to the courier (ADMIN only).
+        path: 'order-cancellation',
+        component: OrderCancellationComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
         // CA (Chartered Accountant) GST & accounting dashboard (ADMIN + CA).
         path: 'ca/gst',
         component: CaGstDashboardComponent,
@@ -487,6 +510,12 @@ export const routes: Routes = [
         // Team management: assign salespeople to a team lead (ADMIN only).
         path: 'team',
         component: TeamComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Team-wise sales with status overview (ADMIN only) — linked from the dashboard.
+        path: 'teams-overview',
+        component: TeamsOverviewComponent,
         canActivate: [adminOnlyGuard],
       },
       {

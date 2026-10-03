@@ -3,10 +3,13 @@ package com.shifa.oms.order;
 import com.shifa.oms.audit.AuditActions;
 import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.auth.AuthPrincipal;
+import com.shifa.oms.auth.Role;
 import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.courier.TrackingService;
+import com.shifa.oms.crm.domain.CustomerRiskCalculator;
+import com.shifa.oms.crm.domain.CustomerRiskLevel;
 import com.shifa.oms.gst.domain.Gstin;
 import com.shifa.oms.inventory.StockMovementType;
 import com.shifa.oms.inventory.StockService;
@@ -33,6 +36,8 @@ import com.shifa.oms.product.ProductImageRepository;
 import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.quikshipx.OrderShipmentRepository;
 import com.shifa.oms.statemachine.OrderStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -66,6 +71,8 @@ import java.util.Optional;
  */
 @Service
 public class OrderService {
+
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
     private static final String SOURCE_SALESPERSON = "SALESPERSON";
 
@@ -106,6 +113,25 @@ public class OrderService {
      * Null under the legacy test constructor — the audit is then skipped.
      */
     private final AuditService auditService;
+    /**
+     * Company/GST settings (nullable): read at order creation to decide whether
+     * config-driven auto-approval (V73) applies. Null under the legacy test
+     * constructor — auto-approval is then skipped (orders stay pending), so unit
+     * tests see the unchanged manual-approval behaviour.
+     */
+    private final com.shifa.oms.settings.SettingsService settingsService;
+    /**
+     * Internal label generation (nullable): used by the auto-approval path to
+     * generate the shipping label on approval, exactly as the admin approve does.
+     * Null under the legacy test constructor.
+     */
+    private final com.shifa.oms.label.LabelService labelService;
+
+    /** {@code vouchers.source_type} for a finalised sales order (matches AdminOrderService). */
+    private static final String LEDGER_SOURCE_ORDER = "ORDER";
+
+    /** Actor label recorded on an auto-approval status-history / audit row. */
+    private static final String SOURCE_AUTO_APPROVAL = "AUTO_APPROVAL";
 
     /** Legacy constructor (unit tests): no QuikShipX punch hook / enrichment / workflow / audit. */
     public OrderService(OrderRepository orderRepository,
@@ -118,6 +144,32 @@ public class OrderService {
                         ProductImageRepository productImageRepository) {
         this(orderRepository, productRepository, orderCodeGenerator, storageService, scopeResolver,
                 trackingService, stockService, productImageRepository, null, null, null, null, null, null);
+    }
+
+    /**
+     * Pre-auto-approval constructor (kept for existing 14-arg test call sites):
+     * delegates to the full constructor with no SettingsService/LabelService, so
+     * auto-approval is a no-op and those unit tests keep the unchanged
+     * manual-approval behaviour.
+     */
+    public OrderService(OrderRepository orderRepository,
+                        ProductRepository productRepository,
+                        OrderCodeGenerator orderCodeGenerator,
+                        StorageService storageService,
+                        SalespersonScopeResolver scopeResolver,
+                        TrackingService trackingService,
+                        StockService stockService,
+                        ProductImageRepository productImageRepository,
+                        OutboxEventPublisher outboxEventPublisher,
+                        QuikShipXProperties quikShipXProperties,
+                        OrderShipmentRepository orderShipmentRepository,
+                        com.shifa.oms.auth.UserRepository userRepository,
+                        OrderWorkflowService orderWorkflowService,
+                        AuditService auditService) {
+        this(orderRepository, productRepository, orderCodeGenerator, storageService, scopeResolver,
+                trackingService, stockService, productImageRepository, outboxEventPublisher,
+                quikShipXProperties, orderShipmentRepository, userRepository, orderWorkflowService,
+                auditService, null, null);
     }
 
     @Autowired
@@ -134,7 +186,9 @@ public class OrderService {
                         OrderShipmentRepository orderShipmentRepository,
                         com.shifa.oms.auth.UserRepository userRepository,
                         OrderWorkflowService orderWorkflowService,
-                        AuditService auditService) {
+                        AuditService auditService,
+                        com.shifa.oms.settings.SettingsService settingsService,
+                        com.shifa.oms.label.LabelService labelService) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.orderCodeGenerator = orderCodeGenerator;
@@ -149,6 +203,8 @@ public class OrderService {
         this.userRepository = userRepository;
         this.orderWorkflowService = orderWorkflowService;
         this.auditService = auditService;
+        this.settingsService = settingsService;
+        this.labelService = labelService;
     }
 
     // --- Creation: salesperson order entry (Req 7) --------------------------
@@ -266,8 +322,13 @@ public class OrderService {
         order.setBuyerGstin(buyerGstin);
 
         // Per-order delivery method (QUIKSHIPX default, or IN_HOUSE to skip the
-        // courier integration entirely). Blank/null → QUIKSHIPX.
-        order.setDeliveryMethod(parseDeliveryMethod(request.deliveryMethod()));
+        // courier integration entirely). Blank/null → QUIKSHIPX. A Counter Sale
+        // lead source (walk-in shop sale) always forces IN_HOUSE — no delivery
+        // partner is ever involved, so neither QuikShipX nor courier assignment
+        // is triggered for it (reuses every existing isInHouseDelivery() gate).
+        order.setDeliveryMethod(request.leadSource() == LeadSource.COUNTER_SALE
+                ? DeliveryMethod.IN_HOUSE
+                : parseDeliveryMethod(request.deliveryMethod()));
 
         // Prepaid / partially-paid orders carry a payment to verify for authenticity
         // (product-audit §4.4). Pure COD orders have nothing to verify.
@@ -291,10 +352,19 @@ public class OrderService {
         reserveStock(priced, creator.userId(), order.getOrderCode());
 
         OrderEntity saved = orderRepository.save(order);
+        // Config-driven auto-approval (V73, DEFAULT OFF): when the admin has
+        // enabled it, a low-value, fully-prepaid order from a low-risk customer is
+        // approved immediately via the same central workflow the admin approve uses
+        // (authority + single history row + audit + notification fan-out + label +
+        // ledger post). Anything with a COD balance, above the threshold, or from a
+        // medium/high-risk customer is left PENDING for manual approval. No-op in
+        // unit tests (settingsService/labelService null) so existing behaviour holds.
+        maybeAutoApprove(saved, calc);
         // Real-time admin nudge: a freshly punched order lands in the approval
         // queue, so enqueue an ORDER_AWAITING_APPROVAL event in this same
         // transaction. The SSE relay surfaces it to connected admins; the row is
         // persisted regardless, so nothing is lost when no admin is online.
+        // (No-op once the order was auto-approved — it guards on PENDING status.)
         publishAwaitingApproval(saved);
         // QuikShipX (create-on-punch): enqueue the shipment publication in this same
         // transaction so the order appears in QuikShipX's Pending section once the
@@ -314,6 +384,100 @@ public class OrderService {
                     order.getTotalAmount() == null ? "" : order.getTotalAmount().toPlainString());
         }
     }
+
+    /**
+     * Config-driven auto-approval (V73). Approves the just-saved order in-place
+     * (same transaction) when ALL of the following hold:
+     * <ul>
+     *   <li>the feature is enabled in Settings and a positive max-amount is set;</li>
+     *   <li>the order is still {@code PENDING_ADMIN_APPROVAL} (defensive);</li>
+     *   <li>it is fully prepaid — no COD balance to collect on delivery;</li>
+     *   <li>the order total is at or below the configured threshold;</li>
+     *   <li>the customer's delivery-risk is {@link CustomerRiskLevel#LOW}.</li>
+     * </ul>
+     * Any other case leaves the order pending for manual approval. The required
+     * collaborators ({@code settingsService}, {@code labelService},
+     * {@code orderWorkflowService}, {@code outboxEventPublisher}) must all be
+     * present — under the legacy test constructors they are null and this is a
+     * no-op, preserving the unchanged manual-approval behaviour. Best-effort:
+     * never throws out (a config/label hiccup must not fail the order punch).
+     */
+    private void maybeAutoApprove(OrderEntity order, PaymentCalculation calc) {
+        if (settingsService == null || labelService == null
+                || orderWorkflowService == null || outboxEventPublisher == null) {
+            return; // auto-approval not wired (unit tests) → leave pending
+        }
+        if (order.getOrderStatus() != OrderStatus.PENDING_ADMIN_APPROVAL) {
+            return;
+        }
+        try {
+            com.shifa.oms.settings.AppSettings settings = settingsService.getSettings();
+            if (!settings.isAutoApproveEnabled()) {
+                return;
+            }
+            java.math.BigDecimal maxAmount = settings.getAutoApproveMaxAmount();
+            if (maxAmount == null || maxAmount.signum() <= 0) {
+                return; // no threshold configured → nothing qualifies
+            }
+            // Fully prepaid only: a COD balance (remaining to collect on delivery)
+            // always routes to manual approval.
+            if (calc.paymentStatus() == PaymentStatus.COD || !calc.codAmount().isZero()) {
+                return;
+            }
+            java.math.BigDecimal total =
+                    order.getTotalAmount() == null ? java.math.BigDecimal.ZERO : order.getTotalAmount();
+            if (total.compareTo(maxAmount) > 0) {
+                return; // above the auto-approve ceiling
+            }
+            if (customerRisk(order.getCustomerMobile()) != CustomerRiskLevel.LOW) {
+                return; // medium/high-risk customer → manual review
+            }
+            // Approve via the central workflow (authority + one history row + audit +
+            // notification fan-out), then generate the internal label and enqueue the
+            // ledger-post event — mirroring the admin/Shopify approve chain exactly.
+            orderWorkflowService.applyTransition(order, OrderStatus.APPROVED,
+                    Actor.user(SOURCE_AUTO_APPROVAL, Role.ADMIN, SOURCE_AUTO_APPROVAL));
+            labelService.generateInternalLabelOnApproval(order, SOURCE_AUTO_APPROVAL);
+            orderRepository.save(order);
+            outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_ORDER, order.getId());
+        } catch (RuntimeException e) {
+            // Defensive: a failed auto-approval must never fail the order punch. The
+            // order simply stays PENDING for manual approval.
+            log.warn("Auto-approval skipped for order {}: {}", order.getOrderCode(), e.getMessage());
+        }
+    }
+
+    /**
+     * The customer's delivery-reliability risk from their order history, computed
+     * with the pure {@link CustomerRiskCalculator} over all of their past orders
+     * (unscoped — risk is a property of the customer, not of a salesperson). A
+     * brand-new customer (no concluded deliveries) is {@link CustomerRiskLevel#LOW}.
+     */
+    private CustomerRiskLevel customerRisk(String mobile) {
+        if (mobile == null || mobile.isBlank()) {
+            return CustomerRiskLevel.LOW;
+        }
+        long failed = 0;
+        long delivered = 0;
+        for (OrderEntity past : orderRepository.findByCustomerMobileOrderByCreatedAtDesc(mobile)) {
+            OrderStatus status = past.getOrderStatus();
+            if (AUTO_APPROVE_FAILED_STATUSES.contains(status)) {
+                failed++;
+            } else if (AUTO_APPROVE_DELIVERED_STATUSES.contains(status)) {
+                delivered++;
+            }
+        }
+        return CustomerRiskCalculator.assess(failed, delivered);
+    }
+
+    /** Concluded-delivery success statuses for the auto-approval risk gate. */
+    private static final java.util.Set<OrderStatus> AUTO_APPROVE_DELIVERED_STATUSES =
+            java.util.EnumSet.of(OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED, OrderStatus.CLOSED);
+
+    /** Concluded-delivery failure statuses for the auto-approval risk gate. */
+    private static final java.util.Set<OrderStatus> AUTO_APPROVE_FAILED_STATUSES =
+            java.util.EnumSet.of(OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED,
+                    OrderStatus.RTO, OrderStatus.REDISPATCH);
 
     /**
      * Enqueues the QuikShipX create-order event for a new order when the
@@ -366,6 +530,7 @@ public class OrderService {
     public OrderResponse updateOrder(Long id, UpdateOrderRequest request, AuthPrincipal admin) {
         OrderEntity order = orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Order " + id + " does not exist."));
+        requireNotShopifyManaged(order);
         if (!EDITABLE_STATUSES.contains(order.getOrderStatus())) {
             throw new OrderNotEditableException(order.getOrderCode(), order.getOrderStatus());
         }
@@ -375,6 +540,23 @@ public class OrderService {
         OrderEntity saved = orderRepository.save(order);
         auditOrderEdit(saved, diff, admin, "Edited");
         return OrderResponse.from(saved);
+    }
+
+    /**
+     * Guards against ANY manual edit of a Shopify-imported order (Shopify
+     * integration): a Shopify order's details + workflow are driven automatically
+     * by the store's webhooks, so letting staff change the amount/items here would
+     * desync it from the source of truth (and could set a wrong order amount).
+     * Applies to old and new Shopify orders alike since it keys off the persisted
+     * {@code source} column. Rejected with a 409 {@link OrderNotEditableException}
+     * (a distinct, clear message) leaving the order unchanged.
+     */
+    private void requireNotShopifyManaged(OrderEntity order) {
+        if (order.getSource() == OrderSource.SHOPIFY) {
+            throw new OrderNotEditableException(order.getOrderCode(),
+                    "It is a Shopify order — its details and status are managed automatically "
+                            + "from Shopify and cannot be edited here.");
+        }
     }
 
     /**
@@ -402,6 +584,7 @@ public class OrderService {
     @Transactional
     public OrderResponse updateOwnOrder(Long id, UpdateOrderRequest request, AuthPrincipal actor) {
         OrderEntity order = loadScoped(id, actor);
+        requireNotShopifyManaged(order);
         if (!OWN_EDITABLE_STATUSES.contains(order.getOrderStatus())) {
             throw new ValidationException("Order " + order.getOrderCode()
                     + " can no longer be edited because it is no longer awaiting approval."
@@ -445,6 +628,7 @@ public class OrderService {
     @Transactional
     public OrderResponse resubmit(Long id, UpdateOrderRequest request, AuthPrincipal actor) {
         OrderEntity order = loadScoped(id, actor);
+        requireNotShopifyManaged(order);
         if (!RESUBMITTABLE_STATUSES.contains(order.getOrderStatus())) {
             throw new ValidationException("Order " + order.getOrderCode()
                     + " is not rejected, so it cannot be resubmitted for approval.");
@@ -692,6 +876,41 @@ public class OrderService {
             throw new ValidationException("The payment screenshot file is empty.");
         }
         return storageService.store("payments", originalFilename, contentType, content).key();
+    }
+
+    /**
+     * SHA-256 (hex) of the stored payment proof's bytes, for duplicate detection
+     * (V72). Best-effort: returns {@code null} when storage is unavailable, the
+     * object can't be loaded, or hashing fails — a missing hash simply means the
+     * proof is never flagged as a duplicate.
+     */
+    private String screenshotHash(String storageKey) {
+        if (storageService == null || storageKey == null || storageKey.isBlank()) {
+            return null;
+        }
+        try {
+            return storageService.load(storageKey)
+                    .map(obj -> sha256Hex(obj.content()))
+                    .orElse(null);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static String sha256Hex(byte[] bytes) {
+        if (bytes == null) {
+            return null;
+        }
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes);
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+            }
+            return sb.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            return null; // SHA-256 is always available on a standard JVM.
+        }
     }
 
     // --- Search and duplicate detection (Req 22) ----------------------------
@@ -1299,7 +1518,10 @@ public class OrderService {
         // upload was staged earlier and yields only an opaque key), so they stay null
         // and the read path takes them from the storage layer.
         for (String key : screenshotKeys) {
-            order.addPaymentScreenshot(key, null, null, null);
+            // Compute a SHA-256 of the stored proof so the payment verification queue
+            // can flag the same image reused across orders (dup-detection, V72).
+            // Best-effort: a storage read failure just leaves the hash null (no flag).
+            order.addPaymentScreenshot(key, null, null, null, screenshotHash(key));
         }
 
         if (!calc.amountReceived().isZero()) {

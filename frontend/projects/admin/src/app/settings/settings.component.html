@@ -197,6 +197,41 @@
       </div>
     </div>
 
+    <!-- Automation: order auto-approval (V73, default OFF) -->
+    <div class="card mb-3" [hidden]="activeTab() !== 'automation'">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-robot me-2"></i>Order auto-approval</h3>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">
+          <i class="ti ti-info-circle me-1"></i>
+          When on, a new order is approved automatically if it is <strong>fully prepaid</strong>,
+          at or below the amount below, and from a <strong>low-risk customer</strong> (good delivery
+          history). Any COD balance, a higher value, or a medium/high-risk customer still goes to the
+          manual approval queue. Off by default.
+        </p>
+        <label class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" formControlName="autoApproveEnabled" />
+          <span class="form-check-label">
+            {{ form.controls.autoApproveEnabled.value ? 'Auto-approval enabled' : 'Auto-approval disabled' }}
+          </span>
+        </label>
+        <div class="row g-2">
+          <div class="col-12 col-md-6 mb-2">
+            <label class="form-label">Max order total eligible (₹)</label>
+            <input type="text" inputmode="decimal" class="form-control shifa-mono"
+              formControlName="autoApproveMaxAmount" maxlength="13" autocomplete="off"
+              placeholder="e.g. 2000"
+              [class.is-invalid]="form.controls.autoApproveMaxAmount.touched && form.controls.autoApproveMaxAmount.invalid" />
+            @if (form.controls.autoApproveMaxAmount.touched && form.controls.autoApproveMaxAmount.invalid) {
+              <div class="invalid-feedback">Enter a positive amount (up to 2 decimals).</div>
+            }
+            <div class="form-hint">Orders above this total always need manual approval. Leave blank to disable.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Company logo section -->
     <div class="card mb-3" [hidden]="activeTab() !== 'company'">
       <div class="card-header">

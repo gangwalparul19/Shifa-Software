@@ -62,4 +62,24 @@ public enum DashboardQueue {
     public <T> long count(List<T> items, Function<T, OrderStatus> statusOf) {
         return items.stream().filter(item -> contains(statusOf.apply(item))).count();
     }
+
+    /**
+     * The total count for this queue from a pre-aggregated status→count map (e.g.
+     * a SQL {@code GROUP BY order_status} projection): sums the counts of every
+     * status in this queue's set. Missing statuses contribute zero. Equivalent to
+     * {@link #count(List, Function)} over the same orders, but without loading them.
+     */
+    public long countFrom(java.util.Map<OrderStatus, Long> countsByStatus) {
+        if (countsByStatus == null || countsByStatus.isEmpty()) {
+            return 0L;
+        }
+        long total = 0L;
+        for (OrderStatus status : statuses) {
+            Long c = countsByStatus.get(status);
+            if (c != null) {
+                total += c;
+            }
+        }
+        return total;
+    }
 }

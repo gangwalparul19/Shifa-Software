@@ -86,6 +86,23 @@ type HealthFilter = 'ALL' | 'INACTIVE' | 'NO_ACTIVITY' | 'FOLLOW_UPS' | 'RTO';
           </div>
         }
 
+        @if (pacing(); as pace) {
+          <div class="alert d-flex align-items-center mb-3" [class.alert-success]="pace.onPace" [class.alert-warning]="!pace.onPace" role="status">
+            <i class="ti me-2" [class.ti-trending-up]="pace.onPace" [class.ti-trending-down]="!pace.onPace"></i>
+            <div>
+              <strong>Monthly pacing:</strong>
+              on this run rate (day {{ pace.daysElapsed }} of {{ pace.daysInMonth }}) the team is projected to reach
+              <strong>₹{{ pace.projected.toLocaleString('en-IN') }}</strong>
+              against a <strong>₹{{ pace.target.toLocaleString('en-IN') }}</strong> target —
+              @if (pace.onPace) {
+                <span class="text-success fw-medium">on pace.</span>
+              } @else {
+                <span class="text-danger fw-medium">₹{{ pace.gap.toLocaleString('en-IN') }} behind pace.</span>
+              }
+            </div>
+          </div>
+        }
+
         @if (isTeamLead() && d.ownPeriod; as own) {
           <div class="card mb-3 border-success">
             <div class="card-header py-2"><span class="fw-medium"><i class="ti ti-user me-1"></i>My performance</span><span class="text-secondary small">Your punched orders</span></div>
@@ -225,6 +242,46 @@ export class TeamPerformanceComponent implements OnInit {
         || (filter === 'RTO' && member.rtoCount > 0);
       return matchesSearch && matchesFilter;
     });
+  });
+
+  /**
+   * Monthly target-pacing projection (team-pacing enhancement): projects
+   * end-of-month revenue from the month-to-date run rate and reports whether the
+   * team is on pace to hit its combined target. Only meaningful for the "month"
+   * period with a target set — null otherwise (the card is hidden).
+   */
+  protected readonly pacing = computed<{
+    projected: number;
+    target: number;
+    onPace: boolean;
+    gap: number;
+    daysElapsed: number;
+    daysInMonth: number;
+  } | null>(() => {
+    if (this.period() !== 'month') {
+      return null;
+    }
+    const p = this.data()?.period;
+    if (!p) {
+      return null;
+    }
+    const target = Number(p.target ?? 0);
+    const revenue = Number(p.revenue ?? 0);
+    if (!(target > 0)) {
+      return null;
+    }
+    const now = new Date();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const daysElapsed = Math.max(1, now.getDate());
+    const projected = Math.round((revenue / daysElapsed) * daysInMonth);
+    return {
+      projected,
+      target,
+      onPace: projected >= target,
+      gap: Math.round(target - projected),
+      daysElapsed,
+      daysInMonth,
+    };
   });
 
   ngOnInit(): void { this.load(); }

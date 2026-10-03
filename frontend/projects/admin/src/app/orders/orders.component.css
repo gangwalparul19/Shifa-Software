@@ -312,6 +312,13 @@
   margin-bottom: 0;
 }
 
+/* Retry-delivery card (RTO/REDISPATCH): amber accent so it reads as the
+   prominent next action rather than blending into the info cards above it. */
+.shifa-od__retry {
+  border-color: rgba(245, 159, 0, 0.35);
+  background: #fdf7e8;
+}
+
 /* (4)/(5) Contact + address rows: avatar/text + circular action. */
 .shifa-od__contact {
   display: flex;
@@ -607,6 +614,26 @@
   font-weight: 700;
   letter-spacing: 0.02em;
   color: #21372c;
+}
+/* AWB rendered as a clickable track link (button.btn-link) keeps the bold mono
+   look but signals it opens the courier tracking page. */
+button.shifa-qsx-awb__value {
+  text-decoration: none;
+  border: 0;
+  background: none;
+}
+button.shifa-qsx-awb__value:hover {
+  color: #1f5d3f;
+  text-decoration: underline;
+}
+/* The small AWB track link on the Orders table/cards (Courier Partner column). */
+.btn-link.shifa-qsx-id {
+  text-decoration: none;
+  color: #1f5d3f;
+  vertical-align: baseline;
+}
+.btn-link.shifa-qsx-id:hover {
+  text-decoration: underline;
 }
 
 /* QuikShipX live tracking timeline (order detail drawer). */

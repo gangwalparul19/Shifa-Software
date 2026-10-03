@@ -1,7 +1,9 @@
 import { IstDatePipe } from '../shared/ist-date.pipe';
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { catchError, forkJoin, of } from 'rxjs';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { InrPipe } from '../shared/inr.pipe';
 import { ToastService } from '../shared/toast.service';
@@ -18,7 +20,7 @@ import { PaymentQueueRow } from './payments.model';
  */
 @Component({
   selector: 'admin-payments',
-  imports: [IstDatePipe, PageHeaderComponent, StatePanelComponent, InrPipe],
+  imports: [IstDatePipe, PageHeaderComponent, PaginationComponent, StatePanelComponent, InrPipe],
   templateUrl: './payments.component.html',
   styleUrl: './payments.component.css',
 })
@@ -30,6 +32,26 @@ export class PaymentsComponent implements OnInit, OnDestroy {
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
   protected readonly busyId = signal<number | null>(null);
+
+  // --- Client-side paging -------------------------------------------------
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('paymentsQueue', 10));
+  protected readonly totalElements = computed(() => this.rows().length);
+  protected readonly totalPages = computed(() => Math.max(1, Math.ceil(this.totalElements() / this.size())));
+  protected readonly pageItems = computed<PaymentQueueRow[]>(() => {
+    const s = this.page() * this.size();
+    return this.rows().slice(s, s + this.size());
+  });
+
+  goToPage(p: number): void {
+    this.page.set(p);
+  }
+
+  setSize(s: number): void {
+    this.size.set(s);
+    writePageSize('paymentsQueue', s);
+    this.page.set(0);
+  }
 
   /**
    * Every proof for the order currently open in the viewer, as object URLs (V65).
@@ -59,6 +81,10 @@ export class PaymentsComponent implements OnInit, OnDestroy {
     this.service.queue().subscribe({
       next: (rows) => {
         this.rows.set(rows);
+        const maxPage = Math.max(0, this.totalPages() - 1);
+        if (this.page() > maxPage) {
+          this.page.set(maxPage);
+        }
         this.loading.set(false);
       },
       error: () => {

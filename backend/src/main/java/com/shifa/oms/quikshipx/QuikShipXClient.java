@@ -1,6 +1,7 @@
 package com.shifa.oms.quikshipx;
 
 import com.shifa.oms.quikshipx.QuikShipXModels.AllotResult;
+import com.shifa.oms.quikshipx.QuikShipXModels.CancelResult;
 import com.shifa.oms.quikshipx.QuikShipXModels.CreatePayload;
 import com.shifa.oms.quikshipx.QuikShipXModels.CreateResult;
 import com.shifa.oms.quikshipx.QuikShipXModels.TrackResult;
@@ -63,4 +64,20 @@ public interface QuikShipXClient {
      *         / rejection response
      */
     TrackResult trackOrderById(String shipperOrderId) throws QuikShipXException;
+
+    /**
+     * Requests cancellation of a shipment at QuikShipX so the courier is NOT sent
+     * to pick the parcel up ({@code POST /api/cancel-order-v1}; order-cancellation
+     * feature). Used when an admin cancels an order after it has been handed to the
+     * courier — e.g. payment never arrived, or the customer cancels after a partial
+     * payment.
+     *
+     * @param shipperOrderId QuikShipX's own order id (from create-order), the stable
+     *                       cancel key available even before an AWB is allotted
+     * @return whether QuikShipX accepted the cancellation, plus a detail message
+     * @throws QuikShipXException on transport failure or timeout (retryable per the
+     *         usual classification); a documented "already cancelled" / "not found"
+     *         response is returned as a non-accepted {@link CancelResult}, not thrown
+     */
+    CancelResult cancelOrder(String shipperOrderId) throws QuikShipXException;
 }

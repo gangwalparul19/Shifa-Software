@@ -70,6 +70,12 @@ public class PaymentVerificationService {
      * constructor — the payment decision is then recorded without a status change.
      */
     private final OrderWorkflowService orderWorkflowService;
+    /**
+     * Payment-proof hashes (nullable): used to flag the SAME screenshot reused on
+     * another order in the queue (duplicate-screenshot detection, V72). Null under
+     * the test/legacy constructor — the queue then shows no duplicate flags.
+     */
+    private final com.shifa.oms.order.OrderPaymentScreenshotRepository screenshotRepository;
     private final Clock clock;
 
     /**
@@ -81,7 +87,7 @@ public class PaymentVerificationService {
                                       CurrentUserService currentUserService,
                                       OutboxEventPublisher outboxEventPublisher) {
         this(orderRepository, auditService, currentUserService, outboxEventPublisher,
-                null, null, Clock.systemDefaultZone());
+                null, null, null, Clock.systemDefaultZone());
     }
 
     @Autowired
@@ -89,22 +95,26 @@ public class PaymentVerificationService {
                                       CurrentUserService currentUserService,
                                       OutboxEventPublisher outboxEventPublisher,
                                       UserRepository userRepository,
-                                      OrderWorkflowService orderWorkflowService) {
+                                      OrderWorkflowService orderWorkflowService,
+                                      com.shifa.oms.order.OrderPaymentScreenshotRepository screenshotRepository) {
         this(orderRepository, auditService, currentUserService, outboxEventPublisher,
-                userRepository, orderWorkflowService, Clock.systemDefaultZone());
+                userRepository, orderWorkflowService, screenshotRepository, Clock.systemDefaultZone());
     }
 
     PaymentVerificationService(OrderRepository orderRepository, AuditService auditService,
                                CurrentUserService currentUserService,
                                OutboxEventPublisher outboxEventPublisher,
                                UserRepository userRepository,
-                               OrderWorkflowService orderWorkflowService, Clock clock) {
+                               OrderWorkflowService orderWorkflowService,
+                               com.shifa.oms.order.OrderPaymentScreenshotRepository screenshotRepository,
+                               Clock clock) {
         this.orderRepository = orderRepository;
         this.auditService = auditService;
         this.currentUserService = currentUserService;
         this.outboxEventPublisher = outboxEventPublisher;
         this.userRepository = userRepository;
         this.orderWorkflowService = orderWorkflowService;
+        this.screenshotRepository = screenshotRepository;
         this.clock = clock;
     }
 
@@ -118,7 +128,36 @@ public class PaymentVerificationService {
         Map<Long, String> names = resolveSalespersonNames(pending);
         return pending.stream()
                 .map(o -> PaymentQueueRow.from(
-                        o, o.getCreatedBy() == null ? null : names.get(o.getCreatedBy())))
+                        o, o.getCreatedBy() == null ? null : names.get(o.getCreatedBy()),
+                        duplicateOrderCodes(o)))
+                .toList();
+    }
+
+    /**
+     * Other order codes whose payment proof is byte-identical to this order's
+     * (duplicate-screenshot detection, V72): hash this order's proofs, find other
+     * orders sharing any hash, resolve their codes. Empty when there is no
+     * screenshot repository (test/legacy), no hash, or the proof is unique.
+     */
+    private List<String> duplicateOrderCodes(OrderEntity order) {
+        if (screenshotRepository == null || order.getId() == null) {
+            return List.of();
+        }
+        List<String> hashes = screenshotRepository.findHashesForOrder(order.getId());
+        if (hashes.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> otherIds = new HashSet<>();
+        for (String hash : hashes) {
+            otherIds.addAll(screenshotRepository.findOtherOrderIdsWithHash(hash, order.getId()));
+        }
+        if (otherIds.isEmpty()) {
+            return List.of();
+        }
+        return orderRepository.findAllById(otherIds).stream()
+                .map(OrderEntity::getOrderCode)
+                .filter(code -> code != null && !code.isBlank())
+                .sorted()
                 .toList();
     }
 

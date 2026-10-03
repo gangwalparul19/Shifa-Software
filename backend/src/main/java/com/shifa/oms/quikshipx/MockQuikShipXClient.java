@@ -1,6 +1,7 @@
 package com.shifa.oms.quikshipx;
 
 import com.shifa.oms.quikshipx.QuikShipXModels.AllotResult;
+import com.shifa.oms.quikshipx.QuikShipXModels.CancelResult;
 import com.shifa.oms.quikshipx.QuikShipXModels.CreatePayload;
 import com.shifa.oms.quikshipx.QuikShipXModels.CreateResult;
 import com.shifa.oms.quikshipx.QuikShipXModels.TrackResult;
@@ -62,6 +63,17 @@ public class MockQuikShipXClient implements QuikShipXClient {
     public TrackResult trackOrderById(String shipperOrderId) throws QuikShipXException {
         // Mock: the order id resolves to the same deterministic AWB as allot.
         return mockTrack("QSX" + numericId(shipperOrderId, 1000000000L));
+    }
+
+    @Override
+    public CancelResult cancelOrder(String shipperOrderId) throws QuikShipXException {
+        // Mock: a shipper order id containing FAIL simulates a courier that refuses
+        // the cancellation; everything else is accepted deterministically.
+        if (shipperOrderId != null && shipperOrderId.toUpperCase(Locale.ROOT).contains(FAIL_TOKEN)) {
+            return new CancelResult(false, "Simulated QuikShipX cancel refusal for " + shipperOrderId);
+        }
+        log.debug("Mock QuikShipX cancel-order for {} -> accepted", shipperOrderId);
+        return new CancelResult(true, "Mock QuikShipX accepted the cancellation.");
     }
 
     private TrackResult mockTrack(String awb) {

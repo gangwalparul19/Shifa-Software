@@ -79,13 +79,30 @@ public class DailyReportService {
     public Result sendConsolidatedReportFor(LocalDate day) {
         List<ReportOrder> projected = loadOrdersFor(day);
         DailyReport report = DailyReport.build(day, projected);
+        return sendRendered(report, day);
+    }
 
+    /**
+     * Builds + sends a consolidated report over an inclusive date range
+     * {@code [from, to]} (scheduled-report-delivery enhancement — e.g. a weekly
+     * digest). Reuses the SAME pure aggregation and branded email as the daily
+     * report; the report is labelled with {@code from}. Skipped (logged) when no
+     * recipient is configured; never rethrows a {@link MailException}.
+     */
+    public Result sendConsolidatedReportForRange(LocalDate from, LocalDate to) {
+        List<ReportOrder> projected = loadOrdersBetween(from.atStartOfDay(), to.plusDays(1).atStartOfDay());
+        DailyReport report = DailyReport.build(from, projected);
+        return sendRendered(report, from);
+    }
+
+    /** Shared render+send tail used by both the daily and ranged report paths. */
+    private Result sendRendered(DailyReport report, LocalDate label) {
         String to = mailProperties.digestTo();
         boolean recipientConfigured = to != null && !to.isBlank();
         if (!recipientConfigured) {
-            log.info("Consolidated daily report for {} built ({} order(s)) but not sent: "
+            log.info("Consolidated report for {} built ({} order(s)) but not sent: "
                     + "no recipient configured (app.mail.digest-to blank).",
-                    day, report.overall().orderCount());
+                    label, report.overall().orderCount());
             return Result.from(report, false);
         }
 
@@ -93,10 +110,10 @@ public class DailyReportService {
                 new EmailModels.ConsolidatedReport(report));
         try {
             mailService.send(rendered.toMessage(to));
-            log.info("Sent consolidated daily report for {} to {} ({} order(s)).",
-                    day, to, report.overall().orderCount());
+            log.info("Sent consolidated report for {} to {} ({} order(s)).",
+                    label, to, report.overall().orderCount());
         } catch (MailException e) {
-            log.warn("Failed to send consolidated daily report for {}: {}", day, e.getMessage());
+            log.warn("Failed to send consolidated report for {}: {}", label, e.getMessage());
         }
         return Result.from(report, true);
     }
@@ -106,8 +123,11 @@ public class DailyReportService {
      * with each order's salesperson name resolved from the user directory.
      */
     private List<ReportOrder> loadOrdersFor(LocalDate day) {
-        LocalDateTime from = day.atStartOfDay();
-        LocalDateTime to = day.plusDays(1).atStartOfDay();
+        return loadOrdersBetween(day.atStartOfDay(), day.plusDays(1).atStartOfDay());
+    }
+
+    /** Loads orders in the half-open window {@code [from, to)}, projected to {@link ReportOrder}. */
+    private List<ReportOrder> loadOrdersBetween(LocalDateTime from, LocalDateTime to) {
         List<OrderEntity> orders = orderRepository.findByCreatedAtBetween(from, to);
 
         Map<Long, String> names = resolveSalespersonNames(orders);

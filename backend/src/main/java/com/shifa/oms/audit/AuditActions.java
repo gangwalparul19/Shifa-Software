@@ -17,10 +17,14 @@ public final class AuditActions {
 
     public static final String ORDER_APPROVED = "ORDER_APPROVED";
     public static final String ORDER_REJECTED = "ORDER_REJECTED";
+    /** An admin cancelled an order (order-cancellation feature), with a mandatory note. */
+    public static final String ORDER_CANCELLED = "ORDER_CANCELLED";
     /** An admin corrected the order's customer/address/items/discount/notes (edit-order feature). */
     public static final String ORDER_UPDATED = "ORDER_UPDATED";
     /** A packer/admin manually marked an order RTO by scanning its label (label redesign feature). */
     public static final String ORDER_MARKED_RTO = "ORDER_MARKED_RTO";
+    /** A user exported the (filtered, scoped) orders list to CSV/Excel (list-export enhancement). */
+    public static final String ORDERS_EXPORTED = "ORDERS_EXPORTED";
     /** Payment authenticity verification decisions (product-audit §4.4). */
     public static final String PAYMENT_VERIFIED = "PAYMENT_VERIFIED";
     public static final String PAYMENT_REJECTED = "PAYMENT_REJECTED";
@@ -103,6 +107,8 @@ public final class AuditActions {
     public static final String QUIKSHIPX_CONFIRMED = "QUIKSHIPX_CONFIRMED";
     /** A QuikShipX tracking id (AWB) + label were allotted for an order. */
     public static final String QUIKSHIPX_TRACKING_ALLOTTED = "QUIKSHIPX_TRACKING_ALLOTTED";
+    /** A QuikShipX shipment cancellation was requested so the courier aborts pickup (order-cancellation feature). */
+    public static final String QUIKSHIPX_CANCELLED = "QUIKSHIPX_CANCELLED";
     /** An admin manually attached a courier name + AWB to an order (assign-courier-early enhancement). */
     public static final String COURIER_MANUALLY_ASSIGNED = "COURIER_MANUALLY_ASSIGNED";
 

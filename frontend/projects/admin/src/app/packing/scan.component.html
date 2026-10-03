@@ -1,6 +1,6 @@
 <admin-page-header
   title="Packing"
-  subtitle="Scan a label to pack an order, then hand over and dispatch."
+  subtitle="Print the label, mark packed, then hand over. QuikShip pickups and in-house deliveries track below."
   [breadcrumbs]="[{ label: 'Packing' }]"
 >
   <a class="btn btn-outline-secondary" routerLink="/packing/pick-list" title="Today's pick-list / packing manifest">
@@ -21,10 +21,28 @@
   </button>
 </admin-page-header>
 
+<!-- How-it-works strip (dismissible once per browser) -->
+@if (showGuide()) {
+  <div class="card mb-3 pk-guide">
+    <div class="card-body d-flex align-items-start gap-2 py-2">
+      <i class="ti ti-route fs-3 pk-guide__icon"></i>
+      <div class="flex-fill">
+        <div class="fw-bold mb-1">How packing works</div>
+        <ol class="pk-guide__steps mb-0">
+          <li><b>Orders to Pack</b> — print the label (and the QuikShip label for courier orders), then <b>Mark packed</b>. Printing the QuikShip label moves it on for you.</li>
+          <li><b>Awaiting Handover</b> — hand the parcel to the courier or your in-house driver.</li>
+          <li><b>QuickShip Status</b> updates automatically from the courier; <b>In-House Deliveries</b> you advance yourself.</li>
+        </ol>
+      </div>
+      <button type="button" class="btn-close" aria-label="Dismiss" (click)="dismissGuide()"></button>
+    </div>
+  </div>
+}
+
 <!-- Workflow queue tiles (tap to jump to the list) -->
 <div class="row row-cards g-2 g-md-3 mb-3 stagger">
   @for (section of queueSections(); track section.kind) {
-    <div class="col-4">
+    <div class="col-6 col-md-3">
       <button
         type="button"
         class="card card-hover stat-accent w-100 text-start pk-tile"
@@ -35,7 +53,7 @@
         <div class="card-body d-flex align-items-center justify-content-between p-2 p-md-3">
           <div class="min-w-0">
             <div class="subheader text-truncate">{{ section.short }}</div>
-            <div class="h1 m-0">{{ section.orders.length }}</div>
+            <div class="h1 m-0">{{ section.totalElements }}</div>
           </div>
           <span class="stat-icon" [style.--accent]="section.accent" [style.--accent-soft]="section.accentSoft">
             <i class="ti {{ section.icon }}"></i>
@@ -44,6 +62,44 @@
       </button>
     </div>
   }
+  <div class="col-6 col-md-3">
+    <button
+      type="button"
+      class="card card-hover stat-accent w-100 text-start pk-tile"
+      [style.--accent]="'#7c3aed'"
+      [style.--accent-soft]="'#ede9fe'"
+      (click)="scrollToSection('quikship-status')"
+    >
+      <div class="card-body d-flex align-items-center justify-content-between p-2 p-md-3">
+        <div class="min-w-0">
+          <div class="subheader text-truncate">QuickShip</div>
+          <div class="h1 m-0">{{ quikShipStatus().length }}</div>
+        </div>
+        <span class="stat-icon" [style.--accent]="'#7c3aed'" [style.--accent-soft]="'#ede9fe'">
+          <i class="ti ti-truck"></i>
+        </span>
+      </div>
+    </button>
+  </div>
+  <div class="col-6 col-md-3">
+    <button
+      type="button"
+      class="card card-hover stat-accent w-100 text-start pk-tile"
+      [style.--accent]="'#0f766e'"
+      [style.--accent-soft]="'#ccfbf1'"
+      (click)="scrollToSection('in-house')"
+    >
+      <div class="card-body d-flex align-items-center justify-content-between p-2 p-md-3">
+        <div class="min-w-0">
+          <div class="subheader text-truncate">In-house</div>
+          <div class="h1 m-0">{{ inHouseDeliveries().length }}</div>
+        </div>
+        <span class="stat-icon" [style.--accent]="'#0f766e'" [style.--accent-soft]="'#ccfbf1'">
+          <i class="ti ti-home"></i>
+        </span>
+      </div>
+    </button>
+  </div>
 </div>
 
 <!-- Hero: the scan box — the primary action of the page -->
@@ -109,6 +165,16 @@
           </div>
           <admin-status-badge [status]="preview.order.orderStatus" />
         </div>
+
+        @if (preview.notes) {
+          <div class="alert alert-warning d-flex align-items-start gap-2 mb-3 pk-preview-note" role="note">
+            <i class="ti ti-note fs-3 mt-1"></i>
+            <div>
+              <div class="fw-bold">Packaging note</div>
+              <div style="white-space: pre-wrap">{{ preview.notes }}</div>
+            </div>
+          </div>
+        }
 
         @if (preview.nextAction === 'NONE') {
           <div class="alert alert-secondary mb-0">
@@ -176,22 +242,41 @@
       </span>
       <h3 class="card-title mb-0 ms-2">{{ section.title }}</h3>
       <span class="badge ms-2" [style.background]="section.accentSoft" [style.color]="section.accent">
-        {{ section.orders.length }}
+        {{ section.totalElements }}
       </span>
-      @if (section.kind === 'pack' && selectedLabelCount() > 0) {
-        <button
-          type="button"
-          class="btn btn-sm btn-primary ms-auto"
-          (click)="printSelectedLabels()"
-          [disabled]="bulkLabelBusy()"
-        >
-          @if (bulkLabelBusy()) {
-            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-          } @else {
-            <i class="ti ti-printer me-1"></i>
+      @if (section.kind === 'pack' && (selectedLabelCount() > 0 || selectedQuikLabelCount() > 0)) {
+        <div class="d-flex align-items-center gap-2 ms-auto flex-wrap">
+          @if (selectedLabelCount() > 0) {
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-primary"
+              (click)="printSelectedLabels()"
+              [disabled]="bulkLabelBusy()"
+            >
+              @if (bulkLabelBusy()) {
+                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+              } @else {
+                <i class="ti ti-printer me-1"></i>
+              }
+              Print {{ selectedLabelCount() }} label{{ selectedLabelCount() === 1 ? '' : 's' }}
+            </button>
           }
-          Print {{ selectedLabelCount() }} label{{ selectedLabelCount() === 1 ? '' : 's' }}
-        </button>
+          @if (selectedQuikLabelCount() > 0) {
+            <button
+              type="button"
+              class="btn btn-sm btn-primary"
+              (click)="printSelectedQuikLabels()"
+              [disabled]="markingPrinted()"
+            >
+              @if (markingPrinted()) {
+                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+              } @else {
+                <i class="ti ti-truck me-1"></i>
+              }
+              Print {{ selectedQuikLabelCount() }} QuikShip label{{ selectedQuikLabelCount() === 1 ? '' : 's' }}
+            </button>
+          }
+        </div>
       }
       @if (section.kind === 'handover' && selectedHandoverCount() > 0) {
         <button
@@ -208,38 +293,9 @@
           Handover {{ selectedHandoverCount() }}
         </button>
       }
-      @if (section.kind === 'dispatch' && selectedDispatchCount() > 0) {
-        <div class="d-flex align-items-center gap-2 ms-auto flex-wrap">
-          <span class="text-secondary small">{{ selectedDispatchCount() }} selected · set to</span>
-          <select
-            class="form-select form-select-sm w-auto"
-            [value]="dispatchStatus()"
-            (change)="setDispatchStatus($any($event.target).value)"
-            aria-label="Delivery status to set"
-          >
-            <option value="" disabled>Choose a status…</option>
-            @for (opt of dispatchStatusOptions; track opt.value) {
-              <option [value]="opt.value">{{ opt.label }}</option>
-            }
-          </select>
-          <button
-            type="button"
-            class="btn btn-sm btn-primary"
-            (click)="dispatchSelected()"
-            [disabled]="bulkDispatchBusy() || !dispatchStatus()"
-          >
-            @if (bulkDispatchBusy()) {
-              <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-            } @else {
-              <i class="ti ti-truck-delivery me-1"></i>
-            }
-            Update {{ selectedDispatchCount() }}
-          </button>
-        </div>
-      }
     </div>
     <div class="card-body p-0">
-      @if (section.orders.length === 0) {
+      @if (section.totalElements === 0) {
         <div class="text-secondary small text-center py-4">
           @if (queueLoading()) {
             <span class="spinner-border spinner-border-sm me-1"></span> Loading…
@@ -253,13 +309,22 @@
             <thead>
               <tr>
                 @if (section.kind === 'pack') {
-                  <th class="w-1" title="Select all for label printing">
+                  <th class="w-1" title="Select all for our-label printing">
                     <input
                       class="form-check-input m-0"
                       type="checkbox"
                       [checked]="allSelectedForLabel(section.orders)"
                       (change)="toggleSelectAllForLabel(section.orders)"
-                      aria-label="Select all orders for batch label printing"
+                      aria-label="Select all orders for batch our-label printing"
+                    />
+                  </th>
+                  <th class="w-1" title="Select all QuikShip labels">
+                    <input
+                      class="form-check-input m-0"
+                      type="checkbox"
+                      [checked]="allQuikLabelSelected(section.orders)"
+                      (change)="toggleSelectAllQuikLabel(section.orders)"
+                      aria-label="Select all QuikShip labels for printing"
                     />
                   </th>
                 }
@@ -274,22 +339,14 @@
                     />
                   </th>
                 }
-                @if (section.kind === 'dispatch') {
-                  <th class="w-1" title="Select all for dispatch">
-                    <input
-                      class="form-check-input m-0"
-                      type="checkbox"
-                      [checked]="allSelectedForDispatch(section.orders)"
-                      (change)="toggleSelectAllForDispatch(section.orders)"
-                      aria-label="Select all orders for bulk dispatch"
-                    />
-                  </th>
-                }
                 <th>Order ID</th>
                 <th>Customer</th>
                 <th class="text-end">Price</th>
                 <th>Order date</th>
                 <th>Salesperson</th>
+                <th>Partner</th>
+                <th>Status</th>
+                <th>Notes</th>
                 <th class="text-end">Actions</th>
               </tr>
             </thead>
@@ -303,8 +360,21 @@
                         type="checkbox"
                         [checked]="isSelectedForLabel(o.id)"
                         (change)="toggleLabelSelection(o.id)"
-                        aria-label="Select order for batch label printing"
+                        aria-label="Select order for batch our-label printing"
                       />
+                    </td>
+                    <td (click)="$event.stopPropagation()">
+                      @if (o.quikShipXLabelUrl) {
+                        <input
+                          class="form-check-input m-0"
+                          type="checkbox"
+                          [checked]="isQuikLabelSelected(o.id)"
+                          (change)="toggleQuikLabelSelection(o.id)"
+                          aria-label="Select QuikShip label for printing"
+                        />
+                      } @else {
+                        <span class="text-secondary">—</span>
+                      }
                     </td>
                   }
                   @if (section.kind === 'handover') {
@@ -318,26 +388,39 @@
                       />
                     </td>
                   }
-                  @if (section.kind === 'dispatch') {
-                    <td (click)="$event.stopPropagation()">
-                      @if (isInHouseRow(o)) {
-                        <input
-                          class="form-check-input m-0"
-                          type="checkbox"
-                          [checked]="isSelectedForDispatch(o.id)"
-                          (change)="toggleDispatchSelection(o)"
-                          aria-label="Select in-house order for bulk status update"
-                        />
-                      } @else {
-                        <i class="ti ti-lock text-secondary" title="Courier-partner order — tracked by the partner"></i>
-                      }
-                    </td>
-                  }
                   <td class="shifa-mono fw-bold">{{ o.orderCode }}</td>
                   <td>{{ o.customerName }}</td>
                   <td class="text-end fw-semibold">{{ o.totalAmount | inr }}</td>
                   <td class="text-secondary">{{ o.createdAt ? (o.createdAt | istDate) : '—' }}</td>
                   <td class="text-secondary">{{ o.salespersonName || '—' }}</td>
+                  <td>
+                    @if (isInHouseRow(o)) {
+                      <span class="badge pk-partner pk-partner--inhouse"><i class="ti ti-home me-1"></i>Ishika Enterprise</span>
+                    } @else {
+                      <admin-channel-logo [quikShip]="true" />
+                    }
+                  </td>
+                  <td>
+                    @if (o.quikShipXStatus) {
+                      <span class="badge pk-partner pk-partner--quik">{{ o.quikShipXStatus }}</span>
+                    } @else {
+                      <admin-status-badge [status]="o.orderStatus" />
+                    }
+                    @if (o.awb) {
+                      <div class="shifa-mono text-secondary small mt-1" title="QuikShip tracking id (AWB)">
+                        <i class="ti ti-barcode me-1"></i>{{ o.awb }}
+                      </div>
+                    }
+                  </td>
+                  <td class="pk-note">
+                    @if (o.notes) {
+                      <span class="pk-note__flag" [title]="o.notes">
+                        <i class="ti ti-note me-1"></i>{{ o.notes }}
+                      </span>
+                    } @else {
+                      <span class="text-secondary">—</span>
+                    }
+                  </td>
                   <td class="text-end" (click)="$event.stopPropagation()">
                     <div class="pk-row__actions justify-content-end">
                       @if (section.kind === 'pack') {
@@ -352,49 +435,52 @@
                           (change)="setBoxes(o, $any($event.target).value)"
                         />
                       }
-                      @if (section.kind !== 'dispatch') {
-                        <button
-                          type="button"
-                          class="btn btn-outline-secondary pk-row__print"
-                          (click)="printLabel(o)"
-                          [disabled]="labelBusyId() === o.id"
-                          title="Print label"
-                          aria-label="Print label"
-                        >
-                          @if (labelBusyId() === o.id) {
-                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                          } @else {
-                            <i class="ti ti-printer"></i>
-                          }
-                        </button>
-                      }
-                      @if (section.kind === 'dispatch') {
-                        <!-- Dispatch is a multi-select status update for IN-HOUSE
-                             orders (checkbox + status picker above). Courier orders
-                             are tracked by the partner, so no per-row action here —
-                             just show which kind of delivery it is. -->
-                        @if (isInHouseRow(o)) {
-                          <span class="badge bg-green-lt"><i class="ti ti-home me-1"></i>In-house</span>
+                      <button
+                        type="button"
+                        class="btn btn-outline-secondary pk-row__print"
+                        (click)="printLabel(o)"
+                        [disabled]="labelBusyId() === o.id"
+                        title="Print our label"
+                        aria-label="Print our label"
+                      >
+                        @if (labelBusyId() === o.id) {
+                          <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                         } @else {
-                          <span class="badge bg-blue-lt" title="Tracked by the delivery partner">
-                            <i class="ti ti-truck me-1"></i>Partner
-                          </span>
+                          <i class="ti ti-printer"></i>
                         }
-                      } @else {
+                      </button>
+                      @if (section.kind === 'pack' && o.quikShipXLabelUrl) {
                         <button
                           type="button"
-                          class="btn btn-primary pk-row__action"
-                          (click)="queueAction(section.kind, o)"
-                          [disabled]="busyOrderId() === o.id"
+                          class="btn btn-outline-primary pk-row__quik"
+                          (click)="openQuikLabel(o)"
+                          [disabled]="quikLabelBusyId() === o.id"
+                          title="Print QuikShip label"
                         >
-                          @if (busyOrderId() === o.id) {
+                          @if (quikLabelBusyId() === o.id) {
                             <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
                           } @else {
-                            <i class="ti {{ section.actionIcon }} me-1"></i>
+                            <i class="ti ti-truck me-1"></i>
                           }
-                          {{ section.actionLabel }}
+                          QuikShip
+                          @if (o.quikShipXLabelPrinted) {
+                            <span class="badge pk-printed-badge ms-1"><i class="ti ti-check"></i> Printed</span>
+                          }
                         </button>
                       }
+                      <button
+                        type="button"
+                        class="btn btn-primary pk-row__action"
+                        (click)="queueAction(section.kind, o)"
+                        [disabled]="busyOrderId() === o.id"
+                      >
+                        @if (busyOrderId() === o.id) {
+                          <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                        } @else {
+                          <i class="ti {{ section.actionIcon }} me-1"></i>
+                        }
+                        {{ section.actionLabel }}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -402,10 +488,197 @@
             </tbody>
           </table>
         </div>
+        <admin-pagination
+          [page]="section.page"
+          [totalPages]="section.totalPages"
+          [totalElements]="section.totalElements"
+          [size]="queueSize()"
+          (pageChange)="goToQueuePage(section.kind, $event)"
+          (sizeChange)="setQueueSize($event)"
+        />
       }
     </div>
   </div>
 }
+
+<!-- QuickShip Status (read-only) — handed-over courier orders, driven by
+     QuikShipX pickup + tracking. Clickable rows open the order. -->
+<div class="card mb-3" id="pk-section-quikship-status">
+  <div class="card-header d-flex align-items-center py-2">
+    <span class="pk-sec-icon" [style.--accent]="'#7c3aed'" [style.--accent-soft]="'#ede9fe'">
+      <i class="ti ti-truck"></i>
+    </span>
+    <h3 class="card-title mb-0 ms-2">QuickShip Status</h3>
+    <span class="badge ms-2" [style.background]="'#ede9fe'" [style.color]="'#7c3aed'">
+      {{ quikShipStatus().length }}
+    </span>
+  </div>
+  <div class="card-body p-0">
+    @if (quikShipStatus().length === 0) {
+      <div class="text-secondary small text-center py-4">
+        @if (queueLoading()) {
+          <span class="spinner-border spinner-border-sm me-1"></span> Loading…
+        } @else {
+          <i class="ti ti-truck-off me-1"></i> No QuickShip shipments in progress.
+        }
+      </div>
+    } @else {
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table table-hover pk-table mb-0">
+          <thead>
+            <tr>
+              <th>Order ID</th>
+              <th>Customer</th>
+              <th class="text-end">Price</th>
+              <th>Order date</th>
+              <th>Salesperson</th>
+              <th>AWB</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (o of quikShipPageItems(); track o.id) {
+              <tr class="clickable" (click)="openOrder(o)">
+                <td class="shifa-mono fw-bold">{{ o.orderCode }}</td>
+                <td>{{ o.customerName }}</td>
+                <td class="text-end fw-semibold">{{ o.totalAmount | inr }}</td>
+                <td class="text-secondary">{{ o.createdAt ? (o.createdAt | istDate) : '—' }}</td>
+                <td class="text-secondary">{{ o.salespersonName || '—' }}</td>
+                <td class="shifa-mono text-secondary">{{ o.awb || '—' }}</td>
+                <td>
+                  @if (o.quikShipXStatus) {
+                    <span class="badge pk-partner pk-partner--quik">{{ o.quikShipXStatus }}</span>
+                  } @else {
+                    <admin-status-badge [status]="o.orderStatus" />
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <admin-pagination
+        [page]="quikShipPage()"
+        [totalPages]="quikShipTotalPages()"
+        [totalElements]="quikShipStatus().length"
+        [size]="statusSize()"
+        (pageChange)="goToQuikShipPage($event)"
+        (sizeChange)="setStatusSize($event)"
+      />
+    }
+  </div>
+</div>
+
+<!-- In-House Deliveries — handed-over in-house orders the team advances
+     manually (multi-select + set a delivery status). -->
+<div class="card mb-3" id="pk-section-in-house">
+  <div class="card-header d-flex align-items-center py-2 flex-wrap gap-2">
+    <span class="pk-sec-icon" [style.--accent]="'#0f766e'" [style.--accent-soft]="'#ccfbf1'">
+      <i class="ti ti-home"></i>
+    </span>
+    <h3 class="card-title mb-0 ms-2">In-House Deliveries</h3>
+    <span class="badge ms-2" [style.background]="'#ccfbf1'" [style.color]="'#0f766e'">
+      {{ inHouseDeliveries().length }}
+    </span>
+    @if (selectedDispatchCount() > 0) {
+      <div class="d-flex align-items-center gap-2 ms-auto flex-wrap">
+        <span class="text-secondary small">{{ selectedDispatchCount() }} selected · set to</span>
+        <select
+          class="form-select form-select-sm w-auto"
+          [value]="dispatchStatus()"
+          (change)="setDispatchStatus($any($event.target).value)"
+          aria-label="Delivery status to set"
+        >
+          <option value="" disabled>Choose a status…</option>
+          @for (opt of dispatchStatusOptions; track opt.value) {
+            <option [value]="opt.value">{{ opt.label }}</option>
+          }
+        </select>
+        <button
+          type="button"
+          class="btn btn-sm btn-primary"
+          (click)="dispatchSelected()"
+          [disabled]="bulkDispatchBusy() || !dispatchStatus()"
+        >
+          @if (bulkDispatchBusy()) {
+            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+          } @else {
+            <i class="ti ti-truck-delivery me-1"></i>
+          }
+          Update {{ selectedDispatchCount() }}
+        </button>
+      </div>
+    }
+  </div>
+  <div class="card-body p-0">
+    @if (inHouseDeliveries().length === 0) {
+      <div class="text-secondary small text-center py-4">
+        @if (queueLoading()) {
+          <span class="spinner-border spinner-border-sm me-1"></span> Loading…
+        } @else {
+          <i class="ti ti-home-off me-1"></i> No in-house deliveries in progress.
+        }
+      </div>
+    } @else {
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table table-hover pk-table mb-0">
+          <thead>
+            <tr>
+              <th class="w-1" title="Select all for status update">
+                <input
+                  class="form-check-input m-0"
+                  type="checkbox"
+                  [checked]="allSelectedForDispatch(inHousePageItems())"
+                  (change)="toggleSelectAllForDispatch(inHousePageItems())"
+                  aria-label="Select all in-house orders for bulk status update"
+                />
+              </th>
+              <th>Order ID</th>
+              <th>Customer</th>
+              <th class="text-end">Price</th>
+              <th>Order date</th>
+              <th>Salesperson</th>
+              <th>AWB</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (o of inHousePageItems(); track o.id) {
+              <tr class="clickable" (click)="openOrder(o)">
+                <td (click)="$event.stopPropagation()">
+                  <input
+                    class="form-check-input m-0"
+                    type="checkbox"
+                    [checked]="isSelectedForDispatch(o.id)"
+                    (change)="toggleDispatchSelection(o)"
+                    aria-label="Select in-house order for bulk status update"
+                  />
+                </td>
+                <td class="shifa-mono fw-bold">{{ o.orderCode }}</td>
+                <td>{{ o.customerName }}</td>
+                <td class="text-end fw-semibold">{{ o.totalAmount | inr }}</td>
+                <td class="text-secondary">{{ o.createdAt ? (o.createdAt | istDate) : '—' }}</td>
+                <td class="text-secondary">{{ o.salespersonName || '—' }}</td>
+                <td class="shifa-mono text-secondary">{{ o.awb || '—' }}</td>
+                <td>
+                  <admin-status-badge [status]="o.orderStatus" />
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <admin-pagination
+        [page]="inHousePage()"
+        [totalPages]="inHouseTotalPages()"
+        [totalElements]="inHouseDeliveries().length"
+        [size]="statusSize()"
+        (pageChange)="goToInHousePage($event)"
+        (sizeChange)="setStatusSize($event)"
+      />
+    }
+  </div>
+</div>
 
 <!-- Handover / Dispatch actions for the orders just moved (Req 9.2–9.4, 10.1) -->
 @if (workItems().length > 0) {

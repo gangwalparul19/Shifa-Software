@@ -29,6 +29,42 @@
   font-weight: 700;
 }
 
+/* Compact phone line + neutral status chips (missing ≠ error). */
+.sp-phone {
+  display: flex;
+  align-items: center;
+}
+.sp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.sp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #eef1f0;
+  color: #64726b;
+  border: 1px solid rgba(15, 51, 36, 0.06);
+}
+.sp-chip i {
+  font-size: 0.85rem;
+}
+.sp-chip--on {
+  background: var(--shifa-green-100, #e6f4ec);
+  color: var(--shifa-green-700, #164632);
+  border-color: rgba(31, 93, 63, 0.15);
+}
+
+/* "View orders" admin drill-down button — don't let the card hover lift it. */
+.sp-vieworders {
+  font-weight: 600;
+}
+
 /* --- Drawer green header banner (replaces the plain drawer head) -------- */
 .sp-dr .sp-dr__head {
   flex: 0 0 auto;

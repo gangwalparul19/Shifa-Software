@@ -7,6 +7,7 @@ import com.shifa.oms.quikshipx.QuikShipXModels.CreatePayload;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -67,10 +68,32 @@ public class QuikShipXPayloadFactory {
         customer.put("customer_alternate_phone_number", nullToEmpty(order.getAlternateMobile()));
         customer.put("customer_landmark", "");
 
-        BigDecimal subtotal = subtotal(order);
+        List<OrderLineItem> lines = order.getLineItems();
+        BigDecimal subtotal = subtotal(order).setScale(2, RoundingMode.HALF_UP);
         BigDecimal discount = order.getDiscountAmount() == null ? BigDecimal.ZERO : order.getDiscountAmount();
+        discount = discount.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal orderAmount = order.getTotalAmount() == null
+                ? subtotal.subtract(discount) : order.getTotalAmount().setScale(2, RoundingMode.HALF_UP);
         BigDecimal cod = order.getCodAmount() == null ? BigDecimal.ZERO : order.getCodAmount();
         boolean isCod = cod.signum() > 0;
+
+        // QuikShipX validates the create-order strictly as
+        //   Σ(product_amount × product_quantity − product_discount) == order_amount
+        // per line (proven empirically from live request/response bodies — it does
+        // NOT add shipping_amount nor subtract the order-level discount_amount).
+        // Reconcile the product lines so that identity holds EXACTLY:
+        //  • charged total < gross line subtotal (a Shopify checkout discount): the
+        //    difference is apportioned across the lines as product_discount, summing
+        //    to EXACTLY the gap (last line absorbs the rounding remainder);
+        //  • charged total > gross line subtotal (Shopify added shipping/handling we
+        //    don't itemise): the positive excess is added as one extra
+        //    "Shipping & handling" product line so the products total ties out.
+        // discount_amount / shipping_amount / commodity_amount below are cosmetic
+        // (they don't participate in the check) but kept accurate for readability.
+        BigDecimal delta = orderAmount.subtract(subtotal).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal lineDiscountTotal = delta.signum() < 0 ? delta.negate() : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal extraCharge = delta.signum() > 0 ? delta : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal[] lineDiscounts = apportionDiscount(lines, subtotal, lineDiscountTotal);
 
         Map<String, Object> shipment = new LinkedHashMap<>();
         shipment.put("shipment_package_type", properties.packageType());
@@ -81,15 +104,14 @@ public class QuikShipXPayloadFactory {
         shipment.put("shipment_pickup_warehouse_id", nullToEmpty(properties.warehouseId()));
         shipment.put("shipment_shipping_mode", properties.shippingMode());
         shipment.put("shipment_pay_mode", isCod ? "1" : "2");
-        shipment.put("order_amount", money(order.getTotalAmount()));
+        shipment.put("order_amount", money(orderAmount));
         shipment.put("cod_amount", isCod ? money(cod) : "0");
-        shipment.put("commodity_amount", money(subtotal));
-        shipment.put("shipping_amount", properties.shippingAmount());
-        shipment.put("discount_amount", money(discount));
+        shipment.put("commodity_amount", money(subtotal.add(extraCharge)));
+        shipment.put("shipping_amount", extraCharge.signum() > 0 ? money(extraCharge) : properties.shippingAmount());
+        shipment.put("discount_amount", money(lineDiscountTotal));
         shipment.put("discount_coupon_name", nullToEmpty(order.getCouponCode()));
 
         List<Map<String, Object>> products = new ArrayList<>();
-        List<OrderLineItem> lines = order.getLineItems();
         for (int i = 0; i < lines.size(); i++) {
             OrderLineItem line = lines.get(i);
             Product product = line.getProductId() == null ? null : productsById.get(line.getProductId());
@@ -103,12 +125,98 @@ public class QuikShipXPayloadFactory {
             p.put("product_tax_rate", line.getGstRate() == null ? "0" : line.getGstRate().stripTrailingZeros().toPlainString());
             p.put("product_hsn_code", blankTo(line.getHsnCode(), "hsn"));
             p.put("product_amount", money(line.getRate()));
-            p.put("product_discount", "0");
+            p.put("product_discount", money(lineDiscounts[i]));
             p.put("product_quantity", String.valueOf(line.getQuantity()));
             products.add(p);
         }
+        // Extra charge (e.g. Shopify shipping) as its own line so the products total
+        // equals order_amount exactly (qty 1, no discount).
+        if (extraCharge.signum() > 0) {
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("product_name", "Shipping & handling");
+            p.put("product_category", properties.productCategory());
+            p.put("product_sku_code", order.getOrderCode() + "-SHIP");
+            p.put("product_tax_rate", "0");
+            p.put("product_hsn_code", "hsn");
+            p.put("product_amount", money(extraCharge));
+            p.put("product_discount", "0");
+            p.put("product_quantity", "1");
+            products.add(p);
+        }
 
+        // QuikShipX compares Σ(product_amount*qty − product_discount) with
+        // order_amount using FLOATING-POINT equality (proven: 999 + 1099.99 +
+        // 1099.99 − 100 = 3098.9799999999996 ≠ 3098.98 → rejected, while sums that
+        // happen to be float-exact pass). If the itemised lines would not sum to the
+        // exact same double, send one consolidated line instead — a single value
+        // always equals itself, so the check can never fail.
+        if (!floatSumMatches(products, money(orderAmount))) {
+            return buildConsolidated(order, customer, shipment, orderAmount);
+        }
         return new CreatePayload(order.getOrderCode(), customer, shipment, products);
+    }
+
+    /**
+     * The same order as a single consolidated product line (names joined, qty 1,
+     * amount == order_amount, no discount). Used when the itemised lines would not
+     * pass QuikShipX's floating-point amount check, and as a fallback when QuikShipX
+     * rejects an itemised payload with "Calculated Products and Order Amount Not
+     * Matched". Customer and shipment details are identical to {@link #build}.
+     */
+    public CreatePayload buildConsolidated(OrderEntity order, Map<Long, Product> productsById) {
+        CreatePayload itemised = build(order, productsById);
+        BigDecimal orderAmount = order.getTotalAmount() == null
+                ? new BigDecimal(String.valueOf(itemised.shipmentDetails().get("order_amount")))
+                : order.getTotalAmount().setScale(2, RoundingMode.HALF_UP);
+        return buildConsolidated(order, itemised.customerDetails(), itemised.shipmentDetails(), orderAmount);
+    }
+
+    private CreatePayload buildConsolidated(OrderEntity order, Map<String, Object> customer,
+                                            Map<String, Object> shipment, BigDecimal orderAmount) {
+        StringBuilder names = new StringBuilder();
+        for (OrderLineItem line : order.getLineItems()) {
+            if (names.length() > 0) {
+                names.append(", ");
+            }
+            names.append(nullToEmpty(line.getProductName())).append(" x").append(line.getQuantity());
+        }
+        String name = names.length() == 0 ? order.getOrderCode() : names.toString();
+        if (name.length() > 250) {
+            name = name.substring(0, 247) + "...";
+        }
+        Map<String, Object> consolidatedShipment = new LinkedHashMap<>(shipment);
+        consolidatedShipment.put("commodity_amount", money(orderAmount));
+        consolidatedShipment.put("discount_amount", "0");
+        consolidatedShipment.put("shipping_amount", properties.shippingAmount());
+
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("product_name", name);
+        p.put("product_category", properties.productCategory());
+        p.put("product_sku_code", order.getOrderCode() + "-ALL");
+        p.put("product_tax_rate", "0");
+        p.put("product_hsn_code", "hsn");
+        p.put("product_amount", money(orderAmount));
+        p.put("product_discount", "0");
+        p.put("product_quantity", "1");
+        List<Map<String, Object>> products = new ArrayList<>();
+        products.add(p);
+        return new CreatePayload(order.getOrderCode(), customer, consolidatedShipment, products);
+    }
+
+    /**
+     * Simulates QuikShipX's check in IEEE-754 double arithmetic (left-to-right
+     * accumulation of amount*qty − discount per line) and reports whether it
+     * equals the order amount exactly.
+     */
+    static boolean floatSumMatches(List<Map<String, Object>> products, String orderAmount) {
+        double sum = 0d;
+        for (Map<String, Object> p : products) {
+            double amount = Double.parseDouble(String.valueOf(p.get("product_amount")));
+            double qty = Double.parseDouble(String.valueOf(p.get("product_quantity")));
+            double disc = Double.parseDouble(String.valueOf(p.get("product_discount")));
+            sum += amount * qty - disc;
+        }
+        return sum == Double.parseDouble(orderAmount);
     }
 
     private static String fullAddress(OrderEntity order) {
@@ -136,6 +244,69 @@ public class QuikShipXPayloadFactory {
             }
         }
         return sum;
+    }
+
+    /**
+     * Splits {@code discount} across the lines proportional to each line's total,
+     * rounded to 2dp so the shares sum EXACTLY to the discount (largest-remainder:
+     * the rounding remainder is handed to the lines with the largest fractional
+     * part, one paisa each). Returns a per-line array aligned to {@code lines}. A
+     * zero/absent discount (or zero subtotal) yields all zeros. Each share never
+     * exceeds its own line total.
+     */
+    static BigDecimal[] apportionDiscount(List<OrderLineItem> lines, BigDecimal subtotal, BigDecimal discount) {
+        int n = lines.size();
+        BigDecimal zero = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal[] shares = new BigDecimal[n];
+        for (int i = 0; i < n; i++) {
+            shares[i] = zero;
+        }
+        if (discount == null || discount.signum() <= 0 || subtotal == null || subtotal.signum() <= 0 || n == 0) {
+            return shares;
+        }
+        BigDecimal target = discount.setScale(2, RoundingMode.HALF_UP);
+        // Round each line's proportional share to 2dp; the LAST line takes whatever
+        // is left so the shares sum to EXACTLY the discount (no dropped/created
+        // paisa). Each share is clamped to its own line total.
+        BigDecimal allocated = zero;
+        int lastIdx = n - 1;
+        for (int i = 0; i < n; i++) {
+            BigDecimal lineTotal = lines.get(i).getLineTotal() == null ? zero : lines.get(i).getLineTotal();
+            BigDecimal share;
+            if (i == lastIdx) {
+                share = target.subtract(allocated); // exact remainder
+            } else {
+                share = target.multiply(lineTotal).divide(subtotal, 2, RoundingMode.HALF_UP);
+            }
+            if (share.signum() < 0) {
+                share = zero;
+            }
+            if (share.compareTo(lineTotal) > 0) {
+                share = lineTotal; // never exceed the line's own total
+            }
+            shares[i] = share;
+            allocated = allocated.add(share);
+        }
+        // If clamping the last line left a residual (only possible when a line total
+        // was smaller than its computed share), sweep it onto any line with headroom.
+        BigDecimal residual = target.subtract(allocated);
+        BigDecimal penny = new BigDecimal("0.01");
+        while (residual.compareTo(penny) >= 0) {
+            boolean placed = false;
+            for (int i = 0; i < n; i++) {
+                BigDecimal lineTotal = lines.get(i).getLineTotal() == null ? zero : lines.get(i).getLineTotal();
+                if (shares[i].add(penny).compareTo(lineTotal) <= 0) {
+                    shares[i] = shares[i].add(penny);
+                    residual = residual.subtract(penny);
+                    placed = true;
+                    break;
+                }
+            }
+            if (!placed) {
+                break;
+            }
+        }
+        return shares;
     }
 
     /** Renders money as a plain decimal string (no scientific notation, no currency symbol). */

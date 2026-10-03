@@ -4,6 +4,33 @@
   [breadcrumbs]="[{ label: 'Orders' }]"
 >
   <admin-density-toggle />
+  <div class="btn-group">
+    <button
+      type="button"
+      class="btn btn-outline-secondary"
+      (click)="exportOrders('xlsx')"
+      [disabled]="exporting()"
+      title="Export the current filtered list to Excel"
+      aria-label="Export to Excel"
+    >
+      @if (exporting()) {
+        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+      } @else {
+        <i class="ti ti-download me-1"></i>
+      }
+      Export
+    </button>
+    <button
+      type="button"
+      class="btn btn-outline-secondary"
+      (click)="exportOrders('csv')"
+      [disabled]="exporting()"
+      title="Export the current filtered list to CSV"
+      aria-label="Export to CSV"
+    >
+      CSV
+    </button>
+  </div>
   <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
     <i class="ti ti-refresh"></i>
   </button>
@@ -74,7 +101,7 @@
       <div id="orders-filter-panel" class="shifa-filter-panel mt-2 pt-2 border-top anim-fade-up">
         <div class="row g-2 align-items-end">
           <div class="col-6 col-lg-3" [formGroup]="filters">
-            <label class="form-label small mb-1">Status</label>
+            <label class="form-label small mb-1">Status<admin-help-tip text="Order stages: Pending (awaiting approval) → Processing (approved, label, packing) → Shipped (handed to courier, in transit) → Delivered. Returned/Failed and Cancelled are end states." /></label>
             <select class="form-select" formControlName="statusGroup" aria-label="Filter by order status">
               <option value="">All statuses</option>
               @for (g of statusGroups; track g.key) {
@@ -89,6 +116,15 @@
               @for (p of paymentOptions; track p) {
                 <option [value]="p">{{ humanize(p) }}</option>
               }
+            </select>
+          </div>
+          <div class="col-6 col-lg-3" [formGroup]="filters">
+            <label class="form-label small mb-1">Source</label>
+            <select class="form-select" formControlName="source" aria-label="Filter by order source">
+              <option value="">All sources</option>
+              <option value="SHOPIFY">Shopify</option>
+              <option value="SALESPERSON">Sales</option>
+              <option value="STOREFRONT">Store</option>
             </select>
           </div>
           <div class="col-6 col-lg-3" [formGroup]="filters">
@@ -157,6 +193,26 @@
     }
   </div>
 </div>
+
+<!-- Salesperson drill-down chip (ADMIN: ?createdBy=&name= from Leaderboard / Salespeople) -->
+@if (createdByFilter() != null) {
+  <div class="mb-3">
+    <span class="badge bg-green-lt d-inline-flex align-items-center gap-1 p-2">
+      <i class="ti ti-user-filled"></i>
+      @if (createdByName()) {
+        Showing orders by {{ createdByName() }}
+      } @else {
+        Showing one salesperson's orders
+      }
+      <button
+        type="button"
+        class="btn-close btn-close-sm ms-1"
+        aria-label="Clear salesperson filter"
+        (click)="clearCreatedBy()"
+      ></button>
+    </span>
+  </div>
+}
 
 <!-- Status filter tabs (Req 6.3): quick lifecycle-group lens -->
 <div class="shifa-status-tabs mb-3" role="tablist" aria-label="Filter orders by status group">
@@ -284,25 +340,44 @@
         (keydown.space)="$event.preventDefault(); openDetail(order)"
       >
         <div class="shifa-oc__r1">
-          <span class="shifa-oc__code">{{ order.orderCode }}</span>
+          <span class="shifa-oc__code">
+            {{ order.orderCode }}
+            @if (order.source === 'SHOPIFY') {
+              <admin-channel-logo class="ms-1" [source]="order.source" />
+            }
+          </span>
           <span class="shifa-oc__amount">{{ money(order.totalAmount) }}</span>
         </div>
         <div class="shifa-oc__r2">
           <span class="shifa-oc__meta" [title]="order.createdAt ? (order.createdAt | istDate) : ''">
             {{ order.createdAt ? relativeTime(order.createdAt) : '—' }} · {{ order.customerName }}
-            @if (order.salespersonName) { · <i class="ti ti-user"></i> {{ order.salespersonName }} }
+            @if (order.source === 'SHOPIFY') {
+              · <i class="ti ti-brand-shopify"></i> {{ salespersonCell(order) }}
+            } @else if (order.salespersonName) {
+              · <i class="ti ti-user"></i> {{ order.salespersonName }}
+            }
           </span>
           <span class="shifa-oc__pill" [class]="statusPillClass(order.orderStatus)">
             {{ useStageLabel() ? stageLabel(order.orderStatus) : humanize(order.orderStatus) }}
           </span>
         </div>
-        @if (order.quikShipXStatus) {
-          <div class="shifa-oc__r3">
-            <span [class]="'badge ' + quikShipBadgeClass(order.quikShipXStatus)">
-              <i class="ti ti-truck-delivery me-1"></i>QuikShipX: {{ order.quikShipXStatus }}@if (order.quikShipXOrderId) { · #{{ order.quikShipXOrderId }}}
-            </span>
-          </div>
-        }
+        <div class="shifa-oc__r3 d-flex align-items-center flex-wrap gap-1">
+          @if (courierPartner(order) === 'IN_HOUSE') {
+            <span class="badge bg-teal-lt"><i class="ti ti-home me-1"></i>In-House</span>
+          } @else {
+            <admin-channel-logo [quikShip]="true" />
+          }
+          @if (order.quikShipXStatus) {
+            <span class="text-secondary small">{{ order.quikShipXStatus }}</span>
+          }
+          @if (order.quikShipXAwb) {
+            <button type="button" class="btn btn-link btn-sm p-0 shifa-mono shifa-qsx-id"
+              (click)="openTracking(order.quikShipXAwb, $event)"
+              title="Track this shipment on Delhivery">
+              <i class="ti ti-map-pin me-1"></i>AWB {{ order.quikShipXAwb }}
+            </button>
+          }
+        </div>
         <div class="shifa-list-actions mt-2" (click)="stopRowClick($event)">
           <a class="btn btn-sm btn-outline-secondary" [href]="'tel:' + order.customerMobile" (click)="callCustomer(order.customerMobile, $event)" aria-label="Call customer">
             <i class="ti ti-phone me-1"></i>Call
@@ -339,12 +414,14 @@
               />
             </th>
             <th adminSortHeader field="orderCode" [sort]="sort()" (sortChange)="onSort($event)">Order</th>
+            <th class="d-none d-md-table-cell">Source</th>
             <th adminSortHeader field="customerName" [sort]="sort()" (sortChange)="onSort($event)">Customer</th>
-            <th class="d-none d-md-table-cell">Salesperson</th>
-            <th class="d-none d-md-table-cell">Mobile</th>
+            <th class="d-none d-md-table-cell">Salesperson / Shopify ID</th>
+            <th class="d-none d-xl-table-cell">Mobile</th>
             <th class="text-end" adminSortHeader field="totalAmount" [sort]="sort()" (sortChange)="onSort($event)">Total</th>
             <th class="text-end d-none d-xl-table-cell">On Delivery</th>
-            <th class="d-none d-md-table-cell" adminSortHeader field="paymentStatus" [sort]="sort()" (sortChange)="onSort($event)">Payment</th>
+            <th class="d-none d-xl-table-cell" adminSortHeader field="paymentStatus" [sort]="sort()" (sortChange)="onSort($event)">Payment</th>
+            <th class="d-none d-md-table-cell">Courier Partner</th>
             <th adminSortHeader field="orderStatus" [sort]="sort()" (sortChange)="onSort($event)">Status</th>
             <th class="d-none d-xl-table-cell" adminSortHeader field="createdAt" [sort]="sort()" (sortChange)="onSort($event)">Date</th>
             <th class="text-end d-none d-xl-table-cell">Actions</th>
@@ -367,31 +444,49 @@
                   {{ order.orderCode }}
                 </button>
               </td>
+              <td class="d-none d-md-table-cell" data-label="Source">
+                @if (order.source === 'SHOPIFY') {
+                  <admin-channel-logo [source]="order.source" />
+                } @else {
+                  <span class="badge bg-secondary-lt"><i [class]="'ti me-1 ' + sourceIcon(order.source)"></i>{{ sourceLabel(order.source) }}</span>
+                }
+              </td>
               <td data-label="Customer">{{ order.customerName }}</td>
-              <td class="text-secondary d-none d-md-table-cell">{{ order.salespersonName || '—' }}</td>
-              <td class="text-secondary d-none d-md-table-cell">{{ order.customerMobile }}</td>
+              <td class="text-secondary d-none d-md-table-cell">
+                @if (order.source === 'SHOPIFY') {
+                  <span class="shifa-mono" title="Shopify order id">{{ salespersonCell(order) }}</span>
+                } @else {
+                  {{ salespersonCell(order) }}
+                }
+              </td>
+              <td class="text-secondary d-none d-xl-table-cell">{{ order.customerMobile }}</td>
               <td class="text-end" data-label="Total">{{ money(order.totalAmount) }}</td>
               <td class="text-end d-none d-xl-table-cell">{{ money(order.codAmount) }}</td>
-              <td class="d-none d-md-table-cell"><admin-status-badge [status]="order.paymentStatus" kind="payment" /></td>
+              <td class="d-none d-xl-table-cell"><admin-status-badge [status]="order.paymentStatus" kind="payment" /></td>
+              <td class="d-none d-md-table-cell" data-label="Courier Partner">
+                @if (courierPartner(order) === 'IN_HOUSE') {
+                  <span class="badge bg-teal-lt"><i class="ti ti-home me-1"></i>In-House</span>
+                } @else {
+                  <admin-channel-logo [quikShip]="true" />
+                }
+                @if (order.quikShipXStatus) {
+                  <div class="text-secondary small mt-1" [title]="quikShipTitle(order)">{{ order.quikShipXStatus }}</div>
+                }
+                @if (order.quikShipXAwb) {
+                  <div class="mt-1">
+                    <button type="button" class="btn btn-link btn-sm p-0 shifa-mono shifa-qsx-id"
+                      (click)="openTracking(order.quikShipXAwb, $event)"
+                      title="Track this shipment on Delhivery">
+                      <i class="ti ti-map-pin me-1"></i>AWB {{ order.quikShipXAwb }}
+                    </button>
+                  </div>
+                }
+              </td>
               <td data-label="Status">
                 @if (useStageLabel()) {
                   <span [class]="stageBadgeClass(order.orderStatus)">{{ stageLabel(order.orderStatus) }}</span>
                 } @else {
                   <admin-status-badge [status]="order.orderStatus" />
-                }
-                @if (order.quikShipXStatus) {
-                  <div class="mt-1">
-                    <span [class]="'badge ' + quikShipBadgeClass(order.quikShipXStatus)"
-                      [title]="quikShipTitle(order)">
-                      <i class="ti ti-truck-delivery me-1"></i>{{ order.quikShipXStatus }}
-                    </span>
-                    @if (order.quikShipXOrderId) {
-                      <div class="text-secondary shifa-mono shifa-qsx-id">#{{ order.quikShipXOrderId }}</div>
-                    }
-                    @if (order.quikShipXAwb) {
-                      <div class="text-secondary shifa-mono shifa-qsx-id">AWB {{ order.quikShipXAwb }}</div>
-                    }
-                  </div>
                 }
               </td>
               <td class="text-secondary d-none d-xl-table-cell" [title]="order.createdAt ? (order.createdAt | istDate) : ''">
@@ -474,6 +569,9 @@
             {{ humanize(order.orderStatus) }}
           </span>
           <span class="shifa-od__code">{{ order.orderCode }}</span>
+          @if (order.source === 'SHOPIFY') {
+            <admin-channel-logo class="ch-md ms-1" [source]="order.source" [label]="true" />
+          }
         </div>
 
         <!-- Order status timeline (enhancement): a visual "where's my order" stepper
@@ -724,6 +822,36 @@
           </div>
         }
 
+        <!-- (5e) Retry a failed/returned delivery. RTO/REDISPATCH are final on THIS
+             order (it already settled the customer outstanding and, for RTO, raised
+             a GST credit note — reopening it would corrupt that bookkeeping), so
+             the way to "retry" is a fresh order pre-filled with the same customer +
+             items via the existing one-tap Reorder flow. Shown prominently here
+             (rather than buried in the action grid) so it's the obvious next step
+             right where the admin sees the parcel came back / could not be
+             delivered. -->
+        @if (isRetryEligible(order) && canCreateOrder()) {
+          <div class="shifa-od__card shifa-od__retry">
+            <div class="shifa-od__totline">
+              <span><i class="ti ti-repeat me-1"></i>
+                {{ order.orderStatus === 'REDISPATCH' ? 'Parcel lost/damaged by courier' : 'Parcel returned to origin' }}
+              </span>
+            </div>
+            <div class="shifa-od__muted mb-2">
+              This order is closed and can't be reopened. To send the customer their order again, place a new
+              order — it will be pre-filled with the same customer and items.
+            </div>
+            <a
+              class="btn btn-primary w-100"
+              [routerLink]="['/orders/new']"
+              [queryParams]="{ reorderFrom: order.id }"
+              (click)="closeDetail()"
+            >
+              <i class="ti ti-repeat me-1"></i> Retry delivery — create new order
+            </a>
+          </div>
+        }
+
         }
 
         @if (detailTab() === 'items') {
@@ -846,7 +974,7 @@
              plus who is carrying it, instead of the card disappearing entirely. -->
         @if (!order.quikShipXStatus) {
           <div class="shifa-od__section">
-            <div class="shifa-od__label mb-2">{{ isInHouse(order) ? 'In-house delivery' : 'Shipment' }}</div>
+            <div class="shifa-od__label mb-2">{{ isInHouse(order) ? 'Ishika Enterprise delivery' : 'Shipment' }}</div>
             <div class="shifa-od__card">
               <div class="shifa-od__totline"><span>Courier</span><span>{{ courierDisplayName(order) }}</span></div>
               @if (order.awb) {
@@ -973,10 +1101,10 @@
              somehow already HAS QuikShipX data, so nothing is ever hidden from view. -->
         @if (order.quikShipXStatus || (canManageQuikShip() && !isInHouse(order))) {
           <div class="shifa-od__section">
-            <div class="shifa-od__label mb-2">
-              QuikShipX
+            <div class="shifa-od__label mb-2 d-flex align-items-center gap-2">
+              <admin-channel-logo class="ch-md" [quikShip]="true" [label]="true" />
               @if (order.quikShipXTest) {
-                <span class="badge bg-orange-lt ms-1">TEST</span>
+                <span class="badge bg-orange-lt">TEST</span>
               }
             </div>
             <div class="shifa-od__card">
@@ -994,14 +1122,22 @@
                 <div class="shifa-qsx-awb">
                   <div class="shifa-qsx-awb__label">Tracking number (AWB)</div>
                   <div class="shifa-qsx-awb__row">
-                    <span class="shifa-qsx-awb__value shifa-mono">{{ order.awb }}</span>
+                    <button type="button" class="btn btn-link p-0 shifa-qsx-awb__value shifa-mono"
+                      (click)="openTracking(order.awb)" title="Track this shipment on Delhivery">
+                      {{ order.awb }}
+                    </button>
                     <button type="button" class="btn btn-sm btn-ghost-secondary p-0" (click)="copyText(order.awb, 'AWB')" title="Copy AWB">
                       <i class="ti ti-copy"></i>
                     </button>
                   </div>
-                  @if (order.courierName) {
-                    <div class="text-secondary small">via {{ order.courierName }}</div>
-                  }
+                  <div class="d-flex align-items-center gap-2 mt-1">
+                    <a class="btn btn-sm btn-outline-primary" [href]="trackUrl(order.awb)" target="_blank" rel="noopener">
+                      <i class="ti ti-map-pin me-1"></i>Track shipment
+                    </a>
+                    @if (order.courierName) {
+                      <span class="text-secondary small">via {{ order.courierName }}</span>
+                    }
+                  </div>
                 </div>
               }
 
@@ -1032,6 +1168,18 @@
                       <i class="ti ti-cloud-upload me-1"></i>
                     }
                     Publish to QuikShipX
+                  </button>
+                }
+                @if (canManageQuikShip() && needsTrackingId(order)) {
+                  <button type="button" class="btn btn-sm btn-outline-warning"
+                    (click)="retryQuikShip(order)" [disabled]="quikShipBusy()"
+                    title="This order has no tracking id yet — retry the QuikShipX allotment">
+                    @if (quikShipBusy()) {
+                      <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                    } @else {
+                      <i class="ti ti-refresh me-1"></i>
+                    }
+                    Retry tracking ID
                   </button>
                 }
               </div>
@@ -1202,6 +1350,20 @@
             Invoice
           </button>
 
+          <!-- Cancel order (ADMIN-only): works at any pre-delivery stage, including
+               after an AWB — opens the dedicated Cancel Order page (mandatory note
+               + courier/GST warnings) pre-filtered to this order. -->
+          @if (canCancel(order)) {
+            <button
+              type="button"
+              class="btn btn-outline-danger shifa-od__action"
+              (click)="cancelFromDrawer(order)"
+              title="Cancel this order (and tell the courier to abort pickup)"
+            >
+              <i class="ti ti-ban me-1"></i> Cancel order
+            </button>
+          }
+
           <!-- Manual courier/AWB assignment (ADMIN-only): usable any time before
                dispatch so the internal label's courier barcode can render right
                away, instead of waiting for automatic in-house assignment which
@@ -1341,7 +1503,7 @@
               [ngModelOptions]="{ standalone: true }"
               (ngModelChange)="onCourierSelectChange($event)"
             >
-              <option value="In-House">In-House (own team)</option>
+              <option value="In-House">Ishika Enterprise (own team)</option>
               @for (company of courierCompanies(); track company.id) {
                 <option [value]="company.name">{{ company.name }}</option>
               }

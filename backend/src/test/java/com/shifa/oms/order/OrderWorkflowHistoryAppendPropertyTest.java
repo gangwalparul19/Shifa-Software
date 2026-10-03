@@ -94,9 +94,19 @@ class OrderWorkflowHistoryAppendPropertyTest {
     /** All authorized (edge, actor) cases derived from the design §4.1 table. */
     private static List<EdgeCase> buildCases() {
         List<EdgeCase> cases = new ArrayList<>();
-        addStaff(cases, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.APPROVED, Role.ADMIN);
+        addStaff(cases, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.APPROVED, Role.ADMIN, Role.ACCOUNTANT);
         addStaff(cases, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.REJECTED, Role.ADMIN);
         addStaff(cases, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.CANCELLED, Role.ADMIN);
+        // Admin cancellation at any pre-delivery fulfilment stage (order-cancellation
+        // feature) — ADMIN only, no SYSTEM.
+        addStaff(cases, OrderStatus.APPROVED, OrderStatus.CANCELLED, Role.ADMIN);
+        addStaff(cases, OrderStatus.LABEL_GENERATED, OrderStatus.CANCELLED, Role.ADMIN);
+        addStaff(cases, OrderStatus.PACKED, OrderStatus.CANCELLED, Role.ADMIN);
+        addStaff(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.CANCELLED, Role.ADMIN);
+        addStaff(cases, OrderStatus.COURIER_ASSIGNED, OrderStatus.CANCELLED, Role.ADMIN);
+        addStaff(cases, OrderStatus.DISPATCHED, OrderStatus.CANCELLED, Role.ADMIN);
+        addStaff(cases, OrderStatus.IN_TRANSIT, OrderStatus.CANCELLED, Role.ADMIN);
+        addStaff(cases, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CANCELLED, Role.ADMIN);
         // Payment-panel rejection (rejection-status feature) — payment verifier / admin, no SYSTEM.
         addStaff(cases, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.PAYMENT_REJECTED,
                 Role.PAYMENT_VERIFIER, Role.ADMIN);
@@ -111,8 +121,9 @@ class OrderWorkflowHistoryAppendPropertyTest {
         addStaff(cases, OrderStatus.APPROVED, OrderStatus.LABEL_GENERATED, Role.ADMIN);
         addSystem(cases, OrderStatus.APPROVED, OrderStatus.LABEL_GENERATED);
         addStaff(cases, OrderStatus.LABEL_GENERATED, OrderStatus.PACKED, Role.PACKING_USER, Role.ADMIN);
-        // QuikShipX fast-forward: allot at approval hands the order to the courier (SYSTEM).
-        addSystem(cases, OrderStatus.LABEL_GENERATED, OrderStatus.COURIER_ASSIGNED);
+        // Packing-workflow redesign: the old QuikShipX fast-forward
+        // (LABEL_GENERATED -> COURIER_ASSIGNED at approval) was removed; an order now
+        // always moves LABEL_GENERATED -> PACKED -> HANDED_TO_DELIVERY -> COURIER_ASSIGNED.
         addStaff(cases, OrderStatus.PACKED, OrderStatus.HANDED_TO_DELIVERY, Role.PACKING_USER, Role.ADMIN);
         // Dispatch (staff) + assign (SYSTEM) share the edge; self-retain is SYSTEM.
         addStaff(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.COURIER_ASSIGNED,

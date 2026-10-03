@@ -15,6 +15,36 @@
   </button>
 </admin-page-header>
 
+<!-- Workload summary + short how-to for the payment verifier -->
+<div class="row row-cards g-2 g-md-3 mb-3">
+  <div class="col-12 col-md-5">
+    <div class="card pay-kpi h-100">
+      <div class="card-body d-flex align-items-center justify-content-between py-3">
+        <div>
+          <div class="subheader">Awaiting verification</div>
+          <div class="h1 m-0">{{ rows().length }}</div>
+        </div>
+        <span class="pay-kpi__icon"><i class="ti ti-shield-check"></i></span>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-7">
+    <div class="card pay-guide h-100">
+      <div class="card-body d-flex align-items-start gap-2 py-3">
+        <i class="ti ti-info-circle fs-3 pay-guide__icon"></i>
+        <div>
+          <div class="fw-bold mb-1">How to verify a payment</div>
+          <div class="text-secondary small">
+            Open the payment screenshot, check it matches the amount received, then
+            <b>Verify</b> if it's genuine or <b>Reject</b> with a short note. Your decision
+            flags the order for the admin — it does not change the order's status.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 @if (loading()) {
   <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading payments…" />
 } @else if (loadError()) {
@@ -30,12 +60,17 @@
 } @else {
   <!-- Mobile cards -->
   <div class="d-md-none">
-    @for (row of rows(); track row.id) {
+    @for (row of pageItems(); track row.id) {
       <div class="card mb-2">
         <div class="card-body p-3">
           <div class="d-flex justify-content-between align-items-start">
             <div>
               <div class="fw-bold shifa-mono">{{ row.orderCode }}</div>
+              @if (row.duplicateOrderCodes && row.duplicateOrderCodes.length) {
+                <div class="badge bg-red-lt mt-1" [title]="'Same payment screenshot also on: ' + row.duplicateOrderCodes.join(', ')">
+                  <i class="ti ti-copy-off me-1"></i>Duplicate proof: {{ row.duplicateOrderCodes.join(', ') }}
+                </div>
+              }
               <div class="text-secondary small">{{ row.customerName }} · {{ row.customerMobile }}</div>
               @if (row.salespersonName) {
                 <div class="text-secondary small"><i class="ti ti-user me-1"></i>{{ row.salespersonName }}</div>
@@ -63,6 +98,14 @@
         </div>
       </div>
     }
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
   </div>
 
   <!-- Desktop table -->
@@ -81,9 +124,15 @@
           </tr>
         </thead>
         <tbody>
-          @for (row of rows(); track row.id) {
+          @for (row of pageItems(); track row.id) {
             <tr>
-              <td class="shifa-mono fw-bold">{{ row.orderCode }}</td>
+              <td class="shifa-mono fw-bold">
+                {{ row.orderCode }}
+                @if (row.duplicateOrderCodes && row.duplicateOrderCodes.length) {
+                  <i class="ti ti-copy-off text-danger ms-1"
+                     [title]="'Duplicate payment screenshot — also on: ' + row.duplicateOrderCodes.join(', ')"></i>
+                }
+              </td>
               <td>{{ row.customerName }}<div class="text-secondary small">{{ row.customerMobile }}</div></td>
               <td class="text-secondary">{{ row.salespersonName || '—' }}</td>
               <td class="text-end fw-semibold">{{ row.amountReceived | inr }}</td>
@@ -111,6 +160,14 @@
         </tbody>
       </table>
     </div>
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
   </div>
 }
 

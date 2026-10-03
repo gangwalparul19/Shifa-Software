@@ -2506,3 +2506,856 @@ Built (BUILD SUCCESS 18:24), DEPLOYED via `push-to-new-server.ps1 -SkipBuild` (b
 UNRELATED runtime ERROR: `NoResourceFoundException POST /api/webhooks/shopify/orders` — a Shopify webhook hitting a
 non-existent endpoint; not from the label change. The `Lifecycle$SingleUse`/`GracefulShutdownCallback`
 ClassNotFound lines are the old JVM's shutdown-hook noise, harmless.)
+
+## Shopify order-import webhook (auto-mirror storefront orders) — implemented & DEPLOYED (2026-09-25)
+Client's public storefront is on Shopify. A Shopify `orders/create` webhook now auto-mirrors every Shopify
+order into the OMS (no manual entry), tagged as a Shopify order. This also fixes the recurring
+`NoResourceFoundException POST /api/webhooks/shopify/orders` (the endpoint didn't exist; Shopify was already POSTing).
+- **Endpoint**: `POST /api/webhooks/shopify/orders` (`com.shifa.oms.shopify.ShopifyWebhookController`). Already
+  permitted by `SecurityConfig` (`/api/webhooks/**` = permitAll). Reads `@RequestBody byte[] rawBody` +
+  `X-Shopify-Hmac-Sha256` header; verifies via `ShopifyHmacVerifier` (base64 HMAC-SHA256 over raw body — Shopify uses
+  base64, NOT hex like the courier verifier), 401 on bad/forged signature. Returns 200 `{orderCode, created}` for a
+  genuine order so Shopify stops retrying.
+- **Config**: `app.shopify.webhook-hmac-secret` (`ShopifyProperties` + `ShopifyConfig` @EnableConfigurationProperties),
+  env `SHOPIFY_WEBHOOK_HMAC_SECRET` (added to `deploy/shifa.env.example`). Blank = accept without verify (dev only);
+  prod MUST set it. **The live secret is set in the server's `/etc/shifa/shifa.env`** (NOT committed).
+- **Import** (`ShopifyOrderImportService.importOrder`, @Transactional): maps `ShopifyOrderPayload` (Jackson,
+  ignoreUnknown) → `OrderEntity`. Does NOT reuse `createSalespersonOrder` (skips the salesperson guards — min ₹100
+  upfront, same-day duplicate, screenshot-required, price band — meaningless for an already-placed Shopify order).
+  `source=OrderSource.SHOPIFY` (new enum val), `leadSource=LeadSource.SHOPIFY` (new enum val), `createdBy=null`
+  (unattributed), lands in `PENDING_ADMIN_APPROVAL` so it enters the normal review/fulfilment flow. Line items match our
+  catalogue by SKU (`ProductRepository.findBySku`) snapshotting HSN/GST; unmatched → name-only line (productId null) with
+  the Shopify title+price. Payment from `financial_status`: paid/refunded → FULLY_PAID (received=total, cod=0), else COD
+  (received=0, cod=total). Mobile normalised to last-10-digits (fallback `0000000000`); India = structured city/state/6-
+  digit pin, non-India = country + free-text addressLine (empty structured parts). Notes prefixed "Imported from Shopify #N".
+  **Stock is NOT reserved** (external order; a short/untracked product must never block importing a real order).
+  History row actor/source = "SHOPIFY".
+- **Idempotency (Shopify retries on any non-2xx/timeout)**: `orders.shopify_order_id VARCHAR(64) NULL UNIQUE`
+  (**migration V68**, additive; unique index permits many NULLs) + `OrderRepository.findByShopifyOrderId`. A redelivery of
+  the same Shopify order id returns the existing code with `created=false`, no duplicate. Enum additions need NO migration
+  (STRING enums on existing VARCHAR(20) columns).
+- **Adding a new role/enum lesson still applies**: `OrderSource.SHOPIFY`/`LeadSource.SHOPIFY` added; OrderServiceTest
+  (41) + EndpointRoleGuard (39, full Spring context boots with new beans) stayed green — no exhaustive switch broke.
+- **Tests**: `ShopifyHmacVerifierTest` (6: correct base64 accepted, wrong/tampered/missing/non-base64 rejected, blank-secret
+  skips), `ShopifyOrderImportServiceTest` (8: paid→FULLY_PAID, unpaid→COD, SKU match snapshots HSN/GST, unmatched name-only,
+  phone normalise, placeholder mobile, international country, idempotent redelivery). Full targeted run **94 tests, 0 fail**.
+- **Highest migration is now V68.** Built (BUILD SUCCESS 19:10), DEPLOYED via `push-to-new-server.ps1 -SkipBuild` (backup
+  `~/shifa-backup-2026-09-25-135214.sql`); Flyway applied V68 (v67→v68), Tomcat 8080, Started, no "secret not configured"
+  warn (secret loaded). **Live E2E verified**: a signed sample webhook returned 200 `{created:true}` and made a real order;
+  wrong signature → 401; a redelivery → `{created:false}` (idempotent). The smoke-test order (id 206, SHR-20260925-OZLJ) was
+  then deleted from prod (children-first) so live data stays clean.
+- **Shopify Admin setup (client side, one-time)**: the webhook is Settings → Notifications → Webhooks (or a custom app)
+  → topic "Order creation", URL `https://shifa.weblithic.online/api/webhooks/shopify/orders`, format JSON. The signing
+  secret must equal `SHOPIFY_WEBHOOK_HMAC_SECRET` on the server (client provided `67c3379e…93419`, now set in prod env).
+- **Possible follow-ups (not done)**: an admin Orders filter/badge specifically for `source=SHOPIFY` (currently tagged +
+  noted, and lead-source SHOPIFY is filterable); optionally auto-approve Shopify orders (skip PENDING) if the client wants
+  them straight into packing; map unmatched SKUs to catalogue products on review.
+
+## Shopify orders auto-approve + "Shopify" badge/filter — implemented & DEPLOYED (2026-09-25)
+Client: Shopify-imported orders should go DIRECTLY to Approved (skip admin approval), show a Shopify label, and be
+differentiable in the Orders list. Built on the V68 Shopify webhook.
+- **Auto-approve** (`ShopifyOrderImportService.autoApprove`): after saving the imported order (PENDING_ADMIN_APPROVAL),
+  it runs the SAME side-effect chain as `AdminOrderService.approve`, all in the one @Transactional import (so a failure
+  rolls back and Shopify redelivers): (1) `orderWorkflowService.applyTransition(order, APPROVED, Actor.user("SHOPIFY",
+  Role.ADMIN, "SHOPIFY"))` — **ADMIN-role actor is required**: `TransitionAuthority` permits PENDING_ADMIN_APPROVAL→APPROVED
+  for `Role.ADMIN` ONLY (NOT SYSTEM), so `Actor.system(...)` would 403; (2) `labelService.generateInternalLabelOnApproval(
+  order,"SHOPIFY")` → moves APPROVED→LABEL_GENERATED (an order left at APPROVED never enters the packing queue, so the
+  label step is REQUIRED for fulfilment); (3) `outboxEventPublisher.publishLedgerPost("ORDER", id)`; (4) when
+  `quikShipXProperties.enabled && !isInHouse`: `publishQuikShipXCreate` + `publishQuikShipXConfirm`. Injected new deps into
+  the service: `OrderWorkflowService`, `LabelService`, `OutboxEventPublisher`, `@Nullable QuikShipXProperties`.
+  **In prod QuikShipX is enabled**, so the QuikShipX pipeline allots a tracking id and the SYSTEM edge
+  LABEL_GENERATED→COURIER_ASSIGNED fast-forwards the order — i.e. a paid Shopify order lands fully auto-approved AND handed
+  to the courier with no human touch (verified live: the smoke order came in as COURIER_ASSIGNED).
+- **"Shopify" badge**: `OrderSummaryResponse` gained `OrderSource source` (appended last, set in `from`, carried through
+  `withQuikShip`/`withSalesperson`); frontend core `OrderSource.SHOPIFY` enum value + `OrderSummary.source`. A green
+  `bg-green-lt` "Shopify" badge (`ti-brand-shopify`) renders on the Orders mobile card, desktop table Order cell, and the
+  detail drawer header when `order.source === 'SHOPIFY'`. (`OrderResponse`/`OrderDetail` already carried source.)
+- **Source filter**: `OrderListSpecifications.build` new overload with a trailing `OrderSource source` predicate
+  (`source = :source`); `AdminOrderService.listOrders` new overload threads it; `AdminOrderController.list` gained
+  `?source=` (`@RequestParam OrderSource`). Frontend Orders page advanced-filter panel gained a **Source** dropdown
+  (All / Shopify / Salesperson) wired into the `filters` FormGroup + `OrdersService.page` `source` param; threaded through
+  clearFilters/hasFilters/updateActiveFilterCount/applyView/initFiltersFromQueryParams (all `filters.setValue`/`reset` MUST
+  list `source` or the strict FormGroup type fails to compile — this bit the first build). `?source=` deep link supported.
+- **Tests**: `ShopifyOrderImportServiceTest` reworked to auto-approve (8 green) using **recording subclasses** (Java 25
+  can't mock concretes): `RecordingWorkflow extends OrderWorkflowService` (needs a non-null AuditService →
+  `new AuditService(null,null)`; overrides applyTransition to set status), `RecordingLabels extends LabelService`
+  (overrides generateInternalLabelOnApproval → sets LABEL_GENERATED), `RecordingOutbox extends OutboxEventPublisher`
+  (records ledger posts); mapping asserted on the FIRST save capture. Full targeted run: ShopifyImport 8 + ShopifyHmac 6 +
+  OrderService 41 + AdminOrderService 8 + EndpointRoleGuard 39 (full context boots) = **all green**.
+- Backend JAR + admin bundle (`main-5FHU2NRZ.js`) built, DEPLOYED via `push-to-new-server.ps1 -SkipBuild` (backup
+  `~/shifa-backup-2026-09-25-145050.sql`); V68 already applied (No migration necessary), Tomcat 8080, Started, no
+  "secret not configured" warn. **Live E2E**: signed webhook → 200 `{created:true}`, DB row source=SHOPIFY,
+  order_status=COURIER_ASSIGNED (auto-approved+shipped); smoke order (id 216) then deleted (children incl. courier_records
+  first). No migration this cycle (V68 remains highest).
+- **Deploy/tooling reminders that bit us**: (1) a strict Angular reactive FormGroup means EVERY `setValue`/`reset` must
+  include a newly-added control — 2 call sites (query-param seed + saved-view apply) failed the first `ng build`. (2) The
+  `execute_pwsh` shell got very flaky/congested this session (empty output, backed-up commands replaying via
+  `control_pwsh_process` terminal reuse) — verify by result FILES + surefire reports + dist output, not console echo; stop
+  stale terminals. (3) Frontend build is slow here (~45-70s of "Building…" spinner before completion) — judge by
+  "Application bundle generation complete" / new `main-*.js`, not by the spinner.
+
+## Shopify orders: non-editable + partial-payment fix — implemented & DEPLOYED (2026-09-25)
+Two client fixes on the Shopify integration.
+- **Shopify orders are NOT editable** (protects the amount from being changed; the order's data/workflow comes from
+  Shopify automatically). New `OrderService.requireNotShopifyManaged(order)` throws a 409 `OrderNotEditableException`
+  (new message-based ctor `(orderCode, reason)`) when `order.getSource()==OrderSource.SHOPIFY`; called at the START of
+  `updateOrder` (admin), `updateOwnOrder` (salesperson/TL), and `resubmit`. Keys off the persisted `source` column so it
+  covers OLD Shopify orders too. Frontend: `canEditOrder`/`canEdit`/`canResubmit` in `orders.component.ts` return false
+  when `order.source==='SHOPIFY'`, hiding every edit/resubmit affordance (server enforces regardless).
+- **Partial payment fix** (`ShopifyOrderImportService.resolvePaymentSplit`): the old logic only handled "paid"→FULLY_PAID,
+  everything else→full COD, so a Shopify PARTIALLY-PAID order (e.g. #25422) imported as full COD with the wrong amount.
+  Now it uses Shopify's real amounts: `received = total - total_outstanding` (clamped [0,total]); outstanding=0 →
+  FULLY_PAID, 0<received<total → **PARTIALLY_PAID** (received=paid, remaining=cod=outstanding), received=0 → COD.
+  `total_outstanding` was already on `ShopifyOrderPayload`; when it's absent, `financial_status` is the fallback
+  (paid/refunded→settled, partially_paid w/o amount→full COD as a safe default, else full COD). PaymentStatus.PARTIALLY_PAID
+  is an existing enum value.
+- **Tests**: `ShopifyOrderImportServiceTest` +4 (partial records real received+COD, partial-without-amount→COD,
+  paid-zero-outstanding→FULLY_PAID; total run 11) — all green with OrderServiceTest 41 + EndpointRoleGuard 39 = **91 tests**.
+- Backend JAR + admin bundle (`main-TBDMMLVX.js`) built, DEPLOYED via `push-to-new-server.ps1 -SkipBuild` (backup
+  `~/shifa-backup-2026-09-25-152857.sql`); no migration (V68 highest), Tomcat 8080, Started clean.
+- **OPEN / needs a data value**: the ALREADY-imported order **#25422 = OMS order id 208, `SHR-20260925-WJS7`,
+  shopify_order_id 7410006229167, total 3398.98, currently COD/received 0** must be corrected retroactively (the code fix
+  only affects FUTURE imports; Shopify doesn't re-send orders/create for an existing order, and we don't yet handle
+  orders/updated). **Do NOT guess the paid amount** — need the exact amount the customer paid on Shopify for #25422 to run
+  a one-off UPDATE (set amount_received=paid, remaining_amount=cod_amount=customer_outstanding=3398.98−paid,
+  payment_status=PARTIALLY_PAID) on row 208. Follow-up idea: handle the Shopify `orders/updated` webhook to keep payment
+  state in sync automatically (would also self-heal cases like this).
+
+## ADMIN-only Channel Dashboard (Total vs Portal vs Shopify) — implemented & DEPLOYED (2026-09-25)
+New ADMIN-only `/channel-dashboard` page tracking + differentiating the business's own portal orders vs the
+auto-imported Shopify orders, with a period filter. Salespeople never see it (ADMIN-gated end to end).
+- **Backend**: `GET /api/admin/orders/channel-summary?from=&to=` on `AdminOrderController` with an explicit
+  `@PreAuthorize("hasRole('ADMIN')")` (class is already ADMIN-only). `ChannelSummaryService.summary(from,to)` loads the
+  windowed orders (`OrderRepository.findByCreatedAtBetween`; open/all-time window → `findAll()` filtered in memory) and,
+  per channel (TOTAL / PORTAL=non-SHOPIFY / SHOPIFY), computes: orderCount, revenue (EXCLUDES REJECTED/PAYMENT_REJECTED/
+  CANCELLED), COD outstanding (Σ `customer_outstanding` on revenue orders), this-month count+revenue (IST, independent of
+  window), and a status breakdown folded into the 7 `OrderStatusGroup`s (lifecycle order, non-empty only). DTOs
+  `ChannelSummaryResponse{from,to,total,portal,shopify}` + `ChannelStats` + `StatusCount`. Dual-ctor service (Clock for
+  tests). Tests `ChannelSummaryServiceTest` (4) + `EndpointRoleGuardIntegrationTest.channelSummaryIsAdminOnly` (ADMIN 2xx,
+  salesperson/packer/accountant 403) — 44 green.
+- **Frontend**: `channel-dashboard/` feature — `ChannelDashboardService` (`/api/admin/orders/channel-summary`),
+  `channel-dashboard.model.ts`, `ChannelDashboardComponent` (period presets This month/Last month/This quarter/This FY/
+  Last FY/All time + custom from/to, mirroring the CA GST dashboard pattern; 3 source cards Total/Portal/Shopify each with
+  count/revenue/COD-outstanding tiles + this-month line + status pills + share%; Portal/Shopify cards deep-link to
+  `/orders?source=SALESPERSON|SHOPIFY`). Route `/channel-dashboard` (`adminOnlyGuard`); nav link "Channel Dashboard"
+  (icon ti-arrows-split, adminOnly) in the "Analytics & Reports" group. Uses CurrencyPipe (INR), PageHeader/StatePanel.
+- **CRASH + FIX (the two-constructor gotcha, AGAIN)**: first deploy crash-looped — `ChannelSummaryService` has two
+  constructors (public `(OrderRepository)` + package-private `(OrderRepository, Clock)` test ctor) and NEITHER was
+  `@Autowired`, so Spring threw "No default constructor found" → whole context aborts → 502 (root static still 200 via
+  Nginx, but every `/api/**` 502'd). Fixed by adding `@Autowired` to the primary `(OrderRepository)` ctor. Redeployed;
+  now boots clean (Tomcat 8080, Started, `/api/admin/orders/channel-summary`=401 unauthenticated, root=200). Backups:
+  `~/shifa-backup-2026-09-25-162543.sql` (crashing) then `~/shifa-backup-2026-09-25-163456.sql` (fixed). Admin bundle
+  `main-6JUOGUJ4.js`. No migration (V68 highest). LESSON REINFORCED: the guard integration test does NOT catch this (it
+  constructs the controller's deps via manual `@Bean`s, bypassing autowiring) — ANY new @Service/@Component with a second
+  (Clock/test) constructor MUST mark the primary ctor `@Autowired`, and a plain full-context `@SpringBootTest` smoke test
+  would catch it pre-deploy (still not added — needs a test DB/profile; `WhatsappTemplateEncodingIT` is the only
+  full-context IT and needs a live DB).
+
+## Shopify determinism + Packaging "Print Labels" section (V69) — implemented & DEPLOYED (2026-09-26)
+Client saw some Shopify orders stuck at "Pending Admin Approval" while others reached "Tracking ID Assigned".
+ROOT CAUSE: Shopify import auto-approves synchronously only to LABEL_GENERATED; QuikShipX create→confirm→allot runs
+ASYNC in the QuikShipXDrainer (15s), and only allotForOrder flips the order LABEL_GENERATED→COURIER_ASSIGNED (Tracking
+ID Assigned). So: PENDING ones = legacy imports from BEFORE the auto-approve feature; LABEL_GENERATED = QuikShipX async
+not finished/failed; COURIER_ASSIGNED = allot completed. Fix = make it deterministic + a Print-Labels section.
+- **V69** `order_shipments.label_printed_at DATETIME NULL` (additive; highest migration now V69). `OrderShipment` gained
+  `labelPrintedAt` + `markLabelPrinted(at)`/`isLabelPrinted()`/`getLabelPrintedAt()` — an additive marker; it does NOT
+  change the order lifecycle (order stays COURIER_ASSIGNED so QuikShipX tracking keeps driving it).
+- **Print Labels queue** (`PackingService.printLabelQueue()` → `PrintLabelQueueResponse{toPrint,printed}` of
+  `PrintLabelRow{id,orderCode,customerName,totalAmount,createdAt,awb,quikShipXOrderId,quikShipXLabelUrl,labelPrinted,
+  labelPrintedAt}`): Shopify orders at COURIER_ASSIGNED (via new `OrderRepository.findBySourceAndOrderStatusOrderByCreatedAtDesc`)
+  split by whether the shipment's label_printed_at is set; batch-loads shipments for the label URL. `markLabelsPrinted(ids)`
+  stamps unprinted shipments (idempotent). `PackingController` `GET /api/packing/print-labels` + `POST
+  /api/packing/mark-label-printed` (BulkOrderIdsRequest→{marked}), both hasAnyRole('PACKING_USER','ADMIN').
+- **Print = QuikShipX label** (client confirmed they use QuikShipX's own label). Frontend opens each order's
+  `quikShipXLabelUrl` in a new tab (QuikShipX serves ONE PDF per order — multi-select opens each), then auto-marks printed.
+- **Recover/backfill** (`ShopifyOrderImportService.recoverStuckShopifyOrders()` → `RecoverResult{approvedFromPending,
+  republishedFromLabelGenerated}`): auto-approves Shopify orders left at PENDING and re-publishes Shopify orders at
+  LABEL_GENERATED to QuikShipX (idempotent; per-order try/catch). ADMIN endpoint `POST /api/admin/shopify/recover`
+  (`ShopifyAdminController`, hasRole ADMIN). Refactored autoApprove to reuse a `publishToQuikShipX(order)` helper.
+- **Failure alert**: `QuikShipXDrainer` gained a 4-arg `@Autowired` ctor (+ nullable `AdminNotificationService`); when an
+  event is permanently FAILED it records a DANGER admin notification "QUIKSHIPX_FAILED" so an order can't silently stall.
+  (Two-ctor gotcha handled: primary ctor is `@Autowired` — the boot-crash lesson from the channel dashboard.)
+- **Frontend** `packing/`: `packing.model.ts` PrintLabelRow/PrintLabelQueue; `packing.service.ts`
+  printLabelQueue()/markLabelsPrinted(); `scan.component.*` new "Print Labels" card (Shopify · Tracking ID Assigned) with
+  select-all + per-row Print + bulk "Print N QuikShip labels" + a collapsible "Label printed" list with Re-print. Loaded
+  in ngOnInit via loadPrintLabels().
+- **Tests**: PackingPrintLabelsTest (3: queue split, mark idempotent, empty no-op), PackingServiceTest 16,
+  ShopifyOrderImportServiceTest 11, EndpointRoleGuard 40 — all green.
+- **DEPLOYED**: backend JAR + admin bundle `main-BBJR7T5C.js` via push-to-new-server.ps1 -SkipBuild (backup
+  `~/shifa-backup-2026-09-26-065500.sql`); Flyway applied v69, Tomcat 8080, Started clean. **Ran the recover live**:
+  approvedFromPending=3, republishedFromLabelGenerated=16 → those flowed to Tracking ID Assigned. Verified live:
+  `GET /api/packing/print-labels` as admin returned toPrint=11/printed=0 with real AWB + quikShipXLabelUrl present.
+- NOTE: multi-select opens one browser tab per label (QuikShipX has no merged-PDF endpoint); pop-up blockers may limit
+  how many open at once — the per-row Print button is the reliable single-order path.
+
+## Shopify→QuikShipX "Calculated Products and Order Amount Not Matched" — fixed (no migration)
+Shopify orders stuck at LABEL_GENERATED (QuikShipX showing Pending) were NOT a timing issue: QuikShipX create-order
+was being REJECTED. Proven from captured live request/response bodies: QuikShipX checks
+`Σ(product_amount × product_quantity − product_discount) == order_amount` per line, using **floating-point ==**
+(`discount_amount`, `shipping_amount`, `commodity_amount` do not take part). Three causes, all fixed:
+- **Shopify checkout discount not recorded** (line list prices > charged total). `ShopifyOrderPayload` gained
+  `total_discounts`; `ShopifyOrderImportService.resolveDiscount` records `subtotal − total` as a FLAT order discount;
+  `backfillDiscount` fixes already-imported orders inside `recoverStuckShopifyOrders`.
+- **Per-line apportionment**: `QuikShipXPayloadFactory.apportionDiscount` (last line takes the exact remainder) sends the
+  gap as per-line `product_discount`; when total > subtotal (Shopify shipping) an extra "Shipping & handling" line is added.
+- **Float rounding** (e.g. 999+1099.99+1099.99−100 = 3098.9799999999996): `floatSumMatches` simulates their double
+  check; if the itemised lines are not double-exact, `buildConsolidated` sends ONE line (names joined, amount ==
+  order_amount). `QuikShipXService.createForOrder` also retries consolidated if QuikShipX still says "amount not matched".
+Tests: `QuikShipXPayloadFactoryTest` (6), `ShopifyOrderImportServiceTest` (13). Deployed 2026-09-26; recover brought all
+QuikShipX-routed Shopify orders to COURIER_ASSIGNED (27). Remaining LABEL_GENERATED Shopify orders are IN_HOUSE by design.
+Deploy gotcha: always verify the deployed class actually contains the change (unzip BOOT-INF class + `grep -a`) — one
+build shipped a stale buildsrc copy.
+
+## Shopify Sync admin page (no migration) — implemented & deployed 2026-09-26
+ADMIN-only UI for the recover endpoint. Route `/shopify-sync` (`adminOnlyGuard`), nav "Shopify Sync" (ti-brand-shopify)
+under Analytics & Reports next to Channel Dashboard. Frontend `shopify-sync/` (`ShopifySyncService`, `ShopifySyncComponent`):
+counts (waiting / pending approval / label generated), confirm-then-Recover button, last-run result, auto re-check 30s later
+(QuikShipX allots tracking ids asynchronously), mobile cards + desktop table linking to `/orders?q=code`, separate
+"In-house delivery" list (not recoverable). Backend: `GET /api/admin/shopify/stuck` (`ShopifyAdminController`, ADMIN) →
+`ShopifyOrderImportService.listStuckShopifyOrders()` → `StuckOrder{id,orderCode,customerName,customerMobile,status,
+totalAmount,createdAt,inHouse,recoverable}` (PENDING_ADMIN_APPROVAL + LABEL_GENERATED Shopify orders, oldest first).
+`recoverStuckShopifyOrders` now SKIPS in-house LABEL_GENERATED orders (they were counted as "republished" but never sent).
+Tests: ShopifyOrderImportServiceTest 15 (+recoverSkipsInHouse, +stuckListFlagsInHouse). Admin bundle `main-RMI4Z2J5.js`.
+
+## Channel dashboard redesign + Shopify on/off switch (V70) — DEPLOYED (2026-09-26, server 15.252.230.73)
+- **Admin dashboard** now splits **Portal / Shopify / All** via `GET /api/admin/dashboard/channel?channel=ALL|PORTAL|SHOPIFY&period&bucket&from&to`
+  (`dashboard/ChannelDashboardService` single pass, Portal = source != SHOPIFY; revenue excludes REJECTED/CANCELLED;
+  "Paid on Shopify" shown separately). Frontend `dashboard/admin-channel-overview.component.*` replaces the old admin block.
+  `/channel-dashboard` route retired (redirects to `dashboard`); backend channel-summary endpoint kept.
+- **Shopify switch**: `V70__settings_shopify_sync_enabled.sql` adds `app_settings.shopify_sync_enabled` (default FALSE →
+  integration is OFF after deploy). `GET/PUT /api/admin/shopify/settings` (`ShopifyAdminController`). Webhook still verifies
+  HMAC first; when OFF returns 200 `{"ignored":true,"reason":"SHOPIFY_SYNC_DISABLED"}` (no Shopify retries). Orders received
+  while OFF are NOT replayed. Toggle UI on the **Shopify Sync** page (`/shopify-sync`, confirm on turning OFF), which also has
+  `GET /api/admin/shopify/stuck` + recover.
+- QuikShipX: float-equality amount check → per-line discount apportionment + shipping line, fallback `buildConsolidated`.
+- Verified live: Flyway applied v70, SETTINGS=`{"enabled":false}`, dashboard/channel=200, bundle `main-MHLHZVB7.js`.
+  **Highest migration is now V70.** Prod deploy script: `deploy\push-to-new-server.ps1 -SkipBuild -KeyPath shifa-oms-prod.pem -Ip 15.252.230.73`.
+- Gotcha: the first deploy uploaded the OLD JAR (copy to `backend\target\` happened after) — always copy the fresh JAR before deploying.
+
+## Label order-code visibility, Counter Sale lead source, "Ishika Enterprise" rename — DEPLOYED (2026-09-28, server 15.252.230.73)
+Three client-requested fixes, all backward compatible (no migration, no enum-code renames):
+- **Order code always on the internal label**: previously, once a courier AWB was allotted the barcode switched to
+  encoding the AWB and the order code disappeared from the label entirely. `LabelPdfRenderer.barcodeSideInfo` now
+  always prints an "ORDER #" line with `content.orderCode()` next to the barcode/date/payment info, in addition to
+  the barcode itself (which still encodes the AWB when one exists, else the order code as before).
+- **Counter Sale lead source → no delivery partner at all**: added `LeadSource.COUNTER_SALE` (backend enum +
+  frontend `LeadSource`/`LEAD_SOURCE_OPTIONS`, `isCounterSale()` helper). `OrderService.createSalespersonOrder`
+  forces `deliveryMethod = IN_HOUSE` whenever `leadSource == COUNTER_SALE` (overriding any `deliveryMethod` in the
+  request), which reuses every existing `isInHouseDelivery()` gate (QuikShipX publish on create/approve, courier
+  assignment on dispatch) — a counter sale never touches QuikShipX or gets a courier AWB. `AdminOrderService.approve`
+  now REJECTS (400) an attempt to override a Counter Sale order's delivery method to QUIKSHIPX at approval time.
+  Lead-convert (`LeadService.convert` → `CreateOrderRequest`) inherits the same behavior automatically since it
+  carries the lead's `leadSource` through the same order-creation path.
+- **"In-House" renamed to "Ishika Enterprise" (display only)**: the stored enum code (`DeliveryMethod.IN_HOUSE`) and
+  the persisted `courier_companies` row name (`"In-House"`, matched by `CourierAssignmentService.resolveCompany`)
+  are UNCHANGED — only user-facing frontend strings were edited: `DELIVERY_METHOD_OPTIONS` label, the manual
+  courier-assign dropdown option text, `courierDisplayName()` fallback, the order-detail section header, the packing
+  dispatch-queue badge, and the Shopify Sync in-house card title. Backend enum/Javadoc comments still say
+  "in-house" internally — cosmetic only, not user-facing.
+- Verified: backend `mvn clean package` (targeted: OrderServiceTest 41, AdminOrderServiceTest 8,
+  EndpointRoleGuardIntegrationTest 40, LabelServiceTest 13 = **102 tests, 0 failures**); admin `build:admin` clean
+  (bundle `main-UMXUNYUZ.js`). Deployed via `deploy\push-to-new-server.ps1 -SkipBuild`. Verified live: Flyway "no
+  migration necessary" (no new migration — highest stays V70), Started Application clean, `/api/admin/shopify/settings`
+  = `{"enabled":false}`, `/api/admin/dashboard/channel` = 200, served bundle confirmed as `main-UMXUNYUZ.js`.
+
+## Team-wise sales overview linked from admin Dashboard — DEPLOYED (2026-09-28, server 15.252.230.73)
+Client ask: see team-wise sales with status (e.g. "Team Sameer", "Team Zeeshan") on/from the dashboard, so an
+admin can spot where each team is heading and call out leads directly.
+- **Backend** (`dashboard` module, no migration): `TeamsOverviewService.overview()` — for every `TEAM_LEAD`
+  (`userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.TEAM_LEAD)`), resolves their assigned salespeople
+  (`findIdsByTeamLeadId`) and rolls up via the SAME existing repo methods `TeamPerformanceService` uses
+  (`orderRepository.findAllScopedIn`/`leadRepository.findAllScopedIn` — no new queries): orders/revenue this
+  month + lifetime, delivered/failed counts + delivery-success %, COD outstanding, lead pipeline counts
+  (NEW/CONTACTED/QUOTED/WON/LOST), and a ranked **call-out list** of leads due/overdue for a follow-up (sorted
+  most-overdue-first, capped at 25/team) each carrying customerMobile + ownerName for one-tap call/WhatsApp.
+  Salespeople with no team lead assigned roll into a separate `unassigned` row (never silently dropped). Teams
+  sorted worst-delivery-rate-first so at-risk teams surface first. `TeamsOverviewController`
+  `GET /api/admin/dashboard/teams` (`hasRole('ADMIN')`) → `TeamsOverviewResponse{asOf, teams[], unassigned}`.
+  Test `TeamsOverviewServiceTest` (3 cases: multi-team rollup + call-out ranking, unassigned bucket, empty team).
+- **Frontend**: `dashboard/teams-overview.model.ts` + `teams-overview.service.ts`. Full page
+  `TeamsOverviewComponent` (route `/teams-overview`, `adminOnlyGuard`) — one card per team ("Team <FirstName>"
+  heading derived from the lead's name), KPI trio (orders/revenue this month, delivery-success badge
+  green≥80%/amber≥50%/red<50%), lead-pipeline badges, and a call-out list (tel: + WhatsApp per lead, link to
+  `/leads/follow-ups` when >6). Compact `TeamsOverviewWidgetComponent` embedded directly on the admin Dashboard
+  (`dashboard.component.html`, above `admin-channel-overview`) — one row per team with a "View all" link to the
+  full page; hides itself entirely if there are no teams yet or the call fails (non-fatal). Nav: "Team-wise Sales"
+  link (icon `ti-chart-bar`, adminOnly) added to the CRM group, above "Teams" (the assignment page).
+- Verified: backend targeted suite (EndpointRoleGuard 40 + TeamsOverviewService 3) = 43/43 green; admin
+  `build:admin` clean (bundle `main-DP6FMX7U.js`). Deployed via `deploy\push-to-new-server.ps1 -SkipBuild`.
+  Live: Flyway "no migration necessary" (no schema change), Started Application clean, served bundle confirmed,
+  `/api/admin/dashboard/teams` = 200.
+
+## Single consolidated LOGO.png across the app (replaced all other Shifa logo files) — DEPLOYED (2026-09-28)
+Client ask: use one `LOGO.png` everywhere and remove every other Shifa logo file. There were 3 separate logo
+assets: `frontend/projects/admin/public/icons/shifa-icon.svg` (PWA/favicon), `favicon.ico`, and a bundled backend
+classpath fallback `backend/src/main/resources/brand/shifa_logo_1.png` (used on printed labels when no logo is
+uploaded in Settings) — plus a stray `shifa_logo_1.png` at the workspace root. The on-screen sidebar/drawer/login
+"logo" was actually a CSS+icon-font wordmark (`.shifa-brand__mark`/`.ti-leaf` + "Shifa"/"Herbal Remedies" text),
+not an image at all.
+- **One canonical file, two copies** (same bytes, git-tracked, no shared runtime path across processes):
+  `frontend/projects/admin/public/logo.png` (served at `/logo.png`) and
+  `backend/src/main/resources/brand/LOGO.png` (classpath `/brand/LOGO.png`).
+- **Deleted**: `frontend/projects/admin/public/favicon.ico`, `frontend/projects/admin/public/icons/` (whole dir,
+  had only `shifa-icon.svg`), `backend/src/main/resources/brand/shifa_logo_1.png`, and the stray root
+  `shifa_logo_1.png`/`LOGO.png` staging files.
+- **Frontend UI now uses the real image** instead of the icon+text wordmark in all 3 places: desktop sidebar
+  brand, mobile drawer brand (`shell/admin-shell.component.html`), and the login page brand
+  (`auth/login.component.html`) — each is now a single `<img src="/logo.png">` styled by new
+  `.shifa-brand__logo`/`.shifa-auth__logo` rules in `styles.css` (replacing the old `.shifa-brand__mark`/
+  `__text`/`__title`/`__subtitle` and `.shifa-auth__mark`/`__name`/`__tag` rules, which were removed).
+- **Favicon/PWA**: `index.html` `<link rel="icon">` now points at `/logo.png` (`image/png`, was `favicon.ico`)
+  and `apple-touch-icon` also points at `/logo.png` (was `icons/shifa-icon.svg`); `manifest.webmanifest`'s single
+  icon entry now `{ src:"logo.png", type:"image/png" }`; `ngsw-config.json` asset lists updated (`/logo.png`
+  instead of `/favicon.ico`, dropped the now-deleted `/icons/**` glob).
+- **Backend**: `LabelPdfRenderer.bundledLogo()` (internal shipping label PDF) now reads
+  `getClass().getResourceAsStream("/brand/LOGO.png")` (was `/brand/shifa_logo_1.png`). Added the SAME
+  bundled-fallback pattern to `com.shifa.oms.courier.ShippingLabelRenderer` (courier module's separate label
+  renderer, which previously had NO fallback and only ever showed a logo when one was uploaded via Settings) —
+  now both label renderers consistently fall back to the bundled `LOGO.png` when no Settings logo is uploaded.
+  `WebPushService` push-notification `icon`/`badge` fields now `/logo.png` (was `/icons/shifa-icon.svg`).
+- The Settings-page **uploadable company logo** feature (`CompanyLogoService`, `/api/admin/settings/logo`, shown
+  on invoices/labels/report PDFs when present) is UNCHANGED — it's admin-uploaded at runtime, not a source file;
+  it always takes priority over the bundled `LOGO.png` fallback wherever both exist.
+- Verified: backend targeted suite (EndpointRoleGuard 40 + LabelServiceTest 13, which exercises the bundled-logo
+  fallback path) = 53/53 green; admin `build:admin` clean (bundle `main-2N2Y3HL4.js`). Deployed via
+  `deploy\push-to-new-server.ps1 -SkipBuild`. Verified live: Flyway "no migration necessary", Started Application
+  clean, `https://shifa.weblithic.online/logo.png` = 200 (362,471 bytes, `image/png`, matches the source file).
+  **Gotcha**: testing a vhost-routed HTTPS site by hitting the bare IP over plain HTTP gets a 301→HTTPS redirect
+  or even a 404 from the WRONG server block if there's no matching `Host` header — always test with
+  `-H "Host: <domain>"` or the real HTTPS URL, not the bare IP, on a certbot-managed multi-vhost box.
+
+## Team-wise sales: two-level drill-down on the same page (team card → salespeople → individual 360) — DEPLOYED (2026-09-28)
+Client ask: clicking a team card on `/teams-overview` should show further team detail, and from there clicking a
+salesperson should drill into their individual detail — all without leaving the page.
+- **Backend**: `TeamsOverviewResponse.TeamOverviewRow` gained a `members: List<SalespersonPerformanceSummary>`
+  field (per-team leaderboard rows). `TeamsOverviewService` now injects `SalespersonPerformanceService` and calls
+  the EXISTING `leaderboardFor(memberIds)` per team (same method `TeamPerformanceService` already uses) — no new
+  query, reuses the established leaderboard aggregation. `TeamsOverviewServiceTest` updated with a recording
+  `SalespersonPerformanceService` subclass (Java 25 can't mock the concrete class; matches the pattern already
+  used in `TeamPerformanceServiceTest`).
+- **Frontend** (`dashboard/teams-overview.component.*`): each team card is now clickable (`openTeam(row)`) and
+  opens a right-side **team detail panel** (`.teams-ov__panel`, same slide-in-drawer pattern as the lead/order
+  detail drawers) showing: team KPIs, lead pipeline, a **salespeople table** (click a row → drills into that
+  person), and the full call-out list (previously capped at 6 in the card preview). Clicking a salesperson row
+  reuses the EXISTING `TeamMemberDetailComponent` (`admin-team-member-detail`, same one used on `/team-performance`)
+  stacked on top via a second signal (`selectedMember`) — no duplicate detail UI, and it hits the same
+  `/api/team/performance/{id}` endpoint (ADMIN is globally authorised there). Call/WhatsApp buttons and the
+  "view all follow-ups" link inside a card use `(click)="$event.stopPropagation()"` so they don't also trigger
+  the team-card drill-down. New `TeamOverviewMember` model (identical shape to `TeamMemberPerformance`, cast at
+  the `openMember` call site) added to `teams-overview.model.ts`.
+- Verified: backend targeted suite (EndpointRoleGuard 40 + TeamsOverviewService 3 + TeamPerformanceService 2)
+  = 45/45 green; admin `build:admin` clean (bundle `main-THF35YPW.js`). Deployed via
+  `deploy\push-to-new-server.ps1 -SkipBuild`. Live: Flyway "no migration necessary", Started Application clean,
+  served bundle confirmed, `/api/admin/dashboard/teams` = 200.
+
+## Local dev DB team leads renamed to match production; full sync redeployed (2026-09-28)
+The "Team Shifa / Team Shifa" look-alike on the Teams-Overview page was confirmed to be a LOCAL dev-only cosmetic
+issue, not a bug: local `shifa_dashboard` had placeholder `TEAM_LEAD` accounts `teamlead1`/`teamlead2` with
+full_name "Shifa Lead 1"/"Shifa Lead 2" (both start with "Shifa" → same "Team Shifa" heading, since
+`teamHeading()` derives the label from only the first word of the name). Production already had the real setup
+the client described: **Sameer Khan** (id 101, 8 salespeople) and **Zeeshan Ahmed** (id 110, 9 salespeople) — 17
+total, with 259 real orders. Confirmed live via `GET /api/admin/dashboard/teams` returning correct per-person
+figures (e.g. Vaishali Malviya 18 orders/₹51,488; Jyoti Kekte 26 orders/₹81,234).
+- **Fix**: renamed the local dev DB's `teamlead1`→"Sameer Khan" and `teamlead2`→"Zeeshan Ahmed" (`UPDATE users
+  SET full_name=... WHERE id IN (124,125)`) so local testing now mirrors production's real team-lead names.
+  No code change — `TeamsOverviewService` was already correctly reading real DB rows; this was pure local test
+  data hygiene.
+- **Redeployed** the full current workspace state to prod via `deploy\push-to-new-server.ps1 -SkipBuild` (backend
+  rebuilt fresh from source with `-DskipTests`, frontend bundle unchanged since it already matched) to guarantee
+  prod runs the latest code. Verified live: Flyway "no migration necessary", Started Application clean, bundle
+  `main-THF35YPW.js` served, `/api/admin/dashboard/teams`=200, `/api/admin/dashboard/channel`=200.
+- Cleanup: removed the one-off `check-prod-*.cmd/.txt` diagnostic scripts from the workspace root.
+
+## "Retry delivery" for RTO/REDISPATCH orders — surfaced the existing Reorder flow (frontend-only) — DEPLOYED (2026-09-28)
+Client couldn't find any way to retry a failed delivery on an RTO order. Investigation confirmed RTO and
+REDISPATCH are BOTH intentionally terminal in `OrderStatus.buildTransitions()` — RTO already raises a GST credit
+note (`PackingService.markRto` → `returnService.createAutoReturnForRto`) and REDISPATCH already zeroes the
+customer outstanding + files a claim receivable (`CourierStatusApplier.applyRedispatch`); reopening either would
+corrupt that bookkeeping, so no new backend transition was added. The actual fix was **discoverability**: the
+one-tap Reorder action (`/orders/new?reorderFrom=<id>`, clones customer+items into a fresh order, already existed
+and was already unrestricted by status) was buried at the bottom of a long, un-contextualized action grid.
+- **Frontend-only fix** (`orders/orders.component.{ts,html,css}`): new `isRetryEligible(order)` (true for
+  `RTO`/`REDISPATCH`) gates a prominent amber-accented card ("Retry delivery — create new order") placed right
+  next to the RTO-reason card in the order-detail drawer, explaining the order is closed and offering the SAME
+  `reorderFrom` link as a big primary button, worded per-status ("Parcel returned to origin" for RTO vs "Parcel
+  lost/damaged by courier" for REDISPATCH). The old buried "Reorder" button in the action grid is unchanged
+  (still works for any order, not just RTO/REDISPATCH).
+- Verified: `ng build admin` clean (bundle `main-U5CM5J4S.js`). Deployed via `deploy\push-to-new-server.ps1
+  -SkipBuild` (backend untouched, no migration). Live: Started Application clean, new bundle served.
+
+## Courier COD remittance import — QuikShipX Excel format + auto-match/settle + delivered catch-up — implemented & DEPLOYED
+Client sends a weekly/biweekly COD remittance sheet from the QuikShipX team (columns `SNO,Tracking ID,Client Order ID,
+Delivered On,COD Amount,Remitted Amount,Remitted Date`, e.g. `20736018905842,shr083_19823,19 Apr 2026,760,760,
+2026-04-20`). Extended the existing generic CSV-only `RemittanceImportService`/`ReconciliationController.importRemittance`
+(`/reconciliation` page) rather than building a parallel importer — no migration, all Java-only.
+- **New** `common/SpreadsheetParser.java`: unified CSV/Excel row reader — `parse(bytes, filename)` dispatches to
+  `parseExcel` (Apache POI `WorkbookFactory`, already a pom dependency) when the filename ends `.xlsx`/`.xls`, else CSV.
+  Renders numeric cells without a trailing `.0` and Excel date cells as ISO `yyyy-MM-dd`. (Gotcha hit: the formula-cell
+  fallback method is `getCachedFormulaResultType()`, not `getCachedFormulaCellType()` — the latter doesn't exist on this
+  POI version and fails the build.)
+- **`RemittanceImportService`** rewritten: new ctor takes `OrderShipmentRepository` + `OrderWorkflowService` (was 4-arg);
+  `importFile(bytes, filename, dryRun)` is the new primary entry point, `importCsv` kept as a back-compat wrapper.
+  `COLUMN_ALIASES` recognises both the generic `awb/orderCode/amount` header AND QuikShipX's real columns (`Tracking ID`→
+  awb, `Client Order ID`, `COD Amount`/`Remitted Amount`→amount, `Remitted Date`). Matching order per row: AWB (via
+  `CourierRecordRepository.findByAwb` then `OrderShipmentRepository.findByAwb`) → order code → QuikShipX Client Order ID
+  (best-effort: trailing digits extracted from `shr083_19823`→`19823`, QuikShipX's own `shipper_order_id`, looked up via
+  `OrderShipmentRepository.findByShipperOrderId`). Settle tolerance stays ₹1.
+  **New delivered-catch-up path**: when a resolved order has NO receivable yet but is still pre-delivery
+  (`COURIER_ASSIGNED/DISPATCHED/IN_TRANSIT/OUT_FOR_DELIVERY/HANDED_TO_DELIVERY` — meaning the courier's delivery webhook
+  was missed), the remittance row itself is treated as proof of delivery+payout: walks the order
+  `→DELIVERED→COD_COLLECTED` via `OrderWorkflowService.applyTransition` (`Actor.system("REMITTANCE_IMPORT",
+  "RECONCILIATION")`, mirrors `CourierStatusApplier.applyDelivered`), zeroes `customerOutstanding`, creates+settles a
+  fresh COD receivable on the remitted date. `dryRun` never applies this (or any) mutation. New `ALREADY_SETTLED` status
+  distinguishes a duplicate/re-sent remittance row (every existing receivable already settled) from a fresh settle.
+- **DTOs**: `RemittanceRowResult.Status` gained `ALREADY_SETTLED`; `RemittanceImportResponse` gained `alreadySettled`
+  count (ctor param order: dryRun, totalRows, settled, mismatched, alreadySettled, notFound, noReceivable, errors, rows).
+  `ReconciliationController.importRemittance` now passes the original filename into `importFile` so Excel is detected.
+- **Frontend** (`reconciliation/`): file input `accept` widened to `.xlsx,.xls` + the OOXML/legacy-Excel MIME types;
+  modal title/help text rewritten to name QuikShipX's real columns and explain the delivered-catchup behaviour; new
+  "Already settled" KPI tile; `remittanceRowTone()` maps `ALREADY_SETTLED`→`progress`; toast summarises settled vs
+  needs-review counts.
+- **Test gotchas fixed** (Java 25 can't mock concrete classes — recurring theme in this codebase): `OrderShipment` is a
+  concrete JPA entity with a public `(orderId, orderCode)` constructor — built a real instance instead of
+  `mock(OrderShipment.class)` (Mockito/ByteBuddy can't instrument it under Java 25). Also removed two Mockito
+  `UnnecessaryStubbingException` failures (stubbed `courierRecordRepository.findByAwb` in rows that carry no AWB, so
+  `resolveOrder` never calls it — `awb==null` short-circuits that branch).
+- Verified: `mvn clean package` (backend) — **57/57 tests green** (`EndpointRoleGuardIntegrationTest` 40 +
+  `RemittanceImportServiceTest` 17, incl. new QuikShipX-header/client-order-id-suffix matching, Tracking-ID-as-AWB,
+  Excel-vs-CSV parity, delivered-catchup + its dry-run no-op, already-settled, no-receivable-when-not-pre-delivery);
+  admin `build:admin` bundle `main-WKZ2K3M3.js`. No migration (Flyway: "70 migrations … no migration necessary").
+  **Deployed to AWS 2026-09-29** via `deploy\push-to-new-server.ps1 -SkipBuild`; DB backup `~/shifa-backup-2026-09-29-020120.sql`.
+  Live checks: `https://shifa.weblithic.online/`=200, `/api/states`=401, `/api/recon/remittance/import`=401 (wired+auth).
+- **How to use**: upload the QuikShipX Excel export as-is at `/reconciliation` → Import remittance. Preview first
+  (dry run) to see settled/mismatched/already-settled/no-receivable/not-found counts per row, then confirm to commit.
+  Orders that never got a courier delivery webhook are auto-marked Delivered + COD Collected and settled from the
+  remittance row itself. Orders still outstanding remain visible via the existing "Unsettled COD" list on the same page.
+
+## Packing: order/packaging notes on the queue + Scan & Move preview — implemented & DEPLOYED (2026-09-30)
+Client: the packing team should see the order note on the packing queue column AND immediately when they scan, so
+special instructions are obvious. Additive, no migration (reuses `orders.notes` V29).
+- Backend: `packing/dto/PackingQueueRow` gained a `String notes` component (mapped from `order.getNotes()` in `from`);
+  `packing/dto/PackingScanPreviewResponse` gained a `String notes` component (from `order.getNotes()` in `from`) —
+  chose to add notes to the preview DTO directly rather than the shared compact `OrderSummaryResponse` (keeps the change
+  local to packing). `PackingService` needed NO change (the factories already receive the entity).
+- Frontend `packing/`: `packing.model.ts` `PackingQueueRow` + `PackingScanPreviewResponse` interfaces gained `notes?`;
+  the inline `pendingPreview` signal type in `scan.component.ts` ALSO needed `notes?` (it's an anonymous type, not the
+  interface — TS2339 until added). `scan.component.html`: new **Notes** column on the three queue tables (amber
+  `.pk-note__flag`, 2-line clamp + full text on hover title), and a prominent amber **"Packaging note"** callout in the
+  Scan & Move confirmation modal (shown right after the customer block). CSS `.pk-note`/`.pk-note__flag` added.
+- Verified: `PackingServiceTest` + `EndpointRoleGuardIntegrationTest` = **56 tests green**; admin `build:admin` clean.
+- **DEPLOY GOTCHA (bit us, fixed):** the first deploy shipped a **thin 2.8 MB JAR** because the `copy /Y` of
+  `target/shifa-oms-0.0.1-SNAPSHOT.jar` ran BEFORE `spring-boot:repackage` finished — the server crash-looped with
+  "no main manifest attribute". The correct **fat JAR is ~107 MB**. Fix: always confirm the copied JAR size (~107 MB)
+  before deploy; the jar plugin writes the plain jar first, then repackage swaps in the fat jar seconds later. Re-copied
+  the 107 MB jar and redeployed clean. Bundle `main-E2ZLA24G.js`; verified `active` + "Started Application".
+
+## Pagination added to the previously-unbounded list pages — implemented & DEPLOYED (2026-09-30)
+Client: the Packing page had no pagination; add pagination across the app where missing. Reused the existing shared
+pattern everywhere (no new component): `shared/pagination.component.ts` (`admin-pagination`, 0-based page, prev/next +
+rows-per-page selector) + `shared/page-size.util.ts` (`readPageSize`/`writePageSize`, per-table localStorage) +
+**client-side slice** (`pageItems = list.slice(page*size, ...)`, `totalElements=computed(len)`, `totalPages=ceil`),
+matching the Approval-Queue/Users/Leads pattern. All FRONTEND-ONLY (backends still return the full list; these pages
+have modest row counts). Pages fixed (were "load everything, no pager"):
+- **Packing** (`packing/scan.component.*`) — the reported page. Each of the 3 work queues (to pack / handover / dispatch)
+  is paged INDEPENDENTLY with a shared page size (`packingQueue` key): added `packPage`/`handoverPage`/`dispatchPage`
+  signals + `queueSize`; `queueSections()` now exposes per-section `orders` (the current page slice), `allOrders`,
+  `page`, `totalElements`, `totalPages`; `goToQueuePage(kind,page)` + `setQueueSize` + `clampQueuePages()` (snaps back
+  after a reload shrinks a queue). HTML: KPI tiles + header badges now show `section.totalElements` (total, not the
+  page), empty-state uses `totalElements===0`, and an `admin-pagination` sits under each queue table. Select-all
+  helpers still receive `section.orders` = correct select-all-**on-page** semantics. (The Shopify "Print Labels"
+  sub-section + Reconciliation Unsettled-COD/Pending-Claims tabs remain unbounded — lower traffic, noted as follow-ups.)
+- **Payments queue** (`payments/payments.component.*`) — `paymentsQueue` key; pager under both the mobile-cards list and
+  the desktop table; `pageItems()` drives both `@for`s; page clamped after `load()`.
+- **Salespeople** (`salespeople/salespeople.component.*`) — `salespeople` key; pages the `filtered` (verification-filter
+  + sort) list; `setFilter`/`setSort` reset to page 0; pager under the card grid.
+- **Announcements** (`announcements/announcements.component.*`) — `announcements` key; pages `items`; pager card at the end.
+- Already-paged pages (Orders/Returns/Products/Customers/Expenses/POs/Reconciliation-receivables/Audit/Notifications —
+  server-side `PageResponse`; Users/Leads/Due-follow-ups/Suppliers/Approval/Inventory/Insights — client-side slice) were
+  left as-is. Verified: admin `build:admin` clean, bundle `main-DZHVEQ2E.js`; deployed via `push-to-new-server.ps1
+  -SkipBuild` (reused the notes-feature 107 MB JAR, no backend change). Live: `https://shifa.weblithic.online/`=200,
+  serves `main-DZHVEQ2E.js`, `/api/states`=401. Backend unchanged/healthy.
+
+## Pagination — remaining unbounded lists finished — implemented & DEPLOYED (2026-09-30)
+Follow-up to the pagination pass: paginated the last two spots that were still loading everything, using the same
+shared `admin-pagination` + `readPageSize`/`writePageSize` + client-side-slice pattern. Frontend-only, no backend change.
+- **Packing "Print Labels" section** (`packing/scan.component.*`): both the **to-print** and the **already-printed**
+  (inside the `<details>`) Shopify QuikShip-label lists now paginate with a shared `packingLabels` page size —
+  `toPrintPage`/`printedPage` signals + `labelsSize`; `toPrintPageItems`/`printedPageItems` computed; `goTo*`/`setLabelsSize`
+  handlers; both pages clamped after `loadPrintLabels()`. Select-all-for-QuikShip now targets `toPrintPageItems()`
+  (select-all-**on-page**). Section badge/empty-state still use the full `.length`; pager sits under each table.
+- **Reconciliation Unsettled-COD + Pending-Claims tabs** (`reconciliation/reconciliation.component.*`): the two sibling
+  lists (the Receivables tab was already server-side paged) now client-side paginate — `unsettledPage`/`unsettledSize`
+  (`unsettledCod` key) + `claimsPage`/`claimsSize` (`pendingClaims` key), `*PageItems`/`*TotalPages` computed,
+  `goTo*`/`set*Size` handlers, both clamped after `refreshUnsettled`/`refreshClaims`. Pager added under each tab's
+  desktop table (mobile cards + desktop table both iterate the page slice). The Segregation tab's prepaid/COD sub-lists
+  were left unpaged (bounded summary context).
+- Verified: admin `build:admin` clean, bundle `main-LB3KDIVX.js`; deployed via `push-to-new-server.ps1 -SkipBuild`
+  (reused the live 107 MB JAR). Live: `https://shifa.weblithic.online/`=200 serving `main-LB3KDIVX.js`, `/api/states`=401.
+  **Every list screen in the admin app now has pagination.**
+
+## Packing workflow redesign: courier orders flow through manual packing + status label vocabulary — implemented & DEPLOYED (2026-10-01)
+Client: QuikShip orders were auto-fast-forwarded to COURIER_ASSIGNED on approval and vanished from the Packing page.
+They should flow through the warehouse's manual packing like in-house orders. Also: show statuses as proper business
+labels (not UPPER_SNAKE), merge the look-alike handover/dispatch queues, and split post-handover tracking into two
+sections. Reused EXISTING OrderStatus values (no new enum/migration) — only the trigger points + display changed.
+- **Root cause of the original report**: `QuikShipXService.allotForOrder` fast-forwarded `LABEL_GENERATED →
+  COURIER_ASSIGNED` (SYSTEM) as soon as the tracking id was allotted, so the order skipped PACKED/HANDED_TO_DELIVERY and
+  never appeared in the packing queues (which only show LABEL_GENERATED/PACKED/HANDED_TO_DELIVERY). Confirmed via prod DB
+  (1 order in COURIER_ASSIGNED, 0 in PACKED).
+- **Backend**:
+  - `QuikShipXService.allotForOrder`: REMOVED the `COURIER_ASSIGNED` fast-forward. The AWB + QuikShip label are still
+    stored on `OrderShipment` (status "Tracking ID Assigned"), but the ORDER stays `LABEL_GENERATED` so it shows in
+    "Orders to Pack". Courier assignment now happens on handover.
+  - `OrderStatus` transition table: `LABEL_GENERATED` targets trimmed to just `{PACKED}` (dropped the unused
+    `COURIER_ASSIGNED` skip). `PACKED→HANDED_TO_DELIVERY→COURIER_ASSIGNED` path unchanged.
+  - `PackingService.markLabelsPrinted`: now AUTO-ADVANCES `LABEL_GENERATED → PACKED` (SYSTEM) when a QuikShip label is
+    marked printed (client Q4) — printing the courier label is the "parcel prepared" signal → moves to Awaiting Handover.
+  - `PackingService.handover`: for a COURIER (non-in-house) order it now ALSO enqueues `publishCourierAssign` so the order
+    advances `HANDED_TO_DELIVERY → COURIER_ASSIGNED` ("Ready For Pickup") and shows in the auto QuickShip-status section.
+    In-house orders stay HANDED_TO_DELIVERY for manual updates. (The old separate `dispatch` step/queue was dropped.)
+  - `PackingService.queue()` restructured → `PackingQueueResponse(ordersToPack, awaitingHandover, quikShipStatus,
+    inHouseDeliveries)`. ordersToPack = LABEL_GENERATED (rows enriched with the shipment's awb/labelUrl/labelPrinted/
+    quikShipXStatus via `PackingQueueRow.from(order, name, shipment)`); awaitingHandover = PACKED; the two status sections
+    = SHIPPING_STATUSES (HANDED_TO_DELIVERY/COURIER_ASSIGNED/DISPATCHED/IN_TRANSIT/OUT_FOR_DELIVERY) split by
+    `isInHouseDelivery()`. `PackingQueueRow` gained awb/quikShipXLabelUrl/quikShipXLabelPrinted/quikShipXStatus.
+  - `printLabelQueue()` repointed from SHOPIFY+COURIER_ASSIGNED to non-in-house LABEL_GENERATED (kept for back-compat; the
+    frontend no longer uses the separate section). `/{id}/dispatch` endpoint left intact (unused by the new UI).
+- **Frontend** (`packing/scan.component.*`, `packing.model.ts`): `PackingQueue` → 4 sections. Orders-to-Pack rows show a
+  Partner badge (QuikShip/in-house), "Print our label" + (QuikShip rows) "Print QuikShip label" (opens the QuikShip PDF +
+  marks printed → auto-advances to Awaiting Handover + reloads), per-row Mark packed, bulk "Print N labels" + "Print N
+  QuikShip labels". Awaiting-Handover unchanged (per-row + bulk handover). Removed the old separate "Print Labels" card and
+  the "Awaiting dispatch" queue. Added two read-only cards: **QuickShip Status** (auto, AWB + status) and **In-House
+  Deliveries** (manual multi-select status update, reusing the former dispatch-status machinery). All sections paginated.
+- **Status display labels centralized**: `shared/status-badge.component.ts` `STATUS_LABEL_OVERRIDES` expanded to the full
+  business vocabulary (Pending / Confirmed / Tracking ID Assigned / Awaiting Handover / Handed to Delivery / Ready For
+  Pickup / In Transit / Out For Delivery / Delivered / Returned / Lost / Cancelled …) so `humanizeStatus` renders proper
+  labels everywhere. Routed the dashboard's duplicate `humanizeStatus` to the shared one.
+- Verified: backend `mvn clean package` targeted suites = **65 tests pass** (PackingServiceTest/EndpointRoleGuard/
+  QuikShipX*/CourierStatusMapper); admin `build:admin` clean, bundle `main-3VAFAOYQ.js`. Deployed via
+  `push-to-new-server.ps1 -SkipBuild` (107 MB fat JAR); live `https://shifa.weblithic.online/`=200 serving
+  `main-3VAFAOYQ.js`, `/api/states`=401, backend "Started Application" clean. No migration.
+- NOTE (follow-up): `PrintLabelRow`/`PrintLabelQueue` model types + the `printLabelQueue()` service method are now unused
+  (harmless leftovers). The QuikShip tracking poller (`CourierTrackingPoller`, 5-min) continues to drive the QuickShip
+  Status section from COURIER_ASSIGNED onward.
+
+## Portal clarity enhancements — all roles — implemented & DEPLOYED (2026-10-01)
+A role-by-role UX pass to make the portal clearer for every user type (review artifact drove it). Frontend-only
+except a 1-line `Role.java` javadoc fix. Bundle `main-HSGCSJ63.js`; backend 40-test guard suite green; deployed via
+`push-to-new-server.ps1 -SkipBuild`; live verified (HOME 200, `/api/states` 401, "Started Application" clean).
+- **Packing bottom tabs fixed** (`shell/admin-shell.component.ts`): the dead `Handover`/`Dispatch` tabs (both pointed at
+  `/packing`, stale wording) replaced with real routes — **Packing / Pick-list / Mark RTO / Orders**. Added a dismissible
+  **"How packing works"** guide strip on the packing page (`scan.component` `showGuide`/`dismissGuide` + localStorage key
+  `shifa:packing-guide-dismissed`, `.pk-guide` CSS) explaining Orders-to-Pack → Awaiting Handover → QuickShip/In-House.
+- **Payment Verifier home** (`payments.component.html/.css`): added a workload KPI tile ("Awaiting verification" count) +
+  a "How to verify a payment" how-to card; added **My Profile** to their bottom tabs (was only Payments/Orders).
+- **Actionable thin dashboards** (`dashboard.component.html`): Packing + Accountant KPI tiles are now clickable
+  `routerLink`s (deep-link to `/packing` / `/reconciliation`); relabeled "Awaiting packing"→"Orders to pack",
+  "Awaiting dispatch"→"Handed to delivery"; added an accountant chase hint. Added an **admin "needs-attention" strip**
+  (3 clickable tiles: Approvals waiting / Exceptions / Awaiting handover) + `adminExceptionTotal` computed.
+- **Role-aware onboarding tour** (`admin-shell.component.ts`): `ROLE_TOUR_STEP` map replaces the generic closing step
+  with a role-specific "here's your daily job" step for PACKING_USER / PAYMENT_VERIFIER / ACCOUNTANT / SALESPERSON /
+  TEAM_LEAD; `roleTour()` builds a per-role tour id (`main-shell-v1-<ROLE>`) so each role auto-sees its tailored tour
+  once; used in both auto-start + `replayTour`.
+- **Team Lead dashboard** (`dashboard.component.*`): added a team-highlight strip (top performer / best source /
+  delivery success % from `teamPerformance()`) + role-aware hero subtitle + `.tl-highlight` CSS (lead widgets were
+  already hidden for team leads).
+- **CA/Payment-Verifier dead "Shifa Dashboard" link hidden** (`admin-shell.component.ts`): the standalone Dashboard nav
+  link now has `roles:[ADMIN,ACCOUNTANT,SALESPERSON,TEAM_LEAD,PACKING_USER]` (CA→/ca/gst, PV→/payments are redirected, so
+  the generic link would dead-end for them).
+- **Breadcrumb/group context** (`admin-shell.component.*`): `pageContext` computed resolves the owning nav GROUP for the
+  current route and renders it as an eyebrow above the page title (`.shifa-appbar__eyebrow`/`__titlewrap`) — orients users
+  in deep areas (Accounting/*, CA GST/*).
+- **Status legend** (`orders.component.html`): `admin-help-tip` next to the Orders "Status" filter explaining the stage
+  groups (Pending→Processing→Shipped→Delivered + Returned/Failed/Cancelled). Packing uses the guide strip.
+- Already-good (no change): orders/leads/approval/payments empty states (actionable `admin-state-panel` CTAs), global
+  search placeholder ("…Ctrl+K"), My Profile "nothing changes until approved" note.
+- Backend: `Role.java` javadoc corrected ("five platform roles" → lists all 8). No migration, no logic change.
+
+## Customers page mobile card UI polish — implemented & DEPLOYED (2026-10-01)
+Client: the Customers page mobile cards looked "weird". Root cause was the two bulky, full-width stacked
+**Call / WhatsApp text buttons** inside each card (`.shifa-list-actions`) making every row tall and cluttered.
+Reworked the mobile card (`customers/customers.component.html` + `.css`) into a clean contacts-list row — no backend,
+no model change:
+- Avatar (now brand-green tinted `.shifa-green-100`/`700` instead of grey) · name (+ Repeat pill beside it, flex row
+  with `.shifa-cust__nametext` ellipsis) · phone (tabular-nums) · meta ("N orders · ₹total" with the amount bolded) ·
+  **compact round icon Call + WhatsApp actions** on the right (`.shifa-cust__act` / `--wa`, 40px, no text) + the row
+  itself opens the Customer 360 drawer. Row height roughly halved; amount uses `money()` thousands formatting.
+- Removed the old `.shifa-list-actions` block and the stray `.shifa-cust__view` chevron (actions moved right).
+- Desktop table + the Customer 360 drawer were already fine — unchanged.
+- Verified: admin `build:admin` clean, bundle `main-E3O453J3.js`; deployed via `push-to-new-server.ps1 -SkipBuild`
+  (reused the current 107 MB JAR, no backend change); live `https://shifa.weblithic.online/` serves `main-E3O453J3.js`.
+
+## Leaderboard/Salespeople order drill-down + Salespeople & Inventory UI polish — implemented & DEPLOYED (2026-10-01)
+Client asks: (1) tapping a person on Leadership/Leaderboard should drill into their order details; (2) Salespeople
+cards looked bad; (3) Inventory mobile cards looked wrong (kebab menu overlapped the next card). Bundle
+`main-6RK6TFC4.js`; backend 48-test suite green (EndpointRoleGuard 40 + AdminOrderService 8); deployed; live verified
+(serves `main-6RK6TFC4.js`, `/api/admin/orders?createdBy=1`=401 wired, backend "Started Application" clean).
+- **Order drill-down by salesperson (backend)**: `AdminOrderController.list` gained an optional `?createdBy=<id>` param.
+  It narrows the list to that salesperson's orders **only when the caller is ADMIN** — every other role stays bound to
+  its server-derived `creatorScope` (can't be spoofed/widened). No new endpoint, no migration.
+- **Orders page**: `OrdersService.page` sends `createdBy`; `orders.component` reads `?createdBy=`/`?name=` query params
+  (`createdByFilter`/`createdByName` signals), passes them to `load()`, shows a dismissible "Showing orders by <name>"
+  green chip above the status tabs with `clearCreatedBy()` (nulls signals, strips the query params, reloads);
+  `hasFilters()`/`clearFilters()` include it.
+- **Leaderboard**: rows are clickable **for ADMIN only** (`canDrill()` via AuthService) → navigate `/orders?createdBy=
+  <row.salespersonId>&name=<row.name>`; admin rows get role=button + hover (`.lb-click`) + chevron. Salespeople keep
+  non-interactive rows (they can't see others' orders).
+- **Salespeople cards redesigned** (`salespeople.component.*`): replaced the alarming red "No govt ID"/"No photo" lines
+  with neutral grey **ID ✓/—** and **Photo ✓/—** chips (`.sp-chip`/`--on`, green only when present); the Success KPI now
+  uses `successClass(id)` which returns **neutral** when there's no delivery history (deliveredCount+failedCount===0) so
+  a 0% figure isn't red, amber/red only for genuinely low rates WITH history; added an ADMIN-only full-width **"View
+  orders"** button per card → `/orders?createdBy=&name=` (card body still opens the 360 drawer).
+- **Inventory mobile cards** (`inventory.component.html`): replaced the `<admin-row-actions>` kebab (an absolutely-
+  positioned dropdown that overflowed onto the next card) with **visible buttons** — Restock + Adjust (shown only when
+  `trackInventory`) + a compact History icon button — wired to the existing `openRestock`/`openAdjust`/`openHistory`
+  handlers via the existing `.shifa-inv__actions` flex styles. Desktop table keeps its kebab (fine there).
+- Deployed via `push-to-new-server.ps1 -SkipBuild` (107 MB fat JAR). No migration.
+
+## Accounting pages mobile-first UI redesign (Chart of Accounts / Voucher Entry / Day Book) — implemented & DEPLOYED (2026-10-01)
+Client: these three ledger pages were poorly designed (CoA repeated an "Asset" nature pill on every row; Voucher Entry's
+line editor was a cramped 4-col table on mobile; Day Book's 6-col table overflowed horizontally and cut off the totals).
+Frontend-only (templates + component CSS); no backend / `ledger.service` / `ledger.model` change. Bundle
+`main-UA7MNLPC.js`; built clean; deployed `-SkipBuild`; live serves `main-UA7MNLPC.js`, backend active.
+- **Chart of Accounts** (`ledger/chart-of-accounts.component.html/.css`): nature pill now shows **only on root groups**
+  (`node.depth===0`) — children + ledgers inherit it, killing the "Asset Asset Asset" noise. Groups vs ledgers are now
+  visually distinct (brand-green `ti-folder` + tinted bg + bold for groups; muted `ti-file-invoice` for ledgers) and
+  every indented row gets a thin left-border tree guide so nesting reads. Add-ledger "+" / delete buttons are quiet
+  ghost icons that fade in on hover (`.shifa-coa__action`, with a `@media (hover:none)` fallback). `controlKey` restyled
+  as a small muted monospace chip. Add forms + state-panels unchanged.
+- **Voucher Entry** (`ledger/voucher-entry.component.html/.css`): the Lines card is now responsive — desktop keeps the
+  table (`d-none d-md-block`); **mobile (<768px) renders each line as a stacked `.ve-linecard`** (Line N + remove, full-
+  width ledger select, then Dr/Cr toggle + amount in a row, ≥2.75rem tap targets). Balance footer is a prominent sticky
+  `.ve-footer` (Total Dr/Cr + Balanced/Difference badge). All formControl bindings + `toggleSide`/`removeLine`/
+  `lineInvalid`/`drcrLabel` preserved. Voucher-details + reverse/posted-voucher sections untouched.
+- **Day Book** (`ledger/day-book.component.html/.css`): voucher list is now responsive — desktop keeps `db-table`
+  (`d-none d-md-block`); **mobile renders each voucher as a `.db-vcard`** (ref + type pill + date + narration + per-line
+  rows with Dr/Cr amounts, credits lighter/green) and a separate **grand-totals card** below that never overflows (fixes
+  the cut-off "₹2,00…"). Toolbar + 3 KPI tiles unchanged. Uses existing `d.rows`/`row.lines`/`ledgerName`/`typeLabel`/
+  `typePillClass`/`money`/`n`/`totalDebit`/`totalCredit`.
+- **Scanned the other 5 ledger pages** (trial-balance, ledger-statement, balance-sheet, profit-and-loss, cash-flow):
+  all already wrap their wide tables in `.table-responsive` so they scroll inside the card — no change needed.
+
+## App-wide hardening punch-list — implemented & DEPLOYED (2026-10-02)
+Engineering-review punch-list (security/correctness/ops/dead-code). Full backend `mvn clean test` green
+(**ApplicationContextLoadsTest** + all suites; the two stale packing-redesign tests were fixed, see below).
+Deployed to the live AWS EC2 box (`15.252.230.73`, `https://shifa.weblithic.online/`) via
+`deploy\push-to-new-server.ps1 -SkipBuild`; bundle `main-EXHRV4Z7.js`; **Flyway applied V71** then a 2nd deploy
+with the health-config fix (no migration). Backups `~/shifa-backup-2026-10-02-030834.sql` + `-031455.sql`.
+- **P1.1 context-load smoke test**: `backend/src/test/java/com/shifa/oms/ApplicationContextLoadsTest.java`
+  (`@SpringBootTest @ActiveProfiles("smoketest")`) boots the FULL context on in-memory **H2** so missing-`@Autowired`/
+  broken DI fails the build (the class of bug that bit us before). New `src/test/resources/application-smoketest.yml`
+  (H2 `MODE=MySQL`, `ddl-auto: create-drop`, Flyway off, `connection-init-sql: ""` to drop the MySQL `SET NAMES`,
+  all integrations MOCK/off). Added **H2 test dependency** to pom. H2 schema-gen tolerated the `LONGTEXT`/`json`
+  `columnDefinition`s fine. (The existing `WhatsappTemplateEncodingIT` still needs a live MySQL — excluded from the
+  DB-less run via `-Dtest=!WhatsappTemplateEncodingIT`.)
+- **P1.2 JWT fail-fast**: `auth/JwtSecretValidator.java` (`@Profile("prod")`, `@PostConstruct`) aborts prod startup if
+  `JWT_SECRET` is blank / the committed default / `<32` chars. Verified live: "JWT secret validated for production
+  profile (length=64 chars)". The live server already had a real 64-char secret.
+- **P1.3 login rate-limit**: `auth/LoginRateLimiter.java` (in-memory, per `username|clientIp`, 5 failures → 15-min
+  lockout, 15-min sliding window, Clock dual-ctor) + `TooManyLoginAttemptsException extends ApiException(429)`.
+  `AuthController.login` resolves client IP (`X-Forwarded-For` first entry else `getRemoteAddr`), checks lockout before
+  and records success/failure around `authService.login` (re-throws the original 401). **In-memory = single-instance
+  only; move to Redis if horizontally scaled.**
+- **P1.4 secrets hygiene (code/docs)**: `backend/local-secrets.properties` was already gitignored. Added redacted
+  `backend/local-secrets.properties.example` + `docs/SECURITY.md` (rotation steps for JWT/Gmail/QuikShipX/DB).
+  **ACTION STILL ON USER**: rotate the live Gmail app password + QuikShipX secret in their provider portals (agent
+  can't do that).
+- **P2.5 remittance per-row isolation**: new `reconciliation/RemittanceRowProcessor` (`@Component`, `processRow`
+  `@Transactional(REQUIRES_NEW)`) holds all match+settle+deliver logic moved out of `RemittanceImportService`;
+  the service is now NON-transactional and loops per row inside try/catch (a row failure → ERROR row + log.warn, the
+  rest of the batch still commits). `DATE_FORMATS` is package-visible static on the service. Test updated to build the
+  real processor (direct call = REQUIRES_NEW inert in the unit test; real per-row tx in prod).
+- **P2.6 actuator**: `spring-boot-starter-actuator` in pom; `/actuator/health` + `/health/**` permitAll, `/actuator/**`
+  authenticated (`SecurityConfig`); `application.yml` exposes ONLY `health` (`show-details: when_authorized`, probes on).
+  **GOTCHA fixed in a 2nd deploy**: the default `mail` health indicator opens an SMTP connection on every call and
+  returned the top-level `/actuator/health` as **503 DOWN** (the live SMTP egress/creds fail), even though liveness/
+  readiness were UP — so a monitor on `/actuator/health` would wrongly see "down". Fix: `management.health.mail.enabled:
+  false`. Now `/actuator/health` = 200 `{"status":"UP"}`. Lesson: the mail health indicator pings SMTP — disable it (or
+  it gates health on an optional outbound integration).
+- **P2.7 dashboard aggregation (scoped)**: added **`V71__dashboard_aggregation_indexes.sql`** (highest migration is now
+  **V71**) — `ix_orders_status_created (order_status, created_at)`, `ix_orders_source (source)`,
+  `ix_receivables_type_settled (type, settled)` (plain CREATE INDEX, V14 style). Added
+  `ReceivableRepository.sumAmountByTypeAndSettled(type, settled)` (JPQL `COALESCE(SUM)`) + `countByTypeAndSettledFalse`;
+  wired both into `RoleDashboardService.accountant()/unsettledTotal()` + `DashboardMetricsService.unsettledTotal()/
+  countUnsettled()` (pure drop-in sums, exact same semantics, no more loading every receivable row). **Deliberately LEFT
+  the multi-dimensional order-status counting** (`admin/packing/salesperson/teamLead` byStatus via the pure
+  `DashboardQueue` classifier) + `ChannelDashboardService`/`ChannelSummaryService` `findAll()` in-memory — a SQL rewrite
+  would duplicate the `DashboardQueue`/`OrderStatusGroup` classifiers in SQL and risk KPI regressions for low payoff at
+  current volume (`ChannelSummaryService` even documents the in-memory choice as intentional). The index helps those
+  scans at the DB level regardless.
+- **P3.8 JAVA_OPTS quoting**: quoted `JAVA_OPTS` in `deploy/shifa.env.example`. **Also fixed the LIVE
+  `/etc/shifa/shifa.env`** (it had unquoted `JAVA_OPTS=-Xms256m -Xmx640m -XX:+UseSerialGC` and `BACKUP_CRON=0 0 2 * * *`
+  → "command not found" when `aws-apply.sh` sources it). GOTCHA: a `sed` with a `\\1` backreference over the SSH/shell
+  layers mis-wrote both lines to literal `"\1"` — had to rewrite them with whole-line `sed 'Ns|.*|KEY="value"|'`. A
+  backup `/etc/shifa/shifa.env.bak-<ts>` was taken first. Both now correctly quoted + source cleanly.
+- **P3.10 dead-code**: removed the frontend-only unused `PrintLabelRow`/`PrintLabelQueue` interfaces +
+  `PackingService.printLabelQueue()` (no component used them). **KEPT the backend `printLabelQueue()` + DTOs + the
+  `/api/packing/print-labels` endpoint + `PackingPrintLabelsTest`** — that's a live, tested endpoint, NOT dead code.
+  Swept ~45 scratch `.log`/`.txt` build logs from `backend/` (all gitignored; use `delete_file`, not `del` — the shell
+  mangles `cd...;`).
+- **Stale tests fixed (left broken by the earlier packing-workflow redesign, surfaced by the full `clean test`)**:
+  (1) `PackingPrintLabelsTest.printLabelQueueSplitsShopifyTrackingIdAssignedByPrinted` — `printLabelQueue()` was repointed
+  SHOPIFY+COURIER_ASSIGNED → non-in-house `LABEL_GENERATED`; test now stubs `findByOrderStatusOrderByCreatedAtDesc(
+  LABEL_GENERATED)` + sets orders `LABEL_GENERATED`. (2) `OrderWorkflowHistoryAppendPropertyTest` — removed the now-illegal
+  `LABEL_GENERATED → COURIER_ASSIGNED` system edge from its case table (the redesign deleted the QuikShip fast-forward;
+  flow is now `LABEL_GENERATED→PACKED→HANDED_TO_DELIVERY→COURIER_ASSIGNED`).
+- **Build/deploy mechanics reminder**: this shell mangles output (exit -1) and `cd...;`-prefixed commands — run builds
+  as **detached** `Start-Process powershell -File <script.ps1>` writing to a `.log`, poll with `read_file`. `mvn` is at
+  `C:\Users\...\pleiades.java-extension-pack-jdk\maven\latest\bin\mvn.cmd` (not plain `mvn` in non-interactive shells).
+  Avoid cmd `-Dtest=!X` quoting traps — pass it from PowerShell (`& $mvn '-Dtest=!X' ...`). Wait for `spring-boot:
+  repackage` (fat JAR ~110 MB, 110,194,601 bytes) before copying.
+
+## Role-productivity enhancement wave — Batches A/B/C/D (DEPLOYED LIVE 2026-10-02, V72+V73)
+A four-batch wave across all 8 roles: command palette + real-time notifications (A), list export (B), six role
+features (C), auto-approval + dashboard perf (D). Each batch was built → full `mvn clean test` (829 tests, 0 failures) →
+frontend build → deployed via `deploy\push-to-new-server.ps1 -SkipBuild` → verified live. All LIVE at
+`https://shifa.weblithic.online/` (EC2 `15.252.230.73`). Two migrations added this wave: **V72** (payment-screenshot
+content hash) + **V73** (settings auto-approval) — **highest migration is now V73.**
+
+### Batch A — Command palette + all-role real-time notifications (DEPLOYED, main-S462BLC4.js, no migration)
+- **Command palette** ALREADY EXISTED (`shell/global-search.component` + `global-search.service` → `GET /api/admin/search`,
+  Ctrl/Cmd+K). Widened `AdminSearchController` `@PreAuthorize` to add TEAM_LEAD + PAYMENT_VERIFIER; added role-aware
+  `QUICK_ACTIONS` (New order/Approval queue/Orders/My day/My leads/Payments/Packing/Team performance/GST/Reports/
+  Reconciliation, each gated via `auth.hasAnyRole`) prepended into the search results (keyboard-navigable).
+- **SSE to all staff roles** (was ADMIN-only): reworked `AdminSseBroker` to track `Connection(emitter, role, userId)` with
+  `register(role,userId)`, `hasActiveAdmins()`, `broadcastToAdmins()` (admin-only events), and NEW
+  `sendToRecipients(event,data,role,userId)` (admin always + role/user match). `AdminEventController` `GET /api/admin/events`
+  widened to all 7 staff roles (resolves principal role+userId via `CurrentUserService`). `StaffNotificationDispatcher` ctor
+  gained `AdminSseBroker`; `pushLive()` emits a `NOTIFICATION` SSE (type/title/severity only) to recipients after
+  dispatchToRole/dispatchToUser (best-effort). Frontend `admin-events.service.connect()` now runs for all 7 staff roles;
+  `dashboard.model` `AdminEventType += 'NOTIFICATION'`; the bell badge bumps off the live event stream (no bell change).
+- **Stale tests fixed by the clean build**: `LedgerPostingDrainerFailureTest` RecordingNotificationDispatcher
+  `super(null,null)`→`super(null,null,null)` (3rd missed AdminSseBroker ctor site); `OrderStatusTransitionTablePropertyTest`
+  LABEL_GENERATED expected set → `{PACKED}` to match the real state machine.
+
+### Batch B — Orders list CSV/Excel export (DEPLOYED, main-OWQ326KH.js, no migration)
+- New `order/OrderExportService` reuses `AdminOrderService.listOrders` + `CsvReportExporter`/`ExcelReportExporter` +
+  `TabularData` (MAX_ROWS=5000; columns Order Code/Customer/Mobile/Status/Payment/Source/Salesperson/Total/COD/Created).
+  `AdminOrderController` gained `GET /api/admin/orders/export` (`hasAnyRole ADMIN/ACCOUNTANT/SALESPERSON/TEAM_LEAD/CA`,
+  mirrors the list's creatorScope + ADMIN createdBy narrowing, audits `ORDERS_EXPORTED`). Frontend
+  `OrdersService.exportOrders(query,format)` + Export(xlsx)/CSV buttons on the Orders page (signal-driven blob download).
+  **Saved views ALREADY EXISTED** (`saved-views.util.ts` + orders.component applyView/saveView/deleteView) — not rebuilt.
+  `EndpointRoleGuardIntegrationTest` gained an `orderExportService` @Bean + `StubAdminOrderService.listOrders` override.
+
+### Batch C — Six role features (DEPLOYED, main-WV6SHPBU.js, migration **V72**)
+- **Admin audit-log diff viewer** (frontend-only): `audit/audit-diff.util.ts` `parseAuditDiff`/`hasAuditDiff` (regex over the
+  existing free-text summary `Label: 'old' → 'new'`); audit.component shows an "N changes" toggle → before/after diff rows
+  (red strike / green). No DB diff column — `ORDER_UPDATED` already stuffs old→new into the summary.
+- **Payment-verifier duplicate-screenshot detection** (**V72** `order_payment_screenshots.content_hash VARCHAR(64)` +
+  `ix_order_payment_screenshots_hash`): `OrderPaymentScreenshot` gained `contentHash` (SHA-256 computed at upload in
+  `OrderService.screenshotHash`, null-safe); new `OrderPaymentScreenshotRepository` (native `findOtherOrderIdsWithHash`/
+  `findHashesForOrder`); `PaymentVerificationService` ctor gained the repo (nullable; primary now 7-arg) + `duplicateOrderCodes(order)`
+  into the queue; `PaymentQueueRow.duplicateOrderCodes`. Frontend payments page shows a red "Duplicate proof" badge/icon.
+- **Accountant/CA COD aging + courier SLA** (migration-free): `reconciliation/CodAgingService` (Clock dual-ctor @Autowired,
+  `@Value app.reconciliation.cod-sla-days:14`, buckets 0-7/8-15/16-30/30+ over unsettled COD by `createdAt` age, overSla
+  count/amount) + `CodAgingResponse`; `ReconciliationController` `GET /api/recon/cod-aging` (ADMIN/ACCOUNTANT/CA). Frontend
+  reconciliation page shows an SLA alert banner + 4 bucket cards.
+- **Scheduled weekly report delivery (DEFAULT OFF)**: reused the pure `DailyReport.build` over a 7-day window.
+  `DailyReportService.sendConsolidatedReportForRange(from,to)`; `MailProperties` gained `weeklyEnabled` (default FALSE);
+  new `WeeklyReportJob` `@Scheduled(cron REPORT_WEEKLY_CRON default Mon 08:30)` gated by `isWeeklyEnabled()`;
+  `app.mail.weekly-enabled: ${REPORT_WEEKLY_ENABLED:false}`. Admin opts in via env. (Updated `EmailOutboxLifecyclePropertyTest`
+  MailProperties ctor site: +trailing null.)
+- **Team-lead monthly target pacing** (frontend-only): `team-performance.component` `pacing` computed (month-end revenue
+  projection from the period run rate) + an on-pace/behind alert card.
+- **Packing throughput** (migration-free): `RoleDashboardSummary.Packing` gained `packedPerHour` (5-arg + a 4-arg
+  back-compat factory); `RoleDashboardService.packing()` computes packed-today ÷ hours-elapsed; dashboard shows an "N/hour"
+  subtitle under the Packed-today tile.
+- **Salesperson task inbox** (frontend-only): dashboard.component `taskInbox` computed merges reorder-due (overdue first,
+  highest priority) + win-back (by lapsed days × value) into one ranked list (slice 8); renders a "My tasks" card
+  (coloured priority dot, tel: + WhatsApp per row) above the win-back/reorder cards. Reuses the existing MyDay/win-back/
+  reorder-due signals — no new backend.
+
+### Batch D — Config-driven auto-approval + dashboard SQL-aggregation perf (DEPLOYED, main-V46GP4C5.js, migration **V73**)
+- **Order auto-approval (DEFAULT OFF, admin-enabled from Settings)** — **V73** `app_settings.auto_approve_enabled BOOLEAN
+  NOT NULL DEFAULT FALSE` + `auto_approve_max_amount DECIMAL(12,2) NULL`. When enabled, a newly-punched order that is **fully
+  prepaid** (no COD balance), **at or below** the configured max total, and from a **low-risk customer**
+  (`CustomerRiskCalculator.assess` == LOW over the customer's delivery history) is auto-approved at creation via the SAME
+  central workflow the admin approve uses (`OrderWorkflowService.applyTransition(APPROVED, Actor.user("AUTO_APPROVAL",
+  Role.ADMIN, "AUTO_APPROVAL"))` + `labelService.generateInternalLabelOnApproval` + `outboxEventPublisher.publishLedgerPost("ORDER", id)`
+  — mirrors the Shopify `autoApprove` chain). Anything with a COD balance, above threshold, or medium/high-risk routes to
+  manual approval. Implemented in `OrderService.maybeAutoApprove(saved, calc)` called after save in `createSalespersonOrder`
+  (before `publishAwaitingApproval`, which already no-ops once APPROVED). Best-effort try/catch (a config/label hiccup never
+  fails the punch). `OrderService` gained a NEW 16-arg `@Autowired` ctor (+ `SettingsService`, `LabelService`, both nullable);
+  the old 14-arg ctor DELEGATES passing null,null so existing test ctor sites compile unchanged and auto-approval is a no-op
+  in unit tests. `AppSettings`/`SettingsRequest`/`SettingsResponse`/`SettingsService.update` thread the two fields (updated
+  the 2 positional `new SettingsRequest(...)` sites in `SettingsServiceTest`). Frontend: new Settings **"Automation"** tab
+  (`settings.component` + `AppSettings` model) with an enable switch + max-amount input (round-trips via the one Settings form).
+- **Dashboard SQL-aggregation perf pass** (scoped to the hot `RoleDashboardService` path, mathematically parity-preserving,
+  no migration): `OrderRepository` gained native GROUP BY aggregates + `StatusCountRow` projection
+  (`statusCounts()`, `statusCountsForCreator(Long)`, `statusCountsForCreatorIn(Collection)`) + `countPackedBetween(dayStart,dayEnd)`.
+  `DashboardQueue` gained `countFrom(Map<OrderStatus,Long>)`. `RoleDashboardService.admin()/packing()/salesperson()/teamLead()`
+  now use these GROUP BY queries instead of `findAll()`/`findAllScoped(In)` + Java loops (same figures; helpers
+  `toStatusMap`/`byStatusNames`; `packedToday()` uses the half-open day window = old `updatedAt.toLocalDate()==today`). Ctor
+  UNCHANGED (guard-test stub unaffected). **DELIBERATELY LEFT AS-IS** (documented follow-up — complex windowed revenue/trend
+  aggregation, no parity-test harness, higher risk): `DashboardMetricsService` (liveStats/activityCards/loadRecords),
+  `ChannelDashboardService.dashboard`, `ChannelSummaryService.summary`. No `RoleDashboardServiceTest`/`@DataJpaTest` exists;
+  parity is mathematical (same status sets summed) and `ApplicationContextLoadsTest` boots the new native queries on H2.
+
+### Build/deploy mechanics reaffirmed this wave (IMPORTANT)
+- Reusable scripts live in `C:\shifa-buildsrc`: `run-test.ps1` (clean test excl `WhatsappTemplateEncodingIT`), `run-pkg.ps1`
+  (package), `run-fe.ps1` (build:admin), `run-deploy.ps1` (deploy `-SkipBuild`). Sync src with `robocopy "...\backend\src"
+  "C:\shifa-buildsrc\backend\src" /E ... /PURGE` + copy pom.xml; build DETACHED via `Start-Process -WindowStyle Hidden
+  -File <script>`; poll by WRITING a fresh timestamped status file (the read_file dedup cache serves stale content on repeat
+  reads of the same path) and `read_file`-ing it. Full suite ~15-18 min, ends ~3811 log lines; wait for `spring-boot:repackage`
+  (fat JAR ~110.2 MB) before copying to `backend\target`. **The local `run-deploy.ps1` log can hang on "Restarting backend..."
+  if the SSH stdout stalls even though the remote `aws-apply.sh` COMPLETED — verify authoritatively via direct SSH to the box**
+  (`systemctl is-active`, journalctl Flyway "applied Vnn"/"Started Application", `curl` health/site=200 + endpoint=401 +
+  `main-*.js` bundle hash). Inline `Start-Sleep`/spin-waits in the one-shot shell get cut off (exit -1); a managed background
+  `Start-Sleep` process (`control_pwsh_process`) or a `while(-not Test-Path){Start-Sleep}` loop are the reliable waits.
+
+## QuikShipX reliability + workflow batch (DEPLOYED LIVE 2026-10-02, no migration — bundle main-B6KZON74.js)
+Client reported salesperson/portal orders sitting in "Orders to pack" showing "Tracking ID Assigned" but with
+NO visible tracking id. Diagnosed from LIVE prod data (not guessed): the allot flow WORKS when QuikShipX is healthy
+(create→confirm→allot→AWB), but QuikShipX's `allot-tracking-id-v1` returned **HTTP 500** during a ~20-min outage
+window; the outbox retry ladder (was 5 attempts / 30s backoff ≈ 2 min) exhausted and marked the `QUIKSHIPX_ALLOT`
+event **FAILED permanently** with no re-drive → 5 orders stranded at "Confirmed", `awb=NULL`, forever. The DB proof:
+shipments with a `shipper_order_id` but `awb=NULL` + `quikshipx_status='Confirmed'`, and journal `allot-tracking-id
+returned HTTP 500 (retryable=true)` → `QUIKSHIPX_ALLOT ... failed permanently after 6 attempt(s)`. The outbox table is
+named **`outbox`** (not `outbox_events`); columns id/aggregate_type/aggregate_id/event_type/payload/status/attempts/
+next_attempt_at/last_error/created_at.
+- **IMMEDIATE prod recovery (done first, before the deploy):** reset the FAILED QuikShipX outbox rows to PENDING
+  (`UPDATE outbox SET status='PENDING', attempts=0, next_attempt_at=NOW(), last_error=NULL WHERE event_type LIKE
+  'QUIKSHIPX%' AND status='FAILED'`) via a `sudo bash` script that sources `/etc/shifa/shifa.env` + `MYSQL_PWD`. The
+  15s drainer re-ran them against the now-healthy API and allotted the AWBs (allot is idempotent). Orders 61/62/64/70/71/73.
+- **Allot resilience (code):** `application.yml` quikshipx `max-attempts` 5→**12**, `retry-backoff` PT30S→**PT2M** (env
+  `QUIKSHIPX_RETRY_BACKOFF`) — ~24 min tolerance for a transient outage. New `OutboxEvent.requeue()` (PENDING, attempts
+  0, clear error, due now). `QuikShipXDrainer` gained a **self-healing @Scheduled re-drive** (`scheduledRedrive`,
+  fixedDelay `app.quikshipx.redrive-interval-ms` default **600000**=10 min → `redriveFailedTransient()`): re-queues
+  FAILED `QUIKSHIPX%` events whose `last_error` `looksTransient` (http 5xx/408/429, timeout, connect, 'not ready'/'not
+  created yet'/'will retry') back to PENDING; genuinely-permanent (bad address/HSN) left FAILED for manual review.
+  `OutboxEventRepository.findByStatusAndEventTypePrefix`.
+- **Per-order retry action (generalizes Shopify-only recover to ANY order):** `QuikShipXService` ctor gained
+  `OutboxEventRepository` (new last param — no test ctor exists; Spring-wired, ApplicationContextLoadsTest validates) +
+  `RetryResult` record + `retryForOrder(orderId)` (@Transactional: no-op if disabled/in-house/already-has-AWB; else
+  re-queue the order's FAILED quikshipx events, or publish create if no shipment, or publish allot if shipment-but-no-AWB;
+  audits QUIKSHIPX_PUBLISHED). `OutboxEventRepository.findByAggregateAndEventTypePrefix`. New endpoint **POST
+  `/api/orders/{orderId}/quikshipx/retry`** (ADMIN) in `QuikShipXController`. Frontend `OrdersService.quikShipRetry(id)` +
+  order drawer **"Retry tracking ID"** button (btn-outline-warning) shown when admin && `needsTrackingId(order)`
+  (quikShipXStatus present && no quikShipXLabelUrl && not in-house — the "stuck at Confirmed, no AWB" signal; NOTE
+  OrderResponse does NOT expose the AWB, so the label-url absence is the gate, not an awb field).
+- **Surface the tracking id on packing "Orders to pack":** backend already enriched those rows with `awb`
+  (`PackingService.rowsWithLabels`); fixed the FRONTEND `packing/scan.component.html` Orders-to-pack Status cell to show
+  the `quikShipXStatus` badge + the `awb` (ti-barcode) when present (previously only a plain status badge → the id was
+  invisible — that was the "can't see the tracking id" symptom).
+- **Accountant can approve (client ask):** `TransitionAuthority` PENDING_ADMIN_APPROVAL→APPROVED now permits
+  `Role.ADMIN, Role.ACCOUNTANT` (reject/cancel stay ADMIN). `AdminOrderController.approve` gained method-level
+  `@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT')")` (override of the class ADMIN). The APPROVED→LABEL_GENERATED label
+  step uses `LabelService.applyTransition` via the state machine directly (bypasses the authority layer), so unaffected.
+  Updated 3 tests: `EndpointRoleGuardIntegrationTest.approveIsAdminOrAccountant`, `TransitionAuthorityPropertyTest`,
+  `OrderWorkflowHistoryAppendPropertyTest`.
+- **Default courier = QuikShip (integration is live):** `new-order.component.ts` both submit payloads deliveryMethod
+  `'IN_HOUSE'`→`'QUIKSHIPX'`. Backend already defaulted QUIKSHIPX everywhere; the frontend was forcing IN_HOUSE which
+  suppressed the whole QuikShipX pipeline. Admin can still override to in-house at approval; Counter Sale still forces in-house.
+- **Label choice in the order drawer:** ALREADY present ("Our Label" internal PDF + "QuikShip Label" opening the
+  QuikShipX `labelUrl`, disabled-until-assigned) — no change needed; verified.
+- **ORDER-NUMBER FORMAT CHANGE WAS DROPPED** at the client's request (they're reconciling the last 2 days of orders and a
+  code-format change would cause a mismatch). Order codes stay `SHR-yyyyMMdd-XXXX` for both portal and Shopify. If
+  revisited later: pass OrderSource into OrderCodeGenerator + a monthly `order_number_sequence` table (pessimistic-lock
+  pattern like LedgerVoucherSequence/invoice_sequence) → `SHR-YYMM<seq>-PO`/`-SP`.
+- Verified: `mvn clean test` = **829 tests, 0 failures**; frontend main-B6KZON74.js; fat JAR 110,221,082 bytes; deployed
+  via `push-to-new-server.ps1 -SkipBuild`; DB backup `~/shifa-backup-2026-10-02-101115.sql`; Flyway "No migration
+  necessary" (V73 still highest); Started Application 25.7s; health/site=200, endpoint=401. **No migration this batch.**
+- GOTCHA fixed mid-build: the drawer HTML first referenced `order.quikShipXAwb` which exists on `OrderSummary` but NOT on
+  `OrderDetail`/`OrderResponse` → `TS2339` frontend build failure. Switched the retry-button gate to `needsTrackingId()`
+  (uses the already-present `quikShipXStatus`/`quikShipXLabelUrl`). Lesson: OrderDetail exposes quikShipXStatus/
+  LabelUrl/OrderId/Test but NOT the AWB.

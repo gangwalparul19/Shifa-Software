@@ -110,3 +110,105 @@
 }
 
 .db-empty { text-align: center; color: var(--db-muted); padding: 2rem 1rem; }
+
+/* ---- Mobile voucher cards (<768px) ------------------------------------ */
+.db-cards {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.db-vcard {
+  border: 1px solid var(--db-line);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  background: #fff;
+}
+.db-vcard__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.db-vcard__ref {
+  font-weight: 700;
+  color: var(--db-ink);
+  overflow-wrap: anywhere;
+}
+.db-vcard__date {
+  font-size: 0.78rem;
+  color: var(--db-muted);
+  margin-top: 0.15rem;
+}
+.db-vcard__narration {
+  font-size: 0.86rem;
+  color: var(--db-ink);
+  margin-top: 0.4rem;
+  overflow-wrap: anywhere;
+}
+.db-vcard__lines {
+  margin-top: 0.6rem;
+  border-top: 1px dashed var(--db-line);
+  padding-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.db-vline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.86rem;
+}
+.db-vline__acct {
+  color: var(--db-ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* Credit lines read a touch lighter so Dr vs Cr is distinguishable. */
+.db-vline--cr .db-vline__acct {
+  color: var(--db-muted);
+}
+.db-vline__amt {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--db-ink);
+  white-space: nowrap;
+}
+.db-vline--cr .db-vline__amt {
+  color: var(--db-green);
+}
+.db-vline__drcr {
+  font-weight: 600;
+  color: var(--db-muted);
+}
+
+/* ---- Grand totals card (never overflows) ------------------------------ */
+.db-grandtotals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 2rem;
+  padding: 0.85rem 1.1rem;
+  background: var(--db-green-050);
+}
+.db-grandtotal {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+.db-grandtotal__label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--db-muted);
+}
+.db-grandtotal__value {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--db-ink);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}

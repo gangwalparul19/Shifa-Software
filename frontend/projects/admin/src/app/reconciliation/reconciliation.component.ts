@@ -11,6 +11,7 @@ import {
   RemittanceRowStatus,
 } from './reconciliation.service';
 import {
+  CodAging,
   CourierSummary,
   ReceivableRow,
   Segregation,
@@ -88,6 +89,46 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
   protected readonly unsettled = signal<UnsettledCod[]>([]);
   protected readonly segregation = signal<Segregation | null>(null);
   protected readonly claims = signal<ReceivableRow[]>([]);
+  /** COD aging buckets + courier-SLA flag (cod-aging enhancement). */
+  protected readonly codAging = signal<CodAging | null>(null);
+
+  // --- Client-side paging for the Unsettled-COD + Pending-Claims tabs -----
+  protected readonly unsettledPage = signal(0);
+  protected readonly unsettledSize = signal(readPageSize('unsettledCod', 10));
+  protected readonly unsettledTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.unsettled().length / this.unsettledSize())),
+  );
+  protected readonly unsettledPageItems = computed<UnsettledCod[]>(() => {
+    const s = this.unsettledPage() * this.unsettledSize();
+    return this.unsettled().slice(s, s + this.unsettledSize());
+  });
+
+  protected readonly claimsPage = signal(0);
+  protected readonly claimsSize = signal(readPageSize('pendingClaims', 10));
+  protected readonly claimsTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.claims().length / this.claimsSize())),
+  );
+  protected readonly claimsPageItems = computed<ReceivableRow[]>(() => {
+    const s = this.claimsPage() * this.claimsSize();
+    return this.claims().slice(s, s + this.claimsSize());
+  });
+
+  goToUnsettledPage(p: number): void {
+    this.unsettledPage.set(p);
+  }
+  setUnsettledSize(size: number): void {
+    this.unsettledSize.set(size);
+    writePageSize('unsettledCod', size);
+    this.unsettledPage.set(0);
+  }
+  goToClaimsPage(p: number): void {
+    this.claimsPage.set(p);
+  }
+  setClaimsSize(size: number): void {
+    this.claimsSize.set(size);
+    writePageSize('pendingClaims', size);
+    this.claimsPage.set(0);
+  }
 
   // --- UI state -----------------------------------------------------------
   protected readonly tab = signal<Tab>('receivables');
@@ -176,8 +217,19 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     this.refreshReceivables();
     this.refreshUnsettled();
     this.refreshSegregation();
+    this.refreshCodAging();
     this.refreshClaims(() => {
       this.loading.set(false);
+    });
+  }
+
+  /** Loads the COD aging buckets + SLA flag (non-fatal on error). */
+  private refreshCodAging(): void {
+    this.service.codAging().subscribe({
+      next: (a) => this.codAging.set(a),
+      error: () => {
+        /* non-fatal; the aging widget simply doesn't render */
+      },
     });
   }
 
@@ -281,6 +333,10 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     this.service.unsettledCod().subscribe({
       next: (rows) => {
         this.unsettled.set(rows);
+        const maxPage = Math.max(0, this.unsettledTotalPages() - 1);
+        if (this.unsettledPage() > maxPage) {
+          this.unsettledPage.set(maxPage);
+        }
         done?.();
       },
       error: () => done?.(),
@@ -301,6 +357,10 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     this.service.pendingClaims().subscribe({
       next: (rows) => {
         this.claims.set(rows);
+        const maxPage = Math.max(0, this.claimsTotalPages() - 1);
+        if (this.claimsPage() > maxPage) {
+          this.claimsPage.set(maxPage);
+        }
         done?.();
       },
       error: () => done?.(),
@@ -469,7 +529,7 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
         this.remittanceBusy.set(false);
         this.showToast(
           'ok',
-          `Remittance import complete: ${res.settled} settled, ${res.mismatched} need review.`,
+          `Remittance import complete: ${res.settled} settled, ${res.mismatched + res.notFound + res.errors} need review.`,
         );
       },
       error: (err: HttpErrorResponse) => {
@@ -484,6 +544,8 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     switch (status) {
       case 'SETTLED':
         return 'done';
+      case 'ALREADY_SETTLED':
+        return 'progress';
       case 'MISMATCH':
         return 'pending';
       case 'ERROR':

@@ -126,8 +126,8 @@ public class WebPushService {
         ObjectNode notification = root.putObject("notification");
         notification.put("title", title == null ? "Shifa OMS" : title);
         notification.put("body", body == null ? "" : body);
-        notification.put("icon", "/icons/shifa-icon.svg");
-        notification.put("badge", "/icons/shifa-icon.svg");
+        notification.put("icon", "/logo.png");
+        notification.put("badge", "/logo.png");
         ObjectNode data = notification.putObject("data");
         data.put("url", url == null || url.isBlank() ? "/" : url);
         try {

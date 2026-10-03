@@ -39,9 +39,20 @@ class TransitionAuthorityPropertyTest {
 
     private static List<Rule> rules() {
         List<Rule> r = new ArrayList<>();
-        r.add(rule(OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.APPROVED, false, Role.ADMIN));
+        r.add(rule(OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.APPROVED, false,
+                Role.ADMIN, Role.ACCOUNTANT));
         r.add(rule(OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.REJECTED, false, Role.ADMIN));
         r.add(rule(OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.CANCELLED, false, Role.ADMIN));
+        // Admin cancellation at any pre-delivery fulfilment stage (order-cancellation
+        // feature) — ADMIN only, no SYSTEM.
+        r.add(rule(OrderStatus.APPROVED, OrderStatus.CANCELLED, false, Role.ADMIN));
+        r.add(rule(OrderStatus.LABEL_GENERATED, OrderStatus.CANCELLED, false, Role.ADMIN));
+        r.add(rule(OrderStatus.PACKED, OrderStatus.CANCELLED, false, Role.ADMIN));
+        r.add(rule(OrderStatus.HANDED_TO_DELIVERY, OrderStatus.CANCELLED, false, Role.ADMIN));
+        r.add(rule(OrderStatus.COURIER_ASSIGNED, OrderStatus.CANCELLED, false, Role.ADMIN));
+        r.add(rule(OrderStatus.DISPATCHED, OrderStatus.CANCELLED, false, Role.ADMIN));
+        r.add(rule(OrderStatus.IN_TRANSIT, OrderStatus.CANCELLED, false, Role.ADMIN));
+        r.add(rule(OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CANCELLED, false, Role.ADMIN));
         // Payment-panel rejection (rejection-status feature): staff-only, no SYSTEM.
         r.add(rule(OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.PAYMENT_REJECTED, false,
                 Role.PAYMENT_VERIFIER, Role.ADMIN));

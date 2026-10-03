@@ -98,7 +98,24 @@
             <span class="shifa-mono shifa-ac__id">#{{ e.entityId }}</span>
           }
         </div>
-        @if (e.summary) {
+        @if (hasDiff(e)) {
+          <button type="button" class="btn btn-sm btn-link p-0 shifa-ac__difftoggle" (click)="toggleDiff(e)">
+            <i class="ti" [class.ti-chevron-right]="!isExpanded(e)" [class.ti-chevron-down]="isExpanded(e)"></i>
+            {{ diffOf(e).length }} change{{ diffOf(e).length === 1 ? '' : 's' }}
+          </button>
+          @if (isExpanded(e)) {
+            <div class="shifa-diff mt-1">
+              @for (c of diffOf(e); track c.field) {
+                <div class="shifa-diff__row">
+                  <span class="shifa-diff__field">{{ c.field }}</span>
+                  <span class="shifa-diff__before">{{ c.before || '—' }}</span>
+                  <i class="ti ti-arrow-right shifa-diff__arrow"></i>
+                  <span class="shifa-diff__after">{{ c.after || '—' }}</span>
+                </div>
+              }
+            </div>
+          }
+        } @else if (e.summary) {
           <div class="shifa-ac__summary">{{ e.summary }}</div>
         }
         <div class="shifa-ac__time">
@@ -145,7 +162,28 @@
                   <span class="text-secondary shifa-mono ms-1">#{{ e.entityId }}</span>
                 }
               </td>
-              <td class="text-secondary">{{ e.summary || '—' }}</td>
+              <td class="text-secondary">
+                @if (hasDiff(e)) {
+                  <button type="button" class="btn btn-sm btn-link p-0" (click)="toggleDiff(e)">
+                    <i class="ti" [class.ti-chevron-right]="!isExpanded(e)" [class.ti-chevron-down]="isExpanded(e)"></i>
+                    {{ diffOf(e).length }} change{{ diffOf(e).length === 1 ? '' : 's' }}
+                  </button>
+                  @if (isExpanded(e)) {
+                    <div class="shifa-diff mt-2">
+                      @for (c of diffOf(e); track c.field) {
+                        <div class="shifa-diff__row">
+                          <span class="shifa-diff__field">{{ c.field }}</span>
+                          <span class="shifa-diff__before" title="Before">{{ c.before || '—' }}</span>
+                          <i class="ti ti-arrow-right shifa-diff__arrow"></i>
+                          <span class="shifa-diff__after" title="After">{{ c.after || '—' }}</span>
+                        </div>
+                      }
+                    </div>
+                  }
+                } @else {
+                  {{ e.summary || '—' }}
+                }
+              </td>
               <td class="text-secondary">{{ e.createdAt ? (e.createdAt | istDate) : '—' }}</td>
             </tr>
           }

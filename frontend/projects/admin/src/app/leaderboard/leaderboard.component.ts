@@ -1,8 +1,9 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
-import { Money } from 'core';
+import { Router } from '@angular/router';
+import { AuthService, Money, Role } from 'core';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
-import { Leaderboard, MyDayService } from '../dashboard/my-day.service';
+import { Leaderboard, LeaderboardRow, MyDayService } from '../dashboard/my-day.service';
 
 /**
  * Sales leaderboard page — this-month ranking by revenue plus the signed-in
@@ -49,7 +50,15 @@ import { Leaderboard, MyDayService } from '../dashboard/my-day.service';
         <div class="card">
           <div class="list-group list-group-flush">
             @for (r of lb.rows; track r.salespersonId) {
-              <div class="list-group-item d-flex align-items-center gap-2" [class.lb-me]="r.isMe">
+              <div
+                class="list-group-item d-flex align-items-center gap-2"
+                [class.lb-me]="r.isMe"
+                [class.lb-click]="canDrill()"
+                [attr.role]="canDrill() ? 'button' : null"
+                [attr.tabindex]="canDrill() ? 0 : null"
+                (click)="canDrill() && viewOrders(r)"
+                (keydown.enter)="canDrill() && viewOrders(r)"
+              >
                 <span class="lb-rank" [class.lb-rank--top]="r.rank <= 3">{{ r.rank }}</span>
                 <div class="flex-fill min-w-0">
                   <div class="fw-medium text-truncate">
@@ -59,6 +68,9 @@ import { Leaderboard, MyDayService } from '../dashboard/my-day.service';
                   <div class="text-secondary small">{{ r.orders }} order{{ r.orders === 1 ? '' : 's' }}</div>
                 </div>
                 <span class="fw-semibold">{{ money(r.revenue) }}</span>
+                @if (canDrill()) {
+                  <i class="ti ti-chevron-right text-secondary"></i>
+                }
               </div>
             }
           </div>
@@ -87,11 +99,22 @@ import { Leaderboard, MyDayService } from '../dashboard/my-day.service';
       .lb-me {
         background: var(--shifa-green-050, #f2f9f5);
       }
+      .lb-click {
+        cursor: pointer;
+        transition: background-color 0.12s ease;
+      }
+      .lb-click:hover,
+      .lb-click:focus-visible {
+        background: var(--shifa-green-050, #f2f9f5);
+        outline: none;
+      }
     `,
   ],
 })
 export class LeaderboardComponent implements OnInit {
   private readonly service = inject(MyDayService);
+  private readonly router = inject(Router);
+  private readonly auth = inject(AuthService);
 
   protected readonly data = signal<Leaderboard | null>(null);
   protected readonly loading = signal(true);
@@ -99,6 +122,22 @@ export class LeaderboardComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
+  }
+
+  /**
+   * Whether leaderboard rows drill into a salesperson's orders — ADMIN only.
+   * A salesperson can't view other people's orders (the backend scopes them),
+   * so their rows stay non-interactive.
+   */
+  canDrill(): boolean {
+    return this.auth.hasAnyRole(Role.ADMIN);
+  }
+
+  /** Navigates to the Orders page scoped to this salesperson's orders. */
+  viewOrders(row: LeaderboardRow): void {
+    void this.router.navigate(['/orders'], {
+      queryParams: { createdBy: row.salespersonId, name: row.name },
+    });
   }
 
   load(): void {

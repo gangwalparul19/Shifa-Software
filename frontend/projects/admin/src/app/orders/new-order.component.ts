@@ -1623,10 +1623,11 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       ...(raw.discountType
         ? { discountType: raw.discountType as OrderDiscountType, discountValue: raw.discountValue || 0 }
         : {}),
-      // Delivery method is no longer a salesperson choice — every order created
-      // here defaults to in-house; the admin picks/overrides the delivery
-      // partner (QuikShipX vs in-house) at approval time.
-      deliveryMethod: 'IN_HOUSE',
+      // Delivery method defaults to QuikShip now that the courier integration is
+      // live: every order created here goes through QuikShipX by default so it
+      // gets a tracking id automatically on approval. An admin can still override
+      // to in-house at approval time (Counter Sale always forces in-house).
+      deliveryMethod: 'QUIKSHIPX',
       // Place on behalf of (ADMIN only): attribute the order to the chosen
       // salesperson/team lead. Sent only when the admin picked "on behalf of".
       ...(this.showOnBehalfPicker() && this.placeFor() === 'other' && this.onBehalfUserId() != null
@@ -1771,8 +1772,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       ...(raw.discountType
         ? { discountType: raw.discountType as OrderDiscountType, discountValue: raw.discountValue || 0 }
         : {}),
-      // Delivery method is no longer a salesperson choice — defaults to in-house.
-      deliveryMethod: 'IN_HOUSE',
+      // Delivery method defaults to QuikShip (courier integration is live).
+      deliveryMethod: 'QUIKSHIPX',
     };
 
     this.submitting.set(true);

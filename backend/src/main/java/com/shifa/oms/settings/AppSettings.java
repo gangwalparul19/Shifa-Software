@@ -68,6 +68,29 @@ public class AppSettings {
     @Column(name = "prices_include_gst", nullable = false)
     private boolean pricesIncludeGst = true;
 
+    /** Whether incoming Shopify order webhooks are imported (V70; default OFF). */
+    @Column(name = "shopify_sync_enabled", nullable = false)
+    private boolean shopifySyncEnabled = false;
+
+    /**
+     * Config-driven order auto-approval switch (V73; default OFF). When enabled,
+     * a newly-punched order that is fully prepaid, at or below
+     * {@link #autoApproveMaxAmount}, and from a low-risk customer is auto-approved
+     * at creation time (skipping the manual approval queue). Any COD balance or a
+     * medium/high-risk customer always routes to manual approval.
+     */
+    @Column(name = "auto_approve_enabled", nullable = false)
+    private boolean autoApproveEnabled = false;
+
+    /**
+     * Maximum order total (₹, GST-inclusive) eligible for auto-approval. Nullable
+     * on legacy rows; a null or non-positive value means nothing qualifies (so the
+     * feature is a safe no-op even if {@link #autoApproveEnabled} were somehow on
+     * without a threshold set). Mapped to the V73 {@code auto_approve_max_amount}.
+     */
+    @Column(name = "auto_approve_max_amount", precision = 12, scale = 2)
+    private BigDecimal autoApproveMaxAmount;
+
     /**
      * Optional filing-calendar reminder window, in whole days before a GST return
      * due date within which a reminder is surfaced. Nullable on legacy rows;
@@ -252,6 +275,30 @@ public class AppSettings {
 
     public boolean isPricesIncludeGst() {
         return pricesIncludeGst;
+    }
+
+    public boolean isShopifySyncEnabled() {
+        return shopifySyncEnabled;
+    }
+
+    public void setShopifySyncEnabled(boolean shopifySyncEnabled) {
+        this.shopifySyncEnabled = shopifySyncEnabled;
+    }
+
+    public boolean isAutoApproveEnabled() {
+        return autoApproveEnabled;
+    }
+
+    public void setAutoApproveEnabled(boolean autoApproveEnabled) {
+        this.autoApproveEnabled = autoApproveEnabled;
+    }
+
+    public BigDecimal getAutoApproveMaxAmount() {
+        return autoApproveMaxAmount;
+    }
+
+    public void setAutoApproveMaxAmount(BigDecimal autoApproveMaxAmount) {
+        this.autoApproveMaxAmount = autoApproveMaxAmount;
     }
 
     public void setPricesIncludeGst(boolean pricesIncludeGst) {

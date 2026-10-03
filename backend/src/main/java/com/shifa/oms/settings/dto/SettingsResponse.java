@@ -30,7 +30,9 @@ public record SettingsResponse(
         String bankAccountNumber,
         String bankIfsc,
         String bankBranch,
-        String gstSlabs) {
+        String gstSlabs,
+        boolean autoApproveEnabled,
+        BigDecimal autoApproveMaxAmount) {
 
     public static SettingsResponse from(AppSettings s) {
         return new SettingsResponse(
@@ -55,6 +57,8 @@ public record SettingsResponse(
                 s.getBankAccountNumber(),
                 s.getBankIfsc(),
                 s.getBankBranch(),
-                s.getGstSlabs());
+                s.getGstSlabs(),
+                s.isAutoApproveEnabled(),
+                s.getAutoApproveMaxAmount());
     }
 }

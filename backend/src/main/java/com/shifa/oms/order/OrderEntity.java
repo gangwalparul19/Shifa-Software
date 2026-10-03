@@ -60,6 +60,16 @@ public class OrderEntity {
     private OrderSource source;
 
     /**
+     * The originating Shopify order id for an order imported from Shopify via the
+     * {@code orders/create} webhook (Shopify integration). Non-null ONLY for
+     * {@link OrderSource#SHOPIFY} orders; unique so a webhook retry / redelivery of
+     * the same Shopify order never creates a duplicate. Null for every other order.
+     * Mapped to {@code orders.shopify_order_id} (V68).
+     */
+    @Column(name = "shopify_order_id", length = 64, unique = true)
+    private String shopifyOrderId;
+
+    /**
      * How this order is fulfilled for last-mile delivery — QuikShipX (default) or
      * Shifa's own in-house team. Distinct from {@link #source}. Mapped to
      * {@code orders.delivery_method} (V60).
@@ -372,12 +382,22 @@ public class OrderEntity {
      */
     public void addPaymentScreenshot(String storageKey, String filename,
                                      String contentType, Long byteSize) {
+        addPaymentScreenshot(storageKey, filename, contentType, byteSize, null);
+    }
+
+    /**
+     * As {@link #addPaymentScreenshot(String, String, String, Long)} but also
+     * records the proof's SHA-256 {@code contentHash} (V72) so the payment
+     * verification queue can flag the same image reused across orders.
+     */
+    public void addPaymentScreenshot(String storageKey, String filename,
+                                     String contentType, Long byteSize, String contentHash) {
         if (storageKey == null || storageKey.isBlank()) {
             return;
         }
         int next = this.paymentScreenshots.size();
         this.paymentScreenshots.add(
-                new OrderPaymentScreenshot(storageKey, filename, contentType, byteSize, next));
+                new OrderPaymentScreenshot(storageKey, filename, contentType, byteSize, contentHash, next));
         if (next == 0) {
             this.paymentScreenshotKey = storageKey;
         }
@@ -545,6 +565,16 @@ public class OrderEntity {
 
     public OrderSource getSource() {
         return source;
+    }
+
+    /** The originating Shopify order id for a Shopify-imported order (V68); null otherwise. */
+    public String getShopifyOrderId() {
+        return shopifyOrderId;
+    }
+
+    /** Records the originating Shopify order id (idempotency key for the import webhook). */
+    public void setShopifyOrderId(String shopifyOrderId) {
+        this.shopifyOrderId = shopifyOrderId;
     }
 
     public DeliveryMethod getDeliveryMethod() {

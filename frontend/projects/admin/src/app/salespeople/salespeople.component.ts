@@ -1,8 +1,9 @@
 import { IstDatePipe } from '../shared/ist-date.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ApiError } from 'core';
+import { ApiError, AuthService, Role } from 'core';
 import {
   ID_PROOF_TYPES,
   IdProofType,
@@ -14,6 +15,8 @@ import {
   VerificationStatus,
 } from './salespeople.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
 import { verificationBadgeClass } from '../shared/status-badge.component';
@@ -33,7 +36,7 @@ type StatusFilter = 'ALL' | VerificationStatus;
 @Component({
   selector: 'admin-salespeople',
   standalone: true,
-  imports: [ReactiveFormsModule, IstDatePipe, PageHeaderComponent, StatePanelComponent],
+  imports: [ReactiveFormsModule, IstDatePipe, PageHeaderComponent, PaginationComponent, StatePanelComponent],
   templateUrl: './salespeople.component.html',
   styleUrl: './salespeople.component.css',
 })
@@ -41,6 +44,11 @@ export class SalespeopleComponent implements OnInit {
   private readonly service = inject(SalespeopleService);
   private readonly fb = inject(FormBuilder);
   private readonly toasts = inject(ToastService);
+  private readonly router = inject(Router);
+  private readonly auth = inject(AuthService);
+
+  /** Admins get the "View orders" drill-down on each card. */
+  protected readonly isAdmin = computed(() => this.auth.hasAnyRole(Role.ADMIN));
 
   protected readonly idProofTypes = ID_PROOF_TYPES;
 
@@ -98,6 +106,26 @@ export class SalespeopleComponent implements OnInit {
     }
     return list;
   });
+
+  // --- Client-side paging (over the filtered/sorted list) -----------------
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('salespeople', 10));
+  protected readonly totalElements = computed(() => this.filtered().length);
+  protected readonly totalPages = computed(() => Math.max(1, Math.ceil(this.totalElements() / this.size())));
+  protected readonly pageItems = computed<StaffProfile[]>(() => {
+    const s = this.page() * this.size();
+    return this.filtered().slice(s, s + this.size());
+  });
+
+  goToPage(p: number): void {
+    this.page.set(p);
+  }
+
+  setSize(s: number): void {
+    this.size.set(s);
+    writePageSize('salespeople', s);
+    this.page.set(0);
+  }
 
   private metric(
     perf: Map<number, SalespersonPerformanceSummary>,
@@ -180,10 +208,12 @@ export class SalespeopleComponent implements OnInit {
 
   setFilter(f: StatusFilter): void {
     this.filter.set(f);
+    this.page.set(0);
   }
 
   setSort(key: 'revenueThisMonth' | 'ordersThisMonth' | 'successRate' | 'name'): void {
     this.sortKey.set(key);
+    this.page.set(0);
   }
 
   /** Leaderboard summary for a salesperson (undefined until the board loads). */
@@ -206,6 +236,37 @@ export class SalespeopleComponent implements OnInit {
       return 'text-warning';
     }
     return 'text-danger';
+  }
+
+  /**
+   * Colour for a card's delivery-success % that doesn't alarm on zero history:
+   * only goes red/amber when there IS delivery history and the rate is low. A
+   * brand-new salesperson with 0 delivered-yet orders shows neutral grey, not
+   * red (missing history isn't a failure).
+   */
+  successClass(id: number): string {
+    const p = this.perfFor(id);
+    if (!p) {
+      return 'text-secondary';
+    }
+    // No completed-delivery history yet → neutral, regardless of the 0% figure.
+    const hasHistory = (p.deliveredCount ?? 0) + (p.failedCount ?? 0) > 0;
+    if (!hasHistory) {
+      return 'text-secondary';
+    }
+    return this.rateClass(p.successRate);
+  }
+
+  /**
+   * ADMIN drill-down: open the Orders page scoped to this salesperson's orders
+   * (?createdBy=&name=). Stops propagation so the card's own click (open drawer)
+   * doesn't also fire.
+   */
+  viewOrders(member: StaffProfile, event: Event): void {
+    event.stopPropagation();
+    void this.router.navigate(['/orders'], {
+      queryParams: { createdBy: member.id, name: member.fullName || member.username },
+    });
   }
 
   /** The tallest daily order count in the trend, for bar scaling (min 1). */

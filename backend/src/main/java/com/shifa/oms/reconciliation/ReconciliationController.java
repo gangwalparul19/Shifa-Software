@@ -70,11 +70,14 @@ public class ReconciliationController {
 
     private final ReconciliationService reconciliationService;
     private final RemittanceImportService remittanceImportService;
+    private final CodAgingService codAgingService;
 
     public ReconciliationController(ReconciliationService reconciliationService,
-                                    RemittanceImportService remittanceImportService) {
+                                    RemittanceImportService remittanceImportService,
+                                    CodAgingService codAgingService) {
         this.reconciliationService = reconciliationService;
         this.remittanceImportService = remittanceImportService;
+        this.codAgingService = codAgingService;
     }
 
     /**
@@ -132,6 +135,17 @@ public class ReconciliationController {
         return reconciliationService.unsettledCod();
     }
 
+    /**
+     * COD aging summary (cod-aging enhancement): unsettled COD grouped into aging
+     * buckets (0–7 / 8–15 / 16–30 / 30+ days) plus a courier-SLA flag for money
+     * owed beyond the expected payout window, so the accountant/CA can see what to
+     * chase and how overdue it is. Read-only.
+     */
+    @GetMapping("/cod-aging")
+    public com.shifa.oms.reconciliation.dto.CodAgingResponse codAging() {
+        return codAgingService.aging();
+    }
+
     /** Prepaid vs COD segregation of fulfilled orders (Req 18.4). */
     @GetMapping("/segregation")
     public SegregationResponse segregation() {
@@ -153,14 +167,18 @@ public class ReconciliationController {
     }
 
     /**
-     * Imports (or previews) a courier COD remittance CSV, auto-matching each row
-     * by AWB/order code to an unsettled COD receivable and settling it when the
-     * amount agrees (enhancement: "courier remittance import & auto-match").
-     * Restricted to ADMIN + ACCOUNTANT (not CA — settling money is an operational
-     * action, unlike the class-level read access).
+     * Imports (or previews) a courier COD remittance sheet — CSV or a real Excel
+     * workbook ({@code .xlsx}/{@code .xls}) — auto-matching each row by AWB/order
+     * code/QuikShipX client-order-id to an order and settling its COD receivable
+     * (creating one first, via a Delivered/COD_Collected catch-up, when the
+     * order never received a courier delivery webhook) when the amount agrees
+     * (enhancement: "courier remittance import & auto-match"). Restricted to
+     * ADMIN + ACCOUNTANT (not CA — settling money is an operational action,
+     * unlike the class-level read access).
      *
-     * @param file   the multipart CSV file (required; header needs 'amount' and
-     *               at least one of 'awb'/'orderCode')
+     * @param file   the multipart CSV/Excel file (required; header needs an
+     *               amount column and at least one of an AWB/order-code/client-
+     *               order-id column — see {@link RemittanceImportService})
      * @param dryRun when true (default), match + report only; when false, settle
      *               every row that cleanly matches
      * @return the aggregate import result with per-row outcomes
@@ -174,9 +192,9 @@ public class ReconciliationController {
             throw new ValidationException("A CSV file is required.");
         }
         try {
-            return remittanceImportService.importCsv(file.getBytes(), dryRun);
+            return remittanceImportService.importFile(file.getBytes(), file.getOriginalFilename(), dryRun);
         } catch (IOException e) {
-            throw new UncheckedIOException("Failed to read the uploaded CSV file.", e);
+            throw new UncheckedIOException("Failed to read the uploaded file.", e);
         }
     }
 }

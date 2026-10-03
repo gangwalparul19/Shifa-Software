@@ -16,6 +16,7 @@ import com.shifa.oms.order.dto.ApproveOrderRequest;
 import com.shifa.oms.order.dto.BulkActionResult;
 import com.shifa.oms.order.dto.BulkOrderIdsRequest;
 import com.shifa.oms.order.dto.BulkPreviewResponse;
+import com.shifa.oms.order.dto.CancelOrderRequest;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.order.dto.RejectOrderRequest;
@@ -82,6 +83,9 @@ public class AdminOrderController {
     private final OrderService orderService;
     private final CourierAssignmentService courierAssignmentService;
 
+    private final ChannelSummaryService channelSummaryService;
+    private final OrderExportService orderExportService;
+
     public AdminOrderController(AdminOrderService adminOrderService,
                                 BulkOrderService bulkOrderService,
                                 LabelService labelService,
@@ -89,7 +93,9 @@ public class AdminOrderController {
                                 AuditService auditService,
                                 SalespersonScopeResolver scopeResolver,
                                 OrderService orderService,
-                                CourierAssignmentService courierAssignmentService) {
+                                CourierAssignmentService courierAssignmentService,
+                                ChannelSummaryService channelSummaryService,
+                                OrderExportService orderExportService) {
         this.adminOrderService = adminOrderService;
         this.bulkOrderService = bulkOrderService;
         this.labelService = labelService;
@@ -98,6 +104,26 @@ public class AdminOrderController {
         this.scopeResolver = scopeResolver;
         this.orderService = orderService;
         this.courierAssignmentService = courierAssignmentService;
+        this.channelSummaryService = channelSummaryService;
+        this.orderExportService = orderExportService;
+    }
+
+    /**
+     * ADMIN-only channel dashboard: order metrics split by origin channel
+     * (portal vs Shopify) plus the combined total, over an optional date window,
+     * so an admin can track and differentiate own-portal orders from the
+     * auto-imported Shopify orders. Explicitly {@code hasRole('ADMIN')} (matching
+     * the class default) so a salesperson/team lead/accountant can never see it.
+     *
+     * @param from inclusive lower-bound {@code created_at} date (yyyy-MM-dd), optional
+     * @param to   inclusive upper-bound {@code created_at} date (yyyy-MM-dd), optional
+     */
+    @GetMapping("/channel-summary")
+    @PreAuthorize("hasRole('ADMIN')")
+    public com.shifa.oms.order.dto.ChannelSummaryResponse channelSummary(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return channelSummaryService.summary(from, to);
     }
 
     /**
@@ -120,23 +146,71 @@ public class AdminOrderController {
             @RequestParam(required = false) OrderStatus status,
             @RequestParam(required = false) String statusGroup,
             @RequestParam(required = false) PaymentStatus paymentStatus,
+            @RequestParam(required = false) com.shifa.oms.order.OrderSource source,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
-            @RequestParam(required = false) String sort) {
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) Long createdBy) {
         // Salespeople see only the orders they punched; a team lead sees the orders
         // punched by their assigned salespeople; admin/accountant see all. The set
         // is resolved server-side (never from a client filter) so it can't be spoofed.
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         java.util.Collection<Long> creatorIds = scopeResolver.creatorScope(actor).orElse(null);
+        // Drill-down: an ADMIN may narrow the list to a single salesperson's orders
+        // (e.g. tapping a leaderboard / salespeople row → their orders). Only ADMIN
+        // gets this client-supplied narrowing — every other role stays bound to its
+        // own server-derived scope above, so this can't widen or escape it.
+        if (createdBy != null && actor.role() == com.shifa.oms.auth.Role.ADMIN) {
+            creatorIds = java.util.List.of(createdBy);
+        }
         Pageable pageable = PageRequests.of(page, size, sort, SORT_WHITELIST, DEFAULT_SORT);
         // Parse leniently so a stale pre-collapse group key (e.g. PACKAGING/COMPLETED)
         // maps to the new group instead of 400ing.
         OrderStatusGroup group = OrderStatusGroup.from(statusGroup);
+        // Optional exact source filter (e.g. only Shopify-imported orders).
         return PageResponse.of(
                 adminOrderService.listOrders(
-                        q, status, group, paymentStatus, from, to, pageable, creatorIds));
+                        q, status, group, paymentStatus, from, to, pageable, creatorIds, source));
+    }
+
+    /**
+     * Exports the CURRENT filtered + scoped Orders list as CSV or Excel
+     * (list-export enhancement). Accepts the same filter params as {@link #list}
+     * and applies the identical server-resolved salesperson/team-lead scope, so
+     * the file is exactly what the caller sees on screen (never wider). Capped at
+     * {@link OrderExportService#MAX_ROWS} rows. Streamed as an attachment.
+     *
+     * @param format {@code xlsx} (default) or {@code csv}
+     */
+    @GetMapping("/export")
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','TEAM_LEAD','CA')")
+    public ResponseEntity<byte[]> export(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false) String statusGroup,
+            @RequestParam(required = false) PaymentStatus paymentStatus,
+            @RequestParam(required = false) com.shifa.oms.order.OrderSource source,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String format,
+            @RequestParam(required = false) Long createdBy) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        java.util.Collection<Long> creatorIds = scopeResolver.creatorScope(actor).orElse(null);
+        if (createdBy != null && actor.role() == com.shifa.oms.auth.Role.ADMIN) {
+            creatorIds = java.util.List.of(createdBy);
+        }
+        OrderStatusGroup group = OrderStatusGroup.from(statusGroup);
+        OrderExportService.ExportResult result = orderExportService.export(
+                q, status, group, paymentStatus, from, to, creatorIds, source, format);
+        auditService.record(AuditActions.ORDERS_EXPORTED, AuditActions.ENTITY_ORDER, null,
+                "Exported orders list (" + result.filename() + ")");
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(result.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + result.filename() + "\"")
+                .body(result.content());
     }
 
     /** The approval queue of pending-approval orders with review details (Req 9.1, 9.2). */
@@ -152,6 +226,7 @@ public class AdminOrderController {
      * order's existing delivery method unchanged.
      */
     @PostMapping("/{id}/approve")
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT')")
     public OrderResponse approve(@PathVariable Long id,
                                  @Valid @RequestBody(required = false) ApproveOrderRequest request) {
         AuthPrincipal admin = currentUserService.requireCurrentUser();
@@ -170,6 +245,28 @@ public class AdminOrderController {
         auditService.record(AuditActions.ORDER_REJECTED, AuditActions.ENTITY_ORDER,
                 String.valueOf(id), "Rejected order " + response.orderCode() + ": " + request.reason());
         return response;
+    }
+
+    /**
+     * Cancel an order with a required note → Cancelled (order-cancellation
+     * feature). Works at any pre-delivery stage — including after a QuikShipX
+     * tracking id (AWB) has been generated — and, for a QuikShipX order, requests
+     * cancellation at the courier so the pickup is aborted. 400 if the note is
+     * blank; 409 if the order is already delivered/closed/returned (a delivered
+     * order is a Return, not a Cancel). The service records its own detailed audit
+     * (with the courier-cancel outcome).
+     */
+    @PostMapping("/{id}/cancel")
+    public CancelOrderResponse cancel(@PathVariable Long id, @Valid @RequestBody CancelOrderRequest request) {
+        AuthPrincipal admin = currentUserService.requireCurrentUser();
+        AdminOrderService.CancelResult result = adminOrderService.cancel(id, request.note(), admin);
+        return new CancelOrderResponse(result.order(), result.courierCancelAttempted(),
+                result.courierCancelAccepted(), result.courierMessage());
+    }
+
+    /** API response for a cancellation: the cancelled order + courier-cancel outcome. */
+    public record CancelOrderResponse(OrderResponse order, boolean courierCancelAttempted,
+                                      boolean courierCancelAccepted, String courierMessage) {
     }
 
     /**

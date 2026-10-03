@@ -57,6 +57,45 @@ const MAIN_TOUR_STEPS: TourStep[] = [
   },
 ];
 
+/**
+ * Role-specific closing step appended to the generic tour, so each operational
+ * role is told what their actual daily job is (the generic tour only covers the
+ * shell chrome). Keyed by role; roles without an entry just get the generic tour.
+ * The tour id is namespaced per role so a role sees its tailored tour once.
+ */
+const ROLE_TOUR_STEP: Partial<Record<Role, TourStep>> = {
+  [Role.PACKING_USER]: {
+    selector: '[data-tour="bottom-tabs"]',
+    title: 'Your packing day',
+    body: 'Open Packing: print each label, Mark packed, then Hand over. QuikShip pickups and in-house deliveries track in their own sections below the queues.',
+    placement: 'top',
+  },
+  [Role.PAYMENT_VERIFIER]: {
+    selector: '[data-tour="bottom-tabs"]',
+    title: 'Verifying payments',
+    body: 'Payments is your home. Open each screenshot, check it matches the amount, then Verify or Reject with a note — this flags the order for the admin.',
+    placement: 'top',
+  },
+  [Role.ACCOUNTANT]: {
+    selector: '[data-tour="bottom-tabs"]',
+    title: 'Collections & books',
+    body: 'Reconcile settles collected COD and chases the courier for pending remittance; Reports and Expenses keep the books. Tap a dashboard tile to jump straight in.',
+    placement: 'top',
+  },
+  [Role.SALESPERSON]: {
+    selector: '[data-tour="bottom-tabs"]',
+    title: 'Your sales day',
+    body: 'Punch New Orders, track them in Orders, work your Leads and follow-ups, and watch your rank on the Leaderboard. Your dashboard shows today at a glance.',
+    placement: 'top',
+  },
+  [Role.TEAM_LEAD]: {
+    selector: '[data-tour="bottom-tabs"]',
+    title: 'Your team at a glance',
+    body: "Your dashboard and Orders show your whole team's orders; Performance ranks your salespeople and shows which lead sources convert best.",
+    placement: 'top',
+  },
+};
+
 /** A single navigable link (either standalone or a child inside a group). */
 interface NavLink {
   kind: 'link';
@@ -219,7 +258,8 @@ export class AdminShellComponent {
     // localStorage), and only for a signed-in user. A short delay lets the shell
     // (bottom tabs, bell, etc.) finish its first render before spotlighting it.
     if (this.auth.session()) {
-      setTimeout(() => this.tour.startIfUnseen(MAIN_TOUR_ID, MAIN_TOUR_STEPS), 600);
+      const { id, steps } = this.roleTour();
+      setTimeout(() => this.tour.startIfUnseen(id, steps), 600);
     }
 
     // Real-time "new order needs approval" toast for admins: when a fresh
@@ -407,7 +447,16 @@ export class AdminShellComponent {
     // from the hamburger. The lighter Home summary is a later pass.
     // TODO(mobile-ui-redesign Req 4): add a lightweight Home summary landing
     // view and (optionally) redirect post-login there instead of /dashboard.
-    { kind: 'link', label: 'Shifa Dashboard', path: '/dashboard', icon: 'ti-layout-dashboard' },
+    {
+      kind: 'link',
+      label: 'Shifa Dashboard',
+      path: '/dashboard',
+      icon: 'ti-layout-dashboard',
+      // CA and Payment Verifier are redirected away from /dashboard to their own
+      // home (GST / Payments), so the generic dashboard link would dead-end for
+      // them — show it only to the roles whose home actually IS /dashboard.
+      roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON, Role.TEAM_LEAD, Role.PACKING_USER],
+    },
     {
       kind: 'group',
       label: 'Orders',
@@ -438,6 +487,7 @@ export class AdminShellComponent {
           // to their own orders). Excludes roles with a dedicated home only.
           roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON, Role.TEAM_LEAD],
         },
+        { kind: 'link', label: 'Cancel Order', path: '/order-cancellation', icon: 'ti-ban', adminOnly: true },
         {
           kind: 'link',
           label: 'Packing',
@@ -515,6 +565,13 @@ export class AdminShellComponent {
         },
         {
           kind: 'link',
+          label: 'Team-wise Sales',
+          path: '/teams-overview',
+          icon: 'ti-chart-bar',
+          adminOnly: true,
+        },
+        {
+          kind: 'link',
           label: 'Teams',
           path: '/team',
           icon: 'ti-users-group',
@@ -584,6 +641,7 @@ export class AdminShellComponent {
           roles: [Role.ADMIN, Role.CA],
         },
         { kind: 'link', label: 'Analytics', path: '/analytics', icon: 'ti-chart-dots', adminOnly: true },
+        { kind: 'link', label: 'Shopify Sync', path: '/shopify-sync', icon: 'ti-brand-shopify', adminOnly: true },
         { kind: 'link', label: 'Insights', path: '/insights', icon: 'ti-bulb', adminOnly: true },
         {
           kind: 'link',
@@ -706,15 +764,15 @@ export class AdminShellComponent {
       { label: 'Customers', path: '/customers', icon: 'ti-users' },
       { label: 'Products', path: '/products', icon: 'ti-leaf' },
     ],
-    // Req 2.3 — Handover & Dispatch have no dedicated route yet; both are
-    // actions performed inside the packing area (POST /api/packing/{id}/handover
-    // & /dispatch), so they point at /packing as sensible placeholders.
-    // TODO(mobile-ui-redesign): point Handover/Dispatch at dedicated routes
-    // once they exist.
+    // Packing: the four real destinations a packer uses. Packing (scan + the
+    // Orders-to-Pack / Awaiting Handover / status sections), the daily Pick-list,
+    // Mark RTO (returned parcels), and the all-orders view. The old
+    // Handover/Dispatch tabs were removed — both were dead links to /packing and
+    // their wording predated the packing-workflow redesign.
     [Role.PACKING_USER]: [
       { label: 'Packing', path: '/packing', icon: 'ti-barcode' },
-      { label: 'Handover', path: '/packing', icon: 'ti-transfer' },
-      { label: 'Dispatch', path: '/packing', icon: 'ti-truck-delivery' },
+      { label: 'Pick-list', path: '/packing/pick-list', icon: 'ti-clipboard-list' },
+      { label: 'Mark RTO', path: '/packing/rto', icon: 'ti-rotate-2' },
       { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
     ],
     // Req 2.4
@@ -735,6 +793,7 @@ export class AdminShellComponent {
     [Role.PAYMENT_VERIFIER]: [
       { label: 'Payments', path: '/payments', icon: 'ti-shield-check' },
       { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
+      { label: 'My Profile', path: '/my-profile', icon: 'ti-user-circle' },
     ],
     // CA (Chartered Accountant): the GST dashboard is their home; plus reports,
     // finance, and their profile.
@@ -857,6 +916,25 @@ export class AdminShellComponent {
     return match?.label ?? 'Dashboard';
   }
 
+  /**
+   * The nav GROUP label that owns the current route (e.g. "Accounting",
+   * "Analytics & Reports"), shown as a small eyebrow above the page title so
+   * users don't lose their place in the deeper areas. Empty for standalone
+   * links / unmatched routes.
+   */
+  protected readonly pageContext = computed<string | null>(() => {
+    const path = this.currentUrl().split('?')[0];
+    for (const entry of this.allNav) {
+      if (entry.kind !== 'group') {
+        continue;
+      }
+      if (entry.children.some((c) => path === c.path || path.startsWith(`${c.path}/`))) {
+        return entry.label;
+      }
+    }
+    return null;
+  });
+
   toggleMenu(): void {
     this.menuOpen.update((open) => !open);
   }
@@ -875,9 +953,26 @@ export class AdminShellComponent {
     this.userMenuOpen.set(false);
   }
 
+  /**
+   * Builds the guided tour for the current user: the generic shell steps plus a
+   * role-specific closing step explaining that role's daily job. The id is
+   * namespaced per role so each role auto-sees its tailored tour exactly once.
+   */
+  private roleTour(): { id: string; steps: TourStep[] } {
+    const role = this.auth.session()?.role ?? null;
+    const roleStep = role ? ROLE_TOUR_STEP[role] : undefined;
+    if (!roleStep) {
+      return { id: MAIN_TOUR_ID, steps: MAIN_TOUR_STEPS };
+    }
+    // Replace the generic closing "bottom tabs" step with the role-specific one.
+    const steps = [...MAIN_TOUR_STEPS.slice(0, -1), roleStep];
+    return { id: `${MAIN_TOUR_ID}-${role}`, steps };
+  }
+
   /** Replays the guided tour on demand from the account menu. */
   replayTour(): void {
-    this.tour.start(MAIN_TOUR_ID, MAIN_TOUR_STEPS);
+    const { id, steps } = this.roleTour();
+    this.tour.start(id, steps);
   }
 
   /** Escape closes the user menu or the hamburger drawer for keyboard users. */

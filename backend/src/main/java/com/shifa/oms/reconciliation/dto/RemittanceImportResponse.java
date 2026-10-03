@@ -26,6 +26,7 @@ public record RemittanceImportResponse(
         int totalRows,
         int settled,
         int mismatched,
+        int alreadySettled,
         int notFound,
         int noReceivable,
         int errors,
@@ -36,6 +37,7 @@ public record RemittanceImportResponse(
     public static RemittanceImportResponse of(boolean dryRun, List<RemittanceRowResult> rows) {
         int settled = 0;
         int mismatched = 0;
+        int alreadySettled = 0;
         int notFound = 0;
         int noReceivable = 0;
         int errors = 0;
@@ -43,12 +45,13 @@ public record RemittanceImportResponse(
             switch (r.status()) {
                 case SETTLED -> settled++;
                 case MISMATCH -> mismatched++;
+                case ALREADY_SETTLED -> alreadySettled++;
                 case ORDER_NOT_FOUND -> notFound++;
                 case NO_RECEIVABLE -> noReceivable++;
                 case ERROR -> errors++;
             }
         }
         return new RemittanceImportResponse(
-                dryRun, rows.size(), settled, mismatched, notFound, noReceivable, errors, rows);
+                dryRun, rows.size(), settled, mismatched, alreadySettled, notFound, noReceivable, errors, rows);
     }
 }

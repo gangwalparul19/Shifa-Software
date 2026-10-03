@@ -82,9 +82,27 @@ public final class OrderListSpecifications {
                                                    PaymentStatus paymentStatus,
                                                    LocalDate from, LocalDate to,
                                                    Collection<Long> creatorIds) {
+        return build(q, status, statusGroup, paymentStatus, from, to, creatorIds, null);
+    }
+
+    /**
+     * As the {@code creatorIds} canonical builder with an additional exact
+     * {@link OrderSource} filter: when {@code source} is non-null the result is
+     * restricted to {@code source = source} (e.g. only Shopify-imported orders).
+     * Orthogonal to status/payment; AND-combined with every other filter.
+     */
+    public static Specification<OrderEntity> build(String q, OrderStatus status,
+                                                   OrderStatusGroup statusGroup,
+                                                   PaymentStatus paymentStatus,
+                                                   LocalDate from, LocalDate to,
+                                                   Collection<Long> creatorIds,
+                                                   OrderSource source) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
+            if (source != null) {
+                predicates.add(cb.equal(root.get("source"), source));
+            }
             if (creatorIds != null) {
                 if (creatorIds.isEmpty()) {
                     // Scoped to nothing (e.g. a team lead with no team) — match no rows.

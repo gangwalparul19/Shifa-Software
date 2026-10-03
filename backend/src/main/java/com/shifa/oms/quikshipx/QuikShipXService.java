@@ -58,6 +58,7 @@ public class QuikShipXService {
     private final CourierRecordRepository courierRecordRepository;
     private final CourierCompanyRepository courierCompanyRepository;
     private final OrderWorkflowService orderWorkflowService;
+    private final com.shifa.oms.platform.outbox.OutboxEventRepository outboxEventRepository;
 
     public QuikShipXService(QuikShipXProperties properties,
                             QuikShipXClient client,
@@ -70,7 +71,8 @@ public class QuikShipXService {
                             OutboxEventPublisher outboxEventPublisher,
                             CourierRecordRepository courierRecordRepository,
                             CourierCompanyRepository courierCompanyRepository,
-                            OrderWorkflowService orderWorkflowService) {
+                            OrderWorkflowService orderWorkflowService,
+                            com.shifa.oms.platform.outbox.OutboxEventRepository outboxEventRepository) {
         this.properties = properties;
         this.client = client;
         this.payloadFactory = payloadFactory;
@@ -83,6 +85,80 @@ public class QuikShipXService {
         this.courierRecordRepository = courierRecordRepository;
         this.courierCompanyRepository = courierCompanyRepository;
         this.orderWorkflowService = orderWorkflowService;
+        this.outboxEventRepository = outboxEventRepository;
+    }
+
+    /** The outcome of a per-order QuikShipX retry: what the action did. */
+    public record RetryResult(boolean actioned, String message) {
+    }
+
+    /**
+     * Admin per-order QuikShipX recovery (generalizes the Shopify-only recover to
+     * any order — portal or Shopify). Pushes a stuck order forward depending on how
+     * far it got:
+     * <ul>
+     *   <li>already has an AWB → no-op (nothing to recover);</li>
+     *   <li>has FAILED QuikShipX outbox events → re-queues them to PENDING (fresh
+     *       retry ladder) so the drainer retries the exact stuck step;</li>
+     *   <li>has a shipment but no AWB and no pending/failed events → re-enqueues
+     *       the allot (its {@code shipper_order_id} is already known);</li>
+     *   <li>has no shipment at all → re-enqueues create → confirm → allot.</li>
+     * </ul>
+     * No-op (with a message) when the integration is disabled or the order is
+     * flagged in-house. Idempotent and safe to call repeatedly.
+     */
+    @Transactional
+    public RetryResult retryForOrder(Long orderId) {
+        if (!properties.isEnabled()) {
+            return new RetryResult(false, "QuikShipX integration is disabled.");
+        }
+        OrderEntity order = orderRepository.findById(orderId).orElse(null);
+        if (order == null) {
+            throw new ResourceNotFoundException("Order " + orderId + " does not exist.");
+        }
+        if (order.isInHouseDelivery()) {
+            return new RetryResult(false, "This order is flagged for in-house delivery (no QuikShipX).");
+        }
+
+        OrderShipment shipment = shipmentRepository.findByOrderId(orderId).orElse(null);
+        if (shipment != null && shipment.getAwb() != null && !shipment.getAwb().isBlank()) {
+            return new RetryResult(false, "This order already has a QuikShipX tracking id ("
+                    + shipment.getAwb() + ").");
+        }
+
+        // Re-queue any FAILED QuikShipX events for this order (the exact stuck step).
+        List<com.shifa.oms.platform.outbox.OutboxEvent> events =
+                outboxEventRepository.findByAggregateAndEventTypePrefix(
+                        com.shifa.oms.platform.outbox.OutboxEvent.AGGREGATE_ORDER, orderId, "QUIKSHIPX");
+        int requeued = 0;
+        for (com.shifa.oms.platform.outbox.OutboxEvent e : events) {
+            if (com.shifa.oms.platform.outbox.OutboxEvent.STATUS_FAILED.equals(e.getStatus())) {
+                e.requeue();
+                outboxEventRepository.save(e);
+                requeued++;
+            }
+        }
+        if (requeued > 0) {
+            auditService.record(AuditActions.QUIKSHIPX_PUBLISHED, AuditActions.ENTITY_ORDER,
+                    String.valueOf(orderId),
+                    "Re-queued " + requeued + " failed QuikShipX event(s) for order " + order.getOrderCode());
+            return new RetryResult(true, "Re-queued " + requeued
+                    + " failed QuikShipX step(s); the tracking id will be allotted shortly.");
+        }
+
+        // No failed events to re-run — decide the right next step from the shipment.
+        if (shipment == null) {
+            outboxEventPublisher.publishQuikShipXCreate(orderId, order.getOrderCode());
+            auditService.record(AuditActions.QUIKSHIPX_PUBLISHED, AuditActions.ENTITY_ORDER,
+                    String.valueOf(orderId), "Re-published order " + order.getOrderCode()
+                            + " to QuikShipX (create).");
+            return new RetryResult(true, "Queued create → confirm → allot with QuikShipX.");
+        }
+        // Shipment exists, no AWB, nothing failed/pending — nudge the allot again.
+        outboxEventPublisher.publishQuikShipXAllot(orderId, order.getOrderCode());
+        auditService.record(AuditActions.QUIKSHIPX_PUBLISHED, AuditActions.ENTITY_ORDER,
+                String.valueOf(orderId), "Re-queued QuikShipX allot for order " + order.getOrderCode());
+        return new RetryResult(true, "Re-queued the tracking-id allotment with QuikShipX.");
     }
 
     /**
@@ -180,6 +256,17 @@ public class QuikShipXService {
         if (!properties.isEnabled()) {
             return;
         }
+        if (properties.isHttp() && !properties.hasCredentials()) {
+            // Enabled + real API but the active user_secret (or client_code/user_id)
+            // is blank — every call would be rejected by QuikShipX. Fail fast with an
+            // actionable message instead of silently retrying a doomed request. The
+            // common cause is setting QUIKSHIPX_USER_SECRET (unread) instead of
+            // QUIKSHIPX_TEST_SECRET / QUIKSHIPX_LIVE_SECRET.
+            throw new QuikShipXException("QuikShipX is enabled but credentials are incomplete for order "
+                    + orderId + " (secretMode=" + properties.secretMode()
+                    + "): check QUIKSHIPX_CLIENT_CODE / QUIKSHIPX_USER_ID / QUIKSHIPX_"
+                    + (properties.isTestSecret() ? "TEST" : "LIVE") + "_SECRET", false);
+        }
         if (shipmentRepository.existsByOrderId(orderId)) {
             log.debug("QuikShipX shipment already exists for order {} — skipping create", orderId);
             return;
@@ -196,8 +283,23 @@ public class QuikShipXService {
             return;
         }
 
-        CreatePayload payload = payloadFactory.build(order, loadProducts(order));
-        CreateResult result = client.createOrder(payload); // throws QuikShipXException on failure
+        Map<Long, Product> products = loadProducts(order);
+        CreatePayload payload = payloadFactory.build(order, products);
+        CreateResult result;
+        try {
+            result = client.createOrder(payload); // throws QuikShipXException on failure
+        } catch (QuikShipXException e) {
+            // Safety net: if QuikShipX still rejects the itemised amounts, resend the
+            // same order as one consolidated line (amount == order_amount), which its
+            // products-vs-order-amount check cannot reject.
+            String msg = e.getMessage() == null ? "" : e.getMessage().toLowerCase(java.util.Locale.ROOT);
+            if (!msg.contains("amount not matched")) {
+                throw e;
+            }
+            log.warn("QuikShipX rejected itemised amounts for {}; retrying as a consolidated line",
+                    order.getOrderCode());
+            result = client.createOrder(payloadFactory.buildConsolidated(order, products));
+        }
 
         OrderShipment shipment = new OrderShipment(order.getId(), order.getOrderCode());
         shipment.recordCreated(result.shipperOrderId(), properties.isTestSecret());
@@ -286,16 +388,82 @@ public class QuikShipXService {
         log.info("Allotted QuikShipX AWB {} for order {} (courier {})",
                 allot.awb(), shipment.getOrderCode(), allot.subCourierName());
 
-        // Hand the order to the courier: fast-forward the internal status to
-        // Courier_Assigned (SYSTEM), skipping the manual pack/handover/dispatch
-        // steps — QuikShipX/Delhivery take it forward and the tracking poll drives
-        // the rest. Only when the current status legally allows it (idempotent).
-        OrderEntity order = orderRepository.findById(orderId).orElse(null);
-        if (order != null && order.getOrderStatus().canTransitionTo(OrderStatus.COURIER_ASSIGNED)) {
-            orderWorkflowService.applyTransition(
-                    order, OrderStatus.COURIER_ASSIGNED, Actor.system("QUIKSHIPX", "SYSTEM"));
-            orderRepository.save(order);
-            log.info("Order {} handed to QuikShipX courier (Courier_Assigned)", shipment.getOrderCode());
+        // Packing-workflow redesign: a QuikShipX order's tracking id + label are
+        // allotted here (stored on the shipment above, status "Tracking ID
+        // Assigned"), but the order's LIFECYCLE status is deliberately left at
+        // Label_Generated so it still flows through the warehouse's manual packing
+        // queue (Orders to Pack → Awaiting Handover → Handed to Delivery). The
+        // COURIER_ASSIGNED ("Ready For Pickup") transition now happens on handover
+        // (PackingService.handover), NOT automatically on allot. The old
+        // fast-forward to COURIER_ASSIGNED has been removed so courier parcels are
+        // physically packed + handed over before the courier takes them.
+    }
+
+    /** The outcome of a per-order QuikShipX cancellation attempt (order-cancellation feature). */
+    public record CancelOutcome(boolean attempted, boolean accepted, String message) {
+    }
+
+    /**
+     * Requests cancellation of an order's QuikShipX shipment so the courier is NOT
+     * sent to pick the parcel up (order-cancellation feature). Called from the
+     * admin cancel flow when a QuikShipX order is cancelled after being handed to
+     * the courier.
+     *
+     * <p><b>Best-effort and never throws:</b> the OMS-side cancellation is the
+     * source of truth and must always succeed, so any QuikShipX error (transport,
+     * timeout, or a soft rejection) is caught and returned as a non-accepted
+     * {@link CancelOutcome} for the audit trail / admin UI, not propagated. A no-op
+     * (attempted=false) when the integration is off, the order is in-house, there
+     * is no shipment, or no QuikShipX order id was ever captured. On acceptance the
+     * shipment is stamped {@link OrderShipment#recordCancelled}.
+     */
+    @Transactional
+    public CancelOutcome cancelForOrder(Long orderId) {
+        if (!properties.isEnabled()) {
+            return new CancelOutcome(false, false, "QuikShipX integration is disabled.");
+        }
+        if (isInHouseDelivery(orderId)) {
+            return new CancelOutcome(false, false, "In-house delivery — no courier to cancel.");
+        }
+        OrderShipment shipment = shipmentRepository.findByOrderId(orderId).orElse(null);
+        if (shipment == null) {
+            return new CancelOutcome(false, false, "No QuikShipX shipment exists for this order.");
+        }
+        String shipperOrderId = shipment.getShipperOrderId();
+        if (shipperOrderId == null || shipperOrderId.isBlank()) {
+            return new CancelOutcome(false, false,
+                    "No QuikShipX order id was captured, so the courier cannot be told to cancel.");
+        }
+        if (shipment.isCancelled()) {
+            return new CancelOutcome(false, true, "The QuikShipX shipment was already cancelled.");
+        }
+        try {
+            QuikShipXModels.CancelResult result = client.cancelOrder(shipperOrderId);
+            if (result.accepted()) {
+                shipment.recordCancelled(java.time.LocalDateTime.now());
+                shipmentRepository.save(shipment);
+                auditService.record(AuditActions.QUIKSHIPX_CANCELLED, AuditActions.ENTITY_ORDER,
+                        String.valueOf(orderId),
+                        "Cancelled QuikShipX shipment " + shipperOrderId + " for order "
+                                + shipment.getOrderCode() + " (courier pickup aborted)");
+                log.info("Cancelled QuikShipX shipment {} for order {}", shipperOrderId, shipment.getOrderCode());
+            } else {
+                auditService.record(AuditActions.QUIKSHIPX_CANCELLED, AuditActions.ENTITY_ORDER,
+                        String.valueOf(orderId),
+                        "QuikShipX did not confirm cancellation of shipment " + shipperOrderId
+                                + " for order " + shipment.getOrderCode() + ": " + result.message());
+                log.warn("QuikShipX cancel not accepted for order {}: {}",
+                        shipment.getOrderCode(), result.message());
+            }
+            return new CancelOutcome(true, result.accepted(), result.message());
+        } catch (QuikShipXException e) {
+            // Transport/timeout/parse error — the OMS cancel still succeeds; flag it.
+            auditService.record(AuditActions.QUIKSHIPX_CANCELLED, AuditActions.ENTITY_ORDER,
+                    String.valueOf(orderId),
+                    "QuikShipX cancellation of shipment " + shipperOrderId + " for order "
+                            + shipment.getOrderCode() + " could not be confirmed: " + e.getMessage());
+            log.warn("QuikShipX cancel call failed for order {}: {}", shipment.getOrderCode(), e.getMessage());
+            return new CancelOutcome(true, false, e.getMessage());
         }
     }
 

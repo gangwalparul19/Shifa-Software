@@ -12,5 +12,13 @@ package com.shifa.oms.order;
  */
 public enum OrderSource {
     STOREFRONT,
-    SALESPERSON
+    SALESPERSON,
+
+    /**
+     * Imported from the Shopify storefront via the {@code orders/create} webhook
+     * ({@code POST /api/webhooks/shopify/orders}). The customer placed the order
+     * on Shopify; Shifa's OMS mirrors it so the fulfilment team sees it here,
+     * clearly tagged as a Shopify order.
+     */
+    SHOPIFY
 }

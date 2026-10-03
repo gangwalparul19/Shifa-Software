@@ -64,10 +64,30 @@ public final class TransitionAuthority {
     private static Map<Edge, Authorization> buildTable() {
         Map<Edge, Authorization> t = new HashMap<>();
 
-        // Admin approval outcomes (Req 6.2, 6.3).
-        put(t, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.APPROVED, false, Role.ADMIN);
+        // Admin approval outcomes (Req 6.2, 6.3). ACCOUNTANT may also approve
+        // (client workflow: admin/accountant approve) — reject/cancel stay ADMIN.
+        put(t, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.APPROVED, false,
+                Role.ADMIN, Role.ACCOUNTANT);
         put(t, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.REJECTED, false, Role.ADMIN);
         put(t, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.CANCELLED, false, Role.ADMIN);
+
+        // Admin cancellation at any pre-delivery fulfilment stage (order-cancellation
+        // feature). An admin can cancel an order even after a courier tracking id
+        // (AWB) has been generated — e.g. the payment never arrived, or the customer
+        // cancels after a partial payment — with a mandatory note. For a QuikShipX
+        // order the cancel also tells the courier to abort the pickup. ADMIN only
+        // (never SYSTEM: the courier never drives CANCELLED); the legality of each
+        // edge is enforced by OrderStatus.canTransitionTo, so only these pre-delivery
+        // states are reachable (DELIVERED/CLOSED/COD_COLLECTED and the return/failure
+        // terminals have no CANCELLED edge — a delivered order is a Return, not a Cancel).
+        put(t, OrderStatus.APPROVED, OrderStatus.CANCELLED, false, Role.ADMIN);
+        put(t, OrderStatus.LABEL_GENERATED, OrderStatus.CANCELLED, false, Role.ADMIN);
+        put(t, OrderStatus.PACKED, OrderStatus.CANCELLED, false, Role.ADMIN);
+        put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.CANCELLED, false, Role.ADMIN);
+        put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.CANCELLED, false, Role.ADMIN);
+        put(t, OrderStatus.DISPATCHED, OrderStatus.CANCELLED, false, Role.ADMIN);
+        put(t, OrderStatus.IN_TRANSIT, OrderStatus.CANCELLED, false, Role.ADMIN);
+        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CANCELLED, false, Role.ADMIN);
 
         // Payment-panel rejection: the Payment Verifier (or an admin) rejects a
         // prepaid order's payment, moving it to the distinct PAYMENT_REJECTED

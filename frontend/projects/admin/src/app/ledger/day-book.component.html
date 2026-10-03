@@ -106,7 +106,9 @@
       <h3 class="db-card__title">Vouchers</h3>
       <span class="text-secondary small">Ordered by date</span>
     </div>
-    <div class="table-responsive">
+
+    <!-- Desktop (≥768px): full table -->
+    <div class="table-responsive d-none d-md-block">
       <table class="db-table">
         <thead>
           <tr>
@@ -155,5 +157,53 @@
         }
       </table>
     </div>
+
+    <!-- Mobile (<768px): one card per voucher -->
+    <div class="db-cards d-md-none">
+      @for (row of d.rows; track row.voucherId) {
+        <div class="db-vcard">
+          <div class="db-vcard__head">
+            <span class="db-vcard__ref shifa-mono">{{ row.reference }}</span>
+            <span class="badge" [ngClass]="typePillClass(row.type)">{{ typeLabel(row.type) }}</span>
+          </div>
+          <div class="db-vcard__date">{{ row.date }}</div>
+          @if (row.narration) {
+            <div class="db-vcard__narration">{{ row.narration }}</div>
+          }
+          <div class="db-vcard__lines">
+            @for (line of row.lines; track $index) {
+              <div class="db-vline" [class.db-vline--cr]="n(line.credit) > 0">
+                <span class="db-vline__acct">{{ ledgerName(line.ledgerAccountId) }}</span>
+                <span class="db-vline__amt">
+                  @if (n(line.debit) > 0) {
+                    {{ money(line.debit) }} <small class="db-vline__drcr">Dr</small>
+                  } @else if (n(line.credit) > 0) {
+                    {{ money(line.credit) }} <small class="db-vline__drcr">Cr</small>
+                  }
+                </span>
+              </div>
+            }
+          </div>
+        </div>
+      } @empty {
+        <div class="db-empty">No vouchers posted in this period.</div>
+      }
+    </div>
   </div>
+
+  <!-- Grand totals (always visible, never overflows) -->
+  @if (d.rows.length) {
+    <div class="db-card">
+      <div class="db-grandtotals">
+        <div class="db-grandtotal">
+          <span class="db-grandtotal__label">Total debit</span>
+          <span class="db-grandtotal__value">{{ money(totalDebit()) }}</span>
+        </div>
+        <div class="db-grandtotal">
+          <span class="db-grandtotal__label">Total credit</span>
+          <span class="db-grandtotal__value">{{ money(totalCredit()) }}</span>
+        </div>
+      </div>
+    </div>
+  }
 }

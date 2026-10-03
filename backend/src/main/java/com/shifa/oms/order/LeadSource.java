@@ -19,6 +19,12 @@ package com.shifa.oms.order;
  *   <li>{@link #OFFLINE} — walk-in / phone / other offline channel.</li>
  *   <li>{@link #OTHER} — anything else; accepts an optional free-text note
  *       ({@code lead_source_note}, Req 4.5).</li>
+ *   <li>{@link #COUNTER_SALE} — an in-shop/walk-in counter sale. These orders
+ *       need no delivery partner at all (neither in-house nor QuikShipX): see
+ *       {@code OrderService#createSalespersonOrder}, which forces
+ *       {@code deliveryMethod = IN_HOUSE} for this lead source so every
+ *       existing {@code isInHouseDelivery()} gate (QuikShipX publish on
+ *       create/approve, courier assignment on dispatch) is skipped for free.</li>
  * </ul>
  */
 public enum LeadSource {
@@ -27,5 +33,11 @@ public enum LeadSource {
     FACEBOOK,
     GOOGLE,
     OFFLINE,
-    OTHER
+    OTHER,
+
+    /** Order originated from the Shopify storefront (imported via webhook). */
+    SHOPIFY,
+
+    /** Walk-in / in-shop counter sale — no delivery partner is ever required. */
+    COUNTER_SALE
 }

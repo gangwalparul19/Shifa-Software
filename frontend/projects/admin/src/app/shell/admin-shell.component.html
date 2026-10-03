@@ -7,11 +7,7 @@
   @if (auth.session()) {
     <aside class="shifa-sidebar d-print-none" aria-label="Primary navigation">
       <a routerLink="/dashboard" class="shifa-brand shifa-sidebar__brand" aria-label="Shifa Herbal Remedies">
-        <span class="shifa-brand__mark"><i class="ti ti-leaf"></i></span>
-        <span class="shifa-brand__text">
-          <span class="shifa-brand__title">Shifa</span>
-          <span class="shifa-brand__subtitle">Herbal Remedies</span>
-        </span>
+        <img src="/logo.png" alt="Shifa Herbal Remedies" class="shifa-brand__logo" />
       </a>
       <nav class="shifa-sidebar__nav" aria-label="All destinations">
         @for (entry of navEntries(); track entry.label) {
@@ -72,7 +68,12 @@
         >
           <i class="ti ti-menu-2" aria-hidden="true"></i>
         </button>
-        <h1 class="shifa-appbar__title" [title]="pageTitle()">{{ pageTitle() }}</h1>
+        <div class="shifa-appbar__titlewrap">
+          @if (pageContext(); as ctx) {
+            <span class="shifa-appbar__eyebrow">{{ ctx }}</span>
+          }
+          <h1 class="shifa-appbar__title" [title]="pageTitle()">{{ pageTitle() }}</h1>
+        </div>
       </div>
 
       <!-- Right: global search, live status, notifications, account -->
@@ -250,11 +251,7 @@
   >
     <div class="shifa-drawer__head">
       <a routerLink="/dashboard" class="shifa-brand" aria-label="Shifa Herbal Remedies" (click)="closeMenu()">
-        <span class="shifa-brand__mark"><i class="ti ti-leaf"></i></span>
-        <span class="shifa-brand__text">
-          <span class="shifa-brand__title">Shifa</span>
-          <span class="shifa-brand__subtitle">Herbal Remedies</span>
-        </span>
+        <img src="/logo.png" alt="Shifa Herbal Remedies" class="shifa-brand__logo" />
       </a>
       <button type="button" class="btn btn-icon" (click)="closeMenu()" aria-label="Close menu">
         <i class="ti ti-x" aria-hidden="true"></i>

@@ -9,9 +9,12 @@ import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.order.dto.ApprovalQueueItemResponse;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
+import com.shifa.oms.audit.AuditActions;
+import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.quikshipx.OrderShipmentRepository;
 import com.shifa.oms.quikshipx.QuikShipXProperties;
+import com.shifa.oms.quikshipx.QuikShipXService;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -69,11 +72,27 @@ public class AdminOrderService {
      */
     private final UserRepository userRepository;
 
-    /** Legacy constructor (unit tests): no QuikShipX approval hook / list enrichment. */
+    /**
+     * QuikShipX cancel hook (nullable): when an admin cancels a QuikShipX order
+     * that was already handed to the courier, this requests cancellation at
+     * QuikShipX so the courier aborts the pickup (order-cancellation feature).
+     * Null under the legacy test constructor — the courier cancel is then skipped
+     * (the OMS-side cancellation still happens).
+     */
+    private final QuikShipXService quikShipXService;
+
+    /**
+     * Audit trail (nullable): records the cancellation (with the courier-cancel
+     * outcome) on the order's audit history. Null under the legacy test constructor.
+     */
+    private final AuditService auditService;
+
+    /** Legacy constructor (unit tests): no QuikShipX hooks / list enrichment / audit. */
     public AdminOrderService(OrderRepository orderRepository, LabelService labelService,
                              OrderWorkflowService orderWorkflowService,
                              OutboxEventPublisher outboxEventPublisher) {
-        this(orderRepository, labelService, orderWorkflowService, outboxEventPublisher, null, null, null);
+        this(orderRepository, labelService, orderWorkflowService, outboxEventPublisher,
+                null, null, null, null, null);
     }
 
     @Autowired
@@ -82,7 +101,9 @@ public class AdminOrderService {
                              OutboxEventPublisher outboxEventPublisher,
                              QuikShipXProperties quikShipXProperties,
                              OrderShipmentRepository orderShipmentRepository,
-                             UserRepository userRepository) {
+                             UserRepository userRepository,
+                             QuikShipXService quikShipXService,
+                             AuditService auditService) {
         this.orderRepository = orderRepository;
         this.labelService = labelService;
         this.orderWorkflowService = orderWorkflowService;
@@ -90,6 +111,8 @@ public class AdminOrderService {
         this.quikShipXProperties = quikShipXProperties;
         this.orderShipmentRepository = orderShipmentRepository;
         this.userRepository = userRepository;
+        this.quikShipXService = quikShipXService;
+        this.auditService = auditService;
     }
 
     /**
@@ -159,8 +182,23 @@ public class AdminOrderService {
                                                  PaymentStatus paymentStatus,
                                                  LocalDate from, LocalDate to,
                                                  Pageable pageable, java.util.Collection<Long> creatorIds) {
+        return listOrders(q, status, statusGroup, paymentStatus, from, to, pageable, creatorIds, null);
+    }
+
+    /**
+     * As the {@code creatorIds} canonical listing with an additional exact
+     * {@link com.shifa.oms.order.OrderSource} filter (e.g. only Shopify-imported
+     * orders). {@code null} source = no source filter.
+     */
+    @Transactional(readOnly = true)
+    public Page<OrderSummaryResponse> listOrders(String q, OrderStatus status,
+                                                 OrderStatusGroup statusGroup,
+                                                 PaymentStatus paymentStatus,
+                                                 LocalDate from, LocalDate to,
+                                                 Pageable pageable, java.util.Collection<Long> creatorIds,
+                                                 com.shifa.oms.order.OrderSource source) {
         Specification<OrderEntity> spec =
-                OrderListSpecifications.build(q, status, statusGroup, paymentStatus, from, to, creatorIds);
+                OrderListSpecifications.build(q, status, statusGroup, paymentStatus, from, to, creatorIds, source);
         Page<OrderEntity> entities = orderRepository.findAll(spec, pageable);
         // Resolve each row's salesperson (created_by) name once for the whole page,
         // so the Orders table shows who punched each order without an N+1.
@@ -270,8 +308,16 @@ public class AdminOrderService {
     public OrderResponse approve(Long id, AuthPrincipal admin, String deliveryMethod) {
         OrderEntity order = requireOrder(id);
         if (deliveryMethod != null && !deliveryMethod.isBlank()) {
-            order.setDeliveryMethod(
-                    DeliveryMethod.valueOf(deliveryMethod.trim().toUpperCase(java.util.Locale.ROOT)));
+            DeliveryMethod requested =
+                    DeliveryMethod.valueOf(deliveryMethod.trim().toUpperCase(java.util.Locale.ROOT));
+            // Counter Sale (walk-in shop order) never goes through a delivery
+            // partner — reject any attempt to override it to QuikShipX at
+            // approval time rather than silently ignoring the admin's choice.
+            if (order.getLeadSource() == LeadSource.COUNTER_SALE && requested != DeliveryMethod.IN_HOUSE) {
+                throw new com.shifa.oms.common.ValidationException(
+                        "This order is a Counter Sale and cannot be assigned a delivery partner.");
+            }
+            order.setDeliveryMethod(requested);
         }
         orderWorkflowService.applyTransition(
                 order, OrderStatus.APPROVED, Actor.user(admin, SOURCE_ADMIN));
@@ -322,6 +368,95 @@ public class AdminOrderService {
                 order, OrderStatus.REJECTED, Actor.user(admin, SOURCE_ADMIN));
         order.setRejectReason(category, reason.trim());
         return OrderResponse.from(orderRepository.save(order));
+    }
+
+    /**
+     * Cancels an order with a mandatory note (order-cancellation feature). Unlike
+     * {@link #reject}, this works at ANY pre-delivery stage — including after a
+     * QuikShipX tracking id (AWB) has been generated — for the real-world cases the
+     * client needs: the payment never arrived, or the customer cancels after a
+     * partial payment.
+     *
+     * <p>Steps (all in one transaction):
+     * <ol>
+     *   <li>transition {@code … → CANCELLED} via the central
+     *       {@link OrderWorkflowService} (403 if the caller is not ADMIN, 409 if the
+     *       order is already delivered/closed/returned — a delivered order is a
+     *       Return, not a Cancel);</li>
+     *   <li>store the mandatory note on the order (reusing {@code rejection_reason}
+     *       as the "why it was stopped" field — the CANCELLED status distinguishes it
+     *       from a rejection);</li>
+     *   <li>clear the on-delivery dues: zero the COD amount and the customer
+     *       outstanding so the cancelled order drops off the collectibles/dashboards
+     *       (mirrors the RTO give-up handling). The amount already received is left
+     *       untouched — any refund owed is a separate manual action, documented in
+     *       the note;</li>
+     *   <li>for a QuikShipX order, request cancellation at QuikShipX so the courier
+     *       is NOT sent to pick the parcel up (best-effort — the OMS cancellation
+     *       always succeeds even if the courier call fails; the outcome is audited).</li>
+     * </ol>
+     * The CANCELLED transition itself fans out the standard cancellation
+     * notification via the workflow service.
+     *
+     * @return the cancelled order plus whether the courier was told to abort pickup
+     */
+    @Transactional
+    public CancelResult cancel(Long id, String note, AuthPrincipal admin) {
+        if (note == null || note.isBlank()) {
+            throw new ValidationException("A cancellation note is required.");
+        }
+        OrderEntity order = requireOrder(id);
+        String trimmedNote = note.trim();
+
+        // 1. Transition to CANCELLED through the central workflow (authorize +
+        // legality + history + audit + notification fan-out).
+        orderWorkflowService.applyTransition(
+                order, OrderStatus.CANCELLED, Actor.user(admin, SOURCE_ADMIN));
+
+        // 2. Record the mandatory note (reuses the generic "why stopped" field).
+        order.setRejectionReason(trimmedNote);
+
+        // 3. Clear on-delivery dues — nothing to collect for a cancelled order
+        // (mirrors the RTO give-up handling). Amount received is untouched.
+        order.applyAmounts(order.getTotalAmount(), order.getAmountReceived(),
+                order.getRemainingAmount(), java.math.BigDecimal.ZERO, order.getPaymentStatus());
+        order.setCustomerOutstanding(java.math.BigDecimal.ZERO);
+
+        OrderEntity saved = orderRepository.save(order);
+
+        // 4. Tell QuikShipX to cancel the shipment (abort courier pickup). Best-effort.
+        QuikShipXService.CancelOutcome courierOutcome = null;
+        if (quikShipXService != null) {
+            courierOutcome = quikShipXService.cancelForOrder(saved.getId());
+        }
+
+        boolean courierCancelAttempted = courierOutcome != null && courierOutcome.attempted();
+        boolean courierCancelAccepted = courierOutcome != null && courierOutcome.accepted();
+        String courierMessage = courierOutcome == null ? null : courierOutcome.message();
+
+        // Audit the cancellation with the courier outcome, so the admin can see
+        // whether the pickup was actually stopped at the partner.
+        if (auditService != null) {
+            String detail = "Cancelled order " + saved.getOrderCode() + " — " + trimmedNote;
+            if (courierCancelAttempted) {
+                detail += courierCancelAccepted
+                        ? " [QuikShipX pickup aborted]"
+                        : " [QuikShipX cancel NOT confirmed: " + courierMessage + " — follow up with the courier]";
+            }
+            auditService.record(AuditActions.ORDER_CANCELLED, AuditActions.ENTITY_ORDER,
+                    String.valueOf(saved.getId()), detail);
+        }
+
+        return new CancelResult(OrderResponse.from(saved),
+                courierCancelAttempted, courierCancelAccepted, courierMessage);
+    }
+
+    /**
+     * The outcome of an admin cancellation: the cancelled order plus whether the
+     * courier (QuikShipX) was told to abort the pickup and whether it confirmed.
+     */
+    public record CancelResult(OrderResponse order, boolean courierCancelAttempted,
+                               boolean courierCancelAccepted, String courierMessage) {
     }
 
     // --- Internal helpers ---------------------------------------------------

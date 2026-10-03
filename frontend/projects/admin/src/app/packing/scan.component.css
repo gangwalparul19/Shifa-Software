@@ -185,6 +185,31 @@
   vertical-align: middle;
 }
 
+/* Packaging note column — highlight so the packing team spots instructions.
+   Clamp long notes to 2 lines in the cell (full text on hover via title). */
+.pk-note {
+  max-width: 16rem;
+}
+.pk-note__flag {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: #955a00;
+  background: rgba(255, 193, 7, 0.16);
+  border-radius: 6px;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+.pk-note__flag i {
+  color: #b8860b;
+}
+/* The scan preview's packaging-note callout should read clearly. */
+.pk-preview-note {
+  white-space: normal;
+}
+
 /* ==========================================================================
    Ready-to-move work items — rounded white cards with a soft shadow.
    ========================================================================== */
@@ -271,4 +296,46 @@
 .pk-boxes {
   width: 64px;
   text-align: center;
+}
+
+/* Delivery-partner badge on queue/status rows (QuikShip courier vs in-house). */
+.pk-partner {
+  font-weight: 600;
+}
+.pk-partner--quik {
+  color: #6d28d9;
+  background: #ede9fe;
+}
+.pk-partner--inhouse {
+  color: #0f766e;
+  background: #ccfbf1;
+}
+
+/* "Printed" badge shown on a row's QuikShip-label button once printed. */
+.pk-printed-badge {
+  color: var(--shifa-green-700, #164632);
+  background: var(--shifa-green-100, #e4f2ea);
+  font-weight: 600;
+}
+
+/* QuikShip label button sits inline with the other row actions. */
+.pk-row__quik {
+  white-space: nowrap;
+}
+
+/* "How packing works" guide strip. */
+.pk-guide {
+  border-left: 3px solid var(--shifa-green-500, #1f5d3f);
+  background: var(--shifa-green-050, #f2f9f5);
+}
+.pk-guide__icon {
+  color: var(--shifa-green-600, #1f5d3f);
+}
+.pk-guide__steps {
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: #45524b;
+}
+.pk-guide__steps li {
+  margin-bottom: 0.15rem;
 }

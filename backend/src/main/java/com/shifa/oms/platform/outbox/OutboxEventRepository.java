@@ -32,6 +32,22 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> 
             String aggregateType, Long aggregateId, String eventType);
 
     /**
+     * All events for one aggregate whose event-type starts with {@code prefix}
+     * (e.g. {@code "QUIKSHIPX"} for an order). Used by the per-order QuikShipX
+     * retry action to find and re-queue a single stuck order's events.
+     */
+    @Query("""
+            SELECT e FROM OutboxEvent e
+            WHERE e.aggregateType = :aggregateType
+              AND e.aggregateId = :aggregateId
+              AND e.eventType LIKE CONCAT(:prefix, '%')
+            ORDER BY e.id ASC
+            """)
+    List<OutboxEvent> findByAggregateAndEventTypePrefix(@Param("aggregateType") String aggregateType,
+                                                        @Param("aggregateId") Long aggregateId,
+                                                        @Param("prefix") String prefix);
+
+    /**
      * Events of a given type that are due for a (re)delivery attempt: still
      * {@code PENDING} and either never attempted ({@code next_attempt_at} null) or
      * whose backoff window has elapsed. Oldest first, so the drainer processes a
@@ -47,4 +63,19 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> 
     List<OutboxEvent> findDue(@Param("eventType") String eventType,
                               @Param("status") String status,
                               @Param("now") LocalDateTime now);
+
+    /**
+     * Events of a given type currently in a given status whose event-type name
+     * starts with {@code prefix} (e.g. {@code "QUIKSHIPX"}). Used by the
+     * self-healing re-drive to find permanently-FAILED QuikShipX events to retry
+     * after the courier API recovers from a transient outage. Oldest first.
+     */
+    @Query("""
+            SELECT e FROM OutboxEvent e
+            WHERE e.status = :status
+              AND e.eventType LIKE CONCAT(:prefix, '%')
+            ORDER BY e.createdAt ASC
+            """)
+    List<OutboxEvent> findByStatusAndEventTypePrefix(@Param("status") String status,
+                                                     @Param("prefix") String prefix);
 }
