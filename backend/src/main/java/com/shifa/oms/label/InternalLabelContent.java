@@ -96,11 +96,33 @@ public record InternalLabelContent(
                 .collect(Collectors.joining(", "));
     }
 
-    /** A single ordered product on the label: its name and quantity (Req 10.1). */
-    public record LabelLineItem(String productName, int quantity) {
+    /**
+     * A single ordered product on the label: its name, quantity, and line total
+     * (Req 10.1). {@code lineTotal} is the GST-inclusive amount for the line
+     * (quantity &times; rate), so the label can show an itemized list and a
+     * Sub-total; it defaults to {@link BigDecimal#ZERO} via the back-compat
+     * 2-arg constructor used by older callers/tests.
+     */
+    public record LabelLineItem(String productName, int quantity, BigDecimal lineTotal) {
         public LabelLineItem {
             Objects.requireNonNull(productName, "productName");
+            if (lineTotal == null) {
+                lineTotal = BigDecimal.ZERO;
+            }
         }
+
+        /** Back-compat: a line without an amount (lineTotal defaults to zero). */
+        public LabelLineItem(String productName, int quantity) {
+            this(productName, quantity, BigDecimal.ZERO);
+        }
+    }
+
+    /** The Sub-total = sum of the line totals (gross, before any order discount). */
+    public BigDecimal subtotal() {
+        return lineItems.stream()
+                .map(LabelLineItem::lineTotal)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     /** The full one-line shipping address assembled for rendering. */

@@ -150,6 +150,7 @@ public class LabelContentBuilder {
     }
 
     private InternalLabelContent.LabelLineItem toLabelLine(OrderLineItem item) {
-        return new InternalLabelContent.LabelLineItem(item.getProductName(), item.getQuantity());
+        return new InternalLabelContent.LabelLineItem(
+                item.getProductName(), item.getQuantity(), item.getLineTotal());
     }
 }

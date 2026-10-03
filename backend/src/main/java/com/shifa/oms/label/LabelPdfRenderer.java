@@ -42,24 +42,22 @@ public class LabelPdfRenderer {
     private boolean bundledLogoLoaded;
 
     // Shipping-label palette + fonts (modelled on the reference courier label).
-    private static final Color DARK = new Color(33, 37, 41);
     private static final Color BORDER = new Color(30, 30, 30);
     private static final Color CAPTION_GREY = new Color(110, 110, 110);
 
     // Fonts sized for an A6 quadrant (four labels to an A4 sheet): compact but
     // still legible after the sheet is cut into four.
-    private static final Font HEADER_WHITE = white(FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8));
     private static final Font NAME_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10);
     private static final Font BRAND_DARK = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10);
     private static final Font BODY_FONT = FontFactory.getFont(FontFactory.HELVETICA, 8);
     private static final Font SMALL_FONT = FontFactory.getFont(FontFactory.HELVETICA, 7);
+    /** Same size/family as {@link #SMALL_FONT} (the address font) but bold — used for the GST No line. */
+    private static final Font SMALL_BOLD = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7);
+    /** Item-list font (normal lists). */
+    private static final Font ITEM_FONT = FontFactory.getFont(FontFactory.HELVETICA, 8);
+    /** Smaller item-list font for a long list so more products fit before the quadrant overflows. */
+    private static final Font ITEM_FONT_SMALL = FontFactory.getFont(FontFactory.HELVETICA, 6.5f);
     private static final Font CAPTION_FONT = grey(FontFactory.getFont(FontFactory.HELVETICA_BOLD, 6));
-    private static final Font CODE_FONT = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9);
-
-    private static Font white(Font f) {
-        f.setColor(Color.WHITE);
-        return f;
-    }
 
     private static Font grey(Font f) {
         f.setColor(CAPTION_GREY);
@@ -154,8 +152,14 @@ public class LabelPdfRenderer {
 
     // Minimum height of the item-description row so it absorbs the quadrant's
     // leftover vertical space (the other sections are compact), pushing the
-    // pickup address to the bottom and giving the product list room to grow.
-    private static final float ITEM_ROW_MIN_HEIGHT = 110f;
+    // pickup address to the very BOTTOM of the fixed-height quadrant. Sized so
+    // item + pickup together fill the quadrant (any excess is clamped by the
+    // quadrant's fixed height, so a longer address/list never overflows the page).
+    // The "no pickup" variant fills the whole remaining height itself. These are
+    // kept slightly UNDER the full leftover so the pickup line is never clipped by
+    // the quadrant's fixed height (a small bottom margin is fine; clipping is not).
+    private static final float ITEM_ROW_MIN_HEIGHT = 150f;
+    private static final float ITEM_ROW_MIN_HEIGHT_NO_PICKUP = 210f;
 
     /** A fresh empty 2-column outer grid spanning the full A4 content width. */
     private PdfPTable newGrid() {
@@ -192,11 +196,11 @@ public class LabelPdfRenderer {
     }
 
     /**
-     * Renders one label block styled after the reference courier label: a single
-     * bordered box divided into stacked sections — a dark "DELIVERY TO" header,
-     * the recipient block with the Shifa logo, a scannable Code128 barcode, then
-     * a grid of item description/total, order id/payment, ordered-on/COD, the
-     * pickup-and-return address and the seller name — all populated from our data.
+     * Renders one label block as a single bordered box divided into stacked
+     * sections: the seller letterhead (brand + address + GST No + logo), the
+     * recipient "To :" block (30/70 split), a compact barcode + ordered-on/COD/
+     * payment row, an itemized item table with Sub-total + Total, and the
+     * pickup-and-return address last — all populated from our data.
      */
     private PdfPTable writeLabelBlock(InternalLabelContent content, byte[] logoPng) {
         PdfPTable main = new PdfPTable(1);
@@ -212,29 +216,48 @@ public class LabelPdfRenderer {
         // 2) Recipient "To :" block (boxed, full width) — like the invoice To block.
         main.addCell(boxWrap(recipientTable(content), 8f));
 
-        // 3) Compact barcode + info row (space-saving redesign): a SQUARE barcode
-        // box on the left and, in the SAME row, the order date + payment badge +
-        // COD/prepaid stacked on the right. This keeps the fixed sections tight so
-        // that when an order has several items the item list has room to grow
-        // downward instead of the barcode eating a whole row of its own.
+        // 3) Info + barcode row, split 50/50: the ordered-on / payment / COD info
+        // on the left and the barcode/QR box on the right (client layout).
         //
         // Barcode value: the allotted courier AWB when present (so the courier team
         // scans straight into their own system at pickup), otherwise our own order
         // code (so the godown/RTO flow can always scan a parcel back to the order).
         main.addCell(barcodeInfoRow(content));
 
-        // 4) Item description + order total. This row is given a minimum height so
-        // it absorbs the leftover vertical space of the fixed-height quadrant —
-        // the product list therefore has room to grow downward, and any unused
-        // space stays here (above the pickup address) rather than as a blank gap
-        // at the very bottom of the label.
-        main.addCell(itemDescriptionRow(content));
+        // A long order drops the pickup/return address so the extra items have room
+        // (the quadrant is a fixed height). Short orders keep it, pinned to the
+        // bottom with its content limited to 2 lines.
+        boolean showPickup = content.lineItems().size() <= MAX_ITEMS_WITH_PICKUP;
 
-        // 5) Pickup & return address — kept as the VERY LAST section so all the
-        // remaining space above it is available for a longer product list.
-        main.addCell(captionBox("PICKUP & RETURN ADDRESS", nz(content.pickupReturnAddress(), "\u2014")));
+        // 4) Item description + order total. This row absorbs the leftover vertical
+        // space of the fixed-height quadrant so the product list has room to grow
+        // and the pickup address below is pushed to the bottom. When the pickup
+        // address is dropped (long order), this section fills the whole remaining
+        // height itself.
+        main.addCell(itemDescriptionRow(content, showPickup));
+
+        // 5) Pickup & return address — the VERY LAST section, pinned to the bottom,
+        // limited to 2 lines. Dropped entirely for a long order (see above).
+        if (showPickup) {
+            main.addCell(pickupAddressRow(nz(content.pickupReturnAddress(), "\u2014")));
+        }
 
         return main;
+    }
+
+    /** Beyond this many line items the pickup/return address is dropped to make room. */
+    private static final int MAX_ITEMS_WITH_PICKUP = 5;
+
+    /** The pickup/return address section, limited to a compact 2-line footprint. */
+    private PdfPCell pickupAddressRow(String value) {
+        PdfPTable inner = new PdfPTable(1);
+        inner.setWidthPercentage(100);
+        inner.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+        inner.addCell(new Phrase("PICKUP & RETURN ADDRESS", CAPTION_FONT));
+        // Collapse any newlines so a multi-line pickup address stays on one wrapped
+        // line (2 visual lines at most) rather than several.
+        inner.addCell(new Phrase(oneLine(value), SMALL_FONT));
+        return boxWrap(inner, 6f);
     }
 
     // --- Section builders ---------------------------------------------------
@@ -258,9 +281,10 @@ public class LabelPdfRenderer {
         if (content.sellerAddress() != null && !content.sellerAddress().isBlank()) {
             left.addCell(new Phrase(content.sellerAddress(), SMALL_FONT));
         }
-        // GST No directly under the seller address (client requirement, as on the invoice).
+        // GST No directly under the seller address, in the SAME font as the address
+        // (SMALL_FONT) but bold (client request) — not a larger code font.
         if (content.sellerGstin() != null && !content.sellerGstin().isBlank()) {
-            left.addCell(new Phrase("GST No : " + content.sellerGstin(), CODE_FONT));
+            left.addCell(new Phrase("GST No : " + content.sellerGstin(), SMALL_BOLD));
         }
         PdfPCell lc = new PdfPCell(left);
         lc.setBorder(Rectangle.NO_BORDER);
@@ -278,48 +302,206 @@ public class LabelPdfRenderer {
         return t;
     }
 
-    /** The recipient ("To :") block — name + address + mobile, boxed like the invoice. */
+    /**
+     * The recipient ("To :") block — full width (100%): the "To :" name (bold,
+     * shown ONCE), the mobile number, then the delivery address. The address is
+     * cleaned so the customer name is not repeated, and a "City, State - Zip" line
+     * is appended ONLY when the address text does not already contain the city
+     * (so it is never printed twice).
+     */
     private PdfPTable recipientTable(InternalLabelContent content) {
         PdfPTable t = new PdfPTable(1);
         t.setWidthPercentage(100);
         t.getDefaultCell().setBorder(Rectangle.NO_BORDER);
         t.getDefaultCell().setPaddingBottom(1f);
-        t.addCell(new Phrase("To : " + nz(content.customerName(), "\u2014").toUpperCase(), NAME_FONT));
-        if (content.addressLine() != null && !content.addressLine().isBlank()) {
-            t.addCell(new Phrase(content.addressLine(), SMALL_FONT));
-        }
-        t.addCell(new Phrase(cityStatePin(content), SMALL_FONT));
+
+        // Name (bold, once) + Mobile, each on its own full-width line.
+        String name = nz(content.customerName(), "\u2014").toUpperCase();
+        t.addCell(new Phrase("To : " + name, nameFontFor(name)));
         if (content.customerMobile() != null && !content.customerMobile().isBlank()) {
             t.addCell(new Phrase("Mobile : +91 " + content.customerMobile(), SMALL_FONT));
         }
+
+        // Full-width delivery address. The cleaned address lines are JOINED with
+        // commas into a single string so a multi-line address wraps to ~2 lines
+        // instead of printing one line per entry (saves vertical space).
+        t.addCell(new Phrase("DELIVERY ADDRESS", CAPTION_FONT));
+        List<String> addressLines = cleanAddressLines(content);
+        String addressText = String.join(", ", addressLines);
+        t.addCell(new Phrase(addressText.isBlank() ? "\u2014" : addressText, SMALL_FONT));
+
+        // Append "City, State - Zip" ONLY when the address text doesn't already
+        // contain the city (avoids duplicating the city/state/zip the salesperson
+        // may already have typed into the address).
+        String cityStateZip = cityStateZip(content);
+        if (cityStateZip != null && !addressTextContainsCity(addressText.toLowerCase(), content)) {
+            t.addCell(new Phrase(cityStateZip, SMALL_BOLD));
+        }
+
         return t;
     }
 
+    /** "City, State - Zip" from the structured fields, or {@code null} when all blank. */
+    private String cityStateZip(InternalLabelContent content) {
+        StringBuilder sb = new StringBuilder();
+        if (content.city() != null && !content.city().isBlank()) {
+            sb.append(content.city().trim().toUpperCase());
+        }
+        if (content.state() != null && !content.state().isBlank()) {
+            if (sb.length() > 0) {
+                sb.append(", ");
+            }
+            sb.append(content.state().trim().toUpperCase());
+        }
+        if (content.postalCode() != null && !content.postalCode().isBlank()) {
+            if (sb.length() > 0) {
+                sb.append(" - ");
+            }
+            sb.append(content.postalCode().trim());
+        }
+        return sb.length() == 0 ? null : sb.toString();
+    }
+
     /**
-     * Compact "barcode + info" row (space-saving redesign): a bordered SQUARE
-     * barcode box on the left (Code128 of the courier AWB when allotted, else our
-     * own order code, with a small caption + human-readable value under it) and,
-     * in the SAME row, a right column stacking Ordered-on, the Payment badge and
-     * the COD-collect amount (or a "prepaid — do not collect" note). Sitting the
-     * barcode beside this info — rather than in a full-width row of its own —
+     * Whether the free-text address already contains the city name, so appending
+     * the structured "City, State - Zip" line would duplicate it. Keyed on the
+     * city (the most reliable signal that the salesperson typed the location into
+     * the address). Returns false when no city is on file.
+     */
+    private static boolean addressTextContainsCity(String addressTextLower, InternalLabelContent content) {
+        String city = content.city() == null ? "" : content.city().trim().toLowerCase();
+        return !city.isEmpty() && addressTextLower.contains(city);
+    }
+
+    /** The name font, shrunk a step for longer names so they don't wrap mid-word. */
+    private static Font nameFontFor(String name) {
+        int len = name == null ? 0 : name.length();
+        if (len > 22) {
+            return FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8);
+        }
+        if (len > 16) {
+            return FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9);
+        }
+        return NAME_FONT;
+    }
+
+    /**
+     * Cleans the salesperson's free-text address so it is not duplicated with the
+     * To-box name and the structured city/state/pin line. Salespeople sometimes
+     * type a labelled block into the address field, e.g.
+     * <pre>
+     *   Name- Haider Ali machhali wala
+     *   Address- CAMP-2 GANDHI CHOWK NEAR JANTA SCHOOL
+     *   Landmark- SANGAM STUDIO
+     *   City- BHILAI
+     *   State- CHHATTISGARH
+     *   Pin code- 490001
+     *   490001, Durg, CHATTISGARH
+     * </pre>
+     * This drops the lines that merely repeat data shown elsewhere — the customer
+     * name (already in the To box), the state and the pincode (already in the
+     * structured line) — and strips the {@code "Label- "} prefixes so the address
+     * reads cleanly. Lines carrying real location detail (Address/Landmark/City)
+     * are kept. Returns the cleaned lines in order (never {@code null}).
+     */
+    private List<String> cleanAddressLines(InternalLabelContent content) {
+        String raw = content.addressLine();
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        // Normalised (lowercase, whitespace removed) comparison keys so a name like
+        // "Haider Ali machhali wala" in the address matches the stored
+        // "HAIDER ALI MACHHALIWALA" even when the spacing differs.
+        String name = squash(content.customerName());
+        String state = squash(content.state());
+        String pin = squash(content.postalCode());
+        String city = squash(content.city());
+
+        List<String> out = new java.util.ArrayList<>();
+        for (String rawLine : raw.split("\\r?\\n")) {
+            String line = rawLine.trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+            // Strip a leading "Label- " / "Label : " field prefix, keep the value.
+            String value = stripFieldLabel(line);
+            String lower = value.trim().toLowerCase();
+            String squashed = squash(value);
+            if (lower.isEmpty()) {
+                continue;
+            }
+            // Drop a line that just repeats the customer name (shown in the To box),
+            // tolerating spacing differences.
+            if (!name.isEmpty() && squashed.equals(name)) {
+                continue;
+            }
+            // Drop a line that is just the state, the city, or the pincode (all
+            // shown in the structured city/state/pin line below).
+            if (!state.isEmpty() && squashed.equals(state)) {
+                continue;
+            }
+            if (!pin.isEmpty() && squashed.equals(pin)) {
+                continue;
+            }
+            if (!city.isEmpty() && squashed.equals(city)) {
+                continue;
+            }
+            // Drop a line that is a duplicate structured "pin, city, state" tail
+            // (contains both the pincode and the state) — the canonical one is
+            // appended separately.
+            String stateLower = content.state() == null ? "" : content.state().trim().toLowerCase();
+            String pinLower = content.postalCode() == null ? "" : content.postalCode().trim().toLowerCase();
+            if (!pinLower.isEmpty() && !stateLower.isEmpty()
+                    && lower.contains(pinLower) && lower.contains(stateLower)) {
+                continue;
+            }
+            out.add(value.trim());
+        }
+        return out;
+    }
+
+    /** Lowercases and removes ALL whitespace, for spacing-tolerant equality checks. */
+    private static String squash(String value) {
+        return value == null ? "" : value.trim().toLowerCase().replaceAll("\\s+", "");
+    }
+
+    /** Strips a leading {@code "Label-"} / {@code "Label :"} field prefix, keeping the value. */
+    private static String stripFieldLabel(String line) {
+        // Match a short leading label word(s) followed by '-' or ':' (e.g. "Pin code- 490001").
+        java.util.regex.Matcher m = FIELD_LABEL.matcher(line);
+        return m.find() ? line.substring(m.end()).trim() : line;
+    }
+
+    /** Leading field label like "Name-", "Address :", "Pin code-", "Landmark -". */
+    private static final java.util.regex.Pattern FIELD_LABEL =
+            java.util.regex.Pattern.compile("^\\s*[A-Za-z][A-Za-z ]{0,14}[-:]\\s*");
+
+    /**
+     * The "info + barcode" row, split 50/50: the ordered-on / payment / COD info
+     * on the LEFT and the barcode/QR box (Code128 of the courier AWB when
+     * allotted, else our own order code) on the RIGHT. Keeping both on one row
      * saves a whole row of height so multi-item orders have room to expand.
      */
     private PdfPCell barcodeInfoRow(InternalLabelContent content) {
-        PdfPTable t = new PdfPTable(new float[] {1.15f, 1f});
+        // Info and barcode/QR share the row 50/50 (client layout).
+        PdfPTable t = new PdfPTable(new float[] {1f, 1f});
         t.setWidthPercentage(100);
 
-        // Left: square barcode box.
-        PdfPCell left = new PdfPCell(barcodeSquare(content));
+        // Left 50%: Order On / Payment / COD as three inline "label : value" rows.
+        PdfPCell left = new PdfPCell(barcodeSideInfo(content));
         left.setBorder(Rectangle.RIGHT);
         left.setBorderColor(BORDER);
-        left.setPadding(6f);
+        left.setPaddingLeft(4f);
+        left.setPaddingRight(6f);
+        left.setPaddingTop(4f);
+        left.setPaddingBottom(4f);
         left.setVerticalAlignment(Element.ALIGN_MIDDLE);
         t.addCell(left);
 
-        // Right: order date + payment badge + COD amount, stacked.
-        PdfPCell right = new PdfPCell(barcodeSideInfo(content));
+        // Right 50%: the barcode/QR box.
+        PdfPCell right = new PdfPCell(barcodeSquare(content));
         right.setBorder(Rectangle.NO_BORDER);
-        right.setPadding(6f);
+        right.setPadding(3f);
         right.setVerticalAlignment(Element.ALIGN_MIDDLE);
         t.addCell(right);
 
@@ -353,15 +535,15 @@ public class LabelPdfRenderer {
         t.addCell(cap);
 
         Image barcode = imageOf(barcodeGenerator.code128Png(value));
-        // Roughly square footprint so it reads as a "box" rather than a wide strip.
-        barcode.scaleToFit(120, 90);
+        // Fits the 50% column — a larger, easier-to-scan block.
+        barcode.scaleToFit(120, 80);
         PdfPCell bc = new PdfPCell(barcode, false);
         bc.setBorder(Rectangle.NO_BORDER);
         bc.setHorizontalAlignment(Element.ALIGN_CENTER);
         bc.setPadding(1f);
         t.addCell(bc);
 
-        PdfPCell hv = new PdfPCell(new Phrase(human, CODE_FONT));
+        PdfPCell hv = new PdfPCell(new Phrase(human, SMALL_BOLD));
         hv.setBorder(Rectangle.NO_BORDER);
         hv.setHorizontalAlignment(Element.ALIGN_CENTER);
         hv.setPaddingTop(2f);
@@ -369,75 +551,177 @@ public class LabelPdfRenderer {
         return t;
     }
 
-    /** The stacked info shown beside the barcode: ordered-on, payment, COD/prepaid. */
+    /**
+     * The info shown in the 70% left part of the barcode row: <b>Ordered on</b>
+     * and <b>COD</b> side by side in one two-column row, with <b>Payment</b> on the
+     * row below. When a courier AWB has been allotted (the barcode encodes the
+     * AWB), our own order code is shown first so it never disappears from the label.
+     */
     private PdfPTable barcodeSideInfo(InternalLabelContent content) {
         PdfPTable t = new PdfPTable(1);
         t.setWidthPercentage(100);
         t.getDefaultCell().setBorder(Rectangle.NO_BORDER);
+        t.getDefaultCell().setPaddingBottom(2f);
 
-        // Always show our own order code, even once a courier AWB has been
-        // allotted and the barcode above has switched to encoding the AWB
-        // instead — the order code must never disappear from the label.
+        // When a courier AWB has been allotted (the barcode encodes the AWB), show
+        // our own order code first so it never disappears from the label.
         if (content.hasCourierBarcode()) {
-            t.addCell(new Phrase("ORDER #", CAPTION_FONT));
-            t.addCell(new Phrase(content.orderCode(), NAME_FONT));
-            t.addCell(spacer());
+            t.addCell(inlineLabelValue("Order #", content.orderCode(), BODY_FONT));
         }
 
-        t.addCell(new Phrase("ORDERED ON", CAPTION_FONT));
-        t.addCell(new Phrase(nz(content.orderedOn(), "\u2014"), BODY_FONT));
-
-        t.addCell(spacer());
-        t.addCell(new Phrase("PAYMENT", CAPTION_FONT));
-        t.addCell(new Phrase(paymentBadge(content), NAME_FONT));
-
-        t.addCell(spacer());
+        // Three inline rows: "Label: value" each on its own line.
+        t.addCell(inlineLabelValue("Order On", nz(content.orderedOn(), "\u2014"), BODY_FONT));
+        // Payment value is intentionally a smaller, non-bold font (client request).
+        t.addCell(inlineLabelValue("Payment", paymentBadge(content), SMALL_FONT));
         if (content.codApplicable()) {
-            t.addCell(new Phrase("COLLECT ON DELIVERY", CAPTION_FONT));
-            t.addCell(new Phrase(money(content.codAmount()), NAME_FONT));
+            t.addCell(inlineLabelValue("COD", money(content.codAmount()), NAME_FONT));
         } else {
-            t.addCell(new Phrase("Prepaid \u2014 do not collect", SMALL_FONT));
+            t.addCell(inlineLabelValue("COD", "Prepaid \u2014 nothing to collect", SMALL_FONT));
         }
         return t;
     }
 
-    /** A thin vertical gap phrase used between stacked info groups. */
-    private static Phrase spacer() {
-        return new Phrase("\n", SMALL_FONT);
+    /**
+     * One line reading "<b>Label:</b> value" — the label in the grey caption font
+     * and the value in {@code valueFont}, kept together on a single line.
+     */
+    private Phrase inlineLabelValue(String label, String value, Font valueFont) {
+        Phrase p = new Phrase();
+        p.add(new com.lowagie.text.Chunk(label + " : ", CAPTION_FONT));
+        p.add(new com.lowagie.text.Chunk(nz(value, "\u2014"), valueFont));
+        return p;
     }
 
     /**
-     * Item description (left) + order total (right), given a minimum height so it
-     * soaks up the leftover space of the fixed-height quadrant. A short item list
-     * simply leaves whitespace HERE (above the pickup address), and a long list
-     * grows downward into the same area — either way the blank space is available
-     * for the products rather than dangling below the pickup address.
+     * Itemized item section: a header (ITEM / QTY / AMOUNT), one row per product,
+     * then a Sub-total, an optional Discount (when the grand total is below the
+     * sub-total), and the Total. Given a minimum height so it soaks up the
+     * leftover space of the fixed-height quadrant — a short list leaves whitespace
+     * here, a long list grows downward into the same area. The item font shrinks
+     * for a long list so more products fit before the quadrant overflows (a very
+     * long order is still bounded by the fixed quadrant height, but this fits the
+     * common 1-8 item orders comfortably with the Sub-total always shown).
      */
-    private PdfPCell itemDescriptionRow(InternalLabelContent content) {
-        PdfPTable t = new PdfPTable(new float[] {3.2f, 1f});
+    private PdfPCell itemDescriptionRow(InternalLabelContent content, boolean pickupShownBelow) {
+        PdfPTable t = new PdfPTable(new float[] {3f, 0.7f, 1.3f});
         t.setWidthPercentage(100);
+        t.getDefaultCell().setBorder(Rectangle.NO_BORDER);
 
-        PdfPCell l = new PdfPCell(
-                captionValue("ITEM DESCRIPTION", nz(content.itemSummary(), "\u2014"), Element.ALIGN_LEFT));
-        l.setBorder(Rectangle.RIGHT);
-        l.setBorderColor(BORDER);
-        l.setPadding(6f);
-        l.setMinimumHeight(ITEM_ROW_MIN_HEIGHT);
-        l.setVerticalAlignment(Element.ALIGN_TOP);
+        List<InternalLabelContent.LabelLineItem> items = content.lineItems();
+        // Shrink the font for a long list so more rows fit before the quadrant overflows.
+        Font itemFont = items.size() > 6 ? ITEM_FONT_SMALL : ITEM_FONT;
 
-        PdfPCell r = new PdfPCell(
-                captionValue("TOTAL", money(content.totalAmount()), Element.ALIGN_RIGHT));
-        r.setBorder(Rectangle.NO_BORDER);
-        r.setPadding(6f);
-        r.setVerticalAlignment(Element.ALIGN_TOP);
+        // Header row.
+        t.addCell(headerCell("ITEM DESCRIPTION", Element.ALIGN_LEFT));
+        t.addCell(headerCell("QTY", Element.ALIGN_CENTER));
+        t.addCell(headerCell("AMOUNT", Element.ALIGN_RIGHT));
 
-        t.addCell(l);
-        t.addCell(r);
+        boolean anyLineAmount = false;
+        for (InternalLabelContent.LabelLineItem li : items) {
+            t.addCell(itemCell(li.productName(), Element.ALIGN_LEFT, itemFont));
+            t.addCell(itemCell(String.valueOf(li.quantity()), Element.ALIGN_CENTER, itemFont));
+            boolean hasAmount = li.lineTotal() != null && li.lineTotal().signum() > 0;
+            anyLineAmount = anyLineAmount || hasAmount;
+            t.addCell(itemCell(hasAmount ? money(li.lineTotal()) : "", Element.ALIGN_RIGHT, itemFont));
+        }
+        if (items.isEmpty()) {
+            PdfPCell none = itemCell("\u2014", Element.ALIGN_LEFT, itemFont);
+            none.setColspan(3);
+            t.addCell(none);
+        }
+
+        // Totals block: Sub-total (always shown), Discount (if the total is below
+        // the sub-total), then the grand Total. Spans the qty+amount columns on the
+        // right with the label on the left.
+        java.math.BigDecimal subtotal = content.subtotal();
+        java.math.BigDecimal total = content.totalAmount() != null
+                ? content.totalAmount() : java.math.BigDecimal.ZERO;
+        // Fall back to the total as the sub-total when no per-line amounts exist
+        // (older orders), so the Sub-total line is never blank/zero misleadingly.
+        if (!anyLineAmount || subtotal.signum() <= 0) {
+            subtotal = total;
+        }
+        t.addCell(totalLabelCell("Sub-total"));
+        t.addCell(totalValueCell(money(subtotal)));
+        java.math.BigDecimal discount = subtotal.subtract(total);
+        if (discount.signum() > 0) {
+            t.addCell(totalLabelCell("Discount"));
+            t.addCell(totalValueCell("- " + money(discount)));
+        }
+        t.addCell(grandTotalLabelCell("TOTAL"));
+        t.addCell(grandTotalValueCell(money(total)));
 
         PdfPCell wrap = new PdfPCell(t);
         wrap.setBorderColor(BORDER);
-        wrap.setPadding(0f);
+        wrap.setPadding(6f);
+        // Size this section so it fills the leftover quadrant height — pushing the
+        // pickup address (when shown) to the very bottom, or filling the whole
+        // remaining height when pickup is dropped (long order). The quadrant's
+        // fixed height clamps any excess, so this never spills onto a second page.
+        wrap.setMinimumHeight(pickupShownBelow ? ITEM_ROW_MIN_HEIGHT : ITEM_ROW_MIN_HEIGHT_NO_PICKUP);
+        wrap.setVerticalAlignment(Element.ALIGN_TOP);
         return wrap;
+    }
+
+    // --- Item-table cell helpers --------------------------------------------
+
+    private PdfPCell headerCell(String text, int align) {
+        PdfPCell c = new PdfPCell(new Phrase(text, CAPTION_FONT));
+        c.setBorder(Rectangle.BOTTOM);
+        c.setBorderColor(BORDER);
+        c.setHorizontalAlignment(align);
+        c.setPaddingBottom(2f);
+        return c;
+    }
+
+    private PdfPCell itemCell(String text, int align, Font font) {
+        PdfPCell c = new PdfPCell(new Phrase(text, font));
+        c.setBorder(Rectangle.NO_BORDER);
+        c.setHorizontalAlignment(align);
+        c.setPaddingTop(2f);
+        c.setPaddingBottom(1f);
+        return c;
+    }
+
+    /** Sub-total/Discount label cell — spans the ITEM + QTY columns, right-aligned. */
+    private PdfPCell totalLabelCell(String text) {
+        PdfPCell c = new PdfPCell(new Phrase(text, BODY_FONT));
+        c.setColspan(2);
+        c.setBorder(Rectangle.TOP);
+        c.setBorderColor(new Color(210, 210, 210));
+        c.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        c.setPaddingTop(3f);
+        c.setPaddingRight(4f);
+        return c;
+    }
+
+    private PdfPCell totalValueCell(String text) {
+        PdfPCell c = new PdfPCell(new Phrase(text, BODY_FONT));
+        c.setBorder(Rectangle.TOP);
+        c.setBorderColor(new Color(210, 210, 210));
+        c.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        c.setPaddingTop(3f);
+        return c;
+    }
+
+    private PdfPCell grandTotalLabelCell(String text) {
+        PdfPCell c = new PdfPCell(new Phrase(text, NAME_FONT));
+        c.setColspan(2);
+        c.setBorder(Rectangle.TOP);
+        c.setBorderColor(BORDER);
+        c.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        c.setPaddingTop(3f);
+        c.setPaddingRight(4f);
+        return c;
+    }
+
+    private PdfPCell grandTotalValueCell(String text) {
+        PdfPCell c = new PdfPCell(new Phrase(text, NAME_FONT));
+        c.setBorder(Rectangle.TOP);
+        c.setBorderColor(BORDER);
+        c.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        c.setPaddingTop(3f);
+        return c;
     }
 
     /** A full-width bordered section wrapping a nested table with the given padding. */
@@ -448,70 +732,20 @@ public class LabelPdfRenderer {
         return c;
     }
 
-    /** A full-width section: a small grey caption over a body value. */
-    private PdfPCell captionBox(String caption, String value) {
-        PdfPTable inner = captionValue(caption, value, Element.ALIGN_LEFT);
-        return boxWrap(inner, 6f);
-    }
-
-    /** A two-column bordered row with a vertical divider between the columns. */
-    private PdfPCell twoColRow(String lCap, String lVal, int lAlign,
-                               String rCap, String rVal, int rAlign,
-                               float wLeft, float wRight) {
-        PdfPTable t = new PdfPTable(new float[] {wLeft, wRight});
-        t.setWidthPercentage(100);
-
-        PdfPCell l = new PdfPCell(captionValue(lCap, lVal, lAlign));
-        l.setBorder(Rectangle.RIGHT);
-        l.setBorderColor(BORDER);
-        l.setPadding(6f);
-        PdfPCell r = new PdfPCell(captionValue(rCap, rVal, rAlign));
-        r.setBorder(Rectangle.NO_BORDER);
-        r.setPadding(6f);
-        t.addCell(l);
-        t.addCell(r);
-
-        PdfPCell wrap = new PdfPCell(t);
-        wrap.setBorderColor(BORDER);
-        wrap.setPadding(0f);
-        return wrap;
-    }
-
     // --- Small helpers ------------------------------------------------------
 
-    /** A borderless nested table stacking a grey caption over a body value. */
-    private PdfPTable captionValue(String caption, String value, int align) {
-        PdfPTable t = new PdfPTable(1);
-        t.setWidthPercentage(100);
-        t.getDefaultCell().setBorder(Rectangle.NO_BORDER);
-        t.getDefaultCell().setHorizontalAlignment(align);
-        t.addCell(new Phrase(caption, CAPTION_FONT));
-        t.addCell(new Phrase(nz(value, "\u2014"), BODY_FONT));
-        return t;
+    /** Collapses any newlines in a value to ", " so it reads as one wrapped line. */
+    private static String oneLine(String value) {
+        if (value == null) {
+            return "\u2014";
+        }
+        return value.replaceAll("\\s*\\r?\\n\\s*", ", ").trim();
     }
 
     private String paymentBadge(InternalLabelContent content) {
         String label = nz(content.paymentLabel(), content.codApplicable() ? "COD" : "PREPAID");
         // Present "PREPAID" as the reference's "Pre-Paid" styling.
         return "PREPAID".equalsIgnoreCase(label) ? "Pre-Paid" : label;
-    }
-
-    private String cityStatePin(InternalLabelContent content) {
-        String state = content.state() != null ? content.state().toUpperCase() : null;
-        StringBuilder sb = new StringBuilder();
-        appendPart(sb, content.postalCode());
-        appendPart(sb, content.city());
-        appendPart(sb, state);
-        return sb.length() == 0 ? "\u2014" : sb.toString();
-    }
-
-    private static void appendPart(StringBuilder sb, String part) {
-        if (part != null && !part.isBlank()) {
-            if (sb.length() > 0) {
-                sb.append(", ");
-            }
-            sb.append(part.trim());
-        }
     }
 
     private static String money(BigDecimal v) {

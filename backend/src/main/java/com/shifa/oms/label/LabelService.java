@@ -206,13 +206,10 @@ public class LabelService {
             String pickup = joinNonBlank(", ", s.getAddressLine(), s.getCity(), s.getState());
             // Seller GST No + header address so the label header mirrors the invoice
             // (brand + address + GST No under it). Shown only when GST is enabled.
+            // The state code (e.g. "(23)") is deliberately NOT appended to the label
+            // header address — only the plain state name is shown (client request).
             String gstin = s.isGstEnabled() ? blankToNull(s.getGstin()) : null;
-            String stateWithCode = s.getState() != null ? s.getState() : "";
-            if (s.getStateCode() != null && !s.getStateCode().isBlank()) {
-                stateWithCode = (stateWithCode.isBlank() ? "" : stateWithCode + " ")
-                        + "(" + s.getStateCode() + ")";
-            }
-            String headerAddress = joinNonBlank(", ", s.getAddressLine(), s.getCity(), stateWithCode);
+            String headerAddress = joinNonBlank(", ", s.getAddressLine(), s.getCity(), s.getState());
             return new LabelCompany(brand, brand, pickup.isBlank() ? null : pickup,
                     gstin, headerAddress.isBlank() ? null : headerAddress);
         } catch (Exception e) {
