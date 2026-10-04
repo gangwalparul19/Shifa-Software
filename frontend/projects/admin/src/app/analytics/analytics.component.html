@@ -314,3 +314,68 @@
     }
   }
 }
+
+<!-- ==================== DELIVERY PERFORMANCE (ENHANCEMENT 3.3) ==================== -->
+@if (activeTab() === 'delivery') {
+  @if (deliveryLoading()) {
+    <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading delivery performance…" />
+  } @else if (deliveryError()) {
+    <admin-state-panel variant="error" [card]="true" [message]="deliveryError()!" (retry)="loadDelivery()" />
+  } @else if (delivery(); as d) {
+    <div class="row row-cards mb-3">
+      <div class="col-6 col-lg-3">
+        <div class="card"><div class="card-body">
+          <div class="subheader">Delivery success</div>
+          <div class="h1 m-0" [class]="deliveryRateClass(d.overall.successRate)">{{ d.overall.successRate }}%</div>
+          <div class="text-secondary small">{{ d.overall.delivered }} of {{ d.overall.total }} delivered</div>
+        </div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card"><div class="card-body">
+          <div class="subheader">Failed / returned</div>
+          <div class="h1 m-0 text-danger">{{ d.overall.failed }}</div>
+          <div class="text-secondary small">RTO / rejected / failed</div>
+        </div></div>
+      </div>
+    </div>
+
+    @for (slice of [
+      { title: 'By courier', label: 'Courier', rows: d.byCourier },
+      { title: 'By state', label: 'State', rows: d.byState },
+      { title: 'By pincode band', label: 'Pincode (first 3)', rows: d.byPincode }
+    ]; track slice.title) {
+      <div class="card mb-3">
+        <div class="card-header py-2">
+          <h3 class="card-title mb-0">{{ slice.title }}</h3>
+          <span class="text-secondary small ms-2">worst first</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-vcenter card-table">
+            <thead>
+              <tr>
+                <th>{{ slice.label }}</th>
+                <th class="text-end">Delivered</th>
+                <th class="text-end">Failed</th>
+                <th class="text-end">Total</th>
+                <th class="text-end">Success</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of slice.rows; track r.dimension) {
+                <tr>
+                  <td class="fw-medium">{{ r.dimension }}</td>
+                  <td class="text-end">{{ r.delivered }}</td>
+                  <td class="text-end" [class.text-danger]="r.failed > 0">{{ r.failed }}</td>
+                  <td class="text-end">{{ r.total }}</td>
+                  <td class="text-end fw-semibold" [class]="deliveryRateClass(r.successRate)">{{ r.successRate }}%</td>
+                </tr>
+              } @empty {
+                <tr><td colspan="5" class="text-secondary text-center py-3">No delivery data yet.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    }
+  }
+}

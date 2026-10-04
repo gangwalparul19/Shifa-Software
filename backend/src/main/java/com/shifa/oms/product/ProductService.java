@@ -83,6 +83,7 @@ public class ProductService {
                 request.salePrice(),
                 request.visibility());
         product.setMinimumRate(request.minimumRate());
+        product.setCostPrice(request.costPrice());
         product.setHsnCode(normalizeHsn(request.hsnCode()));
         product.setGstRate(request.gstRate());
         product.setWtMl(normalizeWtMl(request.wtMl()));
@@ -114,6 +115,7 @@ public class ProductService {
         product.setMrp(request.mrp());
         product.setSalePrice(request.salePrice());
         product.setMinimumRate(request.minimumRate());
+        product.setCostPrice(request.costPrice());
         product.setHsnCode(normalizeHsn(request.hsnCode()));
         product.setGstRate(request.gstRate());
         product.setWtMl(normalizeWtMl(request.wtMl()));

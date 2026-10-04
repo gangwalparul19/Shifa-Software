@@ -19,10 +19,14 @@ public class AnalyticsController {
 
     private final RetentionService retentionService;
     private final ForecastService forecastService;
+    private final DeliveryPerformanceService deliveryPerformanceService;
 
-    public AnalyticsController(RetentionService retentionService, ForecastService forecastService) {
+    public AnalyticsController(RetentionService retentionService,
+                               ForecastService forecastService,
+                               DeliveryPerformanceService deliveryPerformanceService) {
         this.retentionService = retentionService;
         this.forecastService = forecastService;
+        this.deliveryPerformanceService = deliveryPerformanceService;
     }
 
     /** Cohort / retention analysis over the last {@code months} cohorts (§6.3). */
@@ -36,5 +40,15 @@ public class AnalyticsController {
     public ForecastReport forecast(@RequestParam(required = false) Integer lookbackDays,
                                    @RequestParam(required = false) Integer horizonDays) {
         return forecastService.report(lookbackDays, horizonDays);
+    }
+
+    /**
+     * Delivery-performance analytics (ENHANCEMENT 3.3): delivered-vs-failed rates
+     * by courier / destination state / pincode band, worst-first, so the owner can
+     * target high-RTO regions and weak couriers.
+     */
+    @GetMapping("/delivery-performance")
+    public com.shifa.oms.analytics.dto.DeliveryPerformanceReport deliveryPerformance() {
+        return deliveryPerformanceService.report();
     }
 }

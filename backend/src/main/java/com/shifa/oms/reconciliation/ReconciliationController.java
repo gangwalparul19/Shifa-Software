@@ -146,6 +146,18 @@ public class ReconciliationController {
         return codAgingService.aging();
     }
 
+    /**
+     * One-tap collectible summary (ENHANCEMENT 1.4): what the courier still owes
+     * us (unsettled COD + the over-SLA chase figure) versus what customers still
+     * owe directly, plus pending loss claims — the clean "what's left to collect"
+     * panel shown after a remittance import. Composes the COD aging with the
+     * order/receivable ledgers. Read-only.
+     */
+    @GetMapping("/collectible-summary")
+    public com.shifa.oms.reconciliation.dto.CollectibleSummaryResponse collectibleSummary() {
+        return reconciliationService.collectibleSummary(codAgingService.aging());
+    }
+
     /** Prepaid vs COD segregation of fulfilled orders (Req 18.4). */
     @GetMapping("/segregation")
     public SegregationResponse segregation() {

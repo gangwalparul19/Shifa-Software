@@ -91,3 +91,19 @@ export interface CodAging {
   overSlaCount: number;
   overSlaAmount: Money;
 }
+
+/**
+ * One-tap collectible summary (backend {@code CollectibleSummaryResponse},
+ * ENHANCEMENT 1.4): what the courier still owes (unsettled COD + over-SLA chase)
+ * vs what customers still owe directly, plus pending claims.
+ */
+export interface CollectibleSummary {
+  codPendingFromCourier: Money;
+  codOverSlaCount: number;
+  codOverSlaAmount: Money;
+  slaDays: number;
+  customerOutstanding: Money;
+  pendingClaims: number;
+  pendingClaimsAmount: Money;
+  totalCollectible: Money;
+}

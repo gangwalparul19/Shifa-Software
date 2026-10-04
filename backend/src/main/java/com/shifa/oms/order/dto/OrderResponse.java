@@ -129,7 +129,11 @@ public record OrderResponse(
         // re-route feature, V75): e.g. "585216 is non serviceable pincode". Null
         // unless QuikShipX failed; shown on the drawer so the admin can re-route to
         // in-house delivery. Cleared on a successful (re)publish or in-house switch.
-        String quikShipXFailureReason
+        String quikShipXFailureReason,
+        // Opaque per-order tracking token (ENHANCEMENT 2.2, V77) so the admin /
+        // salesperson can copy a customer-shareable /track/{token} link from the
+        // order drawer without exposing the enumerable order code.
+        String trackingToken
 ) {
 
     /**
@@ -291,7 +295,8 @@ public record OrderResponse(
                 order.getRejectReason(),
                 order.getPaymentVerificationNote(),
                 order.getCountry(),
-                order.getQuikShipXFailureReason());
+                order.getQuikShipXFailureReason(),
+                order.getTrackingToken());
     }
 
     /**
@@ -308,7 +313,7 @@ public record OrderResponse(
                 subtotalAmount, gstAmount, discountType, discountValue, buyerGstin,
                 quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest, rejectionReason,
                 rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory, salespersonName,
-                rejectReason, paymentVerificationNote, country, quikShipXFailureReason);
+                rejectReason, paymentVerificationNote, country, quikShipXFailureReason, trackingToken);
     }
 
     /**
@@ -326,7 +331,7 @@ public record OrderResponse(
                 subtotalAmount, gstAmount, discountType, discountValue, buyerGstin,
                 quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest, rejectionReason,
                 rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory, salespersonName,
-                rejectReason, paymentVerificationNote, country, quikShipXFailureReason);
+                rejectReason, paymentVerificationNote, country, quikShipXFailureReason, trackingToken);
     }
 
     /**
@@ -389,7 +394,8 @@ public record OrderResponse(
                 rejectReason,
                 paymentVerificationNote,
                 country,
-                quikShipXFailureReason);
+                quikShipXFailureReason,
+                trackingToken);
     }
 
     /**
@@ -409,6 +415,7 @@ public record OrderResponse(
                 paymentVerificationStatus, subtotalAmount, gstAmount, discountType, discountValue,
                 buyerGstin, quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest,
                 rejectionReason, rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory,
-                salespersonName, rejectReason, paymentVerificationNote, country, quikShipXFailureReason);
+                salespersonName, rejectReason, paymentVerificationNote, country, quikShipXFailureReason,
+                trackingToken);
     }
 }

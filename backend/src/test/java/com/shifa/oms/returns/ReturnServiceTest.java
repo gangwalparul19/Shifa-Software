@@ -192,7 +192,7 @@ class ReturnServiceTest {
         OrderReturn ret = new OrderReturn(1L, "Damaged", null, null); // REQUESTED
         when(returnRepository.findById(5L)).thenReturn(Optional.of(ret));
 
-        assertThatThrownBy(() -> service.markRefunded(5L, new BigDecimal("10.00")))
+        assertThatThrownBy(() -> service.markRefunded(5L, new BigDecimal("10.00"), null))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("mark refunded");
     }
@@ -205,7 +205,7 @@ class ReturnServiceTest {
         ret.changeStatus(ReturnStatus.APPROVED);
         when(returnRepository.findById(5L)).thenReturn(Optional.of(ret));
 
-        ReturnResponse response = service.markRefunded(5L, new BigDecimal("199.50"));
+        ReturnResponse response = service.markRefunded(5L, new BigDecimal("199.50"), RefundMethod.UPI);
 
         assertThat(response.status()).isEqualTo(ReturnStatus.REFUNDED);
         assertThat(response.refundAmount()).isEqualByComparingTo("199.50");

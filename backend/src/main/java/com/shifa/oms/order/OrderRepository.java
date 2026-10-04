@@ -41,6 +41,9 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
      */
     Optional<OrderEntity> findByOrderCode(String orderCode);
 
+    /** Lookup by the opaque customer tracking token (ENHANCEMENT 2.2, V77). */
+    Optional<OrderEntity> findByTrackingToken(String trackingToken);
+
     /**
      * All orders in a given lifecycle status, most recent first. Used to build
      * the admin approval queue of {@code Pending_Admin_Approval} orders (Req 9.1).
@@ -148,6 +151,21 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
      * REJECTED / CANCELLED orders when summing revenue.
      */
     List<OrderEntity> findByCreatedAtBetween(java.time.LocalDateTime from, java.time.LocalDateTime to);
+
+    /**
+     * Orders created within an inclusive timestamp window with their line items
+     * eagerly fetched in one query, for the GST accounting service — which reads
+     * every order's line tax snapshots and would otherwise N+1 a lazy
+     * {@code getLineItems()} per order. {@code DISTINCT} collapses the join
+     * cartesian product back to one row per order.
+     */
+    @Query("""
+            SELECT DISTINCT o FROM OrderEntity o
+            LEFT JOIN FETCH o.lineItems
+            WHERE o.createdAt >= :from AND o.createdAt < :to
+            """)
+    List<OrderEntity> findByCreatedAtBetweenWithLineItems(@Param("from") java.time.LocalDateTime from,
+                                                          @Param("to") java.time.LocalDateTime to);
 
     /**
      * Orders for a customer mobile number, most recent first (Req 15.1 agent
@@ -552,4 +570,170 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             """, nativeQuery = true)
     long countPackedBetween(@Param("dayStart") java.time.LocalDateTime dayStart,
                             @Param("dayEnd") java.time.LocalDateTime dayEnd);
+
+    /**
+     * Today's live headline: the number of orders created in the half-open window
+     * {@code [dayStart, dayEnd)} and the sum of their {@code amount_received} — the
+     * SQL form of the SSE live-stats tally (was a full {@code findAll()} + Java
+     * loop on every SSE tick).
+     */
+    @Query(value = """
+            SELECT COUNT(*) AS orderCount, COALESCE(SUM(o.amount_received), 0) AS collection
+            FROM orders o
+            WHERE o.created_at >= :dayStart AND o.created_at < :dayEnd
+            """, nativeQuery = true)
+    DayLiveRow liveStatsBetween(@Param("dayStart") java.time.LocalDateTime dayStart,
+                                @Param("dayEnd") java.time.LocalDateTime dayEnd);
+
+    /** Projection over today's live-stats aggregate (order count + received sum). */
+    interface DayLiveRow {
+
+        long getOrderCount();
+
+        java.math.BigDecimal getCollection();
+    }
+
+    // --- Delivery-performance analytics (ENHANCEMENT 3.3) -------------------
+
+    /**
+     * Delivered vs failed counts grouped by destination state, over orders that
+     * reached a terminal delivery outcome (delivered ∪ failed). Backs the
+     * delivery-performance analytics (which regions have high RTO). Blank state →
+     * {@code "(unknown)"}.
+     */
+    @Query(value = """
+            SELECT COALESCE(NULLIF(TRIM(o.state), ''), '(unknown)') AS dimension,
+                   SUM(CASE WHEN o.order_status IN ('DELIVERED','COD_COLLECTED','CLOSED') THEN 1 ELSE 0 END) AS delivered,
+                   SUM(CASE WHEN o.order_status IN ('CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH') THEN 1 ELSE 0 END) AS failed
+            FROM orders o
+            WHERE o.order_status IN
+              ('DELIVERED','COD_COLLECTED','CLOSED','CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH')
+            GROUP BY COALESCE(NULLIF(TRIM(o.state), ''), '(unknown)')
+            """, nativeQuery = true)
+    List<DeliveryOutcomeRow> deliveryOutcomeByState();
+
+    /**
+     * Delivered vs failed counts grouped by the first 3 digits of the destination
+     * pincode (the postal "band"/sorting region), over terminal-outcome orders.
+     * A blank/short pincode → {@code "(unknown)"}.
+     */
+    @Query(value = """
+            SELECT CASE WHEN o.postal_code IS NULL OR CHAR_LENGTH(TRIM(o.postal_code)) < 3
+                        THEN '(unknown)' ELSE SUBSTRING(TRIM(o.postal_code), 1, 3) END AS dimension,
+                   SUM(CASE WHEN o.order_status IN ('DELIVERED','COD_COLLECTED','CLOSED') THEN 1 ELSE 0 END) AS delivered,
+                   SUM(CASE WHEN o.order_status IN ('CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH') THEN 1 ELSE 0 END) AS failed
+            FROM orders o
+            WHERE o.order_status IN
+              ('DELIVERED','COD_COLLECTED','CLOSED','CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH')
+            GROUP BY CASE WHEN o.postal_code IS NULL OR CHAR_LENGTH(TRIM(o.postal_code)) < 3
+                          THEN '(unknown)' ELSE SUBSTRING(TRIM(o.postal_code), 1, 3) END
+            """, nativeQuery = true)
+    List<DeliveryOutcomeRow> deliveryOutcomeByPincodeBand();
+
+    /**
+     * Delivered vs failed counts grouped by the assigned courier company (via
+     * {@code courier_records}), over terminal-outcome orders. Orders with no
+     * courier record (e.g. in-house with none assigned) group under
+     * {@code "(unassigned)"}.
+     */
+    @Query(value = """
+            SELECT COALESCE(cc.name, '(unassigned)') AS dimension,
+                   SUM(CASE WHEN o.order_status IN ('DELIVERED','COD_COLLECTED','CLOSED') THEN 1 ELSE 0 END) AS delivered,
+                   SUM(CASE WHEN o.order_status IN ('CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH') THEN 1 ELSE 0 END) AS failed
+            FROM orders o
+            LEFT JOIN courier_records cr ON cr.order_id = o.id
+            LEFT JOIN courier_companies cc ON cc.id = cr.courier_company_id
+            WHERE o.order_status IN
+              ('DELIVERED','COD_COLLECTED','CLOSED','CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH')
+            GROUP BY COALESCE(cc.name, '(unassigned)')
+            """, nativeQuery = true)
+    List<DeliveryOutcomeRow> deliveryOutcomeByCourier();
+
+    /** Projection over the delivery-performance aggregates (dimension + delivered/failed counts). */
+    interface DeliveryOutcomeRow {
+
+        /** The grouping value (state name / pincode band / courier name). */
+        String getDimension();
+
+        long getDelivered();
+
+        long getFailed();
+    }
+
+    // --- Channel margin (ENHANCEMENT 3.6) -----------------------------------
+
+    /**
+     * Per-channel ({@code orders.source}) revenue, discount and order count over a
+     * window, EXCLUDING non-revenue orders. No line join (so {@code total_amount}
+     * is summed once per order); COGS is a separate query to avoid the join fan-out.
+     */
+    @Query(value = """
+            SELECT o.source AS channel,
+                   COUNT(*) AS orderCount,
+                   COALESCE(SUM(o.total_amount), 0) AS revenue,
+                   COALESCE(SUM(o.discount_amount), 0) AS discount
+            FROM orders o
+            WHERE o.created_at >= :from AND o.created_at < :to
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
+            GROUP BY o.source
+            """, nativeQuery = true)
+    List<ChannelRevenueRow> channelRevenueBetween(@Param("from") java.time.LocalDateTime from,
+                                                  @Param("to") java.time.LocalDateTime to);
+
+    /**
+     * Per-channel estimated COGS over a window: {@code SUM(line.quantity *
+     * product.cost_price)} for revenue orders, plus the gross line value that DID
+     * vs did NOT have a recorded cost (so the margin view can flag partial cost
+     * coverage). Joined via {@code line_items} → {@code products}; a line whose
+     * product has no cost contributes zero COGS and to {@code lineValueWithoutCost}.
+     */
+    @Query(value = """
+            SELECT o.source AS channel,
+                   COALESCE(SUM(CASE WHEN p.cost_price IS NOT NULL
+                                     THEN li.quantity * p.cost_price ELSE 0 END), 0) AS cogs,
+                   COALESCE(SUM(CASE WHEN p.cost_price IS NOT NULL THEN li.line_total ELSE 0 END), 0) AS lineValueWithCost,
+                   COALESCE(SUM(CASE WHEN p.cost_price IS NULL THEN li.line_total ELSE 0 END), 0) AS lineValueWithoutCost
+            FROM orders o
+            JOIN line_items li ON li.order_id = o.id
+            LEFT JOIN products p ON p.id = li.product_id
+            WHERE o.created_at >= :from AND o.created_at < :to
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
+            GROUP BY o.source
+            """, nativeQuery = true)
+    List<ChannelCogsRow> channelCogsBetween(@Param("from") java.time.LocalDateTime from,
+                                            @Param("to") java.time.LocalDateTime to);
+
+    /** Per-channel revenue aggregate (channel = orders.source name). */
+    interface ChannelRevenueRow {
+        String getChannel();
+
+        long getOrderCount();
+
+        java.math.BigDecimal getRevenue();
+
+        java.math.BigDecimal getDiscount();
+    }
+
+    /** Per-channel COGS aggregate + cost-coverage split (channel = orders.source name). */
+    interface ChannelCogsRow {
+        String getChannel();
+
+        java.math.BigDecimal getCogs();
+
+        java.math.BigDecimal getLineValueWithCost();
+
+        java.math.BigDecimal getLineValueWithoutCost();
+    }
+
+    // --- Owner snapshot counts (perf: single COUNT each) --------------------
+
+    /** Count of orders in a given payment-verification state (owner snapshot / exception triage). */
+    long countByPaymentVerificationStatus(com.shifa.oms.order.PaymentVerificationStatus status);
+
+    /**
+     * Count of orders QuikShipX permanently rejected (a non-null
+     * {@code quikshipx_failure_reason}, V75) — the "stuck shipments" the owner
+     * snapshot flags so an admin can re-route them to in-house delivery.
+     */
+    long countByQuikShipXFailureReasonIsNotNull();
 }

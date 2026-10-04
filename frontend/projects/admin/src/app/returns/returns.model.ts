@@ -3,6 +3,23 @@ import { Money } from 'core';
 /** The lifecycle status of a return / refund request. */
 export type ReturnStatus = 'REQUESTED' | 'APPROVED' | 'REFUNDED' | 'REJECTED';
 
+/** How a refund was paid back (ENHANCEMENT 2.3, backend {@code RefundMethod}). */
+export type RefundMethod = 'CASH' | 'UPI' | 'BANK_TRANSFER' | 'ORIGINAL_PAYMENT' | 'COD_NOT_COLLECTED';
+
+/** Human labels for the refund methods, for the refund modal + list display. */
+export const REFUND_METHOD_LABELS: Record<RefundMethod, string> = {
+  CASH: 'Cash',
+  UPI: 'UPI',
+  BANK_TRANSFER: 'Bank transfer',
+  ORIGINAL_PAYMENT: 'Back to original payment',
+  COD_NOT_COLLECTED: 'Nothing to refund (COD)',
+};
+
+/** Ordered {value,label} options for the refund-method picker. */
+export const REFUND_METHOD_OPTIONS: { value: RefundMethod; label: string }[] = (
+  ['CASH', 'UPI', 'BANK_TRANSFER', 'ORIGINAL_PAYMENT', 'COD_NOT_COLLECTED'] as RefundMethod[]
+).map((value) => ({ value, label: REFUND_METHOD_LABELS[value] }));
+
 /**
  * A return / refund request returned by the admin returns endpoints
  * ({@code /api/admin/returns}). Mirrors the backend {@code ReturnResponse}.
@@ -30,6 +47,8 @@ export interface ReturnResponse {
   salespersonName?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  /** How the refund was paid back (ENHANCEMENT 2.3); null when not refunded / unspecified. */
+  refundMethod?: RefundMethod | null;
 }
 
 /**
@@ -57,4 +76,6 @@ export interface RejectReturnRequest {
 /** Payload for marking a return refunded. */
 export interface RefundReturnRequest {
   refundAmount: number;
+  /** How the refund was paid back (ENHANCEMENT 2.3); optional. */
+  refundMethod?: RefundMethod | null;
 }

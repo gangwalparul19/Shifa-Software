@@ -168,6 +168,7 @@ export class ProductsComponent implements OnInit, OnDestroy {
     mrp: ['', [Validators.required, Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
     salePrice: ['', [Validators.required, Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
     minimumRate: ['', [Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
+    costPrice: ['', [Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
     hsnCode: ['', [Validators.maxLength(20)]],
     gstRate: ['', [Validators.pattern(/^\d{1,3}(\.\d{1,2})?$/)]],
     wtMl: ['', [Validators.maxLength(32)]],
@@ -485,6 +486,7 @@ export class ProductsComponent implements OnInit, OnDestroy {
       mrp: '',
       salePrice: '',
       minimumRate: '',
+      costPrice: '',
       hsnCode: '',
       gstRate: '',
       wtMl: '',
@@ -511,6 +513,7 @@ export class ProductsComponent implements OnInit, OnDestroy {
       mrp: this.toFormString(product.mrp),
       salePrice: this.toFormString(product.salePrice),
       minimumRate: this.toFormString(product.minimumRate),
+      costPrice: this.toFormString(product.costPrice),
       hsnCode: product.hsnCode ?? '',
       gstRate: this.toFormString(product.gstRate),
       wtMl: product.wtMl ?? '',
@@ -545,7 +548,7 @@ export class ProductsComponent implements OnInit, OnDestroy {
       this.form.markAllAsTouched();
       // Surface the tab holding the first invalid control so errors aren't hidden.
       const basicsInvalid = ['name', 'sku'].some((n) => !!this.form.get(n)?.invalid);
-      const pricingInvalid = ['mrp', 'salePrice', 'minimumRate', 'hsnCode', 'gstRate', 'wtMl'].some(
+      const pricingInvalid = ['mrp', 'salePrice', 'minimumRate', 'costPrice', 'hsnCode', 'gstRate', 'wtMl'].some(
         (n) => !!this.form.get(n)?.invalid,
       );
       this.formTab.set(basicsInvalid ? 'basics' : pricingInvalid ? 'pricing' : 'inventory');
@@ -562,6 +565,7 @@ export class ProductsComponent implements OnInit, OnDestroy {
       mrp: s(raw.mrp),
       salePrice: s(raw.salePrice),
       minimumRate: s(raw.minimumRate) || null,
+      costPrice: s(raw.costPrice) || null,
       hsnCode: s(raw.hsnCode) || undefined,
       gstRate: s(raw.gstRate) || null,
       wtMl: s(raw.wtMl) || null,
@@ -652,6 +656,7 @@ export class ProductsComponent implements OnInit, OnDestroy {
       mrp: product.mrp,
       salePrice: product.salePrice,
       minimumRate: product.minimumRate ?? null,
+      costPrice: product.costPrice ?? null,
       hsnCode: product.hsnCode ?? undefined,
       gstRate: product.gstRate ?? null,
       wtMl: product.wtMl ?? null,

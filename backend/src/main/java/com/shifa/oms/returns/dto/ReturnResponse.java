@@ -35,7 +35,10 @@ public record ReturnResponse(
         // Name of the salesperson who punched the ORDER (resolved from the order's
         // created_by; full name, else username; null when unknown). Distinct from
         // createdBy above, which is the actor who raised the RETURN.
-        String salespersonName
+        String salespersonName,
+        // How the refund was paid back (ENHANCEMENT 2.3); null when not refunded /
+        // unspecified / a pure COD order with nothing to refund.
+        com.shifa.oms.returns.RefundMethod refundMethod
 ) {
 
     /** Builds a response without a resolved order code (rare fallback path). */
@@ -63,6 +66,7 @@ public record ReturnResponse(
                 r.getCreatedBy(),
                 r.getCreatedAt(),
                 r.getUpdatedAt(),
-                salespersonName);
+                salespersonName,
+                r.getRefundMethod());
     }
 }

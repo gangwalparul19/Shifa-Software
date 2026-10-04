@@ -102,4 +102,21 @@ public enum OrderStatusGroup {
             default -> null;
         };
     }
+
+    /**
+     * The coarse lifecycle group a fine-grained {@link OrderStatus} belongs to,
+     * or {@code null} if the status is unmapped (defensive). Used by the public
+     * customer tracking view (ENHANCEMENT 2.2) to show a friendly stage.
+     */
+    public static OrderStatusGroup groupOf(OrderStatus status) {
+        if (status == null) {
+            return null;
+        }
+        for (OrderStatusGroup group : values()) {
+            if (group.statuses.contains(status)) {
+                return group;
+            }
+        }
+        return null;
+    }
 }

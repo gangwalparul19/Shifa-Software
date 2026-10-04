@@ -29,7 +29,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * The reconciliation dashboard's read/settle service (Req 17.4, 18.1&ndash;18.6).
@@ -95,17 +94,6 @@ public class ReconciliationService {
         this.userRepository = userRepository;
     }
 
-    /** The salesperson display name for an order (full name, else username), or null. */
-    private String salespersonNameOf(OrderEntity order) {
-        if (userRepository == null || order == null || order.getCreatedBy() == null) {
-            return null;
-        }
-        return userRepository.findById(order.getCreatedBy())
-                .map(u -> (u.getFullName() != null && !u.getFullName().isBlank())
-                        ? u.getFullName() : u.getUsername())
-                .orElse(null);
-    }
-
     /**
      * Lists receivables, optionally filtered by courier company and/or type
      * (Req 18.1&ndash;18.3). Each row is enriched with the order code, courier
@@ -120,12 +108,17 @@ public class ReconciliationService {
         List<ReceivableEntity> rows = (type == null)
                 ? receivableRepository.findAllByOrderByCreatedAtDescIdDesc()
                 : receivableRepository.findByTypeOrderByCreatedAtDescIdDesc(type);
-        List<ReceivableResponse> result = new ArrayList<>();
+        List<ReceivableEntity> filtered = new ArrayList<>();
         for (ReceivableEntity e : rows) {
             if (courierCompanyId != null && !courierCompanyId.equals(e.getCourierCompanyId())) {
                 continue;
             }
-            result.add(toResponse(e));
+            filtered.add(e);
+        }
+        RefData ref = loadRefData(filtered);
+        List<ReceivableResponse> result = new ArrayList<>();
+        for (ReceivableEntity e : filtered) {
+            result.add(toResponse(e, ref));
         }
         return result;
     }
@@ -163,7 +156,9 @@ public class ReconciliationService {
         }
         Specification<ReceivableEntity> spec = ReceivableListSpecifications.build(
                 courierCompanyId, type, settled, from, to, orderIds);
-        return receivableRepository.findAll(spec, pageable).map(this::toResponse);
+        Page<ReceivableEntity> page = receivableRepository.findAll(spec, pageable);
+        RefData ref = loadRefData(page.getContent());
+        return page.map(e -> toResponse(e, ref));
     }
 
     /**
@@ -198,33 +193,39 @@ public class ReconciliationService {
      */
     @Transactional(readOnly = true)
     public List<UnsettledCodResponse> unsettledCod() {
+        // Load the full receivable set ONCE, feed it to the ledger, and index it
+        // by id (previously this scanned the table twice).
+        List<ReceivableEntity> all = receivableRepository.findAllByOrderByCreatedAtDescIdDesc();
         ReconciliationLedger ledger = new ReconciliationLedger();
-        for (ReceivableEntity e : receivableRepository.findAllByOrderByCreatedAtDescIdDesc()) {
-            ledger.record(toDomain(e));
-        }
         Map<Long, ReceivableEntity> byId = new LinkedHashMap<>();
-        for (ReceivableEntity e : receivableRepository.findAllByOrderByCreatedAtDescIdDesc()) {
+        for (ReceivableEntity e : all) {
+            ledger.record(toDomain(e));
             byId.put(e.getId(), e);
         }
-        List<UnsettledCodResponse> result = new ArrayList<>();
+        // Resolve the unsettled-COD rows, then batch-load every order / courier /
+        // user they reference (previously ~3 queries per row).
+        List<ReceivableEntity> rows = new ArrayList<>();
         for (Receivable r : ledger.unsettledCodReceivables()) {
             ReceivableEntity e = byId.get(r.id());
-            if (e == null) {
-                continue;
+            if (e != null) {
+                rows.add(e);
             }
-            OrderEntity order = orderRepository.findById(e.getOrderId()).orElse(null);
-            String awb = awbFor(e.getOrderId());
+        }
+        RefData ref = loadRefData(rows);
+        List<UnsettledCodResponse> result = new ArrayList<>();
+        for (ReceivableEntity e : rows) {
+            OrderEntity order = ref.orders.get(e.getOrderId());
             result.add(new UnsettledCodResponse(
                     e.getId(),
                     e.getOrderId(),
                     order != null ? order.getOrderCode() : null,
                     order != null ? order.getCustomerName() : null,
                     e.getCourierCompanyId(),
-                    courierName(courierIdOf(e)),
-                    awb,
+                    ref.courierName(courierIdOf(e)),
+                    ref.awb(e.getOrderId()),
                     e.getAmount(),
                     e.getCreatedAt(),
-                    salespersonNameOf(order)));
+                    ref.salespersonName(order)));
         }
         return result;
     }
@@ -235,10 +236,12 @@ public class ReconciliationService {
      */
     @Transactional(readOnly = true)
     public List<ReceivableResponse> pendingClaims() {
+        List<ReceivableEntity> rows = receivableRepository
+                .findByTypeAndSettledFalseOrderByCreatedAtDescIdDesc(ReceivableType.CLAIM_RECEIVABLE);
+        RefData ref = loadRefData(rows);
         List<ReceivableResponse> result = new ArrayList<>();
-        for (ReceivableEntity e : receivableRepository
-                .findByTypeAndSettledFalseOrderByCreatedAtDescIdDesc(ReceivableType.CLAIM_RECEIVABLE)) {
-            result.add(toResponse(e));
+        for (ReceivableEntity e : rows) {
+            result.add(toResponse(e, ref));
         }
         return result;
     }
@@ -291,23 +294,145 @@ public class ReconciliationService {
         return toResponse(entity);
     }
 
+    /**
+     * One-tap "money still to collect" summary (ENHANCEMENT 1.4): what the courier
+     * still owes us (unsettled COD, with the over-SLA chase figure from the given
+     * aging result) versus what customers still owe directly, plus pending loss
+     * claims. Composed from the existing ledgers — the controller passes in the
+     * COD aging (computed by {@code CodAgingService}) so this service needs no new
+     * dependency.
+     *
+     * @param aging the current COD aging summary (courier-side pending + over-SLA)
+     * @return the consolidated collectible summary
+     */
+    @Transactional(readOnly = true)
+    public com.shifa.oms.reconciliation.dto.CollectibleSummaryResponse collectibleSummary(
+            com.shifa.oms.reconciliation.dto.CodAgingResponse aging) {
+        BigDecimal codPendingFromCourier = nz(aging.totalOutstanding());
+        BigDecimal customerOutstanding = nz(orderRepository.sumOutstandingCodActive());
+        BigDecimal pendingClaimsAmount = nz(receivableRepository
+                .sumAmountByTypeAndSettled(ReceivableType.CLAIM_RECEIVABLE, false));
+        long pendingClaims = receivableRepository.countByTypeAndSettledFalse(ReceivableType.CLAIM_RECEIVABLE);
+        BigDecimal totalCollectible = codPendingFromCourier.add(customerOutstanding).add(pendingClaimsAmount);
+        return new com.shifa.oms.reconciliation.dto.CollectibleSummaryResponse(
+                scale(codPendingFromCourier),
+                aging.overSlaCount(),
+                scale(nz(aging.overSlaAmount())),
+                aging.slaDays(),
+                scale(customerOutstanding),
+                pendingClaims,
+                scale(pendingClaimsAmount),
+                scale(totalCollectible));
+    }
+
+    private static BigDecimal nz(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
+    }
+
+    private static BigDecimal scale(BigDecimal v) {
+        return nz(v).setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
     // --- Mapping helpers ----------------------------------------------------
 
+    /** Single-row response (used by {@link #settle}) — builds a one-row ref set. */
     private ReceivableResponse toResponse(ReceivableEntity e) {
-        OrderEntity order = orderRepository.findById(e.getOrderId()).orElse(null);
+        return toResponse(e, loadRefData(List.of(e)));
+    }
+
+    /** Batch-aware response mapping: all order/courier/user lookups come from {@code ref}. */
+    private ReceivableResponse toResponse(ReceivableEntity e, RefData ref) {
+        OrderEntity order = ref.orders.get(e.getOrderId());
         return new ReceivableResponse(
                 e.getId(),
                 e.getOrderId(),
                 order != null ? order.getOrderCode() : null,
                 e.getCourierCompanyId(),
-                courierName(courierIdOf(e)),
-                awbFor(e.getOrderId()),
+                ref.courierName(courierIdOf(e)),
+                ref.awb(e.getOrderId()),
                 e.getType(),
                 e.getAmount(),
                 e.isSettled(),
                 e.getSettledDate(),
                 e.getCreatedAt(),
-                salespersonNameOf(order));
+                ref.salespersonName(order));
+    }
+
+    /**
+     * Reference data for a batch of receivable rows: the referenced orders,
+     * courier companies, courier records (for AWB) and salesperson names, each
+     * loaded in a single query. Replaces the former per-row {@code findById} /
+     * {@code findByOrderId} N+1 (~3-4 queries per row).
+     */
+    private RefData loadRefData(java.util.Collection<ReceivableEntity> rows) {
+        java.util.Set<Long> orderIds = new java.util.HashSet<>();
+        java.util.Set<Long> courierIds = new java.util.HashSet<>();
+        for (ReceivableEntity e : rows) {
+            if (e.getOrderId() != null) {
+                orderIds.add(e.getOrderId());
+            }
+            if (e.getCourierCompanyId() != null) {
+                courierIds.add(e.getCourierCompanyId());
+            }
+        }
+        Map<Long, OrderEntity> orders = new java.util.HashMap<>();
+        if (!orderIds.isEmpty()) {
+            for (OrderEntity o : orderRepository.findAllById(orderIds)) {
+                orders.put(o.getId(), o);
+            }
+        }
+        Map<Long, String> courierNames = new java.util.HashMap<>();
+        if (!courierIds.isEmpty()) {
+            for (CourierCompany c : courierCompanyRepository.findAllById(courierIds)) {
+                courierNames.put(c.getId(), c.getName());
+            }
+        }
+        Map<Long, String> awbByOrderId = new java.util.HashMap<>();
+        if (!orderIds.isEmpty()) {
+            for (CourierRecord cr : courierRecordRepository.findByOrderIdIn(orderIds)) {
+                if (cr.getAwb() != null) {
+                    awbByOrderId.put(cr.getOrderId(), cr.getAwb());
+                }
+            }
+        }
+        Map<Long, String> names = new java.util.HashMap<>();
+        if (userRepository != null) {
+            java.util.Set<Long> creatorIds = new java.util.HashSet<>();
+            for (OrderEntity o : orders.values()) {
+                if (o.getCreatedBy() != null) {
+                    creatorIds.add(o.getCreatedBy());
+                }
+            }
+            if (!creatorIds.isEmpty()) {
+                for (com.shifa.oms.auth.User u : userRepository.findAllById(creatorIds)) {
+                    String name = (u.getFullName() != null && !u.getFullName().isBlank())
+                            ? u.getFullName() : u.getUsername();
+                    names.put(u.getId(), name);
+                }
+            }
+        }
+        return new RefData(orders, courierNames, awbByOrderId, names);
+    }
+
+    /** Pre-loaded reference maps for a batch of receivable rows. */
+    private record RefData(Map<Long, OrderEntity> orders,
+                           Map<Long, String> courierNames,
+                           Map<Long, String> awbByOrderId,
+                           Map<Long, String> salespersonNames) {
+        String courierName(long courierId) {
+            return courierId == 0L ? null : courierNames.get(courierId);
+        }
+
+        String awb(Long orderId) {
+            return orderId == null ? null : awbByOrderId.get(orderId);
+        }
+
+        String salespersonName(OrderEntity order) {
+            if (order == null || order.getCreatedBy() == null) {
+                return null;
+            }
+            return salespersonNames.get(order.getCreatedBy());
+        }
     }
 
     private Receivable toDomain(ReceivableEntity e) {
@@ -360,8 +485,4 @@ public class ReconciliationService {
                 .orElse(null);
     }
 
-    private String awbFor(Long orderId) {
-        Optional<CourierRecord> record = courierRecordRepository.findByOrderId(orderId);
-        return record.map(CourierRecord::getAwb).orElse(null);
-    }
 }

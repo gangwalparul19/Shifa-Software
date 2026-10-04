@@ -103,12 +103,20 @@ public class TeamsOverviewService {
             namesById.put(u.getId(), u.getFullName());
         }
 
+        // Compute the per-salesperson leaderboard ONCE (it aggregates the whole
+        // orders table + lists all salespeople) and index it by id, instead of
+        // re-running that full-table aggregate for every team in rowFor().
+        Map<Long, SalespersonPerformanceSummary> leaderboardById = new HashMap<>();
+        for (SalespersonPerformanceSummary s : performanceService.leaderboard()) {
+            leaderboardById.put(s.id(), s);
+        }
+
         List<TeamOverviewRow> rows = new ArrayList<>();
         java.util.Set<Long> assigned = new java.util.HashSet<>();
         for (User lead : leads) {
             List<Long> memberIds = userRepository.findIdsByTeamLeadId(lead.getId());
             assigned.addAll(memberIds);
-            rows.add(rowFor(lead.getId(), lead.getFullName(), memberIds, namesById, today));
+            rows.add(rowFor(lead.getId(), lead.getFullName(), memberIds, namesById, today, leaderboardById));
         }
         // Most-at-risk team first: worst delivery success rate, then most overdue leads.
         rows.sort(Comparator
@@ -121,13 +129,14 @@ public class TeamsOverviewService {
                 .toList();
         TeamOverviewRow unassigned = unassignedIds.isEmpty()
                 ? null
-                : rowFor(null, "Unassigned salespeople", unassignedIds, namesById, today);
+                : rowFor(null, "Unassigned salespeople", unassignedIds, namesById, today, leaderboardById);
 
         return new TeamsOverviewResponse(today, rows, unassigned);
     }
 
     private TeamOverviewRow rowFor(Long teamLeadId, String teamLeadName, List<Long> memberIds,
-                                   Map<Long, String> namesById, LocalDate today) {
+                                   Map<Long, String> namesById, LocalDate today,
+                                   Map<Long, SalespersonPerformanceSummary> leaderboardById) {
         List<OrderEntity> orders = memberIds.isEmpty()
                 ? List.of() : safe(orderRepository.findAllScopedIn(memberIds));
         List<LeadEntity> leads = memberIds.isEmpty()
@@ -199,8 +208,19 @@ public class TeamsOverviewService {
             pipelineByName.put(s.name(), pipelineCounts.get(s));
         }
 
-        List<SalespersonPerformanceSummary> members = memberIds.isEmpty()
-                ? List.of() : performanceService.leaderboardFor(memberIds);
+        // Slice the pre-computed leaderboard to this team's members, preserving
+        // leaderboardFor()'s ordering (this-month revenue desc, then orders desc).
+        List<SalespersonPerformanceSummary> members = new ArrayList<>();
+        for (Long memberId : memberIds) {
+            SalespersonPerformanceSummary s = leaderboardById.get(memberId);
+            if (s != null) {
+                members.add(s);
+            }
+        }
+        members.sort(Comparator
+                .comparing(SalespersonPerformanceSummary::revenueThisMonth,
+                        Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(Comparator.comparingLong(SalespersonPerformanceSummary::ordersThisMonth).reversed()));
 
         return new TeamOverviewRow(
                 teamLeadId, teamLeadName, memberIds.size(), ordersTotal, ordersThisMonth,

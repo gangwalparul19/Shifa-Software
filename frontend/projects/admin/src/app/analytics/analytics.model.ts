@@ -72,3 +72,22 @@ export interface ForecastReport {
   topDemand: ProductForecastRow[];
   cash: CashForecast;
 }
+
+// --- §3.3 Delivery-performance analytics (ENHANCEMENT 3.3) ---------------
+
+/** One delivered-vs-failed row (courier / state / pincode band / overall). */
+export interface DeliveryPerformanceRow {
+  dimension: string;
+  delivered: number;
+  failed: number;
+  total: number;
+  successRate: number;
+}
+
+/** Delivery-performance report: overall + per-courier / per-state / per-pincode slices. */
+export interface DeliveryPerformanceReport {
+  overall: DeliveryPerformanceRow;
+  byCourier: DeliveryPerformanceRow[];
+  byState: DeliveryPerformanceRow[];
+  byPincode: DeliveryPerformanceRow[];
+}

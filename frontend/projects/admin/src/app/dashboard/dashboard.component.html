@@ -53,6 +53,136 @@
   </div>
 }
 
+<!-- Owner snapshot: today's trading + the actionable backlog (ENHANCEMENT 1.2). -->
+@if (ownerSnapshot(); as os) {
+  <div class="card anim-fade-up mb-3">
+    <div class="card-body">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <h3 class="card-title m-0">Today at a glance</h3>
+        <span class="badge" [class.bg-red-lt]="os.attentionTotal > 0" [class.bg-green-lt]="os.attentionTotal === 0">
+          {{ os.attentionTotal > 0 ? os.attentionTotal + ' need action' : 'All clear' }}
+        </span>
+      </div>
+      <div class="row g-2 g-md-3">
+        <!-- Today's trading -->
+        <div class="col-6 col-md-3">
+          <div class="p-2 rounded bg-azure-lt h-100">
+            <div class="subheader text-truncate">Orders today</div>
+            <div class="h2 m-0">{{ os.ordersToday }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="p-2 rounded bg-green-lt h-100">
+            <div class="subheader text-truncate">Received today</div>
+            <div class="h2 m-0">{{ inr(os.revenueToday) }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <a routerLink="/reconciliation" class="p-2 rounded bg-yellow-lt h-100 d-block text-reset text-decoration-none">
+            <div class="subheader text-truncate">COD to collect</div>
+            <div class="h2 m-0">{{ inr(os.codToCollect) }}</div>
+            @if (os.codOverSla > 0) {
+              <div class="small text-red">{{ os.codOverSla }} past SLA ({{ inr(os.codOverSlaAmount) }})</div>
+            }
+          </a>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="p-2 rounded bg-muted-lt h-100">
+            <div class="subheader text-truncate">Top salesperson today</div>
+            <div class="h3 m-0 text-truncate">{{ os.topSalespersonName || '—' }}</div>
+            @if (os.topSalespersonName) {
+              <div class="small text-secondary">{{ inr(os.topSalespersonRevenue) }}</div>
+            }
+          </div>
+        </div>
+        <!-- Actionable backlog -->
+        <div class="col-6 col-md-3">
+          <a routerLink="/approval-queue" class="p-2 rounded border h-100 d-block text-reset text-decoration-none">
+            <div class="subheader text-truncate">Approvals</div>
+            <div class="h2 m-0" [class.text-orange]="os.approvalsWaiting > 0">{{ os.approvalsWaiting }}</div>
+          </a>
+        </div>
+        <div class="col-6 col-md-3">
+          <a routerLink="/payments" class="p-2 rounded border h-100 d-block text-reset text-decoration-none">
+            <div class="subheader text-truncate">Payments to verify</div>
+            <div class="h2 m-0" [class.text-orange]="os.paymentsPending > 0">{{ os.paymentsPending }}</div>
+          </a>
+        </div>
+        <div class="col-6 col-md-3">
+          <a routerLink="/exceptions" class="p-2 rounded border h-100 d-block text-reset text-decoration-none">
+            <div class="subheader text-truncate">Failed deliveries</div>
+            <div class="h2 m-0" [class.text-red]="os.failedDeliveries > 0">{{ os.failedDeliveries }}</div>
+          </a>
+        </div>
+        <div class="col-6 col-md-3">
+          <a routerLink="/shopify-sync" class="p-2 rounded border h-100 d-block text-reset text-decoration-none">
+            <div class="subheader text-truncate">Stuck shipments</div>
+            <div class="h2 m-0" [class.text-red]="os.stuckShipments > 0">{{ os.stuckShipments }}</div>
+          </a>
+        </div>
+      </div>
+      <div class="text-secondary small mt-2">
+        <i class="ti ti-bell me-1"></i>Threshold alerts (COD overdue, stuck shipments, delivery failures)
+        are delivered to your notifications — enable browser push from the bell to get them on your phone.
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Per-channel margin (ENHANCEMENT 3.6): revenue + estimated gross margin by channel, this month. -->
+@if (channelMargin(); as cm) {
+  @if (cm.total.revenue > 0) {
+    <div class="card anim-fade-up mb-3">
+      <div class="card-body">
+        <h3 class="card-title mb-1">Channel margin · this month</h3>
+        <div class="text-secondary small mb-2">Revenue and estimated gross margin by channel (set product cost prices for accuracy).</div>
+        <div class="table-responsive">
+          <table class="table table-vcenter card-table">
+            <thead>
+              <tr>
+                <th>Channel</th>
+                <th class="text-end">Orders</th>
+                <th class="text-end">Revenue</th>
+                <th class="text-end">Est. COGS</th>
+                <th class="text-end">Gross margin</th>
+                <th class="text-end">Margin %</th>
+                <th class="text-end">Cost data</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of cm.channels; track c.channel) {
+                <tr>
+                  <td class="fw-medium">{{ c.channel }}</td>
+                  <td class="text-end">{{ c.orderCount }}</td>
+                  <td class="text-end">{{ inr(c.revenue) }}</td>
+                  <td class="text-end">{{ inr(c.estimatedCogs) }}</td>
+                  <td class="text-end fw-semibold">{{ inr(c.grossMargin) }}</td>
+                  <td class="text-end">{{ c.marginPct }}%</td>
+                  <td class="text-end" [class.text-warning]="c.costCoveragePct < 100">{{ c.costCoveragePct }}%</td>
+                </tr>
+              }
+            </tbody>
+            <tfoot>
+              <tr class="fw-semibold">
+                <td>Total</td>
+                <td class="text-end">{{ cm.total.orderCount }}</td>
+                <td class="text-end">{{ inr(cm.total.revenue) }}</td>
+                <td class="text-end">{{ inr(cm.total.estimatedCogs) }}</td>
+                <td class="text-end">{{ inr(cm.total.grossMargin) }}</td>
+                <td class="text-end">{{ cm.total.marginPct }}%</td>
+                <td class="text-end">{{ cm.total.costCoveragePct }}%</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        @if (cm.total.costCoveragePct < 100) {
+          <div class="text-secondary small"><i class="ti ti-info-circle me-1"></i>Margin is an estimate — {{ 100 - cm.total.costCoveragePct }}% of sales have no product cost set. Add cost prices on the Products page for a true figure.</div>
+        }
+      </div>
+    </div>
+  }
+}
+
 <!-- Team-wise sales with status: which team is heading where + leads to call. -->
 <admin-teams-overview-widget />
 

@@ -56,7 +56,7 @@ class VyaparEmptyRangeExportTest {
                 List.of(new OrderReportRecord.ProductLine("Amla", 2,
                         new BigDecimal("100.00"), new BigDecimal("200.00"))),
                 new BigDecimal("200.00"), BigDecimal.ZERO, new BigDecimal("200.00"),
-                PaymentStatus.COD, OrderStatus.PENDING_ADMIN_APPROVAL, "N/A", "N/A", null);
+                PaymentStatus.COD, OrderStatus.PENDING_ADMIN_APPROVAL, "N/A", "N/A", null, null, null);
 
         // A window that excludes the single order (June order, January window).
         DateRange january = DateRange.of(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 1, 31));

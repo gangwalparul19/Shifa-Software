@@ -5,7 +5,13 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { AuthService, Money, Role, SortState } from 'core';
 import { ReturnsService } from './returns.service';
-import { ReturnResponse, ReturnStatus } from './returns.model';
+import {
+  REFUND_METHOD_LABELS,
+  REFUND_METHOD_OPTIONS,
+  RefundMethod,
+  ReturnResponse,
+  ReturnStatus,
+} from './returns.model';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
@@ -113,6 +119,10 @@ export class ReturnsComponent implements OnInit, OnDestroy {
     nonNullable: true,
     validators: [Validators.required, Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)],
   });
+  /** How the refund was paid back (ENHANCEMENT 2.3); blank = unspecified. */
+  protected readonly refundMethod = new FormControl<string>('', { nonNullable: true });
+  /** Refund-method options for the modal picker. */
+  protected readonly refundMethodOptions = REFUND_METHOD_OPTIONS;
   protected readonly createForm = new FormGroup({
     // Accepts either the numeric order id or the human-readable order code
     // (e.g. SHR-20260916-JGM9) — whatever the admin has on hand.
@@ -252,6 +262,11 @@ export class ReturnsComponent implements OnInit, OnDestroy {
     return this.canRefund() && r.status === 'APPROVED';
   }
 
+  /** Human label for a refund method (ENHANCEMENT 2.3), or null when unspecified. */
+  refundMethodLabel(method: RefundMethod | null | undefined): string | null {
+    return method ? REFUND_METHOD_LABELS[method] : null;
+  }
+
   /** Status- and role-gated per-row kebab actions. */
   rowActions(r: ReturnResponse): RowAction[] {
     const actions: RowAction[] = [];
@@ -296,6 +311,7 @@ export class ReturnsComponent implements OnInit, OnDestroy {
     this.activeReturn.set(r);
     this.modalError.set(null);
     this.refundAmount.setValue(r.refundAmount ? String(r.refundAmount) : '');
+    this.refundMethod.setValue(r.refundMethod ?? '');
     this.modal.set('refund');
   }
 
@@ -354,7 +370,10 @@ export class ReturnsComponent implements OnInit, OnDestroy {
     }
     this.submitting.set(true);
     this.modalError.set(null);
-    this.service.refund(r.id, { refundAmount: Number(this.refundAmount.value) }).subscribe({
+    const method = this.refundMethod.value
+      ? (this.refundMethod.value as RefundMethod)
+      : undefined;
+    this.service.refund(r.id, { refundAmount: Number(this.refundAmount.value), refundMethod: method }).subscribe({
       next: () => this.afterMutation('Return marked refunded.'),
       error: () => this.failMutation('Could not mark the return refunded.'),
     });

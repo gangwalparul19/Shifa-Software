@@ -54,6 +54,14 @@ public class OrderReturn {
     private BigDecimal refundAmount;
 
     /**
+     * How the refund was paid back to the customer (ENHANCEMENT 2.3, V78).
+     * Nullable until a refund is recorded; legacy rows report as unspecified.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "refund_method", length = 20)
+    private RefundMethod refundMethod;
+
+    /**
      * The GST-inclusive <strong>value of supply reversed</strong> by the credit
      * note issued for this return (V64). Distinct from {@link #refundAmount}:
      * under GST a returned/RTO'd consignment reverses the <em>whole</em> supply,
@@ -135,6 +143,15 @@ public class OrderReturn {
 
     public void setRefundAmount(BigDecimal refundAmount) {
         this.refundAmount = refundAmount;
+    }
+
+    /** How the refund was paid back (ENHANCEMENT 2.3, V78), or {@code null} if unspecified. */
+    public RefundMethod getRefundMethod() {
+        return refundMethod;
+    }
+
+    public void setRefundMethod(RefundMethod refundMethod) {
+        this.refundMethod = refundMethod;
     }
 
     /** The GST-inclusive value of supply reversed by the credit note, or {@code null} (V64). */

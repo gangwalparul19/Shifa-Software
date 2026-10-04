@@ -53,7 +53,10 @@ public record ProductResponse(
          * summary; {@code null} when the product has none assigned
          * (gst-filing-compliance Req 3.2). Additive: existing consumers ignore it.
          */
-        String uqc
+        String uqc,
+
+        /** Optional per-unit sourcing cost (V79, ENHANCEMENT 3.6); null if unset. */
+        BigDecimal costPrice
 ) {
 
     public static ProductResponse from(Product product) {
@@ -83,7 +86,8 @@ public record ProductResponse(
                 product.getUpdatedAt(),
                 null,
                 0L,
-                product.getUqc());
+                product.getUqc(),
+                product.getCostPrice());
     }
 
     /**
@@ -95,6 +99,6 @@ public record ProductResponse(
         return new ProductResponse(
                 id, sku, name, description, mrp, salePrice, minimumRate, hsnCode, gstRate, wtMl,
                 visibility, category, stockStatus, stockQuantity, trackInventory, lowStockThreshold,
-                featured, images, createdAt, updatedAt, averageRating, reviewCount, uqc);
+                featured, images, createdAt, updatedAt, averageRating, reviewCount, uqc, costPrice);
     }
 }

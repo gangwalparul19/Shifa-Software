@@ -370,6 +370,18 @@
 
           <div class="row">
             <div class="col-6 mb-3">
+              <label class="form-label">Cost price <span class="text-secondary">(optional)</span></label>
+              <input type="text" inputmode="decimal" class="form-control" formControlName="costPrice" placeholder="0.00"
+                [class.is-invalid]="form.controls.costPrice.touched && form.controls.costPrice.invalid" />
+              <small class="form-hint">What you pay to source one unit. Used for per-channel margin analytics.</small>
+              @if (form.controls.costPrice.touched && form.controls.costPrice.invalid) {
+                <div class="invalid-feedback">Enter a valid amount (e.g. 90.00).</div>
+              }
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-6 mb-3">
               <label class="form-label">HSN code <span class="text-secondary">(optional)</span></label>
               <input type="text" class="form-control" formControlName="hsnCode" maxlength="20" autocomplete="off"
                 placeholder="e.g. 3004"

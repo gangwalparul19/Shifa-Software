@@ -50,6 +50,9 @@ public class ReturnService {
     private static final Set<ReturnStatus> ACTIVE_STATUSES =
             EnumSet.of(ReturnStatus.REQUESTED, ReturnStatus.APPROVED);
 
+    /** Source-type key for the refund ledger posting (matches SourceType.RETURN_REFUND). */
+    private static final String LEDGER_SOURCE_RETURN_REFUND = "RETURN_REFUND";
+
     private final OrderReturnRepository returnRepository;
     private final OrderRepository orderRepository;
     private final StockService stockService;
@@ -61,13 +64,29 @@ public class ReturnService {
      * constructor — the name is then omitted.
      */
     private final com.shifa.oms.auth.UserRepository userRepository;
+    /**
+     * Outbox publisher (nullable): posts a cash refund to the ledger
+     * (ENHANCEMENT 2.3). Null under the legacy test constructors — the refund then
+     * records/transitions exactly as before with no ledger side effect.
+     */
+    private final com.shifa.oms.platform.outbox.OutboxEventPublisher outboxEventPublisher;
 
     public ReturnService(OrderReturnRepository returnRepository,
                          OrderRepository orderRepository,
                          StockService stockService,
                          AuditService auditService,
                          CurrentUserService currentUserService) {
-        this(returnRepository, orderRepository, stockService, auditService, currentUserService, null);
+        this(returnRepository, orderRepository, stockService, auditService, currentUserService, null, null);
+    }
+
+    public ReturnService(OrderReturnRepository returnRepository,
+                         OrderRepository orderRepository,
+                         StockService stockService,
+                         AuditService auditService,
+                         CurrentUserService currentUserService,
+                         com.shifa.oms.auth.UserRepository userRepository) {
+        this(returnRepository, orderRepository, stockService, auditService, currentUserService,
+                userRepository, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -76,13 +95,15 @@ public class ReturnService {
                          StockService stockService,
                          AuditService auditService,
                          CurrentUserService currentUserService,
-                         com.shifa.oms.auth.UserRepository userRepository) {
+                         com.shifa.oms.auth.UserRepository userRepository,
+                         com.shifa.oms.platform.outbox.OutboxEventPublisher outboxEventPublisher) {
         this.returnRepository = returnRepository;
         this.orderRepository = orderRepository;
         this.stockService = stockService;
         this.auditService = auditService;
         this.currentUserService = currentUserService;
         this.userRepository = userRepository;
+        this.outboxEventPublisher = outboxEventPublisher;
     }
 
     /**
@@ -180,15 +201,43 @@ public class ReturnService {
      * @throws ValidationException when the return is not APPROVED
      */
     @Transactional
-    public ReturnResponse markRefunded(Long returnId, BigDecimal refundAmount) {
+    public ReturnResponse markRefunded(Long returnId, BigDecimal refundAmount, RefundMethod refundMethod) {
         OrderReturn ret = requireReturn(returnId);
         requireTransition(ret, ReturnStatus.REFUNDED);
         ret.setRefundAmount(refundAmount);
+        if (refundMethod != null) {
+            ret.setRefundMethod(refundMethod);
+        }
         ret.changeStatus(ReturnStatus.REFUNDED);
         OrderReturn saved = returnRepository.save(ret);
         auditService.record(AuditActions.RETURN_REFUNDED, AuditActions.ENTITY_RETURN,
-                String.valueOf(returnId), "Return refunded: " + refundAmount);
+                String.valueOf(returnId), "Return refunded: " + refundAmount
+                        + (refundMethod != null ? " via " + refundMethod : ""));
+        // Post the cash refund to the ledger (ENHANCEMENT 2.3): Dr Sales / Cr Cash.
+        publishRefundLedgerPost(saved);
         return ReturnResponse.from(saved, orderCodeFor(ret.getOrderId()));
+    }
+
+    /**
+     * Best-effort ledger posting for a refunded return (ENHANCEMENT 2.3): enqueues
+     * a {@code LEDGER_POST} for source {@code RETURN_REFUND} keyed by the return
+     * id, but only when actual cash was refunded (a pure-COD return refunds
+     * nothing, so there is no cash movement to book). Never throws — the return
+     * state change must not be rolled back by a posting hiccup; the drainer retries.
+     */
+    private void publishRefundLedgerPost(OrderReturn ret) {
+        if (outboxEventPublisher == null || ret.getId() == null) {
+            return;
+        }
+        BigDecimal refund = ret.getRefundAmount();
+        if (refund == null || refund.signum() <= 0) {
+            return;
+        }
+        try {
+            outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_RETURN_REFUND, ret.getId());
+        } catch (RuntimeException e) {
+            // best-effort; the drainer / a later recompute will pick it up
+        }
     }
 
     /**
@@ -257,12 +306,17 @@ public class ReturnService {
 
         ret.setCreditNoteValue(creditNoteValue);
         ret.setRefundAmount(cashRefund);
+        // A pure-COD RTO refunds no cash; a prepaid RTO owes back what was paid.
+        ret.setRefundMethod(cashRefund.signum() > 0 ? RefundMethod.ORIGINAL_PAYMENT
+                : RefundMethod.COD_NOT_COLLECTED);
         ret.changeStatus(ReturnStatus.REFUNDED);
         OrderReturn saved = returnRepository.save(ret);
         auditService.record(AuditActions.RETURN_REFUNDED, AuditActions.ENTITY_RETURN,
                 String.valueOf(ret.getId()),
                 "Return auto-settled for RTO order " + order.getOrderCode()
                         + ": credit note " + creditNoteValue + ", cash refund " + cashRefund);
+        // Book the cash refund (if any) to the ledger (ENHANCEMENT 2.3).
+        publishRefundLedgerPost(saved);
 
         return ReturnResponse.from(saved, order.getOrderCode());
     }

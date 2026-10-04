@@ -12,7 +12,7 @@ import { TeamPerformance, TeamPerformanceService } from '../team/team-performanc
 import { openWhatsApp, whatsAppMessage } from '../shared/whatsapp.util';
 import { humanizeStatus } from '../shared/status-badge.component';
 import { ORDER_STATUS_GROUPS } from '../orders/order-status-groups';
-import { RoleDashboardSummary } from './dashboard.model';
+import { ChannelMarginReport, OwnerSnapshot, RoleDashboardSummary } from './dashboard.model';
 
 /** A single labelled count derived from a role-summary status map. */
 interface StatusCount {
@@ -114,6 +114,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   /** A true salesperson (not a team lead) — gets the "My Day" + win-back widgets. */
   protected readonly isSalesperson = computed(() => this.role() === Role.SALESPERSON);
+
+  /** Owner one-screen snapshot (ADMIN) — today's trading + the actionable backlog (ENHANCEMENT 1.2). */
+  protected readonly ownerSnapshot = signal<OwnerSnapshot | null>(null);
+
+  /** Per-channel revenue + margin, this month (ADMIN, ENHANCEMENT 3.6). */
+  protected readonly channelMargin = signal<ChannelMarginReport | null>(null);
 
   // --- My Day + Win-back + Reorder-due (salesperson self-service) ---------
   protected readonly myDay = signal<MyDay | null>(null);
@@ -336,6 +342,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.isTeamLead()) {
       this.loadTeamPerformance();
     }
+    if (this.isAdmin()) {
+      this.loadOwnerSnapshot();
+    }
+  }
+
+  /** Loads the owner one-screen snapshot + reorder suggestions (ADMIN only, non-fatal). */
+  private loadOwnerSnapshot(): void {
+    this.service.ownerSnapshot().subscribe({
+      next: (s) => this.ownerSnapshot.set(s),
+      error: () => this.ownerSnapshot.set(null),
+    });
+    // Per-channel margin for the current calendar month (ENHANCEMENT 3.6).
+    const now = new Date();
+    const from = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    this.service.channelMargin(from).subscribe({
+      next: (r) => this.channelMargin.set(r),
+      error: () => this.channelMargin.set(null),
+    });
   }
 
   /**

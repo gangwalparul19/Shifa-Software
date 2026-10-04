@@ -126,15 +126,11 @@ public class DashboardMetricsService {
     @Transactional(readOnly = true)
     public LiveStats liveStats() {
         LocalDate today = LocalDate.now(clock);
-        List<OrderEntity> orders = orderRepository.findAll();
-        long realtimeOrders = 0;
-        BigDecimal todaysCollection = BigDecimal.ZERO;
-        for (OrderEntity o : orders) {
-            if (o.getCreatedAt() != null && o.getCreatedAt().toLocalDate().equals(today)) {
-                realtimeOrders++;
-                todaysCollection = todaysCollection.add(nz(o.getAmountReceived()));
-            }
-        }
+        // SQL COUNT + SUM over today's half-open window, not findAll() every tick.
+        OrderRepository.DayLiveRow row = orderRepository.liveStatsBetween(
+                today.atStartOfDay(), today.plusDays(1).atStartOfDay());
+        long realtimeOrders = row != null ? row.getOrderCount() : 0;
+        BigDecimal todaysCollection = row != null ? nz(row.getCollection()) : BigDecimal.ZERO;
         return new LiveStats(
                 realtimeOrders,
                 scale(todaysCollection),
@@ -145,22 +141,11 @@ public class DashboardMetricsService {
     /** Activity-card counts (Req 19.6), also pushed periodically over SSE. */
     @Transactional(readOnly = true)
     public ActivityCards activityCards() {
-        List<OrderEntity> orders = orderRepository.findAll();
-        long toFulfill = 0;
-        long toCapture = 0;
-        long rto = 0;
-        for (OrderEntity o : orders) {
-            OrderStatus status = o.getOrderStatus();
-            if (TO_FULFILL_STATES.contains(status)) {
-                toFulfill++;
-            }
-            if (status == OrderStatus.PENDING_ADMIN_APPROVAL) {
-                toCapture++;
-            }
-            if (status == OrderStatus.RTO) {
-                rto++;
-            }
-        }
+        // SQL GROUP BY order_status, not findAll() + Java tally on every SSE tick.
+        java.util.Map<OrderStatus, Long> counts = statusCountMap();
+        long toFulfill = countOf(counts, TO_FULFILL_STATES);
+        long toCapture = counts.getOrDefault(OrderStatus.PENDING_ADMIN_APPROVAL, 0L);
+        long rto = counts.getOrDefault(OrderStatus.RTO, 0L);
         long whatsappSent = countSentWhatsapp();
         long codPending = countUnsettled(ReceivableType.COD_RECEIVABLE);
         long claimsPending = countUnsettled(ReceivableType.CLAIM_RECEIVABLE);
@@ -320,6 +305,31 @@ public class DashboardMetricsService {
                 o.getTotalAmount(), o.getAmountReceived(), o.getCodAmount(),
                 o.getPaymentStatus(), o.getOrderStatus(), null, null, null, o.getLeadSource(),
                 o.getCustomerOutstanding());
+    }
+
+    /** The GROUP BY order_status aggregate as an {@code OrderStatus -> count} map (unknown names skipped). */
+    private java.util.Map<OrderStatus, Long> statusCountMap() {
+        java.util.Map<OrderStatus, Long> map = new java.util.EnumMap<>(OrderStatus.class);
+        for (OrderRepository.StatusCountRow row : orderRepository.statusCounts()) {
+            if (row.getStatus() == null) {
+                continue;
+            }
+            try {
+                map.merge(OrderStatus.valueOf(row.getStatus()), row.getCount(), Long::sum);
+            } catch (IllegalArgumentException ignored) {
+                // A stored status name with no matching enum constant — skip it.
+            }
+        }
+        return map;
+    }
+
+    /** Sums the counts of the given statuses from a status-count map. */
+    private static long countOf(java.util.Map<OrderStatus, Long> counts, Set<OrderStatus> statuses) {
+        long total = 0;
+        for (OrderStatus s : statuses) {
+            total += counts.getOrDefault(s, 0L);
+        }
+        return total;
     }
 
     private BigDecimal unsettledTotal(ReceivableType type) {

@@ -29,7 +29,7 @@ public enum OrderSource {
      * screenshot and no delivery partner (it is always a {@code COUNTER_SALE} →
      * in-house), may include ad-hoc items (e.g. a consultation fee) alongside
      * catalogue products, and is auto-approved (a fully-paid one is closed
-     * immediately). Shown as its own "Store" channel on the dashboard.
+     * immediately). Shown as its own "Store (POS)" channel on the dashboard.
      */
     STORE
 }

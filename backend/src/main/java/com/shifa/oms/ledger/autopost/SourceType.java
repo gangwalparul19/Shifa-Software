@@ -47,5 +47,18 @@ public enum SourceType {
      * Cash was understated. This posts the collection on the day it happened, which is the delivery date
      * rather than the order-entry date.
      */
-    ORDER_DELIVERY
+    ORDER_DELIVERY,
+
+    /**
+     * The CASH refunded to a customer when a return is marked REFUNDED (ENHANCEMENT 2.3) — a Journal
+     * voucher dated the refund that reverses revenue and pays the cash back: debit Sales (reduce
+     * income by the refunded amount), credit Cash (money out). Keyed by the {@code order_returns} row id.
+     *
+     * <p>Separate from {@link #ORDER} / {@link #PAYMENT} so it coexists with the order's own vouchers
+     * under the {@code (source_type, source_id)} idempotency key, and only fires when actual cash was
+     * refunded (a pure-COD return refunds nothing). The GST reversal is handled independently by the
+     * GSTR-1 credit note (from {@code order_returns.credit_note_value}), so this voucher books only the
+     * cash-and-revenue movement — mirroring how {@link #ORDER_DELIVERY} books cash without re-deriving GST.
+     */
+    RETURN_REFUND
 }

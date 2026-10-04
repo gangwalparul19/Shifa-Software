@@ -85,19 +85,39 @@ public class LedgerAutoPostingService {
     private final ControlAccountResolver controlAccountResolver;
     private final AccountGroupRepository accountGroupRepository;
     private final SettingsService settingsService;
+    /**
+     * Return records (nullable): source for the {@code RETURN_REFUND} voucher
+     * (ENHANCEMENT 2.3). Null under the legacy test constructor — a refund draft
+     * then throws, which no legacy test exercises.
+     */
+    private final com.shifa.oms.returns.OrderReturnRepository orderReturnRepository;
 
+    /** Legacy constructor (tests that don't exercise the refund source). */
     public LedgerAutoPostingService(OrderRepository orderRepository,
                                     PurchaseOrderRepository purchaseOrderRepository,
                                     ExpenseRepository expenseRepository,
                                     ControlAccountResolver controlAccountResolver,
                                     AccountGroupRepository accountGroupRepository,
                                     SettingsService settingsService) {
+        this(orderRepository, purchaseOrderRepository, expenseRepository, controlAccountResolver,
+                accountGroupRepository, settingsService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public LedgerAutoPostingService(OrderRepository orderRepository,
+                                    PurchaseOrderRepository purchaseOrderRepository,
+                                    ExpenseRepository expenseRepository,
+                                    ControlAccountResolver controlAccountResolver,
+                                    AccountGroupRepository accountGroupRepository,
+                                    SettingsService settingsService,
+                                    com.shifa.oms.returns.OrderReturnRepository orderReturnRepository) {
         this.orderRepository = orderRepository;
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.expenseRepository = expenseRepository;
         this.controlAccountResolver = controlAccountResolver;
         this.accountGroupRepository = accountGroupRepository;
         this.settingsService = settingsService;
+        this.orderReturnRepository = orderReturnRepository;
     }
 
     /**
@@ -124,6 +144,7 @@ public class LedgerAutoPostingService {
             case EXPENSE -> buildExpenseDraft(sourceId);
             case PAYMENT -> buildReceiptDraft(sourceId);
             case ORDER_DELIVERY -> buildDeliveryReceiptDraft(sourceId);
+            case RETURN_REFUND -> buildRefundDraft(sourceId);
         };
     }
 
@@ -298,6 +319,45 @@ public class LedgerAutoPostingService {
 
         String narration = "COD collected on delivery of order " + describe(order.getOrderCode(), orderId);
         return new DraftVoucher(VoucherType.RECEIPT, deliveredDateOf(order), narration, lines);
+    }
+
+    // --- Return refund (ENHANCEMENT 2.3) -------------------------------------
+
+    /**
+     * Journal voucher for the CASH refunded to a customer on a REFUNDED return: debit Sales (reverse
+     * that much revenue) and credit Cash (money paid back), dated the refund (the return's
+     * {@code updated_at}, i.e. when it was marked refunded). Keyed by the return id.
+     *
+     * <p>Only the cash-and-revenue movement is booked here. The GST reversal for a returned supply is
+     * handled independently by the GSTR-1 credit note derived from
+     * {@code order_returns.credit_note_value}, so re-deriving GST in this voucher would double-count it
+     * — this mirrors how {@link #buildDeliveryReceiptDraft} keeps the cash leg simple and documents the
+     * scope boundary.
+     */
+    private DraftVoucher buildRefundDraft(Long returnId) {
+        if (orderReturnRepository == null) {
+            throw new ValidationException("Return refund posting is not available (no return repository wired).");
+        }
+        com.shifa.oms.returns.OrderReturn ret = orderReturnRepository.findById(returnId)
+                .orElseThrow(() -> new ResourceNotFoundException("Return " + returnId + " was not found."));
+
+        BigDecimal refund = scale(nz(ret.getRefundAmount()));
+        if (refund.signum() <= 0) {
+            // A pure-COD return refunds nothing, so there is no cash movement to book. The publisher
+            // only enqueues this source when a cash refund was recorded, so this is a defensive guard.
+            throw new ValidationException(
+                    "Return " + returnId + " refunded no cash, so there is no refund voucher to post.");
+        }
+
+        List<PostingLine> lines = new ArrayList<>();
+        lines.add(debit(ControlAccount.SALES, refund));
+        lines.add(credit(ControlAccount.CASH, refund));
+
+        LocalDate date = ret.getUpdatedAt() != null
+                ? ret.getUpdatedAt().toLocalDate() : dateOf(ret.getCreatedAt());
+        String narration = "Refund for return #" + returnId
+                + (ret.getRefundMethod() != null ? " (" + ret.getRefundMethod() + ")" : "");
+        return new DraftVoucher(VoucherType.JOURNAL, date, narration, lines);
     }
 
     /**

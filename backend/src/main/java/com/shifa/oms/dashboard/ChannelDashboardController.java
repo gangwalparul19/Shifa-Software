@@ -23,9 +23,23 @@ import java.time.LocalDate;
 public class ChannelDashboardController {
 
     private final ChannelDashboardService service;
+    private final com.shifa.oms.order.ChannelMarginService channelMarginService;
 
-    public ChannelDashboardController(ChannelDashboardService service) {
+    public ChannelDashboardController(ChannelDashboardService service,
+                                      com.shifa.oms.order.ChannelMarginService channelMarginService) {
         this.service = service;
+        this.channelMarginService = channelMarginService;
+    }
+
+    /**
+     * Per-channel revenue + estimated gross margin (ENHANCEMENT 3.6), layering
+     * product cost (V79) onto the channel split. Optional inclusive date window.
+     */
+    @GetMapping("/channel-margin")
+    public com.shifa.oms.order.dto.ChannelMarginResponse channelMargin(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return channelMarginService.margins(from, to);
     }
 
     @GetMapping("/channel")

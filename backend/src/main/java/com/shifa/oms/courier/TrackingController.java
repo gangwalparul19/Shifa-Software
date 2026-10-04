@@ -36,6 +36,18 @@ public class TrackingController {
     }
 
     /**
+     * Token-gated customer tracking (ENHANCEMENT 2.2): resolves an order by its
+     * opaque per-order token rather than the enumerable order code, returning a
+     * customer-friendly status + stage timeline + courier link. Backs the public
+     * {@code /track/{token}} page shared with the customer. Still public (under
+     * {@code /api/track/**}); the token itself is the access control.
+     */
+    @GetMapping("/t/{token}")
+    public com.shifa.oms.courier.dto.PublicTrackingResponse trackByToken(@PathVariable String token) {
+        return trackingService.trackByToken(token);
+    }
+
+    /**
      * Public PDF invoice for an order by its code, mirroring the public tracking
      * endpoint above: the storefront customer downloads their own invoice by
      * order code without authenticating (order codes are the same unguessable-ish

@@ -563,6 +563,11 @@ export interface OrderDetail {
    * salesperson sees why the payment failed. Null when there's no note.
    */
   paymentVerificationNote?: string | null;
+  /**
+   * Opaque per-order tracking token (ENHANCEMENT 2.2) for building a
+   * customer-shareable public tracking link ({@code /track/{token}}).
+   */
+  trackingToken?: string | null;
 }
 
 /** One status-history row, mirroring the backend {@code StatusHistoryEntryResponse}. */

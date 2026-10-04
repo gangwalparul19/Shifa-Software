@@ -15,9 +15,14 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
 import { AnalyticsService } from './analytics.service';
-import { ForecastReport, RetentionReport, SalesTargetRow } from './analytics.model';
+import {
+  DeliveryPerformanceReport,
+  ForecastReport,
+  RetentionReport,
+  SalesTargetRow,
+} from './analytics.model';
 
-type AnalyticsTab = 'targets' | 'retention' | 'forecast';
+type AnalyticsTab = 'targets' | 'retention' | 'forecast' | 'delivery';
 
 /** ApexCharts bar option bundle used by both the reorder + demand charts. */
 interface BarOptions {
@@ -57,6 +62,7 @@ export class AnalyticsComponent implements OnInit {
     { key: 'targets', label: 'Targets & Incentives', icon: 'ti-target' },
     { key: 'retention', label: 'Retention', icon: 'ti-users-group' },
     { key: 'forecast', label: 'Forecast', icon: 'ti-chart-dots' },
+    { key: 'delivery', label: 'Delivery', icon: 'ti-truck-delivery' },
   ];
   protected readonly activeTab = signal<AnalyticsTab>('targets');
 
@@ -80,6 +86,11 @@ export class AnalyticsComponent implements OnInit {
   protected readonly forecastLoading = signal(false);
   protected readonly forecastError = signal<string | null>(null);
 
+  // --- Delivery performance (ENHANCEMENT 3.3) -----------------------------
+  protected readonly delivery = signal<DeliveryPerformanceReport | null>(null);
+  protected readonly deliveryLoading = signal(false);
+  protected readonly deliveryError = signal<string | null>(null);
+
   ngOnInit(): void {
     this.loadTargets();
   }
@@ -90,7 +101,37 @@ export class AnalyticsComponent implements OnInit {
       this.loadRetention();
     } else if (tab === 'forecast' && !this.forecast()) {
       this.loadForecast();
+    } else if (tab === 'delivery' && !this.delivery()) {
+      this.loadDelivery();
     }
+  }
+
+  // --- Delivery performance -----------------------------------------------
+
+  loadDelivery(): void {
+    this.deliveryLoading.set(true);
+    this.deliveryError.set(null);
+    this.service.deliveryPerformance().subscribe({
+      next: (r) => {
+        this.delivery.set(r);
+        this.deliveryLoading.set(false);
+      },
+      error: () => {
+        this.deliveryError.set('Could not load delivery performance.');
+        this.deliveryLoading.set(false);
+      },
+    });
+  }
+
+  /** Colour class for a delivery success rate: green ≥80, amber ≥50, red below. */
+  deliveryRateClass(pct: number): string {
+    if (pct >= 80) {
+      return 'text-success';
+    }
+    if (pct >= 50) {
+      return 'text-warning';
+    }
+    return 'text-danger';
   }
 
   // --- Targets ------------------------------------------------------------

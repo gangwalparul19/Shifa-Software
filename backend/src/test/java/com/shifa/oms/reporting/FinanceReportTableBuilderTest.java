@@ -31,7 +31,7 @@ class FinanceReportTableBuilderTest {
         return new OrderReportRecord(
                 1L, code, date, 7L, "Cust " + code, "9800000000", "MH", List.of(),
                 new BigDecimal(total), new BigDecimal(received), new BigDecimal(cod),
-                PaymentStatus.PARTIALLY_PAID, status, codSettlement, "N/A", "AWB" + code);
+                PaymentStatus.PARTIALLY_PAID, status, codSettlement, "N/A", "AWB" + code, null, null);
     }
 
     // Fully paid, delivered — no dues, nothing pending from courier.

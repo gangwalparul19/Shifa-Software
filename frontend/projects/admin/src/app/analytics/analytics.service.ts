@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
 import {
+  DeliveryPerformanceReport,
   ForecastReport,
   RetentionReport,
   SalesTargetRow,
@@ -43,5 +44,10 @@ export class AnalyticsService {
       params['horizonDays'] = horizonDays;
     }
     return this.api.get<ForecastReport>('/api/admin/analytics/forecast', { params });
+  }
+
+  /** Delivery-performance analytics by courier / state / pincode band; ENHANCEMENT 3.3. */
+  deliveryPerformance(): Observable<DeliveryPerformanceReport> {
+    return this.api.get<DeliveryPerformanceReport>('/api/admin/analytics/delivery-performance');
   }
 }

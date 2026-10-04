@@ -58,6 +58,8 @@ export interface Product {
    * price must be within [minimumRate, mrp] (product-catalog-pricing-gst).
    */
   minimumRate?: Money | null;
+  /** Optional per-unit sourcing cost for margin analytics (ENHANCEMENT 3.6); null if unset. */
+  costPrice?: Money | null;
   /** Optional HSN code, surfaced on GST tax invoices (backend: GST feature). */
   hsnCode?: string;
   /** Optional pack size / weight / volume descriptor, e.g. "100ML", "60 TB PP". */

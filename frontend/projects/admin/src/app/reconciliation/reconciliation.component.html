@@ -55,6 +55,52 @@
   </div>
 </div>
 
+<!-- Collectible summary (ENHANCEMENT 1.4): one-tap "what's left to collect" —
+     courier-owed COD (with over-SLA chase) vs customer dues + pending claims. -->
+@if (collectible(); as cs) {
+  <div class="shifa-section-title">What's left to collect</div>
+  <div class="row row-cards g-2 g-md-3 mb-3">
+    <div class="col-12 col-md-3">
+      <div class="card stat-accent h-100" style="--accent: #206bc4; --accent-soft: #e7f0fb">
+        <div class="card-body py-2">
+          <div class="subheader">Total collectible</div>
+          <div class="h1 m-0">{{ money(cs.totalCollectible) }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-accent h-100" style="--accent: #f59f00; --accent-soft: #fdf1da">
+        <div class="card-body py-2">
+          <div class="subheader">Pending from courier</div>
+          <div class="h2 m-0">{{ money(cs.codPendingFromCourier) }}</div>
+          @if (cs.codOverSlaCount > 0) {
+            <div class="small text-red">{{ cs.codOverSlaCount }} past {{ cs.slaDays }}d SLA ({{ money(cs.codOverSlaAmount) }})</div>
+          }
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-accent h-100" style="--accent: #0ca678; --accent-soft: #e3f7f0">
+        <div class="card-body py-2">
+          <div class="subheader">Due from customers</div>
+          <div class="h2 m-0">{{ money(cs.customerOutstanding) }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-accent h-100" style="--accent: #d63939; --accent-soft: #fbe7e7">
+        <div class="card-body py-2">
+          <div class="subheader">Claims to file</div>
+          <div class="h2 m-0">{{ cs.pendingClaims }}</div>
+          @if (cs.pendingClaims > 0) {
+            <div class="text-secondary small">{{ money(cs.pendingClaimsAmount) }}</div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
 <!-- COD aging (cod-aging enhancement): how overdue the unsettled COD is, plus a
      courier-SLA alert when money has been owed beyond the payout window. -->
 @if (codAging(); as aging) {

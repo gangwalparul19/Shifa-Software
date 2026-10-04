@@ -55,17 +55,35 @@ public class DailyReportService {
     private final MailService mailService;
     private final MailProperties mailProperties;
     private final EmailRenderer emailRenderer;
+    /**
+     * Owner snapshot (nullable): adds the "needs attention now" block to the top
+     * of the report email (ENHANCEMENT 1.1). Null under the legacy constructor
+     * (tests) — the block is then simply omitted.
+     */
+    private final com.shifa.oms.dashboard.OwnerSnapshotService ownerSnapshotService;
 
+    /** Legacy constructor (tests): no owner snapshot block. */
     public DailyReportService(OrderRepository orderRepository,
                               UserRepository userRepository,
                               MailService mailService,
                               MailProperties mailProperties,
                               EmailRenderer emailRenderer) {
+        this(orderRepository, userRepository, mailService, mailProperties, emailRenderer, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public DailyReportService(OrderRepository orderRepository,
+                              UserRepository userRepository,
+                              MailService mailService,
+                              MailProperties mailProperties,
+                              EmailRenderer emailRenderer,
+                              com.shifa.oms.dashboard.OwnerSnapshotService ownerSnapshotService) {
         this.orderRepository = orderRepository;
         this.userRepository = userRepository;
         this.mailService = mailService;
         this.mailProperties = mailProperties;
         this.emailRenderer = emailRenderer;
+        this.ownerSnapshotService = ownerSnapshotService;
     }
 
     /**
@@ -107,7 +125,7 @@ public class DailyReportService {
         }
 
         RenderedEmail rendered = emailRenderer.renderConsolidatedReport(
-                new EmailModels.ConsolidatedReport(report));
+                new EmailModels.ConsolidatedReport(report, ownerAttention()));
         try {
             mailService.send(rendered.toMessage(to));
             log.info("Sent consolidated report for {} to {} ({} order(s)).",
@@ -116,6 +134,28 @@ public class DailyReportService {
             log.warn("Failed to send consolidated report for {}: {}", label, e.getMessage());
         }
         return Result.from(report, true);
+    }
+
+    /**
+     * Builds the owner "needs attention" block from the dashboard snapshot
+     * (ENHANCEMENT 1.1). Best-effort: returns {@code null} (block omitted) when no
+     * snapshot service is wired (tests) or if it fails — the report must never be
+     * blocked by the snapshot.
+     */
+    private EmailModels.OwnerAttention ownerAttention() {
+        if (ownerSnapshotService == null) {
+            return null;
+        }
+        try {
+            com.shifa.oms.dashboard.dto.OwnerSnapshotResponse s = ownerSnapshotService.snapshot();
+            return new EmailModels.OwnerAttention(
+                    s.ordersToday(), s.revenueToday(), s.approvalsWaiting(), s.paymentsPending(),
+                    s.failedDeliveries(), s.codToCollect(), s.codOverSla(), s.pendingClaims(),
+                    s.stuckShipments(), s.topSalespersonName(), s.attentionTotal());
+        } catch (RuntimeException e) {
+            log.warn("Owner attention snapshot failed; omitting from report: {}", e.getMessage());
+            return null;
+        }
     }
 
     /**

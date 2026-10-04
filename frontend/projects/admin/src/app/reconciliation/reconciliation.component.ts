@@ -12,6 +12,7 @@ import {
 } from './reconciliation.service';
 import {
   CodAging,
+  CollectibleSummary,
   CourierSummary,
   ReceivableRow,
   Segregation,
@@ -91,6 +92,8 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
   protected readonly claims = signal<ReceivableRow[]>([]);
   /** COD aging buckets + courier-SLA flag (cod-aging enhancement). */
   protected readonly codAging = signal<CodAging | null>(null);
+  /** One-tap collectible summary — courier-COD vs customer dues + claims (ENHANCEMENT 1.4). */
+  protected readonly collectible = signal<CollectibleSummary | null>(null);
 
   // --- Client-side paging for the Unsettled-COD + Pending-Claims tabs -----
   protected readonly unsettledPage = signal(0);
@@ -223,8 +226,12 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Loads the COD aging buckets + SLA flag (non-fatal on error). */
+  /** Loads the COD aging buckets + SLA flag + the collectible summary (non-fatal on error). */
   private refreshCodAging(): void {
+    this.service.collectibleSummary().subscribe({
+      next: (c) => this.collectible.set(c),
+      error: () => this.collectible.set(null),
+    });
     this.service.codAging().subscribe({
       next: (a) => this.codAging.set(a),
       error: () => {

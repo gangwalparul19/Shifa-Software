@@ -125,7 +125,7 @@ public class AdminReturnController {
     /** Marks an approved return as refunded (ADMIN or ACCOUNTANT). */
     @PostMapping("/{id}/refund")
     public ReturnResponse refund(@PathVariable Long id, @Valid @RequestBody RefundReturnRequest request) {
-        return returnService.markRefunded(id, request.refundAmount());
+        return returnService.markRefunded(id, request.refundAmount(), request.refundMethod());
     }
 }
 

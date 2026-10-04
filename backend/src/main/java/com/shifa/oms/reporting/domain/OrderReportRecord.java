@@ -50,56 +50,12 @@ public record OrderReportRecord(
         codAmount = nz(codAmount);
     }
 
-    /**
-     * Backwards-compatible constructor for callers that do not track the lead
-     * source (the {@link LeadSource} defaults to {@code null}, reported as
-     * {@code UNSPECIFIED} by the grouped reports).
-     */
-    public OrderReportRecord(
-            Long orderId,
-            String orderCode,
-            LocalDate orderDate,
-            Long salespersonId,
-            String customerName,
-            String customerMobile,
-            String state,
-            List<ProductLine> products,
-            BigDecimal totalAmount,
-            BigDecimal amountReceived,
-            BigDecimal codAmount,
-            PaymentStatus paymentStatus,
-            OrderStatus orderStatus,
-            String codSettlementStatus,
-            String claimStatus,
-            String awb) {
-        this(orderId, orderCode, orderDate, salespersonId, customerName, customerMobile, state,
-                products, totalAmount, amountReceived, codAmount, paymentStatus, orderStatus,
-                codSettlementStatus, claimStatus, awb, null, null);
-    }
-
-    /** Backwards-compatible constructor for callers that already provide a lead source. */
-    public OrderReportRecord(
-            Long orderId,
-            String orderCode,
-            LocalDate orderDate,
-            Long salespersonId,
-            String customerName,
-            String customerMobile,
-            String state,
-            List<ProductLine> products,
-            BigDecimal totalAmount,
-            BigDecimal amountReceived,
-            BigDecimal codAmount,
-            PaymentStatus paymentStatus,
-            OrderStatus orderStatus,
-            String codSettlementStatus,
-            String claimStatus,
-            String awb,
-            LeadSource leadSource) {
-        this(orderId, orderCode, orderDate, salespersonId, customerName, customerMobile, state,
-                products, totalAmount, amountReceived, codAmount, paymentStatus, orderStatus,
-                codSettlementStatus, claimStatus, awb, leadSource, null);
-    }
+    // NOTE: the former 16-arg and 17-arg telescoping constructors were removed
+    // (they had already caused two silent-field regressions). Every caller now
+    // uses the single canonical 18-component constructor and passes an explicit
+    // leadSource + customerOutstanding (null where not tracked), so a future
+    // field insert fails to compile at the call site rather than silently
+    // shifting values. See ARCHITECTURE.md §12 R2 / ENHANCEMENT.md §4.
 
     private static BigDecimal nz(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;

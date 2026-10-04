@@ -17,9 +17,7 @@ import com.shifa.oms.gst.dto.GstReportResponse;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderRepository;
-import com.shifa.oms.procurement.PurchaseOrder;
 import com.shifa.oms.procurement.PurchaseOrderRepository;
-import com.shifa.oms.returns.OrderReturn;
 import com.shifa.oms.returns.OrderReturnRepository;
 import com.shifa.oms.returns.ReturnStatus;
 import com.shifa.oms.settings.AppSettings;
@@ -103,8 +101,15 @@ public class GstAccountingService {
     @Transactional(readOnly = true)
     public GstReportResponse report(LocalDate from, LocalDate to) {
         Period p = resolvePeriod(from, to);
-        AppSettings seller = settingsService.getSettings();
-        List<OrderEntity> orders = revenueOrders(p);
+        return buildReport(p, settingsService.getSettings(), revenueOrders(p));
+    }
+
+    /**
+     * Builds the GST report from an already-loaded order set + seller settings, so
+     * the dashboard can reuse the same window load instead of re-querying it (and
+     * re-querying it a second time inside a nested {@code report()} call).
+     */
+    private GstReportResponse buildReport(Period p, AppSettings seller, List<OrderEntity> orders) {
         GstComputation comp = GstEngine.compute(toGstOrders(orders), seller.getState());
         boolean stateConfigured = seller.getState() != null && !seller.getState().isBlank();
         return new GstReportResponse(
@@ -118,8 +123,11 @@ public class GstAccountingService {
     @Transactional(readOnly = true)
     public GstDashboardResponse dashboard(LocalDate from, LocalDate to) {
         Period p = resolvePeriod(from, to);
-        GstReportResponse report = report(p.from(), p.to());
+        // Load the window ONCE and reuse it for both the GST report and the money
+        // flows (previously the window was loaded 3× — here, in report(), and the
+        // nested report() built its own).
         List<OrderEntity> orders = revenueOrders(p);
+        GstReportResponse report = buildReport(p, settingsService.getSettings(), orders);
 
         BigDecimal amountReceived = ZERO;
         BigDecimal codCollected = ZERO;
@@ -141,21 +149,14 @@ public class GstAccountingService {
         List<CategoryAmount> expensesByCategory = new ArrayList<>();
         byCategory.forEach((k, v) -> expensesByCategory.add(new CategoryAmount(k, v)));
 
-        // Purchases (PO totals created in the window).
-        BigDecimal purchases = ZERO;
-        for (PurchaseOrder po : purchaseOrderRepository.findAll()) {
-            if (within(po.getCreatedAt(), p)) {
-                purchases = purchases.add(nz(po.getTotalAmount()));
-            }
-        }
+        // Purchases (PO totals created in the window) — SQL SUM, not findAll()+filter.
+        LocalDateTime fromTs = p.from().atStartOfDay();
+        LocalDateTime toTs = p.to().plusDays(1).atStartOfDay();
+        BigDecimal purchases = nz(purchaseOrderRepository.sumTotalCreatedBetween(fromTs, toTs));
 
-        // Refunds (returns refunded in the window).
-        BigDecimal refunds = ZERO;
-        for (OrderReturn r : orderReturnRepository.findAll()) {
-            if (r.getStatus() == ReturnStatus.REFUNDED && within(r.getCreatedAt(), p)) {
-                refunds = refunds.add(nz(r.getRefundAmount()));
-            }
-        }
+        // Refunds (returns refunded in the window) — SQL SUM, not findAll()+filter.
+        BigDecimal refunds = nz(orderReturnRepository.sumRefundByStatusCreatedBetween(
+                ReturnStatus.REFUNDED, fromTs, toTs));
 
         BigDecimal outstandingCod = nz(orderRepository.sumOutstandingCodActive());
         BigDecimal netCash = amountReceived.add(codCollected)
@@ -275,7 +276,9 @@ public class GstAccountingService {
         LocalDateTime fromTs = p.from().atStartOfDay();
         LocalDateTime toTs = p.to().plusDays(1).atStartOfDay();
         List<OrderEntity> out = new ArrayList<>();
-        for (OrderEntity o : orderRepository.findByCreatedAtBetween(fromTs, toTs)) {
+        // JOIN FETCH the line items so the per-order getLineItems() reads below
+        // (toGstOrders / orders() drill-down / hasLineRate / hasLineHsn) don't N+1.
+        for (OrderEntity o : orderRepository.findByCreatedAtBetweenWithLineItems(fromTs, toTs)) {
             if (o.getOrderStatus() == null || !NON_REVENUE.contains(o.getOrderStatus())) {
                 out.add(o);
             }
@@ -295,14 +298,6 @@ public class GstAccountingService {
             result.add(new GstOrder(o.getId(), o.getState(), date, lines, o.isInternational()));
         }
         return result;
-    }
-
-    private static boolean within(LocalDateTime ts, Period p) {
-        if (ts == null) {
-            return false;
-        }
-        LocalDate d = ts.toLocalDate();
-        return !d.isBefore(p.from()) && !d.isAfter(p.to());
     }
 
     private static BigDecimal nz(BigDecimal v) {

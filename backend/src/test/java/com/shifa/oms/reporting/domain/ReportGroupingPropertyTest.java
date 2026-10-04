@@ -173,6 +173,6 @@ class ReportGroupingPropertyTest {
                         oid, "SHR-" + oid, EPOCH.plusDays(off), sp,
                         "Cust" + oid, "9000000000", "Maharashtra", List.of(),
                         BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.TEN, pay, st,
-                        "N/A", "N/A", null, ls));
+                        "N/A", "N/A", null, ls, null));
     }
 }

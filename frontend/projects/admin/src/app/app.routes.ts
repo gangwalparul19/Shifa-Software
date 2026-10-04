@@ -188,6 +188,13 @@ export const teamLeadGuard = createRoleGuard(
 export const routes: Routes = [
   { path: 'login', component: LoginComponent },
   { path: 'forbidden', component: ForbiddenComponent },
+  // Public, unauthenticated customer order tracking (ENHANCEMENT 2.2) — opaque
+  // token, outside the admin shell/guards. Lazy so it stays out of the main bundle.
+  {
+    path: 'track/:token',
+    loadComponent: () =>
+      import('./track/public-tracking.component').then((m) => m.PublicTrackingComponent),
+  },
   {
     path: '',
     component: AdminShellComponent,

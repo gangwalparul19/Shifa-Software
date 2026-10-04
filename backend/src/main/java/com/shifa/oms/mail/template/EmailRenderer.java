@@ -259,6 +259,27 @@ public class EmailRenderer {
         } else {
             body.append(p("Here's how " + esc(dayLabel) + " looked across the business."));
         }
+
+        // ---- Owner "needs attention" block (ENHANCEMENT 1.1), when provided.
+        EmailModels.OwnerAttention a = m.attention();
+        if (a != null) {
+            body.append(sectionHeading("Needs attention now (" + a.attentionTotal() + ")"));
+            StringBuilder attRows = new StringBuilder();
+            attRows.append(detailRow("Orders today", String.valueOf(a.ordersToday())));
+            attRows.append(detailRow("Received today", money(a.revenueToday())));
+            attRows.append(detailRow("Approvals waiting", String.valueOf(a.approvalsWaiting())));
+            attRows.append(detailRow("Payments to verify", String.valueOf(a.paymentsPending())));
+            attRows.append(detailRow("Failed deliveries", String.valueOf(a.failedDeliveries())));
+            attRows.append(detailRow("COD to collect", money(a.codToCollect())
+                    + (a.codOverSla() > 0 ? " (" + a.codOverSla() + " past SLA)" : "")));
+            attRows.append(detailRow("Courier claims pending", String.valueOf(a.pendingClaims())));
+            attRows.append(detailRow("Stuck shipments", String.valueOf(a.stuckShipments())));
+            if (a.topSalespersonName() != null && !a.topSalespersonName().isBlank()) {
+                attRows.append(detailRow("Top salesperson today", safe(a.topSalespersonName())));
+            }
+            body.append(detailTable(attRows.toString()));
+        }
+
         body.append(sectionHeading("Summary"));
         body.append(detailTable(summaryRows.toString()));
 

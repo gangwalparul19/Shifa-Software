@@ -514,6 +514,35 @@ export class OrdersComponent implements OnInit, OnDestroy {
     return !!this.orderTrackUrl(order);
   }
 
+  /**
+   * The customer-shareable public tracking link for an order (ENHANCEMENT 2.2):
+   * {@code <origin>/track/<token>}. Null when the order has no tracking token
+   * (older orders are backfilled, so this is effectively always present).
+   */
+  customerTrackingLink(order: OrderDetail | null | undefined): string | null {
+    const token = order?.trackingToken;
+    if (!token) {
+      return null;
+    }
+    return `${window.location.origin}/track/${encodeURIComponent(token)}`;
+  }
+
+  /** Copies the customer tracking link to the clipboard (ENHANCEMENT 2.2). */
+  copyTrackingLink(order: OrderDetail | null | undefined): void {
+    void this.copyText(this.customerTrackingLink(order), 'Tracking link');
+  }
+
+  /** Opens WhatsApp to the customer with the public tracking link pre-filled. */
+  shareTrackingLinkOnWhatsApp(order: OrderDetail | null | undefined): void {
+    const link = this.customerTrackingLink(order);
+    if (!order || !link) {
+      return;
+    }
+    const name = (order.customerName ?? '').split(' ')[0] || 'there';
+    const message = `Hi ${name}, track your Shifa order ${order.orderCode} here: ${link}`;
+    openWhatsApp(order.customerMobile, message);
+  }
+
   /** Opens the best tracking URL for an order in a new tab. */
   openOrderTracking(order: OrderDetail | null | undefined, event?: Event): void {
     event?.stopPropagation();

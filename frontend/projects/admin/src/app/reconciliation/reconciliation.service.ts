@@ -1,7 +1,14 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient, PageResponse, ReceivableType } from 'core';
-import { CodAging, CourierSummary, ReceivableRow, Segregation, UnsettledCod } from './reconciliation.model';
+import {
+  CodAging,
+  CollectibleSummary,
+  CourierSummary,
+  ReceivableRow,
+  Segregation,
+  UnsettledCod,
+} from './reconciliation.model';
 
 /** The outcome classification for a single courier remittance row. */
 export type RemittanceRowStatus =
@@ -136,6 +143,11 @@ export class ReconciliationService {
   /** COD aging buckets + courier-SLA flag (cod-aging enhancement). */
   codAging(): Observable<CodAging> {
     return this.api.get<CodAging>('/api/recon/cod-aging');
+  }
+
+  /** One-tap collectible summary — courier-COD vs customer dues + claims (ENHANCEMENT 1.4). */
+  collectibleSummary(): Observable<CollectibleSummary> {
+    return this.api.get<CollectibleSummary>('/api/recon/collectible-summary');
   }
 
   /** Prepaid vs COD segregation of fulfilled orders (Req 18.4). */

@@ -87,6 +87,14 @@ public record ProductRequest(
          * (gst-filing-compliance Req 3.2).
          */
         @Size(max = 10, message = "uqc must be at most 10 characters")
-        String uqc
+        String uqc,
+
+        /**
+         * Optional per-unit sourcing cost (V79, ENHANCEMENT 3.6), used only for the
+         * per-channel margin estimate. Null leaves it unset; must be non-negative.
+         */
+        @DecimalMin(value = "0.00", message = "costPrice must not be negative")
+        @Digits(integer = 10, fraction = 2, message = "costPrice must be a DECIMAL(12,2) value")
+        BigDecimal costPrice
 ) {
 }

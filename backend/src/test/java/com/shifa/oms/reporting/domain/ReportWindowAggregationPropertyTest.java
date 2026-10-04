@@ -200,7 +200,7 @@ class ReportWindowAggregationPropertyTest {
                     return new OrderReportRecord(
                             oid, "SHR-" + oid, EPOCH.plusDays(off), sp,
                             "Cust" + oid, "9000000000", st, ls,
-                            total, BigDecimal.ZERO, total, pay, os, "N/A", "N/A", null);
+                            total, BigDecimal.ZERO, total, pay, os, "N/A", "N/A", null, null, null);
                 });
     }
 

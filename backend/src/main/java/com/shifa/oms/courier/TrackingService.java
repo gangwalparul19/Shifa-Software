@@ -7,6 +7,7 @@ import com.shifa.oms.order.OrderRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -47,6 +48,92 @@ public class TrackingService {
         }
         return new TrackingResponse(order.getOrderCode(), order.getOrderStatus(),
                 shipment.awb(), shipment.courierName(), shipment.trackingUrl());
+    }
+
+    /**
+     * Customer-facing tracking view resolved by the opaque per-order token
+     * (ENHANCEMENT 2.2) — the token-gated form of {@link #track(String)} that
+     * cannot be enumerated. Returns a friendly status + a simple stage timeline
+     * plus the shipment tracking link once available.
+     *
+     * @param token the opaque tracking token
+     * @return the customer tracking projection
+     * @throws ResourceNotFoundException when no order has that token
+     */
+    @Transactional(readOnly = true)
+    public com.shifa.oms.courier.dto.PublicTrackingResponse trackByToken(String token) {
+        OrderEntity order = orderRepository.findByTrackingToken(token)
+                .orElseThrow(() -> new ResourceNotFoundException("No order found for this tracking link."));
+
+        com.shifa.oms.statemachine.OrderStatus status = order.getOrderStatus();
+        com.shifa.oms.order.OrderStatusGroup group =
+                com.shifa.oms.order.OrderStatusGroup.groupOf(status);
+        ShipmentInfo shipment = shipmentFor(order.getId()).orElse(null);
+
+        boolean delivered = group == com.shifa.oms.order.OrderStatusGroup.DELIVERED;
+        boolean failed = group == com.shifa.oms.order.OrderStatusGroup.FAILED_RETURNED
+                || group == com.shifa.oms.order.OrderStatusGroup.CANCELLED
+                || group == com.shifa.oms.order.OrderStatusGroup.REJECTED;
+
+        return new com.shifa.oms.courier.dto.PublicTrackingResponse(
+                order.getOrderCode(),
+                firstName(order.getCustomerName()),
+                statusLabel(group, status),
+                group == null ? null : group.name(),
+                shipment != null ? shipment.awb() : null,
+                shipment != null ? shipment.courierName() : null,
+                shipment != null ? shipment.trackingUrl() : null,
+                shipment != null ? shipment.estimatedDelivery() : null,
+                delivered,
+                timeline(group, failed));
+    }
+
+    /** A plain-English status for the customer, from the coarse lifecycle group. */
+    private static String statusLabel(com.shifa.oms.order.OrderStatusGroup group,
+                                      com.shifa.oms.statemachine.OrderStatus status) {
+        if (group == null) {
+            return "In progress";
+        }
+        return switch (group) {
+            case PENDING_APPROVAL -> "Order received — being confirmed";
+            case PROCESSING -> "Being prepared for shipment";
+            case SHIPPED -> status == com.shifa.oms.statemachine.OrderStatus.OUT_FOR_DELIVERY
+                    ? "Out for delivery" : "Shipped — on the way";
+            case DELIVERED -> "Delivered";
+            case FAILED_RETURNED -> "Delivery could not be completed";
+            case CANCELLED -> "Cancelled";
+            case REJECTED -> "Cancelled";
+        };
+    }
+
+    /** The happy-path stage timeline with each step flagged reached/pending. */
+    private static List<com.shifa.oms.courier.dto.PublicTrackingResponse.Step> timeline(
+            com.shifa.oms.order.OrderStatusGroup group, boolean failed) {
+        // Ordinal of the current group on the happy path (−1 for failed/unknown).
+        int reachedUpTo = switch (group == null ? com.shifa.oms.order.OrderStatusGroup.PENDING_APPROVAL : group) {
+            case PENDING_APPROVAL -> 0;
+            case PROCESSING -> 1;
+            case SHIPPED -> 2;
+            case DELIVERED -> 3;
+            default -> failed ? -1 : 0;
+        };
+        String[] labels = {"Order placed", "Being prepared", "Shipped", "Delivered"};
+        List<com.shifa.oms.courier.dto.PublicTrackingResponse.Step> steps =
+                new java.util.ArrayList<>(labels.length);
+        for (int i = 0; i < labels.length; i++) {
+            steps.add(new com.shifa.oms.courier.dto.PublicTrackingResponse.Step(
+                    labels[i], reachedUpTo >= i));
+        }
+        return steps;
+    }
+
+    private static String firstName(String fullName) {
+        if (fullName == null || fullName.isBlank()) {
+            return null;
+        }
+        String trimmed = fullName.trim();
+        int space = trimmed.indexOf(' ');
+        return space > 0 ? trimmed.substring(0, space) : trimmed;
     }
 
     /**

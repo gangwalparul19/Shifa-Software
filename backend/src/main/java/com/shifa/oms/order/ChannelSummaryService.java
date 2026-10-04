@@ -127,33 +127,24 @@ public class ChannelSummaryService {
                 store.toStats());
     }
 
-    /** Loads the orders in the window; an unbounded window loads all orders. */
+    /**
+     * Loads the orders in the window. Only the fully-unbounded "all time" case
+     * loads every order (that genuinely IS the whole order book); any bounded
+     * side pushes the filter to SQL via a wide sentinel on the open side, so a
+     * one-sided window no longer does {@code findAll()} + a Java filter.
+     */
     private List<OrderEntity> loadWindow(LocalDateTime start, LocalDateTime end) {
-        if (start != null && end != null) {
-            return orderRepository.findByCreatedAtBetween(start, end);
-        }
-        // One open side (or both) — filter the full set in memory. The order book
-        // is bounded (business data), and this keeps the query surface minimal.
-        List<OrderEntity> all = orderRepository.findAll();
         if (start == null && end == null) {
-            return all;
+            return orderRepository.findAll();
         }
-        List<OrderEntity> filtered = new ArrayList<>();
-        for (OrderEntity o : all) {
-            LocalDateTime created = o.getCreatedAt();
-            if (created == null) {
-                continue;
-            }
-            if (start != null && created.isBefore(start)) {
-                continue;
-            }
-            if (end != null && created.isAfter(end)) {
-                continue;
-            }
-            filtered.add(o);
-        }
-        return filtered;
+        LocalDateTime lo = start != null ? start : SENTINEL_MIN;
+        LocalDateTime hi = end != null ? end : SENTINEL_MAX;
+        return orderRepository.findByCreatedAtBetween(lo, hi);
     }
+
+    /** Wide sentinels so a one-sided window still runs as a bounded SQL query. */
+    private static final LocalDateTime SENTINEL_MIN = LocalDateTime.of(1970, 1, 1, 0, 0);
+    private static final LocalDateTime SENTINEL_MAX = LocalDateTime.of(9999, 12, 31, 23, 59, 59);
 
     private static boolean withinMonth(LocalDateTime created, LocalDateTime monthStart, LocalDateTime monthEnd) {
         return created != null && !created.isBefore(monthStart) && created.isBefore(monthEnd);

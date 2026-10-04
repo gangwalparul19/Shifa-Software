@@ -70,6 +70,16 @@ public class OrderEntity {
     private String shopifyOrderId;
 
     /**
+     * Opaque, unguessable per-order tracking token (ENHANCEMENT 2.2, V77) that
+     * backs the customer-facing public tracking link {@code /track/{token}} —
+     * so sharing a tracking link never exposes the enumerable order code and
+     * cannot be walked to other orders. Generated on persist when absent.
+     * Mapped to {@code orders.tracking_token}.
+     */
+    @Column(name = "tracking_token", length = 40, unique = true)
+    private String trackingToken;
+
+    /**
      * The reason QuikShipX permanently rejected this order (courier-failure
      * re-route feature): e.g. "585216 is non serviceable pincode", or any
      * create/confirm/allot failure that exhausted retries. Set by the QuikShipX
@@ -605,6 +615,23 @@ public class OrderEntity {
     /** Records the originating Shopify order id (idempotency key for the import webhook). */
     public void setShopifyOrderId(String shopifyOrderId) {
         this.shopifyOrderId = shopifyOrderId;
+    }
+
+    /** The opaque customer tracking token (V77); null only until first persisted. */
+    public String getTrackingToken() {
+        return trackingToken;
+    }
+
+    /**
+     * Ensures an opaque tracking token exists before the row is first written
+     * (ENHANCEMENT 2.2). Idempotent — never overwrites an existing token.
+     */
+    @jakarta.persistence.PrePersist
+    void ensureTrackingToken() {
+        if (this.trackingToken == null || this.trackingToken.isBlank()) {
+            this.trackingToken = (java.util.UUID.randomUUID().toString()
+                    + java.util.UUID.randomUUID()).replace("-", "").substring(0, 32);
+        }
     }
 
     /** The reason QuikShipX permanently rejected this order, or null (V75). */

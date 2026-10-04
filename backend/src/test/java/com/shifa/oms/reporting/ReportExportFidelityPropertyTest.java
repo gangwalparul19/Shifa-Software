@@ -216,7 +216,7 @@ class ReportExportFidelityPropertyTest {
                     return new OrderReportRecord(
                             oid, "SHR-" + oid, EPOCH.plusDays(off), sp,
                             "Cust" + oid, "9000000000", st, ls,
-                            total, received, cod, pay, os, "Pending", "N/A", "AWB" + oid);
+                            total, received, cod, pay, os, "Pending", "N/A", "AWB" + oid, null, null);
                 });
     }
 

@@ -4,9 +4,11 @@ import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
 import {
   ActivityCards,
+  ChannelMarginReport,
   DashboardMetrics,
   LiveStats,
   MetricsPeriod,
+  OwnerSnapshot,
   RoleDashboardSummary,
   SalesBucket,
 } from './dashboard.model';
@@ -91,5 +93,28 @@ export class DashboardService {
    */
   roleSummary(): Observable<RoleDashboardSummary> {
     return this.api.get<RoleDashboardSummary>('/api/dashboard/summary');
+  }
+
+  /**
+   * The owner's one-screen snapshot — today's trading + the actionable backlog
+   * (ENHANCEMENT 1.2). ADMIN only.
+   */
+  ownerSnapshot(): Observable<OwnerSnapshot> {
+    return this.api.get<OwnerSnapshot>('/api/admin/dashboard/owner-snapshot');
+  }
+
+  /**
+   * Per-channel revenue + estimated gross margin (ENHANCEMENT 3.6). Optional
+   * inclusive from/to window. ADMIN only.
+   */
+  channelMargin(from?: string, to?: string): Observable<ChannelMarginReport> {
+    let params = new HttpParams();
+    if (from) {
+      params = params.set('from', from);
+    }
+    if (to) {
+      params = params.set('to', to);
+    }
+    return this.api.get<ChannelMarginReport>('/api/admin/dashboard/channel-margin', { params });
   }
 }

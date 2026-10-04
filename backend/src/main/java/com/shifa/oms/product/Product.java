@@ -52,6 +52,14 @@ public class Product {
     private BigDecimal salePrice = BigDecimal.ZERO;
 
     /**
+     * Optional per-unit cost price — what Shifa pays to source one unit (V79,
+     * ENHANCEMENT 3.6). Null until an admin records it; used only for the
+     * per-channel margin estimate, never for pricing or the price band.
+     */
+    @Column(name = "cost_price", precision = 12, scale = 2)
+    private BigDecimal costPrice;
+
+    /**
      * Optional minimum selling price (per-line floor). When present, an order
      * line's rate must be within {@code [minimumRate, mrp]} (price band). Null on
      * legacy rows is treated as a floor equal to {@link #salePrice}
@@ -193,6 +201,15 @@ public class Product {
 
     public void setSalePrice(BigDecimal salePrice) {
         this.salePrice = salePrice;
+    }
+
+    /** The optional per-unit sourcing cost (V79), or {@code null} if not recorded. */
+    public BigDecimal getCostPrice() {
+        return costPrice;
+    }
+
+    public void setCostPrice(BigDecimal costPrice) {
+        this.costPrice = costPrice;
     }
 
     public BigDecimal getMinimumRate() {

@@ -81,6 +81,51 @@ export interface LiveStats {
   totalLossToClaim: number;
 }
 
+/**
+ * The owner's one-screen snapshot (ENHANCEMENT 1.2): today's trading plus the
+ * actionable backlog, from {@code GET /api/admin/dashboard/owner-snapshot}.
+ */
+export interface OwnerSnapshot {
+  date: string;
+  ordersToday: number;
+  revenueToday: number;
+  approvalsWaiting: number;
+  paymentsPending: number;
+  failedDeliveries: number;
+  rtoCount: number;
+  codToCollect: number;
+  codOverSla: number;
+  codOverSlaAmount: number;
+  pendingClaims: number;
+  stuckShipments: number;
+  topSalespersonName: string | null;
+  topSalespersonRevenue: number;
+  attentionTotal: number;
+}
+
+/**
+ * Per-channel revenue + estimated gross margin (ENHANCEMENT 3.6), from
+ * {@code GET /api/admin/dashboard/channel-margin}. Layers product cost onto the
+ * channel split so the owner sees true margin per channel, not just revenue.
+ */
+export interface ChannelMargin {
+  channel: string;
+  orderCount: number;
+  revenue: number;
+  discount: number;
+  estimatedCogs: number;
+  grossMargin: number;
+  marginPct: number;
+  costCoveragePct: number;
+}
+
+export interface ChannelMarginReport {
+  from: string | null;
+  to: string | null;
+  channels: ChannelMargin[];
+  total: ChannelMargin;
+}
+
 /** Activity-card counts (Req 19.6). */
 export interface ActivityCards {
   ordersToFulfill: number;

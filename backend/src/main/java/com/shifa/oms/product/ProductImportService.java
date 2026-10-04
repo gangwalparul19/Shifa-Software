@@ -190,7 +190,7 @@ public class ProductImportService {
                 sku, name, description, mrp, salePrice, hsnCode, gstRate,
                 visibility != null ? visibility : ProductVisibility.PUBLISHED,
                 categoryId, stockQuantity, trackInventory, null, null,
-                minimumRate, wtMl, uqc);
+                minimumRate, wtMl, uqc, null);
     }
 
     /**
@@ -225,7 +225,8 @@ public class ProductImportService {
                 existing.isFeatured(),
                 columns.containsKey(COL_MINIMUM) ? minimumRate : existing.getMinimumRate(),
                 columns.containsKey(COL_WT) ? wtMl : existing.getWtMl(),
-                columns.containsKey(COL_UQC) ? uqc : existing.getUqc());
+                columns.containsKey(COL_UQC) ? uqc : existing.getUqc(),
+                existing.getCostPrice());
     }
 
     // --- Parsing helpers ----------------------------------------------------

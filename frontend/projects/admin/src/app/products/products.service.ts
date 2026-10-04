@@ -40,6 +40,8 @@ export interface ProductRequest {
   salePrice: string;
   /** Optional minimum selling price (per-line floor); must be ≤ salePrice ≤ mrp. */
   minimumRate?: string | null;
+  /** Optional per-unit sourcing cost for margin analytics (ENHANCEMENT 3.6). */
+  costPrice?: string | null;
   hsnCode?: string;
   /**
    * Optional per-product GST rate percent (e.g. "12" or "18.00"); null/omitted
