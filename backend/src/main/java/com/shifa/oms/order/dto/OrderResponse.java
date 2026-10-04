@@ -124,7 +124,12 @@ public record OrderResponse(
         // Destination country for an international order (India/Outside India order
         // entry, V67). Null for a domestic (India) order. When set, the structured
         // city/state/postalCode are empty and the full address is in addressLine.
-        String country
+        String country,
+        // The reason QuikShipX permanently rejected this order (courier-failure
+        // re-route feature, V75): e.g. "585216 is non serviceable pincode". Null
+        // unless QuikShipX failed; shown on the drawer so the admin can re-route to
+        // in-house delivery. Cleared on a successful (re)publish or in-house switch.
+        String quikShipXFailureReason
 ) {
 
     /**
@@ -285,7 +290,8 @@ public record OrderResponse(
                 null,
                 order.getRejectReason(),
                 order.getPaymentVerificationNote(),
-                order.getCountry());
+                order.getCountry(),
+                order.getQuikShipXFailureReason());
     }
 
     /**
@@ -302,7 +308,7 @@ public record OrderResponse(
                 subtotalAmount, gstAmount, discountType, discountValue, buyerGstin,
                 quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest, rejectionReason,
                 rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory, salespersonName,
-                rejectReason, paymentVerificationNote, country);
+                rejectReason, paymentVerificationNote, country, quikShipXFailureReason);
     }
 
     /**
@@ -320,7 +326,7 @@ public record OrderResponse(
                 subtotalAmount, gstAmount, discountType, discountValue, buyerGstin,
                 quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest, rejectionReason,
                 rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory, salespersonName,
-                rejectReason, paymentVerificationNote, country);
+                rejectReason, paymentVerificationNote, country, quikShipXFailureReason);
     }
 
     /**
@@ -382,7 +388,8 @@ public record OrderResponse(
                 salespersonName,
                 rejectReason,
                 paymentVerificationNote,
-                country);
+                country,
+                quikShipXFailureReason);
     }
 
     /**
@@ -402,6 +409,6 @@ public record OrderResponse(
                 paymentVerificationStatus, subtotalAmount, gstAmount, discountType, discountValue,
                 buyerGstin, quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest,
                 rejectionReason, rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory,
-                salespersonName, rejectReason, paymentVerificationNote, country);
+                salespersonName, rejectReason, paymentVerificationNote, country, quikShipXFailureReason);
     }
 }

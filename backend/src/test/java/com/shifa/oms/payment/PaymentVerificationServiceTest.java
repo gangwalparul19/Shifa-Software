@@ -7,8 +7,10 @@ import com.shifa.oms.auth.CurrentUserService;
 import com.shifa.oms.auth.Role;
 import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.order.OrderEntity;
+import com.shifa.oms.order.OrderPaymentScreenshotRepository;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderSource;
+import com.shifa.oms.order.OrderWorkflowService;
 import com.shifa.oms.order.PaymentVerificationStatus;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.order.dto.OrderResponse;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -85,6 +88,44 @@ class PaymentVerificationServiceTest {
         assertThat(rows.get(0).orderCode()).isEqualTo("SHR-9001");
         assertThat(rows.get(0).paymentScreenshotAvailable()).isTrue();
         assertThat(rows.get(0).verificationStatus()).isEqualTo(PaymentVerificationStatus.PENDING);
+    }
+
+    @Test
+    void queueExposesDuplicateOrdersAsIdAndCodeRefs() {
+        // The current order (id 1) shares a payment-proof hash with order id 2
+        // (SHR-9002); the queue must expose that duplicate as an {id, code} ref so
+        // the UI can link it (view its screenshot by id, open its details by code).
+        OrderEntity current = prepaidPendingOrder();
+        ReflectionTestUtils.setField(current, "id", 1L);
+        OrderEntity other = prepaidPendingOrder();
+        ReflectionTestUtils.setField(other, "id", 2L);
+        ReflectionTestUtils.setField(other, "orderCode", "SHR-9002");
+
+        OrderPaymentScreenshotRepository screenshots = mock(OrderPaymentScreenshotRepository.class);
+        when(screenshots.findHashesForOrder(1L)).thenReturn(List.of("hash-abc"));
+        when(screenshots.findOtherOrderIdsWithHash("hash-abc", 1L)).thenReturn(List.of(2L));
+        when(orderRepository.findAllById(java.util.Set.of(2L))).thenReturn(List.of(other));
+
+        AuditService auditService = new AuditService(mock(AuditEventRepository.class), new CurrentUserService());
+        // Real OrderWorkflowService (Java 25 can't Mockito-mock concrete classes);
+        // queue() never calls it, so a real instance over the audit service is fine.
+        OrderWorkflowService workflow = new OrderWorkflowService(auditService);
+        PaymentVerificationService svc = new PaymentVerificationService(
+                orderRepository, auditService, new CurrentUserService(),
+                new OutboxEventPublisher(mock(OutboxEventRepository.class)),
+                mock(com.shifa.oms.auth.UserRepository.class),
+                workflow,
+                screenshots);
+        when(orderRepository.findByPaymentVerificationStatusOrderByCreatedAtDesc(
+                PaymentVerificationStatus.PENDING)).thenReturn(List.of(current));
+
+        List<PaymentQueueRow> rows = svc.queue();
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).duplicateOrders()).singleElement().satisfies(ref -> {
+            assertThat(ref.orderId()).isEqualTo(2L);
+            assertThat(ref.orderCode()).isEqualTo("SHR-9002");
+        });
     }
 
     @Test

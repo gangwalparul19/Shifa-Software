@@ -13,6 +13,7 @@ import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.order.dto.PaymentScreenshotResponse;
 import com.shifa.oms.order.dto.ScreenshotUploadResponse;
+import com.shifa.oms.order.dto.StoreOrderRequest;
 import com.shifa.oms.order.dto.UpdateDeliveryStatusRequest;
 import com.shifa.oms.order.dto.UpdateOrderRequest;
 import com.shifa.oms.platform.storage.StorageService;
@@ -115,6 +116,25 @@ public class OrderController {
     public OrderResponse create(@Valid @RequestBody CreateOrderRequest request) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return orderService.createSalespersonOrder(request, actor);
+    }
+
+    /**
+     * Punch an in-shop (POS / counter) order for a walk-in customer
+     * (store-order feature, ADMIN only). The customer pays at the counter and
+     * leaves with the goods, so unlike {@link #create} this requires no payment
+     * screenshot, assigns no delivery partner (always a counter sale / in-house),
+     * allows ad-hoc items (e.g. a consultation fee) alongside catalogue products,
+     * and skips the salesperson min-upfront / same-day-duplicate / price-band
+     * guards. A fully-paid order is auto-approved and closed immediately; a partial
+     * payment leaves it approved with the balance tracked. Tagged {@code STORE}
+     * so it shows as its own channel on the dashboard.
+     */
+    @PostMapping("/store")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('ADMIN')")
+    public OrderResponse createStore(@Valid @RequestBody StoreOrderRequest request) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return orderService.createStoreOrder(request, actor);
     }
 
     /**

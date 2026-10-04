@@ -167,6 +167,9 @@ public class QuikShipXDrainer {
             outboxEventRepository.save(event);
             log.warn("QuikShipX {} for order {} failed permanently after {} attempt(s): {}",
                     event.getEventType(), orderId, event.getAttempts() + 1, error);
+            // Surface the reason on the order so the admin sees it on the drawer and
+            // can re-route to in-house (courier-failure re-route feature). Best-effort.
+            recordFailureReasonSafely(orderId, error);
             alertPermanentFailure(event, orderId, error);
         } else {
             LocalDateTime next = LocalDateTime.now().plus(properties.retryBackoff());
@@ -174,6 +177,19 @@ public class QuikShipXDrainer {
             outboxEventRepository.save(event);
             log.debug("QuikShipX {} for order {} will retry at {} ({})",
                     event.getEventType(), orderId, next, error);
+        }
+    }
+
+    /**
+     * Records the permanent-failure reason on the order (its own transaction via
+     * the service). Best-effort — a failure to persist the reason never disturbs
+     * the drainer (the outbox row is already marked FAILED + the admin is alerted).
+     */
+    private void recordFailureReasonSafely(Long orderId, String error) {
+        try {
+            quikShipXService.recordFailureReason(orderId, error);
+        } catch (RuntimeException ex) {
+            log.warn("Failed to record QuikShipX failure reason on order {}: {}", orderId, ex.getMessage());
         }
     }
 

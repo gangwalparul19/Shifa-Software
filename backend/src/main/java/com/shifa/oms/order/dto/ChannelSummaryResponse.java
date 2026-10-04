@@ -13,15 +13,18 @@ import java.util.List;
  * @param from       the window start (yyyy-MM-dd) applied, or null for all-time
  * @param to         the window end (yyyy-MM-dd) applied, or null for all-time
  * @param total      metrics across every order in the window
- * @param portal     metrics for orders that originated in the portal (SALESPERSON / STOREFRONT)
+ * @param portal     metrics for orders punched online by our team (SALESPERSON /
+ *                   STOREFRONT) — i.e. neither Shopify nor an in-shop store sale
  * @param shopify    metrics for orders auto-imported from Shopify
+ * @param store      metrics for in-shop (POS / counter) store sales
  */
 public record ChannelSummaryResponse(
         String from,
         String to,
         ChannelStats total,
         ChannelStats portal,
-        ChannelStats shopify) {
+        ChannelStats shopify,
+        ChannelStats store) {
 
     /**
      * Metrics for one channel over the window.

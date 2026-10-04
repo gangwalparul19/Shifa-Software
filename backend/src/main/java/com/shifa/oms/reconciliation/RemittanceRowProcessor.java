@@ -6,6 +6,7 @@ import com.shifa.oms.order.Actor;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderWorkflowService;
+import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.quikshipx.OrderShipment;
 import com.shifa.oms.quikshipx.OrderShipmentRepository;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
@@ -46,6 +47,15 @@ public class RemittanceRowProcessor {
             OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED,
             OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.HANDED_TO_DELIVERY);
 
+    /**
+     * Ledger auto-posting source key for the COD cash booked when the courier's
+     * remittance is settled (mirrors {@code SourceType.ORDER_DELIVERY}; kept as a
+     * literal so the reconciliation module does not depend on the ledger module).
+     * The cash is recognised at REMITTANCE time — not at delivery — because a COD
+     * order's cash is only ours once the courier actually remits it.
+     */
+    private static final String LEDGER_SOURCE_ORDER_DELIVERY = "ORDER_DELIVERY";
+
     /** Extracts a trailing run of digits — the QuikShipX shipper_order_id inside "shr083_19823". */
     private static final Pattern TRAILING_DIGITS = Pattern.compile("(\\d+)\\s*$");
 
@@ -54,17 +64,20 @@ public class RemittanceRowProcessor {
     private final OrderShipmentRepository orderShipmentRepository;
     private final ReceivableRepository receivableRepository;
     private final OrderWorkflowService orderWorkflowService;
+    private final OutboxEventPublisher outboxEventPublisher;
 
     public RemittanceRowProcessor(OrderRepository orderRepository,
                                   CourierRecordRepository courierRecordRepository,
                                   OrderShipmentRepository orderShipmentRepository,
                                   ReceivableRepository receivableRepository,
-                                  OrderWorkflowService orderWorkflowService) {
+                                  OrderWorkflowService orderWorkflowService,
+                                  OutboxEventPublisher outboxEventPublisher) {
         this.orderRepository = orderRepository;
         this.courierRecordRepository = courierRecordRepository;
         this.orderShipmentRepository = orderShipmentRepository;
         this.receivableRepository = receivableRepository;
         this.orderWorkflowService = orderWorkflowService;
+        this.outboxEventPublisher = outboxEventPublisher;
     }
 
     /**
@@ -146,6 +159,21 @@ public class RemittanceRowProcessor {
         if (!dryRun) {
             receivable.settle(remittedDate != null ? remittedDate : LocalDate.now());
             receivableRepository.save(receivable);
+            // Settling the courier's remittance is the moment the COD cash becomes
+            // ours. If the order was left at DELIVERED with the COD outstanding (the
+            // courier-COD-settlement flow — delivery no longer auto-settles), finish
+            // the lifecycle now: advance Delivered → COD_Collected, clear the
+            // customer outstanding, and book the cash to the ledger dated the
+            // delivery/settlement. Guarded by the legal transition so a prepaid /
+            // already-closed order is untouched.
+            if (order.getOrderStatus() == OrderStatus.DELIVERED
+                    && order.getOrderStatus().canTransitionTo(OrderStatus.COD_COLLECTED)) {
+                orderWorkflowService.applyTransition(
+                        order, OrderStatus.COD_COLLECTED, Actor.system("REMITTANCE_IMPORT", "RECONCILIATION"));
+                order.setCustomerOutstanding(BigDecimal.ZERO);
+                orderRepository.save(order);
+                outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_ORDER_DELIVERY, order.getId());
+            }
         }
         return new RemittanceRowResult(rowNumber, awb, orderCode, order.getOrderCode(), remittedAmount, expected,
                 RemittanceRowResult.Status.SETTLED,
@@ -173,6 +201,9 @@ public class RemittanceRowProcessor {
                 order.getId(), courierCompanyId, ReceivableType.COD_RECEIVABLE, order.getCodAmount());
         receivable.settle(remittedDate != null ? remittedDate : LocalDate.now());
         receivableRepository.save(receivable);
+        // Book the COD cash to the ledger now that it's remitted (same source as the
+        // settle-against-existing-receivable path above).
+        outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_ORDER_DELIVERY, order.getId());
 
         return new RemittanceRowResult(rowNumber, awb, orderCode, order.getOrderCode(), remittedAmount,
                 order.getCodAmount(), RemittanceRowResult.Status.SETTLED,

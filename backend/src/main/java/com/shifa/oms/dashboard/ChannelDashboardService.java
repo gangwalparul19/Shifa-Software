@@ -163,7 +163,8 @@ public class ChannelDashboardService {
         return new ChannelSplit(
                 totals(current, prior, allRevenue),
                 totals(filter(current, DashboardChannel.PORTAL), filter(prior, DashboardChannel.PORTAL), allRevenue),
-                totals(filter(current, DashboardChannel.SHOPIFY), filter(prior, DashboardChannel.SHOPIFY), allRevenue));
+                totals(filter(current, DashboardChannel.SHOPIFY), filter(prior, DashboardChannel.SHOPIFY), allRevenue),
+                totals(filter(current, DashboardChannel.STORE), filter(prior, DashboardChannel.STORE), allRevenue));
     }
 
     private ChannelTotals totals(List<OrderEntity> cur, List<OrderEntity> prev, BigDecimal allRevenue) {
@@ -219,8 +220,18 @@ public class ChannelDashboardService {
         List<TrendPoint> points = new ArrayList<>(cur.size());
         for (int i = 0; i < cur.size(); i++) {
             LocalDate[] b = cur.get(i);
-            BigDecimal portal = channel.includesPortal()
-                    ? revenueIn(current, DashboardChannel.PORTAL, b) : BigDecimal.ZERO;
+            // The stacked trend keeps two series (portal + shopify) for the chart.
+            // Store revenue is folded into the "portal" (our-own-orders) series when
+            // it is in scope, so the stacked TOTAL always reconciles with the selected
+            // channel's revenue without reshaping the chart. For a single STORE-channel
+            // view this means the store revenue appears as the first series.
+            BigDecimal portal = BigDecimal.ZERO;
+            if (channel.includesPortal() || channel == DashboardChannel.ALL) {
+                portal = portal.add(revenueIn(current, DashboardChannel.PORTAL, b));
+            }
+            if (channel == DashboardChannel.STORE || channel == DashboardChannel.ALL) {
+                portal = portal.add(revenueIn(current, DashboardChannel.STORE, b));
+            }
             BigDecimal shopify = channel.includesShopify()
                     ? revenueIn(current, DashboardChannel.SHOPIFY, b) : BigDecimal.ZERO;
             BigDecimal prevTotal = i < prev.size() ? revenueIn(prior, channel, prev.get(i)) : BigDecimal.ZERO;
@@ -325,7 +336,13 @@ public class ChannelDashboardService {
         }
         ShopifyQueues shopify = null;
         if (channel.includesShopify()) {
-            long stuck = 0;
+            // Candidates for the "No tracking ID" tile: Shopify orders still before
+            // the courier (pending approval, or label-generated non-in-house). A
+            // QuikShip order deliberately STAYS at Label Generated after its AWB is
+            // allotted, so a status-only count wrongly flags every allotted order as
+            // "stuck". Join the shipment and count ONLY those with no AWB yet — i.e.
+            // genuinely waiting for a tracking id (matches the Shopify Sync page).
+            List<Long> candidateIds = new ArrayList<>();
             List<Long> assigned = new ArrayList<>();
             for (OrderEntity o : all) {
                 if (o.getSource() != OrderSource.SHOPIFY) {
@@ -334,11 +351,21 @@ public class ChannelDashboardService {
                 OrderStatus s = o.getOrderStatus();
                 if (s == OrderStatus.PENDING_ADMIN_APPROVAL
                         || (s == OrderStatus.LABEL_GENERATED && !o.isInHouseDelivery())) {
-                    stuck++;
+                    candidateIds.add(o.getId());
                 } else if (s == OrderStatus.COURIER_ASSIGNED) {
                     assigned.add(o.getId());
                 }
             }
+            // Which candidate orders already have an allotted AWB (not stuck).
+            Set<Long> withAwb = new java.util.HashSet<>();
+            if (!candidateIds.isEmpty()) {
+                for (OrderShipment sh : shipmentRepository.findByOrderIdIn(candidateIds)) {
+                    if (sh.getAwb() != null && !sh.getAwb().isBlank()) {
+                        withAwb.add(sh.getOrderId());
+                    }
+                }
+            }
+            long stuck = candidateIds.stream().filter(id -> !withAwb.contains(id)).count();
             long printed = 0;
             if (!assigned.isEmpty()) {
                 for (OrderShipment sh : shipmentRepository.findByOrderIdIn(assigned)) {

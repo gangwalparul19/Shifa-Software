@@ -163,6 +163,37 @@ public class CourierAssignmentService {
      */
     @Transactional
     public void manuallyAssign(Long orderId, String courierName, String awb) {
+        manuallyAssign(orderId, courierName, awb, null);
+    }
+
+    /**
+     * As {@link #manuallyAssign(Long, String, String)} but additionally records a
+     * vendor-provided, ready-made <strong>tracking link</strong> for the order
+     * (in-house delivery-partner feature). When an in-house parcel is handed to an
+     * external local delivery partner, the vendor supplies a tracking id (AWB) and
+     * often a full tracking URL once booked; capturing both here makes the parcel
+     * trackable end-to-end from the order-detail view.
+     *
+     * <p>The {@code trackingUrl} is stored verbatim on the {@link CourierRecord}
+     * and takes precedence over the courier company's {@code tracking_url_template}
+     * when the admin opens "Track shipment". Both the AWB and the tracking URL are
+     * optional — a partner may give neither, one, or both.
+     *
+     * <p>This does <strong>not</strong> change the order's {@code deliveryMethod}:
+     * an in-house order assigned to a local vendor stays {@code IN_HOUSE} and keeps
+     * flowing through the manual delivery path (it must never be re-routed into the
+     * automated QuikShipX/courier pipeline, which only fires for {@code QUIKSHIPX}).
+     *
+     * @param orderId     the order id
+     * @param courierName the delivery partner's display name (required; matched or
+     *                    created by name — this is how a new partner is onboarded)
+     * @param awb         the vendor tracking id / AWB, or {@code null}/blank when none
+     * @param trackingUrl the vendor's full tracking link, or {@code null}/blank when none
+     * @throws com.shifa.oms.common.ResourceNotFoundException when the order doesn't exist
+     * @throws com.shifa.oms.common.ValidationException       when courierName is blank
+     */
+    @Transactional
+    public void manuallyAssign(Long orderId, String courierName, String awb, String trackingUrl) {
         if (courierName == null || courierName.isBlank()) {
             throw new com.shifa.oms.common.ValidationException("Courier name is required.");
         }
@@ -170,15 +201,17 @@ public class CourierAssignmentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Order " + orderId + " does not exist."));
 
         String trimmedAwb = (awb == null || awb.isBlank()) ? null : awb.trim();
+        String trimmedUrl = (trackingUrl == null || trackingUrl.isBlank()) ? null : trackingUrl.trim();
         CourierCompany company = resolveCompany(courierName.trim());
         CourierRecord record = courierRecordRepository.findByOrderId(orderId)
                 .orElseGet(() -> new CourierRecord(orderId));
         record.assign(company.getId(), trimmedAwb, record.getShippingLabelKey(),
-                record.getEstimatedDelivery());
+                record.getEstimatedDelivery(), trimmedUrl);
         courierRecordRepository.save(record);
 
-        log.debug("Manually assigned courier {} (AWB {}) to order {}",
-                company.getName(), trimmedAwb == null ? "none" : trimmedAwb, order.getOrderCode());
+        log.debug("Manually assigned courier {} (AWB {}, trackingUrl {}) to order {}",
+                company.getName(), trimmedAwb == null ? "none" : trimmedAwb,
+                trimmedUrl == null ? "none" : trimmedUrl, order.getOrderCode());
     }
 
     private CourierCompany resolveCompany(String courierName) {

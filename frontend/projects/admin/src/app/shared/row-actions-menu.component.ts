@@ -1,10 +1,13 @@
 import {
+  AfterViewChecked,
   Component,
   ElementRef,
   EventEmitter,
   HostListener,
   Input,
+  OnDestroy,
   Output,
+  ViewChild,
   inject,
   signal,
 } from '@angular/core';
@@ -46,6 +49,7 @@ export interface RowAction {
   template: `
     <div class="shifa-rowmenu" [class.is-open]="open()">
       <button
+        #trigger
         type="button"
         class="btn btn-icon btn-ghost-secondary shifa-rowmenu__trigger"
         [attr.aria-expanded]="open()"
@@ -57,7 +61,17 @@ export interface RowAction {
         <i class="ti ti-dots-vertical" aria-hidden="true"></i>
       </button>
       @if (open()) {
-        <div class="shifa-rowmenu__menu" role="menu">
+        <!-- Rendered as a FIXED-position panel (coordinates computed from the
+             trigger) so it escapes the table's overflow/scroll clipping and the
+             sibling-row paint order — otherwise the menu is clipped or painted
+             under the next table row. -->
+        <div
+          #menu
+          class="shifa-rowmenu__menu"
+          role="menu"
+          [style.top.px]="menuTop()"
+          [style.left.px]="menuLeft()"
+        >
           @for (a of actions; track a.key) {
             <button
               type="button"
@@ -88,9 +102,7 @@ export interface RowAction {
         height: 40px;
       }
       .shifa-rowmenu__menu {
-        position: absolute;
-        top: calc(100% + 0.25rem);
-        right: 0;
+        position: fixed;
         z-index: 1090;
         min-width: 190px;
         padding: 0.35rem;
@@ -153,7 +165,7 @@ export interface RowAction {
     `,
   ],
 })
-export class RowActionsMenuComponent {
+export class RowActionsMenuComponent implements AfterViewChecked, OnDestroy {
   private readonly host = inject(ElementRef<HTMLElement>);
 
   /** The actions to list in the menu. An empty list disables the trigger. */
@@ -165,11 +177,81 @@ export class RowActionsMenuComponent {
   /** Emits the chosen action's {@link RowAction.key}. */
   @Output() select = new EventEmitter<string>();
 
+  @ViewChild('trigger') private triggerRef?: ElementRef<HTMLButtonElement>;
+  @ViewChild('menu') private menuRef?: ElementRef<HTMLElement>;
+
+  /**
+   * The panel element after it has been teleported to {@code document.body}
+   * (see {@link #teleportMenu}). Tracked so we can detect outside clicks against
+   * it and clean it up on close/destroy — once moved to body it is no longer a
+   * descendant of the component host.
+   */
+  private teleportedMenu?: HTMLElement;
+
   protected readonly open = signal(false);
+  /** Fixed-position coordinates for the open menu panel (computed from the trigger). */
+  protected readonly menuTop = signal(0);
+  protected readonly menuLeft = signal(0);
+
+  /** Approx. menu width used to right-align it under the trigger before it renders. */
+  private static readonly MENU_WIDTH = 190;
 
   protected toggle(event: Event): void {
     event.stopPropagation();
-    this.open.update((v) => !v);
+    if (this.open()) {
+      this.close();
+      return;
+    }
+    this.positionMenu();
+    this.open.set(true);
+  }
+
+  /**
+   * Moves the just-rendered panel to {@code document.body} so it escapes any
+   * ancestor clipping context — the app-wide {@code main.page-body { overflow-x:
+   * clip }} guard (added for the no-horizontal-scroll requirement) otherwise
+   * clips this fixed-position panel out of view near the right edge. The panel
+   * is still fixed-positioned from the trigger's rect, so body is the correct,
+   * clip-free parent. Idempotent per open.
+   */
+  ngAfterViewChecked(): void {
+    const el = this.menuRef?.nativeElement;
+    if (this.open() && el && el.parentElement !== document.body) {
+      document.body.appendChild(el);
+      this.teleportedMenu = el;
+    }
+  }
+
+  /** Closes the menu and removes the teleported panel from body. */
+  private close(): void {
+    this.open.set(false);
+    this.removeTeleportedMenu();
+  }
+
+  private removeTeleportedMenu(): void {
+    if (this.teleportedMenu && this.teleportedMenu.parentElement === document.body) {
+      document.body.removeChild(this.teleportedMenu);
+    }
+    this.teleportedMenu = undefined;
+  }
+
+  ngOnDestroy(): void {
+    this.removeTeleportedMenu();
+  }
+
+  /** Computes the fixed-position coordinates so the panel sits just under the trigger, right-aligned. */
+  private positionMenu(): void {
+    const btn = this.triggerRef?.nativeElement;
+    if (!btn) {
+      return;
+    }
+    const r = btn.getBoundingClientRect();
+    const width = RowActionsMenuComponent.MENU_WIDTH;
+    // Right-align the panel's right edge with the trigger's right edge, clamped
+    // so it never runs off the left of the viewport.
+    const left = Math.max(8, r.right - width);
+    this.menuLeft.set(left);
+    this.menuTop.set(r.bottom + 4);
   }
 
   protected choose(event: Event, action: RowAction): void {
@@ -177,21 +259,39 @@ export class RowActionsMenuComponent {
     if (action.disabled) {
       return;
     }
-    this.open.set(false);
+    this.close();
     this.select.emit(action.key);
   }
 
   @HostListener('document:click', ['$event'])
   protected onDocumentClick(event: MouseEvent): void {
-    if (this.open() && !this.host.nativeElement.contains(event.target as Node)) {
-      this.open.set(false);
+    if (!this.open()) {
+      return;
+    }
+    const target = event.target as Node;
+    // The panel is teleported to body, so an "inside" click is either on the
+    // trigger (host) or within the teleported panel itself.
+    const insideHost = this.host.nativeElement.contains(target);
+    const insideMenu = !!this.teleportedMenu && this.teleportedMenu.contains(target);
+    if (!insideHost && !insideMenu) {
+      this.close();
     }
   }
 
   @HostListener('document:keydown.escape')
   protected onEscape(): void {
     if (this.open()) {
-      this.open.set(false);
+      this.close();
+    }
+  }
+
+  // The menu is fixed-positioned from the trigger's rect, so it won't follow a
+  // scrolling table/page — close it on scroll or resize (standard dropdown UX).
+  @HostListener('window:scroll')
+  @HostListener('window:resize')
+  protected onViewportChange(): void {
+    if (this.open()) {
+      this.close();
     }
   }
 }

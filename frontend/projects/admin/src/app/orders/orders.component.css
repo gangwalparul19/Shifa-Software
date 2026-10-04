@@ -731,3 +731,33 @@ button.shifa-qsx-awb__value:hover {
   font-size: 0.78rem;
   font-weight: 600;
 }
+
+/* --- QuikShipX permanent-failure banner (courier-failure re-route) --- */
+.shifa-qsx-fail {
+  margin: 0.6rem 0;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #f1aeb5;
+  border-left: 3px solid var(--tblr-danger, #d63939);
+  border-radius: 0.5rem;
+  background: #fff6f6;
+}
+.shifa-qsx-fail__head {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  color: #b42318;
+  font-size: 0.9rem;
+}
+.shifa-qsx-fail__reason {
+  margin-top: 0.25rem;
+  color: #7a271a;
+  font-size: 0.86rem;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+}
+.shifa-qsx-fail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}

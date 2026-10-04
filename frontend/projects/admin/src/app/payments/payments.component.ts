@@ -1,5 +1,6 @@
 import { IstDatePipe } from '../shared/ist-date.pipe';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { catchError, forkJoin, of } from 'rxjs';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
@@ -20,7 +21,14 @@ import { PaymentQueueRow } from './payments.model';
  */
 @Component({
   selector: 'admin-payments',
-  imports: [IstDatePipe, PageHeaderComponent, PaginationComponent, StatePanelComponent, InrPipe],
+  imports: [
+    IstDatePipe,
+    RouterLink,
+    PageHeaderComponent,
+    PaginationComponent,
+    StatePanelComponent,
+    InrPipe,
+  ],
   templateUrl: './payments.component.html',
   styleUrl: './payments.component.css',
 })
@@ -96,26 +104,47 @@ export class PaymentsComponent implements OnInit, OnDestroy {
 
   // --- Screenshot viewer --------------------------------------------------
 
+  /** The order code shown in the screenshot viewer's title (current row or a duplicate). */
+  protected readonly screenshotTitle = signal<string>('');
+
   /**
-   * Opens every payment proof on file for the order (V65). Proofs are enumerated
-   * first, then fetched; one unreadable proof is skipped rather than failing the
-   * whole set. If the listing is unavailable we fall back to the legacy
-   * single-proof endpoint so the viewer still works.
+   * Opens every payment proof on file for the current queue row (V65). Delegates
+   * to {@link #openScreenshotsFor}.
    */
   viewScreenshot(row: PaymentQueueRow): void {
-    if (!row.paymentScreenshotAvailable) {
+    this.openScreenshotsFor(row.id, row.orderCode, row.paymentScreenshotAvailable);
+  }
+
+  /**
+   * Opens the payment screenshot(s) of a DUPLICATE order (the other order sharing
+   * this proof) so the verifier can compare them side-by-side without leaving the
+   * queue. The duplicate's screenshot is assumed available (it shares the proof).
+   */
+  viewDuplicateScreenshot(dup: { orderId: number; orderCode: string }): void {
+    this.openScreenshotsFor(dup.orderId, dup.orderCode, true);
+  }
+
+  /**
+   * Opens every payment proof on file for the given order id (V65). Proofs are
+   * enumerated first, then fetched; one unreadable proof is skipped rather than
+   * failing the whole set. If the listing is unavailable we fall back to the
+   * legacy single-proof endpoint so the viewer still works.
+   */
+  private openScreenshotsFor(orderId: number, orderCode: string, available: boolean): void {
+    if (!available) {
       return;
     }
+    this.screenshotTitle.set(orderCode);
     this.screenshotLoading.set(true);
-    this.service.screenshots(row.id).subscribe({
+    this.service.screenshots(orderId).subscribe({
       next: (shots) => {
         if (shots.length === 0) {
-          this.loadPrimaryScreenshot(row);
+          this.loadPrimaryScreenshot(orderId);
           return;
         }
         forkJoin(
           shots.map((shot) =>
-            this.service.screenshotById(row.id, shot.id).pipe(catchError(() => of(null))),
+            this.service.screenshotById(orderId, shot.id).pipe(catchError(() => of(null))),
           ),
         ).subscribe((blobs) => {
           const urls = blobs
@@ -131,13 +160,13 @@ export class PaymentsComponent implements OnInit, OnDestroy {
           this.activeSnip.set(0);
         });
       },
-      error: () => this.loadPrimaryScreenshot(row),
+      error: () => this.loadPrimaryScreenshot(orderId),
     });
   }
 
   /** Fallback to the pre-V65 single-proof endpoint. */
-  private loadPrimaryScreenshot(row: PaymentQueueRow): void {
-    this.service.screenshot(row.id).subscribe({
+  private loadPrimaryScreenshot(orderId: number): void {
+    this.service.screenshot(orderId).subscribe({
       next: (blob) => {
         this.revokeScreenshot();
         this.screenshotUrls.set([URL.createObjectURL(blob)]);

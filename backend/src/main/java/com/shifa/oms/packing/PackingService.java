@@ -207,16 +207,21 @@ public class PackingService {
 
         // Batch-resolve salesperson (created_by) names once across every list.
         Map<Long, String> names = resolveSalespersonNames(toPack, handover, inFlight);
-        // Batch-load QuikShipX shipments for the to-pack list so each row can carry
-        // its courier label details (print button + printed flag). The other lists
-        // don't need label details.
-        Map<Long, com.shifa.oms.quikshipx.OrderShipment> shipments = shipmentsByOrderId(toPack);
+        // Batch-load QuikShipX shipments across the to-pack list AND the handed-over /
+        // in-flight lists so every row can carry its shipment details — crucially the
+        // AWB/tracking id, which the QuickShip Status + In-House status sections surface
+        // (so the AWB is visible and clickable for its tracking history), plus the
+        // courier label details (print button + printed flag) on the to-pack list.
+        List<OrderEntity> withShipments = new java.util.ArrayList<>(toPack.size() + inFlight.size());
+        withShipments.addAll(toPack);
+        withShipments.addAll(inFlight);
+        Map<Long, com.shifa.oms.quikshipx.OrderShipment> shipments = shipmentsByOrderId(withShipments);
 
         return new PackingQueueResponse(
                 rowsWithLabels(toPack, names, shipments),
                 rows(handover, names),
-                rows(quikShip, names),
-                rows(inHouse, names));
+                rowsWithLabels(quikShip, names, shipments),
+                rowsWithLabels(inHouse, names, shipments));
     }
 
     /** The shipping-lifecycle statuses shown (read-only) in the two status sections. */

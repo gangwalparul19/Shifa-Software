@@ -103,12 +103,19 @@ public class ChannelSummaryService {
         Accumulator total = new Accumulator();
         Accumulator portal = new Accumulator();
         Accumulator shopify = new Accumulator();
+        Accumulator store = new Accumulator();
 
         for (OrderEntity order : orders) {
-            boolean isShopify = order.getSource() == OrderSource.SHOPIFY;
             boolean inMonth = withinMonth(order.getCreatedAt(), monthStart, monthEnd);
             total.add(order, inMonth);
-            (isShopify ? shopify : portal).add(order, inMonth);
+            // Portal = our own online orders (neither Shopify nor an in-shop store
+            // sale), so each order lands in exactly one of the three channels.
+            Accumulator bucket = switch (order.getSource()) {
+                case SHOPIFY -> shopify;
+                case STORE -> store;
+                default -> portal;
+            };
+            bucket.add(order, inMonth);
         }
 
         return new ChannelSummaryResponse(
@@ -116,7 +123,8 @@ public class ChannelSummaryService {
                 to != null ? to.toString() : null,
                 total.toStats(),
                 portal.toStats(),
-                shopify.toStats());
+                shopify.toStats(),
+                store.toStats());
     }
 
     /** Loads the orders in the window; an unbounded window loads all orders. */

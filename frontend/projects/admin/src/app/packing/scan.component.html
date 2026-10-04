@@ -544,7 +544,22 @@
                 <td class="text-end fw-semibold">{{ o.totalAmount | inr }}</td>
                 <td class="text-secondary">{{ o.createdAt ? (o.createdAt | istDate) : '—' }}</td>
                 <td class="text-secondary">{{ o.salespersonName || '—' }}</td>
-                <td class="shifa-mono text-secondary">{{ o.awb || '—' }}</td>
+                <td class="shifa-mono text-secondary">
+                  @if (o.awb) {
+                    <a
+                      [href]="trackUrl(o.awb)"
+                      target="_blank"
+                      rel="noopener"
+                      class="pk-awb-link"
+                      title="Track shipment history on the courier site"
+                      (click)="openTracking(o.awb, $event)"
+                    >
+                      <i class="ti ti-barcode me-1"></i>{{ o.awb }}
+                    </a>
+                  } @else {
+                    —
+                  }
+                </td>
                 <td>
                   @if (o.quikShipXStatus) {
                     <span class="badge pk-partner pk-partner--quik">{{ o.quikShipXStatus }}</span>

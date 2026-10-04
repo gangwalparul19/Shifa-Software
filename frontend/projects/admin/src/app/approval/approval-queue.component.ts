@@ -124,6 +124,229 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     this.selectedIds.set(new Set());
   }
 
+  // --- Payment-verification gating ---------------------------------------
+
+  /**
+   * Whether this order's payment still needs verification before it can be
+   * approved (PENDING or REJECTED). A pure-COD order (null) or an already-VERIFIED
+   * order does not — mirrors the authoritative server gate.
+   */
+  needsVerification(item: ApprovalQueueItem): boolean {
+    return (
+      item.paymentVerificationStatus === 'PENDING' ||
+      item.paymentVerificationStatus === 'REJECTED'
+    );
+  }
+
+  /** Whether the order's payment has been verified (drives the verified icon). */
+  isVerified(item: ApprovalQueueItem): boolean {
+    return item.paymentVerificationStatus === 'VERIFIED';
+  }
+
+  /** Whether this order has a suspected duplicate payment proof (V72). */
+  hasDuplicate(item: ApprovalQueueItem): boolean {
+    return (item.duplicateOrderCodes?.length ?? 0) > 0;
+  }
+
+  /** The selected rows whose payment still needs verifying before approval. */
+  private selectedUnverified(): ApprovalQueueItem[] {
+    const sel = this.selectedIds();
+    return this.queue().filter((i) => sel.has(i.id) && this.needsVerification(i));
+  }
+
+  /** True when any selected row carries a duplicate-proof flag (blocks approve-all). */
+  protected readonly selectionHasDuplicate = computed(() => {
+    const sel = this.selectedIds();
+    return this.queue().some((i) => sel.has(i.id) && this.hasDuplicate(i));
+  });
+
+  /**
+   * The orders listed in the "verify payment first" modal — the unverified
+   * orders the admin tried to approve. Verifying each clears the gate; once all
+   * are verified the admin can proceed with the (re-triggered) approval.
+   */
+  protected readonly verifyModalItems = signal<ApprovalQueueItem[]>([]);
+  /** The pending approval action to resume after the modal's orders are verified. */
+  private verifyModalThen: 'single' | 'bulk' | null = null;
+  private verifyModalSingle: ApprovalQueueItem | null = null;
+  /** Id currently being verified in the modal (spinner), or null. */
+  protected readonly verifyingId = signal<number | null>(null);
+
+  /**
+   * Payment-proof object URLs per order id, shown INSIDE the verify modal so the
+   * admin can review the screenshot(s) before verifying — no trip to the Payments
+   * page. Loaded on modal open; revoked on close.
+   */
+  protected readonly modalShots = signal<Record<number, string[]>>({});
+  /** Order ids whose proofs are still loading (per-order skeleton). */
+  protected readonly modalShotsLoading = signal<Set<number>>(new Set());
+  /** Order ids with no proof on file (so the modal shows a clear "no screenshot"). */
+  protected readonly modalShotsMissing = signal<Set<number>>(new Set());
+
+  /** Accessor for a given order's loaded proof URLs (template convenience). */
+  modalShotsFor(id: number): string[] {
+    return this.modalShots()[id] ?? [];
+  }
+
+  isModalShotsLoading(id: number): boolean {
+    return this.modalShotsLoading().has(id);
+  }
+
+  isModalShotsMissing(id: number): boolean {
+    return this.modalShotsMissing().has(id);
+  }
+
+  /**
+   * Opens the verify-payment-first modal for the given unverified orders,
+   * remembering the action to resume, and kicks off per-order screenshot
+   * loading so the proofs are visible inline.
+   */
+  private openVerifyModal(
+    items: ApprovalQueueItem[],
+    then: 'single' | 'bulk',
+    single: ApprovalQueueItem | null,
+  ): void {
+    this.revokeModalShots();
+    this.verifyModalThen = then;
+    this.verifyModalSingle = single;
+    this.verifyModalItems.set(items);
+    this.modalShots.set({});
+    this.modalShotsLoading.set(new Set(items.filter((i) => i.paymentScreenshotAvailable).map((i) => i.id)));
+    this.modalShotsMissing.set(new Set());
+    for (const item of items) {
+      this.loadModalShots(item);
+    }
+  }
+
+  /**
+   * Loads EVERY payment proof for one modal order as blobs (reusing the V65
+   * list + per-proof endpoints), with a fallback to the legacy single-proof
+   * endpoint. A proof whose bytes fail to load is skipped rather than failing
+   * the whole order.
+   */
+  private loadModalShots(item: ApprovalQueueItem): void {
+    if (!item.paymentScreenshotAvailable) {
+      this.markModalShotsMissing(item.id);
+      return;
+    }
+    this.service.paymentScreenshots(item.id).subscribe({
+      next: (shots) => {
+        if (shots.length === 0) {
+          this.loadLegacyModalShot(item);
+          return;
+        }
+        forkJoin(
+          shots.map((shot) =>
+            this.service.paymentScreenshotById(item.id, shot.id).pipe(catchError(() => of(null))),
+          ),
+        ).subscribe((blobs) => {
+          const urls = blobs
+            .filter((b): b is Blob => b !== null)
+            .map((b) => URL.createObjectURL(b));
+          this.setModalShots(item.id, urls);
+        });
+      },
+      error: () => this.loadLegacyModalShot(item),
+    });
+  }
+
+  private loadLegacyModalShot(item: ApprovalQueueItem): void {
+    this.service.paymentScreenshot(item.id).subscribe({
+      next: (blob) => this.setModalShots(item.id, [URL.createObjectURL(blob)]),
+      error: () => this.markModalShotsMissing(item.id),
+    });
+  }
+
+  private setModalShots(id: number, urls: string[]): void {
+    this.modalShots.update((prev) => ({ ...prev, [id]: urls }));
+    this.clearModalLoading(id);
+    if (urls.length === 0) {
+      this.markModalShotsMissing(id);
+    }
+  }
+
+  private markModalShotsMissing(id: number): void {
+    this.modalShotsMissing.update((prev) => new Set(prev).add(id));
+    this.clearModalLoading(id);
+  }
+
+  private clearModalLoading(id: number): void {
+    this.modalShotsLoading.update((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+
+  private revokeModalShots(): void {
+    for (const urls of Object.values(this.modalShots())) {
+      for (const url of urls) {
+        URL.revokeObjectURL(url);
+      }
+    }
+    this.modalShots.set({});
+    this.modalShotsLoading.set(new Set());
+    this.modalShotsMissing.set(new Set());
+  }
+
+  closeVerifyModal(): void {
+    this.revokeModalShots();
+    this.verifyModalItems.set([]);
+    this.verifyModalThen = null;
+    this.verifyModalSingle = null;
+    this.verifyingId.set(null);
+  }
+
+  /** True once every order in the verify modal has had its payment verified. */
+  protected readonly allModalVerified = computed(() =>
+    this.verifyModalItems().every((i) => i.paymentVerificationStatus === 'VERIFIED'),
+  );
+
+  /**
+   * Verifies one order's payment from the modal (reuses the Payment Verifier
+   * endpoint, which ADMIN may also call). Updates the row's status in place so
+   * the gate clears without reloading.
+   */
+  verifyPaymentInModal(item: ApprovalQueueItem): void {
+    if (this.verifyingId() !== null) {
+      return;
+    }
+    this.verifyingId.set(item.id);
+    this.service.verifyPayment(item.id).subscribe({
+      next: () => {
+        this.setVerified(item.id);
+        this.verifyingId.set(null);
+      },
+      error: () => {
+        this.verifyingId.set(null);
+        this.showToast('error', `Could not verify payment for ${item.orderCode}.`);
+      },
+    });
+  }
+
+  /** Marks a row VERIFIED locally (in the queue + the modal list). */
+  private setVerified(id: number): void {
+    const mark = (i: ApprovalQueueItem): ApprovalQueueItem =>
+      i.id === id ? { ...i, paymentVerificationStatus: 'VERIFIED' } : i;
+    this.queue.update((items) => items.map(mark));
+    this.verifyModalItems.update((items) => items.map(mark));
+  }
+
+  /** Proceeds with the gated action once all modal orders are verified. */
+  proceedAfterVerify(): void {
+    if (!this.allModalVerified()) {
+      return;
+    }
+    const then = this.verifyModalThen;
+    const single = this.verifyModalSingle;
+    this.closeVerifyModal();
+    if (then === 'single' && single) {
+      void this.approve(single);
+    } else if (then === 'bulk') {
+      void this.bulkApprove();
+    }
+  }
+
   /** Bulk-approve every ticked order, reporting a per-order summary. */
   async bulkApprove(): Promise<void> {
     if (this.acting()) {
@@ -131,6 +354,23 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     }
     const ids = [...this.selectedIds()];
     if (!ids.length) {
+      return;
+    }
+    // Block bulk approval while any selected order has a duplicate-proof flag —
+    // these must be reviewed individually, not swept through "approve all".
+    if (this.selectionHasDuplicate()) {
+      this.showToast(
+        'error',
+        'Some selected orders have a duplicate payment proof. Review them individually before approving.',
+      );
+      return;
+    }
+    // Gate: if any selected order's payment is unverified, open the verify modal
+    // first (screenshots shown inline) — the admin must verify those before the
+    // bulk approval runs.
+    const unverified = this.selectedUnverified();
+    if (unverified.length) {
+      this.openVerifyModal(unverified, 'bulk', null);
       return;
     }
     const confirmed = await this.confirmService.confirm({
@@ -155,7 +395,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
         } else {
           this.showToast(
             okCount ? 'ok' : 'error',
-            `Approved ${okCount}, skipped ${skipCount} (no longer pending).`,
+            `Approved ${okCount}, skipped ${skipCount}.`,
           );
         }
       },
@@ -251,6 +491,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.revokeScreenshot();
+    this.revokeModalShots();
     if (this.toastTimer) {
       clearTimeout(this.toastTimer);
     }
@@ -452,6 +693,13 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
 
   async approve(item: ApprovalQueueItem): Promise<void> {
     if (this.acting()) {
+      return;
+    }
+    // Payment-verification gate: an order whose payment is still unverified /
+    // rejected cannot be approved — open the verify modal for it first (with the
+    // screenshot shown inline) and resume the approval once it's verified.
+    if (this.needsVerification(item)) {
+      this.openVerifyModal([item], 'single', item);
       return;
     }
     // The delivery-method picker only applies when approving from the open

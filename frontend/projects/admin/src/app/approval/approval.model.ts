@@ -40,7 +40,23 @@ export interface ApprovalQueueItem {
    * delivery partner as part of approving (in-house-delivery feature).
    */
   deliveryMethod?: 'QUIKSHIPX' | 'IN_HOUSE';
+  /**
+   * Payment authenticity verification state (payment-verification-gated
+   * approval): PENDING / VERIFIED / REJECTED, or null for a pure-COD order
+   * (nothing to verify). The admin cannot approve until this is VERIFIED or null;
+   * the queue shows a verified icon when VERIFIED.
+   */
+  paymentVerificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
+  /**
+   * Other order codes whose payment proof is byte-identical to this order's
+   * (duplicate-screenshot detection, V72). Non-empty = a duplicate flag is shown
+   * and the order is excluded from "approve all (no duplicates)".
+   */
+  duplicateOrderCodes?: string[];
 }
+
+/** Payment verification state (mirrors the backend {@code PaymentVerificationStatus}). */
+export type PaymentVerificationStatus = 'PENDING' | 'VERIFIED' | 'REJECTED';
 
 /**
  * Result of a bulk-approve call, mirroring the backend {@code BulkActionResult}.

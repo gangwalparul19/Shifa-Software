@@ -92,15 +92,20 @@ class CourierWebhookIntegrationTest {
     }
 
     @Test
-    void deliveredCodOrderSettlesToCodCollectedAndRecordsReceivable() {
+    void deliveredCodOrderStaysDeliveredWithCodOutstandingAndRecordsReceivable() {
+        // Courier-COD-settlement: on Delivered the courier has collected the cash
+        // but NOT yet remitted it to us, so the order stays at DELIVERED with the
+        // COD still OUTSTANDING and a COD receivable recorded (money owed to us).
+        // It is advanced to COD_Collected only when the remittance is imported.
         OrderEntity order = order(OrderStatus.OUT_FOR_DELIVERY, PaymentStatus.COD, "240.00");
         stubAwb("AWB-2", order, 6L);
 
         Optional<OrderStatus> result = applier.applyByAwb("AWB-2", "delivered");
 
-        assertThat(result).contains(OrderStatus.COD_COLLECTED);
-        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.COD_COLLECTED);
-        assertThat(order.getCustomerOutstanding()).isEqualByComparingTo("0.00");
+        assertThat(result).contains(OrderStatus.DELIVERED);
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.DELIVERED);
+        // COD still outstanding (NOT zeroed) — settlement is pending the remittance.
+        assertThat(order.getCustomerOutstanding()).isEqualByComparingTo("240.00");
         assertThat(savedReceivables).hasSize(1);
         assertThat(savedReceivables.get(0).getType()).isEqualTo(ReceivableType.COD_RECEIVABLE);
         assertThat(savedReceivables.get(0).getAmount()).isEqualByComparingTo("240.00");

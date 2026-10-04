@@ -17,6 +17,7 @@ import {
   QuikShipShipment,
   QuikShipTracking,
   ScreenshotUploadResponse,
+  StoreOrderRequest,
   UpdateOrderRequest,
 } from './orders.model';
 
@@ -104,6 +105,16 @@ export class OrdersService {
    */
   createOrder(payload: CreateOrderRequest): Observable<OrderDetail> {
     return this.api.post<OrderDetail>('/api/orders', payload);
+  }
+
+  /**
+   * Create an in-shop (POS / counter) store order (store-order feature, ADMIN
+   * only) via {@code POST /api/orders/store}. No payment screenshot, no delivery
+   * partner, ad-hoc items allowed; a fully-paid sale is auto-approved + closed by
+   * the server, a partial payment leaves it approved with the balance tracked.
+   */
+  createStoreOrder(payload: StoreOrderRequest): Observable<OrderDetail> {
+    return this.api.post<OrderDetail>('/api/orders/store', payload);
   }
 
   /**
@@ -253,6 +264,20 @@ export class OrdersService {
     );
   }
 
+  /**
+   * Save the order's delivery method WITHOUT approving, via
+   * {@code PUT /api/admin/orders/{id}/delivery-method} (change-delivery-method
+   * feature). Lets an admin set/change the delivery partner on a still-pending
+   * (pre-dispatch) order and persist just that — the order's lifecycle status is
+   * left unchanged (no approval, no label, no QuikShipX trigger). ADMIN only.
+   */
+  updateDeliveryMethod(id: number, deliveryMethod: DeliveryMethod): Observable<OrderDetail> {
+    return this.api.put<OrderDetail>(
+      `/api/admin/orders/${id}/delivery-method`,
+      { deliveryMethod },
+    );
+  }
+
   /** Read-only server eligibility check; this never reserves or mutates orders. */
   bulkPreview(action: 'APPROVE' | 'MARK_PACKED' | 'LABELS', ids: number[]): Observable<BulkPreview> {
     return this.api.post<BulkPreview>(`/api/admin/orders/bulk-preview?action=${action}`, { ids });
@@ -336,8 +361,17 @@ export class OrdersService {
    * instead of waiting for automatic in-house assignment (which only runs
    * after dispatch). Does not change the order's lifecycle status.
    */
-  assignCourier(id: number, courierName: string, awb: string): Observable<void> {
-    return this.api.post<void>(`/api/admin/orders/${id}/assign-courier`, { courierName, awb });
+  assignCourier(
+    id: number,
+    courierName: string,
+    awb: string,
+    trackingUrl = '',
+  ): Observable<void> {
+    return this.api.post<void>(`/api/admin/orders/${id}/assign-courier`, {
+      courierName,
+      awb,
+      trackingUrl,
+    });
   }
 
   /**

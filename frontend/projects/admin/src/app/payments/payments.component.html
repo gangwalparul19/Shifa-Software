@@ -66,9 +66,26 @@
           <div class="d-flex justify-content-between align-items-start">
             <div>
               <div class="fw-bold shifa-mono">{{ row.orderCode }}</div>
-              @if (row.duplicateOrderCodes && row.duplicateOrderCodes.length) {
-                <div class="badge bg-red-lt mt-1" [title]="'Same payment screenshot also on: ' + row.duplicateOrderCodes.join(', ')">
-                  <i class="ti ti-copy-off me-1"></i>Duplicate proof: {{ row.duplicateOrderCodes.join(', ') }}
+              @if (row.duplicateOrders && row.duplicateOrders.length) {
+                <div class="pay-dup mt-1">
+                  <span class="badge bg-red-lt pay-dup__flag">
+                    <i class="ti ti-copy-off me-1"></i>Duplicate of
+                  </span>
+                  <div class="pay-dup__codes">
+                    @for (dup of row.duplicateOrders; track dup.orderId) {
+                      <span class="pay-dup__item">
+                        <button type="button" class="btn btn-link p-0 shifa-mono pay-dup__code"
+                          (click)="viewDuplicateScreenshot(dup)" title="View this order's screenshot">
+                          {{ dup.orderCode }}
+                        </button>
+                        <a class="btn btn-sm btn-icon btn-ghost-secondary pay-dup__details"
+                          [routerLink]="['/orders']" [queryParams]="{ q: dup.orderCode }"
+                          title="Open this order's details">
+                          <i class="ti ti-external-link"></i>
+                        </a>
+                      </span>
+                    }
+                  </div>
                 </div>
               }
               <div class="text-secondary small">{{ row.customerName }} · {{ row.customerMobile }}</div>
@@ -115,6 +132,7 @@
         <thead>
           <tr>
             <th>Order ID</th>
+            <th>Duplicate of</th>
             <th>Customer</th>
             <th>Salesperson</th>
             <th class="text-end">Received</th>
@@ -127,10 +145,40 @@
           @for (row of pageItems(); track row.id) {
             <tr>
               <td class="shifa-mono fw-bold">
-                {{ row.orderCode }}
-                @if (row.duplicateOrderCodes && row.duplicateOrderCodes.length) {
-                  <i class="ti ti-copy-off text-danger ms-1"
-                     [title]="'Duplicate payment screenshot — also on: ' + row.duplicateOrderCodes.join(', ')"></i>
+                <!-- Click the order code to view ITS own payment screenshot. -->
+                <button type="button" class="btn btn-link p-0 shifa-mono fw-bold pay-code"
+                  (click)="viewScreenshot(row)" [disabled]="!row.paymentScreenshotAvailable"
+                  title="View this order's payment screenshot">
+                  {{ row.orderCode }}
+                </button>
+              </td>
+              <td>
+                @if (row.duplicateOrders && row.duplicateOrders.length) {
+                  <div class="pay-dup">
+                    <span class="badge bg-red-lt pay-dup__flag" title="Same payment screenshot as the order(s) listed here">
+                      <i class="ti ti-copy-off me-1"></i>Duplicate
+                    </span>
+                    <div class="pay-dup__codes">
+                      @for (dup of row.duplicateOrders; track dup.orderId) {
+                        <span class="pay-dup__item">
+                          <!-- Click the duplicate code to view THAT order's screenshot. -->
+                          <button type="button" class="btn btn-link p-0 shifa-mono pay-dup__code"
+                            (click)="viewDuplicateScreenshot(dup)"
+                            title="View this order's payment screenshot">
+                            {{ dup.orderCode }}
+                          </button>
+                          <!-- Open the duplicate order's full details. -->
+                          <a class="btn btn-sm btn-icon btn-ghost-secondary pay-dup__details"
+                            [routerLink]="['/orders']" [queryParams]="{ q: dup.orderCode }"
+                            title="Open this order's details">
+                            <i class="ti ti-external-link"></i>
+                          </a>
+                        </span>
+                      }
+                    </div>
+                  </div>
+                } @else {
+                  <span class="text-secondary">—</span>
                 }
               </td>
               <td>{{ row.customerName }}<div class="text-secondary small">{{ row.customerMobile }}</div></td>
@@ -180,6 +228,9 @@
           <i class="ti ti-photo me-2"></i>Payment screenshot@if (screenshotUrls().length > 1) {
             <span>s</span>
             <span class="badge bg-blue-lt ms-2">{{ screenshotUrls().length }}</span>
+          }
+          @if (screenshotTitle()) {
+            <span class="text-secondary shifa-mono ms-2">· {{ screenshotTitle() }}</span>
           }
         </h3>
         <button type="button" class="btn-close ms-auto" (click)="closeScreenshot()" aria-label="Close"></button>

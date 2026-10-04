@@ -322,19 +322,23 @@ public class LabelPdfRenderer {
             t.addCell(new Phrase("Mobile : +91 " + content.customerMobile(), SMALL_FONT));
         }
 
-        // Full-width delivery address. The cleaned address lines are JOINED with
-        // commas into a single string so a multi-line address wraps to ~2 lines
-        // instead of printing one line per entry (saves vertical space).
+        // Full-width delivery address. The WHOLE address is shown as a single
+        // wrapped block: any newlines the salesperson typed are collapsed into
+        // ", " so the address reads on one wrapped line instead of several — but
+        // NOTHING is dropped (previously an over-aggressive cleaner was discarding
+        // real street lines, truncating the address). Only a leading "Name-"/
+        // "Address-" field prefix is stripped and an exact repeat of the customer
+        // name is removed; every other segment is kept verbatim.
         t.addCell(new Phrase("DELIVERY ADDRESS", CAPTION_FONT));
-        List<String> addressLines = cleanAddressLines(content);
-        String addressText = String.join(", ", addressLines);
+        String addressText = fullDeliveryAddress(content);
         t.addCell(new Phrase(addressText.isBlank() ? "\u2014" : addressText, SMALL_FONT));
 
         // Append "City, State - Zip" ONLY when the address text doesn't already
-        // contain the city (avoids duplicating the city/state/zip the salesperson
-        // may already have typed into the address).
+        // contain the pincode (the most reliable signal that the salesperson
+        // already typed the location tail into the address), so it's never
+        // duplicated.
         String cityStateZip = cityStateZip(content);
-        if (cityStateZip != null && !addressTextContainsCity(addressText.toLowerCase(), content)) {
+        if (cityStateZip != null && !addressTextContainsPin(addressText, content)) {
             t.addCell(new Phrase(cityStateZip, SMALL_BOLD));
         }
 
@@ -363,14 +367,14 @@ public class LabelPdfRenderer {
     }
 
     /**
-     * Whether the free-text address already contains the city name, so appending
+     * Whether the free-text address already contains the pincode, so appending
      * the structured "City, State - Zip" line would duplicate it. Keyed on the
-     * city (the most reliable signal that the salesperson typed the location into
-     * the address). Returns false when no city is on file.
+     * pincode (the most reliable signal that the salesperson typed the location
+     * tail into the address). Returns false when no pincode is on file.
      */
-    private static boolean addressTextContainsCity(String addressTextLower, InternalLabelContent content) {
-        String city = content.city() == null ? "" : content.city().trim().toLowerCase();
-        return !city.isEmpty() && addressTextLower.contains(city);
+    private static boolean addressTextContainsPin(String addressText, InternalLabelContent content) {
+        String pin = content.postalCode() == null ? "" : content.postalCode().trim();
+        return !pin.isEmpty() && addressText.contains(pin);
     }
 
     /** The name font, shrunk a step for longer names so they don't wrap mid-word. */
@@ -386,78 +390,40 @@ public class LabelPdfRenderer {
     }
 
     /**
-     * Cleans the salesperson's free-text address so it is not duplicated with the
-     * To-box name and the structured city/state/pin line. Salespeople sometimes
-     * type a labelled block into the address field, e.g.
-     * <pre>
-     *   Name- Haider Ali machhali wala
-     *   Address- CAMP-2 GANDHI CHOWK NEAR JANTA SCHOOL
-     *   Landmark- SANGAM STUDIO
-     *   City- BHILAI
-     *   State- CHHATTISGARH
-     *   Pin code- 490001
-     *   490001, Durg, CHATTISGARH
-     * </pre>
-     * This drops the lines that merely repeat data shown elsewhere — the customer
-     * name (already in the To box), the state and the pincode (already in the
-     * structured line) — and strips the {@code "Label- "} prefixes so the address
-     * reads cleanly. Lines carrying real location detail (Address/Landmark/City)
-     * are kept. Returns the cleaned lines in order (never {@code null}).
+     * The FULL delivery address as a single wrapped line. The salesperson's
+     * free-text {@code addressLine} is kept in its entirety — the only
+     * transformations are: collapse any newlines into ", " (so a block typed on
+     * several lines reads as one wrapped line, per the client request), strip a
+     * leading {@code "Name-"/"Address-"} field prefix from each segment, and drop
+     * a segment that is an EXACT repeat of the customer name (shown in the To
+     * box). Nothing else is removed, so no street/landmark/city/pincode detail is
+     * ever lost. Returns the assembled text (never {@code null}; may be blank).
      */
-    private List<String> cleanAddressLines(InternalLabelContent content) {
+    private String fullDeliveryAddress(InternalLabelContent content) {
         String raw = content.addressLine();
         if (raw == null || raw.isBlank()) {
-            return List.of();
+            return "";
         }
-        // Normalised (lowercase, whitespace removed) comparison keys so a name like
-        // "Haider Ali machhali wala" in the address matches the stored
-        // "HAIDER ALI MACHHALIWALA" even when the spacing differs.
         String name = squash(content.customerName());
-        String state = squash(content.state());
-        String pin = squash(content.postalCode());
-        String city = squash(content.city());
-
         List<String> out = new java.util.ArrayList<>();
         for (String rawLine : raw.split("\\r?\\n")) {
             String line = rawLine.trim();
             if (line.isEmpty()) {
                 continue;
             }
-            // Strip a leading "Label- " / "Label : " field prefix, keep the value.
-            String value = stripFieldLabel(line);
-            String lower = value.trim().toLowerCase();
-            String squashed = squash(value);
-            if (lower.isEmpty()) {
+            // Strip only a leading "Label- "/"Label : " field prefix, keep the value.
+            String value = stripFieldLabel(line).trim();
+            if (value.isEmpty()) {
                 continue;
             }
-            // Drop a line that just repeats the customer name (shown in the To box),
-            // tolerating spacing differences.
-            if (!name.isEmpty() && squashed.equals(name)) {
+            // Drop ONLY a segment that is an exact repeat of the customer name
+            // (already shown in the To box); keep everything else verbatim.
+            if (!name.isEmpty() && squash(value).equals(name)) {
                 continue;
             }
-            // Drop a line that is just the state, the city, or the pincode (all
-            // shown in the structured city/state/pin line below).
-            if (!state.isEmpty() && squashed.equals(state)) {
-                continue;
-            }
-            if (!pin.isEmpty() && squashed.equals(pin)) {
-                continue;
-            }
-            if (!city.isEmpty() && squashed.equals(city)) {
-                continue;
-            }
-            // Drop a line that is a duplicate structured "pin, city, state" tail
-            // (contains both the pincode and the state) — the canonical one is
-            // appended separately.
-            String stateLower = content.state() == null ? "" : content.state().trim().toLowerCase();
-            String pinLower = content.postalCode() == null ? "" : content.postalCode().trim().toLowerCase();
-            if (!pinLower.isEmpty() && !stateLower.isEmpty()
-                    && lower.contains(pinLower) && lower.contains(stateLower)) {
-                continue;
-            }
-            out.add(value.trim());
+            out.add(value);
         }
-        return out;
+        return String.join(", ", out);
     }
 
     /** Lowercases and removes ALL whitespace, for spacing-tolerant equality checks. */
@@ -577,6 +543,11 @@ public class LabelPdfRenderer {
             t.addCell(inlineLabelValue("COD", money(content.codAmount()), NAME_FONT));
         } else {
             t.addCell(inlineLabelValue("COD", "Prepaid \u2014 nothing to collect", SMALL_FONT));
+        }
+        // For a Shopify-imported order, show its Shopify order id right after COD
+        // (client request). Omitted entirely for a sales order (shopifyOrderId null).
+        if (content.shopifyOrderId() != null && !content.shopifyOrderId().isBlank()) {
+            t.addCell(inlineLabelValue("Shopify Order Id#", content.shopifyOrderId(), SMALL_BOLD));
         }
         return t;
     }

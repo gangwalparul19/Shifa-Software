@@ -5,6 +5,7 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ChannelLogoComponent } from '../shared/channel-logo.component';
 import { ToastService } from '../shared/toast.service';
+import { OrdersService } from '../orders/orders.service';
 import { RecoverResult, ShopifySyncService, StuckShopifyOrder } from './shopify-sync.service';
 
 /**
@@ -23,7 +24,11 @@ import { RecoverResult, ShopifySyncService, StuckShopifyOrder } from './shopify-
 })
 export class ShopifySyncComponent implements OnInit, OnDestroy {
   private readonly service = inject(ShopifySyncService);
+  private readonly ordersApi = inject(OrdersService);
   private readonly toasts = inject(ToastService);
+
+  /** The order id currently being re-routed to in-house (for a per-row spinner). */
+  protected readonly reroutingId = signal<number | null>(null);
 
   /** Delay before re-checking, giving QuikShipX time to allot tracking ids. */
   private static readonly RECHECK_MS = 30_000;
@@ -160,6 +165,33 @@ export class ShopifySyncComponent implements OnInit, OnDestroy {
   /** Why an order is still waiting: not yet approved, or approved but no tracking id yet. */
   statusLabel(status: string): string {
     return status === 'PENDING_ADMIN_APPROVAL' ? 'Pending approval' : 'Awaiting tracking ID';
+  }
+
+  /**
+   * Re-routes a stuck Shopify order to in-house delivery (QuikShipX could not ship
+   * it — e.g. a non-serviceable pincode). Switches the delivery method to IN_HOUSE
+   * (which detaches it from QuikShipX and clears the failure), so the team hands it
+   * to their own / a local partner instead of waiting on a tracking id that will
+   * never come. Reloads the list afterwards.
+   */
+  switchToInHouse(order: StuckShopifyOrder): void {
+    if (this.reroutingId() !== null) {
+      return;
+    }
+    this.reroutingId.set(order.id);
+    this.ordersApi.updateDeliveryMethod(order.id, 'IN_HOUSE').subscribe({
+      next: () => {
+        this.reroutingId.set(null);
+        this.toasts.success(
+          `${order.orderCode} switched to in-house delivery. Fulfil it from Packing — no courier tracking id is needed.`,
+        );
+        this.load();
+      },
+      error: () => {
+        this.reroutingId.set(null);
+        this.toasts.error('Could not switch this order to in-house. Please try again.');
+      },
+    });
   }
 
   private scheduleRecheck(): void {

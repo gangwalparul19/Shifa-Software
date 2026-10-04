@@ -80,6 +80,29 @@ public record UpdateOrderRequest(
 
         @DecimalMin(value = "0.00", message = "discountValue must not be negative")
         @Digits(integer = 10, fraction = 2, message = "discountValue must be a DECIMAL(12,2) value")
-        BigDecimal discountValue
+        BigDecimal discountValue,
+
+        // --- Optional payment correction (rework / payment-rejected resubmit) ----
+        // A plain field edit leaves these null and the already-received amount +
+        // existing proofs are kept untouched (unchanged behaviour). On a resubmit —
+        // especially a PAYMENT_REJECTED one — the user can correct the amount and
+        // attach a NEW payment screenshot; when supplied these are applied so the
+        // fresh proof is stored, becomes the primary proof, and re-enters the
+        // payment-verification queue.
+
+        // The corrected amount received, or null to keep the current amount.
+        @DecimalMin(value = "0.00", message = "amountReceived must not be negative")
+        @Digits(integer = 10, fraction = 2, message = "amountReceived must be a DECIMAL(12,2) value")
+        BigDecimal amountReceived,
+
+        // The new primary payment-proof storage key (from the two-step upload), or
+        // null to keep the existing proofs.
+        String paymentScreenshotKey,
+
+        // Additional new proofs beyond the primary (V65 multi-proof), applied only
+        // when a new paymentScreenshotKey is also supplied.
+        @Size(max = 10, message = "at most 10 payment screenshots may be attached to an order")
+        List<@Size(max = 512, message = "a payment screenshot key must be at most 512 characters") String>
+                paymentScreenshotKeys
 ) {
 }

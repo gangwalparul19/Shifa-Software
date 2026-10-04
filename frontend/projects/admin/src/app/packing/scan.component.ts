@@ -368,6 +368,21 @@ export class ScanComponent implements OnInit, AfterViewInit {
     this.markPrinted([row.id]);
   }
 
+  /** Builds the Delhivery public tracking URL for an AWB (QuikShipX ships via Delhivery). */
+  trackUrl(awb: string | null | undefined): string | null {
+    const trimmed = (awb ?? '').trim();
+    return trimmed ? `https://www.delhivery.com/track-v2/package/${encodeURIComponent(trimmed)}` : null;
+  }
+
+  /** Opens the courier tracking/history page for an AWB in a new tab (stops the row click). */
+  openTracking(awb: string | null | undefined, event?: Event): void {
+    event?.stopPropagation();
+    const url = this.trackUrl(awb);
+    if (url) {
+      window.open(url, '_blank', 'noopener');
+    }
+  }
+
   /**
    * Prints every selected order's QuikShipX label — opens each label PDF in its
    * own tab (QuikShipX serves one PDF per order), then marks them printed. The

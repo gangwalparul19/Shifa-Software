@@ -24,6 +24,12 @@ export interface StuckShopifyOrder {
   trackingAssigned: boolean;
   /** True when the order still needs a tracking id (recoverable + no AWB yet). */
   waiting: boolean;
+  /**
+   * Why QuikShipX could not ship it (e.g. "585216 is non serviceable pincode"),
+   * when a permanent failure was recorded. Null when it is simply still being
+   * processed. Drives the "re-route to in-house" prompt.
+   */
+  failureReason: string | null;
 }
 
 /** The Shopify integration switch. */

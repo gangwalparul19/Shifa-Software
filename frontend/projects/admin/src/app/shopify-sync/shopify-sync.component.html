@@ -141,20 +141,38 @@
       <!-- Mobile cards -->
       <div class="list-group list-group-flush d-md-none">
         @for (o of waiting(); track o.id) {
-          <a class="list-group-item list-group-item-action ss-item" routerLink="/orders" [queryParams]="{ q: o.orderCode }">
-            <div class="d-flex justify-content-between align-items-start gap-2">
-              <div>
-                <div class="fw-semibold shifa-mono">{{ o.orderCode }}</div>
-                <div class="text-secondary small">{{ o.customerName }} · {{ o.customerMobile }}</div>
+          <div class="list-group-item ss-item">
+            <a class="d-block text-reset text-decoration-none" routerLink="/orders" [queryParams]="{ q: o.orderCode }">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div>
+                  <div class="fw-semibold shifa-mono">{{ o.orderCode }}</div>
+                  <div class="text-secondary small">{{ o.customerName }} · {{ o.customerMobile }}</div>
+                </div>
+                <span class="badge" [class.bg-yellow-lt]="o.status === 'PENDING_ADMIN_APPROVAL'"
+                      [class.bg-blue-lt]="o.status === 'LABEL_GENERATED' && !o.failureReason"
+                      [class.bg-red-lt]="!!o.failureReason">
+                  {{ o.failureReason ? 'Shipping failed' : statusLabel(o.status) }}
+                </span>
               </div>
-              <span class="badge" [class.bg-yellow-lt]="o.status === 'PENDING_ADMIN_APPROVAL'"
-                    [class.bg-blue-lt]="o.status === 'LABEL_GENERATED'">{{ statusLabel(o.status) }}</span>
-            </div>
-            <div class="d-flex justify-content-between small mt-1">
-              <span>{{ o.totalAmount | currency: 'INR' : 'symbol' : '1.0-2' }}</span>
-              <span class="text-secondary">{{ o.createdAt | date: 'd MMM, h:mm a' }}</span>
-            </div>
-          </a>
+              @if (o.failureReason) {
+                <div class="text-danger small mt-1">
+                  <i class="ti ti-alert-triangle me-1" aria-hidden="true"></i>{{ o.failureReason }}
+                </div>
+              }
+              <div class="d-flex justify-content-between small mt-1">
+                <span>{{ o.totalAmount | currency: 'INR' : 'symbol' : '1.0-2' }}</span>
+                <span class="text-secondary">{{ o.createdAt | date: 'd MMM, h:mm a' }}</span>
+              </div>
+            </a>
+            <button type="button" class="btn btn-sm btn-success w-100 mt-2"
+              (click)="switchToInHouse(o)" [disabled]="reroutingId() !== null">
+              @if (reroutingId() === o.id) {
+                <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Switching…
+              } @else {
+                <i class="ti ti-home-move me-1" aria-hidden="true"></i>Switch to In-House
+              }
+            </button>
+          </div>
         }
       </div>
 
@@ -165,9 +183,10 @@
             <tr>
               <th>Order</th>
               <th>Customer</th>
-              <th>Status</th>
+              <th>Status / reason</th>
               <th class="text-end">Total</th>
               <th>Created</th>
+              <th class="text-end">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -177,10 +196,29 @@
                 <td>{{ o.customerName }}<div class="text-secondary small">{{ o.customerMobile }}</div></td>
                 <td>
                   <span class="badge" [class.bg-yellow-lt]="o.status === 'PENDING_ADMIN_APPROVAL'"
-                        [class.bg-blue-lt]="o.status === 'LABEL_GENERATED'">{{ statusLabel(o.status) }}</span>
+                        [class.bg-blue-lt]="o.status === 'LABEL_GENERATED' && !o.failureReason"
+                        [class.bg-red-lt]="!!o.failureReason">
+                    {{ o.failureReason ? 'Shipping failed' : statusLabel(o.status) }}
+                  </span>
+                  @if (o.failureReason) {
+                    <div class="text-danger small mt-1" [title]="o.failureReason">
+                      <i class="ti ti-alert-triangle me-1" aria-hidden="true"></i>{{ o.failureReason }}
+                    </div>
+                  }
                 </td>
                 <td class="text-end">{{ o.totalAmount | currency: 'INR' : 'symbol' : '1.0-2' }}</td>
                 <td class="text-secondary">{{ o.createdAt | date: 'd MMM, h:mm a' }}</td>
+                <td class="text-end">
+                  <button type="button" class="btn btn-sm btn-success"
+                    (click)="switchToInHouse(o)" [disabled]="reroutingId() !== null"
+                    title="QuikShipX can't ship this — hand it to your own / a local partner instead">
+                    @if (reroutingId() === o.id) {
+                      <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Switching…
+                    } @else {
+                      <i class="ti ti-home-move me-1" aria-hidden="true"></i>Switch to In-House
+                    }
+                  </button>
+                </td>
               </tr>
             }
           </tbody>

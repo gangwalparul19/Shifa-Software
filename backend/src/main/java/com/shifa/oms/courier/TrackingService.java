@@ -59,20 +59,32 @@ public class TrackingService {
     @Transactional(readOnly = true)
     public Optional<ShipmentInfo> shipmentFor(Long orderId) {
         Optional<CourierRecord> record = courierRecordRepository.findByOrderId(orderId);
-        if (record.isEmpty() || record.get().getAwb() == null || record.get().getAwb().isBlank()) {
+        if (record.isEmpty()) {
+            return Optional.empty();
+        }
+        CourierRecord cr = record.get();
+        boolean hasAwb = cr.getAwb() != null && !cr.getAwb().isBlank();
+        boolean hasDirectUrl = cr.getTrackingUrl() != null && !cr.getTrackingUrl().isBlank();
+        // Trackable when the order has either a tracking id (AWB) or a direct
+        // vendor tracking link. An in-house delivery partner may supply a
+        // ready-made link with no clean AWB, so a blank AWB alone no longer means
+        // "nothing to track" (in-house delivery-partner feature).
+        if (!hasAwb && !hasDirectUrl) {
             return Optional.empty();
         }
 
-        CourierRecord cr = record.get();
         String courierName = null;
-        String trackingUrl = null;
+        String templateUrl = null;
         if (cr.getCourierCompanyId() != null) {
             Optional<CourierCompany> company = courierCompanyRepository.findById(cr.getCourierCompanyId());
             if (company.isPresent()) {
                 courierName = company.get().getName();
-                trackingUrl = company.get().trackingUrl(cr.getAwb());
+                templateUrl = company.get().trackingUrl(cr.getAwb());
             }
         }
+        // A vendor-provided direct link (stored verbatim on the record) wins over
+        // the per-company {awb} template; fall back to the template otherwise.
+        String trackingUrl = hasDirectUrl ? cr.getTrackingUrl() : templateUrl;
         return Optional.of(new ShipmentInfo(
                 cr.getAwb(), courierName, trackingUrl, cr.getEstimatedDelivery()));
     }

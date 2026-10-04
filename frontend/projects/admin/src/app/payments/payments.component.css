@@ -50,3 +50,44 @@
 .pay-guide__icon {
   color: var(--shifa-green-600, #1f5d3f);
 }
+
+/* --- Duplicate payment-proof column (linked order codes) --- */
+.pay-code {
+  text-decoration: none;
+  color: var(--shifa-green-700, #164632);
+}
+.pay-code:disabled {
+  color: inherit;
+  opacity: 1;
+  cursor: default;
+}
+.pay-dup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  align-items: flex-start;
+}
+.pay-dup__flag {
+  display: inline-flex;
+  align-items: center;
+}
+.pay-dup__codes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.pay-dup__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.pay-dup__code {
+  text-decoration: underline;
+  color: var(--tblr-danger, #b42318);
+  font-size: 0.86rem;
+}
+.pay-dup__details {
+  width: 26px;
+  height: 26px;
+  color: #62707a;
+}

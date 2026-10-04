@@ -45,13 +45,39 @@ class CourierStatusMappingPropertyTest {
         Map<String, OrderStatus> v = new LinkedHashMap<>();
         v.put("pickup", OrderStatus.DISPATCHED);
         v.put("picked_up", OrderStatus.DISPATCHED);
+        v.put("picked", OrderStatus.DISPATCHED);
+        v.put("pickup_done", OrderStatus.DISPATCHED);
+        v.put("pickup_complete", OrderStatus.DISPATCHED);
+        v.put("pickup_completed", OrderStatus.DISPATCHED);
+        v.put("ready_for_pickup", OrderStatus.DISPATCHED);
         v.put("dispatched", OrderStatus.DISPATCHED);
         v.put("in_transit", OrderStatus.IN_TRANSIT);
+        v.put("intransit", OrderStatus.IN_TRANSIT);
+        v.put("transit", OrderStatus.IN_TRANSIT);
+        v.put("shipped", OrderStatus.IN_TRANSIT);
+        v.put("in_scan", OrderStatus.IN_TRANSIT);
+        v.put("bag_added", OrderStatus.IN_TRANSIT);
+        v.put("bagged", OrderStatus.IN_TRANSIT);
+        v.put("received_at_facility", OrderStatus.IN_TRANSIT);
+        v.put("reached_at_hub", OrderStatus.IN_TRANSIT);
+        v.put("reached_hub", OrderStatus.IN_TRANSIT);
+        v.put("reached_destination", OrderStatus.IN_TRANSIT);
+        v.put("reached", OrderStatus.IN_TRANSIT);
+        v.put("arrived_at_hub", OrderStatus.IN_TRANSIT);
+        v.put("facility_received", OrderStatus.IN_TRANSIT);
         v.put("out_for_delivery", OrderStatus.OUT_FOR_DELIVERY);
+        v.put("ofd", OrderStatus.OUT_FOR_DELIVERY);
+        v.put("out_for_delivered", OrderStatus.OUT_FOR_DELIVERY);
+        v.put("outfordelivery", OrderStatus.OUT_FOR_DELIVERY);
         v.put("delivered", OrderStatus.DELIVERED);
+        v.put("delivered_to_consignee", OrderStatus.DELIVERED);
+        v.put("delivery_successful", OrderStatus.DELIVERED);
+        v.put("delivery_success", OrderStatus.DELIVERED);
         v.put("return", OrderStatus.RTO);
         v.put("returned", OrderStatus.RTO);
         v.put("rto", OrderStatus.RTO);
+        v.put("rto_delivered", OrderStatus.RTO);
+        v.put("rto_in_transit", OrderStatus.RTO);
         v.put("lost", OrderStatus.REDISPATCH);
         v.put("damaged", OrderStatus.REDISPATCH);
         v.put("missing", OrderStatus.REDISPATCH);
@@ -63,6 +89,7 @@ class CourierStatusMappingPropertyTest {
         v.put("failed", OrderStatus.DELIVERY_FAILED);
         v.put("undelivered", OrderStatus.DELIVERY_FAILED);
         v.put("attempt_failed", OrderStatus.DELIVERY_FAILED);
+        v.put("not_delivered", OrderStatus.DELIVERY_FAILED);
         return v;
     }
 

@@ -89,6 +89,13 @@ public class BulkOrderService {
                         + order.getOrderStatus() + ").");
                 continue;
             }
+            // Payment-verification gate (payment-verification-gated approval): an
+            // order with an unverified / rejected payment is skipped with a clear
+            // reason so the UI can list it as "verify payment first".
+            if (needsPaymentVerification(order)) {
+                result.skipped(id, "Payment not verified.");
+                continue;
+            }
             try {
                 adminOrderService.approve(id, admin);
                 result.succeeded(id);
@@ -193,8 +200,9 @@ public class BulkOrderService {
                 continue;
             }
             String reason = switch (normalized) {
-                case "APPROVE" -> order.getOrderStatus() == OrderStatus.PENDING_ADMIN_APPROVAL
-                        ? null : "Order is not awaiting approval.";
+                case "APPROVE" -> order.getOrderStatus() != OrderStatus.PENDING_ADMIN_APPROVAL
+                        ? "Order is not awaiting approval."
+                        : (needsPaymentVerification(order) ? "Payment not verified." : null);
                 case "MARK_PACKED" -> order.getOrderStatus() == OrderStatus.LABEL_GENERATED
                         ? null : "Order is not ready to pack.";
                 case "LABELS" -> null;
@@ -210,6 +218,17 @@ public class BulkOrderService {
         }
         return new BulkPreviewResponse(normalized, distinct(ids).size(),
                 List.copyOf(eligible), List.copyOf(ineligible));
+    }
+
+    /**
+     * Whether an order's payment still needs verification before it can be
+     * approved: PENDING or REJECTED. A pure-COD order (null) or an already-VERIFIED
+     * order does not. Mirrors the authoritative gate in {@link AdminOrderService#approve}.
+     */
+    private static boolean needsPaymentVerification(OrderEntity order) {
+        PaymentVerificationStatus status = order.getPaymentVerificationStatus();
+        return status == PaymentVerificationStatus.PENDING
+                || status == PaymentVerificationStatus.REJECTED;
     }
 
     /** De-duplicates the requested ids while preserving request order. */

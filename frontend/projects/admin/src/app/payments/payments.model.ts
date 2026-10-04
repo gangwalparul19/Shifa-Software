@@ -21,8 +21,16 @@ export interface PaymentQueueRow {
   /** Name of the salesperson who punched the order (created_by → display name). */
   salespersonName?: string | null;
   /**
-   * Other order codes whose payment proof is byte-identical to this one
-   * (duplicate-screenshot detection, V72). Non-empty = a fraud/mistake flag.
+   * Other orders whose payment proof is byte-identical to this one
+   * (duplicate-screenshot detection, V72), each as an {orderId, orderCode} ref.
+   * Non-empty = a fraud/mistake flag. The UI links each: click the code to view
+   * THAT order's screenshot (by orderId) and open its details (by orderCode).
    */
-  duplicateOrderCodes?: string[];
+  duplicateOrders?: DuplicateOrderRef[];
+}
+
+/** A reference to another order sharing this order's payment proof (V72). */
+export interface DuplicateOrderRef {
+  orderId: number;
+  orderCode: string;
 }

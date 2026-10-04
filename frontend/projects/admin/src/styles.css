@@ -215,6 +215,22 @@ a {
 }
 
 /* --------------------------------------------------------------------------
+   Sticky pagination support.
+   The shared <admin-pagination> (.shifa-pager) is `position: sticky; bottom: 0`
+   so the page controls stay visible/reachable no matter how long the list is.
+   Tabler's base `.card { overflow: hidden }` would CLIP a sticky child and stop
+   it ever sticking, so any card that actually contains a pager is un-clipped.
+   Scoped via :has() so only cards with a pager are affected (rounded corners on
+   every other card are untouched). The pager host must be a block so it spans
+   the full card width. -------------------------------------------------------- */
+.card:has(admin-pagination) {
+  overflow: visible;
+}
+admin-pagination {
+  display: block;
+}
+
+/* --------------------------------------------------------------------------
    Global table-overflow guard.
    Tabler/Bootstrap .card is `display:flex; flex-direction:column`, so its
    flex children (.card-body / .table-responsive) default to `min-width:auto`

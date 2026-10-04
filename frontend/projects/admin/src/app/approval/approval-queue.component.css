@@ -387,3 +387,74 @@
   border-color: var(--shifa-green-600, #1f5d3f);
   box-shadow: 0 0 0 1px var(--shifa-green-600, #1f5d3f), 0 4px 14px rgba(15, 51, 36, 0.12);
 }
+
+/* --- Verify-payment-first modal: per-order review (screenshot + duplicate) --- */
+.sa-verify-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.sa-verify-item {
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  border-radius: 0.6rem;
+  padding: 0.75rem;
+  background: #fff;
+}
+/* Highlight a duplicate-proof order so the admin can't miss it. */
+.sa-verify-item.is-dup {
+  border-color: #f1aeb5;
+  background: #fff6f6;
+  box-shadow: inset 3px 0 0 var(--tblr-danger, #d63939);
+}
+.sa-verify-item__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.sa-verify-item__dup {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  margin-top: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.5rem;
+  background: #fde4e2;
+  color: #b42318;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+.sa-verify-item__dup .ti {
+  font-size: 1.05rem;
+  flex: 0 0 auto;
+  margin-top: 0.05rem;
+}
+.sa-verify-item__shots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.sa-verify-item__shot {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  border-radius: 0.5rem;
+  object-fit: contain;
+}
+.sa-verify-item__noshot {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.5rem;
+  background: #f6f7f8;
+  color: #62707a;
+  font-size: 0.86rem;
+}
+
+/* Widen just this modal (screenshots need room) without touching the global. */
+.shifa-modal.sa-verify-modal {
+  width: min(760px, calc(100vw - 2rem));
+}

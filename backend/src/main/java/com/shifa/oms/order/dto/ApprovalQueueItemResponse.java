@@ -4,6 +4,7 @@ import com.shifa.oms.order.DeliveryMethod;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderSource;
+import com.shifa.oms.order.PaymentVerificationStatus;
 import com.shifa.oms.order.domain.PaymentStatus;
 
 import java.math.BigDecimal;
@@ -47,7 +48,16 @@ public record ApprovalQueueItemResponse(
         // The name of the salesperson who punched the order (resolved from
         // created_by; full name, else username; null when unknown), so the
         // reviewing admin can see who triggered it.
-        String salespersonName
+        String salespersonName,
+        // Payment authenticity verification state (payment-verification-gated
+        // approval): PENDING / VERIFIED / REJECTED, or null for a pure-COD order
+        // (nothing to verify). The admin cannot approve until this is VERIFIED or
+        // null; the queue shows a verified icon when VERIFIED.
+        PaymentVerificationStatus paymentVerificationStatus,
+        // Other order codes whose payment proof is byte-identical to this order's
+        // (duplicate-screenshot detection, V72). Non-empty = a duplicate flag is
+        // shown and the order is excluded from "approve all (no duplicates)".
+        List<String> duplicateOrderCodes
 ) {
 
     /** A single order line in the review projection. */
@@ -70,10 +80,16 @@ public record ApprovalQueueItemResponse(
 
     /** Without a resolved salesperson name (null) — kept for callers that don't resolve it. */
     public static ApprovalQueueItemResponse from(OrderEntity order) {
-        return from(order, null);
+        return from(order, null, List.of());
     }
 
+    /** Without a duplicate-proof flag — kept for callers that don't resolve it. */
     public static ApprovalQueueItemResponse from(OrderEntity order, String salespersonName) {
+        return from(order, salespersonName, List.of());
+    }
+
+    public static ApprovalQueueItemResponse from(OrderEntity order, String salespersonName,
+                                                 List<String> duplicateOrderCodes) {
         List<LineItemResponse> items = order.getLineItems().stream()
                 .map(LineItemResponse::from)
                 .toList();
@@ -97,6 +113,8 @@ public record ApprovalQueueItemResponse(
                 items,
                 order.getCreatedAt(),
                 order.getDeliveryMethod(),
-                salespersonName);
+                salespersonName,
+                order.getPaymentVerificationStatus(),
+                duplicateOrderCodes == null ? List.of() : duplicateOrderCodes);
     }
 }

@@ -58,6 +58,15 @@
           </a>
         </div>
       }
+      @if (canCreateStoreOrder()) {
+        <div class="col-auto">
+          <a class="btn btn-outline-success text-nowrap" routerLink="/orders/new"
+            [queryParams]="{ pos: 1 }" aria-label="Store Order (POS)"
+            title="Place a walk-in counter sale">
+            <i class="ti ti-building-store me-1"></i> Store
+          </a>
+        </div>
+      }
       <div class="col">
         <div class="input-icon">
           <span class="input-icon-addon"><i class="ti ti-search"></i></span>
@@ -122,9 +131,10 @@
             <label class="form-label small mb-1">Source</label>
             <select class="form-select" formControlName="source" aria-label="Filter by order source">
               <option value="">All sources</option>
+              <option value="STORE">Store (POS)</option>
               <option value="SHOPIFY">Shopify</option>
               <option value="SALESPERSON">Sales</option>
-              <option value="STOREFRONT">Store</option>
+              <option value="STOREFRONT">Storefront (legacy)</option>
             </select>
           </div>
           <div class="col-6 col-lg-3" [formGroup]="filters">
@@ -368,7 +378,11 @@
             <admin-channel-logo [quikShip]="true" />
           }
           @if (order.quikShipXStatus) {
-            <span class="text-secondary small">{{ order.quikShipXStatus }}</span>
+            @if (isQuikShipFailed(order.quikShipXStatus)) {
+              <span class="badge tone-red"><i class="ti ti-alert-triangle me-1"></i>{{ order.quikShipXStatus }}</span>
+            } @else {
+              <span class="text-secondary small">{{ order.quikShipXStatus }}</span>
+            }
           }
           @if (order.quikShipXAwb) {
             <button type="button" class="btn btn-link btn-sm p-0 shifa-mono shifa-qsx-id"
@@ -470,7 +484,15 @@
                   <admin-channel-logo [quikShip]="true" />
                 }
                 @if (order.quikShipXStatus) {
-                  <div class="text-secondary small mt-1" [title]="quikShipTitle(order)">{{ order.quikShipXStatus }}</div>
+                  @if (isQuikShipFailed(order.quikShipXStatus)) {
+                    <div class="mt-1">
+                      <span class="badge tone-red" [title]="quikShipTitle(order)">
+                        <i class="ti ti-alert-triangle me-1"></i>{{ order.quikShipXStatus }}
+                      </span>
+                    </div>
+                  } @else {
+                    <div class="text-secondary small mt-1" [title]="quikShipTitle(order)">{{ order.quikShipXStatus }}</div>
+                  }
                 }
                 @if (order.quikShipXAwb) {
                   <div class="mt-1">
@@ -1004,6 +1026,18 @@
               @if (order.estimatedDelivery) {
                 <div class="shifa-od__totline"><span>Est. delivery</span><span>{{ order.estimatedDelivery | istDate: 'dd MMM yyyy' }}</span></div>
               }
+              <!-- End-to-end tracking for an in-house parcel handed to a local
+                   delivery partner (in-house delivery-partner feature): once the
+                   vendor supplies a tracking id and/or link, surface a Track
+                   button that opens the vendor's page directly. -->
+              @if (canTrackOrder(order)) {
+                <div class="d-flex align-items-center gap-2 mt-2">
+                  <button type="button" class="btn btn-sm btn-outline-primary"
+                    (click)="openOrderTracking(order)" title="Open the delivery partner's tracking page">
+                    <i class="ti ti-map-pin me-1"></i>Track shipment
+                  </button>
+                </div>
+              }
             </div>
           </div>
         }
@@ -1116,6 +1150,37 @@
                 </div>
               } @else {
                 <div class="text-secondary small mb-2">Not yet published to QuikShipX.</div>
+              }
+
+              <!-- QuikShipX permanently rejected this order (e.g. non-serviceable
+                   pincode). Show the reason + the recovery choices: switch to our
+                   own In-House delivery, or retry QuikShipX. -->
+              @if (order.quikShipXFailureReason) {
+                <div class="shifa-qsx-fail">
+                  <div class="shifa-qsx-fail__head">
+                    <i class="ti ti-alert-triangle me-1"></i>QuikShipX could not ship this order
+                  </div>
+                  <div class="shifa-qsx-fail__reason">{{ order.quikShipXFailureReason }}</div>
+                  @if (canManageQuikShip() && !isInHouse(order)) {
+                    <div class="shifa-qsx-fail__actions">
+                      <button type="button" class="btn btn-sm btn-success"
+                        (click)="switchToInHouse(order)" [disabled]="detailBusy()"
+                        title="Deliver this order with our own in-house team instead of QuikShipX">
+                        @if (detailBusy()) {
+                          <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                        } @else {
+                          <i class="ti ti-home-move me-1"></i>
+                        }
+                        Switch to In-House delivery
+                      </button>
+                      <button type="button" class="btn btn-sm btn-outline-warning"
+                        (click)="retryQuikShip(order)" [disabled]="quikShipBusy()"
+                        title="Try QuikShipX again (e.g. if this was a temporary glitch)">
+                        <i class="ti ti-refresh me-1"></i>Retry QuikShipX
+                      </button>
+                    </div>
+                  }
+                </div>
               }
 
               @if (order.awb) {
@@ -1231,8 +1296,10 @@
 
         }
 
-        <!-- (10) Primary lifecycle action for pending orders -->
-        @if (canApprove(order)) {
+        <!-- (10) Delivery method: an admin can change + SAVE it on a pre-dispatch
+             order without approving (change-delivery-method feature). The
+             Approve button below is shown only while the order is still pending. -->
+        @if (canSaveDeliveryMethod(order)) {
           <div class="shifa-od__card mb-2">
             <label class="shifa-od__label mb-1" for="odDeliveryMethod">
               <i class="ti ti-truck-delivery me-1"></i>Delivery method
@@ -1257,7 +1324,26 @@
                 This order will be sent to QuikShipX for courier pickup and delivery.
               </div>
             }
+            <!-- Save the delivery method on its own, without approving the order. -->
+            <button
+              type="button"
+              class="btn btn-outline-primary w-100 mt-2"
+              (click)="saveDeliveryMethod(order)"
+              [disabled]="detailBusy() || !deliveryMethodChanged(order)"
+              title="Save the delivery method without approving the order"
+            >
+              @if (detailBusy()) {
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+              } @else {
+                <i class="ti ti-device-floppy me-1"></i>
+              }
+              Save delivery method
+            </button>
           </div>
+        }
+
+        <!-- Primary lifecycle action for pending orders -->
+        @if (canApprove(order)) {
           <button
             type="button"
             class="btn btn-primary w-100 shifa-od__primary"
@@ -1478,7 +1564,7 @@
   <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Assign courier">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-truck-loading me-2"></i>Assign courier</h3>
+        <h3 class="card-title mb-0"><i class="ti ti-truck-loading me-2"></i>Assign delivery partner</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeAssignCourier()" aria-label="Close">
             <i class="ti ti-x"></i>
@@ -1533,11 +1619,30 @@
             }
             @if (!awbRequired()) {
               <div class="form-hint mt-1">
-                In-house deliveries have no tracking number — leave this blank and the label prints
-                our own order barcode instead, which the packing / RTO scan still recognises.
+                In-house / local-vendor deliveries may not have a tracking number — leave this blank
+                if there is none (the label prints our own order barcode, which the packing / RTO scan
+                still recognises), or paste the id the vendor gave you.
               </div>
             }
           </div>
+
+          <!-- Vendor tracking link (in-house delivery-partner feature): a local
+               partner that delivers an in-house parcel usually hands over a
+               ready-made tracking link once it books the shipment. Capturing it
+               here makes the parcel trackable end-to-end from the drawer. -->
+          <div class="mb-3">
+            <label class="form-label">
+              Tracking link <span class="text-secondary">(optional)</span>
+            </label>
+            <input type="url" class="form-control" formControlName="trackingUrl" maxlength="500"
+              placeholder="https://…  (paste the vendor's tracking page)" autocomplete="off"
+              [class.is-invalid]="assignCourierForm.controls.trackingUrl.touched && assignCourierForm.controls.trackingUrl.invalid" />
+            <div class="form-hint mt-1">
+              Paste the full link the delivery partner provides. When set, the order's
+              <b>Track shipment</b> button opens this page directly.
+            </div>
+          </div>
+
           <div class="d-flex justify-content-end gap-2">
             <button type="button" class="btn btn-link text-secondary" (click)="closeAssignCourier()">Cancel</button>
             <button type="submit" class="btn btn-primary" [disabled]="assignCourierBusy()">

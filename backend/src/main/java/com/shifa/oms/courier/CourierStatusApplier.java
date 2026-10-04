@@ -33,8 +33,11 @@ import java.util.Optional;
  * duplicate and out-of-order courier updates harmless. Delivery/RTO/loss carry
  * their settlement effects:
  * <ul>
- *   <li><b>Delivered</b>: {@code →Delivered}, then {@code →Closed} (prepaid) or
- *       {@code →COD_Collected} with a COD receivable (Req 16.1, 16.2);</li>
+ *   <li><b>Delivered</b>: prepaid → {@code →Closed} (nothing owed); COD →
+ *       {@code →Delivered} with the COD STILL OUTSTANDING and a COD receivable
+ *       recorded — the courier collected the cash but hasn't remitted it, so the
+ *       order is settled (→ {@code COD_Collected}) only when the remittance is
+ *       imported (Req 16.1, 16.2; courier-COD-settlement feature);</li>
  *   <li><b>RTO</b>: {@code →RTO}, COD cancelled, outstanding 0 (Req 16.3);</li>
  *   <li><b>Redispatch</b>: {@code →Redispatch}, a claim receivable for the
  *       net amount, outstanding 0, and a claim-filing admin notification
@@ -47,14 +50,6 @@ public class CourierStatusApplier {
     private static final Logger log = LoggerFactory.getLogger(CourierStatusApplier.class);
     private static final String ACTOR = "COURIER_API";
     private static final String SOURCE = "COURIER";
-
-    /**
-     * Ledger auto-posting source key for the COD cash collected on delivery
-     * (mirrors {@code SourceType.ORDER_DELIVERY}; kept as a literal so the courier
-     * module does not depend on the ledger module, exactly like
-     * {@code AdminOrderService.LEDGER_SOURCE_ORDER}).
-     */
-    private static final String LEDGER_SOURCE_ORDER_DELIVERY = "ORDER_DELIVERY";
 
     private final OrderRepository orderRepository;
     private final CourierRecordRepository courierRecordRepository;
@@ -165,33 +160,40 @@ public class CourierStatusApplier {
                 order.getCodAmount());
     }
 
+    /**
+     * Applies the Delivered outcome from the courier (courier-COD-settlement
+     * feature). The settlement here is deliberately split by payment type:
+     *
+     * <ul>
+     *   <li><b>Fully paid (prepaid):</b> nothing is owed, so the order auto-advances
+     *       {@code Delivered → Closed} (via the pure {@link SettlementProcessor},
+     *       which returns {@code CLOSED}) and the outstanding is cleared.</li>
+     *   <li><b>COD:</b> the courier collected the cash at the door but has NOT yet
+     *       remitted it to us — so the order stays at {@code DELIVERED} with the COD
+     *       amount STILL OUTSTANDING (money owed to us by the courier). A
+     *       {@code COD_RECEIVABLE} is recorded for that amount, but the order is NOT
+     *       auto-advanced to {@code COD_Collected} and the cash is NOT booked to the
+     *       ledger yet. Both of those happen only when the courier's remittance is
+     *       imported and the receivable is settled (see
+     *       {@code RemittanceRowProcessor}). This keeps "Delivered but settlement
+     *       pending" visible on the dashboards/reconciliation.</li>
+     * </ul>
+     */
     private void applyDelivered(OrderEntity order, CourierRecord record, NotificationContext ctx) {
         transition(order, OrderStatus.DELIVERED, ctx);
         SettlementResult result = settlementProcessor.onDelivered(view(order, record));
-        transition(order, result.newStatus(), ctx);
-        order.setCustomerOutstanding(BigDecimal.ZERO);
-        result.receivable().ifPresent(r -> recordReceivable(
-                order, record, ReceivableType.COD_RECEIVABLE, order.getCodAmount()));
-        publishDeliveryLedgerPost(order);
-    }
-
-    /**
-     * Enqueues the delivery-receipt ledger posting for a COD order in this same
-     * transaction, so the COD cash collected is booked against Cash / Sundry Debtors
-     * dated the DELIVERY date.
-     *
-     * <p>Without this the order's sales voucher leaves Sundry Debtors permanently
-     * debited: nothing else ever credits it back for a pure-COD order. No-op for a
-     * prepaid order (nothing was collected on delivery). The outbox row commits
-     * atomically with the delivery and a downstream posting failure can never roll
-     * back or alter the order.
-     */
-    private void publishDeliveryLedgerPost(OrderEntity order) {
-        BigDecimal cod = order.getCodAmount();
-        if (cod == null || cod.signum() <= 0) {
-            return;
+        if (result.receivable().isPresent()) {
+            // COD: record the courier's COD receivable (money owed to us) but LEAVE
+            // the order at Delivered with the COD still outstanding — the remittance
+            // import settles it (→ COD_Collected, zero outstanding, book the cash).
+            recordReceivable(order, record, ReceivableType.COD_RECEIVABLE, order.getCodAmount());
+            // customerOutstanding intentionally NOT zeroed, status NOT advanced,
+            // delivery ledger post NOT published — all deferred to settlement.
+        } else {
+            // Prepaid: nothing to collect, close the order and clear any outstanding.
+            transition(order, result.newStatus(), ctx);
+            order.setCustomerOutstanding(BigDecimal.ZERO);
         }
-        outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_ORDER_DELIVERY, order.getId());
     }
 
     private void applyRto(OrderEntity order, NotificationContext ctx) {

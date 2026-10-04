@@ -47,6 +47,16 @@ export class ApprovalService {
   }
 
   /**
+   * Verify an order's payment as genuine (payment-verification-gated approval),
+   * reusing the Payment Verifier endpoint {@code POST /api/payments/{id}/verify}
+   * (also permitted for ADMIN). Lets the admin clear the verification gate from
+   * the approval queue so the order can then be approved.
+   */
+  verifyPayment(orderId: number, note?: string): Observable<Order> {
+    return this.api.post<Order>(`/api/payments/${orderId}/verify`, note ? { note } : {});
+  }
+
+  /**
    * Reject an order with a mandatory reason → Rejected (Req 9.4). The optional
    * {@code category} records a concrete reason (Rate / Address-Pincode / Other,
    * rejection-status feature) alongside the free-text note.

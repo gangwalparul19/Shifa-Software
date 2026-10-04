@@ -318,6 +318,16 @@
   font-weight: 600;
 }
 
+/* Clickable AWB on the QuickShip status rows — opens the courier tracking history. */
+.pk-awb-link {
+  color: var(--shifa-green-700, #164632);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.pk-awb-link:hover {
+  text-decoration: underline;
+}
+
 /* QuikShip label button sits inline with the other row actions. */
 .pk-row__quik {
   white-space: nowrap;

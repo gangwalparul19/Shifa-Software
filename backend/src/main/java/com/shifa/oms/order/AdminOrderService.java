@@ -87,12 +87,20 @@ public class AdminOrderService {
      */
     private final AuditService auditService;
 
+    /**
+     * Duplicate-proof lookup (nullable): resolves the other order codes whose
+     * payment proof is byte-identical to a given order's (V72), so the approval
+     * queue can show a duplicate flag and exclude such orders from "approve all".
+     * Null under the legacy test constructor — the flag is then always empty.
+     */
+    private final OrderPaymentScreenshotRepository screenshotRepository;
+
     /** Legacy constructor (unit tests): no QuikShipX hooks / list enrichment / audit. */
     public AdminOrderService(OrderRepository orderRepository, LabelService labelService,
                              OrderWorkflowService orderWorkflowService,
                              OutboxEventPublisher outboxEventPublisher) {
         this(orderRepository, labelService, orderWorkflowService, outboxEventPublisher,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
     }
 
     @Autowired
@@ -103,7 +111,8 @@ public class AdminOrderService {
                              OrderShipmentRepository orderShipmentRepository,
                              UserRepository userRepository,
                              QuikShipXService quikShipXService,
-                             AuditService auditService) {
+                             AuditService auditService,
+                             OrderPaymentScreenshotRepository screenshotRepository) {
         this.orderRepository = orderRepository;
         this.labelService = labelService;
         this.orderWorkflowService = orderWorkflowService;
@@ -113,6 +122,7 @@ public class AdminOrderService {
         this.userRepository = userRepository;
         this.quikShipXService = quikShipXService;
         this.auditService = auditService;
+        this.screenshotRepository = screenshotRepository;
     }
 
     /**
@@ -274,8 +284,54 @@ public class AdminOrderService {
         Map<Long, String> names = resolveSalespersonNames(pending);
         return pending.stream()
                 .map(o -> ApprovalQueueItemResponse.from(
-                        o, o.getCreatedBy() == null ? null : names.get(o.getCreatedBy())))
+                        o, o.getCreatedBy() == null ? null : names.get(o.getCreatedBy()),
+                        duplicateOrderCodes(o)))
                 .toList();
+    }
+
+    /**
+     * Other order codes whose payment proof is byte-identical to this order's
+     * (duplicate-screenshot detection, V72), so the approval queue can flag a
+     * suspected duplicate and exclude it from "approve all (no duplicates)".
+     * Empty when there is no screenshot repository (test/legacy), no proof hash,
+     * or the proof is unique. Mirrors {@code PaymentVerificationService.duplicateOrderCodes}.
+     */
+    private List<String> duplicateOrderCodes(OrderEntity order) {
+        if (screenshotRepository == null || order.getId() == null) {
+            return List.of();
+        }
+        List<String> hashes = screenshotRepository.findHashesForOrder(order.getId());
+        if (hashes.isEmpty()) {
+            return List.of();
+        }
+        java.util.Set<Long> otherIds = new java.util.HashSet<>();
+        for (String hash : hashes) {
+            otherIds.addAll(screenshotRepository.findOtherOrderIdsWithHash(hash, order.getId()));
+        }
+        if (otherIds.isEmpty()) {
+            return List.of();
+        }
+        return orderRepository.findAllById(otherIds).stream()
+                .map(OrderEntity::getOrderCode)
+                .filter(code -> code != null && !code.isBlank())
+                .sorted()
+                .toList();
+    }
+
+    /**
+     * Payment-verification gate for approval (payment-verification-gated
+     * approval): an order whose payment is still PENDING or was REJECTED cannot
+     * be approved — the admin must verify the payment first (via the payment
+     * panel / the approval-queue verify action). A pure-COD order
+     * ({@code paymentVerificationStatus == null}) and an already-VERIFIED order
+     * pass. Throws a 400 {@link ValidationException} otherwise, naming the order.
+     */
+    private static void requirePaymentVerified(OrderEntity order) {
+        PaymentVerificationStatus status = order.getPaymentVerificationStatus();
+        if (status == PaymentVerificationStatus.PENDING || status == PaymentVerificationStatus.REJECTED) {
+            throw new ValidationException("Order " + order.getOrderCode()
+                    + " cannot be approved until its payment is verified.");
+        }
     }
 
     /**
@@ -307,6 +363,9 @@ public class AdminOrderService {
     @Transactional
     public OrderResponse approve(Long id, AuthPrincipal admin, String deliveryMethod) {
         OrderEntity order = requireOrder(id);
+        // Payment-verification gate: an order with an unverified / rejected
+        // payment cannot be approved — the payment must be verified first.
+        requirePaymentVerified(order);
         if (deliveryMethod != null && !deliveryMethod.isBlank()) {
             DeliveryMethod requested =
                     DeliveryMethod.valueOf(deliveryMethod.trim().toUpperCase(java.util.Locale.ROOT));
@@ -335,6 +394,75 @@ public class AdminOrderService {
         // touches the QuikShipX pipeline.
         if (quikShipXProperties != null && quikShipXProperties.isEnabled() && !saved.isInHouseDelivery()) {
             outboxEventPublisher.publishQuikShipXConfirm(saved.getId(), saved.getOrderCode());
+        }
+        return OrderResponse.from(saved);
+    }
+
+    /**
+     * Pre-dispatch lifecycle stages in which an admin may change the delivery
+     * method without approving/dispatching. Delivery method only matters until
+     * the parcel is handed to a courier / dispatched; once {@code HANDED_TO_DELIVERY}
+     * or later the shipment path is committed and must not change.
+     */
+    private static final java.util.Set<OrderStatus> DELIVERY_METHOD_EDITABLE_STATUSES =
+            java.util.EnumSet.of(
+                    OrderStatus.PENDING_ADMIN_APPROVAL,
+                    OrderStatus.APPROVED,
+                    OrderStatus.LABEL_GENERATED,
+                    OrderStatus.PACKED);
+
+    /**
+     * Admin "save delivery method" (change-delivery-method feature): sets the
+     * order's delivery partner ({@code QUIKSHIPX} or {@code IN_HOUSE}) and
+     * persists it WITHOUT approving or otherwise changing the order's lifecycle
+     * status. Previously the only way to persist a delivery-method choice was
+     * through {@link #approve}; this lets an admin correct the method on a
+     * still-pending order and save it on its own.
+     *
+     * <p>Only allowed while the order is pre-dispatch
+     * ({@link #DELIVERY_METHOD_EDITABLE_STATUSES}); a 409 ({@code OrderNotEditableException})
+     * is returned once the parcel has been handed to a courier / dispatched. A
+     * Counter Sale (walk-in shop order) can never be assigned a courier partner —
+     * trying to set it to QUIKSHIPX is a 400, matching the guard in {@link #approve}.
+     * Does NOT trigger label generation, QuikShipX publish, or any status change.
+     */
+    @Transactional
+    public OrderResponse updateDeliveryMethod(Long id, String deliveryMethod, AuthPrincipal admin) {
+        OrderEntity order = requireOrder(id);
+        if (!DELIVERY_METHOD_EDITABLE_STATUSES.contains(order.getOrderStatus())) {
+            throw new OrderNotEditableException(order.getOrderCode(), order.getOrderStatus());
+        }
+        if (deliveryMethod == null || deliveryMethod.isBlank()) {
+            throw new ValidationException("A delivery method is required.");
+        }
+        DeliveryMethod requested =
+                DeliveryMethod.valueOf(deliveryMethod.trim().toUpperCase(java.util.Locale.ROOT));
+        // Counter Sale (walk-in shop order) never goes through a delivery partner.
+        if (order.getLeadSource() == LeadSource.COUNTER_SALE && requested != DeliveryMethod.IN_HOUSE) {
+            throw new ValidationException(
+                    "This order is a Counter Sale and cannot be assigned a delivery partner.");
+        }
+        DeliveryMethod previous = order.getDeliveryMethod();
+        order.setDeliveryMethod(requested);
+        // Switching a QuikShipX order to in-house (e.g. recovering from a courier
+        // failure like a non-serviceable pincode): detach it from QuikShipX —
+        // best-effort cancel any shipment, resolve lingering QuikShipX outbox
+        // events, and clear the failure reason — so it flows cleanly through the
+        // in-house delivery path. Guarded on the actual QUIKSHIPX→IN_HOUSE switch.
+        if (previous == DeliveryMethod.QUIKSHIPX && requested == DeliveryMethod.IN_HOUSE) {
+            // Clear the stale failure reason on the order we return/save, and run
+            // the QuikShipX-side detach cleanup (cancel shipment + resolve outbox).
+            order.setQuikShipXFailureReason(null);
+            if (quikShipXService != null) {
+                quikShipXService.detachForInHouse(order.getId());
+            }
+        }
+        OrderEntity saved = orderRepository.save(order);
+        if (auditService != null && previous != requested) {
+            auditService.record(AuditActions.ORDER_UPDATED, AuditActions.ENTITY_ORDER,
+                    String.valueOf(saved.getId()),
+                    "Changed delivery method of order " + saved.getOrderCode()
+                            + ": " + previous + " \u2192 " + requested);
         }
         return OrderResponse.from(saved);
     }

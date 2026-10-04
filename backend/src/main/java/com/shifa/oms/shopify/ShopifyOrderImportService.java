@@ -316,7 +316,12 @@ public class ShopifyOrderImportService {
                              String status, BigDecimal totalAmount, java.time.LocalDateTime createdAt,
                              boolean inHouse, boolean recoverable,
                              String awb, String quikShipXStatus,
-                             boolean trackingAssigned, boolean waiting) {
+                             boolean trackingAssigned, boolean waiting,
+                             // Why QuikShipX could not ship it (e.g. "585216 is non
+                             // serviceable pincode"), when a permanent failure was
+                             // recorded. Null when it is simply still being processed.
+                             // Drives the "re-route to in-house" prompt on the UI.
+                             String failureReason) {
     }
 
     /**
@@ -361,7 +366,8 @@ public class ShopifyOrderImportService {
             boolean waiting = recoverable && !trackingAssigned;
             out.add(new StuckOrder(o.getId(), o.getOrderCode(), o.getCustomerName(), o.getCustomerMobile(),
                     o.getOrderStatus().name(), o.getTotalAmount(), o.getCreatedAt(), inHouse, recoverable,
-                    awb, quikStatus, trackingAssigned, waiting));
+                    awb, quikStatus, trackingAssigned, waiting,
+                    trimToNull(o.getQuikShipXFailureReason())));
         }
         out.sort(java.util.Comparator.comparing(StuckOrder::createdAt,
                 java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));

@@ -27,11 +27,21 @@ public record PaymentQueueRow(
         // created_by; full name, else username; null when unknown), so the
         // verifier can see who triggered the payment.
         String salespersonName,
-        // Other order codes whose payment proof is byte-identical to this one
-        // (duplicate-screenshot detection, V72). Empty when the proof is unique —
-        // a non-empty list is a fraud/mistake flag for the verifier.
-        java.util.List<String> duplicateOrderCodes
+        // Other orders whose payment proof is byte-identical to this one
+        // (duplicate-screenshot detection, V72), each as an {orderId, orderCode}
+        // ref so the UI can link the duplicate: click the code to view THAT
+        // order's screenshot (by id) and open its details (by code). Empty when
+        // the proof is unique — a non-empty list is a fraud/mistake flag.
+        java.util.List<DuplicateOrderRef> duplicateOrders
 ) {
+
+    /**
+     * A reference to another order sharing this order's payment proof: its id (to
+     * fetch that order's screenshot) and its human order code (to display + link
+     * to its details). Duplicate-screenshot detection, V72.
+     */
+    public record DuplicateOrderRef(Long orderId, String orderCode) {
+    }
 
     /** Without a resolved salesperson name (null) — kept for callers that don't resolve it. */
     public static PaymentQueueRow from(OrderEntity order) {
@@ -43,7 +53,7 @@ public record PaymentQueueRow(
     }
 
     public static PaymentQueueRow from(OrderEntity order, String salespersonName,
-                                       java.util.List<String> duplicateOrderCodes) {
+                                       java.util.List<DuplicateOrderRef> duplicateOrders) {
         String key = order.getPaymentScreenshotKey();
         return new PaymentQueueRow(
                 order.getId(),
@@ -57,6 +67,6 @@ public record PaymentQueueRow(
                 order.getPaymentVerificationStatus(),
                 order.getCreatedAt(),
                 salespersonName,
-                duplicateOrderCodes == null ? java.util.List.of() : duplicateOrderCodes);
+                duplicateOrders == null ? java.util.List.of() : duplicateOrders);
     }
 }

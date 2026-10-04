@@ -193,6 +193,15 @@ class EndpointRoleGuardIntegrationTest {
                 List.of(Role.ADMIN));
     }
 
+    @Test
+    void updateDeliveryMethodIsAdminOnly() throws Exception {
+        assertRoleMatrix(
+                put("/api/admin/orders/5/delivery-method")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"deliveryMethod\":\"IN_HOUSE\"}"),
+                List.of(Role.ADMIN));
+    }
+
     // --- Pack / handover / dispatch: PACKING_USER + ADMIN (design §6.3–6.5) ------------
 
     @Test
@@ -964,6 +973,11 @@ class EndpointRoleGuardIntegrationTest {
         }
 
         @Override
+        public OrderResponse updateDeliveryMethod(Long id, String deliveryMethod, AuthPrincipal admin) {
+            return sampleOrderResponse();
+        }
+
+        @Override
         public OrderResponse reject(Long id, String reason, AuthPrincipal admin) {
             return sampleOrderResponse();
         }
@@ -1000,7 +1014,7 @@ class EndpointRoleGuardIntegrationTest {
                     new com.shifa.oms.order.dto.ChannelSummaryResponse.ChannelStats(
                             0L, java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO,
                             0L, java.math.BigDecimal.ZERO, java.util.List.of());
-            return new com.shifa.oms.order.dto.ChannelSummaryResponse(null, null, zero, zero, zero);
+            return new com.shifa.oms.order.dto.ChannelSummaryResponse(null, null, zero, zero, zero, zero);
         }
     }
 
@@ -1025,6 +1039,11 @@ class EndpointRoleGuardIntegrationTest {
         @Override
         public void manuallyAssign(Long orderId, String courierName, String awb) {
             // no-op
+        }
+
+        @Override
+        public void manuallyAssign(Long orderId, String courierName, String awb, String trackingUrl) {
+            // no-op (the controller now calls this overload)
         }
     }
 

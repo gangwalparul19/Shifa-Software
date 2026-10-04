@@ -45,6 +45,10 @@ import java.util.stream.Collectors;
  * @param lineItems           the ordered line items (name + quantity), never {@code null}
  * @param codApplicable       whether a COD amount applies (COD / Partially_Paid)
  * @param codAmount           the COD amount when applicable, else {@code null} (Req 10.2)
+ * @param shopifyOrderId      the originating Shopify order id for a Shopify-imported
+ *                            order (shown on the label as "Shopify Order Id#"), or
+ *                            {@code null} for a non-Shopify (sales) order — the line
+ *                            is then omitted entirely
  */
 public record InternalLabelContent(
         String orderCode,
@@ -65,7 +69,8 @@ public record InternalLabelContent(
         String sellerName,
         String pickupReturnAddress,
         String sellerGstin,
-        String sellerAddress) {
+        String sellerAddress,
+        String shopifyOrderId) {
 
     public InternalLabelContent {
         Objects.requireNonNull(orderCode, "orderCode");
@@ -81,7 +86,20 @@ public record InternalLabelContent(
             String paymentLabel, String sellerName, String pickupReturnAddress) {
         this(orderCode, courierName, courierBarcodeValue, customerName, customerMobile, addressLine,
                 city, state, postalCode, lineItems, codApplicable, codAmount, orderedOn, totalAmount,
-                paymentLabel, sellerName, pickupReturnAddress, null, null);
+                paymentLabel, sellerName, pickupReturnAddress, null, null, null);
+    }
+
+    /** Back-compat constructor without the Shopify order id (callers/tests before that field). */
+    public InternalLabelContent(
+            String orderCode, String courierName, String courierBarcodeValue,
+            String customerName, String customerMobile, String addressLine, String city,
+            String state, String postalCode, List<LabelLineItem> lineItems,
+            boolean codApplicable, BigDecimal codAmount, String orderedOn, BigDecimal totalAmount,
+            String paymentLabel, String sellerName, String pickupReturnAddress,
+            String sellerGstin, String sellerAddress) {
+        this(orderCode, courierName, courierBarcodeValue, customerName, customerMobile, addressLine,
+                city, state, postalCode, lineItems, codApplicable, codAmount, orderedOn, totalAmount,
+                paymentLabel, sellerName, pickupReturnAddress, sellerGstin, sellerAddress, null);
     }
 
     /** Whether a courier + AWB have been allotted, so the courier barcode section should render. */

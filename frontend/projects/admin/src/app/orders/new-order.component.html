@@ -26,6 +26,18 @@
       the same order number.
     }
   </div>
+} @else if (posMode()) {
+  <admin-page-header
+    title="Store Order (POS)"
+    subtitle="Walk-in counter sale — paid at the shop, no delivery partner."
+    [breadcrumbs]="[{ label: 'Orders', link: '/orders' }, { label: 'Store Order' }]"
+  />
+  <div class="alert alert-success anim-fade-up" role="status">
+    <i class="ti ti-building-store me-2"></i>
+    <strong>Store sale.</strong> No payment screenshot or delivery partner needed. Add products
+    (and any custom items like a consultation fee), take the counter payment — full or partial —
+    and save. A fully-paid sale is completed immediately.
+  </div>
 } @else {
   <admin-page-header
     title="Add New Order"
@@ -220,7 +232,7 @@
                placed today (possibly by another salesperson). Creation is blocked. -->
           <!-- Same-day order note: informational only. A repeat is blocked at submit
                ONLY if it includes the same item(s); different items are fine. -->
-          @if (sameDayDuplicate(); as dup) {
+          @if (!posMode() && sameDayDuplicate(); as dup) {
             <div class="alert alert-warning py-2 px-2 mt-2 mb-0 d-flex align-items-start" role="alert">
               <i class="ti ti-alert-triangle me-2 mt-1"></i>
               <div class="small">
@@ -391,7 +403,9 @@
           </div>
         }
 
-        <!-- Destination: India (structured address) vs Outside India (free text). -->
+        <!-- Destination: India (structured address) vs Outside India (free text).
+             Hidden for a store (POS) counter sale — there is no delivery. -->
+        @if (!posMode()) {
         <div class="col-12">
           <label class="form-label">Delivery destination</label>
           <div class="btn-group w-100 mb-1" role="group" aria-label="Delivery destination">
@@ -415,6 +429,7 @@
             </button>
           </div>
         </div>
+        }
 
         @if (isInternational()) {
           <!-- Outside India: destination country + a single free-text address. -->
@@ -440,8 +455,8 @@
         <!-- Delivery address (required by the create-order API). For an
              international order this is the full free-text address. -->
         <div class="col-12">
-          <label class="form-label required" for="addressLine">
-            {{ isInternational() ? 'Full address (free text)' : 'Delivery address' }}
+          <label class="form-label" [class.required]="!posMode()" for="addressLine">
+            {{ posMode() ? 'Delivery address (optional)' : isInternational() ? 'Full address (free text)' : 'Delivery address' }}
           </label>
           <textarea
             id="addressLine"
@@ -461,7 +476,7 @@
              Shown only for a domestic (India) order — hidden for Outside India. -->
         @if (!isInternational()) {
         <div class="col-7">
-          <label class="form-label required" for="city">City</label>
+          <label class="form-label" [class.required]="!posMode()" for="city">City</label>
           <input
             id="city"
             type="text"
@@ -476,7 +491,7 @@
           }
         </div>
         <div class="col-5">
-          <label class="form-label required" for="postalCode">Pincode</label>
+          <label class="form-label" [class.required]="!posMode()" for="postalCode">Pincode</label>
           <input
             id="postalCode"
             type="text"
@@ -503,7 +518,7 @@
           }
         </div>
         <div class="col-12">
-          <label class="form-label required" for="state">State</label>
+          <label class="form-label" [class.required]="!posMode()" for="state">State</label>
           <admin-state-typeahead
             formControlName="state"
             [options]="states()"
@@ -525,9 +540,17 @@
   <section class="shifa-no__section">
     <div class="shifa-no__titlerow">
       <h2 class="shifa-no__title mb-0">Order Details</h2>
-      <button type="button" class="btn btn-sm btn-outline-primary" (click)="addItem()">
-        <i class="ti ti-plus me-1"></i> Add item
-      </button>
+      <div class="btn-list">
+        @if (posMode()) {
+          <button type="button" class="btn btn-sm btn-outline-secondary" (click)="addCustomItem()"
+            title="Add a non-catalogue charge, e.g. a consultation fee">
+            <i class="ti ti-receipt-2 me-1"></i> Add custom item
+          </button>
+        }
+        <button type="button" class="btn btn-sm btn-outline-primary" (click)="addItem()">
+          <i class="ti ti-plus me-1"></i> Add item
+        </button>
+      </div>
     </div>
 
     <!-- Favorites: one-tap quick-add of best-sellers (Tranche 3) -->
@@ -568,18 +591,40 @@
               </button>
             </div>
 
-            <div class="mb-2">
-              <label class="form-label" [for]="'product-' + i">Product</label>
-              <admin-product-typeahead
-                [products]="products()"
-                [invalid]="itemInvalid(i, 'productId')"
-                formControlName="productId"
-                (selected)="onProductChange(i)"
-              />
-              @if (itemInvalid(i, 'productId')) {
-                <div class="text-danger small mt-1">Choose a product.</div>
-              }
-            </div>
+            @if (isAdHocLine(i)) {
+              <!-- Ad-hoc (store/POS) line: a non-catalogue charge, e.g. a consultation fee. -->
+              <div class="mb-2">
+                <label class="form-label required" [for]="'adhoc-name-' + i">
+                  <i class="ti ti-receipt-2 me-1"></i>Custom item
+                </label>
+                <input
+                  [id]="'adhoc-name-' + i"
+                  type="text"
+                  class="form-control"
+                  formControlName="name"
+                  maxlength="200"
+                  placeholder="e.g. Consultation fee"
+                  autocomplete="off"
+                  [class.is-invalid]="itemInvalid(i, 'name')"
+                />
+                @if (itemInvalid(i, 'name')) {
+                  <div class="text-danger small mt-1">Enter a name for this item.</div>
+                }
+              </div>
+            } @else {
+              <div class="mb-2">
+                <label class="form-label" [for]="'product-' + i">Product</label>
+                <admin-product-typeahead
+                  [products]="products()"
+                  [invalid]="itemInvalid(i, 'productId')"
+                  formControlName="productId"
+                  (selected)="onProductChange(i)"
+                />
+                @if (itemInvalid(i, 'productId')) {
+                  <div class="text-danger small mt-1">Choose a product.</div>
+                }
+              </div>
+            }
 
             <div class="shifa-line__grid">
               <div>

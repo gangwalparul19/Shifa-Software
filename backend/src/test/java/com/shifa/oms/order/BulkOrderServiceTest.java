@@ -128,6 +128,24 @@ class BulkOrderServiceTest {
     }
 
     @Test
+    void bulkApproveSkipsOrderWithUnverifiedPayment() {
+        OrderEntity verifiedOk = orderIn(1L, OrderStatus.PENDING_ADMIN_APPROVAL);
+        OrderEntity unverified = orderIn(2L, OrderStatus.PENDING_ADMIN_APPROVAL);
+        unverified.markPaymentPendingVerification(); // payment awaiting verification
+        lenient().when(orderRepository.findById(1L)).thenReturn(Optional.of(verifiedOk));
+        lenient().when(orderRepository.findById(2L)).thenReturn(Optional.of(unverified));
+
+        BulkActionResult result = service.bulkApprove(List.of(1L, 2L), admin);
+
+        assertThat(result.succeeded()).containsExactly(1L);
+        assertThat(result.skipped()).hasSize(1);
+        assertThat(result.skipped().get(0).id()).isEqualTo(2L);
+        assertThat(result.skipped().get(0).reason()).contains("Payment not verified");
+        // The unverified order was never approved.
+        assertThat(unverified.getOrderStatus()).isEqualTo(OrderStatus.PENDING_ADMIN_APPROVAL);
+    }
+
+    @Test
     void bulkApproveWithEmptyIdsReturnsEmptyResult() {
         BulkActionResult result = service.bulkApprove(List.of(), admin);
 

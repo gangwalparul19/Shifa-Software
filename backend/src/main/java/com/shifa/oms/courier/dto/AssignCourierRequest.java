@@ -14,10 +14,18 @@ import jakarta.validation.constraints.Size;
  * our own order-code barcode, which the packing/RTO scan flow resolves, so the
  * parcel stays scannable end-to-end without an AWB.
  *
+ * <p>{@code trackingUrl} is also optional (in-house delivery-partner feature): a
+ * local vendor that delivers an in-house parcel often supplies a ready-made
+ * tracking link once it books the shipment. Capturing it here makes the parcel
+ * trackable from the order drawer even when the partner has no public
+ * {@code {awb}} tracking template.
+ *
  * @param courierName the delivery partner's display name (matched/created by name)
  * @param awb         the AWB / tracking number, or {@code null}/blank when there is none
+ * @param trackingUrl the vendor's full tracking link, or {@code null}/blank when there is none
  */
 public record AssignCourierRequest(
         @NotBlank @Size(max = 150) String courierName,
-        @Size(max = 64) String awb) {
+        @Size(max = 64) String awb,
+        @Size(max = 500) String trackingUrl) {
 }

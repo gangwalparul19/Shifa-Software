@@ -33,8 +33,9 @@ public record ChannelDashboardResponse(
         Payments payments,
         Performance performance) {
 
-    /** Portal vs Shopify vs combined totals for the window (always all three). */
-    public record ChannelSplit(ChannelTotals all, ChannelTotals portal, ChannelTotals shopify) {
+    /** Portal vs Shopify vs Store vs combined totals for the window (always all four). */
+    public record ChannelSplit(ChannelTotals all, ChannelTotals portal, ChannelTotals shopify,
+                               ChannelTotals store) {
     }
 
     /** One channel's headline totals, with the previous-period comparison. */

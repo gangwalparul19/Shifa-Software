@@ -34,6 +34,8 @@ import {
   LEAD_SOURCE_OPTIONS,
   LeadSource,
   OrderDiscountType,
+  StoreOrderLineItem,
+  StoreOrderRequest,
   UpdateOrderRequest,
 } from './orders.model';
 
@@ -139,6 +141,17 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private resubmitActive = false;
   /** Whether the resubmitted order was payment-rejected (drives the banner copy). */
   protected readonly resubmitPaymentRejected = signal(false);
+
+  /**
+   * In-shop (POS / counter) mode (store-order feature, ADMIN only — set from
+   * {@code ?pos=1}). A walk-in sale: the customer pays at the counter and leaves
+   * with the goods, so this hides/relaxes the salesperson-flow concerns (payment
+   * screenshot, ₹100 minimum upfront, same-day-duplicate warning, India/Outside
+   * destination, on-behalf picker, delivery method), makes the address optional,
+   * and allows ad-hoc line items (e.g. a consultation fee). Submits to the
+   * dedicated store endpoint. Mutually exclusive with convert/reorder/resubmit.
+   */
+  protected readonly posMode = signal(false);
 
   /**
    * Abandoned-order recovery: the form is auto-saved to localStorage as the
@@ -347,7 +360,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   /** Whether the on-behalf picker should be shown at all. */
   protected readonly showOnBehalfPicker = computed(
-    () => this.isAdmin() && !this.convertMode() && !this.resubmitMode(),
+    () => this.isAdmin() && !this.convertMode() && !this.resubmitMode() && !this.posMode(),
   );
 
   /** True when the admin chose "on behalf of" but hasn't picked a person yet. */
@@ -415,7 +428,13 @@ export class NewOrderComponent implements OnInit, OnDestroy {
    * payment (≥ ₹100 / full) is ALWAYS collected, so a screenshot is always
    * required once there is an order total to pay for.
    */
-  protected readonly screenshotRequired = computed(() => this.orderTotalPaise() > 0);
+  protected readonly screenshotRequired = computed(
+    // POS counter sales never need a screenshot. On a resubmit the order already
+    // carries its original proof(s), so a fresh one is OPTIONAL — the user adds a
+    // new screenshot only when correcting the payment (common for a payment
+    // rejection), otherwise the existing proofs are kept.
+    () => !this.posMode() && !this.resubmitMode() && this.orderTotalPaise() > 0,
+  );
 
   /** Per-line totals in paise (rate × quantity), aligned to the item rows. */
   protected readonly lineTotals = computed(() =>
@@ -498,6 +517,12 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   /** Whether the entered amount meets the minimum-upfront policy (blocks submit). */
   protected readonly paymentBelowMinimum = computed<boolean>(() => {
+    // A store (POS) counter sale has no ₹100 minimum-upfront rule — the admin may
+    // take any part payment at the counter. A resubmit is a rework of an order that
+    // already cleared the min-upfront policy at creation, so it is not re-blocked.
+    if (this.posMode() || this.resubmitMode()) {
+      return false;
+    }
     const total = this.orderTotalPaise();
     if (total <= 0) {
       return false; // total handled separately; nothing to validate yet
@@ -559,6 +584,18 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       });
     }
 
+    // Store (POS / counter) mode (ADMIN only, ?pos=1): a walk-in sale. Relax the
+    // address to optional (no delivery) and keep the destination domestic — the
+    // salesperson-flow concerns (screenshot/min-upfront/duplicate/on-behalf) are
+    // switched off via posMode() in their computeds. Mutually exclusive with the
+    // other modes.
+    const posParam = this.route.snapshot.queryParamMap.get('pos');
+    if (this.isAdmin() && (posParam === '1' || posParam === 'true')) {
+      this.posMode.set(true);
+      this.enterPosMode();
+      return;
+    }
+
     // Convert-from-lead mode: seed customer + source from the lead and lock them.
     const leadIdParam = this.route.snapshot.queryParamMap.get('leadId');
     const leadId = leadIdParam ? Number(leadIdParam) : NaN;
@@ -609,7 +646,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   /** Persists the current form to localStorage (skipped in convert/reorder mode). */
   private saveDraft(): void {
-    if (this.convertMode() || this.reorderActive || this.resubmitActive || this.submitting()) {
+    if (this.convertMode() || this.reorderActive || this.resubmitActive
+        || this.posMode() || this.submitting()) {
       return;
     }
     try {
@@ -774,6 +812,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
             buyerGstin: o.buyerGstin ?? '',
             discountType: (o.discountType as OrderDiscountType | undefined) ?? '',
             discountValue: o.discountValue != null ? Number(o.discountValue) : 0,
+            // Prefill the amount already received so a payment-rejected rework shows
+            // the current figure; the user corrects it + attaches a fresh screenshot.
+            amountReceived: o.amountReceived != null ? Number(o.amountReceived) : 0,
           },
           { emitEvent: false },
         );
@@ -1054,11 +1095,59 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       productId: [null as number | null, [Validators.required]],
       quantity: [1, [Validators.required, Validators.min(1), Validators.max(999)]],
       rate: [null as number | null, [Validators.min(0)]],
+      // Ad-hoc (store/POS only) line fields — a non-catalogue item such as a
+      // consultation fee. `adHoc` flags the line; `name`/`gstRate` carry its
+      // display name + GST. Blank/false on every normal catalogue line.
+      adHoc: [false],
+      name: ['' as string, [Validators.maxLength(200)]],
+      gstRate: [0 as number | null, [Validators.min(0)]],
     });
   }
 
   addItem(): void {
     this.items.push(this.newItem());
+  }
+
+  /**
+   * Adds an ad-hoc (non-catalogue) line for a store/POS sale — e.g. a
+   * consultation fee or a one-off charge. The line has no product; the admin
+   * types a name + price (and optionally a GST rate). The product-id validator is
+   * cleared so the line is valid without a catalogue product.
+   */
+  addCustomItem(): void {
+    const g = this.newItem();
+    g.controls['adHoc'].setValue(true);
+    g.controls['productId'].clearValidators();
+    g.controls['productId'].updateValueAndValidity();
+    g.controls['name'].addValidators(Validators.required);
+    g.controls['name'].updateValueAndValidity();
+    g.controls['rate'].addValidators(Validators.required);
+    g.controls['rate'].updateValueAndValidity();
+    this.items.push(g);
+  }
+
+  /** Whether a given line (by index) is an ad-hoc store item. */
+  protected isAdHocLine(i: number): boolean {
+    return this.items.at(i)?.controls['adHoc']?.value === true;
+  }
+
+  /**
+   * Enters store (POS) mode: a walk-in counter sale has no delivery, so the
+   * shipping address is optional. Clear the required/pattern validators on the
+   * address controls (keep max-length), force the domestic destination, and drop
+   * any same-day-duplicate warning (not applicable to a counter sale).
+   */
+  private enterPosMode(): void {
+    this.destination.set('india');
+    this.sameDayDuplicate.set(null);
+    this.form.controls.addressLine.setValidators([Validators.maxLength(250)]);
+    this.form.controls.city.setValidators([Validators.maxLength(100)]);
+    this.form.controls.state.setValidators([Validators.maxLength(100)]);
+    this.form.controls.postalCode.setValidators([Validators.pattern(/^(\d{6})?$/)]);
+    this.form.controls.addressLine.updateValueAndValidity();
+    this.form.controls.city.updateValueAndValidity();
+    this.form.controls.state.updateValueAndValidity();
+    this.form.controls.postalCode.updateValueAndValidity();
   }
 
   // --- Favorites (quick-add) + frequently-bought-together (Tranche 3) ------
@@ -1582,6 +1671,11 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       return;
     }
 
+    if (this.posMode()) {
+      this.submitStore(raw);
+      return;
+    }
+
     const email = this.form.controls.customerEmail.value.trim();
     const altMobile = this.form.controls.alternateMobile.value.trim();
     const note = this.form.controls.leadSourceNote.value.trim();
@@ -1710,6 +1804,20 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       ...(raw.discountType
         ? { discountType: raw.discountType as OrderDiscountType, discountValue: raw.discountValue || 0 }
         : {}),
+      // Payment correction on rework: when the user attached a NEW payment
+      // screenshot (common for a payment-rejected order), send the corrected
+      // amount received + the new proof key(s) so the fresh proof is stored,
+      // becomes the primary, and re-enters the payment-verification queue. With
+      // no new screenshot this stays a plain field edit (amount/proofs untouched).
+      ...(this.screenshotKey()
+        ? {
+            amountReceived: raw.amountReceived,
+            paymentScreenshotKey: this.screenshotKey()!,
+            ...(this.extraScreenshotKeys().length > 0
+              ? { paymentScreenshotKeys: this.extraScreenshotKeys() }
+              : {}),
+          }
+        : {}),
     };
 
     this.submitting.set(true);
@@ -1793,6 +1901,75 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * Submits an in-shop (POS / counter) store order (store-order feature). No
+   * payment screenshot, no delivery partner, address optional, ad-hoc line items
+   * allowed. A fully-paid sale is auto-approved + closed by the server; a partial
+   * payment leaves it approved with the balance tracked. Needs a connection (the
+   * server records the counter payment immediately — no offline queue).
+   */
+  private submitStore(raw: ReturnType<NewOrderComponent['snapshot']>): void {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      this.toasts.error('You are offline. Placing a store order needs a connection — please try again when back online.');
+      return;
+    }
+    const email = this.form.controls.customerEmail.value.trim();
+    const altMobile = this.form.controls.alternateMobile.value.trim();
+    const orderNotes = this.form.controls.notes.value.trim();
+    const buyerGstin = this.form.controls.buyerGstin.value.trim().toUpperCase();
+    const addressLine = this.form.controls.addressLine.value.trim();
+    const city = this.form.controls.city.value.trim();
+    const state = this.form.controls.state.value.trim();
+    const postalCode = this.form.controls.postalCode.value.trim();
+
+    const payload: StoreOrderRequest = {
+      customerName: this.form.controls.customerName.value.trim(),
+      customerMobile: this.form.controls.customerMobile.value.trim(),
+      ...(altMobile ? { alternateMobile: altMobile } : {}),
+      ...(email ? { customerEmail: email } : {}),
+      ...(addressLine ? { addressLine } : {}),
+      ...(city ? { city } : {}),
+      ...(state ? { state } : {}),
+      ...(postalCode ? { postalCode } : {}),
+      items: raw.items.map<StoreOrderLineItem>((it) =>
+        it.adHoc
+          ? {
+              name: (it.name || '').trim(),
+              quantity: it.quantity,
+              rate: it.rate ?? 0,
+              gstRate: it.gstRate ?? 0,
+            }
+          : {
+              productId: it.productId as number,
+              quantity: it.quantity,
+              ...(it.rate != null ? { rate: it.rate } : {}),
+            },
+      ),
+      amountReceived: raw.amountReceived,
+      ...(orderNotes ? { notes: orderNotes } : {}),
+      ...(buyerGstin ? { buyerGstin } : {}),
+      ...(raw.discountType
+        ? { discountType: raw.discountType as OrderDiscountType, discountValue: raw.discountValue || 0 }
+        : {}),
+    };
+
+    this.submitting.set(true);
+    this.orders.createStoreOrder(payload).subscribe({
+      next: (order) => {
+        this.submitting.set(false);
+        this.toasts.success(`Store order ${order.orderCode} created`);
+        void this.router.navigate(['/orders'], { queryParams: { q: order.orderCode } });
+      },
+      error: (err: HttpErrorResponse) => {
+        this.submitting.set(false);
+        const body = err.error as ApiError | undefined;
+        const details = body?.details ?? [];
+        this.serverErrors.set(details.length ? details : []);
+        this.toasts.error(this.messageOf(err) ?? 'Could not create the store order. Please try again.');
+      },
+    });
+  }
+
   cancel(): void {
     void this.router.navigate([this.convertMode() ? '/leads' : '/orders']);
   }
@@ -1823,7 +2000,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     }
   }
 
-  itemInvalid(index: number, name: 'productId' | 'quantity' | 'rate'): boolean {
+  itemInvalid(index: number, name: 'productId' | 'quantity' | 'rate' | 'name' | 'gstRate'): boolean {
     const control = this.items.at(index).controls[name];
     return control.invalid && (control.touched || this.submitAttempted());
   }
@@ -1835,7 +2012,14 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   /** A plain snapshot of the fields that drive totals + the payload. */
   private snapshot(): {
-    items: { productId: number | null; quantity: number; rate: number | null }[];
+    items: {
+      productId: number | null;
+      quantity: number;
+      rate: number | null;
+      adHoc: boolean;
+      name: string;
+      gstRate: number | null;
+    }[];
     amountReceived: number;
     leadSource: '' | LeadSource;
     discountType: '' | OrderDiscountType;
@@ -1847,6 +2031,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
         productId: (it['productId'] ?? null) as number | null,
         quantity: Number(it['quantity']) || 0,
         rate: it['rate'] === null || it['rate'] === undefined ? null : Number(it['rate']),
+        adHoc: it['adHoc'] === true,
+        name: ((it['name'] ?? '') as string),
+        gstRate: it['gstRate'] === null || it['gstRate'] === undefined ? null : Number(it['gstRate']),
       })),
       amountReceived: Number(raw.amountReceived) || 0,
       leadSource: raw.leadSource,

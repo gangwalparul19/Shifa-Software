@@ -26,6 +26,27 @@ class CourierStatusMapperTest {
     }
 
     @Test
+    void mapsExtendedDelhiveryQuikShipVocabulary() {
+        // Richer courier scans (actual movement) must advance the order.
+        assertThat(CourierStatusMapper.toInternal("Shipped")).contains(OrderStatus.IN_TRANSIT);
+        assertThat(CourierStatusMapper.toInternal("Reached at Hub")).contains(OrderStatus.IN_TRANSIT);
+        assertThat(CourierStatusMapper.toInternal("OFD")).contains(OrderStatus.OUT_FOR_DELIVERY);
+        assertThat(CourierStatusMapper.toInternal("Delivered to Consignee")).contains(OrderStatus.DELIVERED);
+    }
+
+    @Test
+    void preMovementLabelsStayAtTrackingIdAssigned() {
+        // "Manifested" / "Shipment Created" / "Pickup Scheduled" are pre-pickup —
+        // the label exists but the parcel hasn't moved, so these are NOT mapped and
+        // the order holds at Courier_Assigned ("Tracking ID Assigned").
+        assertThat(CourierStatusMapper.toInternal("Manifested")).isEmpty();
+        assertThat(CourierStatusMapper.toInternal("Shipment Created")).isEmpty();
+        assertThat(CourierStatusMapper.toInternal("Pickup Scheduled")).isEmpty();
+        assertThat(CourierStatusMapper.toInternal("Shipment Booked")).isEmpty();
+        assertThat(CourierStatusMapper.toInternal("Pickup Assigned")).isEmpty();
+    }
+
+    @Test
     void isCaseAndSeparatorInsensitive() {
         assertThat(CourierStatusMapper.toInternal("Out-For-Delivery")).contains(OrderStatus.OUT_FOR_DELIVERY);
         assertThat(CourierStatusMapper.toInternal("IN TRANSIT")).contains(OrderStatus.IN_TRANSIT);

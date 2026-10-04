@@ -34,16 +34,51 @@ public final class CourierStatusMapper {
     private static final Map<String, OrderStatus> MAPPING = Map.ofEntries(
             Map.entry("pickup", OrderStatus.DISPATCHED),
             Map.entry("picked_up", OrderStatus.DISPATCHED),
+            Map.entry("picked", OrderStatus.DISPATCHED),
+            Map.entry("pickup_done", OrderStatus.DISPATCHED),
+            Map.entry("pickup_complete", OrderStatus.DISPATCHED),
+            Map.entry("pickup_completed", OrderStatus.DISPATCHED),
             // QuikShipX "Ready For Pickup" precedes the courier scan; treat it as
             // dispatched so a QuikShipX-tracked order advances past Courier_Assigned.
             Map.entry("ready_for_pickup", OrderStatus.DISPATCHED),
             Map.entry("dispatched", OrderStatus.DISPATCHED),
+            // NOTE: pre-movement labels — "Manifested" / "Manifest" / "Shipment
+            // Created" / "Shipment Booked" / "Pickup Scheduled" / "Pickup Assigned"
+            // — are deliberately NOT mapped. The AWB/label exists but the courier
+            // has not actually picked the parcel up yet, so our portal must stay at
+            // "Tracking ID Assigned" (COURIER_ASSIGNED). The order only advances
+            // once a real pickup / in-transit scan arrives (tokens below). An
+            // unmapped token is ignored, which keeps the current status.
+            // In-transit vocabulary across Delhivery/QuikShipX scans.
             Map.entry("in_transit", OrderStatus.IN_TRANSIT),
+            Map.entry("intransit", OrderStatus.IN_TRANSIT),
+            Map.entry("transit", OrderStatus.IN_TRANSIT),
+            Map.entry("shipped", OrderStatus.IN_TRANSIT),
+            Map.entry("in_scan", OrderStatus.IN_TRANSIT),
+            Map.entry("bag_added", OrderStatus.IN_TRANSIT),
+            Map.entry("bagged", OrderStatus.IN_TRANSIT),
+            Map.entry("received_at_facility", OrderStatus.IN_TRANSIT),
+            Map.entry("reached_at_hub", OrderStatus.IN_TRANSIT),
+            Map.entry("reached_hub", OrderStatus.IN_TRANSIT),
+            Map.entry("reached_destination", OrderStatus.IN_TRANSIT),
+            Map.entry("reached", OrderStatus.IN_TRANSIT),
+            Map.entry("arrived_at_hub", OrderStatus.IN_TRANSIT),
+            Map.entry("facility_received", OrderStatus.IN_TRANSIT),
+            // Out-for-delivery vocabulary.
             Map.entry("out_for_delivery", OrderStatus.OUT_FOR_DELIVERY),
+            Map.entry("ofd", OrderStatus.OUT_FOR_DELIVERY),
+            Map.entry("out_for_delivered", OrderStatus.OUT_FOR_DELIVERY),
+            Map.entry("outfordelivery", OrderStatus.OUT_FOR_DELIVERY),
+            // Delivered vocabulary.
             Map.entry("delivered", OrderStatus.DELIVERED),
+            Map.entry("delivered_to_consignee", OrderStatus.DELIVERED),
+            Map.entry("delivery_successful", OrderStatus.DELIVERED),
+            Map.entry("delivery_success", OrderStatus.DELIVERED),
             Map.entry("return", OrderStatus.RTO),
             Map.entry("returned", OrderStatus.RTO),
             Map.entry("rto", OrderStatus.RTO),
+            Map.entry("rto_delivered", OrderStatus.RTO),
+            Map.entry("rto_in_transit", OrderStatus.RTO),
             Map.entry("lost", OrderStatus.REDISPATCH),
             Map.entry("damaged", OrderStatus.REDISPATCH),
             Map.entry("missing", OrderStatus.REDISPATCH),
@@ -55,7 +90,8 @@ public final class CourierStatusMapper {
             Map.entry("delivery_failed", OrderStatus.DELIVERY_FAILED),
             Map.entry("failed", OrderStatus.DELIVERY_FAILED),
             Map.entry("undelivered", OrderStatus.DELIVERY_FAILED),
-            Map.entry("attempt_failed", OrderStatus.DELIVERY_FAILED));
+            Map.entry("attempt_failed", OrderStatus.DELIVERY_FAILED),
+            Map.entry("not_delivered", OrderStatus.DELIVERY_FAILED));
 
     private CourierStatusMapper() {
     }

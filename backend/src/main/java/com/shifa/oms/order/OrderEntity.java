@@ -70,6 +70,18 @@ public class OrderEntity {
     private String shopifyOrderId;
 
     /**
+     * The reason QuikShipX permanently rejected this order (courier-failure
+     * re-route feature): e.g. "585216 is non serviceable pincode", or any
+     * create/confirm/allot failure that exhausted retries. Set by the QuikShipX
+     * drainer on a permanent failure so it is visible on the order-detail drawer;
+     * cleared on a successful (re)publish/allot or when the order is switched to
+     * in-house delivery. Null when there has been no permanent QuikShipX failure.
+     * Mapped to {@code orders.quikshipx_failure_reason} (V75).
+     */
+    @Column(name = "quikshipx_failure_reason", length = 500)
+    private String quikShipXFailureReason;
+
+    /**
      * How this order is fulfilled for last-mile delivery — QuikShipX (default) or
      * Shifa's own in-house team. Distinct from {@link #source}. Mapped to
      * {@code orders.delivery_method} (V60).
@@ -403,6 +415,24 @@ public class OrderEntity {
         }
     }
 
+    /**
+     * Attaches a payment proof AND makes it the primary one (rework / payment-
+     * rejected resubmit). Unlike {@link #addPaymentScreenshot}, the proof is
+     * mirrored onto the legacy {@link #paymentScreenshotKey} column even when the
+     * order already has older proofs — so when a reworked order is re-reviewed,
+     * the fresh proof is the one surfaced by the screenshot-required rule and the
+     * legacy single-proof viewers. The older proofs stay in the list as history.
+     */
+    public void addPaymentScreenshotAsPrimary(String storageKey, String contentHash) {
+        if (storageKey == null || storageKey.isBlank()) {
+            return;
+        }
+        int next = this.paymentScreenshots.size();
+        this.paymentScreenshots.add(
+                new OrderPaymentScreenshot(storageKey, null, null, null, contentHash, next));
+        this.paymentScreenshotKey = storageKey;
+    }
+
     /** Every payment proof attached to this order, in upload order (V65). */
     public List<OrderPaymentScreenshot> getPaymentScreenshots() {
         return paymentScreenshots;
@@ -575,6 +605,24 @@ public class OrderEntity {
     /** Records the originating Shopify order id (idempotency key for the import webhook). */
     public void setShopifyOrderId(String shopifyOrderId) {
         this.shopifyOrderId = shopifyOrderId;
+    }
+
+    /** The reason QuikShipX permanently rejected this order, or null (V75). */
+    public String getQuikShipXFailureReason() {
+        return quikShipXFailureReason;
+    }
+
+    /**
+     * Records (or clears, when {@code null}/blank) the QuikShipX permanent-failure
+     * reason. Trimmed and capped to the column length (500).
+     */
+    public void setQuikShipXFailureReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            this.quikShipXFailureReason = null;
+            return;
+        }
+        String trimmed = reason.trim();
+        this.quikShipXFailureReason = trimmed.length() > 500 ? trimmed.substring(0, 500) : trimmed;
     }
 
     public DeliveryMethod getDeliveryMethod() {

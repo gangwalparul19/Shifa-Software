@@ -39,6 +39,14 @@ public class OrderShipment {
     public static final String STATUS_TRACKING_ID_ASSIGNED = "Tracking ID Assigned";
     /** QuikShipX status after the shipment is cancelled (order-cancellation feature). */
     public static final String STATUS_CANCELLED = "Cancelled";
+    /**
+     * QuikShipX permanently rejected the shipment (e.g. non-serviceable pincode)
+     * so it never got a tracking id (courier-failure re-route feature). Shown as a
+     * clear, unmistakable status on the Orders list + drawer so an admin/packer
+     * sees at a glance that the order needs re-routing to in-house delivery,
+     * instead of a misleading "Confirmed".
+     */
+    public static final String STATUS_FAILED = "Shipping Failed";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -163,6 +171,25 @@ public class OrderShipment {
     /** Whether the shipment has been cancelled on our side. */
     public boolean isCancelled() {
         return cancelledAt != null;
+    }
+
+    /**
+     * Marks the shipment's displayed status as {@link #STATUS_FAILED} after a
+     * permanent QuikShipX failure (courier-failure re-route feature), so the
+     * Orders list + drawer show "Shipping Failed" instead of a stale "Confirmed".
+     * Does NOT touch {@link #cancelledAt} (the shipment wasn't cancelled on our
+     * side — QuikShipX rejected it). A no-op once a tracking id has been allotted
+     * (a successful shipment must never be downgraded to failed).
+     */
+    public void recordFailed() {
+        if (awb == null || awb.isBlank()) {
+            this.quikShipXStatus = STATUS_FAILED;
+        }
+    }
+
+    /** Whether the shipment is in the permanent-failure display state. */
+    public boolean isFailed() {
+        return STATUS_FAILED.equals(quikShipXStatus);
     }
 
     /** Records the latest raw tracking status seen and the sync time. */

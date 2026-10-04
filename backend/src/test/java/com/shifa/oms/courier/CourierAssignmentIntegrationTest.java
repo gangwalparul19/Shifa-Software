@@ -158,6 +158,50 @@ class CourierAssignmentIntegrationTest {
         assertThat(savedRecord.getShippingLabelKey()).isEqualTo("labels/shipping/old.pdf");
     }
 
+    /**
+     * In-house delivery-partner feature: onboarding a new partner on the fly and
+     * capturing a vendor-provided tracking id + ready-made tracking link. The link
+     * is persisted verbatim on the record (so the order drawer can open it) and the
+     * order's status is untouched.
+     */
+    @Test
+    void manuallyAssignRecordsVendorTrackingIdAndLink() {
+        OrderEntity order = handedOverCodOrder();
+        order.setOrderStatus(OrderStatus.HANDED_TO_DELIVERY);
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        // A partner not seen before is onboarded (resolveCompany creates it).
+        when(courierCompanyRepository.findFirstByName("Local Runner"))
+                .thenReturn(Optional.empty());
+        when(courierCompanyRepository.save(any(CourierCompany.class)))
+                .thenAnswer(i -> i.getArgument(0));
+
+        assignmentService.manuallyAssign(
+                10L, "Local Runner", "LR-55", "https://track.localrunner.in/LR-55");
+
+        assertThat(savedRecord).isNotNull();
+        assertThat(savedRecord.getAwb()).isEqualTo("LR-55");
+        assertThat(savedRecord.getTrackingUrl()).isEqualTo("https://track.localrunner.in/LR-55");
+        assertThat(order.getStatusHistory()).isEmpty(); // status untouched
+    }
+
+    /**
+     * A vendor may give a tracking link but no clean AWB — the link is still
+     * captured so the parcel is trackable.
+     */
+    @Test
+    void manuallyAssignAcceptsATrackingLinkWithoutAnAwb() {
+        OrderEntity order = handedOverCodOrder();
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        when(courierCompanyRepository.findFirstByName("Local Runner"))
+                .thenReturn(Optional.of(new CourierCompany("Local Runner", null)));
+
+        assignmentService.manuallyAssign(
+                10L, "Local Runner", "  ", "https://track.localrunner.in/abc");
+
+        assertThat(savedRecord.getAwb()).isNull();
+        assertThat(savedRecord.getTrackingUrl()).isEqualTo("https://track.localrunner.in/abc");
+    }
+
     @Test
     void manuallyAssignRejectsBlankCourierName() {
         assertThat(

@@ -26,6 +26,8 @@ import com.shifa.oms.order.dto.LineItemRequest;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.order.dto.PaymentScreenshotResponse;
+import com.shifa.oms.order.dto.StoreLineItemRequest;
+import com.shifa.oms.order.dto.StoreOrderRequest;
 import com.shifa.oms.order.dto.UpdateOrderRequest;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.platform.storage.StorageService;
@@ -75,6 +77,8 @@ public class OrderService {
     private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
     private static final String SOURCE_SALESPERSON = "SALESPERSON";
+    /** Actor/source label recorded on an in-shop (POS / store) order's history rows. */
+    private static final String SOURCE_STORE = "STORE";
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
@@ -373,6 +377,164 @@ public class OrderService {
         // blocks or fails the punch.
         publishToQuikShipX(saved);
         return OrderResponse.from(saved);
+    }
+
+    /**
+     * Creates an in-shop (POS / counter) order for a walk-in customer
+     * (store-order feature, ADMIN only). A store order deliberately differs from a
+     * salesperson order:
+     * <ul>
+     *   <li>it is always a {@code COUNTER_SALE} → {@code IN_HOUSE}: no QuikShipX,
+     *       no courier assignment, no delivery partner;</li>
+     *   <li>NO payment screenshot is required (cash/UPI taken at the counter), the
+     *       same-day-duplicate guard does not apply (a walk-in may buy the same item
+     *       again), there is no ₹100 minimum-upfront rule, and the salesperson price
+     *       band is not enforced (the admin sets the counter price);</li>
+     *   <li>line items may be ad-hoc (a consultation fee, a one-off charge) as well
+     *       as catalogue products;</li>
+     *   <li>the address is optional (a walk-in may give only name + phone);</li>
+     *   <li>it is tagged {@link OrderSource#STORE} so it shows as its own channel on
+     *       the dashboard.</li>
+     * </ul>
+     * A fully-paid store order is auto-approved and walked to {@code CLOSED}
+     * immediately (the customer paid and left with the goods); a partial payment
+     * leaves it {@code APPROVED} with the balance tracked as the customer
+     * outstanding.
+     *
+     * @param request the POS order payload
+     * @param admin   the acting ADMIN (the create endpoint is ADMIN-only)
+     * @return the created (and possibly auto-closed) order
+     */
+    @Transactional
+    public OrderResponse createStoreOrder(StoreOrderRequest request, AuthPrincipal admin) {
+        List<PricedLine> priced = priceStoreLines(request.items());
+
+        OrderPricing.DiscountSpec discountSpec = OrderPricing.DiscountSpec.of(
+                DiscountType.from(request.discountType()), request.discountValue());
+        OrderPricing.PricedOrder pricedOrder = OrderPricing.compute(toPricingLines(priced), discountSpec);
+        Money total = Money.of(pricedOrder.total());
+        requirePositiveTotal(total);
+
+        // Payment: full or partial, taken at the counter. NO screenshot, NO minimum
+        // upfront, NO same-day-duplicate check (all salesperson-flow guards that make
+        // no sense for a walk-in sale). A sub-rupee overage from rounding is absorbed,
+        // exactly as for a salesperson order; a genuine over-payment is still rejected
+        // by classify().
+        Money received = Money.of(request.amountReceived());
+        Money overage = received.subtract(total);
+        if (overage.compareTo(Money.ZERO) > 0 && overage.compareTo(Money.of(1L)) < 0) {
+            received = total;
+        }
+        PaymentCalculation calc = PaymentCalculator.classify(total, received);
+
+        // Address is optional for a counter sale (no delivery) — store whatever was
+        // given, defaulting blanks so the NOT-NULL columns are satisfied.
+        OrderEntity order = new OrderEntity(
+                orderCodeGenerator.generate(orderRepository::existsByOrderCode),
+                OrderSource.STORE,
+                admin.userId(),
+                request.customerName(),
+                request.customerMobile(),
+                blankToDash(request.addressLine()),
+                trimToEmpty(request.city()),
+                trimToEmpty(request.state()),
+                trimToEmpty(request.postalCode()));
+
+        // Always a counter sale → in-house (no courier partner ever).
+        order.setLeadSource(LeadSource.COUNTER_SALE);
+        order.setDeliveryMethod(DeliveryMethod.IN_HOUSE);
+        order.setCustomerEmail(request.customerEmail());
+        order.setNotes(trimToNull(request.notes()));
+        order.setAlternateMobile(trimToNull(request.alternateMobile()));
+
+        String buyerGstin = trimToNull(request.buyerGstin());
+        if (buyerGstin != null && !Gstin.isValid(buyerGstin)) {
+            throw new ValidationException(
+                    "buyerGstin must be a valid 15-character GSTIN.");
+        }
+        order.setBuyerGstin(buyerGstin);
+
+        // A counter sale has no payment to verify online (the money is in hand), so
+        // it never enters the payment-verification queue — do NOT mark it pending.
+
+        populateAggregate(order, priced, calc, java.util.List.of(), admin.username(), SOURCE_STORE);
+
+        DiscountType discountType = discountSpec.type();
+        order.applyOrderDiscount(
+                discountType == DiscountType.NONE ? null : discountType.name(),
+                discountType == DiscountType.NONE ? null : discountSpec.value(),
+                pricedOrder.discount());
+
+        reserveStock(priced, admin.userId(), order.getOrderCode());
+
+        OrderEntity saved = orderRepository.save(order);
+        // Fast-forward past the approval queue: a counter sale is already decided.
+        // Fully paid → walk all the way to CLOSED; partial → leave at APPROVED with
+        // the balance tracked. Best-effort; never fails the sale.
+        fastForwardStoreOrder(saved, calc);
+        return OrderResponse.from(orderRepository.save(saved));
+    }
+
+    /**
+     * Fast-forwards a just-created store order past the approval queue (store-order
+     * feature). Walks the ADMIN-authorized in-house lifecycle via the central
+     * {@link OrderWorkflowService}, so each hop records a history row:
+     * <ul>
+     *   <li>always: {@code PENDING_ADMIN_APPROVAL → APPROVED} (+ ledger post), so a
+     *       counter sale never waits for manual approval;</li>
+     *   <li>fully paid (no balance to collect): continue
+     *       {@code APPROVED → LABEL_GENERATED → PACKED → HANDED_TO_DELIVERY →
+     *       DELIVERED → CLOSED}, landing as a completed sale with nothing
+     *       outstanding;</li>
+     *   <li>partial: stop at {@code APPROVED} — the balance stays as the customer
+     *       outstanding so it is tracked as money owed.</li>
+     * </ul>
+     * Requires the workflow + outbox collaborators (present under the Spring
+     * constructor; null under the legacy test constructor, in which case this is a
+     * no-op and the order stays {@code PENDING_ADMIN_APPROVAL}). Best-effort: a
+     * hiccup leaves the order at the furthest legal state reached and never fails
+     * the counter sale.
+     */
+    private void fastForwardStoreOrder(OrderEntity order, PaymentCalculation calc) {
+        if (orderWorkflowService == null) {
+            return; // not wired (unit tests) → leave pending
+        }
+        Actor actor = Actor.user(SOURCE_STORE, Role.ADMIN, SOURCE_STORE);
+        try {
+            orderWorkflowService.applyTransition(order, OrderStatus.APPROVED, actor);
+            if (outboxEventPublisher != null) {
+                outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_ORDER, order.getId());
+            }
+            boolean fullyPaid = calc.paymentStatus() != PaymentStatus.COD && calc.codAmount().isZero();
+            if (fullyPaid) {
+                // Walk straight to a completed, closed sale (prepaid → CLOSED).
+                orderWorkflowService.applyTransition(order, OrderStatus.LABEL_GENERATED, actor);
+                orderWorkflowService.applyTransition(order, OrderStatus.PACKED, actor);
+                orderWorkflowService.applyTransition(order, OrderStatus.HANDED_TO_DELIVERY, actor);
+                orderWorkflowService.applyTransition(order, OrderStatus.DELIVERED, actor);
+                orderWorkflowService.applyTransition(order, OrderStatus.CLOSED, actor);
+                order.setCustomerOutstanding(java.math.BigDecimal.ZERO);
+                // Book the counter cash to the ledger dated now (same source type as a
+                // normal delivery receipt would use for an in-house COD, but here it is
+                // a fully-paid sale so the sales voucher already covers it).
+            }
+        } catch (RuntimeException e) {
+            // A counter sale must never fail because a fast-forward hop was blocked;
+            // the order simply stays at the furthest legal state reached.
+            log.warn("Store-order fast-forward stopped early for {}: {}",
+                    order.getOrderCode(), e.getMessage());
+        }
+    }
+
+    /** Trims to empty string (for optional NOT-NULL address columns on a counter sale). */
+    private static String trimToEmpty(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    /** Address line for a counter sale: the given value, or a dash when none was captured. */
+    private static String blankToDash(String value) {
+        String trimmed = value == null ? "" : value.trim();
+        return trimmed.isEmpty() ? "-" : trimmed;
     }
 
     /** Enqueues the admin "order needs approval" nudge for a newly punched pending order. */
@@ -699,10 +861,18 @@ public class OrderService {
         Money total = Money.of(pricedOrder.total());
         requirePositiveTotal(total);
 
-        // Re-run the payment classification against the ALREADY-received amount
-        // (edit never touches payment capture) so remaining/COD stay correct
-        // if the re-priced total differs from the original.
-        PaymentCalculation calc = PaymentCalculator.classify(total, Money.of(order.getAmountReceived()));
+        // Payment: use the corrected amount received when the request supplies one
+        // (a rework may fix the amount), else keep what was already received. Then
+        // re-classify against the (possibly re-priced) total so remaining/COD stay
+        // correct. A sub-rupee overage from rounding is absorbed, as at creation.
+        Money received = request.amountReceived() != null
+                ? Money.of(request.amountReceived())
+                : Money.of(order.getAmountReceived());
+        Money overage = received.subtract(total);
+        if (overage.compareTo(Money.ZERO) > 0 && overage.compareTo(Money.of(1L)) < 0) {
+            received = total;
+        }
+        PaymentCalculation calc = PaymentCalculator.classify(total, received);
 
         String buyerGstin = trimToNull(request.buyerGstin());
         if (buyerGstin != null && !Gstin.isValid(buyerGstin)) {
@@ -747,8 +917,45 @@ public class OrderService {
                 discountType == DiscountType.NONE ? null : discountSpec.value(),
                 pricedOrder.discount());
 
+        // Attach a NEW payment proof when the rework supplied one (fix for the
+        // bug where a screenshot added on a rejected-order resubmit was dropped):
+        // the newest proof becomes the primary (so the re-review + legacy viewers
+        // surface the fresh one), while older proofs stay in the list as history.
+        // A new primary proof is also recorded on the payment row for consistency.
+        List<String> newScreenshotKeys = editScreenshotKeys(request);
+        if (!newScreenshotKeys.isEmpty()) {
+            for (int i = 0; i < newScreenshotKeys.size(); i++) {
+                String key = newScreenshotKeys.get(i);
+                if (i == 0) {
+                    order.addPaymentScreenshotAsPrimary(key, screenshotHash(key));
+                } else {
+                    order.addPaymentScreenshot(key, null, null, null, screenshotHash(key));
+                }
+            }
+            if (!calc.amountReceived().isZero()) {
+                order.addPayment(new OrderPayment(
+                        calc.amountReceived().toBigDecimal(), newScreenshotKeys.get(0)));
+            }
+        }
+
         // Build the field-level diff from the before/after snapshots (audit trail).
         return diffSummary(before, fieldSnapshot(order));
+    }
+
+    /**
+     * The ordered set of NEW payment-proof keys supplied on an edit/resubmit:
+     * the primary {@code paymentScreenshotKey} followed by any extras, de-duped.
+     * Empty when the request carries no new proof (a plain field edit).
+     */
+    private static List<String> editScreenshotKeys(UpdateOrderRequest request) {
+        List<String> keys = new ArrayList<>();
+        addKey(keys, request.paymentScreenshotKey());
+        if (request.paymentScreenshotKeys() != null) {
+            for (String k : request.paymentScreenshotKeys()) {
+                addKey(keys, k);
+            }
+        }
+        return keys;
     }
 
     /**
@@ -1208,15 +1415,35 @@ public class OrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("Order " + id + " does not exist."));
     }
 
-    /** A line with its resolved product, applied rate, and computed total. */
-    private record PricedLine(Product product, String productName, int quantity, Money rate) {
+    /**
+     * A line with its applied rate and computed total, snapshotting the per-line
+     * name / HSN / GST at order time (Feature 2) so a historical invoice is stable
+     * even if the product later changes.
+     *
+     * <p>{@code product} is the resolved catalogue product for a normal line (used
+     * for stock reservation + the salesperson price band). It is {@code null} for
+     * an <strong>ad-hoc</strong> store line (e.g. a consultation fee) that has no
+     * catalogue entry — such a line carries its own {@code productId==null},
+     * {@code productName}, {@code hsnCode} and {@code gstRate}, and is never
+     * stock-reserved.
+     */
+    private record PricedLine(Product product, Long productId, String productName,
+                              String hsnCode, BigDecimal gstRate, int quantity, Money rate) {
+
+        /** A normal catalogue line: snapshot id/name/HSN/GST from the product. */
+        static PricedLine ofProduct(Product product, String productName, int quantity, Money rate) {
+            return new PricedLine(product, product.getId(), productName,
+                    product.getHsnCode(), product.getGstRate(), quantity, rate);
+        }
+
+        /** An ad-hoc (non-catalogue) line: no product, explicit name/HSN/GST. */
+        static PricedLine adHoc(String name, String hsnCode, BigDecimal gstRate, int quantity, Money rate) {
+            return new PricedLine(null, null, name, hsnCode, gstRate, quantity, rate);
+        }
+
         OrderLineItem toEntity() {
             Money lineTotal = rate.multiply(quantity);
-            // Snapshot the product's HSN + GST rate at order time (Feature 2) so a
-            // historical invoice shows the correct per-line HSN/tax even if the
-            // product's HSN/rate later changes.
-            return new OrderLineItem(product.getId(), productName,
-                    product.getHsnCode(), product.getGstRate(),
+            return new OrderLineItem(productId, productName, hsnCode, gstRate,
                     quantity, rate.toBigDecimal(), lineTotal.toBigDecimal());
         }
     }
@@ -1233,7 +1460,42 @@ public class OrderService {
             Product product = requireProduct(item.productId());
             BigDecimal rate = item.rate() != null ? item.rate() : product.getSalePrice();
             requireRateWithinBand(product, rate);
-            priced.add(new PricedLine(product, product.getName(), item.quantity(), Money.of(rate)));
+            priced.add(PricedLine.ofProduct(product, product.getName(), item.quantity(), Money.of(rate)));
+        }
+        return priced;
+    }
+
+    /**
+     * Prices in-shop (POS / store) lines (store-order feature). A line may be a
+     * catalogue product OR an ad-hoc item (consultation fee, one-off charge):
+     * <ul>
+     *   <li>catalogue line ({@code productId} set): rate = override when supplied,
+     *       else the product sale price. The salesperson price band is NOT enforced
+     *       — an admin at the counter may discount/negotiate.</li>
+     *   <li>ad-hoc line ({@code productId} null): a {@code name} and a {@code rate}
+     *       are required; GST defaults to 0 (exempt) unless supplied; no stock.</li>
+     * </ul>
+     */
+    private List<PricedLine> priceStoreLines(List<StoreLineItemRequest> items) {
+        List<PricedLine> priced = new ArrayList<>(items.size());
+        for (StoreLineItemRequest item : items) {
+            if (item.isAdHoc()) {
+                String name = trimToNull(item.name());
+                if (name == null) {
+                    throw new ValidationException(
+                            "A custom item needs a name (e.g. \"Consultation fee\").");
+                }
+                if (item.rate() == null) {
+                    throw new ValidationException("A custom item needs a price.");
+                }
+                BigDecimal gstRate = item.gstRate() != null ? item.gstRate() : BigDecimal.ZERO;
+                priced.add(PricedLine.adHoc(
+                        name, trimToNull(item.hsnCode()), gstRate, item.quantity(), Money.of(item.rate())));
+            } else {
+                Product product = requireProduct(item.productId());
+                BigDecimal rate = item.rate() != null ? item.rate() : product.getSalePrice();
+                priced.add(PricedLine.ofProduct(product, product.getName(), item.quantity(), Money.of(rate)));
+            }
         }
         return priced;
     }
@@ -1266,7 +1528,7 @@ public class OrderService {
         List<OrderPricing.LineInput> inputs = new ArrayList<>(priced.size());
         for (PricedLine line : priced) {
             inputs.add(new OrderPricing.LineInput(
-                    line.quantity(), line.rate().toBigDecimal(), line.product().getGstRate()));
+                    line.quantity(), line.rate().toBigDecimal(), line.gstRate()));
         }
         return inputs;
     }
@@ -1281,7 +1543,11 @@ public class OrderService {
     private void reserveStock(List<PricedLine> priced, Long userId, String orderCode) {
         String reason = "Order " + orderCode;
         for (PricedLine line : priced) {
-            stockService.recordSale(line.product(), line.quantity(), reason, userId);
+            // Ad-hoc store lines (consultation fee, one-off charge) have no
+            // catalogue product, so there is no stock to reserve for them.
+            if (line.product() != null) {
+                stockService.recordSale(line.product(), line.quantity(), reason, userId);
+            }
         }
     }
 

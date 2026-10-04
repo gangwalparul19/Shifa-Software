@@ -85,7 +85,8 @@ public class InvoicePdfRenderer {
     private static final Color BRAND_GREEN = new Color(0x1F, 0x7A, 0x4D);
     private static final Color MUTED = new Color(0x6B, 0x6B, 0x6B);
 
-    private static final Font COMPANY_FONT = new Font(Font.HELVETICA, 17, Font.BOLD, BLACK);
+    // Company name sized to sit on a SINGLE row within the header's left column.
+    private static final Font COMPANY_FONT = new Font(Font.HELVETICA, 13, Font.BOLD, BLACK);
     private static final Font ADDRESS_FONT = new Font(Font.HELVETICA, 8.5f, Font.NORMAL, BLACK);
     private static final Font GST_FONT = new Font(Font.HELVETICA, 10, Font.BOLD, BLACK);
     private static final Font CONTACT_FONT = new Font(Font.HELVETICA, 8, Font.NORMAL, MUTED);
@@ -98,8 +99,6 @@ public class InvoicePdfRenderer {
     private static final Font WORDS_FONT = new Font(Font.HELVETICA, 9, Font.BOLD, BLACK);
     private static final Font THANKS_FONT = new Font(Font.HELVETICA, 12, Font.BOLDITALIC, BRAND_GREEN);
     private static final Font FOOTER_FONT = new Font(Font.HELVETICA, 8, Font.NORMAL, MUTED);
-    private static final String CREDIT_LINE =
-            "Designed & Developed by Weblithic — https://www.weblithic.com/";
 
     /** Money fonts: use the embedded Unicode font when ₹ is available, else Helvetica. */
     private static final Font MONEY_FONT = moneyFont(9, false);
@@ -126,6 +125,9 @@ public class InvoicePdfRenderer {
             writeHeader(document, content, logoPng);
             writeBillTo(document, content);
             writeLineItems(document, content);
+            // A roomy blank block after the products so the item area always has a
+            // decent height (and more line items would fit) — even for a 1-item order.
+            writeItemSpacer(document, content);
             writeIdTotalRow(document, content);
             writeAmountInWords(document, content);
             if (content.isTaxInvoice()) {
@@ -145,22 +147,28 @@ public class InvoicePdfRenderer {
 
     private void writeHeader(Document document, InvoiceContent content, byte[] logoPng)
             throws DocumentException {
-        PdfPTable header = new PdfPTable(new float[] {6.2f, 3.8f});
+        // Give the seller + logo area more width (and the meta box slightly less)
+        // so the logo renders cleanly beside the company text.
+        PdfPTable header = new PdfPTable(new float[] {6.6f, 3.4f});
         header.setWidthPercentage(100);
 
         String legalName;
-        String address;
+        String addressLine1;
+        String addressLine2;
         String gstin;
         String contact;
         if (content.isTaxInvoice()) {
             InvoiceGstDetails gst = content.gst();
             legalName = orDefault(gst.legalName(), COMPANY_NAME);
-            address = sellerAddress(gst);
+            addressLine1 = orBlank(gst.addressLine());
+            // Line 2 = City, State (no state code in brackets — client request).
+            addressLine2 = joinCityState(gst.city(), gst.state());
             gstin = gst.gstin();
             contact = sellerContact(gst);
         } else {
             legalName = COMPANY_NAME;
-            address = COMPANY_CONTACT;
+            addressLine1 = COMPANY_CONTACT;
+            addressLine2 = "";
             gstin = null;
             contact = "";
         }
@@ -172,15 +180,19 @@ public class InvoicePdfRenderer {
         PdfPCell seller = boxedCell();
         seller.setPadding(0f);
         Image logo = logoImage(logoPng);
-        PdfPTable letterhead = new PdfPTable(logo != null ? new float[] {3.4f, 1f} : new float[] {1f});
+        PdfPTable letterhead = new PdfPTable(logo != null ? new float[] {3f, 1.3f} : new float[] {1f});
         letterhead.setWidthPercentage(100);
 
         PdfPCell textCell = new PdfPCell();
         textCell.setBorder(PdfPCell.NO_BORDER);
         textCell.setPadding(7f);
         textCell.addElement(new Paragraph(legalName, COMPANY_FONT));
-        if (!address.isBlank()) {
-            textCell.addElement(new Paragraph(address, ADDRESS_FONT));
+        // Address on two lines: the street line, then "City, State" (no state code).
+        if (!addressLine1.isBlank()) {
+            textCell.addElement(new Paragraph(addressLine1, ADDRESS_FONT));
+        }
+        if (!addressLine2.isBlank()) {
+            textCell.addElement(new Paragraph(addressLine2, ADDRESS_FONT));
         }
         // GST No goes DIRECTLY BELOW the company address (client requirement).
         if (gstin != null && !gstin.isBlank()) {
@@ -241,10 +253,43 @@ public class InvoicePdfRenderer {
         PdfPCell cell = boxedCell();
         cell.setPadding(7f);
         cell.addElement(new Paragraph("To : " + upper(content.customerName()), TO_NAME_FONT));
-        cell.addElement(new Paragraph(content.fullAddress(), BODY_FONT));
+
+        // Street address on its own line; City, State, Zip on the NEXT line. The
+        // city/state/zip is appended only when it isn't already contained in the
+        // free-text address line (so it is not duplicated when the salesperson has
+        // typed the full address).
+        String addressLine = content.addressLine() == null ? "" : content.addressLine().trim();
+        if (!addressLine.isBlank()) {
+            cell.addElement(new Paragraph(addressLine, BODY_FONT));
+        }
+        String cityStateZip = joinCityStateZip(content.city(), content.state(), content.postalCode());
+        if (!cityStateZip.isBlank() && !addressContainsCity(addressLine, content.city())) {
+            cell.addElement(new Paragraph(cityStateZip, BODY_FONT));
+        }
         cell.addElement(new Paragraph("Mobile : " + content.customerMobile(), BODY_FONT));
         block.addCell(cell);
         document.add(block);
+    }
+
+    /** "City, State, Zip" from the structured customer fields (blank parts skipped). */
+    private String joinCityStateZip(String city, String state, String postalCode) {
+        StringBuilder sb = new StringBuilder();
+        appendPart(sb, city);
+        appendPart(sb, state);
+        appendPart(sb, postalCode);
+        return sb.toString();
+    }
+
+    /**
+     * Whether the free-text address already contains the city (case-insensitive),
+     * so appending the structured City/State/Zip line would duplicate it. Keyed on
+     * the city — the most reliable signal the salesperson typed the full location.
+     */
+    private boolean addressContainsCity(String addressLine, String city) {
+        if (addressLine == null || city == null || city.isBlank()) {
+            return false;
+        }
+        return addressLine.toLowerCase().contains(city.trim().toLowerCase());
     }
 
     // --- Line items ---------------------------------------------------------
@@ -300,6 +345,33 @@ public class InvoicePdfRenderer {
         BigDecimal divisor = BigDecimal.ONE.add(rate.divide(HUNDRED, 6, RoundingMode.HALF_UP));
         BigDecimal net = amount.divide(divisor, 2, RoundingMode.HALF_UP);
         return amount.subtract(net).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * A tall blank continuation of the items table (same columns, so the vertical
+     * rules line up) that gives the product area a consistent, roomy height — about
+     * ten blank rows — so even a single-item order looks decent and more items have
+     * space to grow. The current line count is subtracted so a long order gets a
+     * smaller (or no) spacer and never overflows the page.
+     */
+    private void writeItemSpacer(Document document, InvoiceContent content) throws DocumentException {
+        int rows = Math.max(1, 10 - content.lineItems().size());
+        float height = rows * 15f; // ~15pt per blank row.
+        boolean tax = content.isTaxInvoice();
+        float[] widths = tax
+                ? new float[] {3.0f, 1.2f, 1.5f, 0.8f, 1.2f, 1.5f, 1.6f}
+                : new float[] {3.6f, 1.4f, 1.6f, 0.9f, 1.6f};
+        PdfPTable table = new PdfPTable(widths);
+        table.setWidthPercentage(100);
+        for (int c = 0; c < widths.length; c++) {
+            PdfPCell cell = new PdfPCell(new Phrase(" ", BODY_FONT));
+            cell.setBorderColor(BLACK);
+            cell.setBorderWidth(0.6f);
+            cell.setFixedHeight(height);
+            cell.setBackgroundColor(WHITE);
+            table.addCell(cell);
+        }
+        document.add(table);
     }
 
     // --- ID + Order AMT + Total --------------------------------------------
@@ -384,11 +456,6 @@ public class InvoicePdfRenderer {
         generated.setAlignment(Element.ALIGN_CENTER);
         generated.setSpacingBefore(4f);
         document.add(generated);
-
-        Paragraph credit = new Paragraph(CREDIT_LINE, new Font(Font.HELVETICA, 7, Font.NORMAL, MUTED));
-        credit.setAlignment(Element.ALIGN_CENTER);
-        credit.setSpacingBefore(2f);
-        document.add(credit);
     }
 
     // --- Cell / formatting helpers -----------------------------------------
@@ -453,16 +520,16 @@ public class InvoicePdfRenderer {
         return content.codApplicable() ? "COD" : "PREPAID";
     }
 
-    private String sellerAddress(InvoiceGstDetails gst) {
+    /** "City, State" for the seller address line 2 — NO state code in brackets. */
+    private String joinCityState(String city, String state) {
         StringBuilder sb = new StringBuilder();
-        appendPart(sb, gst.addressLine());
-        appendPart(sb, gst.city());
-        String stateAndCode = gst.state() != null ? gst.state() : "";
-        if (gst.stateCode() != null && !gst.stateCode().isBlank()) {
-            stateAndCode = (stateAndCode.isBlank() ? "" : stateAndCode + " ") + "(" + gst.stateCode() + ")";
-        }
-        appendPart(sb, stateAndCode);
+        appendPart(sb, city);
+        appendPart(sb, state);
         return sb.toString();
+    }
+
+    private String orBlank(String v) {
+        return v == null ? "" : v.trim();
     }
 
     private String sellerContact(InvoiceGstDetails gst) {

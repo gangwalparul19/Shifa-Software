@@ -305,6 +305,13 @@ public class QuikShipXService {
         shipment.recordCreated(result.shipperOrderId(), properties.isTestSecret());
         shipmentRepository.save(shipment);
 
+        // A successful (re)publish clears any prior permanent-failure reason so a
+        // recovered order no longer shows the stale QuikShipX error.
+        if (order.getQuikShipXFailureReason() != null) {
+            order.setQuikShipXFailureReason(null);
+            orderRepository.save(order);
+        }
+
         if (result.shipperOrderId() == null || result.shipperOrderId().isBlank()) {
             log.warn("QuikShipX created order {} but returned no shipper order id; a tracking id "
                     + "cannot be allotted until it is known (pin the response key)", order.getOrderCode());
@@ -382,6 +389,13 @@ public class QuikShipXService {
         shipment.recordTrackingId(allot.awb(), allot.courierId(), allot.subCourierName(), allot.labelUrl());
         shipmentRepository.save(shipment);
         upsertCourierRecord(orderId, allot);
+        // A successful allotment clears any prior permanent-failure reason.
+        orderRepository.findById(orderId).ifPresent(o -> {
+            if (o.getQuikShipXFailureReason() != null) {
+                o.setQuikShipXFailureReason(null);
+                orderRepository.save(o);
+            }
+        });
         auditService.record(null, "SYSTEM", AuditActions.QUIKSHIPX_TRACKING_ALLOTTED,
                 AuditActions.ENTITY_ORDER, String.valueOf(orderId),
                 "Allotted QuikShipX AWB " + allot.awb() + " for order " + shipment.getOrderCode());
@@ -397,6 +411,81 @@ public class QuikShipXService {
         // (PackingService.handover), NOT automatically on allot. The old
         // fast-forward to COURIER_ASSIGNED has been removed so courier parcels are
         // physically packed + handed over before the courier takes them.
+    }
+
+    /**
+     * Records a QuikShipX permanent-failure reason on the order (courier-failure
+     * re-route feature) so it is visible on the order-detail drawer and the admin
+     * can decide to re-route to in-house. Called by the drainer when a
+     * create/confirm/allot event fails permanently. Best-effort: a missing order
+     * is a no-op. Its own transaction so it is independent of the drainer's
+     * outbox write.
+     */
+    @Transactional
+    public void recordFailureReason(Long orderId, String reason) {
+        orderRepository.findById(orderId).ifPresent(order -> {
+            order.setQuikShipXFailureReason(reason);
+            orderRepository.save(order);
+        });
+        // Also surface the failure as the shipment's DISPLAYED status, so the
+        // Orders list + drawer show a clear "Shipping Failed" chip instead of a
+        // misleading "Confirmed" — the admin/packer sees at a glance that the
+        // order needs re-routing to in-house. Only when a shipment exists and no
+        // tracking id has been allotted (a successful shipment is never downgraded).
+        shipmentRepository.findByOrderId(orderId).ifPresent(shipment -> {
+            if (shipment.getAwb() == null || shipment.getAwb().isBlank()) {
+                shipment.recordFailed();
+                shipmentRepository.save(shipment);
+            }
+        });
+    }
+
+    /**
+     * Detaches an order from QuikShipX when an admin re-routes it to in-house
+     * delivery (courier-failure re-route feature). Best-effort cleanup so the
+     * failed/pending QuikShipX side leaves no loose ends:
+     * <ol>
+     *   <li>if a shipment exists, request its cancellation at QuikShipX (so the
+     *       courier never collects it);</li>
+     *   <li>mark any lingering FAILED/PENDING {@code QUIKSHIPX_*} outbox event for
+     *       the order as resolved, so the self-heal re-drive never re-queues them
+     *       (they would no-op anyway once the order is in-house, but this keeps the
+     *       queue clean);</li>
+     *   <li>clear the stored failure reason on the order.</li>
+     * </ol>
+     * Never throws — the OMS-side delivery-method switch is the source of truth and
+     * must always succeed. A no-op when the integration is disabled.
+     */
+    @Transactional
+    public void detachForInHouse(Long orderId) {
+        if (!properties.isEnabled()) {
+            return;
+        }
+        try {
+            if (shipmentRepository.findByOrderId(orderId).isPresent()) {
+                cancelForOrder(orderId); // best-effort, never throws
+            }
+            List<com.shifa.oms.platform.outbox.OutboxEvent> events =
+                    outboxEventRepository.findByAggregateAndEventTypePrefix(
+                            com.shifa.oms.platform.outbox.OutboxEvent.AGGREGATE_ORDER, orderId, "QUIKSHIPX");
+            for (com.shifa.oms.platform.outbox.OutboxEvent e : events) {
+                String status = e.getStatus();
+                if (com.shifa.oms.platform.outbox.OutboxEvent.STATUS_FAILED.equals(status)
+                        || com.shifa.oms.platform.outbox.OutboxEvent.STATUS_PENDING.equals(status)) {
+                    e.markSent(); // resolve: no longer actionable (order is in-house)
+                    outboxEventRepository.save(e);
+                }
+            }
+            orderRepository.findById(orderId).ifPresent(order -> {
+                if (order.getQuikShipXFailureReason() != null) {
+                    order.setQuikShipXFailureReason(null);
+                    orderRepository.save(order);
+                }
+            });
+        } catch (RuntimeException ex) {
+            log.warn("QuikShipX detach-for-in-house cleanup for order {} failed (ignored): {}",
+                    orderId, ex.getMessage());
+        }
     }
 
     /** The outcome of a per-order QuikShipX cancellation attempt (order-cancellation feature). */

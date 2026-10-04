@@ -291,6 +291,9 @@ export class OrdersComponent implements OnInit, OnDestroy {
   /** Creating a return is ADMIN-only (Set B — Feature 2, mutations = ADMIN). */
   protected readonly canCreateReturn = computed(() => this.auth.hasAnyRole(Role.ADMIN));
 
+  /** Placing an in-shop (POS / counter) store order is ADMIN-only (store-order feature). */
+  protected readonly canCreateStoreOrder = computed(() => this.auth.hasAnyRole(Role.ADMIN));
+
   /**
    * Manually assigning a courier is ADMIN-only, and only useful before the
    * order has actually been dispatched (terminal/late-stage orders already
@@ -488,13 +491,47 @@ export class OrdersComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * The best tracking URL for an order (in-house delivery-partner feature):
+   * prefers the vendor-provided direct link the backend supplies on
+   * {@link OrderDetail.trackingUrl} (a local in-house partner's ready-made page),
+   * and otherwise falls back to the Delhivery page built from the AWB (QuikShipX
+   * ships via Delhivery). Null when there is nothing to track.
+   */
+  orderTrackUrl(order: OrderDetail | null | undefined): string | null {
+    if (!order) {
+      return null;
+    }
+    const direct = (order.trackingUrl ?? '').trim();
+    if (direct) {
+      return direct;
+    }
+    return this.trackUrl(order.awb);
+  }
+
+  /** True when an order can be tracked (has a vendor link or an AWB). */
+  canTrackOrder(order: OrderDetail | null | undefined): boolean {
+    return !!this.orderTrackUrl(order);
+  }
+
+  /** Opens the best tracking URL for an order in a new tab. */
+  openOrderTracking(order: OrderDetail | null | undefined, event?: Event): void {
+    event?.stopPropagation();
+    const url = this.orderTrackUrl(order);
+    if (url) {
+      window.open(url, '_blank', 'noopener');
+    }
+  }
+
   /** Business label for the order source column: Sales / Store / Shopify. */
   sourceLabel(source: string | null | undefined): string {
     switch (source) {
       case 'SHOPIFY':
         return 'Shopify';
-      case 'STOREFRONT':
+      case 'STORE':
         return 'Store';
+      case 'STOREFRONT':
+        return 'Storefront';
       case 'SALESPERSON':
         return 'Sales';
       default:
@@ -505,6 +542,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
   /** Tabler icon for the order source (non-Shopify sources, which use a logo). */
   sourceIcon(source: string | null | undefined): string {
     switch (source) {
+      case 'STORE':
+        return 'ti-building-store';
       case 'STOREFRONT':
         return 'ti-building-store';
       case 'SALESPERSON':
@@ -772,6 +811,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
     awb: new FormControl<string>('', {
       nonNullable: true,
       validators: [Validators.required, Validators.maxLength(64)],
+    }),
+    // The vendor's ready-made tracking link (in-house delivery-partner feature).
+    // Optional — a local vendor may give a tracking id, a link, or both.
+    trackingUrl: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.maxLength(500)],
     }),
   });
 
@@ -1853,6 +1898,91 @@ export class OrdersComponent implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * Whether the admin may save the delivery method on its own (change-delivery-
+   * method feature). Admin only, pre-dispatch stages (mirrors the server-side
+   * guard — the server enforces it regardless). A Shopify order is managed from
+   * the store, so its delivery method is not changed here.
+   */
+  canSaveDeliveryMethod(order: OrderDetail | null): boolean {
+    if (!order || order.source === 'SHOPIFY') {
+      return false;
+    }
+    return (
+      this.auth.hasAnyRole(Role.ADMIN) &&
+      (order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL ||
+        order.orderStatus === OrderStatus.APPROVED ||
+        order.orderStatus === OrderStatus.LABEL_GENERATED ||
+        order.orderStatus === OrderStatus.PACKED)
+    );
+  }
+
+  /** Whether the drawer's picked delivery method differs from the saved one. */
+  deliveryMethodChanged(order: OrderDetail | null): boolean {
+    return !!order && (order.deliveryMethod ?? 'IN_HOUSE') !== this.deliveryMethod();
+  }
+
+  /**
+   * Saves the delivery method picked in the drawer WITHOUT approving the order
+   * (change-delivery-method feature). Persists just the delivery partner; the
+   * order's lifecycle status is unchanged.
+   */
+  saveDeliveryMethod(order: OrderDetail): void {
+    if (!this.canSaveDeliveryMethod(order) || this.detailBusy()) {
+      return;
+    }
+    this.detailBusy.set(true);
+    this.service.updateDeliveryMethod(order.id, this.deliveryMethod()).subscribe({
+      next: (updated) => {
+        this.detailBusy.set(false);
+        this.toasts.success(`Delivery method saved for ${order.orderCode}.`);
+        this.selectedDetail.set(updated);
+        this.load();
+      },
+      error: () => {
+        this.detailBusy.set(false);
+        this.toasts.error('Could not save the delivery method. Please try again.');
+      },
+    });
+  }
+
+  /**
+   * Re-routes a QuikShipX order that the courier failed on (e.g. non-serviceable
+   * pincode) to our own In-House delivery (courier-failure re-route feature).
+   * Reuses the delivery-method endpoint, which also detaches the order from
+   * QuikShipX (cancels any shipment, clears the failure). The order then flows
+   * through the in-house packing/delivery path.
+   */
+  async switchToInHouse(order: OrderDetail): Promise<void> {
+    if (!this.canSaveDeliveryMethod(order) || this.detailBusy()) {
+      return;
+    }
+    const confirmed = await this.confirm.confirm({
+      title: 'Switch to In-House delivery',
+      message: `QuikShipX could not ship ${order.orderCode}. Deliver it with our own In-House team instead? `
+        + `This removes it from QuikShipX.`,
+      confirmLabel: 'Switch to In-House',
+      icon: 'ti-home-move',
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.detailBusy.set(true);
+    this.service.updateDeliveryMethod(order.id, 'IN_HOUSE').subscribe({
+      next: (updated) => {
+        this.detailBusy.set(false);
+        this.toasts.success(`${order.orderCode} switched to In-House delivery.`);
+        this.selectedDetail.set(updated);
+        this.deliveryMethod.set('IN_HOUSE');
+        this.load();
+      },
+      error: () => {
+        this.detailBusy.set(false);
+        this.toasts.error('Could not switch to In-House delivery. Please try again.');
+      },
+    });
+  }
+
   // --- QuikShipX shipment (courier integration) --------------------------
 
   /** Busy flag for the QuikShipX publish action in the detail drawer. */
@@ -1947,8 +2077,18 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   /** Tabler badge class for a QuikShipX status label (colour by lifecycle stage). */
+  /** Whether a QuikShipX status indicates a permanent shipping failure (needs re-route). */
+  isQuikShipFailed(status: string | null | undefined): boolean {
+    return (status ?? '').toLowerCase().includes('fail');
+  }
+
   quikShipBadgeClass(status: string | null | undefined): string {
     const s = (status ?? '').toLowerCase();
+    // A permanent QuikShipX failure ("Shipping Failed") must read as a red alarm
+    // so the admin/packer spots it at a glance and re-routes to in-house.
+    if (s.includes('fail')) {
+      return 'tone-red';
+    }
     if (s.includes('deliver')) {
       return 'tone-green';
     }
@@ -2095,6 +2235,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.assignCourierForm.reset({
       courierName: isOther ? currentName : isKnown ? currentName : 'In-House',
       awb: order.awb ?? '',
+      trackingUrl: order.trackingUrl ?? '',
     });
     this.syncAwbRequirement();
     this.assignCourierOpen.set(true);
@@ -2148,7 +2289,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     const raw = this.assignCourierForm.getRawValue();
     this.assignCourierBusy.set(true);
     this.assignCourierError.set(null);
-    this.service.assignCourier(order.id, raw.courierName.trim(), raw.awb.trim()).subscribe({
+    this.service.assignCourier(order.id, raw.courierName.trim(), raw.awb.trim(), raw.trackingUrl.trim()).subscribe({
       next: () => {
         this.assignCourierBusy.set(false);
         this.closeAssignCourier();

@@ -109,6 +109,46 @@ export interface CreateOrderRequest {
 }
 
 /**
+ * A single line in an in-shop (POS / counter) store order (mirrors the backend
+ * {@code StoreLineItemRequest}). A line is either a catalogue product
+ * ({@link productId} set, optional {@link rate} override) OR an ad-hoc item
+ * ({@link productId} omitted, {@link name} + {@link rate} required) such as a
+ * consultation fee. {@link gstRate} applies only to an ad-hoc line (0 = exempt).
+ */
+export interface StoreOrderLineItem {
+  productId?: number;
+  name?: string;
+  quantity: number;
+  rate?: number | null;
+  gstRate?: number | null;
+  hsnCode?: string;
+}
+
+/**
+ * In-shop (POS / counter) order payload posted to {@code POST /api/orders/store}
+ * (store-order feature, ADMIN only; mirrors the backend {@code StoreOrderRequest}).
+ * No payment screenshot, no delivery partner, the address is optional, and line
+ * items may be ad-hoc. A fully-paid sale is auto-approved + closed by the server;
+ * a partial payment leaves it approved with the balance tracked.
+ */
+export interface StoreOrderRequest {
+  customerName: string;
+  customerMobile: string;
+  alternateMobile?: string;
+  customerEmail?: string;
+  addressLine?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  items: StoreOrderLineItem[];
+  amountReceived: number;
+  notes?: string;
+  buyerGstin?: string;
+  discountType?: OrderDiscountType;
+  discountValue?: number;
+}
+
+/**
  * A user an ADMIN may place a New Order on behalf of, from
  * {@code GET /api/orders/assignable-creators} (active salespeople + team leads).
  * Mirrors the backend {@code AssignableCreatorResponse}.
@@ -147,6 +187,14 @@ export interface UpdateOrderRequest {
   buyerGstin?: string;
   discountType?: OrderDiscountType;
   discountValue?: number;
+  /**
+   * Optional payment correction on a rework / payment-rejected resubmit: the
+   * corrected amount received and a NEW payment-proof key (plus any extras).
+   * Omitted on a plain field edit, which keeps the existing amount + proofs.
+   */
+  amountReceived?: number;
+  paymentScreenshotKey?: string;
+  paymentScreenshotKeys?: string[];
 }
 
 /** Per-order delivery method (mirrors the backend {@code DeliveryMethod} enum). */
@@ -475,6 +523,14 @@ export interface OrderDetail {
   quikShipXLabelUrl?: string | null;
   quikShipXOrderId?: string | null;
   quikShipXTest?: boolean;
+  /**
+   * The reason QuikShipX permanently rejected this order (courier-failure
+   * re-route feature) — e.g. "585216 is non serviceable pincode". Present only
+   * after a permanent QuikShipX failure; shown as a banner in the QuikShipX card
+   * with a "Switch to In-House delivery" recovery action. Cleared on a successful
+   * (re)publish or when the order is switched to in-house.
+   */
+  quikShipXFailureReason?: string | null;
   /**
    * The admin's reason for rejecting the order (Req 9.4); present only when
    * {@code orderStatus === 'REJECTED'}, so the salesperson can see why and

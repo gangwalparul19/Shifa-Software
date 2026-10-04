@@ -12,6 +12,7 @@ import com.shifa.oms.order.OrderWorkflowService;
 import com.shifa.oms.quikshipx.OrderShipment;
 import com.shifa.oms.quikshipx.OrderShipmentRepository;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
+import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.reconciliation.dto.RemittanceImportResponse;
 import com.shifa.oms.reconciliation.dto.RemittanceRowResult;
 import com.shifa.oms.statemachine.OrderStatus;
@@ -65,12 +66,35 @@ class RemittanceImportServiceTest {
 
     private RemittanceImportService service;
 
+    /**
+     * Recording {@link OutboxEventPublisher} (Java 25 can't Mockito-mock a concrete
+     * class) over a mocked repository — captures the (sourceType, sourceId) of each
+     * ledger post so the delivered-COD settlement can assert the cash is booked.
+     */
+    private RecordingOutbox outboxEventPublisher;
+
+    static final class RecordingOutbox extends OutboxEventPublisher {
+        final java.util.List<String> ledgerPosts = new java.util.ArrayList<>();
+
+        RecordingOutbox() {
+            super(mock(com.shifa.oms.platform.outbox.OutboxEventRepository.class));
+        }
+
+        @Override
+        public com.shifa.oms.platform.outbox.OutboxEvent publishLedgerPost(String sourceType, Long sourceId) {
+            ledgerPosts.add(sourceType + ":" + sourceId);
+            return null;
+        }
+    }
+
     @BeforeEach
     void setUp() {
         AuditService auditService = new NoopAuditService();
         OrderWorkflowService workflowService = new OrderWorkflowService(auditService);
+        outboxEventPublisher = new RecordingOutbox();
         RemittanceRowProcessor rowProcessor = new RemittanceRowProcessor(orderRepository,
-                courierRecordRepository, orderShipmentRepository, receivableRepository, workflowService);
+                courierRecordRepository, orderShipmentRepository, receivableRepository, workflowService,
+                outboxEventPublisher);
         service = new RemittanceImportService(rowProcessor, auditService);
         lenient().when(receivableRepository.save(any(ReceivableEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
@@ -135,6 +159,36 @@ class RemittanceImportServiceTest {
         assertThat(response.rows().get(0).status()).isEqualTo(RemittanceRowResult.Status.SETTLED);
         assertThat(receivable.isSettled()).isTrue();
         verify(receivableRepository).save(receivable);
+    }
+
+    @Test
+    void settlingADeliveredCodOrderAdvancesItToCodCollectedAndBooksTheLedger() {
+        // Courier-COD-settlement: the order was marked DELIVERED on the courier
+        // tracking (COD still outstanding), and the remittance now settles it —
+        // so it should advance Delivered → COD_Collected, zero the outstanding, and
+        // publish the delivery ledger post (cash is ours only once remitted).
+        OrderEntity order = order(10L, "SHR-1001");
+        order.applyAmounts(new BigDecimal("500.00"), BigDecimal.ZERO,
+                new BigDecimal("500.00"), new BigDecimal("500.00"),
+                com.shifa.oms.order.domain.PaymentStatus.COD);
+        order.setCustomerOutstanding(new BigDecimal("500.00"));
+        order.setOrderStatus(OrderStatus.DELIVERED);
+        CourierRecord record = new CourierRecord(10L);
+        record.assign(1L, "AWB123", null, null);
+        when(courierRecordRepository.findByAwb("AWB123")).thenReturn(Optional.of(record));
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        ReceivableEntity receivable = codReceivable(1L, 10L, "500.00");
+        when(receivableRepository.findByOrderIdAndType(10L, ReceivableType.COD_RECEIVABLE))
+                .thenReturn(List.of(receivable));
+
+        RemittanceImportResponse response = service.importCsv(
+                csv("awb,orderCode,amount", "AWB123,,500.00"), false);
+
+        assertThat(response.settled()).isEqualTo(1);
+        assertThat(receivable.isSettled()).isTrue();
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.COD_COLLECTED);
+        assertThat(order.getCustomerOutstanding()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(outboxEventPublisher.ledgerPosts).contains("ORDER_DELIVERY:10");
     }
 
     @Test

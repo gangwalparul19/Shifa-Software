@@ -84,6 +84,42 @@ class LabelServiceTest {
         assertThat(content.codAmount()).isNull();
     }
 
+    // --- Shopify order number on the label (not the internal shopify_order_id) ---
+
+    @Test
+    void shopifyOrderNumberShownFromNoteNotTheInternalId() {
+        OrderEntity order = new OrderEntity(
+                "SHR-20261002-ZRJU", OrderSource.SHOPIFY, null,
+                "vivek veer", "9277779000", "Deepali residency", "Thane", "Maharashtra", "421503");
+        order.applyAmounts(new BigDecimal("1099.00"), new BigDecimal("1099.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, PaymentStatus.FULLY_PAID);
+        order.setOrderStatus(OrderStatus.LABEL_GENERATED);
+        order.setShopifyOrderId("7421945479343");      // internal id (idempotency key)
+        order.setNotes("Imported from Shopify #25618"); // human order number
+
+        InternalLabelContent content = builder.buildInternal(order);
+
+        // The label must carry the human order number (25618), NOT the internal id.
+        assertThat(content.shopifyOrderId()).isEqualTo("25618");
+    }
+
+    @Test
+    void salesOrderHasNoShopifyNumberOnLabel() {
+        InternalLabelContent content = builder.buildInternal(
+                order(OrderStatus.APPROVED, PaymentStatus.COD, new BigDecimal("240.00")));
+        assertThat(content.shopifyOrderId()).isNull();
+    }
+
+    @Test
+    void shopifyOrderNumberIsNullWhenNoteHasNoNumber() {
+        assertThat(LabelContentBuilder.shopifyOrderNumberFromNote(null)).isNull();
+        assertThat(LabelContentBuilder.shopifyOrderNumberFromNote("Imported from Shopify #25618"))
+                .isEqualTo("25618");
+        assertThat(LabelContentBuilder.shopifyOrderNumberFromNote("Imported from Shopify 25618 — gift"))
+                .isEqualTo("25618");
+        assertThat(LabelContentBuilder.shopifyOrderNumberFromNote("Call before delivery")).isNull();
+    }
+
     // --- Label generation flips status to Label_Generated (Req 10.3) --------
 
     @Test

@@ -20,6 +20,7 @@ import com.shifa.oms.order.dto.CancelOrderRequest;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.order.dto.RejectOrderRequest;
+import com.shifa.oms.order.dto.UpdateDeliveryMethodRequest;
 import com.shifa.oms.order.dto.UpdateOrderRequest;
 import com.shifa.oms.statemachine.OrderStatus;
 import jakarta.validation.Valid;
@@ -287,6 +288,23 @@ public class AdminOrderController {
     }
 
     /**
+     * Admin "save delivery method" (change-delivery-method feature): sets/changes
+     * the order's delivery partner ({@code QUIKSHIPX} or {@code IN_HOUSE}) and
+     * saves it WITHOUT approving the order. Previously the delivery method could
+     * only be persisted as a side effect of approving; this lets an admin correct
+     * it on a still-pending order on its own. Only allowed while the order is
+     * pre-dispatch (409 once handed to a courier). A Counter Sale cannot be set to
+     * QUIKSHIPX (400). The service records its own ORDER_UPDATED audit with the
+     * old→new change; no status change / label / QuikShipX trigger.
+     */
+    @PutMapping("/{id}/delivery-method")
+    public OrderResponse updateDeliveryMethod(@PathVariable Long id,
+                                              @Valid @RequestBody UpdateDeliveryMethodRequest request) {
+        AuthPrincipal admin = currentUserService.requireCurrentUser();
+        return adminOrderService.updateDeliveryMethod(id, request.deliveryMethod(), admin);
+    }
+
+    /**
      * Manually attaches a courier name + AWB to an order (ADMIN only; "assign
      * courier early" enhancement). Usable any time before dispatch so the
      * internal label's courier barcode can render as soon as staff know the
@@ -296,10 +314,15 @@ public class AdminOrderController {
      */
     @PostMapping("/{id}/assign-courier")
     public void assignCourier(@PathVariable Long id, @Valid @RequestBody AssignCourierRequest request) {
-        courierAssignmentService.manuallyAssign(id, request.courierName(), request.awb());
+        courierAssignmentService.manuallyAssign(
+                id, request.courierName(), request.awb(), request.trackingUrl());
         auditService.record(AuditActions.COURIER_MANUALLY_ASSIGNED, AuditActions.ENTITY_ORDER,
                 String.valueOf(id),
-                "Manually assigned courier " + request.courierName() + " (AWB " + request.awb() + ")");
+                "Manually assigned courier " + request.courierName()
+                        + " (AWB " + request.awb()
+                        + (request.trackingUrl() == null || request.trackingUrl().isBlank()
+                            ? "" : ", tracking link")
+                        + ")");
     }
 
     /**

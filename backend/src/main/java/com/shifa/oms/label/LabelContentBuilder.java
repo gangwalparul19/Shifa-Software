@@ -99,8 +99,53 @@ public class LabelContentBuilder {
                 c.sellerName(),
                 c.pickupReturnAddress(),
                 c.sellerGstin(),
-                c.sellerAddress());
+                c.sellerAddress(),
+                // Shopify order id for a Shopify-imported order (shown on the label
+                // as "Shopify Order Id#"); null for a sales order → line omitted.
+                shopifyOrderIdOf(order));
     }
+
+    /**
+     * The human Shopify order NUMBER to print on the label (e.g. {@code #25618}),
+     * for a Shopify-sourced order only — else {@code null} (the line is omitted).
+     *
+     * <p>Deliberately NOT the stored {@code shopify_order_id}: that column holds
+     * Shopify's internal numeric id (e.g. {@code 7421945479343}, our idempotency
+     * key), whereas the staff/customer-facing identifier is the order <em>number</em>
+     * (e.g. {@code 25618}). The number is already captured, verbatim, in the order
+     * note the importer writes ("Imported from Shopify #25618"), so it is parsed
+     * back out of the note here — no new column/migration. Falls back to
+     * {@code null} when the number can't be found, so the wrong internal id is
+     * never shown.
+     */
+    static String shopifyOrderIdOf(OrderEntity order) {
+        if (order.getSource() != com.shifa.oms.order.OrderSource.SHOPIFY) {
+            return null;
+        }
+        return shopifyOrderNumberFromNote(order.getNotes());
+    }
+
+    /**
+     * "Imported from Shopify #25618 — …" → "25618" (the digits only; null when not
+     * present). The renderer's caption already ends with '#', so the value is the
+     * bare number to avoid a doubled "## ".
+     */
+    static String shopifyOrderNumberFromNote(String note) {
+        if (note == null || note.isBlank()) {
+            return null;
+        }
+        java.util.regex.Matcher m = SHOPIFY_NOTE_NUMBER.matcher(note);
+        if (!m.find()) {
+            return null;
+        }
+        String digits = m.group(1);
+        return (digits == null || digits.isBlank()) ? null : digits;
+    }
+
+    /** Captures the order number after "Imported from Shopify" (optional '#'), e.g. "#25618" or "25618". */
+    private static final java.util.regex.Pattern SHOPIFY_NOTE_NUMBER =
+            java.util.regex.Pattern.compile("Imported from Shopify\\s*#?(\\d+)",
+                    java.util.regex.Pattern.CASE_INSENSITIVE);
 
     private static String blankToNull(String value) {
         if (value == null) {

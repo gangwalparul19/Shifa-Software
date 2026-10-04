@@ -129,17 +129,19 @@ public class PaymentVerificationService {
         return pending.stream()
                 .map(o -> PaymentQueueRow.from(
                         o, o.getCreatedBy() == null ? null : names.get(o.getCreatedBy()),
-                        duplicateOrderCodes(o)))
+                        duplicateOrders(o)))
                 .toList();
     }
 
     /**
-     * Other order codes whose payment proof is byte-identical to this order's
-     * (duplicate-screenshot detection, V72): hash this order's proofs, find other
-     * orders sharing any hash, resolve their codes. Empty when there is no
-     * screenshot repository (test/legacy), no hash, or the proof is unique.
+     * Other orders whose payment proof is byte-identical to this order's
+     * (duplicate-screenshot detection, V72), each as an {@code {orderId, orderCode}}
+     * ref so the queue can link the duplicate (view its screenshot by id, open its
+     * details by code): hash this order's proofs, find other orders sharing any
+     * hash, resolve them. Empty when there is no screenshot repository
+     * (test/legacy), no hash, or the proof is unique.
      */
-    private List<String> duplicateOrderCodes(OrderEntity order) {
+    private List<PaymentQueueRow.DuplicateOrderRef> duplicateOrders(OrderEntity order) {
         if (screenshotRepository == null || order.getId() == null) {
             return List.of();
         }
@@ -155,9 +157,9 @@ public class PaymentVerificationService {
             return List.of();
         }
         return orderRepository.findAllById(otherIds).stream()
-                .map(OrderEntity::getOrderCode)
-                .filter(code -> code != null && !code.isBlank())
-                .sorted()
+                .filter(o -> o.getOrderCode() != null && !o.getOrderCode().isBlank())
+                .sorted(java.util.Comparator.comparing(OrderEntity::getOrderCode))
+                .map(o -> new PaymentQueueRow.DuplicateOrderRef(o.getId(), o.getOrderCode()))
                 .toList();
     }
 
