@@ -90,12 +90,17 @@ class TeamsOverviewServiceTest {
         when(userRepository.findIdsByTeamLeadId(10L)).thenReturn(List.of(1L));
         when(userRepository.findIdsByTeamLeadId(11L)).thenReturn(List.of(2L));
 
-        when(orderRepository.findAllScopedIn(List.of(1L))).thenReturn(List.of(
+        // Orders are scoped to the member(s) PLUS the team lead's own id (the lead
+        // punches orders too — their sales count towards the team total).
+        when(orderRepository.findAllScopedIn(List.of(1L, 10L))).thenReturn(List.of(
                 order(1L, "DELIVERED", "1000.00", TODAY),
-                order(1L, "DELIVERY_FAILED", "500.00", TODAY.minusDays(40))));
-        when(orderRepository.findAllScopedIn(List.of(2L))).thenReturn(List.of(
+                order(1L, "DELIVERY_FAILED", "500.00", TODAY.minusDays(40)),
+                // Sameer's OWN order — must be included in the team's totals.
+                order(10L, "DELIVERED", "700.00", TODAY)));
+        when(orderRepository.findAllScopedIn(List.of(2L, 11L))).thenReturn(List.of(
                 order(2L, "DELIVERED", "2000.00", TODAY)));
 
+        // Leads stay scoped to the assigned salespeople only (a team lead owns no leads).
         when(leadRepository.findAllScopedIn(List.of(1L))).thenReturn(List.of(
                 lead(1L, LeadStatus.NEW, TODAY.minusDays(3)),
                 lead(1L, LeadStatus.WON, null)));
@@ -110,13 +115,15 @@ class TeamsOverviewServiceTest {
 
         TeamOverviewRow sameerRow = res.teams().stream()
                 .filter(r -> "Sameer".equals(r.teamLeadName())).findFirst().orElseThrow();
+        // memberCount is the assigned-salespeople team size (the lead is not a member),
+        // but the ORDER totals now include the lead's own orders.
         assertThat(sameerRow.memberCount()).isEqualTo(1);
-        assertThat(sameerRow.ordersTotal()).isEqualTo(2);
-        assertThat(sameerRow.ordersThisMonth()).isEqualTo(1);
-        assertThat(sameerRow.revenueTotal()).isEqualByComparingTo("1500.00");
-        assertThat(sameerRow.delivered()).isEqualTo(1);
+        assertThat(sameerRow.ordersTotal()).isEqualTo(3); // 2 member + 1 lead
+        assertThat(sameerRow.ordersThisMonth()).isEqualTo(2); // member today + lead today
+        assertThat(sameerRow.revenueTotal()).isEqualByComparingTo("2200.00"); // 1000 + 500 + 700
+        assertThat(sameerRow.delivered()).isEqualTo(2); // member + lead delivered
         assertThat(sameerRow.failed()).isEqualTo(1);
-        assertThat(sameerRow.deliverySuccessRate()).isEqualTo(50.0);
+        assertThat(sameerRow.deliverySuccessRate()).isEqualTo(66.7); // 2 / (2 + 1)
         assertThat(sameerRow.leadsTotal()).isEqualTo(2);
         assertThat(sameerRow.leadsWon()).isEqualTo(1);
         assertThat(sameerRow.leadConversionRate()).isEqualTo(50.0);
@@ -153,11 +160,14 @@ class TeamsOverviewServiceTest {
     }
 
     @Test
-    void teamWithNoMembersGetsAnEmptyRowWithoutRepositoryCalls() {
+    void teamWithNoMembersAndNoLeadOrdersGetsAnEmptyRow() {
         User lead = user(20L, "EmptyLead", Role.TEAM_LEAD);
         when(userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.TEAM_LEAD)).thenReturn(List.of(lead));
         when(userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.SALESPERSON)).thenReturn(List.of());
         when(userRepository.findIdsByTeamLeadId(20L)).thenReturn(List.of());
+        // The lead's own order scope is still loaded (the lead can punch orders);
+        // with none, the row is empty.
+        when(orderRepository.findAllScopedIn(List.of(20L))).thenReturn(List.of());
 
         TeamsOverviewResponse res = service.overview();
 

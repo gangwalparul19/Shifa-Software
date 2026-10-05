@@ -56,4 +56,7 @@ public interface ReceivableRepository extends JpaRepository<ReceivableEntity, Lo
 
     /** Count of unsettled receivables of a type (dashboard activity cards). */
     long countByTypeAndSettledFalse(ReceivableType type);
+
+    /** Removes every receivable for an order — used by the admin hard-delete of an order. */
+    void deleteByOrderId(Long orderId);
 }

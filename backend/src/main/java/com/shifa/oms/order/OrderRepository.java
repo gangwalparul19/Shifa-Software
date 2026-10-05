@@ -106,7 +106,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             FROM line_items li
             JOIN orders o ON o.id = li.order_id
             WHERE li.product_id IS NOT NULL
-              AND o.order_status NOT IN ('REJECTED','CANCELLED')
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
             GROUP BY li.product_id
             ORDER BY SUM(li.quantity) DESC
             """, nativeQuery = true)
@@ -119,7 +119,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             JOIN orders o ON o.id = li.order_id
             WHERE li.product_id IS NOT NULL
               AND o.created_by = :createdBy
-              AND o.order_status NOT IN ('REJECTED','CANCELLED')
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
             GROUP BY li.product_id
             ORDER BY SUM(li.quantity) DESC
             """, nativeQuery = true)
@@ -139,7 +139,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             WHERE li1.product_id IN (:productIds)
               AND li2.product_id IS NOT NULL
               AND li2.product_id NOT IN (:productIds)
-              AND o.order_status NOT IN ('REJECTED','CANCELLED')
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
             GROUP BY li2.product_id
             ORDER BY COUNT(DISTINCT o.id) DESC
             """, nativeQuery = true)
@@ -363,10 +363,10 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
                    COUNT(*) AS ordersTotal,
                    SUM(CASE WHEN o.created_at >= :monthStart THEN 1 ELSE 0 END) AS ordersThisMonth,
                    SUM(CASE WHEN o.created_at >= :dayStart THEN 1 ELSE 0 END) AS ordersToday,
-                   COALESCE(SUM(CASE WHEN o.order_status NOT IN ('REJECTED','CANCELLED')
+                   COALESCE(SUM(CASE WHEN o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
                                      THEN o.total_amount ELSE 0 END), 0) AS revenueTotal,
                    COALESCE(SUM(CASE WHEN o.created_at >= :monthStart
-                                      AND o.order_status NOT IN ('REJECTED','CANCELLED')
+                                      AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
                                      THEN o.total_amount ELSE 0 END), 0) AS revenueThisMonth,
                    SUM(CASE WHEN o.order_status IN ('DELIVERED','COD_COLLECTED','CLOSED')
                             THEN 1 ELSE 0 END) AS deliveredCount,
@@ -415,7 +415,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             FROM orders o
             WHERE o.created_by IS NOT NULL
               AND o.created_at >= :from AND o.created_at < :to
-              AND o.order_status NOT IN ('REJECTED','CANCELLED')
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
             GROUP BY o.created_by
             """, nativeQuery = true)
     List<SalespersonRevenueRow> salespersonRevenueBetween(
@@ -439,7 +439,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             SELECT o.customer_mobile AS mobile, o.created_at AS createdAt
             FROM orders o
             WHERE o.customer_mobile IS NOT NULL AND o.customer_mobile <> ''
-              AND o.order_status NOT IN ('REJECTED','CANCELLED')
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
             ORDER BY o.customer_mobile, o.created_at
             """, nativeQuery = true)
     List<CustomerOrderDateRow> customerOrderDates();
@@ -465,7 +465,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             JOIN orders o ON o.id = li.order_id
             WHERE li.product_id IS NOT NULL
               AND o.created_at >= :from AND o.created_at < :to
-              AND o.order_status NOT IN ('REJECTED','CANCELLED')
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
             GROUP BY li.product_id
             """, nativeQuery = true)
     List<ProductDemandRow> productDemandBetween(
@@ -490,7 +490,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     @Query(value = """
             SELECT COALESCE(SUM(o.customer_outstanding), 0) FROM orders o
             WHERE o.order_status NOT IN
-              ('CLOSED','COD_COLLECTED','REJECTED','CANCELLED',
+              ('CLOSED','COD_COLLECTED','REJECTED','PAYMENT_REJECTED','CANCELLED',
                'DELIVERY_FAILED','CUSTOMER_REJECTED','RTO','REDISPATCH')
             """, nativeQuery = true)
     java.math.BigDecimal sumOutstandingCodActive();

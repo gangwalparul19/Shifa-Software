@@ -25,6 +25,16 @@ public interface LeadRepository extends JpaRepository<LeadEntity, Long> {
     Optional<LeadEntity> findByIdAndOwnerUserId(Long id, Long ownerUserId);
 
     /**
+     * Unlinks a converted order from any lead that references it (sets
+     * {@code converted_order_id} to NULL) — used by the admin hard-delete of an
+     * order so the lead survives but no longer points at a removed order. Returns
+     * the number of leads unlinked.
+     */
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
+    @Query("UPDATE LeadEntity l SET l.convertedOrderId = NULL WHERE l.convertedOrderId = :orderId")
+    int clearConvertedOrder(@Param("orderId") Long orderId);
+
+    /**
      * All leads for a scope (no search term), most recent first. A {@code null}
      * {@code ownerUserId} disables scoping (admin/unscoped); a non-null value
      * restricts to that owner's leads (Req 3.1, 3.2).

@@ -85,6 +85,20 @@ const CANCELLABLE_STATUSES = new Set<string>([
   OrderStatus.OUT_FOR_DELIVERY,
 ]);
 
+/**
+ * The statuses an order can be permanently DELETED from (delete-order feature):
+ * only orders that never entered the accounts ledger — awaiting approval,
+ * rejected, payment-rejected, or cancelled. An approved/fulfilled order has a
+ * posted Sales voucher, so it must be cancelled (not deleted) to keep the GL
+ * intact; the backend also refuses such a delete with a 409.
+ */
+const DELETABLE_STATUSES = new Set<string>([
+  OrderStatus.PENDING_ADMIN_APPROVAL,
+  OrderStatus.REJECTED,
+  OrderStatus.PAYMENT_REJECTED,
+  OrderStatus.CANCELLED,
+]);
+
 /** One rendered step in the order-detail visual status timeline. */
 interface OrderTimelineStep {
   status: OrderStatusGroupKey;
@@ -286,6 +300,60 @@ export class OrdersComponent implements OnInit, OnDestroy {
   cancelFromDrawer(order: OrderDetail): void {
     this.router.navigate(['/order-cancellation'], { queryParams: { q: order.orderCode } });
     this.closeDetail();
+  }
+
+  /**
+   * Whether the "Delete order" action is offered in the drawer (delete-order
+   * feature). ADMIN only. Offered for orders that never entered the accounts
+   * ledger — pending approval, rejected, payment-rejected, or cancelled — so an
+   * admin can permanently wipe a mistaken / spam / abandoned order rather than
+   * leave it lingering. An approved/fulfilled order is NOT deletable here (it has
+   * a ledger voucher); the backend also refuses such a delete with a clear 409.
+   */
+  canDelete(order: OrderDetail | null | undefined): boolean {
+    if (!order || !this.auth.hasAnyRole(Role.ADMIN)) {
+      return false;
+    }
+    return DELETABLE_STATUSES.has(order.orderStatus);
+  }
+
+  /**
+   * Permanently deletes the order after an explicit confirmation (delete-order
+   * feature). On success it closes the drawer, drops the row from the list, and
+   * reloads so every total refreshes. The backend removes all child records and
+   * refuses (409) if the order was approved into the ledger.
+   */
+  async deleteFromDrawer(order: OrderDetail): Promise<void> {
+    if (!this.canDelete(order) || this.detailBusy()) {
+      return;
+    }
+    const confirmed = await this.confirm.confirm({
+      title: 'Delete order',
+      message:
+        `Permanently delete order ${order.orderCode}? This removes the order and all its ` +
+        `records and cannot be undone. A deleted order is excluded from every sales figure.`,
+      confirmLabel: 'Delete',
+      danger: true,
+      icon: 'ti-trash',
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.detailBusy.set(true);
+    this.service.deleteOrder(order.id).subscribe({
+      next: () => {
+        this.detailBusy.set(false);
+        this.toasts.success(`Order ${order.orderCode} deleted.`);
+        this.closeDetail();
+        this.load();
+      },
+      error: (err) => {
+        this.detailBusy.set(false);
+        this.toasts.error(
+          err?.error?.message ?? 'Could not delete the order. Please try again.',
+        );
+      },
+    });
   }
 
   /** Creating a return is ADMIN-only (Set B — Feature 2, mutations = ADMIN). */

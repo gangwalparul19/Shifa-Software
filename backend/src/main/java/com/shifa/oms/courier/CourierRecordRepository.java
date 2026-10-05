@@ -26,4 +26,7 @@ public interface CourierRecordRepository extends JpaRepository<CourierRecord, Lo
 
     /** All records that have an AWB assigned (poll fallback candidate set). */
     List<CourierRecord> findByAwbIsNotNull();
+
+    /** Removes the courier record for an order — used by the admin hard-delete of an order. */
+    void deleteByOrderId(Long orderId);
 }

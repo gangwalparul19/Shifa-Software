@@ -61,4 +61,7 @@ public interface OrderReturnRepository extends JpaRepository<OrderReturn, Long> 
     java.math.BigDecimal sumRefundByStatusCreatedBetween(@Param("status") ReturnStatus status,
                                                          @Param("from") LocalDateTime from,
                                                          @Param("to") LocalDateTime to);
+
+    /** Removes every return for an order — used by the admin hard-delete of an order. */
+    void deleteByOrderId(Long orderId);
 }

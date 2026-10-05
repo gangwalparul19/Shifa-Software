@@ -31,6 +31,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -86,6 +87,7 @@ public class AdminOrderController {
 
     private final ChannelSummaryService channelSummaryService;
     private final OrderExportService orderExportService;
+    private final OrderDeletionService orderDeletionService;
 
     public AdminOrderController(AdminOrderService adminOrderService,
                                 BulkOrderService bulkOrderService,
@@ -96,7 +98,8 @@ public class AdminOrderController {
                                 OrderService orderService,
                                 CourierAssignmentService courierAssignmentService,
                                 ChannelSummaryService channelSummaryService,
-                                OrderExportService orderExportService) {
+                                OrderExportService orderExportService,
+                                OrderDeletionService orderDeletionService) {
         this.adminOrderService = adminOrderService;
         this.bulkOrderService = bulkOrderService;
         this.labelService = labelService;
@@ -107,6 +110,7 @@ public class AdminOrderController {
         this.courierAssignmentService = courierAssignmentService;
         this.channelSummaryService = channelSummaryService;
         this.orderExportService = orderExportService;
+        this.orderDeletionService = orderDeletionService;
     }
 
     /**
@@ -268,6 +272,26 @@ public class AdminOrderController {
     /** API response for a cancellation: the cancelled order + courier-cancel outcome. */
     public record CancelOrderResponse(OrderResponse order, boolean courierCancelAttempted,
                                       boolean courierCancelAccepted, String courierMessage) {
+    }
+
+    /**
+     * Permanently delete an order and all its records (delete-order feature;
+     * ADMIN only via the class-level guard). Use this to wipe a mistaken / spam /
+     * abandoned order entirely instead of leaving it as a rejected/cancelled
+     * record. 404 if the order does not exist; 409 if the order was already
+     * approved into the accounts ledger (it must be cancelled, not deleted, to
+     * keep the General Ledger and GST periods intact). A deleted order — like a
+     * rejected/cancelled one — is excluded from every sales figure.
+     */
+    @DeleteMapping("/{id}")
+    public DeleteOrderResponse delete(@PathVariable Long id) {
+        AuthPrincipal admin = currentUserService.requireCurrentUser();
+        String code = orderDeletionService.delete(id, admin);
+        return new DeleteOrderResponse(id, code);
+    }
+
+    /** API response for a delete: the removed order id + code (for the confirmation toast). */
+    public record DeleteOrderResponse(Long id, String orderCode) {
     }
 
     /**

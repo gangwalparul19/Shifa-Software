@@ -587,6 +587,22 @@ public class OrderEntity {
         this.paymentVerificationNote = note;
     }
 
+    /**
+     * Clears the payment-verification state so a closed order (admin-rejected or
+     * cancelled) no longer sits in the payment-verification queue. Setting the
+     * status to {@code null} ("nothing to verify") removes it from the queue
+     * finder, which matches only {@code PENDING}; the payment screenshots and
+     * amount received stay on the order so the salesperson can still see what they
+     * entered. When a rejected order is later resubmitted, the resubmit flow
+     * re-marks it {@code PENDING} so it re-enters the queue exactly once.
+     */
+    public void clearPaymentVerification() {
+        this.paymentVerificationStatus = null;
+        this.paymentVerifiedBy = null;
+        this.paymentVerifiedAt = null;
+        this.paymentVerificationNote = null;
+    }
+
     public Long getId() {
         return id;
     }

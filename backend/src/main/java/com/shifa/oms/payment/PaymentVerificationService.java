@@ -118,11 +118,24 @@ public class PaymentVerificationService {
         this.clock = clock;
     }
 
+    /**
+     * Order statuses in which a payment verification request is NOT actionable —
+     * a rejected / payment-rejected / cancelled order has nothing to verify, so it
+     * must never appear in the payment panel even if a stale {@code PENDING}
+     * verification status lingers on it (belt-and-suspenders alongside
+     * {@code clearPaymentVerification()} on reject/cancel).
+     */
+    private static final Set<OrderStatus> CLOSED_FOR_VERIFICATION = java.util.EnumSet.of(
+            OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED);
+
     /** The queue of prepaid payments awaiting verification, oldest first. */
     @Transactional(readOnly = true)
     public List<PaymentQueueRow> queue() {
         List<OrderEntity> pending = orderRepository
-                .findByPaymentVerificationStatusOrderByCreatedAtDesc(PaymentVerificationStatus.PENDING);
+                .findByPaymentVerificationStatusOrderByCreatedAtDesc(PaymentVerificationStatus.PENDING)
+                .stream()
+                .filter(o -> !CLOSED_FOR_VERIFICATION.contains(o.getOrderStatus()))
+                .toList();
         // Resolve each row's salesperson (created_by) name once for the whole
         // queue, so the verifier sees who punched each order (no N+1).
         Map<Long, String> names = resolveSalespersonNames(pending);

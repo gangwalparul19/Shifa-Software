@@ -37,11 +37,37 @@ import java.util.TreeMap;
  */
 public class ReportAggregator {
 
+    /**
+     * Order statuses that never produced sellable revenue and MUST be excluded
+     * from every sales / turnover figure (matches the P&amp;L and performance
+     * definition): an admin-rejected, payment-rejected, or cancelled order is not
+     * a sale. Grouped-count / status-breakdown reports keep counting them (they
+     * exist to show them) — only the money/sales aggregations drop them.
+     */
+    private static final java.util.Set<OrderStatus> NON_REVENUE = java.util.EnumSet.of(
+            OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED);
+
     /** The orders whose order date falls within the window (Req 20.2). */
     public List<OrderReportRecord> within(List<OrderReportRecord> orders, DateRange window) {
         List<OrderReportRecord> result = new ArrayList<>();
         for (OrderReportRecord o : orders) {
             if (window.contains(o.orderDate())) {
+                result.add(o);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Windowed orders that count as revenue — same as {@link #within} but with the
+     * {@link #NON_REVENUE} statuses (rejected / payment-rejected / cancelled)
+     * removed. Used by every sales/turnover aggregation so those orders never
+     * inflate a salesperson's total or the company turnover.
+     */
+    public List<OrderReportRecord> revenueWithin(List<OrderReportRecord> orders, DateRange window) {
+        List<OrderReportRecord> result = new ArrayList<>();
+        for (OrderReportRecord o : within(orders, window)) {
+            if (!NON_REVENUE.contains(o.orderStatus())) {
                 result.add(o);
             }
         }
@@ -54,7 +80,7 @@ public class ReportAggregator {
     public List<DailyRow> daily(List<OrderReportRecord> orders, DateRange window) {
         Map<LocalDate, long[]> counts = new TreeMap<>();
         Map<LocalDate, BigDecimal> sales = new TreeMap<>();
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             counts.computeIfAbsent(o.orderDate(), k -> new long[1])[0]++;
             sales.merge(o.orderDate(), o.totalAmount(), BigDecimal::add);
         }
@@ -69,7 +95,7 @@ public class ReportAggregator {
     public List<MonthlyRow> monthly(List<OrderReportRecord> orders, DateRange window) {
         Map<YearMonth, long[]> counts = new TreeMap<>();
         Map<YearMonth, BigDecimal> sales = new TreeMap<>();
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             YearMonth ym = YearMonth.from(o.orderDate());
             counts.computeIfAbsent(ym, k -> new long[1])[0]++;
             sales.merge(ym, o.totalAmount(), BigDecimal::add);
@@ -89,7 +115,7 @@ public class ReportAggregator {
     public List<ProductRow> productWise(List<OrderReportRecord> orders, DateRange window) {
         Map<String, long[]> qty = new LinkedHashMap<>();
         Map<String, BigDecimal> sales = new LinkedHashMap<>();
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             for (OrderReportRecord.ProductLine line : o.products()) {
                 qty.computeIfAbsent(line.productName(), k -> new long[1])[0] += line.quantity();
                 sales.merge(line.productName(), line.lineTotal(), BigDecimal::add);
@@ -113,7 +139,7 @@ public class ReportAggregator {
     public List<StateRow> stateWise(List<OrderReportRecord> orders, DateRange window) {
         Map<String, long[]> counts = new LinkedHashMap<>();
         Map<String, BigDecimal> sales = new LinkedHashMap<>();
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             String state = o.state() == null ? "" : o.state();
             counts.computeIfAbsent(state, k -> new long[1])[0]++;
             sales.merge(state, o.totalAmount(), BigDecimal::add);
@@ -137,7 +163,7 @@ public class ReportAggregator {
         Map<String, BigDecimal> sales = new LinkedHashMap<>();
         Map<String, String> names = new LinkedHashMap<>();
         Map<String, String> mobiles = new LinkedHashMap<>();
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             String mobile = o.customerMobile() == null ? "" : o.customerMobile();
             String name = o.customerName() == null ? "" : o.customerName();
             String key = !mobile.isBlank() ? mobile : name;
@@ -273,15 +299,15 @@ public class ReportAggregator {
     /** Total sales (sum of {@code totalAmount}) over the windowed orders (Req 19.3). */
     public BigDecimal totalSales(List<OrderReportRecord> orders, DateRange window) {
         BigDecimal total = BigDecimal.ZERO;
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             total = total.add(o.totalAmount());
         }
         return scale(total);
     }
 
-    /** Number of orders within the window (Req 19.3). */
+    /** Number of revenue orders within the window (Req 19.3; excludes non-revenue). */
     public long orderCount(List<OrderReportRecord> orders, DateRange window) {
-        return within(orders, window).size();
+        return revenueWithin(orders, window).size();
     }
 
     /**
@@ -301,7 +327,7 @@ public class ReportAggregator {
     /** Top salesperson by total sales within the window (argmax), if any (Req 19.7). */
     public Optional<Long> topSalesperson(List<OrderReportRecord> orders, DateRange window) {
         Map<Long, BigDecimal> byPerson = new LinkedHashMap<>();
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             if (o.salespersonId() == null) {
                 continue;
             }
@@ -313,7 +339,7 @@ public class ReportAggregator {
     /** Top-selling product by quantity within the window (argmax), if any (Req 19.7). */
     public Optional<String> topProduct(List<OrderReportRecord> orders, DateRange window) {
         Map<String, BigDecimal> byProduct = new LinkedHashMap<>();
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             for (OrderReportRecord.ProductLine line : o.products()) {
                 byProduct.merge(line.productName(), BigDecimal.valueOf(line.quantity()), BigDecimal::add);
             }
@@ -324,7 +350,7 @@ public class ReportAggregator {
     /** Top state by total sales within the window (argmax), if any (Req 19.7). */
     public Optional<String> topState(List<OrderReportRecord> orders, DateRange window) {
         Map<String, BigDecimal> byState = new LinkedHashMap<>();
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             String state = o.state() == null ? "" : o.state();
             byState.merge(state, o.totalAmount(), BigDecimal::add);
         }

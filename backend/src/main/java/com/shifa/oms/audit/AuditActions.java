@@ -21,6 +21,9 @@ public final class AuditActions {
     public static final String ORDER_CANCELLED = "ORDER_CANCELLED";
     /** An admin corrected the order's customer/address/items/discount/notes (edit-order feature). */
     public static final String ORDER_UPDATED = "ORDER_UPDATED";
+
+    /** An admin permanently deleted an order and all its child rows (delete-order feature). */
+    public static final String ORDER_DELETED = "ORDER_DELETED";
     /** A packer/admin manually marked an order RTO by scanning its label (label redesign feature). */
     public static final String ORDER_MARKED_RTO = "ORDER_MARKED_RTO";
     /** A user exported the (filtered, scoped) orders list to CSV/Excel (list-export enhancement). */

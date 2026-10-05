@@ -35,4 +35,7 @@ public interface OrderShipmentRepository extends JpaRepository<OrderShipment, Lo
 
     /** All shipments that have an AWB (tracking-poll candidate set). */
     List<OrderShipment> findByAwbIsNotNull();
+
+    /** Removes the shipment mirror for an order — used by the admin hard-delete of an order. */
+    void deleteByOrderId(Long orderId);
 }

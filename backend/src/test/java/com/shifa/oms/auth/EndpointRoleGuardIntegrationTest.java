@@ -185,6 +185,11 @@ class EndpointRoleGuardIntegrationTest {
             """;
 
     @Test
+    void deleteOrderIsAdminOnly() throws Exception {
+        assertRoleMatrix(delete("/api/admin/orders/5"), List.of(Role.ADMIN));
+    }
+
+    @Test
     void editOrderIsAdminOnly() throws Exception {
         assertRoleMatrix(
                 put("/api/admin/orders/5")
@@ -651,6 +656,11 @@ class EndpointRoleGuardIntegrationTest {
         }
 
         @Bean
+        com.shifa.oms.order.OrderDeletionService orderDeletionService() {
+            return new StubOrderDeletionService();
+        }
+
+        @Bean
         com.shifa.oms.order.ChannelSummaryService channelSummaryService() {
             return new StubChannelSummaryService();
         }
@@ -998,6 +1008,18 @@ class EndpointRoleGuardIntegrationTest {
                 org.springframework.data.domain.Pageable pageable,
                 java.util.Collection<Long> creatorIds, com.shifa.oms.order.OrderSource source) {
             return org.springframework.data.domain.Page.empty(pageable);
+        }
+    }
+
+    /** Returns a canned code so a permitted (ADMIN) delete-order call yields 2xx without a DB. */
+    static class StubOrderDeletionService extends com.shifa.oms.order.OrderDeletionService {
+        StubOrderDeletionService() {
+            super(null, null, null, null, null, null, null, null, null, null);
+        }
+
+        @Override
+        public String delete(Long id, AuthPrincipal admin) {
+            return "SHR-TEST";
         }
     }
 

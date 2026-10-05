@@ -121,4 +121,9 @@ public interface AdminNotificationRepository extends JpaRepository<AdminNotifica
                            @Param("role") com.shifa.oms.auth.Role role,
                            @Param("legacyVisible") boolean legacyVisible,
                            @Param("now") LocalDateTime now);
+
+    /** Removes every notification tied to an order — used by the admin hard-delete of an order. */
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM AdminNotification n WHERE n.orderId = :orderId")
+    int deleteByOrderId(@Param("orderId") Long orderId);
 }

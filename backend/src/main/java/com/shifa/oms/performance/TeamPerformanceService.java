@@ -158,6 +158,19 @@ public class TeamPerformanceService {
         List<TeamOrderRow> ownOrderRows = toOrderRows(ownOrders, salespersonNames);
         List<TeamOrderRow> teamOrderRows = toOrderRows(teamOrders, salespersonNames);
 
+        // The team lead punches orders too — include their own sales in the team
+        // totals and show them as a member row (marked "(Team Lead)"), so a team's
+        // headline figures and leaderboard account for the lead's own orders. For
+        // an ADMIN caller there is no "own" team-lead row (ownPerformance is null).
+        if (ownPerformance != null && ownPerformance.ordersTotal() > 0) {
+            leaderboard = new ArrayList<>(leaderboard);
+            leaderboard.add(withTeamLeadLabel(ownPerformance));
+            leaderboard.sort(Comparator.comparing(SalespersonPerformanceSummary::revenueInPeriod).reversed()
+                    .thenComparing(Comparator.comparingLong(SalespersonPerformanceSummary::ordersInPeriod).reversed())
+                    .thenComparing(SalespersonPerformanceSummary::fullName,
+                            Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)));
+        }
+
         long ordersTotal = 0;
         long ordersThisMonth = 0;
         long delivered = 0;
@@ -200,11 +213,17 @@ public class TeamPerformanceService {
         String topPerformer = leaderboard.isEmpty() ? null : leaderboard.get(0).fullName();
         String topSource = leadSources.stream().findFirst().map(TeamSourceConversion::source).orElse(null);
 
+        // The headline period KPIs now reflect the WHOLE team including the lead's
+        // own orders (combinedPeriod) for a TEAM_LEAD caller; ownPeriod + the
+        // separate my-orders/team-orders tabs still let them see the split. ADMIN
+        // keeps the pure team period (no own-lead orders to fold in).
+        TeamPeriodSummary headlinePeriod = combinedPeriod != null ? combinedPeriod : period;
+
         return new TeamPerformanceResponse(
                 memberIds.size(), ordersTotal, ordersThisMonth, revenueTotal, revenueThisMonth,
                 delivered, failed, pct(delivered, delivered + failed), codOutstanding,
                 leadsTotal, leadsWon, pct(leadsWon, leadsTotal), topPerformer, topSource,
-                leaderboard, leadSources, period, work, coaching,
+                leaderboard, leadSources, headlinePeriod, work, coaching,
                 ownPerformance, ownPeriod, combinedPeriod, ownOrderRows, teamOrderRows);
     }
 
@@ -291,6 +310,21 @@ public class TeamPerformanceService {
                 row.deliveredCount(), row.failedCount(), row.successRate(), row.codOutstanding(),
                 window.orders, window.revenue, aov(window.revenue, window.revenueOrders),
                 window.rto, window.dueFollowUps);
+    }
+
+    /**
+     * Returns a copy of the team lead's own summary with a "(Team Lead)" suffix on
+     * the display name, so the leaderboard row is clearly the lead (not one of
+     * their reports). All metrics are preserved.
+     */
+    private static SalespersonPerformanceSummary withTeamLeadLabel(SalespersonPerformanceSummary s) {
+        String base = (s.fullName() == null || s.fullName().isBlank())
+                ? (s.username() == null ? "Team lead" : s.username()) : s.fullName();
+        return new SalespersonPerformanceSummary(
+                s.id(), s.username(), base + " (Team Lead)", s.active(), s.verificationStatus(),
+                s.ordersTotal(), s.ordersThisMonth(), s.ordersToday(), s.revenueTotal(), s.revenueThisMonth(),
+                s.deliveredCount(), s.failedCount(), s.successRate(), s.codOutstanding(),
+                s.ordersInPeriod(), s.revenueInPeriod(), s.averageOrderValue(), s.rtoCount(), s.dueFollowUps());
     }
 
     private SalespersonPerformanceSummary ownSummary(AuthPrincipal actor, List<OrderEntity> orders,

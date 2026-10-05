@@ -42,13 +42,15 @@ import java.util.Set;
  * — so an admin can see where each team is heading and jump straight to the
  * leads that need a call, without opening each team lead's own dashboard.
  *
- * <p>A "team" here is exactly the set of salespeople with
- * {@code users.team_lead_id = <lead>} (the same set
- * {@code SalespersonScopeResolver#teamMemberScope} resolves for that lead) —
- * the team lead's own orders/leads are NOT included, since leads can only be
- * owned by a SALESPERSON or ADMIN (a team lead cannot capture leads). A
- * salesperson with no team lead assigned is rolled into {@link
- * TeamsOverviewResponse#unassigned()} rather than silently dropped.
+ * <p>A "team" here is the salespeople with {@code users.team_lead_id = <lead>}
+ * PLUS the team lead themselves: the lead now punches orders too, so the team's
+ * order/revenue/delivery totals INCLUDE the lead's own orders and the lead
+ * appears as a member row (marked "(Team Lead)"). The LEAD PIPELINE stays scoped
+ * to the assigned salespeople only, since leads can only be owned by a
+ * SALESPERSON or ADMIN (a team lead cannot capture leads), and {@code memberCount}
+ * reflects the assigned-salespeople team size. A salesperson with no team lead
+ * assigned is rolled into {@link TeamsOverviewResponse#unassigned()} rather than
+ * silently dropped.
  */
 @Service
 public class TeamsOverviewService {
@@ -111,11 +113,21 @@ public class TeamsOverviewService {
             leaderboardById.put(s.id(), s);
         }
 
+        // The team lead's own name, for the synthetic "self" member row + totals.
+        for (User lead : leads) {
+            namesById.putIfAbsent(lead.getId(), lead.getFullName());
+        }
+
         List<TeamOverviewRow> rows = new ArrayList<>();
         java.util.Set<Long> assigned = new java.util.HashSet<>();
         for (User lead : leads) {
             List<Long> memberIds = userRepository.findIdsByTeamLeadId(lead.getId());
             assigned.addAll(memberIds);
+            // The team lead now also punches orders (team-lead order entry), so a
+            // team's sales must INCLUDE the lead's own orders. Pass the lead id so
+            // rowFor folds the lead's own orders into every order-derived total and
+            // shows the lead as a member row — while the assigned-salespeople set
+            // still drives the team size and the lead pipeline (a lead owns no leads).
             rows.add(rowFor(lead.getId(), lead.getFullName(), memberIds, namesById, today, leaderboardById));
         }
         // Most-at-risk team first: worst delivery success rate, then most overdue leads.
@@ -137,8 +149,15 @@ public class TeamsOverviewService {
     private TeamOverviewRow rowFor(Long teamLeadId, String teamLeadName, List<Long> memberIds,
                                    Map<Long, String> namesById, LocalDate today,
                                    Map<Long, SalespersonPerformanceSummary> leaderboardById) {
-        List<OrderEntity> orders = memberIds.isEmpty()
-                ? List.of() : safe(orderRepository.findAllScopedIn(memberIds));
+        // Orders are scoped to the assigned salespeople PLUS the team lead's own
+        // id (the lead punches orders too — their sales count towards the team).
+        // Leads stay scoped to the assigned salespeople only (a lead owns no leads).
+        List<Long> orderScopeIds = new ArrayList<>(memberIds);
+        if (teamLeadId != null && !orderScopeIds.contains(teamLeadId)) {
+            orderScopeIds.add(teamLeadId);
+        }
+        List<OrderEntity> orders = orderScopeIds.isEmpty()
+                ? List.of() : safe(orderRepository.findAllScopedIn(orderScopeIds));
         List<LeadEntity> leads = memberIds.isEmpty()
                 ? List.of() : safe(leadRepository.findAllScopedIn(memberIds));
 
@@ -217,6 +236,13 @@ public class TeamsOverviewService {
                 members.add(s);
             }
         }
+        // Add the team lead as a member row so their own sales are visible in the
+        // per-person table (the leaderboard only lists SALESPERSON rows, so the
+        // lead's figures are computed here from this team's loaded orders).
+        if (teamLeadId != null) {
+            members.add(leadSelfSummary(teamLeadId,
+                    namesById.getOrDefault(teamLeadId, teamLeadName), orders, monthStart));
+        }
         members.sort(Comparator
                 .comparing(SalespersonPerformanceSummary::revenueThisMonth,
                         Comparator.nullsLast(Comparator.reverseOrder()))
@@ -227,6 +253,54 @@ public class TeamsOverviewService {
                 scale(revenueTotal), scale(revenueThisMonth), delivered, failed, successRate,
                 scale(outstanding), leadsTotal, leadsWon, leadsLost, leadConversionRate,
                 pipelineByName, dueFollowUps, cappedCallOuts, members);
+    }
+
+    /**
+     * Builds a leaderboard-style summary row for the team lead's OWN orders
+     * (the lead punches orders too). Computed from this team's already-loaded
+     * orders filtered to {@code created_by == teamLeadId}, mirroring the revenue
+     * / delivered / failed / outstanding definitions used for the team totals.
+     */
+    private SalespersonPerformanceSummary leadSelfSummary(Long teamLeadId, String name,
+                                                          List<OrderEntity> orders, LocalDate monthStart) {
+        long ordersTotal = 0;
+        long ordersThisMonth = 0;
+        long delivered = 0;
+        long failed = 0;
+        BigDecimal revenueTotal = BigDecimal.ZERO;
+        BigDecimal revenueThisMonth = BigDecimal.ZERO;
+        BigDecimal outstanding = BigDecimal.ZERO;
+        for (OrderEntity o : orders) {
+            if (!teamLeadId.equals(o.getCreatedBy())) {
+                continue;
+            }
+            ordersTotal++;
+            boolean revenue = !NON_REVENUE.contains(o.getOrderStatus());
+            BigDecimal amount = nz(o.getTotalAmount());
+            if (revenue) {
+                revenueTotal = revenueTotal.add(amount);
+            }
+            if (o.getCreatedAt() != null && !o.getCreatedAt().toLocalDate().isBefore(monthStart)) {
+                ordersThisMonth++;
+                if (revenue) {
+                    revenueThisMonth = revenueThisMonth.add(amount);
+                }
+            }
+            if (DELIVERED.contains(o.getOrderStatus())) {
+                delivered++;
+            } else if (FAILED.contains(o.getOrderStatus())) {
+                failed++;
+            }
+            outstanding = outstanding.add(nz(o.getCustomerOutstanding()));
+        }
+        double successRate = delivered + failed == 0 ? 0.0 : pct(delivered, delivered + failed);
+        // Suffix the name so the lead is visually distinct from their reports.
+        String displayName = (name == null || name.isBlank() ? "Team lead" : name) + " (Team Lead)";
+        return new SalespersonPerformanceSummary(
+                teamLeadId, null, displayName, true, null,
+                ordersTotal, ordersThisMonth, 0L,
+                scale(revenueTotal), scale(revenueThisMonth),
+                delivered, failed, successRate, scale(outstanding));
     }
 
     private static <T> List<T> safe(List<T> values) {

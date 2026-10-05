@@ -495,6 +495,10 @@ public class AdminOrderService {
         orderWorkflowService.applyTransition(
                 order, OrderStatus.REJECTED, Actor.user(admin, SOURCE_ADMIN));
         order.setRejectReason(category, reason.trim());
+        // A rejected order has nothing to verify — drop it out of the payment
+        // panel so a prepaid order's verification request disappears on rejection
+        // (and isn't asked a second time when the salesperson resubmits).
+        order.clearPaymentVerification();
         return OrderResponse.from(orderRepository.save(order));
     }
 
@@ -549,6 +553,10 @@ public class AdminOrderService {
         order.applyAmounts(order.getTotalAmount(), order.getAmountReceived(),
                 order.getRemainingAmount(), java.math.BigDecimal.ZERO, order.getPaymentStatus());
         order.setCustomerOutstanding(java.math.BigDecimal.ZERO);
+
+        // A cancelled order has nothing to verify — drop it out of the payment
+        // verification panel (its PENDING request would otherwise linger there).
+        order.clearPaymentVerification();
 
         OrderEntity saved = orderRepository.save(order);
 

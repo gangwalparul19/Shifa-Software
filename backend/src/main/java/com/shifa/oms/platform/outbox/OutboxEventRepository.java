@@ -32,6 +32,16 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> 
             String aggregateType, Long aggregateId, String eventType);
 
     /**
+     * Removes every outbox event for one aggregate (e.g. all {@code ORDER}
+     * events for an order) — used by the admin hard-delete of an order so no
+     * stale notification/integration events linger for a removed order.
+     */
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
+    @Query("DELETE FROM OutboxEvent e WHERE e.aggregateType = :aggregateType AND e.aggregateId = :aggregateId")
+    int deleteByAggregateTypeAndAggregateId(@Param("aggregateType") String aggregateType,
+                                            @Param("aggregateId") Long aggregateId);
+
+    /**
      * All events for one aggregate whose event-type starts with {@code prefix}
      * (e.g. {@code "QUIKSHIPX"} for an order). Used by the per-order QuikShipX
      * retry action to find and re-queue a single stuck order's events.

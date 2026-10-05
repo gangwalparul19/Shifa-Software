@@ -52,6 +52,10 @@ public class DashboardMetricsService {
 
     private static final DateTimeFormatter DAY_LABEL = DateTimeFormatter.ISO_LOCAL_DATE;
 
+    /** Statuses that never count towards revenue/turnover (rejected/cancelled). */
+    private static final Set<OrderStatus> NON_REVENUE =
+            EnumSet.of(OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED);
+
     /** Statuses treated as "delivered" for the delivered card and conversion rate. */
     private static final Set<OrderStatus> DELIVERED_STATES =
             EnumSet.of(OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED, OrderStatus.CLOSED);
@@ -250,12 +254,19 @@ public class DashboardMetricsService {
         return result;
     }
 
-    /** Adds each windowed order's sales into the bucket whose range contains its date. */
+    /**
+     * Adds each windowed order's sales into the bucket whose range contains its
+     * date. Non-revenue orders (rejected / payment-rejected / cancelled) are
+     * skipped so the sales trend never counts a sale that didn't happen.
+     */
     private void fillSales(List<Bucket> buckets, List<OrderReportRecord> records) {
         if (buckets.isEmpty()) {
             return;
         }
         for (OrderReportRecord r : records) {
+            if (NON_REVENUE.contains(r.orderStatus())) {
+                continue;
+            }
             LocalDate date = r.orderDate();
             if (date == null) {
                 continue;

@@ -83,6 +83,12 @@ export interface CancelOrderResult {
   courierMessage?: string | null;
 }
 
+/** Result of an admin order delete (delete-order feature): the removed id + code. */
+export interface DeleteOrderResult {
+  id: number;
+  orderCode: string;
+}
+
 /**
  * Data access for the admin all-orders view (Req 21, 22).
  *
@@ -351,6 +357,16 @@ export class OrdersService {
    */
   cancel(id: number, note: string): Observable<CancelOrderResult> {
     return this.api.post<CancelOrderResult>(`/api/admin/orders/${id}/cancel`, { note });
+  }
+
+  /**
+   * Permanently delete an order and all its records (delete-order feature), via
+   * {@code DELETE /api/admin/orders/{id}} (ADMIN-only). The backend removes every
+   * child row and refuses with a 409 if the order was already approved into the
+   * accounts ledger (such an order must be cancelled, not deleted).
+   */
+  deleteOrder(id: number): Observable<DeleteOrderResult> {
+    return this.api.delete<DeleteOrderResult>(`/api/admin/orders/${id}`);
   }
 
   /**

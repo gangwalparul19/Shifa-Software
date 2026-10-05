@@ -1468,6 +1468,22 @@
             </button>
           }
 
+          <!-- Delete order (ADMIN-only): permanently removes a mistaken / spam /
+               abandoned order and all its records. Offered only for orders that
+               never entered the accounts ledger (pending / rejected / cancelled);
+               the backend refuses a delete once an order is approved. -->
+          @if (canDelete(order)) {
+            <button
+              type="button"
+              class="btn btn-outline-danger shifa-od__action"
+              [disabled]="detailBusy()"
+              (click)="deleteFromDrawer(order)"
+              title="Permanently delete this order and all its records (cannot be undone)"
+            >
+              <i class="ti ti-trash me-1"></i> Delete order
+            </button>
+          }
+
           <!-- Manual courier/AWB assignment (ADMIN-only): usable any time before
                dispatch so the internal label's courier barcode can render right
                away, instead of waiting for automatic in-house assignment which

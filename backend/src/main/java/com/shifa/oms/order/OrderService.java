@@ -800,17 +800,19 @@ public class OrderService {
             throw new IllegalStateException("Workflow service is required to resubmit an order.");
         }
 
-        boolean wasPaymentRejected = order.getOrderStatus() == OrderStatus.PAYMENT_REJECTED;
-
         // Re-apply the corrected details (same re-price + stock reconcile as an edit).
         String diff = applyEditedFields(order, request, actor.userId());
 
         // Clear the rejection so the reworked order carries no stale reason.
         order.setRejectReason(null, null);
 
-        // A payment-rejected order's proof was disputed — send it back for a fresh
-        // authenticity check when it still carries a payment (prepaid/partial).
-        if (wasPaymentRejected && order.getPaymentStatus() != PaymentStatus.COD) {
+        // Re-enter payment verification exactly once for a prepaid/partial order.
+        // Rejecting (admin) or payment-rejecting an order clears its verification
+        // state (clearPaymentVerification), so the order is no longer in the
+        // payment panel; resubmitting a non-COD order re-marks it PENDING so the
+        // verifier re-checks the (possibly corrected) payment — a single fresh
+        // request, never a duplicate.
+        if (order.getPaymentStatus() != PaymentStatus.COD) {
             order.markPaymentPendingVerification();
         }
 
@@ -935,6 +937,14 @@ public class OrderService {
             if (!calc.amountReceived().isZero()) {
                 order.addPayment(new OrderPayment(
                         calc.amountReceived().toBigDecimal(), newScreenshotKeys.get(0)));
+            }
+            // The payment proof changed on this edit — a non-COD order's payment
+            // must be re-verified against the new screenshot/amount. Re-mark it
+            // PENDING unless it is already PENDING (so it re-enters the payment
+            // panel exactly once; resubmit also handles the rejected-order case).
+            if (calc.paymentStatus() != PaymentStatus.COD
+                    && order.getPaymentVerificationStatus() != PaymentVerificationStatus.PENDING) {
+                order.markPaymentPendingVerification();
             }
         }
 
