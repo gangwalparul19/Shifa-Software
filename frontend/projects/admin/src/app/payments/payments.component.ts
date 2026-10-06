@@ -8,6 +8,12 @@ import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { InrPipe } from '../shared/inr.pipe';
 import { ToastService } from '../shared/toast.service';
+import {
+  SourceFilterMode,
+  matchesSourceMode,
+  readSourceFilter,
+  writeSourceFilter,
+} from '../shared/source-filter.util';
 import { PaymentsService } from './payments.service';
 import { PaymentQueueRow } from './payments.model';
 
@@ -36,7 +42,22 @@ export class PaymentsComponent implements OnInit, OnDestroy {
   private readonly service = inject(PaymentsService);
   private readonly toasts = inject(ToastService);
 
-  protected readonly rows = signal<PaymentQueueRow[]>([]);
+  protected readonly rowsRaw = signal<PaymentQueueRow[]>([]);
+
+  // --- Source filter (Portal / Shopify / All, default Portal) -------------
+  protected readonly sourceFilter = signal<SourceFilterMode>(readSourceFilter('shifa:payments-source'));
+
+  setSourceFilter(mode: SourceFilterMode): void {
+    this.sourceFilter.set(mode);
+    writeSourceFilter('shifa:payments-source', mode);
+    this.page.set(0);
+  }
+
+  /** Source-filtered payment queue. */
+  protected readonly rows = computed(() =>
+    this.rowsRaw().filter((r) => matchesSourceMode(r.source, this.sourceFilter())),
+  );
+
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
   protected readonly busyId = signal<number | null>(null);
@@ -88,7 +109,7 @@ export class PaymentsComponent implements OnInit, OnDestroy {
     this.loadError.set(null);
     this.service.queue().subscribe({
       next: (rows) => {
-        this.rows.set(rows);
+        this.rowsRaw.set(rows);
         const maxPage = Math.max(0, this.totalPages() - 1);
         if (this.page() > maxPage) {
           this.page.set(maxPage);

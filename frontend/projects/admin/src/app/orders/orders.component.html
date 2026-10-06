@@ -130,9 +130,10 @@
           <div class="col-6 col-lg-3" [formGroup]="filters">
             <label class="form-label small mb-1">Source</label>
             <select class="form-select" formControlName="source" aria-label="Filter by order source">
+              <option value="PORTAL">Portal (non-Shopify)</option>
+              <option value="SHOPIFY">Shopify</option>
               <option value="">All sources</option>
               <option value="STORE">Store (POS)</option>
-              <option value="SHOPIFY">Shopify</option>
               <option value="SALESPERSON">Sales</option>
               <option value="STOREFRONT">Storefront (legacy)</option>
             </select>

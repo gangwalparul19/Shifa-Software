@@ -151,7 +151,7 @@ public class AdminOrderController {
             @RequestParam(required = false) OrderStatus status,
             @RequestParam(required = false) String statusGroup,
             @RequestParam(required = false) PaymentStatus paymentStatus,
-            @RequestParam(required = false) com.shifa.oms.order.OrderSource source,
+            @RequestParam(required = false) String source,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) Integer page,
@@ -174,10 +174,25 @@ public class AdminOrderController {
         // Parse leniently so a stale pre-collapse group key (e.g. PACKAGING/COMPLETED)
         // maps to the new group instead of 400ing.
         OrderStatusGroup group = OrderStatusGroup.from(statusGroup);
-        // Optional exact source filter (e.g. only Shopify-imported orders).
+        // Source filter: "PORTAL" is a synthetic alias meaning "everything except
+        // Shopify" (used by the default UI view). A real enum value (SHOPIFY,
+        // SALESPERSON, STORE, …) is an exact-match filter.
+        com.shifa.oms.order.OrderSource exactSource = null;
+        com.shifa.oms.order.OrderSource excludeSource = null;
+        if (source != null && !source.isBlank()) {
+            if ("PORTAL".equalsIgnoreCase(source.trim())) {
+                excludeSource = com.shifa.oms.order.OrderSource.SHOPIFY;
+            } else {
+                try {
+                    exactSource = com.shifa.oms.order.OrderSource.valueOf(source.trim().toUpperCase(java.util.Locale.ROOT));
+                } catch (IllegalArgumentException ignored) {
+                    // Unknown source value — ignore so stale clients don't 400.
+                }
+            }
+        }
         return PageResponse.of(
                 adminOrderService.listOrders(
-                        q, status, group, paymentStatus, from, to, pageable, creatorIds, source));
+                        q, status, group, paymentStatus, from, to, pageable, creatorIds, exactSource, excludeSource));
     }
 
     /**
@@ -196,7 +211,7 @@ public class AdminOrderController {
             @RequestParam(required = false) OrderStatus status,
             @RequestParam(required = false) String statusGroup,
             @RequestParam(required = false) PaymentStatus paymentStatus,
-            @RequestParam(required = false) com.shifa.oms.order.OrderSource source,
+            @RequestParam(required = false) String source,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) String format,
@@ -207,8 +222,20 @@ public class AdminOrderController {
             creatorIds = java.util.List.of(createdBy);
         }
         OrderStatusGroup group = OrderStatusGroup.from(statusGroup);
+        // Source filter: "PORTAL" = everything except Shopify (mirrors the list endpoint).
+        com.shifa.oms.order.OrderSource exactSource = null;
+        com.shifa.oms.order.OrderSource excludeSource = null;
+        if (source != null && !source.isBlank()) {
+            if ("PORTAL".equalsIgnoreCase(source.trim())) {
+                excludeSource = com.shifa.oms.order.OrderSource.SHOPIFY;
+            } else {
+                try {
+                    exactSource = com.shifa.oms.order.OrderSource.valueOf(source.trim().toUpperCase(java.util.Locale.ROOT));
+                } catch (IllegalArgumentException ignored) { }
+            }
+        }
         OrderExportService.ExportResult result = orderExportService.export(
-                q, status, group, paymentStatus, from, to, creatorIds, source, format);
+                q, status, group, paymentStatus, from, to, creatorIds, exactSource, excludeSource, format);
         auditService.record(AuditActions.ORDERS_EXPORTED, AuditActions.ENTITY_ORDER, null,
                 "Exported orders list (" + result.filename() + ")");
         return ResponseEntity.ok()

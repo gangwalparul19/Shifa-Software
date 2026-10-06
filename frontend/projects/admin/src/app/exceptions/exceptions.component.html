@@ -8,6 +8,25 @@
   </button>
 </admin-page-header>
 
+<!-- Source filter (Portal / Shopify / All) — defaults to Portal -->
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+  <span class="text-secondary small fw-medium">Show orders from</span>
+  <div class="btn-group" role="group" aria-label="Order source filter">
+    <button type="button" class="btn btn-sm"
+      [class.btn-primary]="sourceFilter() === 'PORTAL'"
+      [class.btn-outline-secondary]="sourceFilter() !== 'PORTAL'"
+      (click)="setSourceFilter('PORTAL')">Portal</button>
+    <button type="button" class="btn btn-sm"
+      [class.btn-primary]="sourceFilter() === 'SHOPIFY'"
+      [class.btn-outline-secondary]="sourceFilter() !== 'SHOPIFY'"
+      (click)="setSourceFilter('SHOPIFY')">Shopify</button>
+    <button type="button" class="btn btn-sm"
+      [class.btn-primary]="sourceFilter() === 'ALL'"
+      [class.btn-outline-secondary]="sourceFilter() !== 'ALL'"
+      (click)="setSourceFilter('ALL')">All</button>
+  </div>
+</div>
+
 <div class="alert alert-info d-flex align-items-start mb-3" role="note">
   <i class="ti ti-info-circle me-2 mt-1"></i>
   <div>
@@ -38,25 +57,27 @@
     }
   </div>
 
-  @if (data.total === 0) {
+  @if (items().length === 0) {
     <admin-state-panel
       variant="empty"
       [card]="true"
       icon="ti-circle-check"
-      title="No urgent exceptions"
-      message="Approval, payment, delivery, claim, and insight queues are clear."
+      [title]="data.total === 0 ? 'No urgent exceptions' : 'Nothing for this source'"
+      [message]="data.total === 0
+        ? 'Approval, payment, delivery, claim, and insight queues are clear.'
+        : 'No exceptions match the selected source. Switch to All to see every item.'"
     />
   } @else {
     <div class="card">
       <div class="card-header d-flex align-items-center justify-content-between">
         <div>
           <h3 class="card-title mb-0">Needs attention</h3>
-          <div class="text-secondary small">{{ data.total }} item{{ data.total === 1 ? '' : 's' }}, highest priority first</div>
+          <div class="text-secondary small">{{ items().length }} item{{ items().length === 1 ? '' : 's' }}, highest priority first</div>
         </div>
         <span class="badge bg-red-lt text-red"><i class="ti ti-alert-triangle me-1"></i>Action required</span>
       </div>
       <div class="list-group list-group-flush">
-        @for (item of data.items; track item.category + ':' + (item.orderId ?? item.title)) {
+        @for (item of items(); track item.category + ':' + (item.orderId ?? item.title)) {
           <div class="list-group-item exception-row">
             <div class="exception-row__icon" [class]="severityClass(item.severity)">
               <i class="ti {{ categoryIcon(item.category) }}"></i>

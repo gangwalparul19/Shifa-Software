@@ -56,6 +56,8 @@ export enum OrderSource {
   SALESPERSON = 'SALESPERSON',
   /** Imported automatically from the Shopify storefront via webhook. */
   SHOPIFY = 'SHOPIFY',
+  /** In-shop POS / counter sale punched by an admin for a walk-in customer. */
+  STORE = 'STORE',
 }
 
 /**

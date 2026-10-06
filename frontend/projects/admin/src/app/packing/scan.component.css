@@ -185,26 +185,9 @@
   vertical-align: middle;
 }
 
-/* Packaging note column — highlight so the packing team spots instructions.
-   Clamp long notes to 2 lines in the cell (full text on hover via title). */
-.pk-note {
-  max-width: 16rem;
-}
-.pk-note__flag {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  color: #955a00;
-  background: rgba(255, 193, 7, 0.16);
-  border-radius: 6px;
-  padding: 0.2rem 0.45rem;
-  font-size: 0.82rem;
-  line-height: 1.25;
-}
-.pk-note__flag i {
-  color: #b8860b;
-}
+/* Note rendering is now handled by the shared admin-note-cell component; no
+   component-specific note column styles needed. */
+
 /* The scan preview's packaging-note callout should read clearly. */
 .pk-preview-note {
   white-space: normal;

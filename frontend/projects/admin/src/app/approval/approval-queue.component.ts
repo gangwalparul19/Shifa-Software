@@ -15,6 +15,13 @@ import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ChannelLogoComponent } from '../shared/channel-logo.component';
+import { NoteCellComponent } from '../shared/note-cell.component';
+import {
+  SourceFilterMode,
+  matchesSourceMode,
+  readSourceFilter,
+  writeSourceFilter,
+} from '../shared/source-filter.util';
 import { DELIVERY_METHOD_OPTIONS, DeliveryMethod } from '../orders/orders.model';
 
 interface Toast {
@@ -45,6 +52,7 @@ interface Toast {
     DensityToggleComponent,
     RowActionsMenuComponent,
     ChannelLogoComponent,
+    NoteCellComponent,
   ],
   templateUrl: './approval-queue.component.html',
   styleUrl: './approval-queue.component.css',
@@ -57,7 +65,22 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
   private readonly confirmService = inject(ConfirmService);
   protected readonly events = inject(AdminEventsService);
 
-  protected readonly queue = signal<ApprovalQueueItem[]>([]);
+  protected readonly queueRaw = signal<ApprovalQueueItem[]>([]);
+
+  // --- Source filter (Portal / Shopify / All, default Portal) -------------
+  protected readonly sourceFilter = signal<SourceFilterMode>(readSourceFilter('shifa:approval-source'));
+
+  setSourceFilter(mode: SourceFilterMode): void {
+    this.sourceFilter.set(mode);
+    writeSourceFilter('shifa:approval-source', mode);
+    this.page.set(0);
+  }
+
+  /** Source-filtered approval queue (what the UI renders). */
+  protected readonly queue = computed(() =>
+    this.queueRaw().filter((item) => matchesSourceMode(item.source, this.sourceFilter())),
+  );
+
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
   protected readonly toast = signal<Toast | null>(null);
@@ -328,7 +351,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
   private setVerified(id: number): void {
     const mark = (i: ApprovalQueueItem): ApprovalQueueItem =>
       i.id === id ? { ...i, paymentVerificationStatus: 'VERIFIED' } : i;
-    this.queue.update((items) => items.map(mark));
+    this.queueRaw.update((items) => items.map(mark));
     this.verifyModalItems.update((items) => items.map(mark));
   }
 
@@ -338,10 +361,18 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
       return;
     }
     const then = this.verifyModalThen;
-    const single = this.verifyModalSingle;
+    // Look up the fresh item by id from the (now-verified) raw queue, so we
+    // don't pass a stale object whose paymentVerificationStatus is still
+    // PENDING (the old reference was captured before the modal opened). The
+    // approve() call below skips its own verification gate since the modal
+    // already confirmed it.
+    const singleId = this.verifyModalSingle?.id ?? null;
     this.closeVerifyModal();
-    if (then === 'single' && single) {
-      void this.approve(single);
+    if (then === 'single' && singleId !== null) {
+      const fresh = this.queueRaw().find((i) => i.id === singleId);
+      if (fresh) {
+        void this.approve(fresh, true);
+      }
     } else if (then === 'bulk') {
       void this.bulkApprove();
     }
@@ -502,7 +533,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     this.loadError.set(null);
     this.service.queue().subscribe({
       next: (items) => {
-        this.queue.set(items);
+        this.queueRaw.set(items);
         this.page.set(0);
         this.loading.set(false);
         // Now in sync with the live feed: hide the activity pill.
@@ -691,14 +722,15 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
 
   // --- Approve ------------------------------------------------------------
 
-  async approve(item: ApprovalQueueItem): Promise<void> {
+  async approve(item: ApprovalQueueItem, skipVerifyGate = false): Promise<void> {
     if (this.acting()) {
       return;
     }
     // Payment-verification gate: an order whose payment is still unverified /
     // rejected cannot be approved — open the verify modal for it first (with the
     // screenshot shown inline) and resume the approval once it's verified.
-    if (this.needsVerification(item)) {
+    // Skipped when called from proceedAfterVerify() (the modal already confirmed).
+    if (!skipVerifyGate && this.needsVerification(item)) {
       this.openVerifyModal([item], 'single', item);
       return;
     }
@@ -781,7 +813,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
   // --- Helpers ------------------------------------------------------------
 
   private removeRow(id: number): void {
-    this.queue.update((items) => items.filter((i) => i.id !== id));
+    this.queueRaw.update((items) => items.filter((i) => i.id !== id));
     if (this.selectedIds().has(id)) {
       this.selectedIds.update((prev) => {
         const next = new Set(prev);

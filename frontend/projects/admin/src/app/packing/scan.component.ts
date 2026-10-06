@@ -12,10 +12,17 @@ import { MANUAL_DELIVERY_STAGE_OPTIONS } from '../orders/orders.model';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
+import {
+  SourceFilterMode,
+  matchesSourceMode,
+  readSourceFilter,
+  writeSourceFilter,
+} from '../shared/source-filter.util';
 import { InrPipe } from '../shared/inr.pipe';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
 import { ChannelLogoComponent } from '../shared/channel-logo.component';
 import { ToastService } from '../shared/toast.service';
+import { NoteCellComponent } from '../shared/note-cell.component';
 import { CameraScannerComponent } from './camera-scanner.component';
 
 /** The current banner shown above the input after a scan. */
@@ -77,6 +84,7 @@ interface PackWorkItem {
     CameraScannerComponent,
     InrPipe,
     ChannelLogoComponent,
+    NoteCellComponent,
   ],
   templateUrl: './scan.component.html',
   styleUrl: './scan.component.css',
@@ -123,13 +131,51 @@ export class ScanComponent implements OnInit, AfterViewInit {
   /** The awaiting-* queue cards surfaced above the scan area. */
   protected readonly queues = computed<QueueCard[]>(() => this.queueSummary());
 
+  // --- Source filter (All / Portal / Shopify) -----------------------------
+  /**
+   * The order-source filter for every queue on this page. "Portal" (the default)
+   * means every non-Shopify order; "Shopify" means only Shopify-imported orders.
+   * The choice is persisted per browser so the packer's view sticks across
+   * reloads. Filtering is client-side (the queues are small, unpaginated lists).
+   */
+  protected readonly sourceFilter = signal<SourceFilterMode>(readSourceFilter('shifa:packing-source'));
+
+  /** Keeps a row when it matches the active source filter. */
+  private matchesSource = (row: PackingQueueRow): boolean =>
+    matchesSourceMode(row.source, this.sourceFilter());
+
+  /** Switch the source filter and persist it; reset every queue to the first page. */
+  setSourceFilter(mode: SourceFilterMode): void {
+    this.sourceFilter.set(mode);
+    writeSourceFilter('shifa:packing-source', mode);
+    this.packPage.set(0);
+    this.handoverPage.set(0);
+    this.quikShipPage.set(0);
+    this.inHousePage.set(0);
+  }
+
   // --- Work queues (to pack / hand over) + read-only status sections ------
-  protected readonly ordersToPack = signal<PackingQueueRow[]>([]);
-  protected readonly awaitingHandover = signal<PackingQueueRow[]>([]);
+  // These hold the RAW (unfiltered) lists from the server; the source filter is
+  // applied in the derived signals below so switching the filter never needs a
+  // reload.
+  private readonly ordersToPackRaw = signal<PackingQueueRow[]>([]);
+  private readonly awaitingHandoverRaw = signal<PackingQueueRow[]>([]);
+  private readonly quikShipStatusRaw = signal<PackingQueueRow[]>([]);
+  private readonly inHouseDeliveriesRaw = signal<PackingQueueRow[]>([]);
+
+  /** Source-filtered work queues (what the UI actually renders). */
+  protected readonly ordersToPack = computed(() => this.ordersToPackRaw().filter(this.matchesSource));
+  protected readonly awaitingHandover = computed(() =>
+    this.awaitingHandoverRaw().filter(this.matchesSource),
+  );
   /** Handed-over COURIER orders — QuikShipX pickup + tracking drives these (read-only). */
-  protected readonly quikShipStatus = signal<PackingQueueRow[]>([]);
+  protected readonly quikShipStatus = computed(() =>
+    this.quikShipStatusRaw().filter(this.matchesSource),
+  );
   /** Handed-over IN-HOUSE orders — the team advances these manually. */
-  protected readonly inHouseDeliveries = signal<PackingQueueRow[]>([]);
+  protected readonly inHouseDeliveries = computed(() =>
+    this.inHouseDeliveriesRaw().filter(this.matchesSource),
+  );
   protected readonly queueLoading = signal(true);
   /** The order currently running a queue action (pack/handover), for spinners. */
   protected readonly busyOrderId = signal<number | null>(null);
@@ -281,10 +327,10 @@ export class ScanComponent implements OnInit, AfterViewInit {
     this.queueLoading.set(true);
     this.service.queue().subscribe({
       next: (q) => {
-        this.ordersToPack.set(q.ordersToPack);
-        this.awaitingHandover.set(q.awaitingHandover);
-        this.quikShipStatus.set(q.quikShipStatus);
-        this.inHouseDeliveries.set(q.inHouseDeliveries);
+        this.ordersToPackRaw.set(q.ordersToPack);
+        this.awaitingHandoverRaw.set(q.awaitingHandover);
+        this.quikShipStatusRaw.set(q.quikShipStatus);
+        this.inHouseDeliveriesRaw.set(q.inHouseDeliveries);
         this.clampQueuePages();
         this.queueLoading.set(false);
       },

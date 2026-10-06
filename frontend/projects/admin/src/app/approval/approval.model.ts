@@ -53,6 +53,8 @@ export interface ApprovalQueueItem {
    * and the order is excluded from "approve all (no duplicates)".
    */
   duplicateOrderCodes?: string[];
+  /** The order/packaging note the salesperson added (null when none). */
+  notes?: string | null;
 }
 
 /** Payment verification state (mirrors the backend {@code PaymentVerificationStatus}). */

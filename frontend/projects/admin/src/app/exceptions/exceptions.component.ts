@@ -12,6 +12,12 @@ import {
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
+import {
+  SourceFilterMode,
+  matchesSourceMode,
+  readSourceFilter,
+  writeSourceFilter,
+} from '../shared/source-filter.util';
 import { openWhatsApp, whatsAppMessage } from '../shared/whatsapp.util';
 import { OrderStatus } from 'core';
 import { humanizeStatus } from '../shared/status-badge.component';
@@ -29,6 +35,15 @@ export class ExceptionsComponent implements OnInit {
   protected readonly response = signal<AdminExceptionResponse | null>(null);
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
+
+  // --- Source filter (Portal / Shopify / All, default Portal) -------------
+  protected readonly sourceFilter = signal<SourceFilterMode>(readSourceFilter('shifa:exceptions-source'));
+
+  setSourceFilter(mode: SourceFilterMode): void {
+    this.sourceFilter.set(mode);
+    writeSourceFilter('shifa:exceptions-source', mode);
+  }
+
   protected readonly categories = Object.keys(EXCEPTION_CATEGORY_LABELS) as ExceptionCategory[];
   protected readonly categoryLabels = EXCEPTION_CATEGORY_LABELS;
 
@@ -54,11 +69,13 @@ export class ExceptionsComponent implements OnInit {
   }
 
   items(): AdminExceptionItem[] {
-    return this.response()?.items ?? [];
+    const all = this.response()?.items ?? [];
+    const mode = this.sourceFilter();
+    return all.filter((i) => matchesSourceMode(i.source, mode));
   }
 
   count(category: ExceptionCategory): number {
-    return this.response()?.countsByCategory?.[category] ?? 0;
+    return this.items().filter((i) => i.category === category).length;
   }
 
   categoryIcon(category: string): string {

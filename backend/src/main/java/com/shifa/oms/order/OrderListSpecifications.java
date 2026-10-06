@@ -97,11 +97,30 @@ public final class OrderListSpecifications {
                                                    LocalDate from, LocalDate to,
                                                    Collection<Long> creatorIds,
                                                    OrderSource source) {
+        return build(q, status, statusGroup, paymentStatus, from, to, creatorIds, source, null);
+    }
+
+    /**
+     * As the {@code source} canonical builder, with an additional
+     * {@code excludeSource} filter: when non-null, rows matching that source are
+     * excluded (e.g. "Portal" = {@code excludeSource=SHOPIFY}). If BOTH
+     * {@code source} and {@code excludeSource} are set, {@code source} wins
+     * (an exact-match always trumps an exclusion).
+     */
+    public static Specification<OrderEntity> build(String q, OrderStatus status,
+                                                   OrderStatusGroup statusGroup,
+                                                   PaymentStatus paymentStatus,
+                                                   LocalDate from, LocalDate to,
+                                                   Collection<Long> creatorIds,
+                                                   OrderSource source,
+                                                   OrderSource excludeSource) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
             if (source != null) {
                 predicates.add(cb.equal(root.get("source"), source));
+            } else if (excludeSource != null) {
+                predicates.add(cb.notEqual(root.get("source"), excludeSource));
             }
             if (creatorIds != null) {
                 if (creatorIds.isEmpty()) {

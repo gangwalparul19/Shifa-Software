@@ -27,6 +27,8 @@ export interface PaymentQueueRow {
    * THAT order's screenshot (by orderId) and open its details (by orderCode).
    */
   duplicateOrders?: DuplicateOrderRef[];
+  /** Where the order originated (SALESPERSON / SHOPIFY / STORE / STOREFRONT). */
+  source?: string;
 }
 
 /** A reference to another order sharing this order's payment proof (V72). */

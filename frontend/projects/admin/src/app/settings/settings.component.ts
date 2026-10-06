@@ -289,12 +289,12 @@ export class SettingsComponent implements OnInit, OnDestroy {
           city: s.city ?? '',
           state: s.state ?? '',
           stateCode: s.stateCode ?? '',
-          gstRatePercent: s.gstRatePercent ?? '5.00',
+          gstRatePercent: s.gstRatePercent != null ? String(s.gstRatePercent) : '5.00',
           pricesIncludeGst: s.pricesIncludeGst,
           lowStockThreshold: s.lowStockThreshold != null ? String(s.lowStockThreshold) : '',
-          aggregateTurnover: s.aggregateTurnover ?? '',
+          aggregateTurnover: s.aggregateTurnover != null ? String(s.aggregateTurnover) : '',
           gstReminderWindowDays: s.gstReminderWindowDays != null ? String(s.gstReminderWindowDays) : '',
-          gstReconciliationTolerance: s.gstReconciliationTolerance ?? '',
+          gstReconciliationTolerance: s.gstReconciliationTolerance != null ? String(s.gstReconciliationTolerance) : '',
           invoiceFooterNote: s.invoiceFooterNote ?? '',
           contactPhone: s.contactPhone ?? '',
           contactEmail: s.contactEmail ?? '',
@@ -307,7 +307,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
           bankIfsc: s.bankIfsc ?? '',
           bankBranch: s.bankBranch ?? '',
           autoApproveEnabled: s.autoApproveEnabled ?? false,
-          autoApproveMaxAmount: s.autoApproveMaxAmount ?? '',
+          autoApproveMaxAmount: s.autoApproveMaxAmount != null ? String(s.autoApproveMaxAmount) : '',
         });
         this.applyGstinValidators(s.gstEnabled);
         this.loading.set(false);
@@ -374,35 +374,39 @@ export class SettingsComponent implements OnInit, OnDestroy {
       return;
     }
     const raw = this.form.getRawValue();
+    // Coerce every value to a trimmed string before use: a numeric field the
+    // backend serialized as a JSON number (e.g. gstRatePercent as BigDecimal)
+    // would otherwise reach the form as a number and crash on `.trim()`.
+    const str = (v: unknown): string => (v == null ? '' : String(v).trim());
     const request: AppSettings = {
       gstEnabled: raw.gstEnabled,
-      gstin: raw.gstin.trim() || null,
-      legalName: raw.legalName.trim(),
-      addressLine: raw.addressLine.trim() || null,
-      city: raw.city.trim() || null,
-      state: raw.state.trim() || null,
-      stateCode: raw.stateCode.trim() || null,
-      gstRatePercent: raw.gstRatePercent.trim(),
+      gstin: str(raw.gstin) || null,
+      legalName: str(raw.legalName),
+      addressLine: str(raw.addressLine) || null,
+      city: str(raw.city) || null,
+      state: str(raw.state) || null,
+      stateCode: str(raw.stateCode) || null,
+      gstRatePercent: str(raw.gstRatePercent),
       pricesIncludeGst: raw.pricesIncludeGst,
-      lowStockThreshold: raw.lowStockThreshold.trim() ? Number(raw.lowStockThreshold.trim()) : null,
-      aggregateTurnover: raw.aggregateTurnover.trim() || null,
-      gstReminderWindowDays: raw.gstReminderWindowDays.trim()
-        ? Number(raw.gstReminderWindowDays.trim())
+      lowStockThreshold: str(raw.lowStockThreshold) ? Number(str(raw.lowStockThreshold)) : null,
+      aggregateTurnover: str(raw.aggregateTurnover) || null,
+      gstReminderWindowDays: str(raw.gstReminderWindowDays)
+        ? Number(str(raw.gstReminderWindowDays))
         : null,
-      gstReconciliationTolerance: raw.gstReconciliationTolerance.trim() || null,
-      invoiceFooterNote: raw.invoiceFooterNote.trim() || null,
-      contactPhone: raw.contactPhone.trim() || null,
-      contactEmail: raw.contactEmail.trim() || null,
-      invoiceNumberPrefix: raw.invoiceNumberPrefix.trim() || null,
-      invoiceTerms: raw.invoiceTerms.trim() || null,
-      gstSlabs: raw.gstSlabs.trim() || null,
-      bankName: raw.bankName.trim() || null,
-      bankAccountName: raw.bankAccountName.trim() || null,
-      bankAccountNumber: raw.bankAccountNumber.trim() || null,
-      bankIfsc: raw.bankIfsc.trim().toUpperCase() || null,
-      bankBranch: raw.bankBranch.trim() || null,
+      gstReconciliationTolerance: str(raw.gstReconciliationTolerance) || null,
+      invoiceFooterNote: str(raw.invoiceFooterNote) || null,
+      contactPhone: str(raw.contactPhone) || null,
+      contactEmail: str(raw.contactEmail) || null,
+      invoiceNumberPrefix: str(raw.invoiceNumberPrefix) || null,
+      invoiceTerms: str(raw.invoiceTerms) || null,
+      gstSlabs: str(raw.gstSlabs) || null,
+      bankName: str(raw.bankName) || null,
+      bankAccountName: str(raw.bankAccountName) || null,
+      bankAccountNumber: str(raw.bankAccountNumber) || null,
+      bankIfsc: str(raw.bankIfsc).toUpperCase() || null,
+      bankBranch: str(raw.bankBranch) || null,
       autoApproveEnabled: raw.autoApproveEnabled,
-      autoApproveMaxAmount: raw.autoApproveMaxAmount.trim() || null,
+      autoApproveMaxAmount: str(raw.autoApproveMaxAmount) || null,
     };
 
     this.saving.set(true);

@@ -18,6 +18,8 @@ export interface AdminExceptionItem {
   actionPath: string;
   /** Name of the salesperson who punched the order (created_by → display name); null for non-order rows. */
   salespersonName?: string | null;
+  /** Where the order originated (SALESPERSON / SHOPIFY / STORE / STOREFRONT); null for non-order rows (INSIGHT). */
+  source?: string | null;
 }
 
 export interface AdminExceptionResponse {

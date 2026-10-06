@@ -15,6 +15,25 @@
   </button>
 </admin-page-header>
 
+<!-- Source filter (Portal / Shopify / All) — defaults to Portal -->
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+  <span class="text-secondary small fw-medium">Show orders from</span>
+  <div class="btn-group" role="group" aria-label="Order source filter">
+    <button type="button" class="btn btn-sm"
+      [class.btn-primary]="sourceFilter() === 'PORTAL'"
+      [class.btn-outline-secondary]="sourceFilter() !== 'PORTAL'"
+      (click)="setSourceFilter('PORTAL')">Portal</button>
+    <button type="button" class="btn btn-sm"
+      [class.btn-primary]="sourceFilter() === 'SHOPIFY'"
+      [class.btn-outline-secondary]="sourceFilter() !== 'SHOPIFY'"
+      (click)="setSourceFilter('SHOPIFY')">Shopify</button>
+    <button type="button" class="btn btn-sm"
+      [class.btn-primary]="sourceFilter() === 'ALL'"
+      [class.btn-outline-secondary]="sourceFilter() !== 'ALL'"
+      (click)="setSourceFilter('ALL')">All</button>
+  </div>
+</div>
+
 <!-- Workload summary + short how-to for the payment verifier -->
 <div class="row row-cards g-2 g-md-3 mb-3">
   <div class="col-12 col-md-5">

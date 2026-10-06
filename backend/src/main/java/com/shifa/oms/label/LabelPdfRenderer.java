@@ -194,22 +194,35 @@ public class LabelPdfRenderer {
     private PdfPTable newGrid() {
         PdfPTable grid = new PdfPTable(COLUMNS);
         grid.setWidthPercentage(100);
-        // Keep each 2-cell row intact on one page; never split a row across pages.
-        grid.setSplitLate(false);
-        grid.setSplitRows(false);
+        // Allow a row to split across a page boundary when (and only when) it is
+        // genuinely taller than the remaining page space. This is a safety net for
+        // an unusually large order: a non-splittable row that cannot fit would be
+        // DROPPED by OpenPDF (losing the label entirely), which is exactly the
+        // failure we are fixing. Splitting late keeps a row whole whenever it fits,
+        // so normal 4-up pages are unaffected and only an oversized label wraps.
+        grid.setSplitLate(true);
+        grid.setSplitRows(true);
         grid.getDefaultCell().setBorder(Rectangle.NO_BORDER);
         return grid;
     }
 
     /**
-     * Wraps one label block into a fixed-height, top-aligned quadrant cell so all
-     * four cells are the same size and exactly two rows fit on one A4 page.
+     * Wraps one label block into a quadrant cell. The cell uses a <em>minimum</em>
+     * height (not a fixed one) so a normal label fills its A4 quadrant for a tidy
+     * uniform 2x2 look, while a label whose content is taller than the quadrant is
+     * allowed to GROW instead of being clipped. This is the fix for the long-order
+     * bug: {@code setFixedHeight} hard-clips its content, so a 7-8 item order's
+     * item table was being clipped away entirely (a blank item box). With a
+     * minimum height the item list always renders in full; the grid's
+     * {@code setSplitRows(false)} keeps a tall row whole (it moves to the next
+     * page as a unit if it genuinely cannot fit), which is strictly better than
+     * silently dropping the items.
      */
     private PdfPCell quadrantCell(PdfPTable block) {
         PdfPCell cell = new PdfPCell(block);
         cell.setBorder(Rectangle.NO_BORDER);
         cell.setPadding(6f);
-        cell.setFixedHeight(QUADRANT_HEIGHT);
+        cell.setMinimumHeight(QUADRANT_HEIGHT);
         cell.setVerticalAlignment(Element.ALIGN_TOP);
         return cell;
     }

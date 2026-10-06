@@ -31,7 +31,11 @@ public record AdminExceptionResponse(
             // Name of the salesperson who punched the order (resolved from
             // created_by; full name, else username; null for non-order-backed
             // rows like INSIGHT), so the admin sees who triggered each exception.
-            String salespersonName
+            String salespersonName,
+            // Where the order originated (SALESPERSON / SHOPIFY / STORE /
+            // STOREFRONT), or null for a non-order-backed row (INSIGHT). Drives
+            // the Portal-vs-Shopify filter on the Exception Center.
+            com.shifa.oms.order.OrderSource source
     ) {
     }
 }

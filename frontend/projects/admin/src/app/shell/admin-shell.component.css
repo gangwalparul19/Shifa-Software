@@ -625,10 +625,38 @@
     z-index: 1;
     display: flex;
     align-items: center;
-    gap: 0.6rem;
-    padding: 0.85rem 1rem;
+    justify-content: space-between;
+    padding: 0.7rem 0.75rem;
     background: #ffffff;
     border-bottom: 1px solid rgba(4, 32, 69, 0.06);
+  }
+
+  .shifa-sidebar__brandlink {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+  }
+
+  /* Top collapse/expand toggle — a small icon button beside the brand logo. */
+  .shifa-sidebar__toptoggle {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid rgba(4, 32, 69, 0.08);
+    border-radius: 8px;
+    background: transparent;
+    color: #67736c;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.14s ease, color 0.14s ease;
+  }
+  .shifa-sidebar__toptoggle:hover {
+    background: var(--shifa-green-050, #f2f9f5);
+    color: var(--shifa-green-700, #1a4f38);
+    border-color: var(--shifa-green-200, #b5dcc6);
   }
 
   .shifa-sidebar__nav {
@@ -720,5 +748,88 @@
   }
   .shifa-sidebar__item.active i {
     color: var(--shifa-green-600, #1f5d3f);
+  }
+
+  /* Toggle button pinned at the bottom of the sidebar. */
+  .shifa-sidebar__toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: auto;
+    position: sticky;
+    bottom: 0;
+    padding: 0.7rem 1rem;
+    border: 0;
+    border-top: 1px solid rgba(4, 32, 69, 0.06);
+    background: #ffffff;
+    color: #67736c;
+    font-size: 0.82rem;
+    cursor: pointer;
+    z-index: 2;
+    transition: background 0.14s ease, color 0.14s ease;
+  }
+  .shifa-sidebar__toggle:hover {
+    background: var(--shifa-green-050, #f2f9f5);
+    color: var(--shifa-green-700, #1a4f38);
+  }
+  .shifa-sidebar__toggle i {
+    font-size: 1.15rem;
+    flex: none;
+  }
+
+  /* ---- Collapsed state: icon-only rail ---- */
+  .shifa-sidebar.is-collapsed {
+    width: 60px;
+    overflow: visible;
+  }
+  .shifa-sidebar.is-collapsed .shifa-brand__logo {
+    width: 28px;
+    height: 28px;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__brand {
+    justify-content: center;
+    padding: 0.7rem 0.5rem;
+  }
+  /* Collapsed: hide the brand logo link, leave just the toggle (the expand control). */
+  .shifa-sidebar.is-collapsed .shifa-sidebar__brandlink {
+    display: none;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__nav {
+    padding: 0.4rem 0;
+  }
+  /* Hide all text in collapsed mode — labels, group titles, chevrons */
+  .shifa-sidebar.is-collapsed .shifa-sidebar__text,
+  .shifa-sidebar.is-collapsed .shifa-sidebar__grouplabel span,
+  .shifa-sidebar.is-collapsed .shifa-sidebar__chev {
+    display: none;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__item {
+    justify-content: center;
+    padding: 0.55rem 0;
+    gap: 0;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__item i {
+    font-size: 1.25rem;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__grouplabel {
+    justify-content: center;
+    padding: 0.4rem 0;
+    gap: 0;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__item--child {
+    padding-left: 0;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__toggle {
+    justify-content: center;
+    padding: 0.7rem 0;
+    gap: 0;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__toggle span {
+    display: none;
+  }
+
+  /* When the sidebar is collapsed, the content shifts left. */
+  .shifa-appshell.sidebar-collapsed {
+    padding-left: 60px;
   }
 }

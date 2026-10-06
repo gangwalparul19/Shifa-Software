@@ -39,6 +39,31 @@
   </div>
 }
 
+<!-- Source filter (Portal / Shopify / All) — defaults to Portal -->
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+  <span class="text-secondary small fw-medium">Show orders from</span>
+  <div class="btn-group" role="group" aria-label="Order source filter">
+    <button type="button" class="btn btn-sm"
+      [class.btn-primary]="sourceFilter() === 'PORTAL'"
+      [class.btn-outline-secondary]="sourceFilter() !== 'PORTAL'"
+      (click)="setSourceFilter('PORTAL')">
+      Portal
+    </button>
+    <button type="button" class="btn btn-sm"
+      [class.btn-primary]="sourceFilter() === 'SHOPIFY'"
+      [class.btn-outline-secondary]="sourceFilter() !== 'SHOPIFY'"
+      (click)="setSourceFilter('SHOPIFY')">
+      Shopify
+    </button>
+    <button type="button" class="btn btn-sm"
+      [class.btn-primary]="sourceFilter() === 'ALL'"
+      [class.btn-outline-secondary]="sourceFilter() !== 'ALL'"
+      (click)="setSourceFilter('ALL')">
+      All
+    </button>
+  </div>
+</div>
+
 <!-- Workflow queue tiles (tap to jump to the list) -->
 <div class="row row-cards g-2 g-md-3 mb-3 stagger">
   @for (section of queueSections(); track section.kind) {
@@ -412,14 +437,8 @@
                       </div>
                     }
                   </td>
-                  <td class="pk-note">
-                    @if (o.notes) {
-                      <span class="pk-note__flag" [title]="o.notes">
-                        <i class="ti ti-note me-1"></i>{{ o.notes }}
-                      </span>
-                    } @else {
-                      <span class="text-secondary">—</span>
-                    }
+                  <td (click)="$event.stopPropagation()">
+                    <admin-note-cell [note]="o.notes" />
                   </td>
                   <td class="text-end" (click)="$event.stopPropagation()">
                     <div class="pk-row__actions justify-content-end">

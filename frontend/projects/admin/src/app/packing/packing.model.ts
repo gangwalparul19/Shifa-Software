@@ -23,6 +23,12 @@ export interface PackingQueueRow {
    * handover (auto QuickShip vs manual In-House).
    */
   deliveryMethod?: 'QUIKSHIPX' | 'IN_HOUSE' | string;
+  /**
+   * Where the order originated (SALESPERSON / SHOPIFY / STORE / STOREFRONT).
+   * Drives the Portal-vs-Shopify queue filter: "Portal" = everything except
+   * SHOPIFY.
+   */
+  source?: 'SALESPERSON' | 'SHOPIFY' | 'STORE' | 'STOREFRONT' | string;
   /** The order/packaging note (null when none) — shown so the packer sees special instructions. */
   notes?: string | null;
   /** QuikShipX tracking id / AWB (null for in-house or not yet allotted). */

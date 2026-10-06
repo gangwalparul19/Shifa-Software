@@ -32,7 +32,10 @@ public record PaymentQueueRow(
         // ref so the UI can link the duplicate: click the code to view THAT
         // order's screenshot (by id) and open its details (by code). Empty when
         // the proof is unique — a non-empty list is a fraud/mistake flag.
-        java.util.List<DuplicateOrderRef> duplicateOrders
+        java.util.List<DuplicateOrderRef> duplicateOrders,
+        // Where the order originated (SALESPERSON / SHOPIFY / STORE / STOREFRONT),
+        // so the queue can be filtered Portal (non-Shopify) vs Shopify.
+        com.shifa.oms.order.OrderSource source
 ) {
 
     /**
@@ -67,6 +70,7 @@ public record PaymentQueueRow(
                 order.getPaymentVerificationStatus(),
                 order.getCreatedAt(),
                 salespersonName,
-                duplicateOrders == null ? java.util.List.of() : duplicateOrders);
+                duplicateOrders == null ? java.util.List.of() : duplicateOrders,
+                order.getSource());
     }
 }

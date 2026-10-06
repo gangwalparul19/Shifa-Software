@@ -14,6 +14,25 @@
   </button>
 </admin-page-header>
 
+<!-- Source filter (Portal / Shopify / All) — defaults to Portal -->
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+  <span class="text-secondary small fw-medium">Show orders from</span>
+  <div class="btn-group" role="group" aria-label="Order source filter">
+    <button type="button" class="btn btn-sm"
+      [class.btn-primary]="sourceFilter() === 'PORTAL'"
+      [class.btn-outline-secondary]="sourceFilter() !== 'PORTAL'"
+      (click)="setSourceFilter('PORTAL')">Portal</button>
+    <button type="button" class="btn btn-sm"
+      [class.btn-primary]="sourceFilter() === 'SHOPIFY'"
+      [class.btn-outline-secondary]="sourceFilter() !== 'SHOPIFY'"
+      (click)="setSourceFilter('SHOPIFY')">Shopify</button>
+    <button type="button" class="btn btn-sm"
+      [class.btn-primary]="sourceFilter() === 'ALL'"
+      [class.btn-outline-secondary]="sourceFilter() !== 'ALL'"
+      (click)="setSourceFilter('ALL')">All</button>
+  </div>
+</div>
+
 <!-- Live-activity nudge (A3): a status change may have altered the queue -->
 @if (newActivity()) {
   <div class="shifa-activity-pill anim-fade-up mb-3">
@@ -96,6 +115,9 @@
               {{ item.customerName }} · {{ item.createdAt ? (item.createdAt | istDate: 'dd MMM, HH:mm') : '—' }}
               @if (item.salespersonName) { · <i class="ti ti-user"></i> {{ item.salespersonName }} }
             </span>
+            @if (item.notes) {
+              <admin-note-cell [note]="item.notes" />
+            }
           </div>
           <div class="shifa-appr__right">
             <span class="shifa-appr__amount">{{ money(item.totalAmount) }}</span>
@@ -157,7 +179,11 @@
                   }
                 </div>
               </td>
-              <td>{{ item.customerName }}</td>
+              <td>{{ item.customerName }}
+                @if (item.notes) {
+                  <admin-note-cell [note]="item.notes" />
+                }
+              </td>
               <td class="text-secondary">{{ item.salespersonName || '—' }}</td>
               <td class="text-secondary">{{ item.customerMobile }}</td>
               <td class="text-end">{{ money(item.totalAmount) }}</td>
@@ -262,6 +288,16 @@
           </div>
         </div>
       </section>
+
+      <!-- Order note (salesperson's instructions / context) -->
+      @if (item.notes) {
+        <section class="sa-dr__section">
+          <div class="sa-dr__label"><i class="ti ti-note me-1"></i>Order note</div>
+          <div class="sa-dr__card sa-dr__note">
+            {{ item.notes }}
+          </div>
+        </section>
+      }
 
       <!-- Line items -->
       <section class="sa-dr__section">

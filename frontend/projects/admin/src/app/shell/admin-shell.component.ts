@@ -991,6 +991,21 @@ export class AdminShellComponent {
     return { id: `${MAIN_TOUR_ID}-${role}`, steps };
   }
 
+  /** Whether the desktop sidebar is collapsed to an icon-only rail (~60px). */
+  protected readonly sidebarCollapsed = signal(
+    typeof localStorage !== 'undefined' && localStorage.getItem('shifa:sidebar-collapsed') === '1',
+  );
+
+  /** Toggle the sidebar between full-width and collapsed icon-only rail. */
+  toggleSidebarCollapsed(): void {
+    this.sidebarCollapsed.update((v) => !v);
+    try {
+      localStorage.setItem('shifa:sidebar-collapsed', this.sidebarCollapsed() ? '1' : '0');
+    } catch {
+      /* ignore storage errors (private mode) */
+    }
+  }
+
   /** Replays the guided tour on demand from the account menu. */
   replayTour(): void {
     const { id, steps } = this.roleTour();

@@ -63,8 +63,9 @@ public class OrderExportService {
      */
     public ExportResult export(String q, OrderStatus status, OrderStatusGroup statusGroup,
                                PaymentStatus paymentStatus, LocalDate from, LocalDate to,
-                               Collection<Long> creatorIds, OrderSource source, String format) {
-        TabularData table = buildTable(q, status, statusGroup, paymentStatus, from, to, creatorIds, source);
+                               Collection<Long> creatorIds, OrderSource source,
+                               OrderSource excludeSource, String format) {
+        TabularData table = buildTable(q, status, statusGroup, paymentStatus, from, to, creatorIds, source, excludeSource);
         boolean csv = "csv".equalsIgnoreCase(format);
         if (csv) {
             return new ExportResult(csvExporter.export(table), "text/csv", "orders.csv");
@@ -77,11 +78,12 @@ public class OrderExportService {
 
     private TabularData buildTable(String q, OrderStatus status, OrderStatusGroup statusGroup,
                                    PaymentStatus paymentStatus, LocalDate from, LocalDate to,
-                                   Collection<Long> creatorIds, OrderSource source) {
+                                   Collection<Long> creatorIds, OrderSource source,
+                                   OrderSource excludeSource) {
         // Newest-first, capped at MAX_ROWS — the same default sort as the table.
         Pageable pageable = PageRequest.of(0, MAX_ROWS, Sort.by(Sort.Direction.DESC, "createdAt"));
         List<OrderSummaryResponse> orders = adminOrderService
-                .listOrders(q, status, statusGroup, paymentStatus, from, to, pageable, creatorIds, source)
+                .listOrders(q, status, statusGroup, paymentStatus, from, to, pageable, creatorIds, source, excludeSource)
                 .getContent();
 
         List<List<String>> rows = new ArrayList<>(orders.size());

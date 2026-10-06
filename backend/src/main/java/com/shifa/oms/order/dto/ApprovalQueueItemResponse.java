@@ -57,7 +57,10 @@ public record ApprovalQueueItemResponse(
         // Other order codes whose payment proof is byte-identical to this order's
         // (duplicate-screenshot detection, V72). Non-empty = a duplicate flag is
         // shown and the order is excluded from "approve all (no duplicates)".
-        List<String> duplicateOrderCodes
+        List<String> duplicateOrderCodes,
+        // The order/packaging note (nullable) — surfaced so the admin sees
+        // special instructions or context the salesperson attached to the order.
+        String notes
 ) {
 
     /** A single order line in the review projection. */
@@ -115,6 +118,7 @@ public record ApprovalQueueItemResponse(
                 order.getDeliveryMethod(),
                 salespersonName,
                 order.getPaymentVerificationStatus(),
-                duplicateOrderCodes == null ? List.of() : duplicateOrderCodes);
+                duplicateOrderCodes == null ? List.of() : duplicateOrderCodes,
+                order.getNotes());
     }
 }

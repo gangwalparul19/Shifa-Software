@@ -207,8 +207,26 @@ public class AdminOrderService {
                                                  LocalDate from, LocalDate to,
                                                  Pageable pageable, java.util.Collection<Long> creatorIds,
                                                  com.shifa.oms.order.OrderSource source) {
+        return listOrders(q, status, statusGroup, paymentStatus, from, to, pageable, creatorIds, source, null);
+    }
+
+    /**
+     * As the canonical listing with both an exact {@code source} and an
+     * {@code excludeSource} filter. When {@code excludeSource} is non-null (and
+     * {@code source} is null) the result is restricted to orders whose source is
+     * NOT the excluded one — used for the "Portal" filter (everything except
+     * Shopify).
+     */
+    @Transactional(readOnly = true)
+    public Page<OrderSummaryResponse> listOrders(String q, OrderStatus status,
+                                                 OrderStatusGroup statusGroup,
+                                                 PaymentStatus paymentStatus,
+                                                 LocalDate from, LocalDate to,
+                                                 Pageable pageable, java.util.Collection<Long> creatorIds,
+                                                 com.shifa.oms.order.OrderSource source,
+                                                 com.shifa.oms.order.OrderSource excludeSource) {
         Specification<OrderEntity> spec =
-                OrderListSpecifications.build(q, status, statusGroup, paymentStatus, from, to, creatorIds, source);
+                OrderListSpecifications.build(q, status, statusGroup, paymentStatus, from, to, creatorIds, source, excludeSource);
         Page<OrderEntity> entities = orderRepository.findAll(spec, pageable);
         // Resolve each row's salesperson (created_by) name once for the whole page,
         // so the Orders table shows who punched each order without an N+1.

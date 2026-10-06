@@ -454,8 +454,10 @@ export class OrdersComponent implements OnInit, OnDestroy {
   protected readonly filters = new FormGroup({
     statusGroup: new FormControl<string>('', { nonNullable: true }),
     paymentStatus: new FormControl<string>('', { nonNullable: true }),
-    // Exact order provenance filter ('' = any; 'SHOPIFY' = only Shopify-imported).
-    source: new FormControl<string>('', { nonNullable: true }),
+    // Order source filter. Defaults to 'PORTAL' (everything except Shopify) so
+    // the team's own orders lead; 'SHOPIFY' = only Shopify-imported; '' = all;
+    // an exact enum value (SALESPERSON/STORE/…) = that source only.
+    source: new FormControl<string>('PORTAL', { nonNullable: true }),
     from: new FormControl<string>('', { nonNullable: true }),
     to: new FormControl<string>('', { nonNullable: true }),
   });
@@ -1009,7 +1011,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   private updateActiveFilterCount(): void {
     const f = this.filters.getRawValue();
     this.activeFilterCount.set(
-      [f.statusGroup, f.paymentStatus, f.source, f.from, f.to].filter((v) => !!v).length,
+      [f.statusGroup, f.paymentStatus, f.source && f.source !== 'PORTAL' ? f.source : '', f.from, f.to].filter((v) => !!v).length,
     );
   }
 
@@ -1035,7 +1037,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
       : (normalizeGroupKey(qp.get('statusGroup')) || groupForStatus(qp.get('status')));
     const paymentStatus = qp.get('paymentStatus') ?? '';
     // Optional ?source= deep link (e.g. drilling into Shopify orders).
-    const source = qp.get('source') ?? '';
+    const source = qp.has('source') ? (qp.get('source') ?? '') : 'PORTAL';
     const from = qp.get('from') ?? '';
     const to = qp.get('to') ?? '';
     if (statusGroup || paymentStatus || source || from || to) {
@@ -1176,7 +1178,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   clearFilters(): void {
-    this.filters.reset({ statusGroup: '', paymentStatus: '', source: '', from: '', to: '' });
+    this.filters.reset({ statusGroup: '', paymentStatus: '', source: 'PORTAL', from: '', to: '' });
     this.search.setValue('');
     this.clearCreatedBy();
   }
@@ -1187,7 +1189,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
       this.search.value ||
       f.statusGroup ||
       f.paymentStatus ||
-      f.source ||
+      (f.source && f.source !== 'PORTAL') ||
       f.from ||
       f.to ||
       this.createdByFilter() != null
@@ -1467,8 +1469,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
       {
         statusGroup,
         paymentStatus: view.paymentStatus ?? '',
-        // Saved views don't carry a source filter; clear it when applying one.
-        source: '',
+        // Saved views don't carry a source filter; apply the Portal default.
+        source: 'PORTAL',
         from: view.from ?? '',
         to: view.to ?? '',
       },

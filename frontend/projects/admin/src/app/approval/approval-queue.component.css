@@ -227,6 +227,19 @@
   padding: 0;
   overflow: hidden;
 }
+/* The salesperson's order note: amber tint so it stands out, pre-wrapped to
+   preserve line breaks the salesperson typed, scrollable when very long. */
+.sa-dr__note {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(255, 193, 7, 0.1);
+  border-color: rgba(255, 193, 7, 0.25);
+  color: #664d03;
+  max-height: 10rem;
+  overflow-y: auto;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
 .sa-dr__cust {
   display: flex;
   align-items: center;
@@ -458,3 +471,5 @@
 .shifa-modal.sa-verify-modal {
   width: min(760px, calc(100vw - 2rem));
 }
+
+/* Note rendering handled by the shared admin-note-cell component. */

@@ -27,6 +27,8 @@ import java.time.LocalDateTime;
  * @param paymentStatus   payment classification
  * @param deliveryMethod  QUIKSHIPX (courier partner) or IN_HOUSE — drives which
  *                        label buttons + downstream section apply
+ * @param source          where the order originated (SALESPERSON / SHOPIFY / STORE /
+ *                        STOREFRONT) — drives the Portal-vs-Shopify queue filter
  * @param notes           the order/packaging note (nullable)
  * @param awb             QuikShipX tracking id / AWB (null for in-house or not yet allotted)
  * @param quikShipXLabelUrl the QuikShipX-hosted shipping-label PDF URL (null when none)
@@ -43,6 +45,7 @@ public record PackingQueueRow(
         OrderStatus orderStatus,
         PaymentStatus paymentStatus,
         com.shifa.oms.order.DeliveryMethod deliveryMethod,
+        com.shifa.oms.order.OrderSource source,
         String notes,
         String awb,
         String quikShipXLabelUrl,
@@ -67,6 +70,7 @@ public record PackingQueueRow(
                 order.getOrderStatus(),
                 order.getPaymentStatus(),
                 order.getDeliveryMethod(),
+                order.getSource(),
                 order.getNotes(),
                 shipment == null ? null : shipment.getAwb(),
                 shipment == null ? null : shipment.getLabelUrl(),

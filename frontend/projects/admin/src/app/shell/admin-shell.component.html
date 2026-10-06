@@ -1,14 +1,25 @@
-<div class="page shifa-appshell">
+<div class="page shifa-appshell" [class.sidebar-collapsed]="sidebarCollapsed()">
   <!-- ===================== Desktop sidebar (≥992px only) =====================
        A persistent left navigation for laptop/desktop, giving the admin a true
        desktop layout instead of the mobile hamburger + bottom-tab paradigm.
        It reuses the SAME role-filtered navEntries() as the drawer; on mobile it
        is hidden via CSS (the hamburger drawer + bottom tabs stay). -->
   @if (auth.session()) {
-    <aside class="shifa-sidebar d-print-none" aria-label="Primary navigation">
-      <a routerLink="/dashboard" class="shifa-brand shifa-sidebar__brand" aria-label="Shifa Herbal Remedies">
-        <img src="/logo.png" alt="Shifa Herbal Remedies" class="shifa-brand__logo" />
-      </a>
+    <aside class="shifa-sidebar d-print-none" [class.is-collapsed]="sidebarCollapsed()" aria-label="Primary navigation">
+      <div class="shifa-sidebar__brand">
+        <a routerLink="/dashboard" class="shifa-brand shifa-sidebar__brandlink" aria-label="Shifa Herbal Remedies">
+          <img src="/logo.png" alt="Shifa Herbal Remedies" class="shifa-brand__logo" />
+        </a>
+        <button
+          type="button"
+          class="shifa-sidebar__toptoggle"
+          (click)="toggleSidebarCollapsed()"
+          [title]="sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+          [attr.aria-label]="sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+        >
+          <i class="ti" [class.ti-layout-sidebar-left-expand]="sidebarCollapsed()" [class.ti-layout-sidebar-left-collapse]="!sidebarCollapsed()"></i>
+        </button>
+      </div>
       <nav class="shifa-sidebar__nav" aria-label="All destinations">
         @for (entry of navEntries(); track entry.label) {
           @if (entry.kind === 'link') {
@@ -17,6 +28,7 @@
               [routerLink]="entry.path"
               routerLinkActive="active"
               [routerLinkActiveOptions]="{ exact: entry.path === '/dashboard' }"
+              [title]="sidebarCollapsed() ? entry.label : ''"
             >
               <i class="ti {{ entry.icon }}" aria-hidden="true"></i>
               <span class="shifa-sidebar__text">{{ entry.label }}</span>
@@ -28,6 +40,7 @@
                 class="shifa-sidebar__grouplabel shifa-sidebar__grouptoggle"
                 (click)="toggleSidebarGroup(entry.label)"
                 [attr.aria-expanded]="isSidebarGroupOpen(entry.label)"
+                [title]="sidebarCollapsed() ? entry.label : ''"
               >
                 <i class="ti {{ entry.icon }}" aria-hidden="true"></i>
                 <span>{{ entry.label }}</span>
@@ -39,6 +52,7 @@
                     class="shifa-sidebar__item shifa-sidebar__item--child"
                     [routerLink]="child.path"
                     routerLinkActive="active"
+                    [title]="sidebarCollapsed() ? child.label : ''"
                   >
                     <i class="ti {{ child.icon }}" aria-hidden="true"></i>
                     <span class="shifa-sidebar__text">{{ child.label }}</span>
@@ -49,6 +63,18 @@
           }
         }
       </nav>
+      <button
+        type="button"
+        class="shifa-sidebar__toggle"
+        (click)="toggleSidebarCollapsed()"
+        [title]="sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+        [attr.aria-label]="sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+      >
+        <i class="ti" [class.ti-layout-sidebar-left-expand]="sidebarCollapsed()" [class.ti-layout-sidebar-left-collapse]="!sidebarCollapsed()"></i>
+        @if (!sidebarCollapsed()) {
+          <span>Collapse</span>
+        }
+      </button>
     </aside>
   }
 
