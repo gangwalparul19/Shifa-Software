@@ -16,6 +16,7 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import org.hibernate.annotations.SQLRestriction;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -38,6 +39,16 @@ import java.util.List;
  */
 @Entity
 @Table(name = "orders")
+// Soft-delete (admin delete-order feature): an admin "delete" sets active=false
+// rather than removing the row, so the order survives (reversible, keeps its
+// audit trail and FK children intact). This Hibernate restriction transparently
+// excludes inactive orders from EVERY entity-based read (derived finders, JPQL,
+// Specifications, findById) across the whole app. NOTE: it does NOT apply to the
+// native @Query aggregates in OrderRepository — those carry an explicit
+// `AND o.active = 1` clause instead. The soft-delete itself loads the order
+// while it is still active, then flips the flag, so OrderDeletionService is
+// unaffected by this restriction.
+@SQLRestriction("active = 1")
 public class OrderEntity {
 
     @Id
@@ -315,6 +326,15 @@ public class OrderEntity {
 
     @Column(name = "payment_screenshot_key", length = 512)
     private String paymentScreenshotKey;
+
+    /**
+     * Soft-delete flag (admin delete-order feature). {@code true} for a live
+     * order; an admin "delete" sets it {@code false} so the order is hidden
+     * everywhere (see the class-level {@code @SQLRestriction}) without removing
+     * the row. Defaults true for every newly-created order.
+     */
+    @Column(name = "active", nullable = false)
+    private boolean active = true;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -871,6 +891,16 @@ public class OrderEntity {
 
     public Long getVersion() {
         return version;
+    }
+
+    /** Whether the order is live (not soft-deleted). */
+    public boolean isActive() {
+        return active;
+    }
+
+    /** Sets the soft-delete flag; {@code false} hides the order everywhere. */
+    public void setActive(boolean active) {
+        this.active = active;
     }
 
     public LocalDateTime getCreatedAt() {

@@ -1,0 +1,111 @@
+<admin-page-header
+  title="Deleted orders"
+  subtitle="Orders an admin has deleted. They are hidden from every list, dashboard, report and the P&L — restore any to bring it back."
+  [breadcrumbs]="[{ label: 'Deleted orders' }]"
+>
+  <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
+    <i class="ti ti-refresh"></i>
+  </button>
+</admin-page-header>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading deleted orders…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (count() === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-trash-off"
+    message="No deleted orders. Anything an admin deletes will appear here and can be restored."
+  />
+} @else {
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">{{ count() }} deleted order{{ count() === 1 ? '' : 's' }}</h3>
+    </div>
+
+    <!-- Mobile cards (<768px) -->
+    <div class="d-md-none shifa-del__cards">
+      @for (o of orders(); track o.id) {
+        <div class="shifa-del__card">
+          <div class="d-flex align-items-start justify-content-between gap-2">
+            <div class="min-w-0">
+              <a class="shifa-del__code" [routerLink]="['/orders']" [queryParams]="{ q: o.orderCode }">{{ o.orderCode }}</a>
+              <div class="shifa-del__cust text-truncate">{{ o.customerName }}</div>
+              <div class="text-secondary small">{{ o.customerMobile }}</div>
+            </div>
+            <span class="badge bg-secondary-lt">{{ humanize(o.orderStatus) }}</span>
+          </div>
+          <div class="d-flex align-items-center justify-content-between gap-2 mt-2">
+            <div class="text-secondary small">
+              {{ o.createdAt ? (o.createdAt | istDate) : '—' }}
+              @if (o.salespersonName) { · {{ o.salespersonName }} }
+            </div>
+            <div class="fw-bold">{{ o.totalAmount | inr }}</div>
+          </div>
+          <button
+            type="button"
+            class="btn btn-outline-success w-100 mt-2"
+            [disabled]="restoringId() !== null"
+            (click)="restore(o)"
+          >
+            @if (restoringId() === o.id) {
+              <span class="spinner-border spinner-border-sm me-1"></span> Restoring…
+            } @else {
+              <i class="ti ti-restore me-1"></i> Restore
+            }
+          </button>
+        </div>
+      }
+    </div>
+
+    <!-- Desktop table (≥768px) -->
+    <div class="table-responsive d-none d-md-block">
+      <table class="table card-table table-vcenter">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>Salesperson</th>
+            <th>Status</th>
+            <th class="text-end">Total</th>
+            <th>Deleted / updated</th>
+            <th class="w-1"></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (o of orders(); track o.id) {
+            <tr>
+              <td>
+                <a [routerLink]="['/orders']" [queryParams]="{ q: o.orderCode }">{{ o.orderCode }}</a>
+              </td>
+              <td>
+                <div class="text-truncate">{{ o.customerName }}</div>
+                <div class="text-secondary small">{{ o.customerMobile }}</div>
+              </td>
+              <td class="text-secondary">{{ o.salespersonName || '—' }}</td>
+              <td><span class="badge bg-secondary-lt">{{ humanize(o.orderStatus) }}</span></td>
+              <td class="text-end fw-bold">{{ o.totalAmount | inr }}</td>
+              <td class="text-secondary">{{ o.createdAt ? (o.createdAt | istDate) : '—' }}</td>
+              <td>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-success"
+                  [disabled]="restoringId() !== null"
+                  (click)="restore(o)"
+                >
+                  @if (restoringId() === o.id) {
+                    <span class="spinner-border spinner-border-sm me-1"></span> Restoring…
+                  } @else {
+                    <i class="ti ti-restore me-1"></i> Restore
+                  }
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+}

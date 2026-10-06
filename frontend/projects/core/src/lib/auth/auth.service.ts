@@ -44,8 +44,16 @@ export class AuthService {
       username: claims.sub,
       role: claims.role,
       fullName: claims.name?.trim() || undefined,
+      mustChangePassword: claims.pwd === true,
     };
   });
+
+  /**
+   * Whether the signed-in user must set a new password before using the app
+   * (an admin reset their password to the temporary one). Drives routing to the
+   * change-password screen and the guard that blocks the rest of the app.
+   */
+  readonly mustChangePassword = computed<boolean>(() => this.session()?.mustChangePassword === true);
 
   /** Whether a user is currently signed in. */
   readonly isAuthenticated = computed<boolean>(() => this.session() !== null);
@@ -89,6 +97,18 @@ export class AuthService {
         tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken)),
         map(() => this.requireSession()),
       );
+  }
+
+  /**
+   * Sets a new password for the signed-in user (self-service / forced change
+   * after an admin reset) and stores the fresh token pair returned — which no
+   * longer carries the force-change flag, so the user can proceed.
+   */
+  changePassword(newPassword: string): Observable<AuthSession> {
+    return this.api.post<TokenResponse>('/api/me/password', { newPassword }).pipe(
+      tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken)),
+      map(() => this.requireSession()),
+    );
   }
 
   /** Clears the stored session (client-side sign-out). */

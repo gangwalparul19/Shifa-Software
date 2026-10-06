@@ -37,6 +37,12 @@ export class LoginComponent {
     this.error.set(null);
     this.auth.login(this.form.getRawValue()).subscribe({
       next: () => {
+        // An admin-reset account signs in with the temporary password and must
+        // choose a new one before using the app.
+        if (this.auth.mustChangePassword()) {
+          void this.router.navigateByUrl('/change-password');
+          return;
+        }
         const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') ?? '/dashboard';
         void this.router.navigateByUrl(returnUrl);
       },

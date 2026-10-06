@@ -9,6 +9,10 @@ package com.shifa.oms.auth.dto;
  * @param expiresIn    access-token lifetime in seconds
  * @param role         the authenticated user's role (convenience for the client)
  * @param username     the authenticated user's username
+ * @param mustChangePassword whether the user must set a new password before using
+ *                           the app (an admin reset their password to the
+ *                           temporary one); the client routes to the
+ *                           change-password screen when true
  */
 public record TokenResponse(
         String accessToken,
@@ -16,5 +20,6 @@ public record TokenResponse(
         String tokenType,
         long expiresIn,
         String role,
-        String username) {
+        String username,
+        boolean mustChangePassword) {
 }

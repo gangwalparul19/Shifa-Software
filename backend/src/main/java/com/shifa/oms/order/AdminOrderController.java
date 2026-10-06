@@ -295,6 +295,29 @@ public class AdminOrderController {
     }
 
     /**
+     * The soft-deleted (inactive) orders, newest-deleted first — the admin
+     * "Deleted orders" view (ADMIN only via the class-level guard). These are the
+     * orders hidden everywhere else by the soft-delete flag; this is the one place
+     * they are listed so an admin can review and restore them.
+     */
+    @GetMapping("/deleted")
+    public List<OrderSummaryResponse> deleted() {
+        return orderDeletionService.listDeleted();
+    }
+
+    /**
+     * Restore a previously soft-deleted order (delete-order feature; ADMIN only).
+     * Sets {@code active = true} so the order reappears across the whole app.
+     * 404 if no order with that id exists.
+     */
+    @PostMapping("/{id}/restore")
+    public DeleteOrderResponse restore(@PathVariable Long id) {
+        AuthPrincipal admin = currentUserService.requireCurrentUser();
+        String code = orderDeletionService.restore(id, admin);
+        return new DeleteOrderResponse(id, code);
+    }
+
+    /**
      * Admin edit-order (edit-order feature): corrects the customer / shipping /
      * line-item / lead-source / note / GSTIN / discount details a salesperson
      * entered. Re-prices the edited items through the same pricing engine used

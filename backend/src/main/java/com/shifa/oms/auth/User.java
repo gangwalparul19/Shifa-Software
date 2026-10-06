@@ -109,6 +109,25 @@ public class User {
     @Column(name = "verified_by")
     private Long verifiedBy;
 
+    // --- Force-password-change tracking (V81) -------------------------------
+
+    /**
+     * When true, the user signed in with an admin-reset temporary password and
+     * MUST choose a new strong password before they can use the app. The login
+     * response and JWT carry this flag so the client routes to the
+     * change-password screen; it is cleared once the user sets a new password.
+     */
+    @Column(name = "must_change_password", nullable = false)
+    private boolean mustChangePassword = false;
+
+    /** When an admin last reset this user's password (null until the first reset). */
+    @Column(name = "password_reset_at")
+    private LocalDateTime passwordResetAt;
+
+    /** How many times an admin has reset this user's password. */
+    @Column(name = "password_reset_count", nullable = false)
+    private int passwordResetCount = 0;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -290,6 +309,30 @@ public class User {
 
     public void setVerifiedBy(Long verifiedBy) {
         this.verifiedBy = verifiedBy;
+    }
+
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void setMustChangePassword(boolean mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
+    }
+
+    public LocalDateTime getPasswordResetAt() {
+        return passwordResetAt;
+    }
+
+    public void setPasswordResetAt(LocalDateTime passwordResetAt) {
+        this.passwordResetAt = passwordResetAt;
+    }
+
+    public int getPasswordResetCount() {
+        return passwordResetCount;
+    }
+
+    public void setPasswordResetCount(int passwordResetCount) {
+        this.passwordResetCount = passwordResetCount;
     }
 
     public LocalDateTime getCreatedAt() {

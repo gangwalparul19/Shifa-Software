@@ -31,6 +31,12 @@ export interface TokenResponse {
   expiresIn: number;
   role: Role;
   username: string;
+  /**
+   * Whether the user must set a new password before using the app (an admin
+   * reset their password to the temporary one). The client routes to the
+   * change-password screen when true.
+   */
+  mustChangePassword?: boolean;
 }
 
 /** The decoded identity of the currently authenticated user. */
@@ -44,4 +50,10 @@ export interface AuthSession {
    * over reading this directly.
    */
   fullName?: string;
+  /**
+   * When true, the user signed in with an admin-reset temporary password and
+   * must set a new strong password before using the app. Read from the JWT
+   * {@code pwd} claim so it survives a page reload.
+   */
+  mustChangePassword?: boolean;
 }

@@ -22,8 +22,11 @@ public final class AuditActions {
     /** An admin corrected the order's customer/address/items/discount/notes (edit-order feature). */
     public static final String ORDER_UPDATED = "ORDER_UPDATED";
 
-    /** An admin permanently deleted an order and all its child rows (delete-order feature). */
+    /** An admin soft-deleted an order (set active=false) — delete-order feature. */
     public static final String ORDER_DELETED = "ORDER_DELETED";
+
+    /** An admin restored a previously soft-deleted order (set active=true). */
+    public static final String ORDER_RESTORED = "ORDER_RESTORED";
     /** A packer/admin manually marked an order RTO by scanning its label (label redesign feature). */
     public static final String ORDER_MARKED_RTO = "ORDER_MARKED_RTO";
     /** A user exported the (filtered, scoped) orders list to CSV/Excel (list-export enhancement). */
@@ -37,6 +40,8 @@ public final class AuditActions {
     public static final String USER_CREATED = "USER_CREATED";
     public static final String USER_UPDATED = "USER_UPDATED";
     public static final String USER_PASSWORD_RESET = "USER_PASSWORD_RESET";
+    /** A user changed their own password (self-service, incl. the forced change after a reset). */
+    public static final String USER_PASSWORD_CHANGED = "USER_PASSWORD_CHANGED";
     public static final String USER_ACTIVATED = "USER_ACTIVATED";
     public static final String USER_DEACTIVATED = "USER_DEACTIVATED";
 

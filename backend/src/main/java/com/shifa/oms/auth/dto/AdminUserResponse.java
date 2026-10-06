@@ -33,7 +33,10 @@ public record AdminUserResponse(
         IdProofType idProofType,
         String idProofNumber,
         VerificationStatus verificationStatus,
-        Long teamLeadId) {
+        Long teamLeadId,
+        boolean mustChangePassword,
+        LocalDateTime passwordResetAt,
+        int passwordResetCount) {
 
     public static AdminUserResponse from(User user) {
         return new AdminUserResponse(
@@ -51,6 +54,9 @@ public record AdminUserResponse(
                 user.getIdProofType(),
                 user.getIdProofNumber(),
                 user.getVerificationStatus(),
-                user.getTeamLeadId());
+                user.getTeamLeadId(),
+                user.isMustChangePassword(),
+                user.getPasswordResetAt(),
+                user.getPasswordResetCount());
     }
 }

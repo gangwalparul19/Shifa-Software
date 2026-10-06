@@ -22,6 +22,7 @@ import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { verificationBadgeClass } from '../shared/status-badge.component';
 import { roleLabel } from '../shared/role-label';
+import { TEMPORARY_PASSWORD } from '../shared/password-policy';
 
 /**
  * Admin-only staff user management (Req 5.4).
@@ -87,10 +88,8 @@ export class UsersComponent implements OnInit {
   protected readonly formOpen = computed(() => this.creating() || this.editing() !== null);
   protected readonly formError = signal<string | null>(null);
 
-  /** The user whose password is being reset; null when the reset modal is closed. */
-  protected readonly resetting = signal<AdminUser | null>(null);
-  protected readonly resetSaving = signal(false);
-  protected readonly resetError = signal<string | null>(null);
+  /** The fixed temporary password an admin reset sets (shown in the confirm). */
+  protected readonly temporaryPassword = TEMPORARY_PASSWORD;
 
   /** The signed-in admin's username, used to prevent self-deactivation in the UI. */
   protected readonly currentUsername = computed(() => this.auth.session()?.username ?? null);
@@ -109,10 +108,6 @@ export class UsersComponent implements OnInit {
     joinedOn: [''],
     idProofType: ['' as IdProofType | '', []],
     idProofNumber: ['', [Validators.maxLength(60)]],
-  });
-
-  protected readonly resetForm = this.fb.nonNullable.group({
-    newPassword: ['', [Validators.required, Validators.minLength(6), Validators.maxLength(100)]],
   });
 
   ngOnInit(): void {
@@ -213,6 +208,30 @@ export class UsersComponent implements OnInit {
     return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
+  /**
+   * "Password reset" cell text: when and how many times an admin reset this
+   * user's password, e.g. "02 Oct 2026, 14:30 · 3×". Returns "Never" when the
+   * password has not been reset.
+   */
+  passwordResetLabel(user: AdminUser): string {
+    if (!user.passwordResetAt || user.passwordResetCount <= 0) {
+      return 'Never';
+    }
+    const d = new Date(user.passwordResetAt);
+    const when = Number.isNaN(d.getTime())
+      ? user.passwordResetAt
+      : d.toLocaleString('en-IN', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+          timeZone: 'Asia/Kolkata',
+        });
+    return `${when} · ${user.passwordResetCount}×`;
+  }
+
   /** Per-row kebab actions mirroring the original Edit / Reset / (de)activate buttons. */
   rowActions(user: AdminUser): RowAction[] {
     const actions: RowAction[] = [
@@ -235,7 +254,7 @@ export class UsersComponent implements OnInit {
     if (key === 'edit') {
       this.openEdit(user);
     } else if (key === 'reset') {
-      this.openReset(user);
+      this.resetPassword(user);
     } else if (key === 'toggle') {
       this.toggleActive(user);
     }
@@ -368,46 +387,39 @@ export class UsersComponent implements OnInit {
 
   // --- Reset password -----------------------------------------------------
 
-  async openReset(user: AdminUser): Promise<void> {
+  /**
+   * Resets the user's password to the fixed temporary password. The admin does
+   * not choose a password — on their next login the user signs in with
+   * {@link TEMPORARY_PASSWORD} and is forced to set their own strong one.
+   */
+  async resetPassword(user: AdminUser): Promise<void> {
+    if (this.actioningId() !== null) {
+      return;
+    }
     const confirmed = await this.confirmService.confirm({
       title: 'Reset password',
-      message: `Set a new password for "${user.username}"? Their current password will stop working immediately.`,
-      confirmLabel: 'Continue',
+      message:
+        `Reset the password for "${user.username}" to the temporary password ` +
+        `"${TEMPORARY_PASSWORD}"? Their current password stops working immediately, and ` +
+        `they will be required to set a new password the next time they sign in.`,
+      confirmLabel: 'Reset password',
       icon: 'ti-key',
     });
     if (!confirmed) {
       return;
     }
-    this.resetError.set(null);
-    this.resetForm.reset({ newPassword: '' });
-    this.resetting.set(user);
-  }
-
-  closeReset(): void {
-    this.resetting.set(null);
-    this.resetError.set(null);
-  }
-
-  submitReset(): void {
-    const user = this.resetting();
-    if (!user || this.resetSaving()) {
-      return;
-    }
-    if (this.resetForm.invalid) {
-      this.resetForm.markAllAsTouched();
-      return;
-    }
-    this.resetSaving.set(true);
-    this.resetError.set(null);
-    this.service.resetPassword(user.id, this.resetForm.getRawValue().newPassword).subscribe({
-      next: () => {
-        this.resetSaving.set(false);
-        this.toasts.success(`Password reset for ${user.username}.`);
-        this.closeReset();
+    this.actioningId.set(user.id);
+    this.service.resetPassword(user.id).subscribe({
+      next: (updated) => {
+        this.actioningId.set(null);
+        this.users.update((items) => items.map((u) => (u.id === updated.id ? updated : u)));
+        this.toasts.success(
+          `Password reset for ${user.username}. Temporary password: ${TEMPORARY_PASSWORD}`,
+        );
       },
       error: (err: HttpErrorResponse) => {
-        this.resetSaving.set(false);
-        this.resetError.set(this.describeError(err));
+        this.actioningId.set(null);
+        this.toasts.error(this.describeError(err));
       },
     });
   }

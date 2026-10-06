@@ -106,6 +106,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             FROM line_items li
             JOIN orders o ON o.id = li.order_id
             WHERE li.product_id IS NOT NULL
+              AND o.active = 1
               AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
             GROUP BY li.product_id
             ORDER BY SUM(li.quantity) DESC
@@ -119,6 +120,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             JOIN orders o ON o.id = li.order_id
             WHERE li.product_id IS NOT NULL
               AND o.created_by = :createdBy
+              AND o.active = 1
               AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
             GROUP BY li.product_id
             ORDER BY SUM(li.quantity) DESC
@@ -139,6 +141,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             WHERE li1.product_id IN (:productIds)
               AND li2.product_id IS NOT NULL
               AND li2.product_id NOT IN (:productIds)
+              AND o.active = 1
               AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
             GROUP BY li2.product_id
             ORDER BY COUNT(DISTINCT o.id) DESC
@@ -217,7 +220,8 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     @Query(value = """
             SELECT DISTINCT o.* FROM orders o
             LEFT JOIN courier_records cr ON cr.order_id = o.id
-            WHERE (:createdBy IS NULL OR o.created_by = :createdBy)
+            WHERE o.active = 1
+              AND (:createdBy IS NULL OR o.created_by = :createdBy)
               AND ( LOWER(o.customer_name)  LIKE CONCAT('%', LOWER(:term), '%')
                  OR o.customer_mobile       LIKE CONCAT('%', :term, '%')
                  OR LOWER(o.order_code)     LIKE CONCAT('%', LOWER(:term), '%')
@@ -230,10 +234,33 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     /** All orders for a scope (no search term), most recent first. */
     @Query(value = """
             SELECT o.* FROM orders o
-            WHERE (:createdBy IS NULL OR o.created_by = :createdBy)
+            WHERE o.active = 1
+              AND (:createdBy IS NULL OR o.created_by = :createdBy)
             ORDER BY o.created_at DESC
             """, nativeQuery = true)
     List<OrderEntity> findAllScoped(@Param("createdBy") Long createdBy);
+
+    /**
+     * All soft-deleted (inactive) orders, most recent first — the admin "Deleted
+     * orders" view / restore screen. This is a {@code nativeQuery} so it bypasses
+     * the entity-level {@code @SQLRestriction("active = 1")} (which hides inactive
+     * orders from every other read); it is the ONLY read path that intentionally
+     * returns deleted orders.
+     */
+    @Query(value = """
+            SELECT o.* FROM orders o
+            WHERE o.active = 0
+            ORDER BY o.updated_at DESC, o.id DESC
+            """, nativeQuery = true)
+    List<OrderEntity> findDeleted();
+
+    /**
+     * A single order by id REGARDLESS of its active flag (native, so the
+     * {@code @SQLRestriction} does not hide an inactive one). Used only by the
+     * restore action, which must load a soft-deleted order to reactivate it.
+     */
+    @Query(value = "SELECT o.* FROM orders o WHERE o.id = :id", nativeQuery = true)
+    Optional<OrderEntity> findByIdIncludingInactive(@Param("id") Long id);
 
     /**
      * All orders created by any of the given users, most recent first — the
@@ -243,7 +270,8 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
      */
     @Query(value = """
             SELECT o.* FROM orders o
-            WHERE o.created_by IN (:createdByIds)
+            WHERE o.active = 1
+              AND o.created_by IN (:createdByIds)
             ORDER BY o.created_at DESC
             """, nativeQuery = true)
     List<OrderEntity> findAllScopedIn(@Param("createdByIds") java.util.Collection<Long> createdByIds);
@@ -256,7 +284,8 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     @Query(value = """
             SELECT DISTINCT o.* FROM orders o
             LEFT JOIN courier_records cr ON cr.order_id = o.id
-            WHERE o.created_by IN (:createdByIds)
+            WHERE o.active = 1
+              AND o.created_by IN (:createdByIds)
               AND ( LOWER(o.customer_name)  LIKE CONCAT('%', LOWER(:term), '%')
                  OR o.customer_mobile       LIKE CONCAT('%', :term, '%')
                  OR LOWER(o.order_code)     LIKE CONCAT('%', LOWER(:term), '%')
@@ -275,8 +304,9 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
      */
     @Query(value = """
             SELECT o.* FROM orders o
-            WHERE o.customer_user_id = :userId
-               OR (:mobile IS NOT NULL AND o.customer_mobile = :mobile)
+            WHERE o.active = 1
+              AND ( o.customer_user_id = :userId
+               OR (:mobile IS NOT NULL AND o.customer_mobile = :mobile) )
             ORDER BY o.created_at DESC
             """, nativeQuery = true)
     List<OrderEntity> findCustomerHistory(@Param("userId") Long userId, @Param("mobile") String mobile);
@@ -289,6 +319,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     @Query(value = """
             SELECT o.* FROM orders o
             WHERE o.order_code = :orderCode
+              AND o.active = 1
               AND ( o.customer_user_id = :userId
                  OR (:mobile IS NOT NULL AND o.customer_mobile = :mobile) )
             """, nativeQuery = true)
@@ -307,6 +338,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             SELECT COUNT(*) FROM orders o
             JOIN line_items li ON li.order_id = o.id
             WHERE li.product_id = :productId
+              AND o.active = 1
               AND ( o.customer_user_id = :userId
                  OR (:mobile IS NOT NULL AND o.customer_mobile = :mobile) )
             """, nativeQuery = true)
@@ -331,6 +363,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             FROM line_items li
             JOIN orders o ON o.id = li.order_id
             WHERE li.product_id = :productId
+              AND o.active = 1
               AND o.created_at >= :startInclusive
               AND o.created_at <  :endExclusive
               AND o.order_status NOT IN (:excludedStatuses)
@@ -375,6 +408,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
                    COALESCE(SUM(o.customer_outstanding), 0) AS codOutstanding
             FROM orders o
             WHERE o.created_by IS NOT NULL
+              AND o.active = 1
             GROUP BY o.created_by
             """, nativeQuery = true)
     List<SalespersonOrderAggregate> salespersonOrderStats(
@@ -414,6 +448,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
                    COALESCE(SUM(o.total_amount), 0) AS revenue
             FROM orders o
             WHERE o.created_by IS NOT NULL
+              AND o.active = 1
               AND o.created_at >= :from AND o.created_at < :to
               AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
             GROUP BY o.created_by
@@ -439,6 +474,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             SELECT o.customer_mobile AS mobile, o.created_at AS createdAt
             FROM orders o
             WHERE o.customer_mobile IS NOT NULL AND o.customer_mobile <> ''
+              AND o.active = 1
               AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
             ORDER BY o.customer_mobile, o.created_at
             """, nativeQuery = true)
@@ -464,6 +500,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             FROM line_items li
             JOIN orders o ON o.id = li.order_id
             WHERE li.product_id IS NOT NULL
+              AND o.active = 1
               AND o.created_at >= :from AND o.created_at < :to
               AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
             GROUP BY li.product_id
@@ -489,7 +526,8 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
      */
     @Query(value = """
             SELECT COALESCE(SUM(o.customer_outstanding), 0) FROM orders o
-            WHERE o.order_status NOT IN
+            WHERE o.active = 1
+              AND o.order_status NOT IN
               ('CLOSED','COD_COLLECTED','REJECTED','PAYMENT_REJECTED','CANCELLED',
                'DELIVERY_FAILED','CUSTOMER_REJECTED','RTO','REDISPATCH')
             """, nativeQuery = true)
@@ -502,7 +540,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
      */
     @Query(value = """
             SELECT COALESCE(SUM(o.cod_amount), 0) FROM orders o
-            WHERE o.order_status = 'COD_COLLECTED' AND o.updated_at >= :since
+            WHERE o.order_status = 'COD_COLLECTED' AND o.active = 1 AND o.updated_at >= :since
             """, nativeQuery = true)
     java.math.BigDecimal sumCodCollectedSince(@Param("since") java.time.LocalDateTime since);
 
@@ -517,6 +555,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     @Query(value = """
             SELECT o.order_status AS status, COUNT(*) AS count
             FROM orders o
+            WHERE o.active = 1
             GROUP BY o.order_status
             """, nativeQuery = true)
     List<StatusCountRow> statusCounts();
@@ -530,7 +569,8 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     @Query(value = """
             SELECT o.order_status AS status, COUNT(*) AS count
             FROM orders o
-            WHERE (:createdBy IS NULL OR o.created_by = :createdBy)
+            WHERE o.active = 1
+              AND (:createdBy IS NULL OR o.created_by = :createdBy)
             GROUP BY o.order_status
             """, nativeQuery = true)
     List<StatusCountRow> statusCountsForCreator(@Param("createdBy") Long createdBy);
@@ -543,7 +583,8 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     @Query(value = """
             SELECT o.order_status AS status, COUNT(*) AS count
             FROM orders o
-            WHERE o.created_by IN (:createdByIds)
+            WHERE o.active = 1
+              AND o.created_by IN (:createdByIds)
             GROUP BY o.order_status
             """, nativeQuery = true)
     List<StatusCountRow> statusCountsForCreatorIn(
@@ -566,6 +607,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     @Query(value = """
             SELECT COUNT(*) FROM orders o
             WHERE o.order_status = 'PACKED'
+              AND o.active = 1
               AND o.updated_at >= :dayStart AND o.updated_at < :dayEnd
             """, nativeQuery = true)
     long countPackedBetween(@Param("dayStart") java.time.LocalDateTime dayStart,
@@ -580,7 +622,8 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     @Query(value = """
             SELECT COUNT(*) AS orderCount, COALESCE(SUM(o.amount_received), 0) AS collection
             FROM orders o
-            WHERE o.created_at >= :dayStart AND o.created_at < :dayEnd
+            WHERE o.active = 1
+              AND o.created_at >= :dayStart AND o.created_at < :dayEnd
             """, nativeQuery = true)
     DayLiveRow liveStatsBetween(@Param("dayStart") java.time.LocalDateTime dayStart,
                                 @Param("dayEnd") java.time.LocalDateTime dayEnd);
@@ -606,7 +649,8 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
                    SUM(CASE WHEN o.order_status IN ('DELIVERED','COD_COLLECTED','CLOSED') THEN 1 ELSE 0 END) AS delivered,
                    SUM(CASE WHEN o.order_status IN ('CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH') THEN 1 ELSE 0 END) AS failed
             FROM orders o
-            WHERE o.order_status IN
+            WHERE o.active = 1
+              AND o.order_status IN
               ('DELIVERED','COD_COLLECTED','CLOSED','CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH')
             GROUP BY COALESCE(NULLIF(TRIM(o.state), ''), '(unknown)')
             """, nativeQuery = true)
@@ -623,7 +667,8 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
                    SUM(CASE WHEN o.order_status IN ('DELIVERED','COD_COLLECTED','CLOSED') THEN 1 ELSE 0 END) AS delivered,
                    SUM(CASE WHEN o.order_status IN ('CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH') THEN 1 ELSE 0 END) AS failed
             FROM orders o
-            WHERE o.order_status IN
+            WHERE o.active = 1
+              AND o.order_status IN
               ('DELIVERED','COD_COLLECTED','CLOSED','CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH')
             GROUP BY CASE WHEN o.postal_code IS NULL OR CHAR_LENGTH(TRIM(o.postal_code)) < 3
                           THEN '(unknown)' ELSE SUBSTRING(TRIM(o.postal_code), 1, 3) END
@@ -643,7 +688,8 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             FROM orders o
             LEFT JOIN courier_records cr ON cr.order_id = o.id
             LEFT JOIN courier_companies cc ON cc.id = cr.courier_company_id
-            WHERE o.order_status IN
+            WHERE o.active = 1
+              AND o.order_status IN
               ('DELIVERED','COD_COLLECTED','CLOSED','CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH')
             GROUP BY COALESCE(cc.name, '(unassigned)')
             """, nativeQuery = true)
@@ -673,7 +719,8 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
                    COALESCE(SUM(o.total_amount), 0) AS revenue,
                    COALESCE(SUM(o.discount_amount), 0) AS discount
             FROM orders o
-            WHERE o.created_at >= :from AND o.created_at < :to
+            WHERE o.active = 1
+              AND o.created_at >= :from AND o.created_at < :to
               AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
             GROUP BY o.source
             """, nativeQuery = true)
@@ -696,7 +743,8 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             FROM orders o
             JOIN line_items li ON li.order_id = o.id
             LEFT JOIN products p ON p.id = li.product_id
-            WHERE o.created_at >= :from AND o.created_at < :to
+            WHERE o.active = 1
+              AND o.created_at >= :from AND o.created_at < :to
               AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
             GROUP BY o.source
             """, nativeQuery = true)

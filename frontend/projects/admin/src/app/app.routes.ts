@@ -1,6 +1,8 @@
-import { Routes } from '@angular/router';
-import { createRoleGuard, Role } from 'core';
+import { inject } from '@angular/core';
+import { CanActivateFn, Router, Routes, UrlTree } from '@angular/router';
+import { AuthService, createRoleGuard, Role } from 'core';
 import { LoginComponent } from './auth/login.component';
+import { ChangePasswordComponent } from './auth/change-password.component';
 import { ForbiddenComponent } from './auth/forbidden.component';
 import { DashboardComponent } from './dashboard/dashboard.component';
 import { AdminShellComponent } from './shell/admin-shell.component';
@@ -37,6 +39,7 @@ import { AnnouncementsComponent } from './announcements/announcements.component'
 import { AnalyticsComponent } from './analytics/analytics.component';
 import { ShopifySyncComponent } from './shopify-sync/shopify-sync.component';
 import { OrderCancellationComponent } from './order-cancellation/order-cancellation.component';
+import { DeletedOrdersComponent } from './deleted-orders/deleted-orders.component';
 import { TeamComponent } from './team/team.component';
 import { TeamsOverviewComponent } from './dashboard/teams-overview.component';
 import { WhatsappTemplatesComponent } from './whatsapp/whatsapp-templates.component';
@@ -185,8 +188,27 @@ export const teamLeadGuard = createRoleGuard(
   Role.TEAM_LEAD,
 );
 
+/**
+ * Blocks the whole admin shell while the signed-in user must set a new password
+ * (an admin reset their password to the temporary one). Such a user is bounced
+ * to {@code /change-password} until they choose a new password, which clears the
+ * flag. Runs after {@link staffGuard}, so the user is already authenticated.
+ */
+export const forcePasswordChangeGuard: CanActivateFn = (): boolean | UrlTree => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  if (auth.isAuthenticated() && auth.mustChangePassword()) {
+    return router.createUrlTree(['/change-password']);
+  }
+  return true;
+};
+
 export const routes: Routes = [
   { path: 'login', component: LoginComponent },
+  // Forced / self-service password change — outside the shell (no app chrome),
+  // reachable while the force-change flag is set. Requires an authenticated
+  // session; createAuthGuard-style check lives in the component via AuthService.
+  { path: 'change-password', component: ChangePasswordComponent },
   { path: 'forbidden', component: ForbiddenComponent },
   // Public, unauthenticated customer order tracking (ENHANCEMENT 2.2) — opaque
   // token, outside the admin shell/guards. Lazy so it stays out of the main bundle.
@@ -198,7 +220,7 @@ export const routes: Routes = [
   {
     path: '',
     component: AdminShellComponent,
-    canActivate: [staffGuard],
+    canActivate: [staffGuard, forcePasswordChangeGuard],
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
       { path: 'dashboard', component: DashboardComponent },
@@ -438,6 +460,11 @@ export const routes: Routes = [
         // propagating the cancellation to the courier (ADMIN only).
         path: 'order-cancellation',
         component: OrderCancellationComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        path: 'deleted-orders',
+        component: DeletedOrdersComponent,
         canActivate: [adminOnlyGuard],
       },
       {

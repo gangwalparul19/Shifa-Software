@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient, Role } from 'core';
+import { TEMPORARY_PASSWORD } from '../shared/password-policy';
 
 /**
  * The staff roles a managed account may hold. Excludes {@link Role.CUSTOMER},
@@ -71,6 +72,12 @@ export interface AdminUser {
   idProofNumber: string | null;
   verificationStatus: VerificationStatus | null;
   teamLeadId: number | null;
+  /** Whether the user must set a new password on next login (admin reset). */
+  mustChangePassword: boolean;
+  /** When an admin last reset this user's password (ISO), or null. */
+  passwordResetAt: string | null;
+  /** How many times an admin has reset this user's password. */
+  passwordResetCount: number;
 }
 
 /** Payload for creating a staff account ({@code POST /api/admin/users}). */
@@ -125,9 +132,17 @@ export class UsersService {
     return this.api.put<AdminUser>(`/api/admin/users/${id}`, request);
   }
 
-  /** Sets a new password for the account. */
-  resetPassword(id: number, newPassword: string): Observable<void> {
-    return this.api.post<void>(`/api/admin/users/${id}/reset-password`, { newPassword });
+  /**
+   * Resets the account to the fixed temporary password; the user is then forced
+   * to set a new strong password on their next login. The backend ignores the
+   * body (always sets the temporary password), but still validates it, so the
+   * temporary value is sent to satisfy that contract. Returns the updated user
+   * so the grid can refresh the "last reset" / "reset count" columns.
+   */
+  resetPassword(id: number): Observable<AdminUser> {
+    return this.api.post<AdminUser>(`/api/admin/users/${id}/reset-password`, {
+      newPassword: TEMPORARY_PASSWORD,
+    });
   }
 
   /** Re-enables sign-in for the account. */

@@ -190,6 +190,16 @@ class EndpointRoleGuardIntegrationTest {
     }
 
     @Test
+    void deletedOrdersListIsAdminOnly() throws Exception {
+        assertRoleMatrix(get("/api/admin/orders/deleted"), List.of(Role.ADMIN));
+    }
+
+    @Test
+    void restoreOrderIsAdminOnly() throws Exception {
+        assertRoleMatrix(post("/api/admin/orders/5/restore"), List.of(Role.ADMIN));
+    }
+
+    @Test
     void editOrderIsAdminOnly() throws Exception {
         assertRoleMatrix(
                 put("/api/admin/orders/5")
@@ -1011,7 +1021,7 @@ class EndpointRoleGuardIntegrationTest {
         }
     }
 
-    /** Returns a canned code so a permitted (ADMIN) delete-order call yields 2xx without a DB. */
+    /** Returns canned values so permitted (ADMIN) delete/restore/deleted-list calls yield 2xx without a DB. */
     static class StubOrderDeletionService extends com.shifa.oms.order.OrderDeletionService {
         StubOrderDeletionService() {
             super(null, null, null, null, null, null, null, null, null, null);
@@ -1020,6 +1030,16 @@ class EndpointRoleGuardIntegrationTest {
         @Override
         public String delete(Long id, AuthPrincipal admin) {
             return "SHR-TEST";
+        }
+
+        @Override
+        public String restore(Long id, AuthPrincipal admin) {
+            return "SHR-TEST";
+        }
+
+        @Override
+        public java.util.List<com.shifa.oms.order.dto.OrderSummaryResponse> listDeleted() {
+            return java.util.List.of();
         }
     }
 

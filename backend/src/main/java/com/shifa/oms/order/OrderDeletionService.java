@@ -10,7 +10,6 @@ import com.shifa.oms.courier.CourierRecordRepository;
 import com.shifa.oms.lead.LeadRepository;
 import com.shifa.oms.ledger.VoucherRepository;
 import com.shifa.oms.ledger.autopost.SourceType;
-import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
 import com.shifa.oms.quikshipx.OrderShipmentRepository;
 import com.shifa.oms.reconciliation.ReceivableRepository;
@@ -20,30 +19,28 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Admin "delete order" (delete-order feature): permanently removes an order and
- * every child row that references it, in one transaction, so a mistaken /
- * spam / abandoned order can be wiped entirely rather than left lingering as a
- * rejected or cancelled record.
+ * Admin "delete order" (delete-order feature): a reversible <strong>soft
+ * delete</strong>. "Deleting" an order sets {@code orders.active = false} rather
+ * than removing the row, so the order (and all its children + audit trail) stays
+ * intact but disappears everywhere in the app — the orders list, dashboards,
+ * sales reports and the Profit &amp; Loss all exclude inactive orders (via the
+ * {@code @SQLRestriction} on {@link OrderEntity} for entity reads, and an
+ * explicit {@code AND o.active = 1} on the native aggregate queries).
  *
- * <p><strong>Why a delete is sometimes refused.</strong> An order that was
+ * <p>This replaced an earlier hard delete that failed on foreign-key
+ * constraints (e.g. the QuikShipX {@code order_shipments} FK) and surfaced as a
+ * generic 500. The soft delete has no such fragility: it touches only the one
+ * boolean on the order row, so FK children are never a problem.
+ *
+ * <p><strong>Why a delete is still sometimes refused.</strong> An order that was
  * approved into the General Ledger has a posted Sales voucher (and possibly a
- * delivery-receipt voucher). Hard-deleting it would silently unbalance the
- * ledger and corrupt already-filed GST periods, so a delete is <em>refused</em>
- * (409 {@link OrderNotEditableException}) when a ledger voucher exists for the
- * order — the admin should <em>cancel</em> such an order instead (which keeps
- * the audit trail and the GL intact, and the cancelled order is already excluded
- * from every sales figure). In practice this means pending / rejected /
- * payment-rejected orders (and cancelled orders that never reached approval)
- * delete cleanly, while a delivered/approved order cannot be destroyed.
- *
- * <p><strong>What is removed.</strong> The non-cascading child rows are deleted
- * children-first (receivables, courier record, returns, QuikShipX shipment,
- * order-scoped admin notifications and outbox events), the lead link is nulled
- * (the lead survives), and finally {@code orderRepository.delete(order)} removes
- * the order plus its JPA-cascaded children (line items, payments, status
- * history, payment screenshots). Mirrors the children-first order used by the
- * V51 reset migration, extended to the tables added since (V65 screenshots, the
- * QuikShipX shipment, notifications, outbox).
+ * delivery-receipt voucher). Hiding it would retroactively drop it from a filed
+ * GST period and the P&amp;L, so a delete is <em>refused</em> (400
+ * {@link ValidationException}) when a ledger voucher exists for the order — the
+ * admin should <em>cancel</em> such an order instead (which keeps the GL + GST
+ * intact, and a cancelled order is already excluded from every sales figure). In
+ * practice this means pending / rejected / payment-rejected / never-approved
+ * cancelled orders can be deleted, while a delivered/approved order cannot.
  */
 @Service
 public class OrderDeletionService {
@@ -83,10 +80,14 @@ public class OrderDeletionService {
     }
 
     /**
-     * Permanently deletes the order {@code id} and all its child rows (ADMIN
+     * Soft-deletes the order {@code id} by setting {@code active = false} (ADMIN
      * only; the controller enforces the role). Throws 404 if the order does not
-     * exist and 409 ({@link OrderNotEditableException}) if a ledger voucher was
-     * already posted for it (delete would corrupt the GL — cancel it instead).
+     * exist (or is already inactive — the {@code @SQLRestriction} hides it) and
+     * 400 ({@link ValidationException}) if a ledger voucher was already posted
+     * for it (hiding it would corrupt the GL / a filed GST period — cancel it
+     * instead). The order row, its children and its audit trail are preserved;
+     * the order simply disappears from every list, dashboard, report and the
+     * P&amp;L. Idempotent: deleting an already-active order flips it once.
      *
      * @return the code of the deleted order (for the confirmation message)
      */
@@ -97,25 +98,50 @@ public class OrderDeletionService {
         requireNoLedgerVoucher(order);
 
         String code = order.getOrderCode();
-
-        // Unlink any lead that converted into this order (keep the lead).
-        leadRepository.clearConvertedOrder(id);
-
-        // Delete the non-cascading child rows (children first).
-        receivableRepository.deleteByOrderId(id);
-        courierRecordRepository.deleteByOrderId(id);
-        orderReturnRepository.deleteByOrderId(id);
-        orderShipmentRepository.deleteByOrderId(id);
-        adminNotificationRepository.deleteByOrderId(id);
-        outboxEventRepository.deleteByAggregateTypeAndAggregateId(OutboxEvent.AGGREGATE_ORDER, id);
-
-        // Delete the order — JPA cascades line items, payments, status history
-        // and payment screenshots (orphanRemoval on the OneToMany mappings).
-        orderRepository.delete(order);
+        order.setActive(false);
+        orderRepository.save(order);
 
         if (auditService != null) {
             auditService.record(AuditActions.ORDER_DELETED, AuditActions.ENTITY_ORDER,
-                    String.valueOf(id), "Deleted order " + code + " and all its records.");
+                    String.valueOf(id), "Deleted (deactivated) order " + code
+                            + " — hidden from all lists, reports and P&L.");
+        }
+        return code;
+    }
+
+    /**
+     * The soft-deleted (inactive) orders, newest-deleted first — backs the admin
+     * "Deleted orders" view. Reads the inactive rows directly (bypassing the
+     * {@code @SQLRestriction}) and maps them to the compact list shape.
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<com.shifa.oms.order.dto.OrderSummaryResponse> listDeleted() {
+        return orderRepository.findDeleted().stream()
+                .map(com.shifa.oms.order.dto.OrderSummaryResponse::from)
+                .toList();
+    }
+
+    /**
+     * Restores a previously soft-deleted order by setting {@code active = true}
+     * again (ADMIN only; the controller enforces the role). The order reappears
+     * everywhere — lists, dashboards, reports and the P&amp;L. Throws 404 if no
+     * order with that id exists; a no-op flip if it was already active. Loads the
+     * order via the inactive-inclusive finder (the {@code @SQLRestriction} would
+     * otherwise hide a deleted order).
+     *
+     * @return the code of the restored order
+     */
+    @Transactional
+    public String restore(Long id, AuthPrincipal admin) {
+        OrderEntity order = orderRepository.findByIdIncludingInactive(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Order " + id + " does not exist."));
+        String code = order.getOrderCode();
+        order.setActive(true);
+        orderRepository.save(order);
+
+        if (auditService != null) {
+            auditService.record(AuditActions.ORDER_RESTORED, AuditActions.ENTITY_ORDER,
+                    String.valueOf(id), "Restored order " + code + " — visible again in all lists, reports and P&L.");
         }
         return code;
     }

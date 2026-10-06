@@ -128,6 +128,13 @@ public class JwtService {
         if (fullName != null && !fullName.isBlank()) {
             payload.put("name", fullName.trim());
         }
+        // Force-password-change flag: when true the user must set a new password
+        // before using the app. Carried on the token so a page reload / refresh
+        // still knows (not just the login response). Omitted when false to keep
+        // tokens small and backward-compatible with the client's optional read.
+        if (user.isMustChangePassword()) {
+            payload.put("pwd", true);
+        }
         payload.put("typ", type.name());
         payload.put("iat", issuedAt.getEpochSecond());
         payload.put("exp", expiresAt.getEpochSecond());

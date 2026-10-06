@@ -370,6 +370,23 @@ export class OrdersService {
   }
 
   /**
+   * The soft-deleted (inactive) orders, newest-deleted first — backs the admin
+   * "Deleted orders" view, via {@code GET /api/admin/orders/deleted} (ADMIN-only).
+   */
+  deletedOrders(): Observable<OrderSummary[]> {
+    return this.api.get<OrderSummary[]>('/api/admin/orders/deleted');
+  }
+
+  /**
+   * Restore a previously soft-deleted order (delete-order feature), via
+   * {@code POST /api/admin/orders/{id}/restore} (ADMIN-only). The order becomes
+   * active again and reappears across the whole app.
+   */
+  restoreOrder(id: number): Observable<DeleteOrderResult> {
+    return this.api.post<DeleteOrderResult>(`/api/admin/orders/${id}/restore`, {});
+  }
+
+  /**
    * Manually attaches a courier name + AWB to an order (ADMIN-only; "assign
    * courier early" enhancement), via
    * {@code POST /api/admin/orders/{id}/assign-courier}. Usable any time before

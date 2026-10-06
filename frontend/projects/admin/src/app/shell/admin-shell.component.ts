@@ -488,6 +488,7 @@ export class AdminShellComponent {
           roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON, Role.TEAM_LEAD],
         },
         { kind: 'link', label: 'Cancel Order', path: '/order-cancellation', icon: 'ti-ban', adminOnly: true },
+        { kind: 'link', label: 'Deleted orders', path: '/deleted-orders', icon: 'ti-trash', adminOnly: true },
         {
           kind: 'link',
           label: 'Packing',
