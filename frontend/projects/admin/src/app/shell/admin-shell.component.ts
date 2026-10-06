@@ -452,10 +452,11 @@ export class AdminShellComponent {
       label: 'Shifa Dashboard',
       path: '/dashboard',
       icon: 'ti-layout-dashboard',
-      // CA and Payment Verifier are redirected away from /dashboard to their own
-      // home (GST / Payments), so the generic dashboard link would dead-end for
-      // them — show it only to the roles whose home actually IS /dashboard.
-      roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON, Role.TEAM_LEAD, Role.PACKING_USER],
+      // CA, Payment Verifier and Packing_User are redirected away from /dashboard
+      // to their own home (GST / Payments / Packing), so the generic dashboard
+      // link would dead-end for them — show it only to the roles whose home
+      // actually IS /dashboard.
+      roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON, Role.TEAM_LEAD],
     },
     {
       kind: 'group',
@@ -483,9 +484,18 @@ export class AdminShellComponent {
           label: 'Orders',
           path: '/orders',
           icon: 'ti-receipt',
-          // All-orders view; any staff may reach it (backend scopes a salesperson
-          // to their own orders). Excludes roles with a dedicated home only.
-          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON, Role.TEAM_LEAD],
+          // All-orders view; every staff role may reach it (route = staffGuard;
+          // the backend scopes a salesperson to their own orders). Packing_User
+          // and Payment_Verifier also have an Orders bottom tab, so the drawer
+          // link is listed for them too to keep the drawer and tab bar in sync.
+          roles: [
+            Role.ADMIN,
+            Role.ACCOUNTANT,
+            Role.SALESPERSON,
+            Role.TEAM_LEAD,
+            Role.PACKING_USER,
+            Role.PAYMENT_VERIFIER,
+          ],
         },
         { kind: 'link', label: 'Cancel Order', path: '/order-cancellation', icon: 'ti-ban', adminOnly: true },
         { kind: 'link', label: 'Deleted orders', path: '/deleted-orders', icon: 'ti-trash', adminOnly: true },
@@ -494,6 +504,15 @@ export class AdminShellComponent {
           label: 'Packing',
           path: '/packing',
           icon: 'ti-package',
+          roles: [Role.ADMIN, Role.PACKING_USER],
+        },
+        {
+          kind: 'link',
+          label: 'Pick-list',
+          path: '/packing/pick-list',
+          icon: 'ti-clipboard-list',
+          // Daily pick-list / packing manifest. A packer bottom tab too; add the
+          // drawer link so it isn't reachable only from the bottom bar.
           roles: [Role.ADMIN, Role.PACKING_USER],
         },
         {
@@ -508,14 +527,16 @@ export class AdminShellComponent {
           label: 'Reconciliation',
           path: '/reconciliation',
           icon: 'ti-cash-register',
-          roles: [Role.ADMIN, Role.ACCOUNTANT],
+          // CA has read access (route accountantGuard + backend admit CA), matching
+          // the Expenses / P&L / Accounting finance links.
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
         },
         {
           kind: 'link',
           label: 'Returns',
           path: '/returns',
           icon: 'ti-arrow-back-up',
-          roles: [Role.ADMIN, Role.ACCOUNTANT],
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
         },
       ],
     },

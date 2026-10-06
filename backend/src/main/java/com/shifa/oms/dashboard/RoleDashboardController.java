@@ -38,7 +38,7 @@ public class RoleDashboardController {
 
     /** The role-shaped dashboard summary for the authenticated caller (Req 3.1&ndash;3.6). */
     @GetMapping("/summary")
-    @PreAuthorize("hasAnyRole('ADMIN','SALESPERSON','PACKING_USER','ACCOUNTANT','TEAM_LEAD')")
+    @PreAuthorize("hasAnyRole('ADMIN','SALESPERSON','PACKING_USER','ACCOUNTANT','TEAM_LEAD','CA','PAYMENT_VERIFIER')")
     public RoleDashboardSummary summary() {
         return dashboardService.summary(currentUserService.requireCurrentUser());
     }

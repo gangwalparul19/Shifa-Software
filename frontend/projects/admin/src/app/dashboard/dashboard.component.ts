@@ -308,6 +308,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
       void this.router.navigate(['/ca/gst']);
       return;
     }
+    // A packer works from the Packing queue — send them straight there instead
+    // of the thin dashboard summary (consistent with CA / Payment Verifier).
+    if (this.role() === Role.PACKING_USER) {
+      void this.router.navigate(['/packing']);
+      return;
+    }
     // The role-shaped summary is available to every operational role (Req 3.1);
     // for an admin it also supplies the insights counts.
     this.loadSummary();
