@@ -102,6 +102,13 @@ public class SettingsService {
         settings.setBankIfsc(bankIfsc != null ? bankIfsc.toUpperCase(java.util.Locale.ROOT) : null);
         settings.setBankBranch(trimToNull(request.bankBranch()));
         settings.setGstSlabs(gstSlabs);
+        // GST-filing configuration (stored as-is; the filing module's value objects
+        // clamp/default these on read — ReminderWindow [1,30] default 7,
+        // ReconciliationTolerance [0.00,9999.99] default 1.00, turnover drives the
+        // GSTR-1 HSN 4-vs-6 digit rule). Null leaves the field unset.
+        settings.setAggregateTurnover(request.aggregateTurnover());
+        settings.setGstReminderWindowDays(request.gstReminderWindowDays());
+        settings.setGstReconciliationTolerance(request.gstReconciliationTolerance());
         // Config-driven auto-approval (V73): switch defaults to OFF when the field
         // is absent; the threshold is stored as-is (service treats null/non-positive
         // as "nothing qualifies"). Negative values are already rejected by bean

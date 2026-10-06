@@ -127,6 +127,11 @@ export class SettingsComponent implements OnInit, OnDestroy {
     stateCode: ['', [Validators.maxLength(4)]],
     gstRatePercent: ['5.00', [Validators.required, Validators.pattern(/^\d{1,3}(\.\d{1,2})?$/)]],
     pricesIncludeGst: [true],
+    // --- Low-stock + GST-filing configuration ------------------------------
+    lowStockThreshold: ['', [Validators.pattern(/^\d{1,7}$/)]],
+    aggregateTurnover: ['', [Validators.pattern(/^\d{1,13}(\.\d{1,2})?$/)]],
+    gstReminderWindowDays: ['', [Validators.pattern(/^([1-9]|[12]\d|30)$/)]],
+    gstReconciliationTolerance: ['', [Validators.pattern(/^\d{1,4}(\.\d{1,2})?$/)]],
     invoiceFooterNote: ['', [Validators.maxLength(500)]],
     contactPhone: ['', [Validators.maxLength(20)]],
     contactEmail: ['', [Validators.maxLength(120)]],
@@ -286,6 +291,10 @@ export class SettingsComponent implements OnInit, OnDestroy {
           stateCode: s.stateCode ?? '',
           gstRatePercent: s.gstRatePercent ?? '5.00',
           pricesIncludeGst: s.pricesIncludeGst,
+          lowStockThreshold: s.lowStockThreshold != null ? String(s.lowStockThreshold) : '',
+          aggregateTurnover: s.aggregateTurnover ?? '',
+          gstReminderWindowDays: s.gstReminderWindowDays != null ? String(s.gstReminderWindowDays) : '',
+          gstReconciliationTolerance: s.gstReconciliationTolerance ?? '',
           invoiceFooterNote: s.invoiceFooterNote ?? '',
           contactPhone: s.contactPhone ?? '',
           contactEmail: s.contactEmail ?? '',
@@ -311,12 +320,57 @@ export class SettingsComponent implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * Maps each form control to the settings tab that holds it, so an invalid save
+   * can switch the user to the tab containing the first invalid field (otherwise
+   * the error would be on a hidden tab and the Save button would appear to do
+   * nothing).
+   */
+  private readonly controlTab: Record<string, 'gst' | 'company' | 'bank' | 'automation'> = {
+    gstEnabled: 'gst',
+    gstin: 'gst',
+    gstRatePercent: 'gst',
+    pricesIncludeGst: 'gst',
+    invoiceNumberPrefix: 'gst',
+    invoiceTerms: 'gst',
+    gstSlabs: 'gst',
+    lowStockThreshold: 'gst',
+    aggregateTurnover: 'gst',
+    gstReminderWindowDays: 'gst',
+    gstReconciliationTolerance: 'gst',
+    legalName: 'company',
+    addressLine: 'company',
+    city: 'company',
+    state: 'company',
+    stateCode: 'company',
+    contactPhone: 'company',
+    contactEmail: 'company',
+    invoiceFooterNote: 'company',
+    bankName: 'bank',
+    bankAccountName: 'bank',
+    bankAccountNumber: 'bank',
+    bankIfsc: 'bank',
+    bankBranch: 'bank',
+    autoApproveEnabled: 'automation',
+    autoApproveMaxAmount: 'automation',
+  };
+
   save(): void {
     if (this.saving()) {
       return;
     }
     if (this.form.invalid) {
       this.form.markAllAsTouched();
+      // Switch to the tab holding the first invalid control and tell the user,
+      // so a validation error on a hidden tab is never a silent no-op.
+      const firstInvalid = Object.keys(this.form.controls).find(
+        (name) => this.form.get(name)?.invalid,
+      );
+      const tab = firstInvalid ? this.controlTab[firstInvalid] : undefined;
+      if (tab && tab !== this.activeTab()) {
+        this.setTab(tab);
+      }
+      this.formError.set('Some settings need attention. Check the highlighted fields and try again.');
       return;
     }
     const raw = this.form.getRawValue();
@@ -330,6 +384,12 @@ export class SettingsComponent implements OnInit, OnDestroy {
       stateCode: raw.stateCode.trim() || null,
       gstRatePercent: raw.gstRatePercent.trim(),
       pricesIncludeGst: raw.pricesIncludeGst,
+      lowStockThreshold: raw.lowStockThreshold.trim() ? Number(raw.lowStockThreshold.trim()) : null,
+      aggregateTurnover: raw.aggregateTurnover.trim() || null,
+      gstReminderWindowDays: raw.gstReminderWindowDays.trim()
+        ? Number(raw.gstReminderWindowDays.trim())
+        : null,
+      gstReconciliationTolerance: raw.gstReconciliationTolerance.trim() || null,
       invoiceFooterNote: raw.invoiceFooterNote.trim() || null,
       contactPhone: raw.contactPhone.trim() || null,
       contactEmail: raw.contactEmail.trim() || null,

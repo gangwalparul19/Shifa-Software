@@ -17,6 +17,14 @@ export interface AppSettings {
   stateCode?: string | null;
   gstRatePercent: string;
   pricesIncludeGst: boolean;
+  /** Default low-stock alert threshold (used when a product has no override). */
+  lowStockThreshold?: number | null;
+  /** Seller aggregate turnover (₹) — drives GSTR-1 HSN digit length (4 vs 6). */
+  aggregateTurnover?: string | null;
+  /** GST filing-calendar reminder look-ahead, in whole days (1–30; default 7). */
+  gstReminderWindowDays?: number | null;
+  /** GST reconciliation match tolerance in ₹ (0.00–9999.99; default 1.00). */
+  gstReconciliationTolerance?: string | null;
   invoiceFooterNote?: string | null;
   contactPhone?: string | null;
   contactEmail?: string | null;

@@ -31,6 +31,9 @@ public record SettingsResponse(
         String bankIfsc,
         String bankBranch,
         String gstSlabs,
+        BigDecimal aggregateTurnover,
+        Integer gstReminderWindowDays,
+        BigDecimal gstReconciliationTolerance,
         boolean autoApproveEnabled,
         BigDecimal autoApproveMaxAmount) {
 
@@ -58,6 +61,9 @@ public record SettingsResponse(
                 s.getBankIfsc(),
                 s.getBankBranch(),
                 s.getGstSlabs(),
+                s.getAggregateTurnover(),
+                s.getGstReminderWindowDays(),
+                s.getGstReconciliationTolerance(),
                 s.isAutoApproveEnabled(),
                 s.getAutoApproveMaxAmount());
     }

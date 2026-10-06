@@ -143,6 +143,16 @@
               <div class="invalid-feedback">Enter comma-separated numbers between 0 and 28 (e.g. 0,5,12,18,28).</div>
             }
           </div>
+          <div class="col-6 col-md-4 mb-2">
+            <label class="form-label">Low-stock threshold</label>
+            <input type="text" inputmode="numeric" class="form-control" formControlName="lowStockThreshold"
+              maxlength="7" autocomplete="off" placeholder="5"
+              [class.is-invalid]="form.controls.lowStockThreshold.touched && form.controls.lowStockThreshold.invalid" />
+            <small class="form-hint">A tracked product is "low stock" at or below this quantity (per-product overrides win).</small>
+            @if (form.controls.lowStockThreshold.touched && form.controls.lowStockThreshold.invalid) {
+              <div class="invalid-feedback">Enter a whole number (0 or more).</div>
+            }
+          </div>
         </div>
 
         <div class="mb-1">
@@ -150,6 +160,52 @@
           <textarea class="form-control" formControlName="invoiceTerms" rows="4" maxlength="2000"
             placeholder="Terms &amp; conditions printed on invoices (e.g. return/warranty policy)."></textarea>
           <small class="form-hint">Appears on invoices.</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- GST filing & reconciliation section -->
+    <div class="card mb-3" [hidden]="activeTab() !== 'gst'">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-report-money me-2"></i>GST filing &amp; reconciliation</h3>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">
+          <i class="ti ti-info-circle me-1"></i>
+          These drive the GST returns tools: HSN reporting detail, filing-calendar reminders, and the
+          reconciliation match tolerance. Leave blank to use the defaults.
+        </p>
+        <div class="row g-2">
+          <div class="col-12 col-md-5 mb-2">
+            <label class="form-label">Aggregate turnover (₹)</label>
+            <input type="text" inputmode="decimal" class="form-control shifa-mono" formControlName="aggregateTurnover"
+              maxlength="16" autocomplete="off" placeholder="e.g. 50000000"
+              [class.is-invalid]="form.controls.aggregateTurnover.touched && form.controls.aggregateTurnover.invalid" />
+            <small class="form-hint">Above ₹5 crore, GSTR-1 reports 6-digit HSN codes; otherwise 4-digit.</small>
+            @if (form.controls.aggregateTurnover.touched && form.controls.aggregateTurnover.invalid) {
+              <div class="invalid-feedback">Enter a positive amount (up to 2 decimals).</div>
+            }
+          </div>
+          <div class="col-6 col-md-3 mb-2">
+            <label class="form-label">Reminder window (days)</label>
+            <input type="text" inputmode="numeric" class="form-control" formControlName="gstReminderWindowDays"
+              maxlength="2" autocomplete="off" placeholder="7"
+              [class.is-invalid]="form.controls.gstReminderWindowDays.touched && form.controls.gstReminderWindowDays.invalid" />
+            <small class="form-hint">Days before a return's due date to flag it (1–30; default 7).</small>
+            @if (form.controls.gstReminderWindowDays.touched && form.controls.gstReminderWindowDays.invalid) {
+              <div class="invalid-feedback">Enter a whole number from 1 to 30.</div>
+            }
+          </div>
+          <div class="col-6 col-md-4 mb-2">
+            <label class="form-label">Reconciliation tolerance (₹)</label>
+            <input type="text" inputmode="decimal" class="form-control shifa-mono" formControlName="gstReconciliationTolerance"
+              maxlength="7" autocomplete="off" placeholder="1.00"
+              [class.is-invalid]="form.controls.gstReconciliationTolerance.touched && form.controls.gstReconciliationTolerance.invalid" />
+            <small class="form-hint">Differences at or below this are treated as reconciled (0–9999.99; default 1.00).</small>
+            @if (form.controls.gstReconciliationTolerance.touched && form.controls.gstReconciliationTolerance.invalid) {
+              <div class="invalid-feedback">Enter an amount from 0 to 9999.99 (up to 2 decimals).</div>
+            }
+          </div>
         </div>
       </div>
     </div>

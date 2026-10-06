@@ -159,6 +159,7 @@ class SettingsServiceTest {
                 "care@shifaherbal.example",
                 5,
                 null, null, null, null, null, null, null, null,
+                null, null, null,
                 null, null);
     }
 
@@ -199,6 +200,9 @@ class SettingsServiceTest {
                 b.bankIfsc,
                 b.bankBranch,
                 b.gstSlabs,
+                null,
+                null,
+                null,
                 null,
                 null);
     }

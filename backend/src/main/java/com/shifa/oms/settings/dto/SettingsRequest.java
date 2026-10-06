@@ -103,6 +103,31 @@ public record SettingsRequest(
         String gstSlabs,
 
         /**
+         * Optional seller aggregate turnover (₹). Drives the GSTR-1 HSN reporting
+         * minimum length (6 digits above ₹5 crore, else 4). Null leaves it unset
+         * (4-digit rule).
+         */
+        @DecimalMin(value = "0.00", message = "aggregateTurnover must not be negative")
+        @Digits(integer = 13, fraction = 2, message = "aggregateTurnover must be a DECIMAL(15,2) value")
+        BigDecimal aggregateTurnover,
+
+        /**
+         * Optional GST filing-calendar reminder look-ahead, in whole days. Resolved
+         * to {@code [1, 30]} with a default of {@code 7} by the filing module; null
+         * leaves it unset.
+         */
+        Integer gstReminderWindowDays,
+
+        /**
+         * Optional GST reconciliation match tolerance in ₹. Resolved to
+         * {@code [0.00, 9999.99]} with a default of {@code 1.00} by the filing
+         * module; null leaves it unset.
+         */
+        @DecimalMin(value = "0.00", message = "gstReconciliationTolerance must not be negative")
+        @Digits(integer = 4, fraction = 2, message = "gstReconciliationTolerance must be a DECIMAL(6,2) value")
+        BigDecimal gstReconciliationTolerance,
+
+        /**
          * Config-driven order auto-approval switch (DEFAULT OFF). Null is treated
          * as {@code false}. When on, low-value fully-prepaid orders from low-risk
          * customers are auto-approved at creation.
