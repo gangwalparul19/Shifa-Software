@@ -55,9 +55,38 @@ public class LabelPdfRenderer {
     private static final Font SMALL_BOLD = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7);
     /** Item-list font (normal lists). */
     private static final Font ITEM_FONT = FontFactory.getFont(FontFactory.HELVETICA, 8);
-    /** Smaller item-list font for a long list so more products fit before the quadrant overflows. */
-    private static final Font ITEM_FONT_SMALL = FontFactory.getFont(FontFactory.HELVETICA, 6.5f);
     private static final Font CAPTION_FONT = grey(FontFactory.getFont(FontFactory.HELVETICA_BOLD, 6));
+
+    /**
+     * Adaptive item-row sizing driven by the number of line items, so a long
+     * order always fits the fixed-height quadrant instead of overflowing and
+     * clipping the whole list (OpenPDF's {@code setFixedHeight} clips rather than
+     * shrinks). Each tier gives the item font size, the row's top/bottom padding,
+     * and the line leading — all shrinking as the list grows. The barcode and the
+     * recipient block are untouched, so the label stays scannable and legible.
+     */
+    private record ItemMetrics(float fontSize, float padTop, float padBottom, float leading,
+                               float totalsFontSize, float totalsPadTop) {
+    }
+
+    /** Picks the item-row metrics for a list of {@code count} items. */
+    private static ItemMetrics itemMetricsFor(int count) {
+        if (count <= 5) {
+            return new ItemMetrics(8f, 2f, 1f, 10f, 8f, 3f);
+        }
+        if (count <= 8) {
+            return new ItemMetrics(6.8f, 1.3f, 0.6f, 8f, 7f, 2f);
+        }
+        if (count <= 12) {
+            return new ItemMetrics(5.6f, 0.8f, 0.4f, 6.6f, 6f, 1.5f);
+        }
+        if (count <= 18) {
+            return new ItemMetrics(4.8f, 0.5f, 0.3f, 5.6f, 5.2f, 1f);
+        }
+        // 19+ items: smallest readable tier — still legible when the sheet is
+        // printed at full size, and guaranteed to fit the quadrant.
+        return new ItemMetrics(4.2f, 0.3f, 0.2f, 5f, 4.6f, 0.8f);
+    }
 
     private static Font grey(Font f) {
         f.setColor(CAPTION_GREY);
@@ -579,8 +608,11 @@ public class LabelPdfRenderer {
         t.getDefaultCell().setBorder(Rectangle.NO_BORDER);
 
         List<InternalLabelContent.LabelLineItem> items = content.lineItems();
-        // Shrink the font for a long list so more rows fit before the quadrant overflows.
-        Font itemFont = items.size() > 6 ? ITEM_FONT_SMALL : ITEM_FONT;
+        // Adaptive sizing: the more items, the smaller the rows, so even a long
+        // order fits the fixed-height quadrant instead of overflowing (which would
+        // clip the whole list and leave the item box blank).
+        ItemMetrics m = itemMetricsFor(items.size());
+        Font itemFont = FontFactory.getFont(FontFactory.HELVETICA, m.fontSize());
 
         // Header row.
         t.addCell(headerCell("ITEM DESCRIPTION", Element.ALIGN_LEFT));
@@ -589,14 +621,14 @@ public class LabelPdfRenderer {
 
         boolean anyLineAmount = false;
         for (InternalLabelContent.LabelLineItem li : items) {
-            t.addCell(itemCell(li.productName(), Element.ALIGN_LEFT, itemFont));
-            t.addCell(itemCell(String.valueOf(li.quantity()), Element.ALIGN_CENTER, itemFont));
+            t.addCell(itemCell(li.productName(), Element.ALIGN_LEFT, itemFont, m));
+            t.addCell(itemCell(String.valueOf(li.quantity()), Element.ALIGN_CENTER, itemFont, m));
             boolean hasAmount = li.lineTotal() != null && li.lineTotal().signum() > 0;
             anyLineAmount = anyLineAmount || hasAmount;
-            t.addCell(itemCell(hasAmount ? money(li.lineTotal()) : "", Element.ALIGN_RIGHT, itemFont));
+            t.addCell(itemCell(hasAmount ? money(li.lineTotal()) : "", Element.ALIGN_RIGHT, itemFont, m));
         }
         if (items.isEmpty()) {
-            PdfPCell none = itemCell("\u2014", Element.ALIGN_LEFT, itemFont);
+            PdfPCell none = itemCell("\u2014", Element.ALIGN_LEFT, itemFont, m);
             none.setColspan(3);
             t.addCell(none);
         }
@@ -612,15 +644,15 @@ public class LabelPdfRenderer {
         if (!anyLineAmount || subtotal.signum() <= 0) {
             subtotal = total;
         }
-        t.addCell(totalLabelCell("Sub-total"));
-        t.addCell(totalValueCell(money(subtotal)));
+        t.addCell(totalLabelCell("Sub-total", m));
+        t.addCell(totalValueCell(money(subtotal), m));
         java.math.BigDecimal discount = subtotal.subtract(total);
         if (discount.signum() > 0) {
-            t.addCell(totalLabelCell("Discount"));
-            t.addCell(totalValueCell("- " + money(discount)));
+            t.addCell(totalLabelCell("Discount", m));
+            t.addCell(totalValueCell("- " + money(discount), m));
         }
-        t.addCell(grandTotalLabelCell("TOTAL"));
-        t.addCell(grandTotalValueCell(money(total)));
+        t.addCell(grandTotalLabelCell("TOTAL", m));
+        t.addCell(grandTotalValueCell(money(total), m));
 
         PdfPCell wrap = new PdfPCell(t);
         wrap.setBorderColor(BORDER);
@@ -645,53 +677,55 @@ public class LabelPdfRenderer {
         return c;
     }
 
-    private PdfPCell itemCell(String text, int align, Font font) {
-        PdfPCell c = new PdfPCell(new Phrase(text, font));
+    private PdfPCell itemCell(String text, int align, Font font, ItemMetrics m) {
+        Phrase p = new Phrase(text, font);
+        p.setLeading(m.leading());
+        PdfPCell c = new PdfPCell(p);
         c.setBorder(Rectangle.NO_BORDER);
         c.setHorizontalAlignment(align);
-        c.setPaddingTop(2f);
-        c.setPaddingBottom(1f);
+        c.setPaddingTop(m.padTop());
+        c.setPaddingBottom(m.padBottom());
         return c;
     }
 
     /** Sub-total/Discount label cell — spans the ITEM + QTY columns, right-aligned. */
-    private PdfPCell totalLabelCell(String text) {
-        PdfPCell c = new PdfPCell(new Phrase(text, BODY_FONT));
+    private PdfPCell totalLabelCell(String text, ItemMetrics m) {
+        PdfPCell c = new PdfPCell(new Phrase(text, FontFactory.getFont(FontFactory.HELVETICA, m.totalsFontSize())));
         c.setColspan(2);
         c.setBorder(Rectangle.TOP);
         c.setBorderColor(new Color(210, 210, 210));
         c.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        c.setPaddingTop(3f);
+        c.setPaddingTop(m.totalsPadTop());
         c.setPaddingRight(4f);
         return c;
     }
 
-    private PdfPCell totalValueCell(String text) {
-        PdfPCell c = new PdfPCell(new Phrase(text, BODY_FONT));
+    private PdfPCell totalValueCell(String text, ItemMetrics m) {
+        PdfPCell c = new PdfPCell(new Phrase(text, FontFactory.getFont(FontFactory.HELVETICA, m.totalsFontSize())));
         c.setBorder(Rectangle.TOP);
         c.setBorderColor(new Color(210, 210, 210));
         c.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        c.setPaddingTop(3f);
+        c.setPaddingTop(m.totalsPadTop());
         return c;
     }
 
-    private PdfPCell grandTotalLabelCell(String text) {
-        PdfPCell c = new PdfPCell(new Phrase(text, NAME_FONT));
+    private PdfPCell grandTotalLabelCell(String text, ItemMetrics m) {
+        PdfPCell c = new PdfPCell(new Phrase(text, FontFactory.getFont(FontFactory.HELVETICA_BOLD, m.totalsFontSize() + 1f)));
         c.setColspan(2);
         c.setBorder(Rectangle.TOP);
         c.setBorderColor(BORDER);
         c.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        c.setPaddingTop(3f);
+        c.setPaddingTop(m.totalsPadTop());
         c.setPaddingRight(4f);
         return c;
     }
 
-    private PdfPCell grandTotalValueCell(String text) {
-        PdfPCell c = new PdfPCell(new Phrase(text, NAME_FONT));
+    private PdfPCell grandTotalValueCell(String text, ItemMetrics m) {
+        PdfPCell c = new PdfPCell(new Phrase(text, FontFactory.getFont(FontFactory.HELVETICA_BOLD, m.totalsFontSize() + 1f)));
         c.setBorder(Rectangle.TOP);
         c.setBorderColor(BORDER);
         c.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        c.setPaddingTop(3f);
+        c.setPaddingTop(m.totalsPadTop());
         return c;
     }
 
