@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shifa OMS — User Manual</title>
+<style>
+  :root{
+    --green:#1F5D3F; --green-700:#194e34; --green-100:#e7f1ec; --green-50:#f3f8f5;
+    --amber:#b7791f; --amber-bg:#fdf6e7; --red:#b42318; --red-bg:#fdecea;
+    --blue:#1d4ed8; --blue-bg:#eaf0fe;
+    --ink:#1a2b22; --muted:#5b6b63; --line:#e2e8e4; --bg:#f7faf8; --card:#ffffff;
+    --shadow:0 1px 3px rgba(16,40,28,.08),0 1px 2px rgba(16,40,28,.06);
+    --radius:12px; --sidebar:290px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--bg);line-height:1.6;font-size:16px}
+  a{color:var(--green);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* Layout */
+  .app{display:flex;min-height:100vh}
+  .sidebar{width:var(--sidebar);background:var(--card);border-right:1px solid var(--line);
+    position:fixed;top:0;left:0;bottom:0;overflow-y:auto;z-index:40;transition:transform .25s ease}
+  .content{margin-left:var(--sidebar);flex:1;min-width:0}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 28px 120px}
+
+  /* Sidebar */
+  .brand{display:flex;align-items:center;gap:12px;padding:20px 20px 16px;border-bottom:1px solid var(--line);
+    position:sticky;top:0;background:var(--card);z-index:2}
+  .brand .logo{width:40px;height:40px;border-radius:10px;background:var(--green);color:#fff;display:grid;
+    place-items:center;font-weight:800;font-size:18px;flex:none}
+  .brand h1{font-size:15px;margin:0;line-height:1.2}
+  .brand small{color:var(--muted);font-weight:500;font-size:12px}
+  .side-pad{padding:14px 16px}
+  .search{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-size:14px;
+    background:var(--green-50)}
+  .search:focus{outline:2px solid var(--green-100);border-color:var(--green)}
+  .rolefilter{margin-top:12px}
+  .rolefilter label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--muted);margin-bottom:6px;font-weight:700}
+  .rolefilter select{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:10px;
+    font-size:14px;background:#fff}
+  nav.toc{padding:6px 10px 30px}
+  nav.toc .group{margin-top:14px}
+  nav.toc .group-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+    font-weight:700;padding:6px 12px}
+  nav.toc a{display:block;padding:7px 12px;border-radius:8px;color:var(--ink);font-size:14px}
+  nav.toc a:hover{background:var(--green-50);text-decoration:none}
+  nav.toc a.active{background:var(--green-100);color:var(--green-700);font-weight:600}
+
+  /* Topbar (mobile) */
+  .topbar{display:none;align-items:center;gap:12px;padding:12px 16px;background:var(--green);color:#fff;
+    position:sticky;top:0;z-index:30}
+  .topbar button{background:rgba(255,255,255,.18);border:0;color:#fff;width:40px;height:40px;border-radius:10px;
+    font-size:20px;cursor:pointer}
+  .topbar h1{font-size:16px;margin:0}
+  .overlay{display:none;position:fixed;inset:0;background:rgba(10,20,15,.4);z-index:35}
+
+  /* Content blocks */
+  section{scroll-margin-top:20px}
+  .hero{background:linear-gradient(135deg,var(--green),var(--green-700));color:#fff;border-radius:var(--radius);
+    padding:34px 30px;margin-bottom:28px}
+  .hero h1{margin:0 0 8px;font-size:30px}
+  .hero p{margin:0;opacity:.92;max-width:62ch}
+  .hero .chips{margin-top:16px;display:flex;flex-wrap:wrap;gap:8px}
+  .hero .chips span{background:rgba(255,255,255,.16);padding:5px 11px;border-radius:999px;font-size:12.5px;font-weight:600}
+
+  h2.sec{font-size:24px;margin:40px 0 6px;padding-top:10px;border-top:3px solid var(--green-100)}
+  h3{font-size:18px;margin:26px 0 8px;color:var(--green-700)}
+  h4{font-size:15px;margin:18px 0 6px}
+  p{margin:10px 0}
+  ul,ol{margin:10px 0;padding-left:22px}
+  li{margin:5px 0}
+  code{background:var(--green-50);border:1px solid var(--line);border-radius:5px;padding:1px 6px;
+    font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:13.5px;color:var(--green-700)}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;
+    margin:16px 0;box-shadow:var(--shadow)}
+  .lead{color:var(--muted);font-size:17px}
+
+  .callout{border-radius:10px;padding:13px 16px;margin:16px 0;border:1px solid}
+  .callout.note{background:var(--green-50);border-color:var(--green-100)}
+  .callout.tip{background:var(--blue-bg);border-color:#cfe0ff}
+  .callout.warn{background:var(--amber-bg);border-color:#f3e3b8}
+  .callout.danger{background:var(--red-bg);border-color:#f6cfca}
+  .callout .k{font-weight:700;display:block;margin-bottom:2px}
+
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14.5px;background:var(--card);
+    border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  th,td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--green-50);font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--green-700)}
+  tr:last-child td{border-bottom:0}
+
+  .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700}
+  .pill.green{background:var(--green-100);color:var(--green-700)}
+  .pill.amber{background:var(--amber-bg);color:var(--amber)}
+  .pill.red{background:var(--red-bg);color:var(--red)}
+  .pill.blue{background:var(--blue-bg);color:var(--blue)}
+
+  .steps{counter-reset:s;list-style:none;padding-left:0}
+  .steps>li{counter-increment:s;position:relative;padding:4px 0 4px 44px;margin:12px 0}
+  .steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30px;height:30px;border-radius:50%;
+    background:var(--green);color:#fff;display:grid;place-items:center;font-weight:700;font-size:14px}
+
+  .role-badges{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 2px}
+  .role-badges .rb{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--green-50);
+    border:1px solid var(--green-100);color:var(--green-700)}
+
+  /* Role cards grid */
+  .rolegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;margin:16px 0}
+  .rolecard{border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--card);box-shadow:var(--shadow)}
+  .rolecard h4{margin:0 0 4px;color:var(--green-700)}
+  .rolecard .tabs{font-size:12.5px;color:var(--muted);margin-top:8px}
+
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:14px 0;font-size:13px}
+  .flow .st{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-weight:600}
+  .flow .ar{color:var(--muted)}
+
+  .search-hidden{display:none !important}
+  mark{background:#fde68a;padding:0 2px;border-radius:3px}
+
+  footer.docfoot{margin-top:50px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:13.5px}
+  .backtop{position:fixed;right:20px;bottom:20px;background:var(--green);color:#fff;border:0;border-radius:50%;
+    width:46px;height:46px;font-size:20px;cursor:pointer;box-shadow:var(--shadow);display:none;z-index:20}
+
+  @media (max-width:960px){
+    .sidebar{transform:translateX(-100%)}
+    .sidebar.open{transform:translateX(0)}
+    .content{margin-left:0}
+    .topbar{display:flex}
+    .overlay.show{display:block}
+    .hero h1{font-size:24px}
+  }
+  @media print{
+    .sidebar,.topbar,.backtop,.overlay,.rolefilter,.search{display:none!important}
+    .content{margin:0}
+    .wrap{max-width:none;padding:0}
+    .search-hidden{display:block !important}
+    a{color:inherit;text-decoration:none}
+  }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <button id="menuBtn" aria-label="Open menu">&#9776;</button>
+  <h1>Shifa OMS — User Manual</h1>
+</div>
+<div class="overlay" id="overlay"></div>
+
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="logo">S</div>
+      <div><h1>Shifa OMS</h1><small>User Manual</small></div>
+    </div>
+    <div class="side-pad">
+      <input type="search" class="search" id="search" placeholder="Search the manual…" aria-label="Search" />
+      <div class="rolefilter">
+        <label for="roleSelect">Show for role</label>
+        <select id="roleSelect">
+          <option value="all">All roles (everything)</option>
+          <option value="admin">Admin</option>
+          <option value="salesperson">Salesperson</option>
+          <option value="team-lead">Team Lead</option>
+          <option value="packing-user">Packing User</option>
+          <option value="payment-verifier">Payment Verifier</option>
+          <option value="accountant">Accountant</option>
+          <option value="ca">CA (Chartered Accountant)</option>
+        </select>
+      </div>
+    </div>
+    <nav class="toc" id="toc">
+      <div class="group">
+        <div class="group-label">Start here</div>
+        <a href="#overview">Overview</a>
+        <a href="#getting-started">Getting started</a>
+        <a href="#signing-in">Signing in &amp; your account</a>
+        <a href="#navigation">Finding your way around</a>
+        <a href="#roles">Roles at a glance</a>
+      </div>
+      <div class="group">
+        <div class="group-label">Role quick-starts</div>
+        <a href="#role-admin">Admin</a>
+        <a href="#role-salesperson">Salesperson</a>
+        <a href="#role-team-lead">Team Lead</a>
+        <a href="#role-packing-user">Packing User</a>
+        <a href="#role-payment-verifier">Payment Verifier</a>
+        <a href="#role-accountant">Accountant</a>
+        <a href="#role-ca">CA</a>
+      </div>
+      <div class="group">
+        <div class="group-label">Features</div>
+        <a href="#dashboard">Dashboard</a>
+        <a href="#orders">Orders</a>
+        <a href="#new-order">Taking a new order</a>
+        <a href="#approvals">Approving orders</a>
+        <a href="#payments">Payment verification</a>
+        <a href="#packing">Packing &amp; fulfilment</a>
+        <a href="#delivery">Delivery &amp; tracking</a>
+        <a href="#returns">Returns, RTO &amp; cancellations</a>
+        <a href="#customers">Customers (CRM)</a>
+        <a href="#leads">Leads</a>
+        <a href="#products">Products &amp; inventory</a>
+        <a href="#procurement">Procurement</a>
+        <a href="#reconciliation">Reconciliation &amp; COD</a>
+        <a href="#reports">Reports</a>
+        <a href="#finance-gst">Finance, GST &amp; accounting</a>
+        <a href="#analytics">Analytics, insights &amp; teams</a>
+        <a href="#notifications">Notifications</a>
+        <a href="#settings">Settings &amp; admin</a>
+        <a href="#whatsapp">WhatsApp messaging</a>
+        <a href="#pwa">Mobile app &amp; offline</a>
+      </div>
+      <div class="group">
+        <div class="group-label">Reference</div>
+        <a href="#lifecycle">Order lifecycle</a>
+        <a href="#glossary">Glossary</a>
+        <a href="#troubleshooting">Troubleshooting</a>
+      </div>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <div class="wrap" id="wrap">
+
+      <section id="overview">
+        <div class="hero">
+          <h1>Shifa OMS — User Manual</h1>
+          <p>The complete guide to the Shifa Herbal Remedies Order Management System. Use the role
+             switcher on the left to focus the manual on your job, or search any term.</p>
+          <div class="chips">
+            <span>Order management</span><span>CRM &amp; leads</span><span>Packing &amp; delivery</span>
+            <span>Payments &amp; GST</span><span>Analytics</span><span>Mobile-first PWA</span>
+          </div>
+        </div>
+        <p class="lead">Shifa OMS is a dashboard-only order management system. The public store runs on
+           Shopify; those orders flow in automatically. Staff use this system to approve, pack, deliver,
+           verify payments, reconcile money, handle GST, and track performance.</p>
+        <div class="callout note" data-noprint-hide>
+          <span class="k">About screenshots</span>
+          This manual describes each screen rather than embedding images, because the production system
+          holds real customer data. For captures, use a local development instance.
+        </div>
+      </section>
+
+      <h2 class="sec" id="getting-started">1 &middot; Getting started</h2>
+      <p>Shifa OMS is a web app you open in a browser. It is <strong>mobile-first</strong> and works on a
+         phone and on a laptop/desktop.</p>
+      <ul>
+        <li><strong>On a phone/tablet:</strong> a top bar with a menu button (&#9776;) and a bar of four
+            main tabs along the bottom for your most-used tasks.</li>
+        <li><strong>On a laptop/desktop</strong> (screen &ge; ~992px): a fixed menu down the left side
+            instead of the bottom bar.</li>
+      </ul>
+      <p>What you see depends on your <strong>role</strong>, assigned when your account is created.</p>
+
+      <h2 class="sec" id="signing-in">2 &middot; Signing in &amp; your account</h2>
+      <h3>Signing in</h3>
+      <ol class="steps">
+        <li>Open the application URL in your browser.</li>
+        <li>Enter your <strong>username</strong> and <strong>password</strong>, then select <strong>Sign in</strong>.
+            Salespeople usually sign in with their <strong>mobile number</strong> as the username.</li>
+        <li>You land on your role's home screen (see the table below).</li>
+      </ol>
+      <table>
+        <tr><th>Role</th><th>Lands on</th></tr>
+        <tr><td>Admin, Salesperson, Team Lead, Accountant</td><td>Dashboard</td></tr>
+        <tr><td>Packing user</td><td>Packing</td></tr>
+        <tr><td>Payment verifier</td><td>Payments</td></tr>
+        <tr><td>CA</td><td>GST &amp; Accounting</td></tr>
+      </table>
+      <h3>First login / password reset</h3>
+      <ul>
+        <li>If an admin reset your password, you'll be sent to a <strong>Change password</strong> screen
+            and must set a new one before continuing.</li>
+        <li>You can change your own password anytime from the account menu.</li>
+      </ul>
+      <h3>Your session</h3>
+      <ul>
+        <li>You stay signed in while you work; the app silently refreshes an expiring session. If it
+            can't, you're returned to sign-in.</li>
+        <li>All dates and times are shown in <strong>India Standard Time (IST)</strong>.</li>
+      </ul>
+      <h3>My Profile (everyone)</h3>
+      <p>Open the user chip &rarr; <strong>My Profile</strong>. You can submit changes to your details,
+         but <strong>they're not applied immediately</strong> — they go to an admin as a change request.
+         Photo and government-ID changes are handled by an admin.</p>
+
+      <h2 class="sec" id="navigation">3 &middot; Finding your way around</h2>
+      <h3>The menu</h3>
+      <ul>
+        <li><strong>Mobile:</strong> tap &#9776; to open the grouped drawer (Orders, CRM, Catalog, …).</li>
+        <li><strong>Desktop:</strong> the same groups appear as a permanent left sidebar; the current
+            group opens automatically.</li>
+      </ul>
+      <p>You only see menu items your role is allowed to use.</p>
+      <h3>Bottom tabs (mobile)</h3>
+      <p>Four tabs for your role's most common tasks — see your role quick-start for the exact four.</p>
+      <div class="callout tip">
+        <span class="k">Global search / command palette</span>
+        Press <code>Ctrl+K</code> (or <code>Cmd+K</code>) anywhere to find orders, customers, products,
+        and jump to quick actions for your role.
+      </div>
+      <h3>Page conventions</h3>
+      <ul>
+        <li><strong>Lists</strong> are cards on a phone, tables on a desktop, and always <strong>paginated</strong>.</li>
+        <li><strong>Detail drawers</strong> slide in from the right and use tabs to avoid long scrolling.</li>
+        <li><strong>Status pills</strong> are colour-coded:
+            <span class="pill green">done</span> <span class="pill amber">waiting</span>
+            <span class="pill red">problem</span> <span class="pill blue">in progress</span></li>
+      </ul>
+
+      <h2 class="sec" id="roles">4 &middot; Roles at a glance</h2>
+      <p>The platform has 7 staff roles. Your access and your home screen depend on it.</p>
+      <div class="rolegrid">
+        <div class="rolecard"><h4>Admin</h4>Full access: approvals, config, fulfilment, finance, GST.
+          <div class="tabs">Tabs: Approvals · Orders · Products · Reports</div></div>
+        <div class="rolecard"><h4>Salesperson</h4>Order entry, leads, own customers &amp; reports (scoped).
+          <div class="tabs">Tabs: New Order · Orders · Customers · Products</div></div>
+        <div class="rolecard"><h4>Team Lead</h4>Read-only team oversight + order entry for the team.
+          <div class="tabs">Tabs: Dashboard · Orders · Performance · My Profile</div></div>
+        <div class="rolecard"><h4>Packing User</h4>Pack, label, hand over, dispatch, pick-list, RTO.
+          <div class="tabs">Tabs: Packing · Pick-list · Mark RTO · Orders</div></div>
+        <div class="rolecard"><h4>Payment Verifier</h4>Verify payment screenshots vs amount.
+          <div class="tabs">Tabs: Payments · Orders · My Profile</div></div>
+        <div class="rolecard"><h4>Accountant</h4>Reconcile, COD, expenses, P&amp;L, ledger; can approve.
+          <div class="tabs">Tabs: Reconcile · Reports · Expenses · Orders</div></div>
+        <div class="rolecard"><h4>CA</h4>GST dashboard, filing, reconciliation, accounting (read-only).
+          <div class="tabs">Tabs: GST · Reports · Finance · My Profile</div></div>
+      </div>
+      <div class="callout note">
+        <span class="k">Scoping</span>
+        A salesperson sees only their own orders/customers/leads. A team lead sees their assigned team's
+        orders (plus their own). Admin / Accountant / CA are unscoped. CA is read-only.
+      </div>
+
+      <!-- ========================= ROLE QUICK-STARTS ========================= -->
+      <h2 class="sec" id="role-quickstarts">5 &middot; Role quick-starts</h2>
+      <p class="lead">A short, task-focused start for each role. Pick your role in the left switcher to
+         hide the others.</p>
+
+      <section id="role-admin" class="roleblock" data-role="admin">
+        <h3>Admin</h3>
+        <div class="role-badges"><span class="rb">Home: Dashboard</span><span class="rb">Tabs: Approvals · Orders · Products · Reports</span></div>
+        <p>You run the whole business. Your daily flow:</p>
+        <ol class="steps">
+          <li><strong>Approve new orders</strong> — Orders &rarr; Approval Queue. Review details +
+              payment screenshots, then Approve or Reject with a reason. Use bulk approve with
+              Quick-select-by-date; a preview shows how many will be skipped.</li>
+          <li><strong>Watch the Exception Center</strong> — approvals waiting, payment issues, failed
+              deliveries, claims, top insights, each with a direct action.</li>
+          <li><strong>Keep fulfilment moving</strong> — Packing, QuikShip/Shopify sync.</li>
+        </ol>
+        <p><strong>Only you:</strong> Settings (company + GST + auto-approval + Shopify switch), Users,
+           Profile approvals, Teams &amp; Team-wise Sales, Cancel Order, Deleted orders, Shopify Sync,
+           Audit Log, Backups, Announcements. You can also punch orders <em>on behalf of</em> a
+           salesperson/team lead.</p>
+        <div class="callout danger"><span class="k">Golden rule</span>
+          Use <strong>RTO</strong> (not Cancel) to give up on a post-invoice/delivered order — Cancel
+          would drop a filed invoice out of GST.</div>
+      </section>
+
+      <section id="role-salesperson" class="roleblock" data-role="salesperson">
+        <h3>Salesperson</h3>
+        <div class="role-badges"><span class="rb">Home: Dashboard (My day)</span><span class="rb">Tabs: New Order · Orders · Customers · Products</span></div>
+        <p>You take orders and manage leads &amp; your own customers (you see only your own).</p>
+        <h4>Take a new order (your main job)</h4>
+        <ol class="steps">
+          <li><strong>Customer:</strong> enter the mobile; accept the pre-fill if they've ordered before.
+              Pick the destination (India &rarr; pincode auto-fills; or Outside India) and lead source.</li>
+          <li><strong>Items:</strong> add products (Quick-add best-sellers / frequently-bought-together);
+              rates stay within each product's min–MRP band.</li>
+          <li><strong>Payment:</strong> collect at least <strong>₹100 upfront</strong> (full or partial),
+              and <strong>upload the payment screenshot(s)</strong> — required when any amount is received.</li>
+          <li><strong>Review:</strong> check totals/GST, add a note/discount, Save &rarr; Pending Approval.</li>
+        </ol>
+        <p>If an order is rejected, open it, read the reason, and <strong>Fix &amp; resubmit</strong>
+           (same order, history kept). Manage <strong>Leads</strong> (New→Contacted→Quoted→Won/Lost,
+           follow-ups, Convert) and <strong>Customers</strong> (360, Reorder, Call/WhatsApp).</p>
+        <div class="callout danger"><span class="k">Golden rule</span>
+          Always collect ₹100+ upfront and attach the screenshot, or the order won't save.</div>
+      </section>
+
+      <section id="role-team-lead" class="roleblock" data-role="team-lead">
+        <h3>Team Lead</h3>
+        <div class="role-badges"><span class="rb">Home: Dashboard</span><span class="rb">Tabs: Dashboard · Orders · Performance · My Profile</span></div>
+        <p>You oversee your assigned salespeople (read-only on orders) and can punch orders for the team.</p>
+        <ul>
+          <li><strong>Your team's orders</strong> — list, search, open, download invoices.</li>
+          <li><strong>Team Performance</strong> — period controls, team KPIs, a salesperson leaderboard
+              (click a person to drill into their 360), lead-source conversion, and a
+              <em>My orders / Team orders</em> split.</li>
+          <li><strong>New Order</strong> — orders you punch are attributed to you and scoped to your team.</li>
+          <li>Manage shared <strong>WhatsApp templates</strong>.</li>
+        </ul>
+        <div class="callout note"><span class="k">If you see only your own orders</span>
+          Ask an admin to assign your salespeople to you on the Teams page.</div>
+      </section>
+
+      <section id="role-packing-user" class="roleblock" data-role="packing-user">
+        <h3>Packing User</h3>
+        <div class="role-badges"><span class="rb">Home: Packing</span><span class="rb">Tabs: Packing · Pick-list · Mark RTO · Orders</span></div>
+        <p>You prepare parcels. Every approved order flows through packing.</p>
+        <h4>Scan &amp; Move (fastest)</h4>
+        <p>Scan an order's barcode (scanner or phone camera); confirm the next step
+           <strong>Pack &rarr; Handover &rarr; Dispatch</strong>. Check the amber <strong>packaging note</strong>.</p>
+        <h4>Work queues</h4>
+        <ol class="steps">
+          <li><strong>Orders to Pack:</strong> print the internal/QuikShip label (bulk prints 4-up on A4),
+              then Mark packed. Printing the QuikShip label advances to Awaiting Handover.</li>
+          <li><strong>Awaiting Handover:</strong> record who took the parcel (single or bulk). For courier
+              orders this makes it Ready for Pickup.</li>
+          <li><strong>QuickShip Status</strong> (read-only): AWB + status, updated automatically.</li>
+          <li><strong>In-House Deliveries:</strong> select orders and update status manually.</li>
+        </ol>
+        <p><strong>Pick-list</strong>: everything to pick for all pending orders on one sheet.
+           <strong>Mark RTO</strong>: scan a returned parcel &amp; mark Returned to Origin with a reason.</p>
+      </section>
+
+      <section id="role-payment-verifier" class="roleblock" data-role="payment-verifier">
+        <h3>Payment Verifier</h3>
+        <div class="role-badges"><span class="rb">Home: Payments</span><span class="rb">Tabs: Payments · Orders · My Profile</span></div>
+        <p>You confirm payments are genuine before fulfilment.</p>
+        <ol class="steps">
+          <li>Open an order from the queue (newest first).</li>
+          <li>Review the screenshot(s) in the tabbed "snip" viewer against the expected amount.</li>
+          <li>Watch for the red <strong>Duplicate proof</strong> badge (same image used elsewhere).</li>
+          <li><strong>Verify</strong> (genuine &rarr; proceeds) or <strong>Reject</strong> (marks the
+              order <em>Payment Rejected</em>; the salesperson can fix &amp; resubmit).</li>
+        </ol>
+        <div class="callout note"><span class="k">Golden rule</span>
+          Match the amount on the screenshot to the order; reject with a clear reason. You don't approve
+          or dispatch — only the payment decision is yours.</div>
+      </section>
+
+      <section id="role-accountant" class="roleblock" data-role="accountant">
+        <h3>Accountant</h3>
+        <div class="role-badges"><span class="rb">Home: Dashboard</span><span class="rb">Tabs: Reconcile · Reports · Expenses · Orders</span></div>
+        <p>You track the money. Main screen: <strong>Reconciliation</strong>.</p>
+        <ul>
+          <li><strong>Receivables / Unsettled COD / Pending claims</strong> — oldest first.</li>
+          <li><strong>COD aging / SLA</strong> — buckets by age; anything over SLA is flagged.</li>
+          <li><strong>Courier remittance import</strong> — upload the QuikShipX CSV/Excel; it matches &amp;
+              settles rows (and marks missed deliveries Delivered + COD Collected). <strong>Preview first</strong>.</li>
+        </ul>
+        <p>You can <strong>approve</strong> orders. Record <strong>Expenses</strong>, review <strong>P&amp;L</strong>,
+           and work the full <strong>general ledger</strong> (Voucher Entry/post, Day Book, Trial Balance,
+           Balance Sheet, Cash Flow). Reports include money &amp; receivables + operations.</p>
+        <div class="callout danger"><span class="k">Golden rule</span>
+          Always preview a remittance import before committing. Chase the oldest receivables / over-SLA COD first.</div>
+      </section>
+
+      <section id="role-ca" class="roleblock" data-role="ca">
+        <h3>CA (Chartered Accountant)</h3>
+        <div class="role-badges"><span class="rb">Home: GST &amp; Accounting</span><span class="rb">Tabs: GST · Reports · Finance · My Profile</span></div>
+        <p>You handle GST &amp; accounting. Read-only on operations.</p>
+        <ul>
+          <li><strong>GST &amp; Accounting dashboard:</strong> money in/out, GSTR-3B summary with manual
+              ITC + net payable, rate/HSN/state breakup, an Export segment (outside-India @ 18% IGST),
+              period presets (incl. Indian FY/quarters), row drill-down, CSV/PDF export.</li>
+          <li><strong>GST Filing:</strong> period calendar, prepare/file/reopen, snapshots, filing-aware export.</li>
+          <li><strong>GST Reconciliation:</strong> five compared figures with drill-down.</li>
+          <li><strong>Books (read-only):</strong> Expenses, P&amp;L, Reconciliation, Returns, and the full
+              ledger (Chart of Accounts, Day Book, Trial Balance, statements). Posting is Admin/Accountant only.</li>
+        </ul>
+        <div class="callout danger"><span class="k">Golden rule</span>
+          Reconcile before you file. RTO reverses a sale with a credit note; a post-invoice order should be
+          RTO'd, never cancelled. ITC is entered manually.</div>
+      </section>
+
+      <!-- ========================= FEATURES ========================= -->
+      <h2 class="sec" id="dashboard">6 &middot; Dashboard</h2>
+      <p>Your dashboard is shaped by your role.</p>
+      <ul>
+        <li><strong>Admin:</strong> KPIs, a clickable "needs attention" strip (approvals/exceptions/
+            handover), a channel overview (Portal vs Shopify vs All), team-wise sales, live activity.</li>
+        <li><strong>Salesperson:</strong> "My day" (today's orders/revenue, monthly target, to-collect),
+            a task inbox (reorder-due + win-back), and your lead pipeline.</li>
+        <li><strong>Team Lead:</strong> team-scoped status, team highlights, link to Team Performance.</li>
+        <li><strong>Accountant:</strong> money/receivables KPIs linking into Reconciliation.</li>
+        <li><strong>Payment verifier / CA / Packing:</strong> taken straight to their work screen.</li>
+      </ul>
+
+      <h2 class="sec" id="orders">7 &middot; Orders</h2>
+      <p><strong>Orders &rarr; Orders.</strong> Every staff role can open this (scoped by role).</p>
+      <h3>Finding orders</h3>
+      <ul>
+        <li><strong>Status tabs</strong> group orders into business stages: Pending Approval, Processing,
+            Shipped, Delivered, Returned/Failed, Cancelled (and Rejected).</li>
+        <li><strong>Search</strong> by order code, name, or mobile (jumps the tab to "All").</li>
+        <li><strong>Advanced filters:</strong> status group, payment status, source, date, (admin) a
+            salesperson. Save a combination as a <strong>saved view</strong>.</li>
+      </ul>
+      <h3>Reading an order</h3>
+      <p>Click a row for the detail drawer with tabs: <strong>Details</strong> (customer, address,
+         fulfilment, shipment/AWB + Track link, invoice download), <strong>Items</strong> (lines,
+         subtotal/discount/GST/total), <strong>Payment</strong> (status, amount, verification, screenshots).
+         The timeline and (for admins) raw status history are shown too.</p>
+      <h3>Actions (role-dependent)</h3>
+      <ul>
+        <li>Download invoice · Print label (admin/packing) · Edit (admin: PENDING/APPROVED; creator: own
+            PENDING) · Approve/Reject (admin/accountant) · Fix &amp; resubmit · Reorder · Export list to Excel/CSV.</li>
+      </ul>
+
+      <h2 class="sec" id="new-order">8 &middot; Taking a new order</h2>
+      <div class="role-badges"><span class="rb">Salesperson</span><span class="rb">Admin</span><span class="rb">Team Lead</span></div>
+      <p><strong>Orders &rarr; New Order</strong> — guided, or a single-screen <strong>Quick mode</strong>.</p>
+      <ol class="steps">
+        <li><strong>Customer:</strong> mobile (with pre-fill), destination (India/Outside India), lead
+            source (Counter Sale = in-house). Admins can place it <em>on behalf of</em> someone.</li>
+        <li><strong>Items:</strong> add products; rates within the min–MRP band; SKU/barcode quick-add.</li>
+        <li><strong>Payment:</strong> ₹100+ upfront (full or partial), upload screenshot(s).</li>
+        <li><strong>Review:</strong> totals/GST, optional note &amp; discount, Save &rarr; Pending Approval.</li>
+      </ol>
+      <div class="callout warn"><span class="k">Duplicate guard</span>
+        You can't create a second same-day order for the <em>same product</em> for the same customer
+        (different items on the same day are fine). Unfinished orders are saved as a draft to resume.</div>
+
+      <h2 class="sec" id="approvals">9 &middot; Approving orders</h2>
+      <div class="role-badges"><span class="rb">Admin</span><span class="rb">Accountant</span></div>
+      <p><strong>Orders &rarr; Approval Queue.</strong> Review details + screenshots; <strong>Approve</strong>
+         (into fulfilment) or <strong>Reject</strong> with a reason category + note. <strong>Bulk approve</strong>
+         with Quick-select-by-date; a preview shows skipped ones. New orders raise a live toast + chime.</p>
+
+      <h2 class="sec" id="payments">10 &middot; Payment verification</h2>
+      <div class="role-badges"><span class="rb">Payment Verifier</span><span class="rb">Admin</span></div>
+      <p><strong>Orders &rarr; Payments.</strong> Open an order, review the screenshot "snips" vs the
+         expected amount, watch for the <strong>Duplicate proof</strong> badge, then <strong>Verify</strong>
+         or <strong>Reject</strong> (marks the order <em>Payment Rejected</em>; salesperson can resubmit).</p>
+
+      <h2 class="sec" id="packing">11 &middot; Packing &amp; fulfilment</h2>
+      <div class="role-badges"><span class="rb">Packing User</span><span class="rb">Admin</span></div>
+      <p><strong>Orders &rarr; Packing.</strong> Scan box + camera; KPI tiles; four queues:</p>
+      <ol class="steps">
+        <li><strong>Orders to Pack:</strong> print label(s) &rarr; Mark packed (bulk prints 4-up on A4).</li>
+        <li><strong>Awaiting Handover:</strong> capture who took the parcel.</li>
+        <li><strong>QuickShip Status</strong> (read-only, auto-updated).</li>
+        <li><strong>In-House Deliveries:</strong> update status manually.</li>
+      </ol>
+      <p>Also: <strong>Pick-list</strong> (one aggregated sheet), <strong>Mark RTO</strong>, and
+         <strong>package count</strong> (prints that many label copies).</p>
+
+      <h2 class="sec" id="delivery">12 &middot; Delivery &amp; tracking</h2>
+      <ul>
+        <li><strong>QuikShipX (courier):</strong> created on punch, AWB on approval, auto-tracked. The
+            drawer shows status, AWB, and a Track link. Admins can <strong>Retry tracking ID</strong>.</li>
+        <li><strong>In-house ("Ishika Enterprise"):</strong> your team delivers; staff update status
+            manually and settle COD on delivery.</li>
+        <li>Customers can be sent a public tracking link (no login).</li>
+        <li><strong>Shopify Sync</strong> (admin): recover stuck Shopify orders; on/off switch.</li>
+      </ul>
+
+      <h2 class="sec" id="returns">13 &middot; Returns, RTO &amp; cancellations</h2>
+      <ul>
+        <li><strong>Returns</strong> (admin/accountant/CA): create/approve/reject returns &amp; refunds.</li>
+        <li><strong>RTO:</strong> the GST-correct "give up" — reverses the sale with a credit note.</li>
+        <li><strong>Retry delivery:</strong> re-attempt a failed/refused delivery.</li>
+        <li><strong>Cancel Order</strong> (admin): cancel with a note, even after an AWB (aborts courier pickup).</li>
+      </ul>
+      <div class="callout danger"><span class="k">Do not cancel a post-invoice order</span>
+        It would drop an already-filed invoice from GST. Use RTO instead.</div>
+
+      <h2 class="sec" id="customers">14 &middot; Customers (CRM)</h2>
+      <div class="role-badges"><span class="rb">Admin</span><span class="rb">Accountant</span><span class="rb">Salesperson (own only)</span></div>
+      <p><strong>CRM &rarr; Customers.</strong> Open Customer 360: Overview (risk, delivery metrics,
+         outstanding), CRM (tags/notes), Orders (history + Reorder last order). Call/WhatsApp from each row.</p>
+
+      <h2 class="sec" id="leads">15 &middot; Leads</h2>
+      <div class="role-badges"><span class="rb">Salesperson (own only)</span><span class="rb">Admin</span></div>
+      <p><strong>CRM &rarr; Leads</strong> and <strong>Due follow-ups.</strong> Capture leads, move
+         New&rarr;Contacted&rarr;Quoted&rarr;Won/Lost, set follow-ups, and <strong>Convert</strong> a won
+         lead to an order. Lead reports: by source, conversion, pipeline, lost reasons.</p>
+
+      <h2 class="sec" id="products">16 &middot; Products &amp; inventory</h2>
+      <ul>
+        <li><strong>Products</strong> (admin manages; salesperson read-only): name, SKU, images, price
+            band (min/sale/MRP), HSN, GST rate, weight, visibility, stock. CSV import (admin).</li>
+        <li><strong>Inventory</strong> (admin): stock levels + movements; Restock / Adjust with a reason.</li>
+      </ul>
+
+      <h2 class="sec" id="procurement">17 &middot; Procurement</h2>
+      <div class="role-badges"><span class="rb">Admin</span></div>
+      <p><strong>Procurement:</strong> Suppliers directory and Purchase Orders (status + totals; receiving
+         can feed stock).</p>
+
+      <h2 class="sec" id="reconciliation">18 &middot; Reconciliation &amp; COD</h2>
+      <div class="role-badges"><span class="rb">Admin</span><span class="rb">Accountant</span><span class="rb">CA (view)</span></div>
+      <p><strong>Orders &rarr; Reconciliation.</strong> Receivables, Unsettled COD, Pending claims, COD
+         aging/SLA, and <strong>courier remittance import</strong> (CSV/Excel; preview then confirm; auto-settles
+         and marks missed deliveries Delivered + COD Collected).</p>
+
+      <h2 class="sec" id="reports">19 &middot; Reports</h2>
+      <div class="role-badges"><span class="rb">Admin</span><span class="rb">Accountant</span><span class="rb">CA</span><span class="rb">Salesperson (scoped)</span></div>
+      <p><strong>Analytics &amp; Reports &rarr; Reports.</strong> 17 report types across Sales, Orders,
+         Money &amp; Receivables, Operations — each exportable to Excel/PDF. A salesperson sees only their
+         own sales/product/customer reports.</p>
+
+      <h2 class="sec" id="finance-gst">20 &middot; Finance, GST &amp; accounting</h2>
+      <h3>Expenses &amp; P&amp;L</h3>
+      <p>Record expenses by category; Profit &amp; Loss for a period (admin/accountant/CA).</p>
+      <h3>GST &amp; Accounting (CA / Admin)</h3>
+      <ul>
+        <li><strong>GST dashboard:</strong> money in/out, GSTR-3B summary, rate/HSN/state breakup, Export
+            segment (18% IGST), period presets, drill-down, CSV/PDF export.</li>
+        <li><strong>GST Filing</strong> (calendar, prepare/file/reopen, snapshots) and <strong>GST
+            Reconciliation</strong> (five compared figures).</li>
+      </ul>
+      <h3>General Ledger (Accounting)</h3>
+      <p>Chart of Accounts, Voucher Entry (manual + auto-posted on sales/purchases/expenses/payment/COD),
+         Day Book, Trial Balance, Ledger Statement, Balance Sheet, Profit &amp; Loss, Cash Flow. Admin/
+         accountant post; CA is read-only.</p>
+
+      <h2 class="sec" id="analytics">21 &middot; Analytics, insights &amp; teams</h2>
+      <ul>
+        <li><strong>Analytics</strong> (admin): targets &amp; incentives, retention cohorts, forecasting.</li>
+        <li><strong>Insights</strong> (admin): anomalies, low-stock reorder, RTO risk, courier scorecard,
+            return-rate, COD build-up, lead-source conversion. Dismiss or Recompute.</li>
+        <li><strong>Leaderboard</strong>, <strong>Salespeople 360</strong>, <strong>Teams</strong>,
+            <strong>Team-wise Sales</strong>, <strong>Team Performance</strong>, and the admin
+            <strong>Exception Center</strong>.</li>
+      </ul>
+
+      <h2 class="sec" id="notifications">22 &middot; Notifications &amp; announcements</h2>
+      <ul>
+        <li><strong>Bell:</strong> live, per-user/role notifications. The Notifications page (admin) is the center.</li>
+        <li><strong>Announcements</strong> (admin): banners every staff member sees until dismissed.</li>
+        <li><strong>Web Push</strong> (optional): opt in from the bell for browser push.</li>
+      </ul>
+
+      <h2 class="sec" id="settings">23 &middot; Settings &amp; administration</h2>
+      <div class="role-badges"><span class="rb">Admin</span></div>
+      <ul>
+        <li><strong>Settings:</strong> company + GST config, logo, auto-approval, Shopify switch, delivery states.</li>
+        <li><strong>Users:</strong> create/edit staff, roles, activate/deactivate, reset passwords.</li>
+        <li><strong>Profile approvals</strong>, <strong>Audit Log</strong>, <strong>Backups</strong>,
+            <strong>WhatsApp templates</strong>.</li>
+      </ul>
+
+      <h2 class="sec" id="whatsapp">24 &middot; WhatsApp messaging</h2>
+      <p>Order and customer screens have Call &amp; WhatsApp buttons. WhatsApp uses click-to-chat with
+         customizable templates — placeholders like <code>{name}</code>, <code>{orderCode}</code>,
+         <code>{total}</code>, <code>{remaining}</code>, <code>{orderSummary}</code> are filled in
+         automatically. Managers maintain templates under WhatsApp templates.</p>
+
+      <h2 class="sec" id="pwa">25 &middot; Mobile app (PWA) &amp; offline</h2>
+      <ul>
+        <li><strong>Install</strong> the app to your home screen/desktop from the top bar.</li>
+        <li>An <strong>Offline</strong> chip appears when you lose connection. Creating orders needs
+            connectivity (₹100 + screenshot), so new orders can't be queued offline.</li>
+        <li>An update banner appears on a new version — reload to get it; hard-refresh (Ctrl+Shift+R) if a
+            screen looks out of date.</li>
+      </ul>
+
+      <!-- ========================= REFERENCE ========================= -->
+      <h2 class="sec" id="lifecycle">26 &middot; Order lifecycle (reference)</h2>
+      <p>An order moves through these business stages:</p>
+      <div class="flow">
+        <span class="st">Pending Approval</span><span class="ar">&rarr;</span>
+        <span class="st">Processing (approved, label, packed, handover)</span><span class="ar">&rarr;</span>
+        <span class="st">Shipped (courier/in-house)</span><span class="ar">&rarr;</span>
+        <span class="st">Delivered</span><span class="ar">&rarr;</span>
+        <span class="st">Closed / COD Collected</span>
+      </div>
+      <div class="flow">
+        <span class="st">Out for Delivery</span><span class="ar">&rarr;</span>
+        <span class="st">Customer Rejected / Delivery Failed</span><span class="ar">&rarr;</span>
+        <span class="st">Retry</span><span class="ar">or</span><span class="st">RTO (credit note)</span>
+      </div>
+      <ul>
+        <li><strong>Rejected</strong> (admin) and <strong>Payment Rejected</strong> (verifier) can be
+            Fixed &amp; resubmitted — same order, history kept.</li>
+        <li><strong>Cancelled</strong> is for pre-delivery orders only; use <strong>RTO</strong> after invoicing.</li>
+        <li><strong>REDISPATCH</strong> = parcel lost/damaged by courier (raises a claim, clears dues).</li>
+      </ul>
+
+      <h2 class="sec" id="glossary">27 &middot; Glossary</h2>
+      <table>
+        <tr><th>Term</th><th>Meaning</th></tr>
+        <tr><td>AWB</td><td>Air Waybill — the courier's tracking number</td></tr>
+        <tr><td>COD</td><td>Pay on delivery ("To collect on delivery")</td></tr>
+        <tr><td>RTO</td><td>Return to Origin — reverses the sale with a credit note</td></tr>
+        <tr><td>REDISPATCH</td><td>Parcel lost/damaged by courier; raises a claim, clears dues</td></tr>
+        <tr><td>GST / GSTR-1 / GSTR-3B</td><td>Goods &amp; Services Tax and its return formats</td></tr>
+        <tr><td>HSN</td><td>The tax code for a product</td></tr>
+        <tr><td>ITC</td><td>Input Tax Credit</td></tr>
+        <tr><td>Lead</td><td>A potential customer being followed up before they order</td></tr>
+        <tr><td>PWA</td><td>Progressive Web App — installable, offline-aware</td></tr>
+        <tr><td>QuikShipX</td><td>The courier integration for shipped orders</td></tr>
+        <tr><td>Ishika Enterprise</td><td>The in-house delivery option (no external courier)</td></tr>
+      </table>
+
+      <h2 class="sec" id="troubleshooting">28 &middot; Troubleshooting</h2>
+      <table>
+        <tr><th>Problem</th><th>What to do</th></tr>
+        <tr><td>"Forbidden" / can't open a page</td><td>Your role doesn't have access. The menu only shows what you can use.</td></tr>
+        <tr><td>Returned to the sign-in screen</td><td>Your session expired. Sign in again.</td></tr>
+        <tr><td>"This record changed elsewhere" (409)</td><td>Someone else updated it. Refresh and retry.</td></tr>
+        <tr><td>New order won't save — screenshot required</td><td>Attach the payment screenshot in the Payment step.</td></tr>
+        <tr><td>New order blocked as a duplicate</td><td>The customer already has a same-day order for that product. Different items are allowed.</td></tr>
+        <tr><td>Order stuck without a tracking id</td><td>Admin: use <strong>Retry tracking ID</strong>, or Shopify Sync for Shopify orders.</td></tr>
+        <tr><td>WhatsApp emoji show as "□"</td><td>Use simple symbols in templates; some emoji don't survive WhatsApp Desktop.</td></tr>
+        <tr><td>Screen looks out of date</td><td>Hard refresh (Ctrl+Shift+R) or clear the site's app cache.</td></tr>
+        <tr><td>Can't edit a Shopify order</td><td>Shopify orders are managed automatically and aren't editable.</td></tr>
+      </table>
+
+      <footer class="docfoot">
+        <p>Shifa OMS — User Manual. Generated from a codebase scan; describes screens rather than live
+           data. Companion documents: <code>APPLICATION-MEMORY.md</code> (technical reference) and the
+           Markdown role guides under <code>docs/role-guides/</code>.</p>
+      </footer>
+
+    </div>
+  </main>
+</div>
+
+<button class="backtop" id="backtop" aria-label="Back to top">&uarr;</button>
+
+<script>
+(function(){
+  "use strict";
+  var sidebar=document.getElementById('sidebar'),
+      overlay=document.getElementById('overlay'),
+      menuBtn=document.getElementById('menuBtn'),
+      search=document.getElementById('search'),
+      roleSelect=document.getElementById('roleSelect'),
+      backtop=document.getElementById('backtop'),
+      tocLinks=Array.prototype.slice.call(document.querySelectorAll('nav.toc a')),
+      roleBlocks=Array.prototype.slice.call(document.querySelectorAll('.roleblock'));
+
+  /* Mobile drawer */
+  function openNav(){sidebar.classList.add('open');overlay.classList.add('show');}
+  function closeNav(){sidebar.classList.remove('open');overlay.classList.remove('show');}
+  menuBtn&&menuBtn.addEventListener('click',openNav);
+  overlay.addEventListener('click',closeNav);
+  tocLinks.forEach(function(a){a.addEventListener('click',function(){if(window.innerWidth<=960)closeNav();});});
+
+  /* Role filter: hide other role quick-start blocks + persist choice */
+  var ROLE_KEY='shifa-manual-role';
+  function applyRole(role){
+    roleBlocks.forEach(function(b){
+      b.style.display=(role==='all'||b.getAttribute('data-role')===role)?'':'none';
+    });
+    try{localStorage.setItem(ROLE_KEY,role);}catch(e){}
+  }
+  roleSelect.addEventListener('change',function(){applyRole(roleSelect.value);});
+  try{var saved=localStorage.getItem(ROLE_KEY);if(saved){roleSelect.value=saved;}}catch(e){}
+  applyRole(roleSelect.value);
+
+  /* Search: highlight matches, hide non-matching feature sections */
+  var sections=Array.prototype.slice.call(document.querySelectorAll('section, h2.sec'));
+  function clearMarks(root){
+    root.querySelectorAll('mark').forEach(function(m){
+      var t=document.createTextNode(m.textContent);m.parentNode.replaceChild(t,m);
+    });
+  }
+  var debounceTimer;
+  search.addEventListener('input',function(){
+    clearTimeout(debounceTimer);
+    debounceTimer=setTimeout(runSearch,120);
+  });
+  function runSearch(){
+    var q=search.value.trim().toLowerCase();
+    var wrap=document.getElementById('wrap');
+    clearMarks(wrap);
+    // group content into blocks keyed by each h2.sec and its following siblings
+    var blocks=[],cur=null;
+    Array.prototype.slice.call(wrap.children).forEach(function(el){
+      if(el.tagName==='H2'&&el.classList.contains('sec')){cur={head:el,nodes:[el]};blocks.push(cur);}
+      else if(el.id==='overview'){blocks.push({head:el,nodes:[el]});}
+      else if(cur){cur.nodes.push(el);}
+      else{blocks.push({head:el,nodes:[el]});}
+    });
+    if(!q){
+      blocks.forEach(function(b){b.nodes.forEach(function(n){n.classList.remove('search-hidden');});});
+      return;
+    }
+    blocks.forEach(function(b){
+      var text=b.nodes.map(function(n){return n.textContent;}).join(' ').toLowerCase();
+      var hit=text.indexOf(q)>=0;
+      b.nodes.forEach(function(n){n.classList.toggle('search-hidden',!hit);});
+    });
+  }
+
+  /* Scroll spy for active TOC link + back-to-top */
+  var ids=tocLinks.map(function(a){return a.getAttribute('href').slice(1);});
+  var targets=ids.map(function(id){return document.getElementById(id);}).filter(Boolean);
+  function onScroll(){
+    var pos=window.scrollY+120,current=null;
+    targets.forEach(function(t){if(t.offsetTop<=pos)current=t.id;});
+    tocLinks.forEach(function(a){a.classList.toggle('active',a.getAttribute('href')==='#'+current);});
+    backtop.style.display=window.scrollY>400?'block':'none';
+  }
+  window.addEventListener('scroll',onScroll,{passive:true});onScroll();
+  backtop.addEventListener('click',function(){window.scrollTo({top:0,behavior:'smooth'});});
+
+  /* Ctrl/Cmd+K focuses search (nod to the app's command palette) */
+  document.addEventListener('keydown',function(e){
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();search.focus();}
+  });
+})();
+</script>
+</body>
+</html>
