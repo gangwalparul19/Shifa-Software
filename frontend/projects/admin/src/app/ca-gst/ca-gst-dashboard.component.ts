@@ -3,8 +3,10 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
+import { formatCompactInr } from '../shared/inr.pipe';
 import { GstService } from './gst.service';
 import { GstDashboard, GstOrderRow, Gstr1ReturnResponse } from './gst.model';
 
@@ -23,7 +25,7 @@ type MainTab = 'dashboard' | 'gstr1';
 @Component({
   selector: 'admin-ca-gst-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, PageHeaderComponent, StatePanelComponent],
+  imports: [CommonModule, FormsModule, RouterLink, PageHeaderComponent, PaginationComponent, StatePanelComponent],
   templateUrl: './ca-gst-dashboard.component.html',
   styleUrl: './ca-gst-dashboard.component.css',
 })
@@ -49,6 +51,32 @@ export class CaGstDashboardComponent implements OnInit {
   protected readonly hsnNonCompliant = computed(() =>
     (this.gstr1Data()?.hsn ?? []).filter((h) => !h.compliant),
   );
+
+  // --- GSTR-1 section paging (client-side, 10/page per section) -----------
+  // One page index per section; a shared page size. The section tables can get
+  // long for a busy period, so each paginates independently.
+  protected readonly gstr1Size = 10;
+  protected readonly g1Page = signal<Record<string, number>>({});
+
+  /** The current page index for a GSTR-1 section (default 0). */
+  g1PageOf(section: string): number {
+    return this.g1Page()[section] ?? 0;
+  }
+
+  /** Total pages for a GSTR-1 section given its full row count. */
+  g1TotalPages(len: number): number {
+    return Math.max(1, Math.ceil(len / this.gstr1Size));
+  }
+
+  /** The current page's slice of a GSTR-1 section's rows. */
+  g1Slice<T>(section: string, rows: readonly T[]): T[] {
+    const start = this.g1PageOf(section) * this.gstr1Size;
+    return rows.slice(start, start + this.gstr1Size);
+  }
+
+  setG1Page(section: string, page: number): void {
+    this.g1Page.update((m) => ({ ...m, [section]: page }));
+  }
 
   /** Selected period (ISO yyyy-MM-dd); defaults set in ngOnInit to the current month. */
   protected readonly from = signal('');
@@ -104,11 +132,64 @@ export class CaGstDashboardComponent implements OnInit {
     return type === 'INTRA' ? 'Intra' : type === 'EXPORT' ? 'Export' : 'Inter';
   }
 
+  // --- Summary-table paging (HSN-wise + State-wise can grow long) ---------
+  protected readonly hsnPage = signal(0);
+  protected readonly hsnSize = signal(10);
+  private readonly hsnRows = computed(() => this.data()?.report.hsn ?? []);
+  protected readonly hsnTotalPages = computed(() => Math.max(1, Math.ceil(this.hsnRows().length / this.hsnSize())));
+  protected readonly hsnPageRows = computed(() => {
+    const s = this.hsnPage() * this.hsnSize();
+    return this.hsnRows().slice(s, s + this.hsnSize());
+  });
+  setHsnPage(p: number): void {
+    this.hsnPage.set(p);
+  }
+  setHsnSize(s: number): void {
+    this.hsnSize.set(s);
+    this.hsnPage.set(0);
+  }
+
+  protected readonly statePage = signal(0);
+  protected readonly stateSize = signal(10);
+  private readonly stateRows = computed(() => this.data()?.report.stateWise ?? []);
+  protected readonly stateTotalPages = computed(() => Math.max(1, Math.ceil(this.stateRows().length / this.stateSize())));
+  protected readonly statePageRows = computed(() => {
+    const s = this.statePage() * this.stateSize();
+    return this.stateRows().slice(s, s + this.stateSize());
+  });
+  setStatePage(p: number): void {
+    this.statePage.set(p);
+  }
+  setStateSize(s: number): void {
+    this.stateSize.set(s);
+    this.statePage.set(0);
+  }
+
   // --- Drill-down (orders behind a summary figure) ------------------------
   protected readonly drillOpen = signal(false);
   protected readonly drillTitle = signal('');
   protected readonly drillLoading = signal(false);
   protected readonly drillOrders = signal<GstOrderRow[]>([]);
+
+  // Client-side paging for the drill-down list (can hold hundreds of orders).
+  protected readonly drillPage = signal(0);
+  protected readonly drillSize = signal(10);
+  protected readonly drillTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.drillOrders().length / this.drillSize())),
+  );
+  protected readonly drillPageOrders = computed<GstOrderRow[]>(() => {
+    const start = this.drillPage() * this.drillSize();
+    return this.drillOrders().slice(start, start + this.drillSize());
+  });
+
+  setDrillPage(p: number): void {
+    this.drillPage.set(p);
+  }
+
+  setDrillSize(s: number): void {
+    this.drillSize.set(s);
+    this.drillPage.set(0);
+  }
 
   /** Total remaining dues across the drill-down list. */
   protected readonly drillRemaining = computed(() =>
@@ -139,6 +220,9 @@ export class CaGstDashboardComponent implements OnInit {
     this.gst.dashboard(this.from(), this.to()).subscribe({
       next: (d) => {
         this.data.set(d);
+        // Reset summary-table pages so a new period starts on page 1.
+        this.hsnPage.set(0);
+        this.statePage.set(0);
         this.loading.set(false);
       },
       error: () => {
@@ -167,6 +251,7 @@ export class CaGstDashboardComponent implements OnInit {
     this.gst.gstr1(this.from(), this.to()).subscribe({
       next: (r) => {
         this.gstr1Data.set(r);
+        this.g1Page.set({});
         this.gstr1Loading.set(false);
       },
       error: () => {
@@ -308,9 +393,11 @@ export class CaGstDashboardComponent implements OnInit {
     this.drillOpen.set(true);
     this.drillLoading.set(true);
     this.drillOrders.set([]);
+    this.drillPage.set(0);
     this.gst.orders(this.from(), this.to(), filter).subscribe({
       next: (rows) => {
         this.drillOrders.set(rows);
+        this.drillPage.set(0);
         this.drillLoading.set(false);
       },
       error: () => {
@@ -336,6 +423,11 @@ export class CaGstDashboardComponent implements OnInit {
   /** Format a value as ₹ with 2 decimals. */
   money(v: number | string | null | undefined): string {
     return '₹' + this.n(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  /** Compact ₹ amount (₹12.46K / ₹1.23L) for cramped table cells; pair with money() as the title. */
+  moneyCompact(v: number | string | null | undefined): string {
+    return formatCompactInr(v);
   }
 
   private iso(d: Date): string {

@@ -113,8 +113,8 @@
               }
             </div>
             <div class="text-end">
-              <div class="fw-semibold">{{ row.amountReceived | inr }}</div>
-              <div class="text-secondary small">of {{ row.totalAmount | inr }}</div>
+              <div class="fw-semibold" [title]="row.amountReceived | inr">{{ row.amountReceived | compactInr }}</div>
+              <div class="text-secondary small" [title]="row.totalAmount | inr">of {{ row.totalAmount | compactInr }}</div>
             </div>
           </div>
           <div class="d-flex gap-2 mt-3">
@@ -202,8 +202,8 @@
               </td>
               <td>{{ row.customerName }}<div class="text-secondary small">{{ row.customerMobile }}</div></td>
               <td class="text-secondary">{{ row.salespersonName || '—' }}</td>
-              <td class="text-end fw-semibold">{{ row.amountReceived | inr }}</td>
-              <td class="text-end text-secondary">{{ row.totalAmount | inr }}</td>
+              <td class="text-end fw-semibold" [title]="row.amountReceived | inr">{{ row.amountReceived | compactInr }}</td>
+              <td class="text-end text-secondary" [title]="row.totalAmount | inr">{{ row.totalAmount | compactInr }}</td>
               <td class="text-secondary">{{ row.createdAt ? (row.createdAt | istDate) : '—' }}</td>
               <td class="text-end">
                 <div class="btn-list justify-content-end">

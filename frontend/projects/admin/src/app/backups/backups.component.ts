@@ -1,6 +1,8 @@
 import { IstDatePipe } from '../shared/ist-date.pipe';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
@@ -17,7 +19,7 @@ import { BackupRun } from './backups.model';
  */
 @Component({
   selector: 'admin-backups',
-  imports: [IstDatePipe, PageHeaderComponent, StatePanelComponent],
+  imports: [IstDatePipe, PageHeaderComponent, PaginationComponent, StatePanelComponent],
   templateUrl: './backups.component.html',
   styleUrl: './backups.component.css',
 })
@@ -38,6 +40,24 @@ export class BackupsComponent implements OnInit {
     () => this.runs().find((r) => this.isSuccess(r.status)) ?? null,
   );
 
+  // --- Client-side paging (10/page) ---------------------------------------
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('backups', 10));
+  protected readonly totalElements = computed(() => this.runs().length);
+  protected readonly totalPages = computed(() => Math.max(1, Math.ceil(this.runs().length / this.size())));
+  protected readonly pageItems = computed<BackupRun[]>(() => {
+    const s = this.page() * this.size();
+    return this.runs().slice(s, s + this.size());
+  });
+  goToPage(p: number): void {
+    this.page.set(p);
+  }
+  setSize(s: number): void {
+    this.size.set(s);
+    writePageSize('backups', s);
+    this.page.set(0);
+  }
+
   ngOnInit(): void {
     this.load();
   }
@@ -48,6 +68,7 @@ export class BackupsComponent implements OnInit {
     this.service.history().subscribe({
       next: (rows) => {
         this.runs.set(rows);
+        this.page.set(0);
         this.loading.set(false);
       },
       error: () => {

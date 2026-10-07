@@ -122,7 +122,10 @@ public class SalespersonPerformanceService {
 
         Set<Long> filter = memberIds == null ? null : new java.util.HashSet<>(memberIds);
         List<SalespersonPerformanceSummary> rows = new ArrayList<>();
-        for (User u : userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.SALESPERSON)) {
+        // Include TEAM_LEAD users alongside SALESPERSON — a team lead also punches
+        // their own orders, so they belong on the performance leaderboard too.
+        for (User u : userRepository.findByRoleInOrderByCreatedAtDescIdDesc(
+                List.of(Role.SALESPERSON, Role.TEAM_LEAD))) {
             if (filter != null && !filter.contains(u.getId())) {
                 continue;
             }
@@ -162,12 +165,12 @@ public class SalespersonPerformanceService {
      * The full 360 for a salesperson: headline summary + a {@code days}-day daily
      * trend + their latest orders + lead/CRM metrics.
      *
-     * @param id   the salesperson user id (must be a SALESPERSON)
+     * @param id   the sales-staff user id (must be a SALESPERSON or TEAM_LEAD)
      * @param days trend window in days (clamped to 1..60, default 14)
      */
     @Transactional(readOnly = true)
     public SalespersonPerformanceDetail detail(Long id, Integer days) {
-        User u = requireSalesperson(id);
+        User u = requireSalesStaff(id);
         int trendDays = clampDays(days);
         LocalDate today = LocalDate.now(clock);
         LocalDateTime monthStart = today.withDayOfMonth(1).atStartOfDay();
@@ -270,11 +273,16 @@ public class SalespersonPerformanceService {
 
     // --- Helpers ------------------------------------------------------------
 
-    private User requireSalesperson(Long id) {
+    /**
+     * Resolves a sales-staff user for the 360 detail: a {@link Role#SALESPERSON}
+     * or a {@link Role#TEAM_LEAD} (a team lead also punches orders, so their 360
+     * is shown here too). Any other role is rejected.
+     */
+    private User requireSalesStaff(Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User " + id + " does not exist."));
-        if (user.getRole() != Role.SALESPERSON) {
-            throw new ValidationException("This account is not a salesperson.");
+        if (user.getRole() != Role.SALESPERSON && user.getRole() != Role.TEAM_LEAD) {
+            throw new ValidationException("This account is not a salesperson or team lead.");
         }
         return user;
     }

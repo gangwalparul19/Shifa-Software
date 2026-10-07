@@ -12,6 +12,8 @@ import {
   NgApexchartsModule,
 } from 'ng-apexcharts';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
 import { AnalyticsService } from './analytics.service';
@@ -45,7 +47,7 @@ interface BarOptions {
 @Component({
   selector: 'admin-analytics',
   standalone: true,
-  imports: [FormsModule, NgApexchartsModule, PageHeaderComponent, StatePanelComponent],
+  imports: [FormsModule, NgApexchartsModule, PageHeaderComponent, PaginationComponent, StatePanelComponent],
   templateUrl: './analytics.component.html',
   styleUrl: './analytics.component.css',
 })
@@ -74,6 +76,25 @@ export class AnalyticsComponent implements OnInit {
   protected readonly savingId = signal<number | null>(null);
   /** Editable target/incentive values keyed by salespersonId. */
   protected readonly edits = signal<Record<number, { target: number | null; incentive: number | null }>>({});
+
+  // --- Targets paging (client-side, 10/page) ------------------------------
+  protected readonly targetsPage = signal(0);
+  protected readonly targetsSize = signal(readPageSize('analyticsTargets', 10));
+  protected readonly targetsTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.targetRows().length / this.targetsSize())),
+  );
+  protected readonly targetPageRows = computed<SalesTargetRow[]>(() => {
+    const s = this.targetsPage() * this.targetsSize();
+    return this.targetRows().slice(s, s + this.targetsSize());
+  });
+  setTargetsPage(p: number): void {
+    this.targetsPage.set(p);
+  }
+  setTargetsSize(s: number): void {
+    this.targetsSize.set(s);
+    writePageSize('analyticsTargets', s);
+    this.targetsPage.set(0);
+  }
 
   // --- Retention (§6.3) ---------------------------------------------------
   protected readonly retention = signal<RetentionReport | null>(null);
@@ -150,6 +171,7 @@ export class AnalyticsComponent implements OnInit {
           };
         }
         this.edits.set(map);
+        this.targetsPage.set(0);
         this.targetsLoading.set(false);
       },
       error: () => {
@@ -260,6 +282,7 @@ export class AnalyticsComponent implements OnInit {
     this.service.forecast().subscribe({
       next: (r) => {
         this.forecast.set(r);
+        this.demandPage.set(0);
         this.forecastLoading.set(false);
       },
       error: () => {
@@ -267,6 +290,27 @@ export class AnalyticsComponent implements OnInit {
         this.forecastLoading.set(false);
       },
     });
+  }
+
+  // --- Forecast top-demand table paging (client-side, 10/page) ------------
+  protected readonly demandPage = signal(0);
+  protected readonly demandSize = signal(readPageSize('analyticsForecast', 10));
+  private readonly demandRows = computed(() => this.forecast()?.topDemand ?? []);
+  protected readonly demandTotal = computed(() => this.demandRows().length);
+  protected readonly demandTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.demandRows().length / this.demandSize())),
+  );
+  protected readonly demandPageRows = computed(() => {
+    const s = this.demandPage() * this.demandSize();
+    return this.demandRows().slice(s, s + this.demandSize());
+  });
+  setDemandPage(p: number): void {
+    this.demandPage.set(p);
+  }
+  setDemandSize(s: number): void {
+    this.demandSize.set(s);
+    writePageSize('analyticsForecast', s);
+    this.demandPage.set(0);
   }
 
   protected readonly demandChart = computed<BarOptions | null>(() => {

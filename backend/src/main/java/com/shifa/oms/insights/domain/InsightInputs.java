@@ -12,25 +12,23 @@ import java.util.List;
  * defend against nulls.
  *
  * @param sales       the current/previous sales window (may be null)
- * @param products    per-product consumption projections
+ * @param locations   per-state sales + delivery-outcome projections
  * @param couriers    per-courier outcome projections
  * @param openOrders  open-order risk feature projections
- * @param returns     the delivered/returns counts (may be null)
  * @param cod         the unsettled COD total (may be null)
  * @param leadSources per-channel lead conversion projections
  */
 public record InsightInputs(
         SalesWindow sales,
-        List<ProductConsumption> products,
+        List<LocationPerformance> locations,
         List<CourierOutcome> couriers,
         List<OpenOrderRisk> openOrders,
-        ReturnStats returns,
         CodOutstanding cod,
         List<LeadSourceConversion> leadSources) {
 
-    /** The product projections, never null. */
-    public List<ProductConsumption> products() {
-        return products == null ? List.of() : products;
+    /** The per-state location projections, never null. */
+    public List<LocationPerformance> locations() {
+        return locations == null ? List.of() : locations;
     }
 
     /** The courier projections, never null. */

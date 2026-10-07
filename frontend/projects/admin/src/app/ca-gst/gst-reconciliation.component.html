@@ -171,7 +171,7 @@
               <tr><th>Identifier</th><th>Type</th><th class="num">Signed contribution</th></tr>
             </thead>
             <tbody>
-              @for (r of drillRows(); track $index) {
+              @for (r of drillPageRows(); track $index) {
                 <tr>
                   <td class="shifa-mono">{{ r.identifier }}</td>
                   <td><span class="badge bg-secondary-lt">{{ r.type }}</span></td>
@@ -181,6 +181,14 @@
             </tbody>
           </table>
         </div>
+        <admin-pagination
+          [page]="drillPage()"
+          [totalPages]="drillTotalPages()"
+          [totalElements]="drillRows().length"
+          [size]="drillSize()"
+          (pageChange)="setDrillPage($event)"
+          (sizeChange)="setDrillSize($event)"
+        />
       }
     </div>
   </aside>

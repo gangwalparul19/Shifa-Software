@@ -42,6 +42,7 @@ import { OrderCancellationComponent } from './order-cancellation/order-cancellat
 import { DeletedOrdersComponent } from './deleted-orders/deleted-orders.component';
 import { TeamComponent } from './team/team.component';
 import { TeamsOverviewComponent } from './dashboard/teams-overview.component';
+import { DeliveryPartnersPageComponent } from './dashboard/delivery-partners-page.component';
 import { WhatsappTemplatesComponent } from './whatsapp/whatsapp-templates.component';
 import { CaGstDashboardComponent } from './ca-gst/ca-gst-dashboard.component';
 import { GstFilingComponent } from './ca-gst/gst-filing.component';
@@ -550,6 +551,12 @@ export const routes: Routes = [
         // Team-wise sales with status overview (ADMIN only) — linked from the dashboard.
         path: 'teams-overview',
         component: TeamsOverviewComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Orders by delivery partner: QuikShipX / In-house (Ishika Enterprise) / POS (ADMIN only).
+        path: 'delivery-partners',
+        component: DeliveryPartnersPageComponent,
         canActivate: [adminOnlyGuard],
       },
       {

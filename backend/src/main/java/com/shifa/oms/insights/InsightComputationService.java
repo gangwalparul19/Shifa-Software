@@ -14,34 +14,26 @@ import com.shifa.oms.insights.domain.InsightEngine;
 import com.shifa.oms.insights.domain.InsightInputs;
 import com.shifa.oms.insights.domain.InsightThresholds;
 import com.shifa.oms.insights.domain.LeadSourceConversion;
+import com.shifa.oms.insights.domain.LocationPerformance;
 import com.shifa.oms.insights.domain.OpenOrderRisk;
-import com.shifa.oms.insights.domain.ProductConsumption;
-import com.shifa.oms.insights.domain.ReturnStats;
 import com.shifa.oms.insights.domain.SalesWindow;
-import com.shifa.oms.inventory.StockMovement;
-import com.shifa.oms.inventory.StockMovementRepository;
-import com.shifa.oms.inventory.StockMovementType;
 import com.shifa.oms.lead.LeadEntity;
 import com.shifa.oms.lead.LeadRepository;
 import com.shifa.oms.lead.LeadStatus;
 import com.shifa.oms.order.LeadSource;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
-import com.shifa.oms.product.Product;
-import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.reconciliation.ReceivableEntity;
 import com.shifa.oms.reconciliation.ReceivableRepository;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
-import com.shifa.oms.returns.OrderReturnRepository;
 import com.shifa.oms.adminnotification.StaffNotificationDispatcher;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -119,11 +111,8 @@ public class InsightComputationService {
 
     private final InsightRepository insightRepository;
     private final OrderRepository orderRepository;
-    private final StockMovementRepository stockMovementRepository;
-    private final ProductRepository productRepository;
     private final CourierRecordRepository courierRecordRepository;
     private final CourierCompanyRepository courierCompanyRepository;
-    private final OrderReturnRepository orderReturnRepository;
     private final ReceivableRepository receivableRepository;
     private final LeadRepository leadRepository;
     private final OutboxEventPublisher outboxEventPublisher;
@@ -138,11 +127,8 @@ public class InsightComputationService {
     public InsightComputationService(
             InsightRepository insightRepository,
             OrderRepository orderRepository,
-            StockMovementRepository stockMovementRepository,
-            ProductRepository productRepository,
             CourierRecordRepository courierRecordRepository,
             CourierCompanyRepository courierCompanyRepository,
-            OrderReturnRepository orderReturnRepository,
             ReceivableRepository receivableRepository,
             LeadRepository leadRepository,
             OutboxEventPublisher outboxEventPublisher,
@@ -150,18 +136,17 @@ public class InsightComputationService {
             AuditService auditService,
             @Value("${app.insights.window-days:7}") int windowDays,
             @Value("${app.insights.sales-anomaly-pct:30}") BigDecimal salesAnomalyPct,
-            @Value("${app.insights.reorder-lookback-days:30}") int reorderLookbackDays,
-            @Value("${app.insights.reorder-cover-days:14}") int reorderCoverDays,
             @Value("${app.insights.rto-risk-threshold:60}") int rtoRiskThreshold,
             @Value("${app.insights.courier-rto-warn-pct:15}") BigDecimal courierRtoWarnPct,
-            @Value("${app.insights.return-rate-warn-pct:10}") BigDecimal returnRateWarnPct,
-            @Value("${app.insights.cod-outstanding-warn:50000}") BigDecimal codOutstandingWarn) {
-        this(insightRepository, orderRepository, stockMovementRepository, productRepository,
-                courierRecordRepository, courierCompanyRepository, orderReturnRepository,
+            @Value("${app.insights.cod-outstanding-warn:50000}") BigDecimal codOutstandingWarn,
+            @Value("${app.insights.location-min-orders:10}") int locationMinOrders,
+            @Value("${app.insights.location-fail-warn-pct:25}") BigDecimal locationFailWarnPct) {
+        this(insightRepository, orderRepository,
+                courierRecordRepository, courierCompanyRepository,
                 receivableRepository, leadRepository, outboxEventPublisher,
                 staffNotificationDispatcher, auditService,
-                new InsightThresholds(salesAnomalyPct, reorderLookbackDays, reorderCoverDays,
-                        rtoRiskThreshold, courierRtoWarnPct, returnRateWarnPct, codOutstandingWarn),
+                new InsightThresholds(salesAnomalyPct, rtoRiskThreshold, courierRtoWarnPct,
+                        codOutstandingWarn, locationMinOrders, locationFailWarnPct),
                 windowDays, Clock.systemDefaultZone());
     }
 
@@ -169,11 +154,8 @@ public class InsightComputationService {
     public InsightComputationService(
             InsightRepository insightRepository,
             OrderRepository orderRepository,
-            StockMovementRepository stockMovementRepository,
-            ProductRepository productRepository,
             CourierRecordRepository courierRecordRepository,
             CourierCompanyRepository courierCompanyRepository,
-            OrderReturnRepository orderReturnRepository,
             ReceivableRepository receivableRepository,
             LeadRepository leadRepository,
             OutboxEventPublisher outboxEventPublisher,
@@ -184,15 +166,10 @@ public class InsightComputationService {
             Clock clock) {
         this.insightRepository = Objects.requireNonNull(insightRepository, "insightRepository");
         this.orderRepository = Objects.requireNonNull(orderRepository, "orderRepository");
-        this.stockMovementRepository =
-                Objects.requireNonNull(stockMovementRepository, "stockMovementRepository");
-        this.productRepository = Objects.requireNonNull(productRepository, "productRepository");
         this.courierRecordRepository =
                 Objects.requireNonNull(courierRecordRepository, "courierRecordRepository");
         this.courierCompanyRepository =
                 Objects.requireNonNull(courierCompanyRepository, "courierCompanyRepository");
-        this.orderReturnRepository =
-                Objects.requireNonNull(orderReturnRepository, "orderReturnRepository");
         this.receivableRepository =
                 Objects.requireNonNull(receivableRepository, "receivableRepository");
         this.leadRepository = Objects.requireNonNull(leadRepository, "leadRepository");
@@ -214,7 +191,6 @@ public class InsightComputationService {
     @Transactional
     public int computeForToday() {
         LocalDate today = LocalDate.now(clock);
-        LocalDateTime now = LocalDateTime.now(clock);
 
         // Current window [today - windowDays + 1 .. today]; previous = the equal-length preceding period.
         LocalDate currentStart = today.minusDays(windowDays - 1L);
@@ -227,15 +203,15 @@ public class InsightComputationService {
 
         // Gather every family independently so one failure is logged & skipped (Req 1.3).
         SalesWindow sales = safe("sales", () -> gatherSales(currentFrom, currentTo, previousFrom, previousTo), null);
-        List<ProductConsumption> products = safe("reorder", () -> gatherProducts(now), List.of());
+        List<LocationPerformance> locations =
+                safe("location", () -> gatherLocations(currentFrom, currentTo), List.of());
         List<CourierOutcome> couriers = safe("courier", this::gatherCouriers, List.of());
         List<OpenOrderRisk> openOrders = safe("rto", this::gatherOpenOrders, List.of());
-        ReturnStats returns = safe("returns", () -> gatherReturns(currentFrom, currentTo), null);
         CodOutstanding cod = safe("cod", this::gatherCod, null);
         List<LeadSourceConversion> leadSources = safe("lead-source", this::gatherLeadSources, List.of());
 
         InsightInputs inputs = new InsightInputs(
-                sales, products, couriers, openOrders, returns, cod, leadSources);
+                sales, locations, couriers, openOrders, cod, leadSources);
         List<Insight> insights = engine.compute(inputs, thresholds, today);
 
         // Capture the notifiable natural keys already present for today BEFORE the
@@ -304,32 +280,38 @@ public class InsightComputationService {
         return total;
     }
 
-    private List<ProductConsumption> gatherProducts(LocalDateTime now) {
-        int lookbackDays = thresholds.reorderLookbackDays();
-        LocalDateTime lookbackFrom = now.minusDays(lookbackDays);
-        List<StockMovement> saleMovements = stockMovementRepository
-                .findByMovementTypeAndCreatedAtBetween(StockMovementType.SALE, lookbackFrom, now);
-
-        Map<Long, Long> unitsByProduct = new LinkedHashMap<>();
-        for (StockMovement m : saleMovements) {
-            if (m.getProductId() == null) {
-                continue;
+    /**
+     * Per-state sales + delivery outcome over the current window — the input to
+     * the location insights. Orders are grouped by destination state; revenue
+     * excludes rejected/cancelled; delivered/failed count terminal outcomes. The
+     * business has no marketing-spend-by-location data, so this order-outcome
+     * aggregate is the grounded basis for "push this market" / "spend here isn't
+     * converting".
+     */
+    private List<LocationPerformance> gatherLocations(LocalDateTime currentFrom, LocalDateTime currentTo) {
+        Map<String, long[]> counts = new LinkedHashMap<>();       // state -> [orders, delivered, failed]
+        Map<String, BigDecimal> revenueByState = new HashMap<>(); // state -> revenue (excl rejected/cancelled)
+        for (OrderEntity o : orderRepository.findByCreatedAtBetween(currentFrom, currentTo)) {
+            String state = o.getState() == null ? "" : o.getState();
+            OrderStatus s = o.getOrderStatus();
+            long[] cell = counts.computeIfAbsent(state, k -> new long[3]);
+            cell[0]++;                                            // every order placed to this state
+            if (DELIVERED_TERMINAL.contains(s)) {
+                cell[1]++;
+            } else if (FAILED_TERMINAL.contains(s)) {
+                cell[2]++;
             }
-            unitsByProduct.merge(m.getProductId(), (long) Math.abs(m.getDelta()), Long::sum);
+            boolean rejectedOrCancelled = s == OrderStatus.REJECTED
+                    || s == OrderStatus.PAYMENT_REJECTED || s == OrderStatus.CANCELLED;
+            if (!rejectedOrCancelled) {
+                revenueByState.merge(state, nz(o.getTotalAmount()), BigDecimal::add);
+            }
         }
-
-        List<ProductConsumption> out = new ArrayList<>();
-        for (Map.Entry<Long, Long> e : unitsByProduct.entrySet()) {
-            Long productId = e.getKey();
-            long unitsSold = e.getValue();
-            int onHand = stockMovementRepository
-                    .findTopByProductIdOrderByCreatedAtDescIdDesc(productId)
-                    .map(StockMovement::getBalanceAfter)
-                    .orElse(0);
-            String name = productRepository.findById(productId)
-                    .map(Product::getName)
-                    .orElse("Product #" + productId);
-            out.add(new ProductConsumption(productId, name, onHand, unitsSold, lookbackDays));
+        List<LocationPerformance> out = new ArrayList<>();
+        for (Map.Entry<String, long[]> e : counts.entrySet()) {
+            long[] c = e.getValue();
+            out.add(new LocationPerformance(
+                    e.getKey(), c[0], revenueByState.getOrDefault(e.getKey(), BigDecimal.ZERO), c[1], c[2]));
         }
         return out;
     }
@@ -406,19 +388,6 @@ public class InsightComputationService {
                     o.getState(), priorFailed, stateFailureRate));
         }
         return out;
-    }
-
-    private ReturnStats gatherReturns(LocalDateTime currentFrom, LocalDateTime currentTo) {
-        long returns = orderReturnRepository
-                .search(null, null, currentFrom, currentTo, PageRequest.of(0, 1))
-                .getTotalElements();
-        long delivered = 0;
-        for (OrderEntity o : orderRepository.findByCreatedAtBetween(currentFrom, currentTo)) {
-            if (DELIVERED_TERMINAL.contains(o.getOrderStatus())) {
-                delivered++;
-            }
-        }
-        return new ReturnStats(delivered, returns);
     }
 
     private CodOutstanding gatherCod() {

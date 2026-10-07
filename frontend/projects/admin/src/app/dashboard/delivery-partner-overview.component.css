@@ -1,0 +1,169 @@
+:host {
+  display: block;
+  margin-top: 1.5rem;
+}
+
+.dp-section {
+  margin-bottom: 1rem;
+}
+
+.dp-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+}
+.dp-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1c2b24;
+  margin: 0;
+}
+.dp-sub {
+  font-size: 0.82rem;
+  margin: 0.15rem 0 0;
+}
+
+/* Three partner cards; collapse to one column on small screens. */
+.dp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+@media (max-width: 991.98px) {
+  .dp-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dp-card {
+  --dp-accent: #1f5d3f;
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-top: 3px solid var(--dp-accent);
+  border-radius: 12px;
+  padding: 0.95rem 1rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.dp-card__head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.dp-card__icon {
+  flex: 0 0 auto;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 10px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 1.2rem;
+  color: var(--dp-accent);
+  background: color-mix(in srgb, var(--dp-accent) 12%, #fff);
+}
+.dp-card__titles {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.dp-card__name {
+  font-weight: 700;
+  color: #1c2b24;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+.dp-card__orders {
+  font-size: 0.8rem;
+  color: #64726b;
+}
+
+/* Revenue + COD strip */
+.dp-card__money {
+  display: flex;
+  gap: 0.6rem;
+}
+.dp-money {
+  flex: 1 1 0;
+  background: #f6f9f7;
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+}
+.dp-money--cod {
+  background: rgba(245, 159, 0, 0.1);
+}
+.dp-money__lbl {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64726b;
+}
+.dp-money__val {
+  display: block;
+  font-weight: 700;
+  font-size: 1rem;
+  color: #1c2b24;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Lifecycle metric tiles (the client-requested in-transit / delivered / etc). */
+.dp-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+.dp-metric {
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  background: #fff;
+  border-radius: 9px;
+  padding: 0.5rem 0.4rem;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.dp-metric:hover {
+  background: #f6f9f7;
+  border-color: rgba(15, 51, 36, 0.18);
+}
+.dp-metric__n {
+  display: block;
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: #1c2b24;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.dp-metric__n--transit {
+  color: #206bc4;
+}
+.dp-metric__n--delivered {
+  color: #2fb344;
+}
+.dp-metric__n--cancelled {
+  color: #868e96;
+}
+.dp-metric__n--failed {
+  color: #d63939;
+}
+.dp-metric__l {
+  display: block;
+  font-size: 0.68rem;
+  color: #64726b;
+  margin-top: 0.15rem;
+}
+
+.dp-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  border-top: 1px solid rgba(15, 51, 36, 0.06);
+  padding-top: 0.6rem;
+  margin-top: auto;
+}

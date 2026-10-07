@@ -27,7 +27,7 @@
 
     <!-- Mobile cards (<768px) -->
     <div class="d-md-none shifa-del__cards">
-      @for (o of orders(); track o.id) {
+      @for (o of pageItems(); track o.id) {
         <div class="shifa-del__card">
           <div class="d-flex align-items-start justify-content-between gap-2">
             <div class="min-w-0">
@@ -75,7 +75,7 @@
           </tr>
         </thead>
         <tbody>
-          @for (o of orders(); track o.id) {
+          @for (o of pageItems(); track o.id) {
             <tr>
               <td>
                 <a [routerLink]="['/orders']" [queryParams]="{ q: o.orderCode }">{{ o.orderCode }}</a>
@@ -107,5 +107,14 @@
         </tbody>
       </table>
     </div>
+
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="count()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
   </div>
 }

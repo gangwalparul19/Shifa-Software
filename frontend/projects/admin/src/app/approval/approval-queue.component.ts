@@ -3,6 +3,7 @@ import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { catchError, forkJoin, of } from 'rxjs';
 import { Money, RejectReason } from 'core';
+import { formatInr, formatCompactInr } from '../shared/inr.pipe';
 import { ApprovalService } from './approval.service';
 import { ApprovalQueueItem } from './approval.model';
 import { AdminEventsService } from '../dashboard/admin-events.service';
@@ -560,11 +561,14 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     return parts.length > 2 ? `${shown} +${parts.length - 2} more` : shown;
   }
 
+  /** Full ₹ amount with thousands separators (used for the desktop table + tooltips). */
   money(value: Money | undefined): string {
-    if (value === undefined || value === null) {
-      return '₹0.00';
-    }
-    return `₹${value}`;
+    return formatInr(value as number | string | null | undefined);
+  }
+
+  /** Compact ₹ amount (₹12.46K / ₹1.23L) for cramped mobile cards; pair with money() as the title. */
+  moneyCompact(value: Money | undefined): string {
+    return formatCompactInr(value as number | string | null | undefined);
   }
 
   /** Up-to-two-letter initials from a customer name, for the drawer avatar. */

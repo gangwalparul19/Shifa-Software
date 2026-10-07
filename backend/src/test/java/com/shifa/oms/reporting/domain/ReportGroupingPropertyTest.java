@@ -164,7 +164,7 @@ class ReportGroupingPropertyTest {
                 .map(v -> v == 0 ? null : v);
         Arbitrary<LeadSource> lead = Arbitraries.of(
                 LeadSource.WHATSAPP, LeadSource.INSTAGRAM, LeadSource.FACEBOOK,
-                LeadSource.GOOGLE, LeadSource.OFFLINE, LeadSource.OTHER, null);
+                LeadSource.REFERRAL, LeadSource.OFFLINE, LeadSource.OTHER, null);
         Arbitrary<OrderStatus> status = Arbitraries.of(OrderStatus.values());
         Arbitrary<PaymentStatus> payment = Arbitraries.of(PaymentStatus.values());
 

@@ -108,16 +108,24 @@ class OrderServiceStoreTest {
         return p;
     }
 
+    /** A store request WITH a payment screenshot (now mandatory when money is received). */
     private StoreOrderRequest storeRequest(List<StoreLineItemRequest> items, BigDecimal amountReceived) {
+        return storeRequest(items, amountReceived, "payments/counter-proof.jpg");
+    }
+
+    /** A store request with an explicit screenshot key (null/blank = no proof attached). */
+    private StoreOrderRequest storeRequest(
+            List<StoreLineItemRequest> items, BigDecimal amountReceived, String screenshotKey) {
         return new StoreOrderRequest(
                 "Walk-in Asha", "9812345678", null, null, null, null,
-                items, amountReceived, null, null, null, null, null, null);
+                items, amountReceived, null, null, null, null, null, null,
+                screenshotKey, null);
     }
 
     @Test
-    void fullyPaidStoreOrderIsAutoApprovedAndClosedWithNoScreenshot() {
+    void fullyPaidStoreOrderIsAutoApprovedAndClosedWithScreenshot() {
         when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "500.00")));
-        // One product × 1 @ 500 = 500; paid in full at the counter, NO screenshot.
+        // One product × 1 @ 500 = 500; paid in full at the counter WITH a screenshot.
         StoreOrderRequest request = storeRequest(
                 List.of(new StoreLineItemRequest(1L, null, 1, null, null, null)),
                 new BigDecimal("500.00"));
@@ -131,6 +139,20 @@ class OrderServiceStoreTest {
         // Fully-paid walks all the way to a completed, closed sale.
         assertThat(res.orderStatus()).isEqualTo(OrderStatus.CLOSED);
         assertThat(res.customerOutstanding()).isEqualByComparingTo("0.00");
+        // The counter payment proof is attached.
+        assertThat(res.paymentScreenshotAvailable()).isTrue();
+    }
+
+    @Test
+    void paidStoreOrderWithoutScreenshotIsRejected() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "500.00")));
+        // Money received at the counter but NO screenshot attached → rejected.
+        StoreOrderRequest request = storeRequest(
+                List.of(new StoreLineItemRequest(1L, null, 1, null, null, null)),
+                new BigDecimal("500.00"), null);
+
+        assertThatThrownBy(() -> service.createStoreOrder(request, admin))
+                .isInstanceOf(com.shifa.oms.common.ValidationException.class);
     }
 
     @Test

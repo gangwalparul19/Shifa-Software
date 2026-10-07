@@ -126,10 +126,12 @@ export interface StoreOrderLineItem {
 
 /**
  * In-shop (POS / counter) order payload posted to {@code POST /api/orders/store}
- * (store-order feature, ADMIN only; mirrors the backend {@code StoreOrderRequest}).
- * No payment screenshot, no delivery partner, the address is optional, and line
- * items may be ad-hoc. A fully-paid sale is auto-approved + closed by the server;
- * a partial payment leaves it approved with the balance tracked.
+ * (store-order feature; usable by ADMIN, SALESPERSON and TEAM_LEAD; mirrors the
+ * backend {@code StoreOrderRequest}). A payment screenshot is required when an
+ * amount is received (proof of the counter payment); no delivery partner, the
+ * address is optional, and line items may be ad-hoc. A fully-paid sale is
+ * auto-approved + closed by the server; a partial payment leaves it approved with
+ * the balance tracked.
  */
 export interface StoreOrderRequest {
   customerName: string;
@@ -146,6 +148,10 @@ export interface StoreOrderRequest {
   buyerGstin?: string;
   discountType?: OrderDiscountType;
   discountValue?: number;
+  /** Primary payment-proof storage key (required when amountReceived > 0). */
+  paymentScreenshotKey?: string;
+  /** Additional payment-proof keys beyond the primary (V65 multi-screenshot). */
+  paymentScreenshotKeys?: string[];
 }
 
 /**

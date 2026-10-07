@@ -90,7 +90,10 @@ public class SalesTargetService {
         }
 
         List<SalesTargetRow> rows = new ArrayList<>();
-        for (User u : userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.SALESPERSON)) {
+        // Include TEAM_LEAD users alongside SALESPERSON — a team lead also punches
+        // orders, so they get a target/incentive row here too.
+        for (User u : userRepository.findByRoleInOrderByCreatedAtDescIdDesc(
+                List.of(Role.SALESPERSON, Role.TEAM_LEAD))) {
             rows.add(row(u, ym, targetById.get(u.getId()),
                     revenueById.getOrDefault(u.getId(), BigDecimal.ZERO),
                     ordersById.getOrDefault(u.getId(), 0L)));
@@ -133,8 +136,8 @@ public class SalesTargetService {
                                     BigDecimal incentivePct) {
         User u = userRepository.findById(salespersonId)
                 .orElseThrow(() -> new ResourceNotFoundException("User " + salespersonId + " does not exist."));
-        if (u.getRole() != Role.SALESPERSON) {
-            throw new ValidationException("Targets can only be set for a salesperson.");
+        if (u.getRole() != Role.SALESPERSON && u.getRole() != Role.TEAM_LEAD) {
+            throw new ValidationException("Targets can only be set for a salesperson or team lead.");
         }
         YearMonth ym = parseMonth(month);
         LocalDate firstDay = ym.atDay(1);

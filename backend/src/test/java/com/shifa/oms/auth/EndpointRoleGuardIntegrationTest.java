@@ -676,6 +676,13 @@ class EndpointRoleGuardIntegrationTest {
         }
 
         @Bean
+        com.shifa.oms.order.DeliveryPartnerService deliveryPartnerService() {
+            // No guard test exercises the delivery-partner summary; a null-repo
+            // instance satisfies the AdminOrderController dependency for wiring.
+            return new com.shifa.oms.order.DeliveryPartnerService(null);
+        }
+
+        @Bean
         com.shifa.oms.order.OrderExportService orderExportService() {
             return new com.shifa.oms.order.OrderExportService(
                     new StubAdminOrderService(), new CsvReportExporter(), new ExcelReportExporter());

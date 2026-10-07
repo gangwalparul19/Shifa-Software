@@ -73,8 +73,9 @@ class LeadSourceConversionPropertyTest {
         assertThat(i.scopeRefId()).isEqualTo(InsightEngine.GLOBAL_REF);
         assertThat(i.severity()).isEqualTo(InsightSeverity.INFO);
         assertThat(i.metricValue()).isEqualByComparingTo(bestRate);
-        // The title names both extremes.
-        assertThat(i.title()).contains(best.source().name()).contains(worst.source().name());
+        // The actionable title promotes the best channel; the detail names both extremes.
+        assertThat(i.title()).contains(best.source().name());
+        assertThat(i.detail()).contains(best.source().name()).contains(worst.source().name());
     }
 
     /**

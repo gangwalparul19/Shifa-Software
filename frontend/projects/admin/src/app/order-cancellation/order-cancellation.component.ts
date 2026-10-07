@@ -72,7 +72,7 @@ export class OrderCancellationComponent implements OnInit {
 
   // Paging (client-side slice over the loaded page).
   protected readonly page = signal(0);
-  protected readonly size = signal(readPageSize('orderCancellation', 20));
+  protected readonly size = signal(readPageSize('orderCancellation', 10));
   protected readonly totalElements = computed(() => this.orders().length);
   protected readonly totalPages = computed(() =>
     Math.max(1, Math.ceil(this.totalElements() / this.size())),

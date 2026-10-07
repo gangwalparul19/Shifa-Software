@@ -6,7 +6,7 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
-import { InrPipe } from '../shared/inr.pipe';
+import { InrPipe, CompactInrPipe } from '../shared/inr.pipe';
 import { ToastService } from '../shared/toast.service';
 import {
   SourceFilterMode,
@@ -34,6 +34,7 @@ import { PaymentQueueRow } from './payments.model';
     PaginationComponent,
     StatePanelComponent,
     InrPipe,
+    CompactInrPipe,
   ],
   templateUrl: './payments.component.html',
   styleUrl: './payments.component.css',

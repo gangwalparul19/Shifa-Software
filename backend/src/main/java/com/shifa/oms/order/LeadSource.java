@@ -15,7 +15,6 @@ package com.shifa.oms.order;
  *   <li>{@link #WHATSAPP} — lead arrived over WhatsApp.</li>
  *   <li>{@link #INSTAGRAM} — lead arrived over Instagram.</li>
  *   <li>{@link #FACEBOOK} — lead arrived over Facebook.</li>
- *   <li>{@link #GOOGLE} — lead arrived through Google (search/ads).</li>
  *   <li>{@link #OFFLINE} — walk-in / phone / other offline channel.</li>
  *   <li>{@link #OTHER} — anything else; accepts an optional free-text note
  *       ({@code lead_source_note}, Req 4.5).</li>
@@ -31,13 +30,13 @@ public enum LeadSource {
     WHATSAPP,
     INSTAGRAM,
     FACEBOOK,
-    GOOGLE,
     OFFLINE,
+    SHOPIFY_UPSELL,
+    SHOPIFY_ABANDONMENT_SALE,
+    INBOUND_CALLS,
+    REPEAT_CUSTOMER,
+    REFERRAL,
     OTHER,
-
-    /** Order originated from the Shopify storefront (imported via webhook). */
     SHOPIFY,
-
-    /** Walk-in / in-shop counter sale — no delivery partner is ever required. */
     COUNTER_SALE
 }

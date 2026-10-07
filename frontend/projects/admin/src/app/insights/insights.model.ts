@@ -13,10 +13,10 @@ export type Severity = 'INFO' | 'WARNING' | 'DANGER';
 /** The insight family (backend {@code InsightType}). */
 export type InsightType =
   | 'SALES_ANOMALY'
-  | 'LOW_STOCK_REORDER'
+  | 'TOP_SALES_LOCATION'
+  | 'UNDERPERFORMING_LOCATION'
   | 'RTO_RISK'
   | 'COURIER_SCORECARD'
-  | 'RETURN_RATE_ANOMALY'
   | 'COD_OUTSTANDING_BUILDUP'
   | 'LEAD_SOURCE_CONVERSION';
 
@@ -74,10 +74,10 @@ export const SEVERITY_LABELS: Record<Severity, string> = {
 /** Human labels for each {@link InsightType} (design §Frontend). */
 export const INSIGHT_TYPE_LABELS: Record<string, string> = {
   SALES_ANOMALY: 'Sales anomaly',
-  LOW_STOCK_REORDER: 'Reorder suggestion',
+  TOP_SALES_LOCATION: 'Top market',
+  UNDERPERFORMING_LOCATION: 'Weak market',
   RTO_RISK: 'RTO risk',
   COURIER_SCORECARD: 'Courier scorecard',
-  RETURN_RATE_ANOMALY: 'Return-rate anomaly',
   COD_OUTSTANDING_BUILDUP: 'On-delivery outstanding',
   LEAD_SOURCE_CONVERSION: 'Lead-source conversion',
 };

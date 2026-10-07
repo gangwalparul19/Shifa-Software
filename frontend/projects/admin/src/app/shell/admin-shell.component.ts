@@ -663,6 +663,7 @@ export class AdminShellComponent {
           roles: [Role.ADMIN, Role.CA],
         },
         { kind: 'link', label: 'Analytics', path: '/analytics', icon: 'ti-chart-dots', adminOnly: true },
+        { kind: 'link', label: 'Delivery Partners', path: '/delivery-partners', icon: 'ti-truck-delivery', adminOnly: true },
         { kind: 'link', label: 'Shopify Sync', path: '/shopify-sync', icon: 'ti-brand-shopify', adminOnly: true },
         { kind: 'link', label: 'Insights', path: '/insights', icon: 'ti-bulb', adminOnly: true },
         {
@@ -836,6 +837,17 @@ export class AdminShellComponent {
     // Customers never reach the staff shell; no bottom bar.
     [Role.CUSTOMER]: [],
   };
+
+  /**
+   * Whether to show the global quick-search (orders/products/customers). Hidden
+   * for the PAYMENT_VERIFIER role, which is restricted to the payments screen +
+   * view-only orders — the cross-entity search (and its backend endpoint) is out
+   * of scope for that role.
+   */
+  protected readonly showGlobalSearch = computed<boolean>(() => {
+    const role = this.auth.session()?.role ?? null;
+    return role !== Role.PAYMENT_VERIFIER;
+  });
 
   /** The four bottom-bar destinations for the signed-in user's role (Req 2.1). */
   protected readonly bottomTabs = computed<BottomTab[]>(() => {

@@ -58,10 +58,16 @@ public class StaffProfileService {
         this.currentUserService = currentUserService;
     }
 
-    /** The "All salespeople" directory (SALESPERSON role, newest first). */
+    /**
+     * The "All salespeople" directory, newest first. Includes both SALESPERSON
+     * and TEAM_LEAD users — a team lead also punches orders, so the client wants
+     * them listed alongside salespeople here.
+     */
     @Transactional(readOnly = true)
     public List<StaffProfileResponse> listSalespeople() {
-        return userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.SALESPERSON).stream()
+        return userRepository
+                .findByRoleInOrderByCreatedAtDescIdDesc(List.of(Role.SALESPERSON, Role.TEAM_LEAD))
+                .stream()
                 .map(StaffProfileResponse::from)
                 .toList();
     }

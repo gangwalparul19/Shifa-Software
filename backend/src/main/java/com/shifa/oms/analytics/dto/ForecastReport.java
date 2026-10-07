@@ -5,9 +5,8 @@ import java.util.List;
 
 /**
  * Demand & cash forecast (FEATURE-ROADMAP §6.5): a simple moving-average
- * projection of per-product demand plus an expected-COD-collection outlook.
- * Distinct from the LOW_STOCK_REORDER insight (which flags reorder alerts) — this
- * is a forward projection of units and cash.
+ * projection of per-product demand plus an expected-COD-collection outlook — a
+ * forward projection of units and cash.
  *
  * @param lookbackDays the trailing window used to compute the run-rate
  * @param horizonDays  the forward projection horizon

@@ -15,19 +15,20 @@ import java.util.List;
 
 /**
  * In-shop (POS / counter) order payload for {@code POST /api/orders/store}
- * (store-order feature, ADMIN only).
+ * (store-order feature). Usable by ADMIN, SALESPERSON and TEAM_LEAD.
  *
  * <p>A walk-in customer pays at the counter and leaves with the goods, so a
  * store order deliberately differs from a salesperson order
  * ({@link CreateOrderRequest}):
  * <ul>
- *   <li>NO payment screenshot is required (the cash/UPI is taken at the counter);</li>
+ *   <li>a payment screenshot IS required whenever any amount is received (proof
+ *       of the counter payment), mirroring the salesperson order;</li>
  *   <li>NO delivery partner — it is always a counter sale (in-house), no courier;</li>
  *   <li>the address is OPTIONAL (a walk-in may give only a name + phone);</li>
  *   <li>line items may be ad-hoc (a consultation fee, a one-off charge) as well
  *       as catalogue products ({@link StoreLineItemRequest});</li>
  *   <li>the salesperson min-upfront, same-day-duplicate and price-band guards do
- *       NOT apply — the admin sets the counter price and may take any part payment.</li>
+ *       NOT apply — the counter price is set in-shop and any part payment is allowed.</li>
  * </ul>
  *
  * <p>A fully-paid store order is auto-approved and closed immediately; a partial
@@ -83,6 +84,18 @@ public record StoreOrderRequest(
         BigDecimal discountValue,
 
         @Size(max = 15, message = "buyerGstin must be at most 15 characters")
-        String buyerGstin
+        String buyerGstin,
+
+        // --- Payment proof (store-order screenshot mandate) ---------------------
+        // The primary payment screenshot storage key (uploaded via
+        // POST /api/orders/payment-screenshots). Required when amountReceived > 0.
+        @Size(max = 512, message = "paymentScreenshotKey must be at most 512 characters")
+        String paymentScreenshotKey,
+
+        // Additional payment-proof keys (a counter payment may need several
+        // screenshots); each attached alongside the primary. Appended last to keep
+        // the record constructor backward-compatible.
+        @Size(max = 10, message = "at most 10 payment screenshots are allowed")
+        List<@Size(max = 512) String> paymentScreenshotKeys
 ) {
 }

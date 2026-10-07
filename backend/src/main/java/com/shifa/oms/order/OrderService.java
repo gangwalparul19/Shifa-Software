@@ -402,7 +402,8 @@ public class OrderService {
      * outstanding.
      *
      * @param request the POS order payload
-     * @param admin   the acting ADMIN (the create endpoint is ADMIN-only)
+     * @param admin   the acting user (ADMIN, SALESPERSON or TEAM_LEAD); the order
+     *                is attributed to them via {@code created_by}
      * @return the created (and possibly auto-closed) order
      */
     @Transactional
@@ -415,16 +416,19 @@ public class OrderService {
         Money total = Money.of(pricedOrder.total());
         requirePositiveTotal(total);
 
-        // Payment: full or partial, taken at the counter. NO screenshot, NO minimum
-        // upfront, NO same-day-duplicate check (all salesperson-flow guards that make
-        // no sense for a walk-in sale). A sub-rupee overage from rounding is absorbed,
-        // exactly as for a salesperson order; a genuine over-payment is still rejected
+        // Payment: full or partial, taken at the counter. NO minimum upfront and NO
+        // same-day-duplicate check (salesperson-flow guards that make no sense for a
+        // walk-in sale), but a payment screenshot IS required when money is received
+        // (proof of the counter payment), mirroring the salesperson order. A sub-rupee
+        // overage from rounding is absorbed; a genuine over-payment is still rejected
         // by classify().
         Money received = Money.of(request.amountReceived());
         Money overage = received.subtract(total);
         if (overage.compareTo(Money.ZERO) > 0 && overage.compareTo(Money.of(1L)) < 0) {
             received = total;
         }
+        List<String> screenshotKeys = storeScreenshotKeys(request);
+        PaymentCalculator.requireScreenshotWhenPaid(received, primaryKey(screenshotKeys));
         PaymentCalculation calc = PaymentCalculator.classify(total, received);
 
         // Address is optional for a counter sale (no delivery) — store whatever was
@@ -456,8 +460,9 @@ public class OrderService {
 
         // A counter sale has no payment to verify online (the money is in hand), so
         // it never enters the payment-verification queue — do NOT mark it pending.
+        // The screenshot is attached as proof-of-record only.
 
-        populateAggregate(order, priced, calc, java.util.List.of(), admin.username(), SOURCE_STORE);
+        populateAggregate(order, priced, calc, screenshotKeys, admin.username(), SOURCE_STORE);
 
         DiscountType discountType = discountSpec.type();
         order.applyOrderDiscount(
@@ -1745,6 +1750,22 @@ public class OrderService {
      * are dropped. An order with no proofs yields an empty list.
      */
     private static List<String> effectiveScreenshotKeys(CreateOrderRequest request) {
+        List<String> keys = new ArrayList<>();
+        addKey(keys, request.paymentScreenshotKey());
+        if (request.paymentScreenshotKeys() != null) {
+            for (String extra : request.paymentScreenshotKeys()) {
+                addKey(keys, extra);
+            }
+        }
+        return keys;
+    }
+
+    /**
+     * Resolves the ordered, de-duplicated payment-proof keys for a store (POS)
+     * order — the legacy single key first (primary), then any extras — mirroring
+     * {@link #effectiveScreenshotKeys(CreateOrderRequest)} for the salesperson path.
+     */
+    private static List<String> storeScreenshotKeys(StoreOrderRequest request) {
         List<String> keys = new ArrayList<>();
         addKey(keys, request.paymentScreenshotKey());
         if (request.paymentScreenshotKeys() != null) {

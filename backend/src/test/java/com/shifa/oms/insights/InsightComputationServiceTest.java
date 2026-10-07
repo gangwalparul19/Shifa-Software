@@ -12,17 +12,14 @@ import com.shifa.oms.courier.CourierRecordRepository;
 import com.shifa.oms.insights.domain.InsightSeverity;
 import com.shifa.oms.insights.domain.InsightThresholds;
 import com.shifa.oms.insights.domain.InsightType;
-import com.shifa.oms.inventory.StockMovementRepository;
 import com.shifa.oms.lead.LeadRepository;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
-import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.reconciliation.ReceivableEntity;
 import com.shifa.oms.reconciliation.ReceivableRepository;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
-import com.shifa.oms.returns.OrderReturnRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -84,18 +81,9 @@ class InsightComputationServiceTest {
         when(orderRepository.findAll()).thenReturn(List.of());
         when(orderRepository.findByOrderStatusInOrderByCreatedAtDesc(any())).thenReturn(List.of());
 
-        StockMovementRepository stockMovementRepository = mock(StockMovementRepository.class);
-        when(stockMovementRepository.findByMovementTypeAndCreatedAtBetween(any(), any(), any()))
-                .thenReturn(List.of());
-
-        ProductRepository productRepository = mock(ProductRepository.class);
         CourierRecordRepository courierRecordRepository = mock(CourierRecordRepository.class);
         when(courierRecordRepository.findAll()).thenReturn(List.of());
         CourierCompanyRepository courierCompanyRepository = mock(CourierCompanyRepository.class);
-
-        OrderReturnRepository orderReturnRepository = mock(OrderReturnRepository.class);
-        when(orderReturnRepository.search(any(), any(), any(), any(), any()))
-                .thenReturn(org.springframework.data.domain.Page.empty());
 
         // The only trigger: unsettled COD (60000) above the 50000 threshold → one WARNING insight.
         ReceivableRepository receivableRepository = mock(ReceivableRepository.class);
@@ -129,8 +117,8 @@ class InsightComputationServiceTest {
         AuditService auditService = new AuditService(auditEventRepository, new CurrentUserService());
 
         service = new InsightComputationService(
-                insightRepository, orderRepository, stockMovementRepository, productRepository,
-                courierRecordRepository, courierCompanyRepository, orderReturnRepository,
+                insightRepository, orderRepository,
+                courierRecordRepository, courierCompanyRepository,
                 receivableRepository, leadRepository, outboxEventPublisher, dispatcher, auditService,
                 InsightThresholds.defaults(), 7, FIXED_CLOCK);
     }

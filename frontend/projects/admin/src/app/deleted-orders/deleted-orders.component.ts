@@ -5,6 +5,8 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { OrdersService } from '../orders/orders.service';
 import { OrderSummary } from '../orders/orders.model';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { IstDatePipe } from '../shared/ist-date.pipe';
 import { InrPipe } from '../shared/inr.pipe';
@@ -22,7 +24,7 @@ import { humanizeStatus } from '../shared/status-badge.component';
  */
 @Component({
   selector: 'admin-deleted-orders',
-  imports: [RouterLink, IstDatePipe, InrPipe, PageHeaderComponent, StatePanelComponent],
+  imports: [RouterLink, IstDatePipe, InrPipe, PageHeaderComponent, PaginationComponent, StatePanelComponent],
   templateUrl: './deleted-orders.component.html',
   styleUrl: './deleted-orders.component.css',
 })
@@ -40,6 +42,23 @@ export class DeletedOrdersComponent implements OnInit {
   protected readonly humanize = humanizeStatus;
   protected readonly count = computed(() => this.orders().length);
 
+  // --- Client-side paging (10/page) ---------------------------------------
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('deletedOrders', 10));
+  protected readonly totalPages = computed(() => Math.max(1, Math.ceil(this.orders().length / this.size())));
+  protected readonly pageItems = computed<OrderSummary[]>(() => {
+    const s = this.page() * this.size();
+    return this.orders().slice(s, s + this.size());
+  });
+  goToPage(p: number): void {
+    this.page.set(p);
+  }
+  setSize(s: number): void {
+    this.size.set(s);
+    writePageSize('deletedOrders', s);
+    this.page.set(0);
+  }
+
   ngOnInit(): void {
     this.load();
   }
@@ -50,6 +69,7 @@ export class DeletedOrdersComponent implements OnInit {
     this.service.deletedOrders().subscribe({
       next: (list) => {
         this.orders.set(list ?? []);
+        this.page.set(0);
         this.loading.set(false);
       },
       error: (error: HttpErrorResponse) => {
@@ -85,6 +105,11 @@ export class DeletedOrdersComponent implements OnInit {
         this.toasts.success(`Order ${order.orderCode} restored.`);
         // Drop it from the deleted list (it's active again now).
         this.orders.set(this.orders().filter((o) => o.id !== order.id));
+        // Avoid being stranded on a now-empty trailing page.
+        const maxPage = Math.max(0, this.totalPages() - 1);
+        if (this.page() > maxPage) {
+          this.page.set(maxPage);
+        }
       },
       error: () => {
         this.restoringId.set(null);

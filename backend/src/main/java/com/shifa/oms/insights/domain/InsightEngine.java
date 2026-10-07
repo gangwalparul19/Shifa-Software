@@ -20,9 +20,11 @@ import java.util.List;
  *
  * <p>Each insight family has one public method taking its projection(s), the
  * {@link InsightThresholds}, and the {@code today} date; {@link #compute} runs
- * them all in a fixed order (sales, reorder, RTO risk, courier, return-rate, COD,
- * lead-source), sorting collection inputs by their id so the output ordering is
- * stable. GLOBAL-scope insights carry the sentinel {@code scopeRefId = 0}.
+ * them all in a fixed order (sales anomaly, top sales location, underperforming
+ * locations, RTO risk, courier, COD, lead-source), sorting collection inputs
+ * deterministically so the output ordering is stable. GLOBAL-scope insights
+ * carry the sentinel {@code scopeRefId = 0} (except multi-row location warnings,
+ * which derive a stable per-state ref to stay unique).
  */
 public class InsightEngine {
 
@@ -98,47 +100,81 @@ public class InsightEngine {
                 "All sales", severity, title, detail, pctChange, today));
     }
 
-    // --- Low-stock reorder (Req 4.1–4.4) ------------------------------------
+    // --- Top sales location (marketing opportunity) ------------------------
 
     /**
-     * A {@code LOW_STOCK_REORDER} (PRODUCT) per product whose projected
-     * days-of-cover ({@code onHand / avgDaily}) is below
-     * {@link InsightThresholds#reorderCoverDays()} (design &sect;Reorder detail),
-     * carrying a non-negative suggested reorder quantity and the stock-out ETA in
-     * days. Products with no consumption ({@code avgDaily == 0}) are skipped (no
-     * divide-by-zero, no false alarm). Products are processed in ascending
-     * {@code productId} order for deterministic output.
+     * A {@code TOP_SALES_LOCATION} (GLOBAL, INFO) naming the single strongest
+     * state by window revenue, among states with at least
+     * {@link InsightThresholds#locationMinOrders()} orders (so a one-off big
+     * order can't crown a location). It is an opportunity cue: this is where
+     * marketing is paying off, so consider pushing harder there. No insight when
+     * no state clears the minimum-orders bar. Metric = the winning state's revenue.
      */
-    public List<Insight> reorder(List<ProductConsumption> products, InsightThresholds t, LocalDate today) {
-        List<ProductConsumption> sorted = new ArrayList<>(products == null ? List.of() : products);
-        sorted.sort(Comparator.comparing(ProductConsumption::productId,
-                Comparator.nullsLast(Comparator.naturalOrder())));
+    public List<Insight> topSalesLocation(List<LocationPerformance> locations, InsightThresholds t,
+                                          LocalDate today) {
+        List<LocationPerformance> sorted = new ArrayList<>(locations == null ? List.of() : locations);
+        // Deterministic: highest revenue first, tie-break by state name.
+        sorted.sort(Comparator.comparing((LocationPerformance l) -> nz(l.revenue()))
+                .reversed()
+                .thenComparing(l -> label(l.state())));
+        for (LocationPerformance l : sorted) {
+            if (l.orders() < t.locationMinOrders() || nz(l.revenue()).signum() <= 0) {
+                continue;
+            }
+            String state = label(l.state());
+            String title = "Top market: " + state;
+            String detail = state + " is your strongest market this window — " + l.orders()
+                    + " orders for " + nz(l.revenue()).toPlainString()
+                    + " in revenue. Consider increasing marketing spend here to grow it further.";
+            return List.of(new Insight(InsightType.TOP_SALES_LOCATION, InsightScope.GLOBAL, GLOBAL_REF,
+                    state, InsightSeverity.INFO, title, detail, nz(l.revenue()), today));
+        }
+        return List.of();
+    }
+
+    // --- Underperforming location (wasted marketing spend) -----------------
+
+    /**
+     * An {@code UNDERPERFORMING_LOCATION} (GLOBAL, WARNING) per state that has at
+     * least {@link InsightThresholds#locationMinOrders()} concluded orders but a
+     * delivery-failure share (failed / (delivered + failed) · 100) above
+     * {@link InsightThresholds#locationFailWarnPct()}. The business has no
+     * marketing-spend-by-location data, so this is the grounded proxy for "spend
+     * here isn't converting into delivered sales": orders are coming in but not
+     * reaching the customer, so fix delivery there or cut the marketing spend. A
+     * failure share beyond twice the threshold is DANGER. States processed by
+     * name for deterministic output; metric = the failure percentage.
+     */
+    public List<Insight> underperformingLocations(List<LocationPerformance> locations,
+                                                   InsightThresholds t, LocalDate today) {
+        List<LocationPerformance> sorted = new ArrayList<>(locations == null ? List.of() : locations);
+        sorted.sort(Comparator.comparing(l -> label(l.state())));
 
         List<Insight> out = new ArrayList<>();
-        for (ProductConsumption p : sorted) {
-            if (p.lookbackDays() <= 0) {
-                continue;                    // cannot compute a daily rate — skip
+        for (LocationPerformance l : sorted) {
+            long concluded = l.delivered() + l.failed();
+            // Need enough concluded orders to judge delivery, and enough total volume to matter.
+            if (concluded <= 0 || l.orders() < t.locationMinOrders()) {
+                continue;
             }
-            double avgDaily = (double) p.unitsSoldInWindow() / p.lookbackDays();
-            if (avgDaily <= 0) {
-                continue;                    // no consumption — no reorder insight (Req 4.3)
+            BigDecimal failPct = pct(l.failed(), concluded);
+            if (failPct.compareTo(t.locationFailWarnPct()) <= 0) {
+                continue;
             }
-            double coverDays = p.onHand() / avgDaily;
-            if (coverDays >= t.reorderCoverDays()) {
-                continue;                    // enough cover
-            }
-            long target = (long) Math.ceil(avgDaily * t.reorderCoverDays());
-            long suggestedQty = Math.max(0L, target - p.onHand());
-            long etaDays = (long) Math.floor(coverDays);
-
-            InsightSeverity severity = (coverDays < t.reorderCoverDays() / 2.0 || p.onHand() == 0)
+            BigDecimal twice = t.locationFailWarnPct().multiply(TWO);
+            InsightSeverity severity = failPct.compareTo(twice) > 0
                     ? InsightSeverity.DANGER : InsightSeverity.WARNING;
-            String title = "Reorder " + p.productName() + " (~" + etaDays + "d cover left)";
-            String detail = "On-hand " + p.onHand() + ", avg " + round2(avgDaily) + "/day over "
-                    + p.lookbackDays() + "d; ~" + etaDays + " days of cover left. Suggested reorder qty "
-                    + suggestedQty + ".";
-            out.add(new Insight(InsightType.LOW_STOCK_REORDER, InsightScope.PRODUCT, p.productId(),
-                    p.productName(), severity, title, detail, BigDecimal.valueOf(suggestedQty), today));
+            String state = label(l.state());
+            String title = "Weak market: " + state + " (" + failPct.toPlainString() + "% not delivered)";
+            String detail = state + " took " + l.orders() + " orders but " + l.failed() + " of "
+                    + concluded + " concluded deliveries failed/returned (" + failPct.toPlainString()
+                    + "%). Marketing spend here isn't converting into delivered sales — fix delivery "
+                    + "(courier/address quality) or reduce spend in this location.";
+            // Several states can underperform at once; give each a stable, distinct
+            // scopeRefId (derived from the state name) so they don't collide on the
+            // (type, scope, scopeRefId, date) natural key.
+            out.add(new Insight(InsightType.UNDERPERFORMING_LOCATION, InsightScope.GLOBAL, stateRef(state),
+                    state, severity, title, detail, failPct, today));
         }
         return out;
     }
@@ -232,33 +268,6 @@ public class InsightEngine {
         return out;
     }
 
-    // --- Return-rate anomaly (Req 7.1) --------------------------------------
-
-    /**
-     * A {@code RETURN_RATE_ANOMALY} (GLOBAL) when the window's return rate
-     * ({@code returns / delivered · 100}) exceeds
-     * {@link InsightThresholds#returnRateWarnPct()}; the rate is 0 (never flagged)
-     * when nothing was delivered. A rate beyond twice the threshold is DANGER,
-     * else WARNING.
-     */
-    public List<Insight> returnRate(ReturnStats returns, InsightThresholds t, LocalDate today) {
-        if (returns == null || returns.delivered() <= 0) {
-            return List.of();               // rate = 0, never flagged (Req 7.1)
-        }
-        BigDecimal rate = pct(returns.returns(), returns.delivered());
-        if (rate.compareTo(t.returnRateWarnPct()) <= 0) {
-            return List.of();
-        }
-        BigDecimal twice = t.returnRateWarnPct().multiply(TWO);
-        InsightSeverity severity = rate.compareTo(twice) > 0
-                ? InsightSeverity.DANGER : InsightSeverity.WARNING;
-        String title = "Return rate " + rate.toPlainString() + "%";
-        String detail = returns.returns() + " returns over " + returns.delivered()
-                + " delivered — return rate " + rate.toPlainString() + "%.";
-        return List.of(new Insight(InsightType.RETURN_RATE_ANOMALY, InsightScope.GLOBAL, GLOBAL_REF,
-                "All deliveries", severity, title, detail, rate, today));
-    }
-
     // --- COD-outstanding build-up (Req 7.2) ---------------------------------
 
     /**
@@ -317,10 +326,11 @@ public class InsightEngine {
         if (!anyLeads) {
             return List.of();               // no leads on any channel — nothing to compare (Req 8.2)
         }
-        String title = "Best channel " + best.source().name() + ", worst " + worst.source().name();
-        String detail = "Best-converting: " + best.source().name() + " at " + bestRate.toPlainString()
-                + " (" + best.won() + "/" + best.leads() + "); worst-converting: " + worst.source().name()
-                + " at " + worstRate.toPlainString() + " (" + worst.won() + "/" + worst.leads() + ").";
+        String title = "Push " + best.source().name() + " — your best-converting channel";
+        String detail = best.source().name() + " converts best at " + bestRate.toPlainString()
+                + " (" + best.won() + "/" + best.leads() + " leads won) — lean marketing into it. "
+                + worst.source().name() + " converts worst at " + worstRate.toPlainString()
+                + " (" + worst.won() + "/" + worst.leads() + "); review or trim spend there.";
         return List.of(new Insight(InsightType.LEAD_SOURCE_CONVERSION, InsightScope.GLOBAL, GLOBAL_REF,
                 "Lead channels", InsightSeverity.INFO, title, detail, bestRate, today));
     }
@@ -328,18 +338,19 @@ public class InsightEngine {
     // --- Top-level composition ----------------------------------------------
 
     /**
-     * Runs every insight family over {@code inputs} in a fixed order — sales,
-     * reorder, RTO risk, courier scorecard, return-rate, COD, lead-source — and
-     * concatenates the results (design &sect;Pure domain). Deterministic: equal
-     * inputs yield an equal, equally-ordered list (Property 7).
+     * Runs every insight family over {@code inputs} in a fixed order — sales
+     * anomaly, top sales location, underperforming locations, RTO risk, courier
+     * scorecard, COD build-up, lead-source conversion — and concatenates the
+     * results (design &sect;Pure domain). Deterministic: equal inputs yield an
+     * equal, equally-ordered list.
      */
     public List<Insight> compute(InsightInputs inputs, InsightThresholds t, LocalDate today) {
         List<Insight> out = new ArrayList<>();
         out.addAll(salesAnomaly(inputs.sales(), t, today));
-        out.addAll(reorder(inputs.products(), t, today));
+        out.addAll(topSalesLocation(inputs.locations(), t, today));
+        out.addAll(underperformingLocations(inputs.locations(), t, today));
         out.addAll(rtoRisk(inputs.openOrders(), t, today));
         out.addAll(courierScorecards(inputs.couriers(), t, today));
-        out.addAll(returnRate(inputs.returns(), t, today));
         out.addAll(codBuildup(inputs.cod(), t, today));
         out.addAll(leadSourceConversion(inputs.leadSources(), t, today));
         return out;
@@ -367,11 +378,30 @@ public class InsightEngine {
         return candidate.source().name().compareTo(worst.source().name()) < 0;
     }
 
+    /** A display label for a state, grouping blank/null as "Unknown". */
+    private static String label(String state) {
+        return (state == null || state.isBlank()) ? "Unknown" : state.trim();
+    }
+
+    /**
+     * A stable, non-negative {@code scopeRefId} for a state name so several
+     * underperforming states don't collide on the GLOBAL natural key. Deterministic
+     * for a given name (string hash, masked to stay positive).
+     */
+    private static long stateRef(String state) {
+        return label(state).hashCode() & 0x7fffffffL;
+    }
+
     /** {@code numerator / denominator · 100} as a percentage in 2dp (denominator &gt; 0). */
     private static BigDecimal pct(long numerator, long denominator) {
         return BigDecimal.valueOf(numerator)
                 .multiply(HUNDRED)
                 .divide(BigDecimal.valueOf(denominator), 2, RoundingMode.HALF_UP);
+    }
+
+    /** Null-safe BigDecimal (zero for null). */
+    private static BigDecimal nz(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
     }
 
     /** Clamps a double into {@code [0, 1]}. */

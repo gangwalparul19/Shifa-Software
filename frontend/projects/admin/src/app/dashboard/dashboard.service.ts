@@ -13,6 +13,7 @@ import {
   SalesBucket,
 } from './dashboard.model';
 import { ChannelDashboardData, DashboardChannel } from './channel-dashboard.model';
+import { DeliveryPartnerSummary } from './delivery-partner.model';
 
 /**
  * Data access for the admin dashboard metrics API (Req 19.1-19.7).
@@ -73,6 +74,22 @@ export class DashboardService {
       }
     }
     return this.api.get<ChannelDashboardData>('/api/admin/dashboard/channel', { params });
+  }
+
+  /**
+   * Orders split by delivery partner (QuikShipX / in-house / POS) over an
+   * optional inclusive date window ({@code GET /api/admin/orders/delivery-partner-summary}).
+   * ADMIN only. Null from/to = all-time.
+   */
+  deliveryPartnerSummary(from?: string | null, to?: string | null): Observable<DeliveryPartnerSummary> {
+    let params = new HttpParams();
+    if (from) {
+      params = params.set('from', from);
+    }
+    if (to) {
+      params = params.set('to', to);
+    }
+    return this.api.get<DeliveryPartnerSummary>('/api/admin/orders/delivery-partner-summary', { params });
   }
 
   /** Real-time live statistics (Req 19.5). */

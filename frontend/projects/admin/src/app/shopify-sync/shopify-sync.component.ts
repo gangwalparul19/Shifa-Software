@@ -2,6 +2,8 @@ import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ChannelLogoComponent } from '../shared/channel-logo.component';
 import { ToastService } from '../shared/toast.service';
@@ -18,7 +20,7 @@ import { RecoverResult, ShopifySyncService, StuckShopifyOrder } from './shopify-
 @Component({
   selector: 'admin-shopify-sync',
   standalone: true,
-  imports: [CurrencyPipe, DatePipe, RouterLink, PageHeaderComponent, StatePanelComponent, ChannelLogoComponent],
+  imports: [CurrencyPipe, DatePipe, RouterLink, PageHeaderComponent, PaginationComponent, StatePanelComponent, ChannelLogoComponent],
   templateUrl: './shopify-sync.component.html',
   styleUrl: './shopify-sync.component.css',
 })
@@ -50,6 +52,43 @@ export class ShopifySyncComponent implements OnInit, OnDestroy {
   );
   /** In-house (Ishika Enterprise) orders — never go to QuikShipX. */
   protected readonly inHouse = computed(() => this.orders().filter((o) => o.inHouse));
+
+  // --- Client-side paging for the two lists (10/page each) ----------------
+  protected readonly waitingPage = signal(0);
+  protected readonly waitingSize = signal(readPageSize('shopifyWaiting', 10));
+  protected readonly waitingTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.waiting().length / this.waitingSize())),
+  );
+  protected readonly waitingPageItems = computed<StuckShopifyOrder[]>(() => {
+    const s = this.waitingPage() * this.waitingSize();
+    return this.waiting().slice(s, s + this.waitingSize());
+  });
+  setWaitingPage(p: number): void {
+    this.waitingPage.set(p);
+  }
+  setWaitingSize(s: number): void {
+    this.waitingSize.set(s);
+    writePageSize('shopifyWaiting', s);
+    this.waitingPage.set(0);
+  }
+
+  protected readonly assignedPage = signal(0);
+  protected readonly assignedSize = signal(readPageSize('shopifyAssigned', 10));
+  protected readonly assignedTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.assigned().length / this.assignedSize())),
+  );
+  protected readonly assignedPageItems = computed<StuckShopifyOrder[]>(() => {
+    const s = this.assignedPage() * this.assignedSize();
+    return this.assigned().slice(s, s + this.assignedSize());
+  });
+  setAssignedPage(p: number): void {
+    this.assignedPage.set(p);
+  }
+  setAssignedSize(s: number): void {
+    this.assignedSize.set(s);
+    writePageSize('shopifyAssigned', s);
+    this.assignedPage.set(0);
+  }
 
   protected readonly pendingCount = computed(
     () => this.waiting().filter((o) => o.status === 'PENDING_ADMIN_APPROVAL').length,
@@ -121,6 +160,8 @@ export class ShopifySyncComponent implements OnInit, OnDestroy {
     this.service.stuck().subscribe({
       next: (rows) => {
         this.orders.set(rows);
+        this.waitingPage.set(0);
+        this.assignedPage.set(0);
         this.loading.set(false);
         this.lastChecked.set(new Date());
       },

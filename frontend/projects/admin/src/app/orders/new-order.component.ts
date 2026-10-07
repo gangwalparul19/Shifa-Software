@@ -346,6 +346,15 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   protected readonly isAdmin = computed(() => this.auth.hasAnyRole(Role.ADMIN));
 
   /**
+   * Whether the acting user may place an in-shop (POS / counter) store order
+   * (store-order feature): any order-entry role — ADMIN, SALESPERSON or TEAM_LEAD.
+   * Gates whether POS mode activates from the {@code ?pos=1} query param.
+   */
+  protected readonly canCreateStoreOrder = computed(() =>
+    this.auth.hasAnyRole(Role.ADMIN, Role.SALESPERSON, Role.TEAM_LEAD),
+  );
+
+  /**
    * Who the order is being placed for: the admin themselves ('self') or another
    * user ('other'). Only meaningful when {@link isAdmin} and not converting/
    * resubmitting. Defaults to 'self'.
@@ -426,14 +435,26 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   /**
    * Whether a payment screenshot is mandatory. Under the min-upfront policy a
    * payment (≥ ₹100 / full) is ALWAYS collected, so a screenshot is always
-   * required once there is an order total to pay for.
+   * required once there is an order total to pay for. POS (counter) sales also
+   * require a screenshot as proof of the counter payment whenever money is
+   * received.
    */
   protected readonly screenshotRequired = computed(
-    // POS counter sales never need a screenshot. On a resubmit the order already
-    // carries its original proof(s), so a fresh one is OPTIONAL — the user adds a
-    // new screenshot only when correcting the payment (common for a payment
-    // rejection), otherwise the existing proofs are kept.
-    () => !this.posMode() && !this.resubmitMode() && this.orderTotalPaise() > 0,
+    // POS counter sales require a screenshot whenever an amount is received (proof
+    // of the counter payment). On a resubmit the order already carries its original
+    // proof(s), so a fresh one is OPTIONAL — the user adds a new screenshot only
+    // when correcting the payment (common for a payment rejection), otherwise the
+    // existing proofs are kept.
+    () => {
+      if (this.resubmitMode()) {
+        return false;
+      }
+      if (this.posMode()) {
+        // Counter sale: require proof whenever any amount is received.
+        return toPaise(this.model().amountReceived) > 0;
+      }
+      return this.orderTotalPaise() > 0;
+    },
   );
 
   /** Per-line totals in paise (rate × quantity), aligned to the item rows. */
@@ -590,7 +611,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     // switched off via posMode() in their computeds. Mutually exclusive with the
     // other modes.
     const posParam = this.route.snapshot.queryParamMap.get('pos');
-    if (this.isAdmin() && (posParam === '1' || posParam === 'true')) {
+    if (this.canCreateStoreOrder() && (posParam === '1' || posParam === 'true')) {
       this.posMode.set(true);
       this.enterPosMode();
       return;
@@ -1902,15 +1923,21 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Submits an in-shop (POS / counter) store order (store-order feature). No
-   * payment screenshot, no delivery partner, address optional, ad-hoc line items
-   * allowed. A fully-paid sale is auto-approved + closed by the server; a partial
-   * payment leaves it approved with the balance tracked. Needs a connection (the
-   * server records the counter payment immediately — no offline queue).
+   * Submits an in-shop (POS / counter) store order (store-order feature). A
+   * payment screenshot IS required when money is received (proof of the counter
+   * payment); no delivery partner, address optional, ad-hoc line items allowed. A
+   * fully-paid sale is auto-approved + closed by the server; a partial payment
+   * leaves it approved with the balance tracked. Needs a connection (the server
+   * records the counter payment immediately — no offline queue).
    */
   private submitStore(raw: ReturnType<NewOrderComponent['snapshot']>): void {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       this.toasts.error('You are offline. Placing a store order needs a connection — please try again when back online.');
+      return;
+    }
+    // Payment-proof mandate: a counter payment must carry a screenshot.
+    if (this.screenshotRequired() && !this.screenshotKey()) {
+      this.toasts.error('A payment screenshot is required to place the store order.');
       return;
     }
     const email = this.form.controls.customerEmail.value.trim();
@@ -1950,6 +1977,12 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       ...(buyerGstin ? { buyerGstin } : {}),
       ...(raw.discountType
         ? { discountType: raw.discountType as OrderDiscountType, discountValue: raw.discountValue || 0 }
+        : {}),
+      // Payment proof (store-order screenshot mandate): the primary key, plus any
+      // additional proofs beyond the first (omitted when there are none).
+      ...(this.screenshotKey() ? { paymentScreenshotKey: this.screenshotKey()! } : {}),
+      ...(this.extraScreenshotKeys().length > 0
+        ? { paymentScreenshotKeys: this.extraScreenshotKeys() }
         : {}),
     };
 

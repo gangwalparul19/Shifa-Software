@@ -51,7 +51,7 @@ class DeterminismPropertyTest {
     @Provide
     Arbitrary<InsightInputs> inputs() {
         return Combinators.combine(
-                salesWindow(), products(), couriers(), openOrders(), returnStats(), cod(), leadSources())
+                salesWindow(), locations(), couriers(), openOrders(), cod(), leadSources())
                 .as(InsightInputs::new);
     }
 
@@ -60,14 +60,14 @@ class DeterminismPropertyTest {
         return Combinators.combine(amount, amount).as(SalesWindow::new).injectNull(0.1);
     }
 
-    private Arbitrary<List<ProductConsumption>> products() {
-        Arbitrary<ProductConsumption> one = Combinators.combine(
-                        Arbitraries.longs().between(1L, 1000L),
-                        Arbitraries.strings().alpha().ofMinLength(1).ofMaxLength(8),
-                        Arbitraries.integers().between(0, 500),
-                        Arbitraries.longs().between(0L, 2000L),
-                        Arbitraries.integers().between(1, 60))
-                .as(ProductConsumption::new);
+    private Arbitrary<List<LocationPerformance>> locations() {
+        Arbitrary<Long> counts = Arbitraries.longs().between(0L, 500L);
+        Arbitrary<LocationPerformance> one = Combinators.combine(
+                        Arbitraries.of("Maharashtra", "Delhi", "Karnataka", "Uttar Pradesh", "Tamil Nadu"),
+                        counts,
+                        Arbitraries.integers().between(0, 500_000).map(BigDecimal::valueOf),
+                        counts, counts)
+                .as(LocationPerformance::new);
         return one.list().ofMaxSize(6).injectNull(0.1);
     }
 
@@ -92,11 +92,6 @@ class DeterminismPropertyTest {
                         Arbitraries.doubles().between(0.0, 1.0))
                 .as(OpenOrderRisk::new);
         return one.list().ofMaxSize(6).injectNull(0.1);
-    }
-
-    private Arbitrary<ReturnStats> returnStats() {
-        Arbitrary<Long> counts = Arbitraries.longs().between(0L, 5000L);
-        return Combinators.combine(counts, counts).as(ReturnStats::new).injectNull(0.1);
     }
 
     private Arbitrary<CodOutstanding> cod() {

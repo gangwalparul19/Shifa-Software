@@ -359,8 +359,10 @@ export class OrdersComponent implements OnInit, OnDestroy {
   /** Creating a return is ADMIN-only (Set B — Feature 2, mutations = ADMIN). */
   protected readonly canCreateReturn = computed(() => this.auth.hasAnyRole(Role.ADMIN));
 
-  /** Placing an in-shop (POS / counter) store order is ADMIN-only (store-order feature). */
-  protected readonly canCreateStoreOrder = computed(() => this.auth.hasAnyRole(Role.ADMIN));
+  /** Placing an in-shop (POS / counter) store order (store-order feature): any order-entry role. */
+  protected readonly canCreateStoreOrder = computed(() =>
+    this.auth.hasAnyRole(Role.SALESPERSON, Role.ADMIN, Role.TEAM_LEAD),
+  );
 
   /**
    * Manually assigning a courier is ADMIN-only, and only useful before the

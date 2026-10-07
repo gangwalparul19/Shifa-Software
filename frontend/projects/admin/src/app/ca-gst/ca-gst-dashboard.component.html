@@ -203,11 +203,11 @@
           @for (r of d.report.rateWise; track $index) {
             <tr class="is-clickable" (click)="drillByRate(r.rate)">
               <td><span class="gst-rate-badge">{{ n(r.rate) }}%</span></td>
-              <td class="num">{{ money(r.taxable) }}</td>
-              <td class="num">{{ money(r.cgst) }}</td>
-              <td class="num">{{ money(r.sgst) }}</td>
-              <td class="num">{{ money(r.igst) }}</td>
-              <td class="num">{{ money(r.invoiceValue) }}</td>
+              <td class="num" [title]="money(r.taxable)">{{ moneyCompact(r.taxable) }}</td>
+              <td class="num" [title]="money(r.cgst)">{{ moneyCompact(r.cgst) }}</td>
+              <td class="num" [title]="money(r.sgst)">{{ moneyCompact(r.sgst) }}</td>
+              <td class="num" [title]="money(r.igst)">{{ moneyCompact(r.igst) }}</td>
+              <td class="num" [title]="money(r.invoiceValue)">{{ moneyCompact(r.invoiceValue) }}</td>
             </tr>
           } @empty { <tr><td colspan="6" class="gst-empty">No sales in this period.</td></tr> }
         </tbody>
@@ -222,20 +222,28 @@
       <table class="gst-table">
         <thead><tr><th>HSN</th><th>Description</th><th class="num">Qty</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
         <tbody>
-          @for (h of d.report.hsn; track $index) {
+          @for (h of hsnPageRows(); track $index) {
             <tr class="is-clickable" (click)="drillByHsn(h.hsn)">
               <td class="fw-bold">{{ h.hsn }}</td>
               <td>{{ h.description }}</td>
               <td class="num">{{ n(h.quantity) }}</td>
-              <td class="num">{{ money(h.taxable) }}</td>
-              <td class="num">{{ money(h.cgst) }}</td>
-              <td class="num">{{ money(h.sgst) }}</td>
-              <td class="num">{{ money(h.igst) }}</td>
+              <td class="num" [title]="money(h.taxable)">{{ moneyCompact(h.taxable) }}</td>
+              <td class="num" [title]="money(h.cgst)">{{ moneyCompact(h.cgst) }}</td>
+              <td class="num" [title]="money(h.sgst)">{{ moneyCompact(h.sgst) }}</td>
+              <td class="num" [title]="money(h.igst)">{{ moneyCompact(h.igst) }}</td>
             </tr>
           } @empty { <tr><td colspan="7" class="gst-empty">No sales in this period.</td></tr> }
         </tbody>
       </table>
     </div>
+    <admin-pagination
+      [page]="hsnPage()"
+      [totalPages]="hsnTotalPages()"
+      [totalElements]="d.report.hsn.length"
+      [size]="hsnSize()"
+      (pageChange)="setHsnPage($event)"
+      (sizeChange)="setHsnSize($event)"
+    />
   </div>
 
   <!-- ============ State-wise ============ -->
@@ -245,19 +253,27 @@
       <table class="gst-table">
         <thead><tr><th>State</th><th>Type</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
         <tbody>
-          @for (s of d.report.stateWise; track $index) {
+          @for (s of statePageRows(); track $index) {
             <tr class="is-clickable" (click)="drillByState(s.state)">
               <td class="fw-bold">{{ s.state }}</td>
               <td><span class="gst-type-badge" [class.intra]="s.type === 'INTRA'" [class.inter]="s.type === 'INTER'" [class.export]="s.type === 'EXPORT'">{{ typeLabel(s.type) }}</span></td>
-              <td class="num">{{ money(s.taxable) }}</td>
-              <td class="num">{{ money(s.cgst) }}</td>
-              <td class="num">{{ money(s.sgst) }}</td>
-              <td class="num">{{ money(s.igst) }}</td>
+              <td class="num" [title]="money(s.taxable)">{{ moneyCompact(s.taxable) }}</td>
+              <td class="num" [title]="money(s.cgst)">{{ moneyCompact(s.cgst) }}</td>
+              <td class="num" [title]="money(s.sgst)">{{ moneyCompact(s.sgst) }}</td>
+              <td class="num" [title]="money(s.igst)">{{ moneyCompact(s.igst) }}</td>
             </tr>
           } @empty { <tr><td colspan="6" class="gst-empty">No sales in this period.</td></tr> }
         </tbody>
       </table>
     </div>
+    <admin-pagination
+      [page]="statePage()"
+      [totalPages]="stateTotalPages()"
+      [totalElements]="d.report.stateWise.length"
+      [size]="stateSize()"
+      (pageChange)="setStatePage($event)"
+      (sizeChange)="setStateSize($event)"
+    />
   </div>
 
   <!-- ============ Expenses by category ============ -->
@@ -343,7 +359,7 @@
         <table class="gst-table">
           <thead><tr><th>GSTIN</th><th>Order</th><th>Date</th><th>Place of supply</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
           <tbody>
-            @for (r of g.b2b; track $index) {
+            @for (r of g1Slice('b2b', g.b2b); track $index) {
               <tr>
                 <td class="shifa-mono">{{ r.buyerGstin }}</td>
                 <td><a [routerLink]="['/orders']" [queryParams]="{ q: r.orderCode }">{{ r.orderCode }}</a></td>
@@ -359,6 +375,9 @@
           </tbody>
         </table>
       </div>
+      <admin-pagination
+        [page]="g1PageOf('b2b')" [totalPages]="g1TotalPages(g.b2b.length)" [totalElements]="g.b2b.length"
+        [size]="gstr1Size" [showSize]="false" (pageChange)="setG1Page('b2b', $event)" />
     </div>
 
     <!-- ===== B2CL ===== -->
@@ -371,7 +390,7 @@
         <table class="gst-table">
           <thead><tr><th>Order</th><th>Date</th><th class="num">Invoice value</th><th>Place of supply</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">IGST</th></tr></thead>
           <tbody>
-            @for (r of g.b2cl; track $index) {
+            @for (r of g1Slice('b2cl', g.b2cl); track $index) {
               <tr>
                 <td><a [routerLink]="['/orders']" [queryParams]="{ q: r.orderCode }">{{ r.orderCode }}</a></td>
                 <td class="text-secondary">{{ r.date }}</td>
@@ -385,6 +404,9 @@
           </tbody>
         </table>
       </div>
+      <admin-pagination
+        [page]="g1PageOf('b2cl')" [totalPages]="g1TotalPages(g.b2cl.length)" [totalElements]="g.b2cl.length"
+        [size]="gstr1Size" [showSize]="false" (pageChange)="setG1Page('b2cl', $event)" />
     </div>
 
     <!-- ===== B2CS ===== -->
@@ -397,7 +419,7 @@
         <table class="gst-table">
           <thead><tr><th>Type</th><th>Place of supply</th><th>Supply</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
           <tbody>
-            @for (r of g.b2cs; track $index) {
+            @for (r of g1Slice('b2cs', g.b2cs); track $index) {
               <tr>
                 <td>{{ r.type }}</td>
                 <td>{{ r.placeOfSupply }} <span class="text-secondary">({{ r.stateCode }})</span></td>
@@ -412,6 +434,9 @@
           </tbody>
         </table>
       </div>
+      <admin-pagination
+        [page]="g1PageOf('b2cs')" [totalPages]="g1TotalPages(g.b2cs.length)" [totalElements]="g.b2cs.length"
+        [size]="gstr1Size" [showSize]="false" (pageChange)="setG1Page('b2cs', $event)" />
     </div>
 
     <!-- ===== CDNR ===== -->
@@ -424,7 +449,7 @@
         <table class="gst-table">
           <thead><tr><th>GSTIN</th><th>Note #</th><th>Date</th><th>Original order</th><th>Place of supply</th><th class="num">Note value</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
           <tbody>
-            @for (r of g.cdnr; track $index) {
+            @for (r of g1Slice('cdnr', g.cdnr); track $index) {
               <tr>
                 <td class="shifa-mono">{{ r.buyerGstin }}</td>
                 <td>{{ r.noteNumber }}</td>
@@ -442,6 +467,9 @@
           </tbody>
         </table>
       </div>
+      <admin-pagination
+        [page]="g1PageOf('cdnr')" [totalPages]="g1TotalPages(g.cdnr.length)" [totalElements]="g.cdnr.length"
+        [size]="gstr1Size" [showSize]="false" (pageChange)="setG1Page('cdnr', $event)" />
     </div>
 
     <!-- ===== CDNUR ===== -->
@@ -454,7 +482,7 @@
         <table class="gst-table">
           <thead><tr><th>Note #</th><th>Date</th><th>Original order</th><th>Place of supply</th><th class="num">Note value</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
           <tbody>
-            @for (r of g.cdnur; track $index) {
+            @for (r of g1Slice('cdnur', g.cdnur); track $index) {
               <tr>
                 <td>{{ r.noteNumber }}</td>
                 <td class="text-secondary">{{ r.noteDate }}</td>
@@ -471,6 +499,9 @@
           </tbody>
         </table>
       </div>
+      <admin-pagination
+        [page]="g1PageOf('cdnur')" [totalPages]="g1TotalPages(g.cdnur.length)" [totalElements]="g.cdnur.length"
+        [size]="gstr1Size" [showSize]="false" (pageChange)="setG1Page('cdnur', $event)" />
     </div>
 
     <!-- ===== HSN (Table 12) ===== -->
@@ -483,7 +514,7 @@
         <table class="gst-table">
           <thead><tr><th>HSN</th><th>UQC</th><th class="num">Rate</th><th class="num">Qty</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
           <tbody>
-            @for (h of g.hsn; track $index) {
+            @for (h of g1Slice('g1hsn', g.hsn); track $index) {
               <tr [class.g1-flag]="!h.compliant">
                 <td class="fw-bold">
                   {{ h.hsn }}
@@ -501,6 +532,9 @@
           </tbody>
         </table>
       </div>
+      <admin-pagination
+        [page]="g1PageOf('g1hsn')" [totalPages]="g1TotalPages(g.hsn.length)" [totalElements]="g.hsn.length"
+        [size]="gstr1Size" [showSize]="false" (pageChange)="setG1Page('g1hsn', $event)" />
     </div>
 
     <!-- ===== Docs issued (Table 13) ===== -->
@@ -512,7 +546,7 @@
         <table class="gst-table">
           <thead><tr><th>Nature of document</th><th>From</th><th>To</th><th class="num">Issued</th><th class="num">Cancelled</th></tr></thead>
           <tbody>
-            @for (d of g.docs; track $index) {
+            @for (d of g1Slice('docs', g.docs); track $index) {
               <tr>
                 <td>{{ d.natureOfDocument }}</td>
                 <td class="shifa-mono">{{ d.fromNumber }}</td>
@@ -524,6 +558,9 @@
           </tbody>
         </table>
       </div>
+      <admin-pagination
+        [page]="g1PageOf('docs')" [totalPages]="g1TotalPages(g.docs.length)" [totalElements]="g.docs.length"
+        [size]="gstr1Size" [showSize]="false" (pageChange)="setG1Page('docs', $event)" />
     </div>
   }
 }
@@ -544,8 +581,8 @@
       } @else {
         <div class="gst-due-strip">
           <div class="pill"><span class="lbl">Orders</span><span class="val">{{ drillOrders().length }}</span></div>
-          <div class="pill"><span class="lbl">Customer due</span><span class="val text-danger">{{ money(drillCustomerRemaining()) }}</span></div>
-          <div class="pill"><span class="lbl">Pending (courier)</span><span class="val text-warning">{{ money(drillCodPending()) }}</span></div>
+          <div class="pill"><span class="lbl">Customer due</span><span class="val text-danger" [title]="money(drillCustomerRemaining())">{{ moneyCompact(drillCustomerRemaining()) }}</span></div>
+          <div class="pill"><span class="lbl">Pending (courier)</span><span class="val text-warning" [title]="money(drillCodPending())">{{ moneyCompact(drillCodPending()) }}</span></div>
         </div>
         <div class="table-responsive">
           <table class="gst-table">
@@ -553,21 +590,29 @@
               <tr><th>Order</th><th>Date</th><th>Customer</th><th>State</th><th class="num">Total</th><th class="num">Customer due</th><th class="num">On delivery (courier)</th><th>Status</th></tr>
             </thead>
             <tbody>
-              @for (o of drillOrders(); track o.orderId) {
+              @for (o of drillPageOrders(); track o.orderId) {
                 <tr>
                   <td><a [routerLink]="['/orders']" [queryParams]="{ q: o.orderCode }" (click)="closeDrill()">{{ o.orderCode }}</a></td>
                   <td class="text-secondary">{{ o.orderDate }}</td>
                   <td>{{ o.customerName }}<div class="text-secondary small">{{ o.customerMobile }}</div></td>
                   <td>{{ o.state }}</td>
-                  <td class="num">{{ money(o.total) }}</td>
-                  <td class="num" [class.text-danger]="n(o.customerRemaining) > 0" [class.fw-bold]="n(o.customerRemaining) > 0">{{ money(o.customerRemaining) }}</td>
-                  <td class="num" [class.text-warning]="n(o.codPending) > 0" [class.fw-bold]="n(o.codPending) > 0">{{ money(o.codPending) }}</td>
+                  <td class="num" [title]="money(o.total)">{{ moneyCompact(o.total) }}</td>
+                  <td class="num" [class.text-danger]="n(o.customerRemaining) > 0" [class.fw-bold]="n(o.customerRemaining) > 0" [title]="money(o.customerRemaining)">{{ moneyCompact(o.customerRemaining) }}</td>
+                  <td class="num" [class.text-warning]="n(o.codPending) > 0" [class.fw-bold]="n(o.codPending) > 0" [title]="money(o.codPending)">{{ moneyCompact(o.codPending) }}</td>
                   <td><span class="badge bg-secondary-lt">{{ o.orderStatus }}</span></td>
                 </tr>
               }
             </tbody>
           </table>
         </div>
+        <admin-pagination
+          [page]="drillPage()"
+          [totalPages]="drillTotalPages()"
+          [totalElements]="drillOrders().length"
+          [size]="drillSize()"
+          (pageChange)="setDrillPage($event)"
+          (sizeChange)="setDrillSize($event)"
+        />
       }
     </div>
   </aside>

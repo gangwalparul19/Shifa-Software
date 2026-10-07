@@ -105,9 +105,11 @@
       <!-- Right: global search, live status, notifications, account -->
       <div class="shifa-appbar__actions">
         <!-- Global search (inline on desktop, expanding icon on mobile) -->
-        <div class="shifa-appbar__search" data-tour="global-search">
-          <admin-global-search #globalSearch />
-        </div>
+        @if (showGlobalSearch()) {
+          <div class="shifa-appbar__search" data-tour="global-search">
+            <admin-global-search #globalSearch />
+          </div>
+        }
 
         <!-- Offline indicator (FEATURE-ROADMAP §8.1) -->
         @if (!pwa.online()) {

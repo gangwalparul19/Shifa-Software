@@ -131,7 +131,7 @@ public class OrderController {
      */
     @PostMapping("/store")
     @ResponseStatus(HttpStatus.CREATED)
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SALESPERSON','TEAM_LEAD')")
     public OrderResponse createStore(@Valid @RequestBody StoreOrderRequest request) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return orderService.createStoreOrder(request, actor);
@@ -231,7 +231,7 @@ public class OrderController {
 
     /** Search orders by name / mobile / order code / id / AWB, role-scoped (Req 22.1). */
     @GetMapping
-    @PreAuthorize("hasAnyRole('SALESPERSON','ACCOUNTANT','ADMIN','TEAM_LEAD','CA')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ACCOUNTANT','ADMIN','TEAM_LEAD','CA','PAYMENT_VERIFIER')")
     public List<OrderSummaryResponse> search(
             @RequestParam(name = "search", required = false) String search) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
@@ -273,7 +273,7 @@ public class OrderController {
 
     /** Order detail with payment tracking fields, role-scoped (Req 21.1, 5.5). */
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SALESPERSON','ACCOUNTANT','ADMIN','TEAM_LEAD','CA')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ACCOUNTANT','ADMIN','TEAM_LEAD','CA','PAYMENT_VERIFIER')")
     public OrderResponse detail(@PathVariable Long id) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return orderService.getOrder(id, actor);
@@ -286,7 +286,7 @@ public class OrderController {
      * PDF is streamed inline as {@code application/pdf}.
      */
     @GetMapping("/{id}/invoice")
-    @PreAuthorize("hasAnyRole('SALESPERSON','ACCOUNTANT','ADMIN','TEAM_LEAD','CA')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ACCOUNTANT','ADMIN','TEAM_LEAD','CA','PAYMENT_VERIFIER')")
     public ResponseEntity<byte[]> invoice(@PathVariable Long id) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         InvoiceService.InvoiceDocument invoice = invoiceService.invoicePdf(id, actor);

@@ -20,8 +20,7 @@ import java.util.List;
 /**
  * Demand & cash forecasting (FEATURE-ROADMAP §6.5): a simple, explainable
  * moving-average projection — per-product demand and expected COD collections —
- * over existing order history. Deliberately distinct from the LOW_STOCK_REORDER
- * insight (which raises reorder alerts): this projects units and cash forward.
+ * over existing order history — a forward projection of units and cash.
  */
 @Service
 public class ForecastService {

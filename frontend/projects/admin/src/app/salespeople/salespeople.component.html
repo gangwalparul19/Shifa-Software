@@ -72,7 +72,12 @@
               <div class="d-flex align-items-center">
                 <span class="avatar avatar-rounded me-3">{{ initials(member.fullName) }}</span>
                 <div class="flex-fill overflow-hidden">
-                  <div class="fw-bold text-truncate">{{ member.fullName }}</div>
+                  <div class="fw-bold text-truncate">
+                    {{ member.fullName }}
+                    @if (member.role === 'TEAM_LEAD') {
+                      <span class="badge bg-green-lt ms-1" title="Team lead (also punches orders)">Team Lead</span>
+                    }
+                  </div>
                   <div class="text-secondary small text-truncate">&#64;{{ member.username }}</div>
                 </div>
                 <span class="badge {{ statusBadgeClass(member.verificationStatus) }} ms-2">

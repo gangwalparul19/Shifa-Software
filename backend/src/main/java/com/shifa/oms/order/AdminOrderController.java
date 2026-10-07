@@ -86,6 +86,7 @@ public class AdminOrderController {
     private final CourierAssignmentService courierAssignmentService;
 
     private final ChannelSummaryService channelSummaryService;
+    private final DeliveryPartnerService deliveryPartnerService;
     private final OrderExportService orderExportService;
     private final OrderDeletionService orderDeletionService;
 
@@ -98,6 +99,7 @@ public class AdminOrderController {
                                 OrderService orderService,
                                 CourierAssignmentService courierAssignmentService,
                                 ChannelSummaryService channelSummaryService,
+                                DeliveryPartnerService deliveryPartnerService,
                                 OrderExportService orderExportService,
                                 OrderDeletionService orderDeletionService) {
         this.adminOrderService = adminOrderService;
@@ -109,6 +111,7 @@ public class AdminOrderController {
         this.orderService = orderService;
         this.courierAssignmentService = courierAssignmentService;
         this.channelSummaryService = channelSummaryService;
+        this.deliveryPartnerService = deliveryPartnerService;
         this.orderExportService = orderExportService;
         this.orderDeletionService = orderDeletionService;
     }
@@ -132,6 +135,24 @@ public class AdminOrderController {
     }
 
     /**
+     * ADMIN-only delivery-partner dashboard: order metrics split by the three
+     * fulfilment partners (QuikShipX courier / in-house "Ishika Enterprise" / POS
+     * store) plus the combined total, over an optional date window — in transit,
+     * delivered, cancelled, COD still to collect, revenue, etc. per partner.
+     * Explicitly {@code hasRole('ADMIN')} (matching the class default).
+     *
+     * @param from inclusive lower-bound {@code created_at} date (yyyy-MM-dd), optional
+     * @param to   inclusive upper-bound {@code created_at} date (yyyy-MM-dd), optional
+     */
+    @GetMapping("/delivery-partner-summary")
+    @PreAuthorize("hasRole('ADMIN')")
+    public com.shifa.oms.order.dto.DeliveryPartnerSummaryResponse deliveryPartnerSummary(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return deliveryPartnerService.summary(from, to);
+    }
+
+    /**
      * Server-side paged / sorted / filtered orders list backing the Wave 2 admin
      * table (ROADMAP 2.2). Returns the {@link PageResponse} envelope.
      *
@@ -145,7 +166,7 @@ public class AdminOrderController {
      * @param sort          {@code field,dir} — one of createdAt/orderCode/customerName/totalAmount/orderStatus/paymentStatus
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','TEAM_LEAD','CA')")
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','TEAM_LEAD','CA','PAYMENT_VERIFIER')")
     public PageResponse<OrderSummaryResponse> list(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) OrderStatus status,

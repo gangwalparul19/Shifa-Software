@@ -58,7 +58,7 @@
   } @else {
     <!-- Mobile (<768px): backup run cards -->
     <div class="shifa-bk-cards d-md-none">
-      @for (run of runs(); track run.id) {
+      @for (run of pageItems(); track run.id) {
         <div class="shifa-bk" [class.is-failed]="isFailed(run.status)" [class.is-success]="isSuccess(run.status)">
           <div class="shifa-bk__r1">
             <span class="badge" [class]="statusBadgeClass(run.status)">{{ run.status }}</span>
@@ -103,7 +103,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (run of runs(); track run.id) {
+            @for (run of pageItems(); track run.id) {
               <tr>
                 <td><span class="badge" [class]="statusBadgeClass(run.status)">{{ run.status }}</span></td>
                 <td class="text-secondary">{{ run.startedAt | istDate }}</td>
@@ -135,5 +135,14 @@
         </table>
       </div>
     </div>
+
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
   }
 }

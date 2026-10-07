@@ -59,7 +59,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (r of targetRows(); track r.salespersonId) {
+            @for (r of targetPageRows(); track r.salespersonId) {
               <tr>
                 <td>
                   <div class="fw-medium">{{ r.salespersonName }}</div>
@@ -130,6 +130,14 @@
           </tbody>
         </table>
       </div>
+      <admin-pagination
+        [page]="targetsPage()"
+        [totalPages]="targetsTotalPages()"
+        [totalElements]="targetRows().length"
+        [size]="targetsSize()"
+        (pageChange)="setTargetsPage($event)"
+        (sizeChange)="setTargetsSize($event)"
+      />
     </div>
   }
 }
@@ -299,7 +307,7 @@
               </tr>
             </thead>
             <tbody>
-              @for (d of f.topDemand; track d.productId) {
+              @for (d of demandPageRows(); track d.productId) {
                 <tr>
                   <td class="fw-medium">{{ d.productName }}</td>
                   <td class="text-end">{{ d.unitsRecent }}</td>
@@ -310,6 +318,14 @@
             </tbody>
           </table>
         </div>
+        <admin-pagination
+          [page]="demandPage()"
+          [totalPages]="demandTotalPages()"
+          [totalElements]="demandTotal()"
+          [size]="demandSize()"
+          (pageChange)="setDemandPage($event)"
+          (sizeChange)="setDemandSize($event)"
+        />
       </div>
     }
   }

@@ -97,6 +97,7 @@
   <div class="shifa-appr-cards d-md-none">
     @for (item of pageItems(); track item.id) {
       <div class="shifa-appr shifa-appr--clickable" [class.is-selected]="isSelected(item.id)" (click)="openDetail(item)" tabindex="0" (keydown.enter)="openDetail(item)">
+        <!-- Top row: checkbox + order id/meta on the left, compact amount on the right. -->
         <div class="shifa-appr__top">
           <input
             type="checkbox"
@@ -119,9 +120,12 @@
               <admin-note-cell [note]="item.notes" />
             }
           </div>
-          <div class="shifa-appr__right">
-            <span class="shifa-appr__amount">{{ money(item.totalAmount) }}</span>
-            <admin-status-badge [status]="item.paymentStatus" kind="payment" />
+          <span class="shifa-appr__amount" [title]="money(item.totalAmount)">{{ moneyCompact(item.totalAmount) }}</span>
+        </div>
+
+        <!-- Action row: Verify/Verified (left) · payment pill (right) · kebab (rightmost). -->
+        <div class="shifa-appr__actionrow" (click)="$event.stopPropagation()">
+          <div class="shifa-appr__verify">
             @if (isVerified(item)) {
               <span class="badge tone-green" title="Payment verified"><i class="ti ti-shield-check me-1"></i>Verified</span>
             } @else if (needsVerification(item)) {
@@ -130,8 +134,9 @@
             @if (hasDuplicate(item)) {
               <span class="badge tone-red" title="Duplicate payment proof"><i class="ti ti-copy me-1"></i>Duplicate</span>
             }
-            <admin-row-actions [actions]="rowActions()" ariaLabel="Order actions" (select)="onRowAction($event, item)" />
           </div>
+          <admin-status-badge class="shifa-appr__pay" [status]="item.paymentStatus" kind="payment" />
+          <admin-row-actions [actions]="rowActions()" ariaLabel="Order actions" (select)="onRowAction($event, item)" />
         </div>
       </div>
     }
@@ -186,9 +191,9 @@
               </td>
               <td class="text-secondary">{{ item.salespersonName || '—' }}</td>
               <td class="text-secondary">{{ item.customerMobile }}</td>
-              <td class="text-end">{{ money(item.totalAmount) }}</td>
-              <td class="text-end">{{ money(item.amountReceived) }}</td>
-              <td class="text-end">{{ money(item.codAmount) }}</td>
+              <td class="text-end" [title]="money(item.totalAmount)">{{ moneyCompact(item.totalAmount) }}</td>
+              <td class="text-end" [title]="money(item.amountReceived)">{{ moneyCompact(item.amountReceived) }}</td>
+              <td class="text-end" [title]="money(item.codAmount)">{{ moneyCompact(item.codAmount) }}</td>
               <td>
                 <admin-status-badge [status]="item.paymentStatus" kind="payment" />
                 <div class="mt-1 d-flex align-items-center gap-1 flex-wrap">

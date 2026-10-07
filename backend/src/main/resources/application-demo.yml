@@ -1,0 +1,60 @@
+# =============================================================================
+# DEMO profile — a client-facing demo/sandbox box with NO real customer data.
+#
+# Activated with SPRING_PROFILES_ACTIVE=demo on the demo server. It runs the
+# IDENTICAL build as production but deliberately:
+#   * points at a SEPARATE empty database (shifa_demo),
+#   * turns OFF the QuikShipX courier integration so EVERY order runs the
+#     in-house delivery lifecycle (no real parcels are ever booked),
+#   * stores binary objects in the DB (no shared/prod S3 bucket is touched),
+#   * keeps mail / WhatsApp / courier in MOCK mode (nothing leaves the box).
+#
+# Nothing here affects the `prod` or `local` profiles — this file is only read
+# when the demo profile is active.
+# =============================================================================
+spring:
+  datasource:
+    # Separate demo database (empty on first boot; Flyway applies V1..latest).
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:shifa_demo}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Kolkata&characterEncoding=UTF-8
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:8}
+
+app:
+  security:
+    # Allow the demo domain to call the API from the browser (CORS). The built-in
+    # defaults only permit localhost + the prod domain, so the demo's own origin
+    # must be added here or the browser's credentialed login is rejected 403
+    # "Invalid CORS request".
+    cors:
+      extra-origins: https://shifa-demo.weblithic.online
+    login-rate-limit:
+      # OFF for the demo: frequent test logins (and the PWA's auto-retries) must
+      # never trip the 5-attempt / 15-minute lockout on a shared sandbox box.
+      # Production leaves this ON (default true).
+      enabled: false
+  quikshipx:
+    # OFF for the demo: no courier is ever contacted. With this disabled every
+    # order — whatever its delivery method — flows through the internal
+    # label/packing/in-house delivery path end to end. The env file should also
+    # set QUIKSHIPX_ENABLED=false, but we hard-default it OFF here so the demo
+    # can NEVER accidentally book a real shipment even if the env var is set.
+    enabled: false
+    mode: MOCK
+  storage:
+    # Store label PDFs + payment screenshots IN THE DATABASE for the demo, so the
+    # demo never writes to (or depends on) the production S3 bucket, and its data
+    # is fully self-contained + backed up with the DB. No S3 setup needed.
+    provider: ${STORAGE_PROVIDER:DB}
+  mail:
+    mode: ${MAIL_MODE:MOCK}
+  whatsapp:
+    mode: ${WHATSAPP_MODE:MOCK}
+  courier:
+    mode: ${COURIER_MODE:MOCK}
+
+logging:
+  level:
+    com.shifa.oms: INFO

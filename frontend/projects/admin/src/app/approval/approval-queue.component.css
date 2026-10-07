@@ -54,7 +54,7 @@
 .shifa-appr:hover {
   box-shadow: 0 4px 14px rgba(15, 51, 36, 0.12);
 }
-/* Top block: id/customer/items on the left, amount + payment pill on the right. */
+/* Top block: id/customer on the left, compact amount on the right. */
 .shifa-appr__top {
   display: flex;
   align-items: flex-start;
@@ -64,16 +64,37 @@
 }
 .shifa-appr__idwrap {
   min-width: 0;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   line-height: 1.25;
 }
-.shifa-appr__right {
-  flex: 0 0 auto;
+
+/* Action row below the top block: Verify/Verified (left), payment pill (middle,
+   pushed right), kebab (rightmost). Uses the full width so nothing stacks into a
+   cramped column. */
+.shifa-appr__actionrow {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(15, 51, 36, 0.06);
+}
+.shifa-appr__verify {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+/* Payment pill hugs the right, just left of the kebab. */
+.shifa-appr__pay {
+  margin-left: auto;
+}
+/* When there's no verify/verified badge, the pill still sits on the right. */
+.shifa-appr__verify:empty {
+  display: none;
 }
 .shifa-appr__code {
   font-weight: 700;

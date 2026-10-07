@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
 import { FilingService } from './filing.service';
@@ -27,7 +28,7 @@ type PresetKey = 'this-month' | 'last-month' | 'custom';
 @Component({
   selector: 'admin-gst-reconciliation',
   standalone: true,
-  imports: [CommonModule, FormsModule, PageHeaderComponent, StatePanelComponent],
+  imports: [CommonModule, FormsModule, PageHeaderComponent, PaginationComponent, StatePanelComponent],
   templateUrl: './gst-reconciliation.component.html',
   styleUrl: './gst-reconciliation.component.css',
 })
@@ -91,6 +92,24 @@ export class GstReconciliationComponent implements OnInit {
     this.drillRows().reduce((sum, r) => sum + this.n(r.signedContribution), 0),
   );
 
+  // Client-side paging for the drill-down list (can hold many rows).
+  protected readonly drillPage = signal(0);
+  protected readonly drillSize = signal(10);
+  protected readonly drillTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.drillRows().length / this.drillSize())),
+  );
+  protected readonly drillPageRows = computed<DrillDownRow[]>(() => {
+    const start = this.drillPage() * this.drillSize();
+    return this.drillRows().slice(start, start + this.drillSize());
+  });
+  setDrillPage(p: number): void {
+    this.drillPage.set(p);
+  }
+  setDrillSize(s: number): void {
+    this.drillSize.set(s);
+    this.drillPage.set(0);
+  }
+
   ngOnInit(): void {
     this.setThisMonth();
   }
@@ -149,9 +168,11 @@ export class GstReconciliationComponent implements OnInit {
     this.drillOpen.set(true);
     this.drillLoading.set(true);
     this.drillRows.set([]);
+    this.drillPage.set(0);
     this.filing.drillDown(this.month(), this.year(), String(figure.key)).subscribe({
       next: (rows) => {
         this.drillRows.set(rows);
+        this.drillPage.set(0);
         this.drillLoading.set(false);
       },
       error: () => {

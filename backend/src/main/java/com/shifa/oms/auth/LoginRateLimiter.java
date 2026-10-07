@@ -1,5 +1,7 @@
 package com.shifa.oms.auth;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
@@ -36,20 +38,39 @@ public class LoginRateLimiter {
     private final Clock clock;
     private final Map<String, Attempts> attempts = new ConcurrentHashMap<>();
 
-    public LoginRateLimiter() {
-        this(Clock.systemUTC());
+    /**
+     * Master on/off switch (default ON). Set {@code app.security.login-rate-limit.enabled=false}
+     * to disable the throttle entirely — intended for the demo/sandbox box, where
+     * frequent test logins (and the PWA's auto-retries) would otherwise trip the
+     * lockout. Production leaves it ON.
+     */
+    private final boolean enabled;
+
+    @Autowired
+    public LoginRateLimiter(
+            @Value("${app.security.login-rate-limit.enabled:true}") boolean enabled) {
+        this(Clock.systemUTC(), enabled);
     }
 
-    /** Package-visible constructor for a fixed clock in tests. */
+    /** Package-visible constructor for a fixed clock in tests (throttle enabled). */
     LoginRateLimiter(Clock clock) {
+        this(clock, true);
+    }
+
+    LoginRateLimiter(Clock clock, boolean enabled) {
         this.clock = clock;
+        this.enabled = enabled;
     }
 
     /**
      * Throws 429 if the key is currently locked out. Call before verifying
-     * credentials. Expired lockouts/windows are reset lazily here.
+     * credentials. Expired lockouts/windows are reset lazily here. A no-op when
+     * the throttle is disabled.
      */
     public void checkNotLocked(String username, String clientIp) {
+        if (!enabled) {
+            return;
+        }
         String key = key(username, clientIp);
         Attempts a = attempts.get(key);
         if (a == null) {
@@ -72,8 +93,11 @@ public class LoginRateLimiter {
         }
     }
 
-    /** Record a failed attempt; locks the key out once the threshold is hit. */
+    /** Record a failed attempt; locks the key out once the threshold is hit. No-op when disabled. */
     public void recordFailure(String username, String clientIp) {
+        if (!enabled) {
+            return;
+        }
         String key = key(username, clientIp);
         Instant now = clock.instant();
         Attempts a = attempts.computeIfAbsent(key, k -> new Attempts());
