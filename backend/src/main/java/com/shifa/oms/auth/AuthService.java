@@ -4,8 +4,11 @@ import com.shifa.oms.auth.dto.LoginRequest;
 import com.shifa.oms.auth.dto.RefreshRequest;
 import com.shifa.oms.auth.dto.RegisterRequest;
 import com.shifa.oms.auth.dto.TokenResponse;
+import com.shifa.oms.auth.dto.ChangePasswordRequest;
 import com.shifa.oms.common.ApiException;
 import com.shifa.oms.common.DuplicateResourceException;
+import com.shifa.oms.common.ResourceNotFoundException;
+import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.mail.MailService;
 import com.shifa.oms.mail.template.EmailModels;
 import com.shifa.oms.mail.template.EmailRenderer;
@@ -130,6 +133,29 @@ public class AuthService {
         return tokensFor(user);
     }
 
+    /**
+     * Self-service password change for the signed-in user. Sets the new (already
+     * complexity-validated) password, clears the force-change flag, and returns a
+     * fresh token pair so the client proceeds without the {@code pwd} claim. The
+     * caller's identity comes from the authenticated principal (not the body), so
+     * no old password is required — the valid session proves identity. Rejects
+     * reusing the temporary reset password.
+     */
+    @Transactional
+    public TokenResponse changeMyPassword(Long userId, ChangePasswordRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User " + userId + " does not exist."));
+        String newPassword = request.newPassword();
+        if (AdminUserService.TEMPORARY_PASSWORD.equals(newPassword)
+                || passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+            throw new ValidationException("Choose a new password different from your current one.");
+        }
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(false);
+        userRepository.save(user);
+        return tokensFor(user);
+    }
+
     private TokenResponse tokensFor(User user) {
         return new TokenResponse(
                 jwtService.issueAccessToken(user),
@@ -137,7 +163,8 @@ public class AuthService {
                 "Bearer",
                 jwtService.accessTokenTtlSeconds(),
                 user.getRole().name(),
-                user.getUsername());
+                user.getUsername(),
+                user.isMustChangePassword());
     }
 
     private static ApiException invalidCredentials() {

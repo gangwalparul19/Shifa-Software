@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shifa OMS — Deploy to AWS (EC2 + RDS, buffered for 50 users)</title>
+<style>
+  :root{--green:#1F5D3F;--green-700:#184b32;--green-50:#eef4f0;--gold:#C9A227;
+    --ink:#1f2a24;--muted:#5b6b62;--line:#dce7e0;--danger:#b23b3b;--warn:#8a6d00;--ok:#1f7a4d;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--green-50);line-height:1.6}
+  .band{background:linear-gradient(135deg,var(--green),var(--green-700));color:#fff;padding:32px 24px;border-bottom:4px solid var(--gold)}
+  .wrap{max-width:960px;margin:0 auto;padding:24px}
+  .band .wrap{padding:0}
+  h1{margin:0 0 6px;font-size:1.7rem}.sub{opacity:.9;margin:0}
+  h2{color:var(--green);margin-top:34px;font-size:1.2rem;display:flex;align-items:center;gap:10px}
+  .step{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;border-radius:50%;
+    background:var(--green);color:#fff;font-size:.9rem;font-weight:700;flex:0 0 auto;padding:0 6px}
+  h3{color:var(--green-700);margin:18px 0 6px;font-size:1rem}
+  pre{background:#0f2a1e;color:#eafff2;border-radius:10px;padding:14px 16px;overflow:auto;font-size:.84rem;line-height:1.5}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  p code,li code,td code{background:#e5efe9;color:var(--green-700);padding:1px 5px;border-radius:4px;font-size:.88em}
+  .note{background:#fff;border-left:4px solid var(--gold);border-radius:8px;padding:12px 16px;margin:14px 0;font-size:.92rem}
+  .note.warn{border-left-color:var(--warn)}.note.ok{border-left-color:var(--ok)}
+  .toc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:18px 0}
+  .toc ol{margin:8px 0 0;padding-left:22px;columns:2}
+  @media(max-width:640px){.toc ol{columns:1}}
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:12px 0;font-size:.9rem}
+  th,td{padding:10px 13px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}th{background:var(--green);color:#fff}
+  tr:last-child td{border-bottom:0}
+  a{color:var(--green-700)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:14px 0}
+  .foot{color:var(--muted);font-size:.82rem;margin:30px 0 10px}
+  .diagram{background:#0f2a1e;color:#eafff2;border-radius:10px;padding:16px;font-size:.8rem;overflow:auto;white-space:pre}
+  .rec{display:inline-block;background:#e5f2ea;color:var(--ok);font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:999px}
+</style>
+</head>
+<body>
+<div class="band"><div class="wrap">
+  <h1>Deploy Shifa OMS to AWS — EC2 + RDS</h1>
+  <p class="sub">App server (EC2) + managed database (RDS MySQL) · dashboard-only app · buffered for 50 concurrent users · stays in the free tier / credits</p>
+</div></div>
+
+<div class="wrap">
+
+  <div class="note ok">
+    <strong>What this build is.</strong> The app runs on an <strong>EC2</strong> server; the database runs on <strong>Amazon RDS</strong> (managed MySQL,
+    auto-backed-up). Splitting them gives each its own memory and a <strong>comfortable buffer for ~50 concurrent users</strong> — no connection or
+    loading stalls. It stays inside the free tier for the first year (EC2 <code>t4g.small</code> free until 31 Dec 2026; RDS free for 12 months) with your
+    <strong>$100–$200 credits</strong> covering the rest. New to AWS? The click-by-click beginner version is <a href="aws-free-tier-guide.html">aws-free-tier-guide.html</a>.
+  </div>
+
+  <div class="diagram">Staff browser ──▶  EC2 (t4g.small)  ── Nginx :80/:443 ── /      Angular admin SPA
+   https://your-site                                     └──── /api → Spring Boot :8080  (HikariCP pool)
+                                                                          │  private VPC
+                                                                          ▼
+                                              Amazon RDS for MySQL  (db.t4g.small — buffered)</div>
+
+  <div class="toc"><strong>Steps</strong>
+    <ol>
+      <li>Account, region &amp; budget alarm</li>
+      <li>Create the database (RDS)</li>
+      <li>Launch the app server (EC2)</li>
+      <li>Let EC2 reach RDS</li>
+      <li>Connect over SSH</li>
+      <li>Install Java, Nginx, MySQL client</li>
+      <li>Create DB &amp; user on RDS</li>
+      <li>Configure the backend env</li>
+      <li>Build on your PC &amp; upload</li>
+      <li>Run backend as a service</li>
+      <li>Configure Nginx</li>
+      <li>HTTPS + go live</li>
+      <li>Buffer &amp; scaling for 50 users</li>
+      <li>Backups</li>
+      <li>Optional Lambda automation</li>
+      <li>Redeploys &amp; zero-downtime upgrade</li>
+    </ol>
+  </div>
+
+  <h2><span class="step">1</span> Account, region &amp; budget alarm</h2>
+  <p>Sign up at <a href="https://aws.amazon.com/free/">aws.amazon.com/free</a>; set the region to <strong>Asia Pacific (Mumbai) ap-south-1</strong> and keep it.
+  <strong>Before creating anything</strong>, turn on spending protection: Billing → <strong>Budgets → Create budget → "Zero spend budget"</strong> (your email), and
+  Billing → <strong>Preferences → Free Tier alerts</strong>. Choose the <strong>Paid Plan</strong> at signup (you still get the credits, plus the 12-month RDS free allowance);
+  the budget alarm keeps you safe.</p>
+
+  <h2><span class="step">2</span> Create the database (RDS for MySQL)</h2>
+  <p>Console → <strong>RDS → Create database → Standard create → MySQL 8</strong>.</p>
+  <table>
+    <thead><tr><th>Setting</th><th>Value</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Template</td><td><strong>Free tier</strong> (then adjust size below)</td><td>Locks free-safe defaults (Single-AZ, no autoscaling).</td></tr>
+      <tr><td>Identifier / user</td><td><code>shifa-mysql</code> / master <code>admin</code></td><td>Save the master password.</td></tr>
+      <tr><td>Instance size</td><td><span class="rec">recommended</span> <strong><code>db.t4g.small</code></strong> (2 GB) for a firm 50-user buffer — or <strong><code>db.t4g.micro</code></strong> (1 GB) to stay strictly free</td><td>See the buffer math in Step 13. <code>small</code> supports ~170 connections vs ~85 on <code>micro</code>.</td></tr>
+      <tr><td>Storage</td><td>20 GB <strong>gp3</strong>, autoscaling <strong>off</strong></td><td>gp3 gives steady IOPS; off = can't silently grow past free.</td></tr>
+      <tr><td>Public access</td><td><strong>No</strong></td><td>Database stays private; only the app server reaches it.</td></tr>
+      <tr><td>Backups</td><td>Automated, 7 days</td><td>Point-in-time restore safety net.</td></tr>
+    </tbody>
+  </table>
+  <div class="note warn"><strong>Free vs buffered.</strong> <code>db.t4g.micro</code> is free for 12 months and handles 50 <em>light</em> users with the pool tuned
+  (Step 13). If you want a guaranteed cushion so busy bursts never cause connection/loading issues, use <strong><code>db.t4g.small</code></strong> (one size up,
+  ~₹2,400/mo — not free). Either way it's a one-click resize later with no app change. <strong>Do not</strong> enable Multi-AZ (paid) unless you need HA.</div>
+  <p>When status = <strong>Available</strong>, copy the <strong>Endpoint</strong> (e.g. <code>shifa-mysql.xxxx.ap-south-1.rds.amazonaws.com</code>) — used in Step 8.</p>
+
+  <h2><span class="step">3</span> Launch the app server (EC2)</h2>
+  <table>
+    <tbody>
+      <tr><td>Name</td><td><code>shifa-app</code></td></tr>
+      <tr><td>OS image</td><td><strong>Ubuntu Server 24.04 LTS</strong> — Architecture <strong>64-bit (Arm)</strong></td></tr>
+      <tr><td>Instance type</td><td><strong><code>t4g.small</code></strong> (2 vCPU / 2 GB, free) — the app is DB-free now, so 2 GB is plenty; use <code>t4g.medium</code> (4 GB) for extra buffer if you like</td></tr>
+      <tr><td>Key pair</td><td>Create new, RSA, <code>.pem</code> — download &amp; keep safe</td></tr>
+      <tr><td>Security group (inbound)</td><td>SSH 22 → <em>My IP</em>; HTTP 80 → Anywhere; HTTPS 443 → Anywhere</td></tr>
+      <tr><td>Storage</td><td>20 GB gp3</td></tr>
+    </tbody>
+  </table>
+  <p>After it's <strong>Running</strong>, allocate an <strong>Elastic IP</strong> (EC2 → Elastic IPs → Allocate → Associate to <code>shifa-app</code>) for a stable address.</p>
+
+  <h2><span class="step">4</span> Let EC2 reach RDS (private)</h2>
+  <ol>
+    <li>RDS → <code>shifa-mysql</code> → <strong>Connectivity &amp; security → VPC security groups</strong> → open the DB's security group.</li>
+    <li><strong>Inbound rules → Edit → Add rule:</strong> type <strong>MySQL/Aurora (3306)</strong>, Source = the <strong>EC2's security group</strong>. Save.</li>
+  </ol>
+  <div class="note">This privately allows only the app server to talk to the database on port 3306 — the DB is never exposed to the internet.</div>
+
+  <h2><span class="step">5</span> Connect over SSH</h2>
+  <pre><code>icacls "C:\path\to\shifa-key.pem" /inheritance:r /grant:r "$($env:USERNAME):(R)"
+ssh -i "C:\path\to\shifa-key.pem" ubuntu@&lt;ELASTIC_IP&gt;</code></pre>
+
+  <h2><span class="step">6</span> Install Java, Nginx, MySQL client</h2>
+  <pre><code>sudo apt update &amp;&amp; sudo apt -y upgrade
+sudo apt -y install openjdk-21-jdk nginx mysql-client git unzip
+java -version &amp;&amp; nginx -v</code></pre>
+  <div class="note warn">Install the MySQL <em>client</em> only (to talk to RDS) — <strong>not</strong> <code>mysql-server</code>, since the database lives on RDS. Don't build Angular on this box (build on your PC, Step 9).</div>
+
+  <h2><span class="step">7</span> Create the database &amp; user on RDS</h2>
+  <pre><code>mysql -h &lt;RDS_ENDPOINT&gt; -u admin -p</code></pre>
+  <pre><code>CREATE DATABASE IF NOT EXISTS shifa_dashboard CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'shifa'@'%' IDENTIFIED BY 'CHANGE_ME_STRONG_DB_PASSWORD';
+GRANT ALL PRIVILEGES ON shifa_dashboard.* TO 'shifa'@'%';
+FLUSH PRIVILEGES;
+EXIT;</code></pre>
+  <p>Flyway builds all tables (V1…V27, incl. the demo/test seed) automatically on first backend start — no manual schema work.</p>
+
+  <h2><span class="step">8</span> Configure the backend env</h2>
+  <pre><code>sudo useradd -r -s /usr/sbin/nologin shifa || true
+sudo mkdir -p /opt/shifa /var/www/shifa/admin /etc/shifa
+sudo nano /etc/shifa/shifa.env
+sudo chmod 600 /etc/shifa/shifa.env</code></pre>
+  <pre><code>SPRING_PROFILES_ACTIVE=prod
+
+# Database = RDS endpoint (NOT localhost)
+DB_HOST=&lt;RDS_ENDPOINT&gt;
+DB_PORT=3306
+DB_NAME=shifa_dashboard
+DB_USERNAME=shifa
+DB_PASSWORD=CHANGE_ME_STRONG_DB_PASSWORD
+# Connection pool sized with headroom for 50 concurrent users (Step 13)
+DB_POOL_SIZE=25
+
+JWT_SECRET=PASTE_openssl_rand_base64_48
+SEED_ADMIN_USERNAME=admin
+SEED_ADMIN_PASSWORD=CHANGE_ME
+SEED_PACKING_USERNAME=packer
+SEED_PACKING_PASSWORD=CHANGE_ME
+
+COURIER_MODE=MOCK
+WHATSAPP_MODE=MOCK
+MAIL_MODE=MOCK
+
+# DB is on RDS, so give the JVM most of the box's RAM
+# t4g.small (2 GB): -Xmx1300m   |   t4g.medium (4 GB): -Xmx2500m
+JAVA_OPTS=-Xms512m -Xmx1300m</code></pre>
+
+  <h2><span class="step">9</span> Build on your PC &amp; upload</h2>
+  <pre><code>cd "c:\E Drive\Shifa-Software\backend"
+mvn -DskipTests package
+
+cd "c:\E Drive\Shifa-Software\frontend"
+npm ci
+npx ng build admin --configuration production --base-href /
+
+scp -i "C:\path\to\shifa-key.pem" "..\backend\target\shifa-oms-0.0.1-SNAPSHOT.jar" ubuntu@&lt;ELASTIC_IP&gt;:/home/ubuntu/shifa-oms.jar
+scp -i "C:\path\to\shifa-key.pem" -r ".\dist\admin\browser\*" ubuntu@&lt;ELASTIC_IP&gt;:/home/ubuntu/admin-dist
+scp -i "C:\path\to\shifa-key.pem" "..\deploy\shifa-oms.service" ubuntu@&lt;ELASTIC_IP&gt;:/home/ubuntu/</code></pre>
+  <pre><code># on the server
+sudo cp ~/shifa-oms.jar /opt/shifa/shifa-oms.jar &amp;&amp; sudo chown shifa:shifa /opt/shifa/shifa-oms.jar
+sudo rm -rf /var/www/shifa/admin/* &amp;&amp; sudo cp -r ~/admin-dist/* /var/www/shifa/admin/
+sudo chown -R www-data:www-data /var/www/shifa</code></pre>
+  <div class="note">Jar name / dist folder may vary by version — check <code>ls ~/*.jar</code> and use whichever <code>dist/admin</code> folder contains <code>index.html</code>.</div>
+
+  <h2><span class="step">10</span> Run the backend as a service</h2>
+  <pre><code>sudo cp ~/shifa-oms.service /etc/systemd/system/shifa-oms.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now shifa-oms
+sudo journalctl -u shifa-oms -f     # wait for "Started Application" / "Tomcat started on port 8080"</code></pre>
+
+  <h2><span class="step">11</span> Configure Nginx (admin at root)</h2>
+  <pre><code>sudo tee /etc/nginx/sites-available/shifa &gt;/dev/null &lt;&lt;'NGINX'
+server {
+    listen 80;
+    server_name _;                 # replace with your hostname
+    client_max_body_size 15m;
+    gzip on; gzip_types text/css application/javascript application/json image/svg+xml; gzip_min_length 1024;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }
+    location = /api/admin/events {      # live dashboard (SSE) — no buffering
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Connection '';
+        proxy_buffering off; proxy_cache off; proxy_read_timeout 3600s;
+    }
+    location / {
+        root /var/www/shifa/admin;
+        try_files $uri $uri/ /index.html;
+    }
+}
+NGINX
+sudo ln -sf /etc/nginx/sites-available/shifa /etc/nginx/sites-enabled/shifa
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code></pre>
+
+  <h2><span class="step">12</span> HTTPS + go live</h2>
+  <pre><code>sudo apt -y install certbot python3-certbot-nginx
+sudo sed -i 's/server_name _;/server_name 12-34-56-78.nip.io;/' /etc/nginx/sites-available/shifa
+sudo systemctl reload nginx
+sudo certbot --nginx -d 12-34-56-78.nip.io --redirect --agree-tos -m you@example.com --no-eff-email</code></pre>
+  <p>Open <strong>https://12-34-56-78.nip.io/</strong> → admin login (<code>admin</code> / your seed password; demo logins: <a href="test-data-guide.html">test-data-guide.html</a>).</p>
+
+  <h2><span class="step">13</span> Buffer &amp; scaling for 50 concurrent users <span class="rec">headroom</span></h2>
+  <p>"50 concurrent" isn't 50 queries at one instant — each click is a query lasting tens of milliseconds. The buffer comes from three sized-with-headroom layers:</p>
+  <table>
+    <thead><tr><th>Layer</th><th>Setting</th><th>Headroom / math</th></tr></thead>
+    <tbody>
+      <tr><td>DB connection pool (app)</td><td><code>DB_POOL_SIZE=25</code></td><td>25 reusable connections × ~10 queries/sec each ≈ <strong>250 queries/sec</strong> capacity — far above what 50 clicking users generate.</td></tr>
+      <tr><td>Database (RDS)</td><td><strong><code>db.t4g.small</code></strong> (2 GB)</td><td>Supports <strong>~170 connections</strong>; a 25-connection pool uses ~15% → big cushion (and room for a 2nd app node later). <code>db.t4g.micro</code> ≈ 85 connections — still fine at pool 20, less cushion.</td></tr>
+      <tr><td>App server (EC2)</td><td><code>t4g.small</code> 2 GB, <code>-Xmx1300m</code> (or <code>t4g.medium</code> 4 GB, <code>-Xmx2500m</code>)</td><td>DB offloaded to RDS, so the JVM owns the box. Nginx serves thousands of connections; 50 users is trivial. t4g.medium adds burst headroom.</td></tr>
+    </tbody>
+  </table>
+  <div class="note ok"><strong>To make "never any connection/loading issues" a guarantee:</strong> use <code>db.t4g.small</code> + <code>DB_POOL_SIZE=25</code>
+  (optionally <code>t4g.medium</code> app). This leaves ~85% DB-connection headroom and comfortable RAM/CPU margin at 50 concurrent users.</div>
+  <h3>Watch it (free, RDS → Monitoring)</h3>
+  <ul>
+    <li><strong>DB Connections</strong> — should sit well under the max (pool caps it at 25). <strong>CPU</strong> &amp; <strong>Freeable Memory</strong> — should have margin during busy hours.</li>
+    <li>If any of these run hot, resize the DB one notch (<code>small → medium</code>) — a few-minutes, one-click change, no app edit.</li>
+    <li><strong>Data growing to millions of rows is fine</strong> — MySQL 8 handles it with the existing indexes; watch RAM/connections, not row count.</li>
+  </ul>
+  <div class="note"><strong>Future scale (optional):</strong> if you later add Lambda functions that hit the DB, or a 2nd app node, put <strong>RDS Proxy</strong> in front of RDS to pool/limit connections centrally. Not needed for one app node + HikariCP.</div>
+
+  <h2><span class="step">14</span> Backups</h2>
+  <ul>
+    <li><strong>RDS automated backups</strong> (7 days) are on — daily snapshots + point-in-time restore. Test a restore once so you trust it.</li>
+    <li>Take a <strong>manual snapshot</strong> (RDS → Actions → Take snapshot) before big changes.</li>
+    <li>The app's nightly dump writes to the EC2 disk; RDS backups are the primary safety net.</li>
+  </ul>
+
+  <h2><span class="step">15</span> Daily 8 AM consolidated report to the admin (Lambda)</h2>
+  <p>Every day at <strong>8:00 AM IST</strong> the admin gets an emailed <strong>consolidated report of the previous day</strong> — total sales, a
+  per-salesperson breakdown, customers, and the order-status split. The report + email are built <strong>inside the app</strong> (endpoint
+  <code>POST /api/admin/reports/daily-digest/run</code>); a tiny Lambda just triggers it on schedule. Two ways to run it:</p>
+
+  <h3>Option A — App's built-in scheduler (simplest, no Lambda)</h3>
+  <p>The backend already sends this report on a schedule. Just set these in <code>/etc/shifa/shifa.env</code> and restart:</p>
+  <pre><code>MAIL_MODE=SMTP                 # real email (see mail settings below)
+REPORT_DIGEST_TO=admin@yourcompany.com
+REPORT_DIGEST_CRON=0 0 8 * * *  # 8:00 AM server time (set the server timezone to IST)
+REPORT_DIGEST_ENABLED=true</code></pre>
+  <p>Set the server clock to IST once: <code>sudo timedatectl set-timezone Asia/Kolkata</code>, then <code>sudo systemctl restart shifa-oms</code>. Done — no Lambda needed.</p>
+
+  <h3>Option B — AWS Lambda triggers it at 8 AM IST (what you asked for)</h3>
+  <p>Use this if you prefer the schedule to live in AWS. Turn OFF the internal scheduler so the report isn't sent twice:</p>
+  <pre><code># in /etc/shifa/shifa.env
+REPORT_DIGEST_ENABLED=false
+MAIL_MODE=SMTP
+REPORT_DIGEST_TO=admin@yourcompany.com</code></pre>
+  <ol>
+    <li><strong>Lambda → Create function</strong> → Python 3.12 → name <code>shifa-daily-report</code>. Set env vars <code>APP_BASE</code> (your <code>https://your-site</code>), <code>ADMIN_USER</code>, <code>ADMIN_PASS</code>. Paste:</li>
+  </ol>
+  <pre><code>import os, json, urllib.request
+def handler(event, context):
+    base = os.environ['APP_BASE'].rstrip('/')
+    # 1) log in as admin to get a token
+    login = urllib.request.Request(base + '/api/auth/login',
+        data=json.dumps({'username': os.environ['ADMIN_USER'],
+                         'password': os.environ['ADMIN_PASS']}).encode(),
+        headers={'Content-Type': 'application/json'}, method='POST')
+    token = json.loads(urllib.request.urlopen(login, timeout=20).read())['accessToken']
+    # 2) trigger yesterday's consolidated report email
+    run = urllib.request.Request(base + '/api/admin/reports/daily-digest/run',
+        headers={'Authorization': 'Bearer ' + token}, method='POST')
+    return urllib.request.urlopen(run, timeout=60).read().decode()</code></pre>
+  <ol start="2">
+    <li>Set the handler to <code>lambda_function.handler</code>; increase <strong>timeout to ~30s</strong>.</li>
+    <li><strong>Add trigger → EventBridge → Create new rule → Schedule expression</strong>: <code>cron(30 2 * * ? *)</code> — that's <strong>02:30 UTC = 08:00 IST</strong>, daily.</li>
+    <li>Test once (Lambda → Test) and confirm the admin receives the email.</li>
+  </ol>
+  <div class="note">The login response field is <code>accessToken</code> (adjust if your build differs). Keep <code>ADMIN_PASS</code> in the Lambda env (or better, in AWS Secrets Manager). Because the app builds the report, the Lambda stays tiny and needs no database access.</div>
+  <div class="note warn"><strong>Don't run both options</strong> — pick A <em>or</em> B, otherwise the admin gets two emails. (Option B sets <code>REPORT_DIGEST_ENABLED=false</code> to prevent that.)</div>
+
+  <h3>Also useful — weekly RDS snapshot Lambda (optional, ≈ ₹0)</h3>
+  <pre><code># Lambda (Python 3.12), trigger: EventBridge schedule rate(7 days)
+import boto3, datetime
+rds = boto3.client('rds')
+def handler(event, context):
+    stamp = datetime.datetime.utcnow().strftime('%Y-%m-%d-%H%M')
+    rds.create_db_snapshot(DBInstanceIdentifier='shifa-mysql',
+                           DBSnapshotIdentifier=f'shifa-weekly-{stamp}')
+    return 'ok'</code></pre>
+  <p>Give its role <code>rds:CreateDBSnapshot</code>. Lambda's always-free tier makes these schedules cost ≈ ₹0. Beginner steps: <a href="aws-free-tier-guide.html#lambda">aws-free-tier-guide.html → Part D</a>.</p>
+
+  <h2><span class="step">16</span> Redeploys &amp; zero-downtime upgrade</h2>
+  <p>Rebuild on PC (Step 9), <code>scp</code> up, then on the server:</p>
+  <pre><code>sudo cp ~/shifa-oms.jar /opt/shifa/shifa-oms.jar &amp;&amp; sudo chown shifa:shifa /opt/shifa/shifa-oms.jar
+sudo rm -rf /var/www/shifa/admin/* &amp;&amp; sudo cp -r ~/admin-dist/* /var/www/shifa/admin/
+sudo systemctl restart shifa-oms &amp;&amp; sudo systemctl reload nginx</code></pre>
+  <div class="note warn"><strong>Single-server reality:</strong> with one EC2, an app restart pauses the site ~30–60 s. Data is safe (it's on RDS). For internal
+  use by 50 staff this is usually fine. <strong>True zero-downtime</strong> = add a 2nd EC2 + an <strong>Application Load Balancer</strong> (~₹1,700/mo) and deploy one
+  node at a time; optionally switch RDS to Multi-AZ. Same jar, same RDS — no app change.</div>
+  <div class="note warn"><strong>Never re-import a DB dump over live data.</strong> Add a new Flyway migration (<code>V28__*.sql</code>, …) — it applies on the next backend restart. Never edit an applied migration.</div>
+
+  <h2><span class="step">💰</span> Cost (₹96/$1)</h2>
+  <table>
+    <thead><tr><th>Item</th><th>Free window</th><th>After free</th></tr></thead>
+    <tbody>
+      <tr><td>EC2 <code>t4g.small</code></td><td>Free 750 h/mo until 31 Dec 2026</td><td>~₹787/mo</td></tr>
+      <tr><td>RDS <code>db.t4g.micro</code> (free) / <code>db.t4g.small</code> (buffered)</td><td><code>micro</code> free 12 months</td><td><code>micro</code> ~₹1,150 · <code>small</code> ~₹2,400/mo</td></tr>
+      <tr><td>Storage + Elastic IP</td><td>Free 12 months</td><td>~₹750/mo</td></tr>
+      <tr><td>Lambda automation</td><td>Always free</td><td>≈ ₹0</td></tr>
+      <tr><td><strong>Total</strong></td><td><strong>≈ ₹0 (free tier + $100 credits)</strong></td><td><strong>≈ ₹2,700 (free DB) – ₹3,900/mo (buffered DB)</strong></td></tr>
+    </tbody>
+  </table>
+  <div class="note">Effectively <strong>₹0 for ~the first year</strong>; after that ~₹2,700–₹3,900/mo depending on the DB size you keep. Courier/WhatsApp are separate and not included here. Full detail: <a href="cost-estimate.html">cost-estimate.html</a>.</div>
+
+  <div class="card">
+    <strong>Give this to the client</strong>
+    <ul>
+      <li>Admin link: <code>https://&lt;host&gt;/</code> — user <code>admin</code>, your seed password.</li>
+      <li>Database is <strong>managed by AWS (RDS)</strong>, backed up daily, sized with buffer for 50 users and millions of rows.</li>
+      <li>Courier &amp; WhatsApp are <strong>mocked</strong> for the demo — no real charges/messages. Switch to live later.</li>
+      <li>Seeded demo logins &amp; a per-role tour: <a href="test-data-guide.html">test-data-guide.html</a>.</li>
+    </ul>
+  </div>
+
+  <p class="foot">
+    Companion docs: <a href="aws-free-tier-guide.html">aws-free-tier-guide.html</a> (beginner step-by-step),
+    <a href="cost-estimate.html">cost-estimate.html</a> (costs), <a href="cloud-comparison.html">cloud-comparison.html</a> (AWS vs others),
+    <a href="DEPLOYMENT-AWS.md">DEPLOYMENT-AWS.md</a> (markdown reference). Prices/tiers as of early 2026 (₹96/$1) — verify on the
+    <a href="https://calculator.aws">AWS Pricing Calculator</a>. Prepared for Shifa Herbal Remedies.
+  </p>
+
+</div>
+</body>
+</html>

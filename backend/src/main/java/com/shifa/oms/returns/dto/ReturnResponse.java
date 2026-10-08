@@ -13,27 +13,60 @@ import java.time.LocalDateTime;
 public record ReturnResponse(
         Long id,
         Long orderId,
+        // The order's human-readable code (e.g. SHR-20260916-JGM9), so the admin UI
+        // never has to display or link by the raw numeric id. Null only if the
+        // order has since been deleted (should not happen in practice).
+        String orderCode,
         String reason,
         String notes,
         ReturnStatus status,
+        // The CASH refunded to the customer (money out) — for an RTO only what was
+        // actually collected, so zero for a pure COD order.
         BigDecimal refundAmount,
+        // The GST-inclusive VALUE OF SUPPLY reversed by the credit note (V64), which
+        // for a whole-consignment return/RTO is the full invoice value regardless of
+        // how much cash was collected. This is what GSTR-1 CDNR/CDNUR reports. Null
+        // on legacy rows written before the two amounts were separated.
+        BigDecimal creditNoteValue,
         boolean restocked,
         Long createdBy,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        // Name of the salesperson who punched the ORDER (resolved from the order's
+        // created_by; full name, else username; null when unknown). Distinct from
+        // createdBy above, which is the actor who raised the RETURN.
+        String salespersonName,
+        // How the refund was paid back (ENHANCEMENT 2.3); null when not refunded /
+        // unspecified / a pure COD order with nothing to refund.
+        com.shifa.oms.returns.RefundMethod refundMethod
 ) {
 
+    /** Builds a response without a resolved order code (rare fallback path). */
     public static ReturnResponse from(OrderReturn r) {
+        return from(r, null, null);
+    }
+
+    /** Builds a response with the order code resolved by the caller (batch-friendly). */
+    public static ReturnResponse from(OrderReturn r, String orderCode) {
+        return from(r, orderCode, null);
+    }
+
+    /** Builds a response with the order code + order's salesperson name resolved by the caller. */
+    public static ReturnResponse from(OrderReturn r, String orderCode, String salespersonName) {
         return new ReturnResponse(
                 r.getId(),
                 r.getOrderId(),
+                orderCode,
                 r.getReason(),
                 r.getNotes(),
                 r.getStatus(),
                 r.getRefundAmount(),
+                r.getCreditNoteValue(),
                 r.isRestocked(),
                 r.getCreatedBy(),
                 r.getCreatedAt(),
-                r.getUpdatedAt());
+                r.getUpdatedAt(),
+                salespersonName,
+                r.getRefundMethod());
     }
 }

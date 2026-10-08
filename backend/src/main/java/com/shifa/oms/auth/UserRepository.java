@@ -22,10 +22,35 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findAllByOrderByCreatedAtDescIdDesc();
 
     /**
+     * All users holding a given role, newest first — backs the admin
+     * "All salespeople" directory (staff onboarding &amp; ID verification).
+     */
+    List<User> findByRoleOrderByCreatedAtDescIdDesc(Role role);
+
+    /**
+     * All users holding any of the given roles, newest first — backs the admin
+     * "All salespeople" directory, which lists SALESPERSON <em>and</em> TEAM_LEAD
+     * (a team lead also punches orders, so they belong in the salespeople view).
+     */
+    List<User> findByRoleInOrderByCreatedAtDescIdDesc(java.util.Collection<Role> roles);
+
+    /**
      * Count of active users holding a given role — used to protect the last
      * remaining active {@link Role#ADMIN} from deactivation/demotion.
      */
     long countByRoleAndActiveTrue(Role role);
+
+    /**
+     * The user ids of the salespeople assigned to a given team lead
+     * ({@code users.team_lead_id = teamLeadId}). Drives team-scoped visibility
+     * (a team lead sees the orders created by these users). Empty when the lead
+     * has no one assigned.
+     */
+    @Query("SELECT u.id FROM User u WHERE u.teamLeadId = :teamLeadId")
+    List<Long> findIdsByTeamLeadId(@Param("teamLeadId") Long teamLeadId);
+
+    /** The salespeople assigned to a team lead, by name — backs the roster/assignment UI. */
+    List<User> findByTeamLeadIdOrderByFullNameAsc(Long teamLeadId);
 
     /**
      * Case-insensitive search over registered {@link Role#CUSTOMER} accounts by

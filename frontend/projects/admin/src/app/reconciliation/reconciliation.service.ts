@@ -1,7 +1,52 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient, PageResponse, ReceivableType } from 'core';
-import { CourierSummary, ReceivableRow, Segregation, UnsettledCod } from './reconciliation.model';
+import {
+  CodAging,
+  CollectibleSummary,
+  CourierSummary,
+  ReceivableRow,
+  Segregation,
+  UnsettledCod,
+} from './reconciliation.model';
+
+/** The outcome classification for a single courier remittance row. */
+export type RemittanceRowStatus =
+  | 'SETTLED'
+  | 'MISMATCH'
+  | 'ALREADY_SETTLED'
+  | 'ORDER_NOT_FOUND'
+  | 'NO_RECEIVABLE'
+  | 'ERROR';
+
+/** A single row's outcome in a courier COD remittance import (dry-run or real). */
+export interface RemittanceRowResult {
+  rowNumber: number;
+  awb?: string | null;
+  orderCode?: string | null;
+  resolvedOrderCode?: string | null;
+  remittedAmount?: number | string | null;
+  expectedAmount?: number | string | null;
+  status: RemittanceRowStatus;
+  message?: string | null;
+}
+
+/**
+ * Result of a courier COD remittance CSV import
+ * ({@code POST /api/recon/remittance/import}). When {@code dryRun} is true the
+ * counts + rows describe what *would* happen (nothing settled).
+ */
+export interface RemittanceImportResult {
+  dryRun: boolean;
+  totalRows: number;
+  settled: number;
+  mismatched: number;
+  alreadySettled: number;
+  notFound: number;
+  noReceivable: number;
+  errors: number;
+  rows: RemittanceRowResult[];
+}
 
 /** Filters for the receivables listing (Req 18.1-18.3). */
 export interface ReceivableFilters {
@@ -95,6 +140,16 @@ export class ReconciliationService {
     return this.api.get<UnsettledCod[]>('/api/recon/cod/unsettled');
   }
 
+  /** COD aging buckets + courier-SLA flag (cod-aging enhancement). */
+  codAging(): Observable<CodAging> {
+    return this.api.get<CodAging>('/api/recon/cod-aging');
+  }
+
+  /** One-tap collectible summary — courier-COD vs customer dues + claims (ENHANCEMENT 1.4). */
+  collectibleSummary(): Observable<CollectibleSummary> {
+    return this.api.get<CollectibleSummary>('/api/recon/collectible-summary');
+  }
+
   /** Prepaid vs COD segregation of fulfilled orders (Req 18.4). */
   segregation(): Observable<Segregation> {
     return this.api.get<Segregation>('/api/recon/segregation');
@@ -114,5 +169,22 @@ export class ReconciliationService {
   settle(receivableId: number, date?: string | null): Observable<ReceivableRow> {
     const body = date ? { date } : {};
     return this.api.post<ReceivableRow>(`/api/recon/receivables/${receivableId}/settle`, body);
+  }
+
+  /**
+   * Imports (or previews) a courier COD remittance sheet — CSV or a real Excel
+   * workbook ({@code .xlsx}/{@code .xls}, e.g. QuikShipX's own remittance
+   * export) — via {@code POST /api/recon/remittance/import} (ADMIN +
+   * ACCOUNTANT). Posts the file as the multipart part {@code file}; pass
+   * {@code dryRun=true} first to preview the auto-match, then {@code false} to
+   * commit the settlements. Angular sets the multipart {@code Content-Type}
+   * itself for a {@link FormData} body.
+   */
+  importRemittance(file: File, dryRun: boolean): Observable<RemittanceImportResult> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.api.post<RemittanceImportResult>('/api/recon/remittance/import', form, {
+      params: { dryRun },
+    });
   }
 }

@@ -105,6 +105,76 @@ public class OutboxEventPublisher {
     }
 
     /**
+     * Enqueues an {@code ORDER_AWAITING_APPROVAL} event when a salesperson punches
+     * a new order that lands in the admin approval queue, so connected admins get
+     * a real-time "order needs approval" nudge over the SSE stream. The row is
+     * persisted in the same transaction as the order, so it is never lost even
+     * when no admin is connected.
+     *
+     * @param orderId      the punched order's id
+     * @param orderCode    the punched order's human/barcode code
+     * @param customerName the customer name, for display in the notification
+     * @param total        the order total, for display (as a string)
+     * @return the persisted event row
+     */
+    public OutboxEvent publishOrderAwaitingApproval(Long orderId, String orderCode,
+                                                    String customerName, String total) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("orderId", orderId);
+        payload.put("orderCode", orderCode);
+        payload.put("customerName", customerName);
+        payload.put("total", total);
+        return publish(OutboxEvent.AGGREGATE_ORDER, orderId,
+                OutboxEvent.EVENT_ORDER_AWAITING_APPROVAL, payload);
+    }
+
+    /**
+     * Enqueues a {@code QUIKSHIPX_CREATE} event when an order is punched, so the
+     * QuikShipX drainer creates the shipment (their Pending section) out-of-band.
+     * Publish only when the QuikShipX integration is enabled.
+     *
+     * @param orderId   the punched order's id
+     * @param orderCode the punched order's code (also the QuikShipX customer_order_id)
+     * @return the persisted event row
+     */
+    public OutboxEvent publishQuikShipXCreate(Long orderId, String orderCode) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("orderId", orderId);
+        payload.put("orderCode", orderCode);
+        return publish(OutboxEvent.AGGREGATE_ORDER, orderId, OutboxEvent.EVENT_QUIKSHIPX_CREATE, payload);
+    }
+
+    /**
+     * Enqueues a {@code QUIKSHIPX_CONFIRM} event when an order is admin-approved,
+     * so the QuikShipX drainer mirrors the shipment status to Confirmed.
+     *
+     * @param orderId   the approved order's id
+     * @param orderCode the approved order's code
+     * @return the persisted event row
+     */
+    public OutboxEvent publishQuikShipXConfirm(Long orderId, String orderCode) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("orderId", orderId);
+        payload.put("orderCode", orderCode);
+        return publish(OutboxEvent.AGGREGATE_ORDER, orderId, OutboxEvent.EVENT_QUIKSHIPX_CONFIRM, payload);
+    }
+
+    /**
+     * Enqueues a {@code QUIKSHIPX_ALLOT} event so the QuikShipX drainer allots a
+     * tracking id (AWB) + label for a confirmed order (their Tracking ID Assigned).
+     *
+     * @param orderId   the confirmed order's id
+     * @param orderCode the confirmed order's code
+     * @return the persisted event row
+     */
+    public OutboxEvent publishQuikShipXAllot(Long orderId, String orderCode) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("orderId", orderId);
+        payload.put("orderCode", orderCode);
+        return publish(OutboxEvent.AGGREGATE_ORDER, orderId, OutboxEvent.EVENT_QUIKSHIPX_ALLOT, payload);
+    }
+
+    /**
      * Enqueues a {@code COURIER_ASSIGN} event for an order that has just become
      * {@code Packed} (Req 12.1). The courier drainer (task 14) picks this up and
      * requests the AWB + shipping label out-of-band, so a slow or unavailable
@@ -142,7 +212,7 @@ public class OutboxEventPublisher {
 
     /**
      * Enqueues a {@code CLAIM_FILED_REQUIRED} admin notification when an order
-     * becomes {@code Courier_Lost} and a claim receivable is recorded (Req 17.4).
+     * becomes {@code Redispatch} and a claim receivable is recorded (Req 17.4).
      *
      * @param orderId the lost order's id
      * @param orderCode the order code, for display
@@ -198,6 +268,20 @@ public class OutboxEventPublisher {
     public OutboxEvent publishWhatsAppNotify(Long orderId, String orderCode, String event,
                                              String recipientMobile, String templateName,
                                              List<Map<String, String>> parameters) {
+        return publishWhatsAppNotify(orderId, orderCode, event, recipientMobile,
+                templateName, parameters, null);
+    }
+
+    /**
+     * Overload carrying the creating salesperson's user id on the payload
+     * ({@code salespersonUserId}, from {@code OrderEntity.createdBy}), so
+     * order-scoped notifications can be traced/addressed to the salesperson who
+     * created the order (Req 7.3, design §5.2). A {@code null} id is omitted.
+     */
+    public OutboxEvent publishWhatsAppNotify(Long orderId, String orderCode, String event,
+                                             String recipientMobile, String templateName,
+                                             List<Map<String, String>> parameters,
+                                             Long salespersonUserId) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("orderId", orderId);
         payload.put("orderCode", orderCode);
@@ -205,8 +289,69 @@ public class OutboxEventPublisher {
         payload.put("recipientMobile", recipientMobile);
         payload.put("templateName", templateName);
         payload.put("parameters", new ArrayList<Map<String, String>>(parameters));
+        if (salespersonUserId != null) {
+            payload.put("salespersonUserId", salespersonUserId);
+        }
         return publish(OutboxEvent.AGGREGATE_ORDER, orderId,
                 OutboxEvent.EVENT_WHATSAPP_NOTIFY, payload);
+    }
+
+    /**
+     * Enqueues an {@code EMAIL_NOTIFY} event carrying a fully-resolved customer
+     * milestone email (Req 7.2, 10.7, 11.4, 14.1), mirroring
+     * {@link #publishWhatsAppNotify}. The {@code EmailOutboxDrainer} consumes
+     * {@code PENDING} rows of this type and sends via the {@code MailService} with
+     * bounded retries; because the resolved recipient/subject/body are stored on
+     * the payload, the drainer never re-loads the order aggregate. The event row
+     * commits atomically with the status change.
+     *
+     * @param orderId           the order the email concerns
+     * @param orderCode         the order code, for display/traceability
+     * @param event             the lifecycle event name (e.g. {@code DISPATCHED})
+     * @param recipientEmail    the customer email the message is addressed to
+     * @param subject           the resolved subject line
+     * @param body              the resolved plain-text body
+     * @param salespersonUserId the creating salesperson's user id (nullable)
+     * @return the persisted event row
+     */
+    public OutboxEvent publishEmailNotify(Long orderId, String orderCode, String event,
+                                          String recipientEmail, String subject, String body,
+                                          Long salespersonUserId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("orderId", orderId);
+        payload.put("orderCode", orderCode);
+        payload.put("event", event);
+        payload.put("recipientEmail", recipientEmail);
+        payload.put("subject", subject);
+        payload.put("body", body);
+        if (salespersonUserId != null) {
+            payload.put("salespersonUserId", salespersonUserId);
+        }
+        return publish(OutboxEvent.AGGREGATE_ORDER, orderId,
+                OutboxEvent.EVENT_EMAIL_NOTIFY, payload);
+    }
+
+    /**
+     * Enqueues an {@code EMAIL_FAILED} admin notification when a customer email
+     * send fails after exhausting its retries, flagging the order for admin
+     * review (Req 14.5). Consumed by the admin notifications center, mirroring
+     * {@link #publishWhatsAppFailed}.
+     *
+     * @param orderId   the order whose email failed
+     * @param orderCode the order code, for display
+     * @param subject   the subject that failed to send
+     * @param error     the failure detail
+     * @return the persisted event row
+     */
+    public OutboxEvent publishEmailFailed(Long orderId, String orderCode,
+                                          String subject, String error) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("orderId", orderId);
+        payload.put("orderCode", orderCode);
+        payload.put("subject", subject);
+        payload.put("error", error);
+        return publish(OutboxEvent.AGGREGATE_ORDER, orderId,
+                OutboxEvent.EVENT_EMAIL_FAILED, payload);
     }
 
     /**
@@ -286,5 +431,56 @@ public class OutboxEventPublisher {
         payload.put("outOfStock", outOfStock);
         return publish(OutboxEvent.AGGREGATE_PRODUCT, productId,
                 OutboxEvent.EVENT_LOW_STOCK, payload);
+    }
+
+    /**
+     * Enqueues a {@code LEDGER_POST} event so the General Ledger posts the
+     * balanced double-entry voucher for a just-recorded source business document
+     * out-of-band (Reqs 8.1, 9.1, 10.1, 11.1, 11.2, 17.3, 17.4).
+     *
+     * <p>Call this from inside the source module's existing {@code @Transactional}
+     * method (sales-invoice finalisation, purchase-bill recording, expense
+     * creation, payment/receipt recording) so the event row commits atomically
+     * with the source change; the {@code LedgerPostingDrainer} then derives and
+     * posts the voucher without ever modifying the source aggregate. The event is
+     * {@link OutboxEvent#AGGREGATE_LEDGER_SOURCE ledger-source}-scoped with the
+     * source document id as the aggregate id; {@code sourceType} + {@code sourceId}
+     * are carried on the payload as the auto-posting key.
+     *
+     * @param sourceType the source-document type name (ORDER / PURCHASE_ORDER /
+     *                   EXPENSE / PAYMENT)
+     * @param sourceId   the source document's id
+     * @return the persisted event row
+     */
+    public OutboxEvent publishLedgerPost(String sourceType, Long sourceId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("sourceType", sourceType);
+        payload.put("sourceId", sourceId);
+        return publish(OutboxEvent.AGGREGATE_LEDGER_SOURCE, sourceId,
+                OutboxEvent.EVENT_LEDGER_POST, payload);
+    }
+
+    /**
+     * Enqueues a {@code LEAD_FOLLOW_UP_DUE} event for a lead whose follow-up date
+     * is due, so an in-app reminder is delivered to the lead owner (design
+     * &sect;Follow-up Reminders). Lead-scoped ({@link OutboxEvent#AGGREGATE_LEAD})
+     * with the lead id as the aggregate id; the returned event's id is used as the
+     * de-dup {@code sourceEventId} of the staff notification it drives.
+     *
+     * @param leadId       the due lead's id
+     * @param customerName the lead's customer name, for display
+     * @param ownerUserId  the lead owner the reminder is addressed to
+     * @param followUpDate the due follow-up date (ISO string), for display
+     * @return the persisted event row
+     */
+    public OutboxEvent publishLeadFollowUpDue(Long leadId, String customerName,
+                                              Long ownerUserId, String followUpDate) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("leadId", leadId);
+        payload.put("customerName", customerName);
+        payload.put("ownerUserId", ownerUserId);
+        payload.put("followUpDate", followUpDate);
+        return publish(OutboxEvent.AGGREGATE_LEAD, leadId,
+                OutboxEvent.EVENT_LEAD_FOLLOW_UP_DUE, payload);
     }
 }

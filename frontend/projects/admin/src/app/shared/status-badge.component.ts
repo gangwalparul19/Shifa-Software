@@ -18,9 +18,12 @@ export function orderStatusTone(status: OrderStatus | string): StatusTone {
     case OrderStatus.PENDING_ADMIN_APPROVAL:
       return 'pending';
     case OrderStatus.REJECTED:
+    case OrderStatus.PAYMENT_REJECTED:
     case OrderStatus.CANCELLED:
     case OrderStatus.RTO:
-    case OrderStatus.COURIER_LOST:
+    case OrderStatus.REDISPATCH:
+    case OrderStatus.CUSTOMER_REJECTED:
+    case OrderStatus.DELIVERY_FAILED:
       return 'bad';
     case OrderStatus.DELIVERED:
     case OrderStatus.COD_COLLECTED:
@@ -45,13 +48,69 @@ export function paymentStatusTone(status: PaymentStatus | string): StatusTone {
   }
 }
 
+/**
+ * Explicit display labels for statuses whose enum name shouldn't be shown to
+ * users verbatim. Two reasons:
+ *  - the client dropped "COD" from the UI (orders are Full/Partial payment now);
+ *  - the lifecycle statuses are shown in the courier/business vocabulary the team
+ *    actually uses (per the status dropdown): e.g. {@code COURIER_ASSIGNED} reads
+ *    "Tracking ID Assigned", {@code DISPATCHED} reads "In Transit", {@code RTO}
+ *    reads "Returned", {@code REDISPATCH} reads "Lost". The underlying enum names
+ *    are unchanged (wire/persistence); only the display text differs.
+ */
+const STATUS_LABEL_OVERRIDES: Record<string, string> = {
+  // Payment
+  COD: 'Pay on Delivery',
+  COD_COLLECTED: 'Collected on Delivery',
+  // Order lifecycle — business/courier vocabulary (see status dropdown)
+  PENDING_ADMIN_APPROVAL: 'Pending',
+  APPROVED: 'Confirmed',
+  LABEL_GENERATED: 'Tracking ID Assigned',
+  PACKED: 'Awaiting Handover',
+  HANDED_TO_DELIVERY: 'Handed to Delivery',
+  COURIER_ASSIGNED: 'Ready For Pickup',
+  DISPATCHED: 'In Transit',
+  IN_TRANSIT: 'In Transit',
+  OUT_FOR_DELIVERY: 'Out For Delivery',
+  DELIVERED: 'Delivered',
+  CUSTOMER_REJECTED: 'Returned',
+  DELIVERY_FAILED: 'Delivery Failed',
+  RTO: 'Returned',
+  REDISPATCH: 'Lost',
+  CLOSED: 'Closed',
+  REJECTED: 'Rejected',
+  PAYMENT_REJECTED: 'Payment Rejected',
+  CANCELLED: 'Cancelled',
+};
+
 /** Humanises an enum-ish status value ("Pending_Admin_Approval" → "Pending Admin Approval"). */
 export function humanizeStatus(status: string): string {
+  const override = STATUS_LABEL_OVERRIDES[String(status).toUpperCase()];
+  if (override) {
+    return override;
+  }
   return status
     .replaceAll('_', ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase())
-    .replace(/\bRto\b/i, 'RTO')
-    .replace(/\bCod\b/i, 'COD');
+    .replace(/\bRto\b/i, 'RTO');
+}
+
+/**
+ * Canonical badge-tone class for a staff verification status (VERIFIED → green,
+ * REJECTED → red, PENDING/other → amber). Single source shared by the Users,
+ * Salespeople and My Profile pages so the pill colours match app-wide.
+ */
+export function verificationBadgeClass(status: string | null | undefined): string {
+  switch (status) {
+    case 'VERIFIED':
+      return 'tone-green';
+    case 'REJECTED':
+      return 'tone-red';
+    case 'PENDING':
+      return 'tone-amber';
+    default:
+      return 'tone-grey';
+  }
 }
 
 /**

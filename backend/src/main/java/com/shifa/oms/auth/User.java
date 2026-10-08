@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -51,6 +52,81 @@ public class User {
 
     @Column(name = "active", nullable = false)
     private boolean active = true;
+
+    /**
+     * The team lead this user (a salesperson) reports to, or null when
+     * unassigned. Self-referencing to another {@code users.id} whose role is
+     * {@link Role#TEAM_LEAD}. Drives team-scoped visibility (V43).
+     */
+    @Column(name = "team_lead_id")
+    private Long teamLeadId;
+
+    // --- Staff onboarding profile (V31, nullable; customers leave these null) ---
+
+    /** Staff date of birth (optional). */
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
+    /** Staff residential/postal address (optional). */
+    @Column(name = "address", length = 500)
+    private String address;
+
+    /** Date the staff member joined (optional). */
+    @Column(name = "joined_on")
+    private LocalDate joinedOn;
+
+    /** Type of the uploaded ID document (optional until captured). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "id_proof_type", length = 30)
+    private IdProofType idProofType;
+
+    /** The ID document number as entered by the admin (optional). */
+    @Column(name = "id_proof_number", length = 60)
+    private String idProofNumber;
+
+    /** Opaque storage key of the uploaded ID document (resolved via StorageService). */
+    @Column(name = "id_proof_key", length = 255)
+    private String idProofKey;
+
+    /** Opaque storage key of the uploaded profile photo (resolved via StorageService). */
+    @Column(name = "profile_image_key", length = 255)
+    private String profileImageKey;
+
+    /** Identity-verification state; new staff default to PENDING. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "verification_status", nullable = false, length = 20)
+    private VerificationStatus verificationStatus = VerificationStatus.PENDING;
+
+    /** Optional note captured when verifying/rejecting the ID proof. */
+    @Column(name = "verification_note", length = 500)
+    private String verificationNote;
+
+    /** When the verification decision was recorded (optional). */
+    @Column(name = "verified_at")
+    private LocalDateTime verifiedAt;
+
+    /** The admin user id who recorded the verification decision (optional). */
+    @Column(name = "verified_by")
+    private Long verifiedBy;
+
+    // --- Force-password-change tracking (V81) -------------------------------
+
+    /**
+     * When true, the user signed in with an admin-reset temporary password and
+     * MUST choose a new strong password before they can use the app. The login
+     * response and JWT carry this flag so the client routes to the
+     * change-password screen; it is cleared once the user sets a new password.
+     */
+    @Column(name = "must_change_password", nullable = false)
+    private boolean mustChangePassword = false;
+
+    /** When an admin last reset this user's password (null until the first reset). */
+    @Column(name = "password_reset_at")
+    private LocalDateTime passwordResetAt;
+
+    /** How many times an admin has reset this user's password. */
+    @Column(name = "password_reset_count", nullable = false)
+    private int passwordResetCount = 0;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -137,6 +213,126 @@ public class User {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public Long getTeamLeadId() {
+        return teamLeadId;
+    }
+
+    public void setTeamLeadId(Long teamLeadId) {
+        this.teamLeadId = teamLeadId;
+    }
+
+    public LocalDate getDateOfBirth() {
+        return dateOfBirth;
+    }
+
+    public void setDateOfBirth(LocalDate dateOfBirth) {
+        this.dateOfBirth = dateOfBirth;
+    }
+
+    public String getAddress() {
+        return address;
+    }
+
+    public void setAddress(String address) {
+        this.address = address;
+    }
+
+    public LocalDate getJoinedOn() {
+        return joinedOn;
+    }
+
+    public void setJoinedOn(LocalDate joinedOn) {
+        this.joinedOn = joinedOn;
+    }
+
+    public IdProofType getIdProofType() {
+        return idProofType;
+    }
+
+    public void setIdProofType(IdProofType idProofType) {
+        this.idProofType = idProofType;
+    }
+
+    public String getIdProofNumber() {
+        return idProofNumber;
+    }
+
+    public void setIdProofNumber(String idProofNumber) {
+        this.idProofNumber = idProofNumber;
+    }
+
+    public String getIdProofKey() {
+        return idProofKey;
+    }
+
+    public void setIdProofKey(String idProofKey) {
+        this.idProofKey = idProofKey;
+    }
+
+    public String getProfileImageKey() {
+        return profileImageKey;
+    }
+
+    public void setProfileImageKey(String profileImageKey) {
+        this.profileImageKey = profileImageKey;
+    }
+
+    public VerificationStatus getVerificationStatus() {
+        return verificationStatus;
+    }
+
+    public void setVerificationStatus(VerificationStatus verificationStatus) {
+        this.verificationStatus = verificationStatus;
+    }
+
+    public String getVerificationNote() {
+        return verificationNote;
+    }
+
+    public void setVerificationNote(String verificationNote) {
+        this.verificationNote = verificationNote;
+    }
+
+    public LocalDateTime getVerifiedAt() {
+        return verifiedAt;
+    }
+
+    public void setVerifiedAt(LocalDateTime verifiedAt) {
+        this.verifiedAt = verifiedAt;
+    }
+
+    public Long getVerifiedBy() {
+        return verifiedBy;
+    }
+
+    public void setVerifiedBy(Long verifiedBy) {
+        this.verifiedBy = verifiedBy;
+    }
+
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void setMustChangePassword(boolean mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
+    }
+
+    public LocalDateTime getPasswordResetAt() {
+        return passwordResetAt;
+    }
+
+    public void setPasswordResetAt(LocalDateTime passwordResetAt) {
+        this.passwordResetAt = passwordResetAt;
+    }
+
+    public int getPasswordResetCount() {
+        return passwordResetCount;
+    }
+
+    public void setPasswordResetCount(int passwordResetCount) {
+        this.passwordResetCount = passwordResetCount;
     }
 
     public LocalDateTime getCreatedAt() {

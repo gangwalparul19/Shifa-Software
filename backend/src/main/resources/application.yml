@@ -8,6 +8,25 @@ spring:
     name: shifa-oms
   profiles:
     default: local
+  datasource:
+    hikari:
+      # Pin two things on every pooled connection, in ONE statement:
+      #  1. utf8mb4 (character_set_client/connection/results — same as SET NAMES
+      #     utf8mb4) so 4-byte characters (emoji in WhatsApp templates) read back
+      #     intact, independent of the JDBC characterEncoding negotiation.
+      #  2. time_zone = IST (+05:30) so MySQL-generated CURRENT_TIMESTAMP defaults
+      #     (orders.created_at, status-history, audit, …) are written as IST
+      #     wall-clock. The host OS + MySQL run in UTC; without this they'd store
+      #     UTC and the app (which treats every persisted LocalDateTime as IST and
+      #     stamps +05:30 on it) would render every timestamp ~5h30m behind.
+      connection-init-sql: "SET time_zone='+05:30', character_set_client=utf8mb4, character_set_connection=utf8mb4, character_set_results=utf8mb4"
+  servlet:
+    multipart:
+      # Payment screenshots from phones are commonly 2-5 MB; the Spring default
+      # of 1 MB/file rejected them with a generic 500. Nginx allows 15m, so keep
+      # these comfortably under that. Override via env if needed.
+      max-file-size: ${MAX_UPLOAD_FILE_SIZE:10MB}
+      max-request-size: ${MAX_UPLOAD_REQUEST_SIZE:12MB}
   jpa:
     open-in-view: false
     hibernate:
@@ -39,6 +58,27 @@ server:
     include-message: never
     include-stacktrace: never
 
+# Actuator: expose only the health endpoint over HTTP. Health DETAILS are shown
+# only to authenticated callers (the liveness/readiness status itself is public
+# via SecurityConfig so load balancers / uptime monitors can probe it).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: when_authorized
+      probes:
+        enabled: true
+  health:
+    # Don't let the public health check depend on an optional OUTBOUND SMTP probe:
+    # the mail indicator opens an SMTP connection on every call and reports DOWN
+    # when egress/creds aren't available, which would wrongly mark a fully
+    # functional app as unhealthy. DB + disk + ping still gate health.
+    mail:
+      enabled: false
+
 # -----------------------------------------------------------------------------
 # Application-specific settings. Values are placeholders resolved per profile
 # and/or from environment variables in production.
@@ -65,11 +105,25 @@ app:
     mode: ${MAIL_MODE:MOCK}
     from: ${MAIL_FROM:Shifa Herbal Remedies <no-reply@shifa.local>}
     digest-to: ${REPORT_DIGEST_TO:}
+    # Whether the INTERNAL scheduler sends the consolidated daily report (default
+    # true). Set false (REPORT_DIGEST_ENABLED=false) when an external AWS Lambda
+    # drives the report via POST /api/admin/reports/daily-digest/run to avoid a
+    # double-send. The ADMIN trigger endpoint always works regardless of this flag.
+    digest-enabled: ${REPORT_DIGEST_ENABLED:true}
+    # Optional WEEKLY consolidated report (scheduled-report-delivery). OFF by
+    # default — an admin opts in by setting REPORT_WEEKLY_ENABLED=true (and a
+    # digest-to recipient). Cron via REPORT_WEEKLY_CRON (default Mon 08:30).
+    weekly-enabled: ${REPORT_WEEKLY_ENABLED:false}
+    # Milestone-email send retry policy for the email outbox drainer (Req 14.5).
+    max-attempts: ${MAIL_MAX_ATTEMPTS:3}
+    retry-backoff: PT30S
+    # Scheduler interval (ms) for draining pending milestone emails.
+    drain-interval-ms: ${MAIL_DRAIN_INTERVAL_MS:15000}
     # Branding + theme for the HTML email templates (app.mail.brand.*).
     brand:
       brand-name: ${MAIL_BRAND_NAME:Shifa Herbal Remedies}
       tagline: ${MAIL_BRAND_TAGLINE:Pure herbal wellness, delivered.}
-      site-url: ${MAIL_SITE_URL:https://www.shifaherbals.com}
+      site-url: ${MAIL_SITE_URL:https://shifainfinity.com/}
       # Blank => a styled text wordmark is rendered instead of an <img> logo.
       logo-url: ${MAIL_LOGO_URL:}
       support-email: ${MAIL_SUPPORT_EMAIL:support@shifaherbals.com}
@@ -106,6 +160,58 @@ app:
     # Scheduler intervals (ms): outbox drain and missed-webhook poll fallback.
     drain-interval-ms: ${COURIER_DRAIN_INTERVAL_MS:15000}
     poll-interval-ms: ${COURIER_POLL_INTERVAL_MS:300000}
+  shopify:
+    # Shopify storefront integration: the orders/create webhook
+    # (POST /api/webhooks/shopify/orders) mirrors each Shopify order into this OMS
+    # automatically, tagged OrderSource.SHOPIFY. The shared secret verifies the
+    # inbound HMAC-SHA256 signature (base64, header X-Shopify-Hmac-Sha256). Blank =
+    # accept without verification (local dev only); production MUST set it.
+    webhook-hmac-secret: ${SHOPIFY_WEBHOOK_HMAC_SECRET:}
+  quikshipx:
+    # QuikShipX courier integration (create-order on punch, allot-tracking-id on
+    # dispatch, track-order polling). OFF by default — the internal label/packing
+    # flow behaves exactly as before until this is enabled with credentials.
+    enabled: ${QUIKSHIPX_ENABLED:false}
+    # Client backend: MOCK (deterministic, no network) or HTTP (real API).
+    mode: ${QUIKSHIPX_MODE:MOCK}
+    base-url: ${QUIKSHIPX_BASE_URL:https://head.quikshipx.com}
+    # Credentials travel in the request body (shipper_details), not a header.
+    client-code: ${QUIKSHIPX_CLIENT_CODE:SHR083}
+    user-id: ${QUIKSHIPX_USER_ID:86}
+    # Two secrets; secret-mode selects which one is sent (and stamps is_test).
+    # Keep these in env/secrets — never commit a live secret.
+    test-secret: ${QUIKSHIPX_TEST_SECRET:}
+    live-secret: ${QUIKSHIPX_LIVE_SECRET:}
+    secret-mode: ${QUIKSHIPX_SECRET_MODE:TEST}
+    # Pickup warehouse + courier used when allotting a tracking id.
+    warehouse-id: ${QUIKSHIPX_WAREHOUSE_ID:87}
+    courier-id: ${QUIKSHIPX_COURIER_ID:1}
+    # Shipment defaults QuikShipX requires but Shifa does not store per order.
+    package-type: ${QUIKSHIPX_PACKAGE_TYPE:2}      # 1 Flyer, 2 Cardboard
+    shipping-mode: ${QUIKSHIPX_SHIPPING_MODE:1}    # 1 Surface, 2 Express
+    dead-weight-grams: ${QUIKSHIPX_DEAD_WEIGHT_GRAMS:500}
+    length-cm: ${QUIKSHIPX_LENGTH_CM:15}
+    width-cm: ${QUIKSHIPX_WIDTH_CM:15}
+    height-cm: ${QUIKSHIPX_HEIGHT_CM:15}
+    shipping-amount: ${QUIKSHIPX_SHIPPING_AMOUNT:0}
+    product-category: ${QUIKSHIPX_PRODUCT_CATEGORY:Herbal}
+    # Optional confirm-order path once QuikShipX documents one (blank = mirror
+    # Confirmed locally only).
+    confirm-order-path: ${QUIKSHIPX_CONFIRM_ORDER_PATH:}
+    request-timeout: PT15S
+    # Retry tolerance for create/confirm/allot. QuikShipX occasionally returns a
+    # transient HTTP 500 (e.g. allot-tracking-id during a brief outage); a short
+    # ladder would exhaust in ~2 min and strand the order permanently. 12 attempts
+    # at a 2-min backoff gives the API ~24 min to recover before an event is marked
+    # FAILED — after which the self-healing re-drive below picks it back up.
+    max-attempts: ${QUIKSHIPX_MAX_ATTEMPTS:12}
+    retry-backoff: ${QUIKSHIPX_RETRY_BACKOFF:PT2M}
+    # Scheduler interval (ms) for draining create/confirm/allot events.
+    drain-interval-ms: ${QUIKSHIPX_DRAIN_INTERVAL_MS:15000}
+    # Self-healing: how often to re-queue transiently-FAILED QuikShipX events back
+    # to PENDING so a longer courier outage still recovers automatically once the
+    # API is healthy (the operations are idempotent). Default every 10 minutes.
+    redrive-interval-ms: ${QUIKSHIPX_REDRIVE_INTERVAL_MS:600000}
   payment:
     # Online payment gateway (Phase E). Swappable behind the PaymentGateway
     # interface and selected by `mode`:
@@ -131,10 +237,70 @@ app:
     # Nightly DB dump to Object Storage (interval must be <= 24h).
     cron: ${BACKUP_CRON:0 0 2 * * *}
     mysqldump-path: ${MYSQLDUMP_PATH:mysqldump}
+  ledger:
+    autopost:
+      # General-Ledger auto-posting drainer (general-ledger-accounting, Reqs 8-11, 17.4).
+      # Scheduler interval (ms) for draining pending LEDGER_POST events.
+      drain-interval-ms: ${LEDGER_AUTOPOST_DRAIN_INTERVAL_MS:20000}
+      # Max delivery attempts before a row is marked FAILED + an admin is notified (Req 8.5).
+      max-attempts: ${LEDGER_AUTOPOST_MAX_ATTEMPTS:5}
+      # Backoff (ms) between retry attempts for a transient posting error.
+      retry-backoff-ms: ${LEDGER_AUTOPOST_RETRY_BACKOFF_MS:60000}
+  lead:
+    reminder:
+      # Follow-up reminder job schedule (design §Follow-up Reminders). Default
+      # daily at 09:00; each due lead is reminded at most once per due day.
+      cron: ${LEAD_REMINDER_CRON:0 0 9 * * *}
+  insights:
+    # Statistical insights engine (statistical-insights-engine, design §Config).
+    # Nightly computation schedule (default daily 02:00) + the tunable thresholds
+    # bound into a domain InsightThresholds by the computation service.
+    nightly:
+      cron: ${INSIGHTS_NIGHTLY_CRON:0 0 2 * * *}
+    # Trailing window (days) the current-vs-previous sales comparison uses.
+    window-days: ${INSIGHTS_WINDOW_DAYS:7}
+    # Sales deviation (percent) that flags a SALES_ANOMALY.
+    sales-anomaly-pct: ${INSIGHTS_SALES_ANOMALY_PCT:30}
+    # RTO risk score (0-100) at or above which an open order is flagged.
+    rto-risk-threshold: ${INSIGHTS_RTO_RISK_THRESHOLD:60}
+    # Courier RTO percent above which a scorecard is WARNING.
+    courier-rto-warn-pct: ${INSIGHTS_COURIER_RTO_WARN_PCT:15}
+    # Unsettled-COD amount above which a COD build-up fires.
+    cod-outstanding-warn: ${INSIGHTS_COD_OUTSTANDING_WARN:50000}
+    # Minimum orders a state needs in the window before a location insight judges it.
+    location-min-orders: ${INSIGHTS_LOCATION_MIN_ORDERS:10}
+    # Delivery-failure percent for a state above which an UNDERPERFORMING_LOCATION fires.
+    location-fail-warn-pct: ${INSIGHTS_LOCATION_FAIL_WARN_PCT:25}
   storage:
-    # Binary object store for payment screenshots (and later PDFs).
-    # provider: LOCAL (dev, filesystem) or OCI (cloud, Object Storage - TODO).
+    # Binary object store for payment screenshots and internal label PDFs.
+    # provider:
+    #   LOCAL (default, dev) - filesystem under local.base-path
+    #   DB                   - stored_files table (durable, in the DB)
+    #   S3                   - Amazon S3 bucket (labels/ + payments/ folders)
     provider: ${STORAGE_PROVIDER:LOCAL}
     local:
       # Folder that LocalStorageService writes objects under (dev only).
       base-path: ${STORAGE_LOCAL_PATH:storage}
+    s3:
+      # Target bucket (required when provider=S3). Objects are namespaced by the
+      # caller's logical prefix, so labels land under labels/internal/... and
+      # payment screenshots under payments/... within the bucket.
+      bucket: ${STORAGE_S3_BUCKET:}
+      # AWS region of the bucket.
+      region: ${STORAGE_S3_REGION:ap-south-1}
+      # Optional common root prefix (e.g. "shifa/") to share a bucket across envs.
+      prefix: ${STORAGE_S3_PREFIX:}
+      # Leave blank to use the EC2 instance role (recommended). Only set these for
+      # environments without an instance role; inject via env, never commit them.
+      access-key: ${STORAGE_S3_ACCESS_KEY:}
+      secret-key: ${STORAGE_S3_SECRET_KEY:}
+      # Optional S3-compatible endpoint (MinIO/LocalStack); blank = real AWS S3.
+      endpoint: ${STORAGE_S3_ENDPOINT:}
+  push:
+    # Browser Web Push (VAPID) for staff notifications (FEATURE-ROADMAP §8.3).
+    # Leave the keys BLANK to disable push entirely (default) — the in-app bell is
+    # unaffected. To enable, generate a VAPID keypair (base64url) and inject via env.
+    vapid:
+      public-key: ${PUSH_VAPID_PUBLIC_KEY:}
+      private-key: ${PUSH_VAPID_PRIVATE_KEY:}
+      subject: ${PUSH_VAPID_SUBJECT:mailto:admin@shifa.local}

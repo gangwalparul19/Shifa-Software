@@ -1,0 +1,123 @@
+<admin-page-header
+  title="Insights"
+  subtitle="Statistical signals across sales, stock, couriers, returns and leads."
+  [breadcrumbs]="[{ label: 'Insights' }]"
+>
+  <button
+    type="button"
+    class="btn btn-icon btn-outline-secondary"
+    (click)="load()"
+    [disabled]="loading()"
+    title="Refresh"
+    aria-label="Refresh"
+  >
+    <i class="ti ti-refresh"></i>
+  </button>
+  <button type="button" class="btn btn-primary text-nowrap" (click)="recompute()" [disabled]="recomputing()">
+    @if (recomputing()) {
+      <span class="spinner-border spinner-border-sm me-2"></span> Recomputing…
+    } @else {
+      <i class="ti ti-bolt me-1"></i> Recompute
+    }
+  </button>
+</admin-page-header>
+
+<!-- Severity filter tabs with per-severity counts -->
+<div class="shifa-status-tabs mb-3" role="tablist" aria-label="Filter insights by severity">
+  @for (tab of severityTabs; track tab.key) {
+    <button
+      type="button"
+      role="tab"
+      class="shifa-status-tab"
+      [class.active]="severityLens() === tab.key"
+      [attr.aria-selected]="severityLens() === tab.key"
+      (click)="setLens(tab.key)"
+    >
+      {{ tab.label }}
+      <span class="shifa-tab-count">{{ severityCounts()[tab.key] }}</span>
+    </button>
+  }
+</div>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" skeleton="cards" loadingLabel="Loading insights…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (visibleInsights().length === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-bulb"
+    title="No insights yet"
+    [message]="
+      severityLens() !== 'ALL'
+        ? 'No insights at this severity.'
+        : 'No insights yet — run Recompute to generate today’s signals.'
+    "
+    [ctaLabel]="severityLens() === 'ALL' ? 'Recompute' : undefined"
+    ctaIcon="ti-bolt"
+    (cta)="recompute()"
+  />
+} @else {
+  @for (group of groups(); track group.severity) {
+    <div class="shifa-ins-group">
+      <!-- Group divider only in the "All" lens; a single-severity lens is
+           already labelled by the active filter tab (no redundant header). -->
+      @if (severityLens() === 'ALL') {
+        <div class="shifa-ins-grouphead" [class]="groupClass(group.severity)">
+          <span class="shifa-ins-dot"></span>
+          <span class="shifa-ins-grouplabel">{{ group.label }}</span>
+          <span class="shifa-ins-groupcount">{{ group.insights.length }}</span>
+        </div>
+      }
+
+      <div class="shifa-ins-cards">
+        @for (insight of group.insights; track insight.id) {
+          <article class="shifa-ic" [class]="groupClass(insight.severity)">
+            <!-- Row 1: type label (left) + severity pill (right) -->
+            <div class="shifa-ic__r1">
+              <span class="shifa-ic__type">{{ typeLabel(insight.type) }}</span>
+              <span class="badge shifa-ic__pill" [class]="pillClass(insight.severity)">
+                {{ severityLabels[insight.severity] }}
+              </span>
+            </div>
+
+            <!-- Body: title + detail -->
+            <h3 class="shifa-ic__title">{{ insight.title }}</h3>
+            @if (insight.detail) {
+              <p class="shifa-ic__detail">{{ insight.detail }}</p>
+            }
+
+            <!-- Chips: scope tag + metric highlight -->
+            @if (insight.scopeLabel || metricOf(insight.metricValue)) {
+              <div class="shifa-ic__chips">
+                @if (insight.scopeLabel) {
+                  <span class="shifa-ic__scope"><i class="ti ti-tag"></i>{{ insight.scopeLabel }}</span>
+                }
+                @if (metricOf(insight.metricValue); as metric) {
+                  <span class="shifa-ic__metric"><i class="ti ti-chart-dots"></i>{{ metric }}</span>
+                }
+              </div>
+            }
+
+            <!-- Footer: date (left) + dismiss (right) -->
+            <div class="shifa-ic__r2">
+              <span class="shifa-ic__date">
+                <i class="ti ti-calendar-event me-1"></i>{{ insight.computedDate | istDate: 'dd MMM yyyy' }}
+              </span>
+              <admin-row-actions [actions]="rowActions(insight)" ariaLabel="Insight actions" (select)="onRowAction($event, insight)" />
+            </div>
+          </article>
+        }
+      </div>
+    </div>
+  }
+  <admin-pagination
+    [page]="page()"
+    [totalPages]="totalPages()"
+    [totalElements]="totalElements()"
+    [size]="size()"
+    (pageChange)="goToPage($event)"
+    (sizeChange)="setSize($event)"
+  />
+}

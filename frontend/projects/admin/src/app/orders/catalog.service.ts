@@ -25,4 +25,16 @@ export class CatalogService {
       q ? { params: { q } } : undefined,
     );
   }
+
+  /** Best-selling products for the order-entry "favorites" quick-add. */
+  topProducts(limit = 8): Observable<Product[]> {
+    return this.api.get<Product[]>('/api/orders/products/top', { params: { limit } });
+  }
+
+  /** Products frequently bought together with the given cart product ids (upsell). */
+  relatedProducts(productIds: number[], limit = 3): Observable<Product[]> {
+    return this.api.get<Product[]>('/api/orders/products/related', {
+      params: { productIds: productIds.join(','), limit },
+    });
+  }
 }

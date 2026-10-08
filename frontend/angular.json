@@ -28,14 +28,15 @@
               "node_modules/@tabler/core/dist/css/tabler.min.css",
               "node_modules/@tabler/icons-webfont/dist/tabler-icons.min.css",
               "projects/admin/src/styles.css"
-            ]
+            ],
+            "serviceWorker": "projects/admin/ngsw-config.json"
           },
           "configurations": {
             "production": {
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "2.5MB",
+                  "maximumWarning": "3.25MB",
                   "maximumError": "4MB"
                 },
                 {
@@ -102,32 +103,6 @@
           "builder": "@angular/build:unit-test",
           "options": {
             "tsConfig": "projects/core/tsconfig.spec.json"
-          }
-        }
-      }
-    },
-    "ui": {
-      "projectType": "library",
-      "root": "projects/ui",
-      "sourceRoot": "projects/ui/src",
-      "prefix": "lib",
-      "architect": {
-        "build": {
-          "builder": "@angular/build:ng-packagr",
-          "configurations": {
-            "production": {
-              "tsConfig": "projects/ui/tsconfig.lib.prod.json"
-            },
-            "development": {
-              "tsConfig": "projects/ui/tsconfig.lib.json"
-            }
-          },
-          "defaultConfiguration": "production"
-        },
-        "test": {
-          "builder": "@angular/build:unit-test",
-          "options": {
-            "tsConfig": "projects/ui/tsconfig.spec.json"
           }
         }
       }

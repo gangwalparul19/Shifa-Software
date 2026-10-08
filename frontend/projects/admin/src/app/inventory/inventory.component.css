@@ -12,3 +12,82 @@
 .btn-list.flex-nowrap {
   gap: 0.35rem;
 }
+
+/* --- Stock summary KPI tiles: keep three per row and compact on phones --- */
+@media (max-width: 575.98px) {
+  .shifa-inv-kpis .h1 {
+    font-size: 1.35rem;
+  }
+  .shifa-inv-kpis .stat-icon {
+    width: 2rem;
+    height: 2rem;
+    font-size: 1rem;
+  }
+}
+
+/* --- Mobile stock cards (<768px) --------------------------------------- */
+.shifa-inv-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.shifa-inv {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.7rem 0.85rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+.shifa-inv__r1 {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.shifa-inv__id {
+  min-width: 0;
+}
+.shifa-inv__name {
+  font-weight: 600;
+  color: #1c2b24;
+  line-height: 1.25;
+}
+.shifa-inv__sku {
+  color: #64726b;
+  font-size: 0.78rem;
+  margin-top: 0.05rem;
+}
+/* Compact inline On hand / Threshold line (replaces the tall stat boxes). */
+.shifa-inv__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.25rem;
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  color: #64726b;
+}
+.shifa-inv__kv strong {
+  color: #1c2b24;
+  font-weight: 700;
+  margin-left: 0.15rem;
+}
+.shifa-inv__actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+.shifa-inv__actions .btn {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}
+/* Restock / Adjust stretch; the icon-only history button stays compact. */
+.shifa-inv__actions .btn:not(.btn-icon) {
+  flex: 1 1 0;
+}
+.shifa-inv__actions .btn-icon {
+  flex: 0 0 36px;
+  width: 36px;
+}

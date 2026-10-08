@@ -23,9 +23,9 @@ class LossClaimPropertyTest {
     void lossProducesClaimForFullNetAmount(@ForAll("orders") OrderSettlementView order) {
         SettlementProcessor processor = new SettlementProcessor(new AtomicLong(0)::incrementAndGet);
 
-        SettlementResult lost = processor.onCourierLost(order);
+        SettlementResult lost = processor.onRedispatch(order);
 
-        assertThat(lost.newStatus()).isEqualTo(OrderStatus.COURIER_LOST);
+        assertThat(lost.newStatus()).isEqualTo(OrderStatus.REDISPATCH);
 
         // Regardless of prepaid or COD, a claim receivable equal to the net order
         // amount is recorded (Req 17.2).

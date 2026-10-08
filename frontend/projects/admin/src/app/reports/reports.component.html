@@ -4,60 +4,115 @@
   [breadcrumbs]="[{ label: 'Reports' }]"
 />
 
-<!-- Controls -->
+<!-- Presentation tabs (Req 12.1): Overview / Sales / Products / Customers.
+     A fixed 4-column grid so all four fit on screen without horizontal scroll. -->
+<div class="rpt-tabs mb-3" role="tablist" aria-label="Report views">
+  @for (t of visibleTabs(); track t.key) {
+    <button type="button" role="tab" class="rpt-tab"
+      [class.active]="activeTab() === t.key"
+      [attr.aria-selected]="activeTab() === t.key"
+      (click)="selectTab(t.key)">
+      <i class="ti {{ t.icon }}"></i>
+      <span>{{ t.label }}</span>
+    </button>
+  }
+</div>
+
+<!-- Controls: date-range chip + report type + custom range + exports -->
 <form class="card mb-3" [formGroup]="form" (ngSubmit)="generate()">
   <div class="card-body">
-    <div class="row g-3 align-items-end">
-      <div class="col-md-3">
-        <label class="form-label" for="type">Report type</label>
-        <select id="type" class="form-select" formControlName="type">
-          @for (opt of reportTypes; track opt.value) { <option [value]="opt.value">{{ opt.label }}</option> }
-        </select>
-      </div>
+    <!-- Summary bar (always visible): current type + range, Generate, and a
+         Filters toggle. The detailed configuration stays collapsed by default. -->
+    <div class="d-flex align-items-center flex-nowrap gap-2 shifa-report-bar">
+      <span class="shifa-range-chip shifa-report-bar__chip">
+        <i class="ti ti-calendar-event me-1"></i>{{ reportTypeLabel() }} · {{ rangeLabel() }}
+      </span>
+      <button
+        type="button"
+        class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center ms-auto text-nowrap"
+        (click)="toggleFilters()"
+        [class.active]="filtersOpen()"
+        [attr.aria-expanded]="filtersOpen()"
+        aria-controls="report-config-panel"
+        title="Filters"
+      >
+        <i class="ti ti-adjustments-horizontal"></i>
+        <span class="d-none d-sm-inline ms-1">Filters</span>
+        <i class="ti ms-1" [class.ti-chevron-down]="!filtersOpen()" [class.ti-chevron-up]="filtersOpen()"></i>
+      </button>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap" [disabled]="loading()">
+        @if (loading()) { <span class="spinner-border spinner-border-sm me-1"></span> }
+        @else { <i class="ti ti-report-analytics me-1"></i> }
+        Generate
+      </button>
+    </div>
 
-      <div class="col-md-auto">
-        <label class="form-label d-block">Date range</label>
-        <div class="btn-group shifa-period flex-wrap" role="group">
-          @for (p of presets; track p.key) {
-            <button type="button" class="btn"
-              [class.btn-primary]="form.controls.preset.value === p.key"
-              [class.active]="form.controls.preset.value === p.key"
-              (click)="onPresetChange(p.key)">{{ p.label }}</button>
-          }
+    @if (filtersOpen()) {
+      <div id="report-config-panel" class="row g-3 align-items-end mt-1 pt-3 border-top anim-fade-up">
+        <div class="col-12 col-md-3">
+          <label class="form-label" for="type">Report type</label>
+          <select id="type" class="form-select" formControlName="type" (change)="generate()">
+            @for (grp of reportGroups(); track grp.name) {
+              <optgroup [label]="grp.name">
+                @for (opt of grp.options; track opt.value) {
+                  <option [value]="opt.value">{{ opt.label }}</option>
+                }
+              </optgroup>
+            }
+          </select>
+        </div>
+
+        <div class="col-12 col-md-auto">
+          <label class="form-label d-block">Date range</label>
+          <div class="btn-group shifa-period flex-wrap" role="group">
+            @for (p of presets; track p.key) {
+              <button type="button" class="btn"
+                [class.btn-primary]="form.controls.preset.value === p.key"
+                [class.active]="form.controls.preset.value === p.key"
+                (click)="onPresetChange(p.key)">{{ p.label }}</button>
+            }
+          </div>
+        </div>
+
+        <div class="col-6 col-md-2">
+          <label class="form-label" for="from">From</label>
+          <input id="from" type="date" class="form-control" formControlName="from" [readonly]="!isCustom()" />
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label" for="to">To</label>
+          <input id="to" type="date" class="form-control" formControlName="to" [readonly]="!isCustom()" />
         </div>
       </div>
-
-      <div class="col-md-2">
-        <label class="form-label" for="from">From</label>
-        <input id="from" type="date" class="form-control" formControlName="from" [readonly]="!isCustom()" />
-      </div>
-      <div class="col-md-2">
-        <label class="form-label" for="to">To</label>
-        <input id="to" type="date" class="form-control" formControlName="to" [readonly]="!isCustom()" />
-      </div>
-
-      <div class="col-md-auto">
-        <button type="submit" class="btn btn-primary w-100" [disabled]="loading()">
-          @if (loading()) { <span class="spinner-border spinner-border-sm me-2"></span> Generating… }
-          @else { <i class="ti ti-report-analytics me-1"></i> Generate }
-        </button>
-      </div>
-    </div>
+    }
   </div>
 
-  <!-- Export toolbar -->
-  <div class="card-footer d-flex align-items-center flex-wrap gap-2">
-    <span class="text-secondary me-1"><i class="ti ti-download me-1"></i> Export</span>
-    <div class="btn-list">
-      <button type="button" class="btn btn-sm btn-outline-success" [disabled]="exporting() || !report()" (click)="exportFile('xlsx')">
-        <i class="ti ti-file-spreadsheet me-1"></i> Excel
-      </button>
-      <button type="button" class="btn btn-sm btn-outline-danger" [disabled]="exporting() || !report()" (click)="exportFile('pdf')">
-        <i class="ti ti-file-type-pdf me-1"></i> PDF
-      </button>
-      <span class="vr mx-1"></span>
-      <button type="button" class="btn btn-sm btn-outline-secondary" [disabled]="exporting()" (click)="exportVyapar('csv')">Vyapar CSV</button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" [disabled]="exporting()" (click)="exportVyapar('xlsx')">Vyapar Excel</button>
+  <!-- Export — a 2×2 grid so all four options stay fully visible on any width -->
+  <div class="card-footer">
+    <div class="text-secondary small mb-2"><i class="ti ti-download me-1"></i> Export</div>
+    <div class="row g-2 shifa-export-grid">
+      <div class="col-6">
+        <button type="button" class="btn btn-sm btn-outline-success w-100 text-nowrap" [disabled]="exporting() || !report()" (click)="exportFile('xlsx')">
+          <i class="ti ti-file-spreadsheet me-1"></i> Excel
+        </button>
+      </div>
+      <div class="col-6">
+        <button type="button" class="btn btn-sm btn-outline-danger w-100 text-nowrap" [disabled]="exporting() || !report()" (click)="exportFile('pdf')">
+          <i class="ti ti-file-type-pdf me-1"></i> PDF
+        </button>
+      </div>
+      <!-- Vyapar (billing) export is ADMIN/ACCOUNTANT-only — hidden for salespeople. -->
+      @if (!isSalesperson()) {
+        <div class="col-6">
+          <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-nowrap" [disabled]="exporting()" (click)="exportVyapar('csv')">
+            <i class="ti ti-file-text me-1"></i> Vyapar CSV
+          </button>
+        </div>
+        <div class="col-6">
+          <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-nowrap" [disabled]="exporting()" (click)="exportVyapar('xlsx')">
+            <i class="ti ti-file-spreadsheet me-1"></i> Vyapar Excel
+          </button>
+        </div>
+      }
     </div>
   </div>
 </form>
@@ -66,56 +121,205 @@
   <div class="alert alert-danger d-flex align-items-center" role="alert"><i class="ti ti-alert-triangle me-2"></i>{{ err }}</div>
 }
 
-<!-- Summary metrics -->
-@if (report(); as r) {
-  <div class="shifa-section-title">Summary</div>
-  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
-    <div class="col-6 col-md-4 col-lg-3">
-      <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div><div class="subheader">Total Sales</div><div class="h2 m-0">₹{{ r.summary.totalSales }}</div></div>
-          <span class="stat-icon"><i class="ti ti-currency-rupee"></i></span>
+<!-- Customers tab has no backing report yet — graceful "coming soon" (Req 12.1) -->
+@if (isComingSoon()) {
+  <div class="card">
+    <div class="empty">
+      <div class="empty-icon"><i class="ti ti-users"></i></div>
+      <p class="empty-title">Customer reports are coming soon</p>
+      <p class="empty-subtitle text-secondary">
+        Customer-level analytics aren't available yet. Use Overview, Sales or Products for now, or
+        the State- and Salesperson-wise report types above.
+      </p>
+    </div>
+  </div>
+} @else if (report(); as r) {
+
+  <!-- Money & receivables summary tiles (accountant Finance view) -->
+  @if (isMoneyView()) {
+    <div class="row row-cards g-2 g-md-3 mb-3">
+      <div class="col-6 col-md-3">
+        <div class="card stat-accent" style="--accent: #d63939; --accent-soft: #fbe7e7">
+          <div class="card-body">
+            <div class="subheader">Outstanding dues</div>
+            <div class="h1 m-0">{{ inr(totalOutstandingValue()) }}</div>
+            <div class="text-secondary small mt-1">still to collect</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-accent" style="--accent: #f59f00; --accent-soft: #fdf1da">
+          <div class="card-body">
+            <div class="subheader">Pending from courier</div>
+            <div class="h1 m-0">{{ inr(codPendingValue()) }}</div>
+            <div class="text-secondary small mt-1">to chase from delivery partner</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
+          <div class="card-body">
+            <div class="subheader">Amount received</div>
+            <div class="h1 m-0">{{ inr(totalReceivedValue()) }}</div>
+            <div class="text-secondary small mt-1">in this period</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-accent" style="--accent: #206bc4; --accent-soft: #e7f0fb">
+          <div class="card-body">
+            <div class="subheader">Total sales</div>
+            <div class="h1 m-0">{{ inr(totalSalesValue()) }}</div>
+            <div class="text-secondary small mt-1">{{ count(r.summary.orderCount) }} orders</div>
+          </div>
         </div>
       </div>
     </div>
-    <div class="col-6 col-md-4 col-lg-3">
+  }
+
+  <!-- Sales presentation chrome (revenue headline, KPI tiles, trend, top performers).
+       Hidden for per-module operational reports, which are pure tables. -->
+  @if (!isModuleReport()) {
+
+  <!-- Total Revenue headline card: big ₹ value + delta + sparkline -->
+  <div class="card shifa-revenue-card mb-3">
+    <div class="card-body">
+      <div class="d-flex align-items-start justify-content-between">
+        <div>
+          <div class="shifa-revenue-card__label">Total Revenue</div>
+          <div class="shifa-revenue-card__value">{{ inr(totalSalesValue()) }}</div>
+          <div class="mt-1">
+            <span class="shifa-delta"
+              [class.up]="changeDirection() === 'up'"
+              [class.down]="changeDirection() === 'down'">
+              @switch (changeDirection()) {
+                @case ('up') { <i class="ti ti-trending-up"></i> }
+                @case ('down') { <i class="ti ti-trending-down"></i> }
+                @default { <i class="ti ti-minus"></i> }
+              }
+              {{ changeText() }}
+            </span>
+            <span class="text-white-50 small ms-1">vs previous period</span>
+          </div>
+        </div>
+        <span class="shifa-revenue-card__chip"><i class="ti ti-coin"></i></span>
+      </div>
+      <div class="shifa-revenue-card__spark mt-2">
+        @if (revenueSpark(); as sp) {
+          <apx-chart
+            [series]="sp.series"
+            [chart]="sp.chart"
+            [colors]="sp.colors"
+            [stroke]="sp.stroke"
+            [fill]="sp.fill"
+            [tooltip]="sp.tooltip"
+          ></apx-chart>
+        }
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI tiles: Orders / Avg Order Value / vs Previous -->
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
+    <div class="col-4 col-md-4">
       <div class="card card-hover stat-accent" style="--accent: #206bc4; --accent-soft: #e7f0fb">
         <div class="card-body d-flex align-items-center justify-content-between">
-          <div><div class="subheader">Orders</div><div class="h2 m-0">{{ r.summary.orderCount }}</div></div>
+          <div>
+            <div class="subheader">Orders</div>
+            <div class="h1 m-0">{{ count(r.summary.orderCount) }}</div>
+          </div>
           <span class="stat-icon" style="--accent: #206bc4; --accent-soft: #e7f0fb"><i class="ti ti-shopping-cart"></i></span>
         </div>
       </div>
     </div>
-    <div class="col-6 col-md-4 col-lg-3">
+    <div class="col-4 col-md-4">
+      <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Avg Order Value</div>
+            <div class="h2 m-0">{{ inr(avgOrderValue()) }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-receipt"></i></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-4 col-md-4">
       <div class="card card-hover stat-accent" style="--accent: #ae3ec9; --accent-soft: #f6e6fa">
         <div class="card-body d-flex align-items-center justify-content-between">
           <div>
-            <div class="subheader">Sales vs Previous</div>
-            @if (r.summary.salesChangeApplicable && r.summary.salesChangePercent !== null) {
-              <div class="h2 m-0" [class.text-success]="+r.summary.salesChangePercent >= 0" [class.text-danger]="+r.summary.salesChangePercent < 0">
-                <i class="ti" [class.ti-trending-up]="+r.summary.salesChangePercent >= 0" [class.ti-trending-down]="+r.summary.salesChangePercent < 0"></i>
-                {{ r.summary.salesChangePercent }}%
-              </div>
-            } @else { <div class="h2 m-0 text-secondary">N/A</div> }
+            <div class="subheader">vs Previous</div>
+            <div class="h2 m-0"
+              [class.text-success]="changeDirection() === 'up'"
+              [class.text-danger]="changeDirection() === 'down'">{{ changeText() }}</div>
           </div>
           <span class="stat-icon" style="--accent: #ae3ec9; --accent-soft: #f6e6fa"><i class="ti ti-chart-arrows"></i></span>
         </div>
       </div>
     </div>
-    <div class="col-6 col-md-6 col-lg-3">
-      <div class="card card-hover">
-        <div class="card-body">
-          <div class="subheader mb-2">Top Performers</div>
-          <div class="d-flex justify-content-between py-1"><span class="text-secondary">Salesperson</span><strong>{{ r.summary.topSalespersonId ?? '—' }}</strong></div>
-          <div class="d-flex justify-content-between py-1"><span class="text-secondary">Product</span><strong>{{ r.summary.topProduct ?? '—' }}</strong></div>
-          <div class="d-flex justify-content-between py-1"><span class="text-secondary">State</span><strong>{{ r.summary.topState ?? '—' }}</strong></div>
+  </div>
+
+  <!-- Revenue Trend bar chart with a period (granularity) dropdown -->
+  <div class="card mb-3">
+    <div class="card-header">
+      <h3 class="card-title mb-0">Revenue Trend</h3>
+      <div class="card-actions">
+        <select class="form-select form-select-sm shifa-trend-select"
+          [value]="trendGranularity()"
+          (change)="setTrendGranularity($any($event.target).value)"
+          aria-label="Trend granularity">
+          <option value="daily">Daily</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </div>
+    </div>
+    <div class="card-body">
+      @if (revenueBarChart(); as bc) {
+        <apx-chart
+          [series]="bc.series"
+          [chart]="bc.chart"
+          [colors]="bc.colors"
+          [dataLabels]="bc.dataLabels"
+          [plotOptions]="bc.plotOptions"
+          [xaxis]="bc.xaxis"
+          [yaxis]="bc.yaxis"
+          [fill]="bc.fill"
+          [grid]="bc.grid"
+          [tooltip]="bc.tooltip"
+        ></apx-chart>
+      } @else {
+        <div class="empty">
+          <div class="empty-icon"><i class="ti ti-chart-bar-off"></i></div>
+          <p class="empty-title">No revenue data in the selected range</p>
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- Top performers (kept from the report summary) -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="subheader mb-2">Top Performers</div>
+      <div class="row g-2">
+        <div class="col-4">
+          <div class="text-secondary small">Salesperson</div>
+          <strong>{{ r.summary.topSalespersonName || (r.summary.topSalespersonId ? '#' + r.summary.topSalespersonId : '—') }}</strong>
+        </div>
+        <div class="col-4">
+          <div class="text-secondary small">Product</div>
+          <strong>{{ r.summary.topProduct ?? '—' }}</strong>
+        </div>
+        <div class="col-4">
+          <div class="text-secondary small">State</div>
+          <strong>{{ r.summary.topState ?? '—' }}</strong>
         </div>
       </div>
     </div>
   </div>
+  }
 
-  <!-- Results table -->
+  <!-- Results table (kept: exact rows the exports reproduce) -->
   <div class="card">
+    <div class="card-header"><h3 class="card-title mb-0">Report details</h3></div>
     <div class="table-responsive">
       <table class="table table-vcenter card-table table-hover stagger-rows">
         <thead><tr>@for (h of r.headers; track h) { <th>{{ h }}</th> }</tr></thead>
@@ -125,13 +329,21 @@
               No orders found for the selected report and date range.
             </td></tr>
           } @else {
-            @for (row of r.rows; track $index) {
+            @for (row of pageItems(); track $index) {
               <tr>@for (cell of row; track $index) { <td>{{ cell }}</td> }</tr>
             }
           }
         </tbody>
       </table>
     </div>
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
   </div>
 }
 

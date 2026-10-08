@@ -1,8 +1,5 @@
 package com.shifa.oms.courier;
 
-import com.shifa.oms.notification.WhatsAppMessageFactory;
-import com.shifa.oms.notification.WhatsAppNotificationPublisher;
-import com.shifa.oms.notification.WhatsAppTemplateRegistry;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderSource;
@@ -66,12 +63,19 @@ class CourierWebhookIntegrationTest {
         OutboxEventPublisher publisher = new OutboxEventPublisher(outboxRepository);
 
         CourierCompanyRepository courierCompanyRepository = mock(CourierCompanyRepository.class);
-        WhatsAppNotificationPublisher whatsAppNotificationPublisher = new WhatsAppNotificationPublisher(
-                new WhatsAppMessageFactory(new WhatsAppTemplateRegistry()), publisher);
+
+        // Real central workflow service; audit is best-effort against a mock repo
+        // (no Mockito mock of a concrete class — Java 25). No NotificationDispatcher
+        // is wired here, so the matrix fan-out is a no-op — this test asserts the
+        // courier status/settlement side effects, not notifications.
+        com.shifa.oms.order.OrderWorkflowService workflowService =
+                new com.shifa.oms.order.OrderWorkflowService(new com.shifa.oms.audit.AuditService(
+                        mock(com.shifa.oms.audit.AuditEventRepository.class),
+                        new com.shifa.oms.auth.CurrentUserService()));
 
         applier = new CourierStatusApplier(
                 orderRepository, courierRecordRepository, courierCompanyRepository,
-                receivableRepository, publisher, whatsAppNotificationPublisher);
+                receivableRepository, publisher, workflowService);
     }
 
     @Test
@@ -88,15 +92,20 @@ class CourierWebhookIntegrationTest {
     }
 
     @Test
-    void deliveredCodOrderSettlesToCodCollectedAndRecordsReceivable() {
+    void deliveredCodOrderStaysDeliveredWithCodOutstandingAndRecordsReceivable() {
+        // Courier-COD-settlement: on Delivered the courier has collected the cash
+        // but NOT yet remitted it to us, so the order stays at DELIVERED with the
+        // COD still OUTSTANDING and a COD receivable recorded (money owed to us).
+        // It is advanced to COD_Collected only when the remittance is imported.
         OrderEntity order = order(OrderStatus.OUT_FOR_DELIVERY, PaymentStatus.COD, "240.00");
         stubAwb("AWB-2", order, 6L);
 
         Optional<OrderStatus> result = applier.applyByAwb("AWB-2", "delivered");
 
-        assertThat(result).contains(OrderStatus.COD_COLLECTED);
-        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.COD_COLLECTED);
-        assertThat(order.getCustomerOutstanding()).isEqualByComparingTo("0.00");
+        assertThat(result).contains(OrderStatus.DELIVERED);
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.DELIVERED);
+        // COD still outstanding (NOT zeroed) — settlement is pending the remittance.
+        assertThat(order.getCustomerOutstanding()).isEqualByComparingTo("240.00");
         assertThat(savedReceivables).hasSize(1);
         assertThat(savedReceivables.get(0).getType()).isEqualTo(ReceivableType.COD_RECEIVABLE);
         assertThat(savedReceivables.get(0).getAmount()).isEqualByComparingTo("240.00");
@@ -114,13 +123,13 @@ class CourierWebhookIntegrationTest {
     }
 
     @Test
-    void lostShipmentRecordsClaimAndNotifiesAdmin() {
+    void redispatchShipmentRecordsClaimAndNotifiesAdmin() {
         OrderEntity order = order(OrderStatus.IN_TRANSIT, PaymentStatus.FULLY_PAID, "0.00");
         stubAwb("AWB-4", order, 8L);
 
         Optional<OrderStatus> result = applier.applyByAwb("AWB-4", "lost");
 
-        assertThat(result).contains(OrderStatus.COURIER_LOST);
+        assertThat(result).contains(OrderStatus.REDISPATCH);
         assertThat(savedReceivables).hasSize(1);
         assertThat(savedReceivables.get(0).getType()).isEqualTo(ReceivableType.CLAIM_RECEIVABLE);
         assertThat(savedEvents).anyMatch(e ->

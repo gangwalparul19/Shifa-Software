@@ -1,5 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { ApiClient, AuthTokenStore } from 'core';
+import { ApiClient, AuthService, AuthTokenStore, Role } from 'core';
 import {
   ActivityCards,
   AdminEventType,
@@ -36,6 +36,7 @@ const MAX_FEED = 50;
 export class AdminEventsService {
   private readonly api = inject(ApiClient);
   private readonly tokens = inject(AuthTokenStore);
+  private readonly auth = inject(AuthService);
 
   private source: EventSource | null = null;
 
@@ -51,9 +52,29 @@ export class AdminEventsService {
   /** The current SSE connection state. */
   readonly status = signal<SseStatus>('closed');
 
-  /** Opens the stream (idempotent). No-op when not authenticated. */
+  /**
+   * Opens the stream (idempotent). No-op when not authenticated or not a staff
+   * role. Every staff role connects now: the server scopes delivery per
+   * connection, so admins get the operational signals + LIVE_STATS/ACTIVITY while
+   * every role gets a lightweight {@code NOTIFICATION} event for the bell items
+   * addressed to them (their badge updates live). A storefront CUSTOMER never
+   * connects.
+   */
   connect(): void {
     if (this.source || typeof EventSource === 'undefined') {
+      return;
+    }
+    if (
+      !this.auth.hasAnyRole(
+        Role.ADMIN,
+        Role.ACCOUNTANT,
+        Role.CA,
+        Role.SALESPERSON,
+        Role.TEAM_LEAD,
+        Role.PACKING_USER,
+        Role.PAYMENT_VERIFIER,
+      )
+    ) {
       return;
     }
     const token = this.tokens.getAccessToken();
@@ -74,11 +95,15 @@ export class AdminEventsService {
     es.addEventListener('LIVE_STATS', (e) => this.liveStats.set(this.parse<LiveStats>(e)));
     es.addEventListener('ACTIVITY', (e) => this.activity.set(this.parse<ActivityCards>(e)));
 
+    this.listenNotification(es, 'ORDER_AWAITING_APPROVAL');
     this.listenNotification(es, 'ORDER_PACKED');
     this.listenNotification(es, 'ORDER_STATUS_CHANGED');
     this.listenNotification(es, 'CLAIM_FILED_REQUIRED');
     this.listenNotification(es, 'COURIER_ASSIGN_FAILED');
     this.listenNotification(es, 'WHATSAPP_FAILED');
+    // Per-recipient bell nudge (all roles). Pushing it into the feed bumps the
+    // bell badge live via the bell's existing effect on notifications().
+    this.listenNotification(es, 'NOTIFICATION');
   }
 
   /** Closes the stream and resets state. */
@@ -108,8 +133,21 @@ export class AdminEventsService {
 
   private toNotification(type: AdminEventType, payload: Record<string, unknown>): AdminNotification {
     const orderCode = (payload['orderCode'] as string | undefined) ?? undefined;
+    const orderId = typeof payload['orderId'] === 'number' ? (payload['orderId'] as number) : undefined;
     const codeText = orderCode ? `Order ${orderCode}` : 'An order';
     switch (type) {
+      case 'ORDER_AWAITING_APPROVAL': {
+        const customer = (payload['customerName'] as string | undefined) ?? '';
+        const who = customer ? ` from ${customer}` : '';
+        return this.build(
+          type,
+          'New order needs approval',
+          `${codeText}${who} is waiting in the approval queue.`,
+          'warning',
+          orderCode,
+          orderId,
+        );
+      }
       case 'ORDER_PACKED':
         return this.build(type, 'Order packed', `${codeText} was packed and is ready to ship.`, 'success', orderCode);
       case 'ORDER_STATUS_CHANGED':
@@ -144,6 +182,12 @@ export class AdminEventsService {
           'danger',
           orderCode,
         );
+      case 'NOTIFICATION': {
+        // A per-recipient bell nudge: title/severity come straight from the row.
+        const title = (payload['title'] as string | undefined) ?? 'New notification';
+        const sev = (payload['severity'] as AdminNotification['severity'] | undefined) ?? 'info';
+        return this.build(type, title, '', sev, orderCode);
+      }
       default:
         return this.build(type, 'Notification', codeText, 'info', orderCode);
     }
@@ -155,8 +199,9 @@ export class AdminEventsService {
     detail: string,
     severity: AdminNotification['severity'],
     orderCode?: string,
+    orderId?: number,
   ): AdminNotification {
-    return { type, title, detail, severity, orderCode, receivedAt: new Date() };
+    return { type, title, detail, severity, orderCode, orderId, receivedAt: new Date() };
   }
 
   private pretty(value: unknown): string {

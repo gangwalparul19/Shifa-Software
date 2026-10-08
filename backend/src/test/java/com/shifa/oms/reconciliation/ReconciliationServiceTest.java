@@ -132,8 +132,11 @@ class ReconciliationServiceTest {
         ReceivableEntity claim = receivable(3L, 12L, COURIER_A, ReceivableType.CLAIM_RECEIVABLE, "500.00", false);
         when(receivableRepository.findAllByOrderByCreatedAtDescIdDesc())
                 .thenReturn(List.of(codUnsettled, codSettled, claim));
-        when(orderRepository.findById(10L)).thenReturn(Optional.of(order("SHR-10", "Asha", PaymentStatus.COD)));
-        when(courierRecordRepository.findByOrderId(10L)).thenReturn(Optional.of(courierRecord("AWB-10")));
+        // The service batch-loads referenced orders / courier records (not per-row findById).
+        when(orderRepository.findAllById(any()))
+                .thenReturn(List.of(order("SHR-10", "Asha", PaymentStatus.COD)));
+        when(courierRecordRepository.findByOrderIdIn(any()))
+                .thenReturn(List.of(courierRecord(10L, "AWB-10")));
 
         List<UnsettledCodResponse> unsettled = service.unsettledCod();
 
@@ -228,8 +231,10 @@ class ReconciliationServiceTest {
         ReceivableEntity claim = receivable(3L, 12L, COURIER_A, ReceivableType.CLAIM_RECEIVABLE, "500.00", false);
         when(receivableRepository.findByTypeAndSettledFalseOrderByCreatedAtDescIdDesc(
                 ReceivableType.CLAIM_RECEIVABLE)).thenReturn(List.of(claim));
-        when(orderRepository.findById(12L)).thenReturn(Optional.of(order("SHR-12", "Ravi", PaymentStatus.COD)));
-        when(courierRecordRepository.findByOrderId(12L)).thenReturn(Optional.of(courierRecord("AWB-12")));
+        when(orderRepository.findAllById(any()))
+                .thenReturn(List.of(order("SHR-12", "Ravi", PaymentStatus.COD)));
+        when(courierRecordRepository.findByOrderIdIn(any()))
+                .thenReturn(List.of(courierRecord(12L, "AWB-12")));
 
         List<ReceivableResponse> claims = service.pendingClaims();
 
@@ -263,8 +268,8 @@ class ReconciliationServiceTest {
         return new CourierCompany(name, "https://track.example.com/{awb}");
     }
 
-    private static CourierRecord courierRecord(String awb) {
-        CourierRecord record = new CourierRecord(1L);
+    private static CourierRecord courierRecord(long orderId, String awb) {
+        CourierRecord record = new CourierRecord(orderId);
         record.assign(COURIER_A, awb, null, null);
         return record;
     }

@@ -238,6 +238,60 @@ class InvoiceContentBuilderTest {
         assertThat(withDefault.gst().computation().ratePercent()).isEqualByComparingTo("5.00");
     }
 
+    // --- Mixed-rate + discount (CA breakup) ---------------------------------
+
+    @Test
+    void mixedRatesWithDiscountApplyDiscountFirstThenGstPerRateAndReconcile() {
+        // Three lines at 5% / 18% / 0%, gross subtotal 323, flat discount 23 -> net 300.
+        // Discount is apportioned across lines FIRST, then GST is extracted per rate group.
+        OrderEntity order = new OrderEntity(
+                "SHR-000900", OrderSource.SALESPERSON, 7L,
+                "Asha", "9812345678", "12 MG Road", "Pune", "Maharashtra", "411001");
+        order.addLineItem(new OrderLineItem(1L, "GST5 Item", "3004", new BigDecimal("5.00"),
+                1, new BigDecimal("105.00"), new BigDecimal("105.00")));
+        order.addLineItem(new OrderLineItem(2L, "GST18 Item", "3305", new BigDecimal("18.00"),
+                1, new BigDecimal("118.00"), new BigDecimal("118.00")));
+        order.addLineItem(new OrderLineItem(3L, "GST0 Item", "0000", new BigDecimal("0.00"),
+                1, new BigDecimal("100.00"), new BigDecimal("100.00")));
+        // Net payable after a flat 23 discount = 300.
+        order.applyOrderDiscount("FLAT", new BigDecimal("23.00"), new BigDecimal("23.00"));
+        order.applyAmounts(new BigDecimal("300.00"), new BigDecimal("300.00"),
+                BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), PaymentStatus.FULLY_PAID);
+        order.setOrderStatus(com.shifa.oms.statemachine.OrderStatus.APPROVED);
+
+        // Seller in Maharashtra == order Maharashtra -> intra-state; prices inclusive.
+        AppSettings settings = gstSettings("Maharashtra", new BigDecimal("5.00"), true);
+        InvoiceContent content = builder.build(order, settings, Map.of());
+
+        assertThat(content.isTaxInvoice()).isTrue();
+        assertThat(content.gst().pricesIncludeGst()).isTrue();
+
+        // One breakup row per distinct rate (5, 18, 0), in first-seen order.
+        java.util.List<GstRateLine> breakup = content.gst().rateBreakup();
+        assertThat(breakup).hasSize(3);
+        assertThat(breakup).extracting(r -> r.ratePercent().stripTrailingZeros())
+                .containsExactly(new BigDecimal("5"), new BigDecimal("18"), new BigDecimal("0"));
+
+        // Sum of per-rate rows must reconcile with the aggregate computation.
+        BigDecimal sumTaxable = breakup.stream().map(GstRateLine::taxableValue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal sumTax = breakup.stream().map(GstRateLine::totalTax)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        GstComputation agg = content.gst().computation();
+        assertThat(sumTaxable).isEqualByComparingTo(agg.taxableValue());
+        assertThat(sumTax).isEqualByComparingTo(agg.totalTax());
+
+        // Discount applied FIRST: the taxed base is the post-discount 300, not 323.
+        // Inclusive -> grand total == order total, and taxable + tax == 300.
+        assertThat(agg.grandTotal()).isEqualByComparingTo("300.00");
+        assertThat(agg.taxableValue().add(agg.totalTax())).isEqualByComparingTo("300.00");
+
+        // Intra-state -> the 0% row carries no tax; the 5%/18% rows split into CGST+SGST.
+        GstRateLine zeroRow = breakup.get(2);
+        assertThat(zeroRow.totalTax()).isEqualByComparingTo("0.00");
+        assertThat(agg.cgstAmount().add(agg.sgstAmount())).isEqualByComparingTo(agg.totalTax());
+    }
+
     // --- Helper -------------------------------------------------------------
 
     private OrderEntity order(PaymentStatus paymentStatus, BigDecimal total,

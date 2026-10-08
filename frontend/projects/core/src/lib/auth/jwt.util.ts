@@ -8,6 +8,18 @@ export interface DecodedJwt {
   typ: string;
   iat: number;
   exp: number;
+  /**
+   * The user's display name. Optional: the backend omits it when blank, and
+   * tokens issued before this claim existed do not carry it — callers must fall
+   * back to {@link DecodedJwt.sub}.
+   */
+  name?: string;
+  /**
+   * Force-password-change flag. Present and {@code true} only when an admin has
+   * reset the user's password and they must choose a new one before using the
+   * app. Omitted (undefined) otherwise.
+   */
+  pwd?: boolean;
 }
 
 /**

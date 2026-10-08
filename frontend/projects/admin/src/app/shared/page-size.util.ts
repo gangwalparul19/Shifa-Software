@@ -6,7 +6,7 @@
 const PREFIX = 'shifa.admin.pageSize.';
 
 /** Reads the saved page size for {@link table}, or {@link fallback}. */
-export function readPageSize(table: string, fallback = 20): number {
+export function readPageSize(table: string, fallback = 10): number {
   try {
     const raw = localStorage.getItem(PREFIX + table);
     const n = raw ? Number(raw) : NaN;

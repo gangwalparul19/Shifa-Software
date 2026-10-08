@@ -1,0 +1,16 @@
+{
+  "name": "shifa-oms-screenshot-capture",
+  "version": "1.0.0",
+  "description": "Automated screenshot capture for Shifa OMS documentation",
+  "main": "capture-screenshots.js",
+  "scripts": {
+    "capture": "node capture-screenshots.js",
+    "install-browser": "npx playwright install chromium"
+  },
+  "keywords": ["screenshots", "documentation", "automation"],
+  "author": "Shifa Dev Team",
+  "license": "ISC",
+  "dependencies": {
+    "playwright": "^1.40.0"
+  }
+}

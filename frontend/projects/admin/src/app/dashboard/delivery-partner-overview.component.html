@@ -1,0 +1,105 @@
+<section class="dp-section">
+  <div class="dp-head">
+    <div>
+      <h2 class="dp-title"><i class="ti ti-truck-delivery me-2"></i>Orders by delivery partner</h2>
+      <p class="dp-sub text-secondary">Compare QuikShipX, In-house (Ishika Enterprise) and POS · {{ periodLabel() }}</p>
+    </div>
+    <div class="dp-presets btn-group btn-group-sm" role="group" aria-label="Period">
+      <button type="button" class="btn"
+        [class.btn-primary]="activePreset() === 'this-month'"
+        [class.btn-outline-secondary]="activePreset() !== 'this-month'"
+        (click)="setPreset('this-month')">This month</button>
+      <button type="button" class="btn"
+        [class.btn-primary]="activePreset() === 'last-30'"
+        [class.btn-outline-secondary]="activePreset() !== 'last-30'"
+        (click)="setPreset('last-30')">Last 30 days</button>
+      <button type="button" class="btn"
+        [class.btn-primary]="activePreset() === 'all'"
+        [class.btn-outline-secondary]="activePreset() !== 'all'"
+        (click)="setPreset('all')">All time</button>
+    </div>
+  </div>
+
+  @if (loading()) {
+    <div class="dp-grid">
+      @for (i of [1, 2, 3]; track i) {
+        <div class="dp-card skeleton" style="height: 320px"></div>
+      }
+    </div>
+  } @else if (error()) {
+    <div class="alert alert-danger d-flex align-items-center justify-content-between">
+      <span><i class="ti ti-alert-triangle me-2"></i>{{ error() }}</span>
+      <button type="button" class="btn btn-sm btn-outline-danger" (click)="load()">Retry</button>
+    </div>
+  } @else if (data(); as d) {
+    <div class="dp-grid">
+      @for (card of cards(); track card.meta.key) {
+        <div class="dp-card" [style.--dp-accent]="card.meta.color">
+          <!-- Partner header -->
+          <div class="dp-card__head">
+            <span class="dp-card__icon"><i class="ti" [class]="card.meta.icon"></i></span>
+            <div class="dp-card__titles">
+              <div class="dp-card__name">{{ card.stats.label }}</div>
+              <div class="dp-card__orders">
+                {{ card.stats.orderCount }} order{{ card.stats.orderCount === 1 ? '' : 's' }}
+              </div>
+            </div>
+            @if (successPct(card.stats) !== null) {
+              <span class="badge" [class]="successClass(card.stats)" title="Delivery success rate">
+                {{ successPct(card.stats) }}%
+              </span>
+            }
+          </div>
+
+          <!-- Revenue + COD -->
+          <div class="dp-card__money">
+            <div class="dp-money">
+              <span class="dp-money__lbl">Revenue</span>
+              <span class="dp-money__val" [title]="card.stats.revenue | inr">{{ card.stats.revenue | compactInr }}</span>
+            </div>
+            <div class="dp-money dp-money--cod">
+              <span class="dp-money__lbl">COD to collect</span>
+              <span class="dp-money__val" [title]="card.stats.codToCollect | inr">{{ card.stats.codToCollect | compactInr }}</span>
+            </div>
+          </div>
+
+          <!-- Key lifecycle metrics the client asked for -->
+          <div class="dp-metrics">
+            <button type="button" class="dp-metric" (click)="drill(card.meta.key, 'SHIPPED')" title="View in-transit orders">
+              <span class="dp-metric__n dp-metric__n--transit">{{ card.stats.inTransit }}</span>
+              <span class="dp-metric__l">In transit</span>
+            </button>
+            <button type="button" class="dp-metric" (click)="drill(card.meta.key, 'DELIVERED')" title="View delivered orders">
+              <span class="dp-metric__n dp-metric__n--delivered">{{ card.stats.delivered }}</span>
+              <span class="dp-metric__l">Delivered</span>
+            </button>
+            <button type="button" class="dp-metric" (click)="drill(card.meta.key, 'CANCELLED')" title="View cancelled orders">
+              <span class="dp-metric__n dp-metric__n--cancelled">{{ card.stats.cancelled }}</span>
+              <span class="dp-metric__l">Cancelled</span>
+            </button>
+            <button type="button" class="dp-metric" (click)="drill(card.meta.key, 'PENDING_APPROVAL')" title="View pending orders">
+              <span class="dp-metric__n">{{ card.stats.pending }}</span>
+              <span class="dp-metric__l">Pending</span>
+            </button>
+            <button type="button" class="dp-metric" (click)="drill(card.meta.key, 'PROCESSING')" title="View processing orders">
+              <span class="dp-metric__n">{{ card.stats.processing }}</span>
+              <span class="dp-metric__l">Processing</span>
+            </button>
+            <button type="button" class="dp-metric" (click)="drill(card.meta.key, 'FAILED_RETURNED')" title="View failed / returned orders">
+              <span class="dp-metric__n dp-metric__n--failed">{{ card.stats.failedReturned }}</span>
+              <span class="dp-metric__l">Failed / Returned</span>
+            </button>
+          </div>
+
+          <!-- This-month footer + view-all -->
+          <div class="dp-card__foot">
+            <span class="text-secondary">This month: {{ card.stats.monthOrderCount }} ·
+              <span [title]="card.stats.monthRevenue | inr">{{ card.stats.monthRevenue | compactInr }}</span>
+            </span>
+            <button type="button" class="btn btn-sm btn-link p-0" (click)="drill(card.meta.key)">View orders</button>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</section>

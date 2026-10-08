@@ -3,11 +3,35 @@
   subtitle="Review punched orders and approve or reject them."
   [breadcrumbs]="[{ label: 'Approval Queue' }]"
 >
+  @if (!loading() && !loadError() && totalElements() > 0) {
+    <span class="badge bg-orange-lt shifa-appr__needs" title="Orders needing your review">
+      <i class="ti ti-alert-circle me-1"></i>{{ totalElements() }} need{{ totalElements() === 1 ? 's' : '' }} action
+    </span>
+  }
   <admin-density-toggle />
-  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
-    <i class="ti ti-refresh me-1"></i> Refresh
+  <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
+    <i class="ti ti-refresh"></i>
   </button>
 </admin-page-header>
+
+<!-- Source filter (Portal / Shopify / All) — defaults to Portal -->
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+  <span class="text-secondary small fw-medium">Show orders from</span>
+  <div class="btn-group" role="group" aria-label="Order source filter">
+    <button type="button" class="btn btn-sm"
+      [class.btn-primary]="sourceFilter() === 'PORTAL'"
+      [class.btn-outline-secondary]="sourceFilter() !== 'PORTAL'"
+      (click)="setSourceFilter('PORTAL')">Portal</button>
+    <button type="button" class="btn btn-sm"
+      [class.btn-primary]="sourceFilter() === 'SHOPIFY'"
+      [class.btn-outline-secondary]="sourceFilter() !== 'SHOPIFY'"
+      (click)="setSourceFilter('SHOPIFY')">Shopify</button>
+    <button type="button" class="btn btn-sm"
+      [class.btn-primary]="sourceFilter() === 'ALL'"
+      [class.btn-outline-secondary]="sourceFilter() !== 'ALL'"
+      (click)="setSourceFilter('ALL')">All</button>
+  </div>
+</div>
 
 <!-- Live-activity nudge (A3): a status change may have altered the queue -->
 @if (newActivity()) {
@@ -32,41 +56,174 @@
     message="New punched orders will appear here for review."
   />
 } @else {
-  <div class="card shifa-touch">
+  <!-- Bulk action bar: select-all on page + bulk approve of the ticked rows. -->
+  <div class="shifa-bulkbar mb-2">
+    <label class="shifa-bulkbar__all">
+      <input
+        type="checkbox"
+        class="form-check-input m-0"
+        [checked]="allOnPageSelected()"
+        (change)="toggleSelectAllOnPage()"
+        aria-label="Select all on this page"
+      />
+      <span>Select all on page</span>
+    </label>
+    @if (selectionCount() > 0) {
+      <span class="shifa-bulkbar__count">{{ selectionCount() }} selected</span>
+      <button
+        type="button"
+        class="btn btn-sm btn-success"
+        (click)="bulkApprove()"
+        [disabled]="acting() || selectionHasDuplicate()"
+        [title]="selectionHasDuplicate()
+          ? 'Some selected orders have a duplicate payment proof — review them individually'
+          : 'Approve the selected orders'"
+      >
+        <i class="ti ti-checks me-1"></i>Approve {{ selectionCount() }}
+      </button>
+      <button type="button" class="btn btn-sm btn-link text-secondary" (click)="clearSelection()">Clear</button>
+      @if (selectionHasDuplicate()) {
+        <span class="shifa-bulkbar__warn text-danger">
+          <i class="ti ti-alert-triangle me-1"></i>Duplicate proof in selection — review individually
+        </span>
+      }
+    } @else {
+      <span class="shifa-bulkbar__hint text-secondary">Tick orders to approve several at once</span>
+    }
+  </div>
+
+  <!-- Mobile (<768px): tappable approval cards — code + amount, customer + date,
+       payment pill, and clear Approve / Reject actions (mockup-faithful). -->
+  <div class="shifa-appr-cards d-md-none">
+    @for (item of pageItems(); track item.id) {
+      <div class="shifa-appr shifa-appr--clickable" [class.is-selected]="isSelected(item.id)" (click)="openDetail(item)" tabindex="0" (keydown.enter)="openDetail(item)">
+        <!-- Top row: checkbox + order id/meta on the left, compact amount on the right. -->
+        <div class="shifa-appr__top">
+          <input
+            type="checkbox"
+            class="form-check-input shifa-appr__check"
+            [checked]="isSelected(item.id)"
+            (click)="$event.stopPropagation()"
+            (change)="toggleSelection(item.id)"
+            [attr.aria-label]="'Select order ' + item.orderCode"
+          />
+          <div class="shifa-appr__idwrap">
+            <span class="shifa-appr__code">
+              {{ item.orderCode }}
+              @if (item.source === 'SHOPIFY') { <admin-channel-logo class="ms-1" [source]="item.source" /> }
+            </span>
+            <span class="shifa-appr__meta">
+              {{ item.customerName }} · {{ item.createdAt ? (item.createdAt | istDate: 'dd MMM, HH:mm') : '—' }}
+              @if (item.salespersonName) { · <i class="ti ti-user"></i> {{ item.salespersonName }} }
+            </span>
+            @if (item.notes) {
+              <admin-note-cell [note]="item.notes" />
+            }
+          </div>
+          <span class="shifa-appr__amount" [title]="money(item.totalAmount)">{{ moneyCompact(item.totalAmount) }}</span>
+        </div>
+
+        <!-- Action row: Verify/Verified (left) · payment pill (right) · kebab (rightmost). -->
+        <div class="shifa-appr__actionrow" (click)="$event.stopPropagation()">
+          <div class="shifa-appr__verify">
+            @if (isVerified(item)) {
+              <span class="badge tone-green" title="Payment verified"><i class="ti ti-shield-check me-1"></i>Verified</span>
+            } @else if (needsVerification(item)) {
+              <span class="badge tone-amber" title="Verify payment before approving"><i class="ti ti-shield-x me-1"></i>Verify payment</span>
+            }
+            @if (hasDuplicate(item)) {
+              <span class="badge tone-red" title="Duplicate payment proof"><i class="ti ti-copy me-1"></i>Duplicate</span>
+            }
+          </div>
+          <admin-status-badge class="shifa-appr__pay" [status]="item.paymentStatus" kind="payment" />
+          <admin-row-actions [actions]="rowActions()" ariaLabel="Order actions" (select)="onRowAction($event, item)" />
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Desktop (≥768px): the existing rich approval table. -->
+  <div class="card shifa-touch d-none d-md-block">
     <div class="table-responsive">
       <table class="table table-vcenter card-table table-hover stagger-rows">
         <thead>
           <tr>
-            <th>Order</th><th>Customer</th><th>Mobile</th><th>Items</th>
-            <th class="text-end">Total</th><th class="text-end">Paid</th><th class="text-end">COD</th>
+            <th class="w-1">
+              <input
+                type="checkbox"
+                class="form-check-input m-0"
+                [checked]="allOnPageSelected()"
+                (change)="toggleSelectAllOnPage()"
+                aria-label="Select all on this page"
+              />
+            </th>
+            <th>Order</th><th>Customer</th><th>Salesperson</th><th>Mobile</th>
+            <th class="text-end">Total</th><th class="text-end">Paid</th><th class="text-end">On Delivery</th>
             <th>Payment</th><th>Date</th><th class="text-end">Actions</th>
           </tr>
         </thead>
         <tbody>
-          @for (item of queue(); track item.id) {
-            <tr>
-              <td>
-                <button type="button" class="btn btn-link p-0 fw-medium" (click)="openDetail(item)">{{ item.orderCode }}</button>
-                <div><span class="badge bg-secondary-lt">{{ item.source }}</span></div>
+          @for (item of pageItems(); track item.id) {
+            <tr class="shifa-rowlink" [class.is-selected]="isSelected(item.id)" (click)="openDetail(item)">
+              <td (click)="$event.stopPropagation()">
+                <input
+                  type="checkbox"
+                  class="form-check-input m-0"
+                  [checked]="isSelected(item.id)"
+                  (change)="toggleSelection(item.id)"
+                  [attr.aria-label]="'Select order ' + item.orderCode"
+                />
               </td>
-              <td>{{ item.customerName }}</td>
-              <td class="text-secondary">{{ item.customerMobile }}</td>
-              <td class="text-secondary">{{ itemsSummary(item) }}</td>
-              <td class="text-end">{{ money(item.totalAmount) }}</td>
-              <td class="text-end">{{ money(item.amountReceived) }}</td>
-              <td class="text-end">{{ money(item.codAmount) }}</td>
-              <td><admin-status-badge [status]="item.paymentStatus" kind="payment" /></td>
-              <td class="text-secondary">{{ item.createdAt ? (item.createdAt | date: 'dd MMM, HH:mm') : '—' }}</td>
-              <td class="text-end">
-                <div class="btn-list justify-content-end flex-nowrap">
-                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openDetail(item)">Review</button>
-                  <button type="button" class="btn btn-sm btn-success" (click)="approve(item)" [disabled]="acting()">
-                    <i class="ti ti-check"></i>
-                  </button>
-                  <button type="button" class="btn btn-sm btn-outline-danger" (click)="openReject(item)" [disabled]="acting()">
-                    <i class="ti ti-x"></i>
-                  </button>
+              <td>
+                <span class="fw-medium">{{ item.orderCode }}</span>
+                <div class="mt-1">
+                  @if (item.source === 'SHOPIFY') {
+                    <admin-channel-logo [source]="item.source" />
+                  } @else {
+                    <span class="badge bg-secondary-lt">{{ humanize(item.source) }}</span>
+                  }
                 </div>
+              </td>
+              <td>{{ item.customerName }}
+                @if (item.notes) {
+                  <admin-note-cell [note]="item.notes" />
+                }
+              </td>
+              <td class="text-secondary">{{ item.salespersonName || '—' }}</td>
+              <td class="text-secondary">{{ item.customerMobile }}</td>
+              <td class="text-end" [title]="money(item.totalAmount)">{{ moneyCompact(item.totalAmount) }}</td>
+              <td class="text-end" [title]="money(item.amountReceived)">{{ moneyCompact(item.amountReceived) }}</td>
+              <td class="text-end" [title]="money(item.codAmount)">{{ moneyCompact(item.codAmount) }}</td>
+              <td>
+                <admin-status-badge [status]="item.paymentStatus" kind="payment" />
+                <div class="mt-1 d-flex align-items-center gap-1 flex-wrap">
+                  @if (isVerified(item)) {
+                    <span class="badge tone-green" title="Payment verified">
+                      <i class="ti ti-shield-check me-1"></i>Verified
+                    </span>
+                  } @else if (needsVerification(item)) {
+                    <span
+                      class="badge tone-amber"
+                      [title]="item.paymentVerificationStatus === 'REJECTED'
+                        ? 'Payment was rejected — verify before approving'
+                        : 'Payment not yet verified — verify before approving'"
+                    >
+                      <i class="ti ti-shield-x me-1"></i>Verify payment
+                    </span>
+                  }
+                  @if (hasDuplicate(item)) {
+                    <span
+                      class="badge tone-red"
+                      [title]="'Same payment proof as: ' + (item.duplicateOrderCodes || []).join(', ')"
+                    >
+                      <i class="ti ti-copy me-1"></i>Duplicate proof
+                    </span>
+                  }
+                </div>
+              </td>
+              <td class="text-secondary">{{ item.createdAt ? (item.createdAt | istDate: 'dd MMM, HH:mm') : '—' }}</td>
+              <td class="text-end" (click)="$event.stopPropagation()">
+                <admin-row-actions [actions]="rowActions()" ariaLabel="Order actions" (select)="onRowAction($event, item)" />
               </td>
             </tr>
           }
@@ -74,59 +231,189 @@
       </table>
     </div>
   </div>
+
+  <admin-pagination
+    [page]="page()"
+    [totalPages]="totalPages()"
+    [totalElements]="totalElements()"
+    [size]="size()"
+    (pageChange)="goToPage($event)"
+    (sizeChange)="setSize($event)"
+  />
 }
 
 <!-- Detail drawer -->
 @if (selected(); as item) {
   <div class="shifa-overlay" (click)="closeDetail()"></div>
-  <aside class="shifa-drawer" role="dialog" aria-label="Order review">
-    <header class="shifa-drawer__head">
-      <div>
-        <h3 class="mb-1">{{ item.orderCode }}</h3>
-        <admin-status-badge [status]="item.paymentStatus" kind="payment" />
+  <aside class="shifa-drawer sa-dr" role="dialog" aria-label="Order review">
+    <!-- Themed green header: avatar + order code + payment pill + date -->
+    <header class="sa-dr__head">
+      <span class="sa-dr__avatar">{{ initials(item.customerName) }}</span>
+      <div class="sa-dr__headmain">
+        <div class="sa-dr__code">{{ item.orderCode }}</div>
+        <div class="sa-dr__sub">
+          {{ item.customerName }}
+          @if (item.createdAt) { · {{ item.createdAt | istDate: 'dd MMM, HH:mm' }} }
+        </div>
       </div>
-      <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
+      <span class="sa-dr__pill">{{ formatStatus(item.paymentStatus) }}</span>
+      <button type="button" class="sa-dr__close" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
     </header>
 
-    <div class="shifa-drawer__body">
-      <div class="mb-4">
-        <div class="subheader mb-2">Customer</div>
-        <div class="fw-medium">{{ item.customerName }}</div>
-        <div class="text-secondary">{{ item.customerMobile }}</div>
-        <div class="text-secondary mt-1">{{ item.addressLine }}, {{ item.city }}, {{ item.state }} — {{ item.postalCode }}</div>
-      </div>
+    <div class="shifa-drawer__body sa-dr__body">
+      <!-- Customer -->
+      <section class="sa-dr__section">
+        <div class="sa-dr__label"><i class="ti ti-user me-1"></i>Customer</div>
+        <div class="sa-dr__card">
+          <div class="sa-dr__cust">
+            <div>
+              <div class="fw-semibold">{{ item.customerName }}</div>
+              <a class="sa-dr__mobile" href="tel:{{ item.customerMobile }}">
+                <i class="ti ti-phone me-1"></i>{{ item.customerMobile }}
+              </a>
+              @if (item.salespersonName) {
+                <div class="text-secondary small mt-1">
+                  <i class="ti ti-user me-1"></i>Salesperson: {{ item.salespersonName }}
+                </div>
+              }
+            </div>
+            <a
+              class="sa-dr__round"
+              [href]="mapsUrl(item)"
+              target="_blank"
+              rel="noopener"
+              aria-label="Open address in Google Maps"
+              title="Open in Google Maps"
+            >
+              <i class="ti ti-map-pin"></i>
+            </a>
+          </div>
+          <div class="sa-dr__addr">
+            <i class="ti ti-map-2 me-1"></i>{{ item.addressLine }}, {{ item.city }}, {{ item.state }} — {{ item.postalCode }}
+          </div>
+        </div>
+      </section>
 
-      <div class="mb-4">
-        <div class="subheader mb-2">Line items</div>
-        <table class="table table-sm table-vcenter">
-          <thead><tr><th>Product</th><th class="text-end">Qty</th><th class="text-end">Rate</th><th class="text-end">Line total</th></tr></thead>
-          <tbody>
-            @for (li of item.items; track $index) {
-              <tr><td>{{ li.productName }}</td><td class="text-end">{{ li.quantity }}</td><td class="text-end">{{ money(li.rate) }}</td><td class="text-end">{{ money(li.lineTotal) }}</td></tr>
+      <!-- Order note (salesperson's instructions / context) -->
+      @if (item.notes) {
+        <section class="sa-dr__section">
+          <div class="sa-dr__label"><i class="ti ti-note me-1"></i>Order note</div>
+          <div class="sa-dr__card sa-dr__note">
+            {{ item.notes }}
+          </div>
+        </section>
+      }
+
+      <!-- Line items -->
+      <section class="sa-dr__section">
+        <div class="sa-dr__label"><i class="ti ti-package me-1"></i>Line items</div>
+        <div class="sa-dr__card p-0">
+          <table class="table table-sm table-vcenter sa-dr__items mb-0">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th class="text-center">Qty</th>
+                <th class="text-end">Rate</th>
+                <th class="text-end">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (li of item.items; track $index) {
+                <tr>
+                  <td class="fw-medium">{{ li.productName }}</td>
+                  <td class="text-center">{{ li.quantity }}</td>
+                  <td class="text-end text-secondary">{{ money(li.rate) }}</td>
+                  <td class="text-end fw-semibold">{{ money(li.lineTotal) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Payment summary -->
+      <section class="sa-dr__section">
+        <div class="sa-dr__label"><i class="ti ti-receipt-2 me-1"></i>Payment</div>
+        <div class="sa-dr__totals">
+          <div class="sa-dr__totline">
+            <span>Total</span><strong>{{ money(item.totalAmount) }}</strong>
+          </div>
+          <div class="sa-dr__totline">
+            <span>Amount received</span><strong class="text-success">{{ money(item.amountReceived) }}</strong>
+          </div>
+          <div class="sa-dr__totline sa-dr__totline--cod">
+            <span>To collect on delivery</span><strong>{{ money(item.codAmount) }}</strong>
+          </div>
+        </div>
+      </section>
+
+      <!-- Delivery method: admin picks/overrides the delivery partner at approval -->
+      <section class="sa-dr__section">
+        <div class="sa-dr__label"><i class="ti ti-truck-delivery me-1"></i>Delivery method</div>
+        <div class="sa-dr__card">
+          <select
+            class="form-select"
+            [ngModel]="deliveryMethod()"
+            (ngModelChange)="setDeliveryMethod($event)"
+            aria-label="Delivery method"
+          >
+            @for (opt of deliveryMethodOptions; track opt.value) {
+              <option [value]="opt.value">{{ opt.label }}</option>
             }
-          </tbody>
-        </table>
-      </div>
+          </select>
+          @if (deliveryMethod() === 'IN_HOUSE') {
+            <div class="form-hint mt-1">
+              <i class="ti ti-truck-delivery me-1"></i>
+              This order will be delivered by Shifa's own team — it will not be sent to QuikShipX.
+            </div>
+          }
+        </div>
+      </section>
 
-      <div class="card card-sm mb-4"><div class="card-body">
-        <div class="d-flex justify-content-between py-1"><span class="text-secondary">Total</span><strong>{{ money(item.totalAmount) }}</strong></div>
-        <div class="d-flex justify-content-between py-1"><span class="text-secondary">Amount received</span><strong>{{ money(item.amountReceived) }}</strong></div>
-        <div class="d-flex justify-content-between py-1"><span class="text-secondary">COD amount</span><strong>{{ money(item.codAmount) }}</strong></div>
-      </div></div>
-
-      <div>
-        <div class="subheader mb-2">Payment screenshot</div>
+      <!-- Payment screenshots (all proofs on file, V65) -->
+      <section class="sa-dr__section">
+        <div class="sa-dr__label">
+          <i class="ti ti-photo me-1"></i>Payment screenshot@if (screenshotUrls().length > 1) {
+            <span>s</span>
+            <span class="badge bg-blue-lt ms-2">{{ screenshotUrls().length }}</span>
+          }
+        </div>
         @if (screenshotLoading()) {
-          <div class="skeleton" style="height: 180px"></div>
-        } @else if (screenshotUrl(); as url) {
-          <a [href]="url" target="_blank" rel="noopener"><img class="img-fluid rounded border" [src]="url" alt="Payment screenshot" /></a>
+          <div class="skeleton sa-dr__shot" style="height: 180px"></div>
+        } @else if (screenshotUrls().length > 0) {
+          <!-- Snip tabs: browse each proof by tab instead of scrolling a stack. -->
+          @if (screenshotUrls().length > 1) {
+            <div class="shifa-snip-tabs" role="tablist" aria-label="Payment screenshots">
+              @for (url of screenshotUrls(); track url) {
+                <button
+                  type="button"
+                  class="shifa-snip-tab"
+                  [class.active]="activeSnip() === $index"
+                  role="tab"
+                  [attr.aria-selected]="activeSnip() === $index"
+                  (click)="selectSnip($index)"
+                >
+                  Snip {{ $index + 1 }}@if ($first) { <span class="badge bg-green-lt ms-1">Primary</span> }
+                </button>
+              }
+            </div>
+          }
+          <a [href]="screenshotUrls()[activeSnip()]" target="_blank" rel="noopener">
+            <img
+              class="img-fluid rounded border sa-dr__shot"
+              [src]="screenshotUrls()[activeSnip()]"
+              [alt]="'Payment screenshot ' + (activeSnip() + 1)"
+            />
+          </a>
         } @else {
-          <p class="text-secondary">No payment screenshot for this order.</p>
+          <div class="sa-dr__empty">
+            <i class="ti ti-photo-off me-1"></i>No payment screenshot for this order.
+          </div>
         }
-      </div>
+      </section>
     </div>
 
-    <footer class="shifa-drawer__foot">
+    <footer class="shifa-drawer__foot sa-dr__foot">
       <button type="button" class="btn btn-outline-primary me-auto" (click)="downloadInvoice(item)" [disabled]="invoiceLoading()">
         @if (invoiceLoading()) {
           <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
@@ -141,6 +428,101 @@
   </aside>
 }
 
+<!-- Verify-payment-first modal (payment-verification-gated approval): the admin
+     tried to approve one or more orders whose payment isn't verified yet. They
+     must verify each here first, then the approval resumes. -->
+@if (verifyModalItems().length > 0) {
+  <div class="shifa-overlay" (click)="closeVerifyModal()"></div>
+  <div class="shifa-modal sa-verify-modal" role="dialog" aria-label="Verify payment before approving">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0">
+          <i class="ti ti-shield-check me-1"></i>Verify payment first
+        </h3>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary">
+          These order{{ verifyModalItems().length === 1 ? '' : 's' }} can't be approved until the
+          payment is verified. Verify each below, then continue.
+        </p>
+        <div class="sa-verify-list mb-3">
+          @for (vi of verifyModalItems(); track vi.id) {
+            <div class="sa-verify-item" [class.is-dup]="hasDuplicate(vi)">
+              <!-- Header: order + amount + verify/verified action -->
+              <div class="sa-verify-item__head">
+                <div>
+                  <div class="fw-semibold">{{ vi.orderCode }}</div>
+                  <div class="small text-secondary">
+                    {{ vi.customerName }} · {{ money(vi.amountReceived) }} received of {{ money(vi.totalAmount) }}
+                  </div>
+                </div>
+                @if (vi.paymentVerificationStatus === 'VERIFIED') {
+                  <span class="badge tone-green"><i class="ti ti-shield-check me-1"></i>Verified</span>
+                } @else {
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-success"
+                    (click)="verifyPaymentInModal(vi)"
+                    [disabled]="verifyingId() !== null"
+                  >
+                    @if (verifyingId() === vi.id) {
+                      <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                    } @else {
+                      <i class="ti ti-check me-1"></i>
+                    }
+                    Verify
+                  </button>
+                }
+              </div>
+
+              <!-- Prominent duplicate warning: this proof matches other orders -->
+              @if (hasDuplicate(vi)) {
+                <div class="sa-verify-item__dup">
+                  <i class="ti ti-alert-triangle me-1"></i>
+                  <span>
+                    <strong>Possible duplicate.</strong> This payment proof matches
+                    {{ (vi.duplicateOrderCodes || []).length === 1 ? 'order' : 'orders' }}
+                    <strong>{{ (vi.duplicateOrderCodes || []).join(', ') }}</strong>.
+                    Please check before verifying.
+                  </span>
+                </div>
+              }
+
+              <!-- Payment screenshot(s) shown inline so the admin can review here -->
+              @if (isModalShotsLoading(vi.id)) {
+                <div class="skeleton sa-verify-item__shot" style="height: 160px"></div>
+              } @else if (modalShotsFor(vi.id).length > 0) {
+                <div class="sa-verify-item__shots">
+                  @for (url of modalShotsFor(vi.id); track url) {
+                    <a [href]="url" target="_blank" rel="noopener" title="Open full size">
+                      <img class="sa-verify-item__shot" [src]="url" [alt]="'Payment proof for ' + vi.orderCode" />
+                    </a>
+                  }
+                </div>
+              } @else if (isModalShotsMissing(vi.id)) {
+                <div class="sa-verify-item__noshot">
+                  <i class="ti ti-photo-off me-1"></i>No payment screenshot on file for this order.
+                </div>
+              }
+            </div>
+          }
+        </div>
+        <div class="d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-outline-secondary" (click)="closeVerifyModal()">Cancel</button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            (click)="proceedAfterVerify()"
+            [disabled]="!allModalVerified()"
+          >
+            <i class="ti ti-check me-1"></i>Continue to approve
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
 <!-- Reject reason modal -->
 @if (rejectTarget(); as item) {
   <div class="shifa-overlay" (click)="cancelReject()"></div>
@@ -148,10 +530,17 @@
     <div class="card">
       <div class="card-header"><h3 class="card-title mb-0">Reject {{ item.orderCode }}</h3></div>
       <div class="card-body">
-        <p class="text-secondary">Provide a reason for rejecting this order. This is required.</p>
+        <p class="text-secondary">Choose a reason category and add a note. Both are required, and the salesperson will see them.</p>
         <form [formGroup]="rejectForm" (ngSubmit)="confirmReject()" novalidate>
-          <textarea class="form-control" formControlName="reason" rows="4"
-            placeholder="e.g. Payment screenshot does not match the amount received"
+          <label class="form-label" for="rejectCategory">Reason</label>
+          <select id="rejectCategory" class="form-select mb-2" formControlName="category">
+            @for (c of rejectCategories; track c.value) {
+              <option [value]="c.value">{{ c.label }}</option>
+            }
+          </select>
+          <label class="form-label" for="rejectNote">Details</label>
+          <textarea id="rejectNote" class="form-control" formControlName="reason" rows="4"
+            placeholder="e.g. Rate quoted is below the minimum for this product"
             [class.is-invalid]="rejectForm.controls.reason.touched && rejectForm.controls.reason.invalid"></textarea>
           @if (rejectForm.controls.reason.touched && rejectForm.controls.reason.invalid) {
             <div class="invalid-feedback">A rejection reason is required (max 500 characters).</div>

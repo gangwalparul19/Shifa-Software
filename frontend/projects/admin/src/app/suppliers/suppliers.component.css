@@ -1,2 +1,88 @@
-/* Suppliers view — relies on shared global table, modal, badge and form
-   styles; nothing feature-specific is required here. */
+/* Suppliers view — the desktop table, modal, badge and form styling all come
+   from the shared global stylesheet. The mobile card list and floating action
+   button below are scoped here and mirror the shipped mockup (cards over wide
+   tables <768px, FAB for the primary create action like Products). */
+
+/* --- Mobile supplier cards (<768px) ------------------------------------ */
+.shifa-sup-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.shifa-sup {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+.shifa-sup__r1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.shifa-sup__name {
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+  font-weight: 700;
+  font-size: 1rem;
+  color: #1c2b24;
+  min-width: 0;
+}
+.shifa-sup__contact {
+  margin-top: 0.5rem;
+  color: #1c2b24;
+  font-size: 0.9rem;
+}
+.shifa-sup__line {
+  display: block;
+  margin-top: 0.25rem;
+  color: #1f5d3f;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+.shifa-sup__line:hover {
+  text-decoration: underline;
+}
+.shifa-sup__addr {
+  margin-top: 0.35rem;
+  color: #64726b;
+  font-size: 0.85rem;
+}
+.shifa-sup__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+.shifa-sup__actions .btn {
+  flex: 1 1 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}
+
+/* --- Floating action button (mobile create) ---------------------------- */
+.shifa-fab {
+  position: fixed;
+  right: 1rem;
+  bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+  z-index: 1040;
+  width: 3.5rem;
+  height: 3.5rem;
+  border: none;
+  border-radius: 50%;
+  background: var(--shifa-green-600, #1f5d3f);
+  color: #fff;
+  font-size: 1.5rem;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 8px 22px rgba(31, 93, 63, 0.35);
+}
+.shifa-fab:hover {
+  background: var(--shifa-green-700, #164632);
+}

@@ -1,0 +1,64 @@
+package com.shifa.oms.ledger.autopost;
+
+/**
+ * The kinds of Shifa OMS business documents that auto-posting derives a ledger voucher from.
+ *
+ * <p>Each value is the {@code source_type} recorded on both the posted {@link com.shifa.oms.ledger.Voucher}
+ * ({@code vouchers.source_type}) and its {@link SourcePostingLog} trace row
+ * ({@code ledger_source_postings.source_type}); the enum name is persisted verbatim as the string key
+ * (Reqs 8.3, 9.2, 10.2, 11.3). Modelling the four documents as an enum gives the auto-posting services
+ * (idempotency guard, draft builder, drainer) a single type-safe vocabulary while the underlying columns
+ * stay simple strings.
+ *
+ * <ul>
+ *   <li>{@link #ORDER} — a finalised sales order/invoice (Sales voucher, Req 8).</li>
+ *   <li>{@link #PURCHASE_ORDER} — a recorded purchase bill (Purchase voucher, Req 9).</li>
+ *   <li>{@link #EXPENSE} — a recorded expense (Payment/Journal voucher, Req 10).</li>
+ *   <li>{@link #PAYMENT} — a customer receipt or supplier payment (Receipt/Payment voucher, Req 11).</li>
+ *   <li>{@link #ORDER_DELIVERY} — the COD cash collected when an order was delivered (Receipt voucher,
+ *       dated the delivery date).</li>
+ * </ul>
+ *
+ * <p>Note that {@link #ORDER_DELIVERY} is a SEPARATE source type from {@link #ORDER} even though both
+ * are keyed by an order id. The idempotency key is {@code (source_type, source_id)} (unique on both
+ * {@code vouchers} and {@code ledger_source_postings}), so a delivery receipt needs its own source type
+ * to coexist with that order's sales voucher rather than colliding with it.
+ */
+public enum SourceType {
+
+    /** A finalised sales order/invoice (Sales voucher, Req 8). */
+    ORDER,
+
+    /** A recorded purchase bill (Purchase voucher, Req 9). */
+    PURCHASE_ORDER,
+
+    /** A recorded expense (Payment/Journal voucher, Req 10). */
+    EXPENSE,
+
+    /** A customer receipt or supplier payment (Receipt/Payment voucher, Req 11). */
+    PAYMENT,
+
+    /**
+     * The COD cash collected when an order was delivered — a Receipt voucher dated the DELIVERY date.
+     *
+     * <p>Closes the accounting loop for a COD order. The sales voucher posted at approval debits Sundry
+     * Debtors (the order is not paid at entry), but before this source existed nothing ever credited that
+     * balance back when the cash was actually collected on delivery: Sundry Debtors grew without bound and
+     * Cash was understated. This posts the collection on the day it happened, which is the delivery date
+     * rather than the order-entry date.
+     */
+    ORDER_DELIVERY,
+
+    /**
+     * The CASH refunded to a customer when a return is marked REFUNDED (ENHANCEMENT 2.3) — a Journal
+     * voucher dated the refund that reverses revenue and pays the cash back: debit Sales (reduce
+     * income by the refunded amount), credit Cash (money out). Keyed by the {@code order_returns} row id.
+     *
+     * <p>Separate from {@link #ORDER} / {@link #PAYMENT} so it coexists with the order's own vouchers
+     * under the {@code (source_type, source_id)} idempotency key, and only fires when actual cash was
+     * refunded (a pure-COD return refunds nothing). The GST reversal is handled independently by the
+     * GSTR-1 credit note (from {@code order_returns.credit_note_value}), so this voucher books only the
+     * cash-and-revenue movement — mirroring how {@link #ORDER_DELIVERY} books cash without re-deriving GST.
+     */
+    RETURN_REFUND
+}

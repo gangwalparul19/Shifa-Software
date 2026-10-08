@@ -1,14 +1,12 @@
 package com.shifa.oms.courier;
 
 import com.shifa.oms.common.ResourceNotFoundException;
+import com.shifa.oms.order.Actor;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
-import com.shifa.oms.order.OrderStatusHistory;
+import com.shifa.oms.order.OrderWorkflowService;
 import com.shifa.oms.platform.storage.StorageService;
 import com.shifa.oms.statemachine.OrderStatus;
-import com.shifa.oms.statemachine.OrderStatusLifecycle;
-import com.shifa.oms.statemachine.OrderStatusStateMachine;
-import com.shifa.oms.statemachine.StatusHistoryEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -35,6 +33,7 @@ public class CourierAssignmentService {
 
     private static final Logger log = LoggerFactory.getLogger(CourierAssignmentService.class);
     private static final String SOURCE_SYSTEM = "SYSTEM";
+    private static final String ACTOR_COURIER_API = "COURIER_API";
     private static final String STORAGE_PREFIX = "labels/shipping";
 
     private final OrderRepository orderRepository;
@@ -44,7 +43,7 @@ public class CourierAssignmentService {
     private final ShippingLabelService shippingLabelService;
     private final StorageService storageService;
     private final CourierProperties properties;
-    private final OrderStatusStateMachine stateMachine = new OrderStatusStateMachine();
+    private final OrderWorkflowService orderWorkflowService;
 
     public CourierAssignmentService(OrderRepository orderRepository,
                                     CourierRecordRepository courierRecordRepository,
@@ -52,7 +51,8 @@ public class CourierAssignmentService {
                                     CourierClient courierClient,
                                     ShippingLabelService shippingLabelService,
                                     StorageService storageService,
-                                    CourierProperties properties) {
+                                    CourierProperties properties,
+                                    OrderWorkflowService orderWorkflowService) {
         this.orderRepository = orderRepository;
         this.courierRecordRepository = courierRecordRepository;
         this.courierCompanyRepository = courierCompanyRepository;
@@ -60,6 +60,7 @@ public class CourierAssignmentService {
         this.shippingLabelService = shippingLabelService;
         this.storageService = storageService;
         this.properties = properties;
+        this.orderWorkflowService = orderWorkflowService;
     }
 
     /**
@@ -73,10 +74,23 @@ public class CourierAssignmentService {
         OrderEntity order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order " + orderId + " does not exist."));
 
-        if (order.getOrderStatus() != OrderStatus.PACKED) {
-            // Idempotent no-op: order already advanced (or not yet packed).
+        if (order.getOrderStatus() != OrderStatus.HANDED_TO_DELIVERY) {
+            // Idempotent no-op: order already advanced (or not yet handed over).
+            // Courier assignment now runs from Handed_To_Delivery (dispatch), not
+            // directly from Packed (design §4.1).
             log.debug("Skipping courier assignment for order {} in status {}",
                     order.getOrderCode(), order.getOrderStatus());
+            return;
+        }
+
+        if (order.isInHouseDelivery()) {
+            // In-house delivery has no courier partner at all, so there is no AWB
+            // to request: Shifa's own team carries the parcel and staff advance the
+            // status by hand (ManualDeliveryService). Without this guard the
+            // courier client would mint a meaningless AWB for an in-house order
+            // and it would surface on the order/label as if a courier had one
+            // (in-house-delivery feature).
+            log.debug("Skipping courier assignment for in-house order {}", order.getOrderCode());
             return;
         }
 
@@ -112,27 +126,109 @@ public class CourierAssignmentService {
         record.assign(company.getId(), result.awb(), ref.key(), result.estimatedDelivery());
         courierRecordRepository.save(record);
 
-        // Advance Packed → Courier_Assigned (Req 12.2), recording one history row (Req 8.4).
-        applyTransition(order, OrderStatus.COURIER_ASSIGNED);
+        // Advance Handed_To_Delivery → Courier_Assigned (Req 10.1), recording one
+        // history row (Req 12.6) through the central workflow service as the
+        // automatic SYSTEM actor. On a courier error above, the transaction rolls
+        // back and the order retains Handed_To_Delivery for retry (Req 10.4).
+        orderWorkflowService.applyTransition(order, OrderStatus.COURIER_ASSIGNED,
+                Actor.system(ACTOR_COURIER_API, SOURCE_SYSTEM));
         orderRepository.save(order);
 
         log.debug("Assigned AWB {} to order {} (courier {})",
                 result.awb(), order.getOrderCode(), company.getName());
     }
 
+    /**
+     * Manually attaches a courier name + AWB to an order (enhancement:
+     * "assign courier early"). Unlike {@link #assignForOrder}, this does not
+     * require the order to be {@code Handed_To_Delivery} and does not advance
+     * its status — it simply records/updates the {@link CourierRecord} so the
+     * internal label's courier barcode can render as soon as staff know the
+     * courier + AWB (e.g. booked at a courier counter before dispatch), instead
+     * of waiting for the automatic in-house assignment that only runs after
+     * dispatch. Idempotent: calling again with a different AWB/courier updates
+     * the existing record for the order.
+     *
+     * <p>The AWB is <strong>optional</strong> (in-house-delivery feature): an
+     * in-house delivery, or a parcel handed to a local operator / bus / train,
+     * has no tracking number. With no AWB the label simply falls back to our own
+     * order-code barcode (which the packing/RTO scan resolves), so the parcel
+     * stays scannable end-to-end.
+     *
+     * @param orderId     the order id
+     * @param courierName the courier partner's display name (required, matched/created by name)
+     * @param awb         the AWB / tracking number, or {@code null}/blank when there is none
+     * @throws com.shifa.oms.common.ResourceNotFoundException when the order doesn't exist
+     * @throws com.shifa.oms.common.ValidationException       when courierName is blank
+     */
+    @Transactional
+    public void manuallyAssign(Long orderId, String courierName, String awb) {
+        manuallyAssign(orderId, courierName, awb, null);
+    }
+
+    /**
+     * As {@link #manuallyAssign(Long, String, String)} but additionally records a
+     * vendor-provided, ready-made <strong>tracking link</strong> for the order
+     * (in-house delivery-partner feature). When an in-house parcel is handed to an
+     * external local delivery partner, the vendor supplies a tracking id (AWB) and
+     * often a full tracking URL once booked; capturing both here makes the parcel
+     * trackable end-to-end from the order-detail view.
+     *
+     * <p>The {@code trackingUrl} is stored verbatim on the {@link CourierRecord}
+     * and takes precedence over the courier company's {@code tracking_url_template}
+     * when the admin opens "Track shipment". Both the AWB and the tracking URL are
+     * optional — a partner may give neither, one, or both.
+     *
+     * <p>This does <strong>not</strong> change the order's {@code deliveryMethod}:
+     * an in-house order assigned to a local vendor stays {@code IN_HOUSE} and keeps
+     * flowing through the manual delivery path (it must never be re-routed into the
+     * automated QuikShipX/courier pipeline, which only fires for {@code QUIKSHIPX}).
+     *
+     * @param orderId     the order id
+     * @param courierName the delivery partner's display name (required; matched or
+     *                    created by name — this is how a new partner is onboarded)
+     * @param awb         the vendor tracking id / AWB, or {@code null}/blank when none
+     * @param trackingUrl the vendor's full tracking link, or {@code null}/blank when none
+     * @throws com.shifa.oms.common.ResourceNotFoundException when the order doesn't exist
+     * @throws com.shifa.oms.common.ValidationException       when courierName is blank
+     */
+    @Transactional
+    public void manuallyAssign(Long orderId, String courierName, String awb, String trackingUrl) {
+        if (courierName == null || courierName.isBlank()) {
+            throw new com.shifa.oms.common.ValidationException("Courier name is required.");
+        }
+        OrderEntity order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order " + orderId + " does not exist."));
+
+        String trimmedAwb = (awb == null || awb.isBlank()) ? null : awb.trim();
+        String trimmedUrl = (trackingUrl == null || trackingUrl.isBlank()) ? null : trackingUrl.trim();
+        CourierCompany company = resolveCompany(courierName.trim());
+        CourierRecord record = courierRecordRepository.findByOrderId(orderId)
+                .orElseGet(() -> new CourierRecord(orderId));
+        record.assign(company.getId(), trimmedAwb, record.getShippingLabelKey(),
+                record.getEstimatedDelivery(), trimmedUrl);
+        courierRecordRepository.save(record);
+
+        log.debug("Manually assigned courier {} (AWB {}, trackingUrl {}) to order {}",
+                company.getName(), trimmedAwb == null ? "none" : trimmedAwb,
+                trimmedUrl == null ? "none" : trimmedUrl, order.getOrderCode());
+    }
+
     private CourierCompany resolveCompany(String courierName) {
         String name = (courierName == null || courierName.isBlank())
                 ? properties.companyName() : courierName;
+        // No carrier tracking URL — QuikShipX (aggregator) tracking is via its API,
+        // not a per-carrier public page, so we don't build a carrier link.
         return courierCompanyRepository.findFirstByName(name)
-                .orElseGet(() -> courierCompanyRepository.save(
-                        new CourierCompany(name, "https://track.example.com/{awb}")));
+                .orElseGet(() -> courierCompanyRepository.save(new CourierCompany(name, null)));
     }
 
-    private void applyTransition(OrderEntity order, OrderStatus target) {
-        OrderStatusLifecycle lifecycle = new OrderStatusLifecycle(order.getOrderStatus());
-        StatusHistoryEntry entry = stateMachine.transition(lifecycle, target, "COURIER_API", SOURCE_SYSTEM);
-        order.setOrderStatus(entry.toStatus());
-        order.addStatusHistory(new OrderStatusHistory(
-                entry.fromStatus(), entry.toStatus(), entry.actor(), entry.source()));
+    /**
+     * The known delivery partners, alphabetical (delivery-partner dropdown
+     * enhancement) — backs the "Assign courier" modal's picker.
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<CourierCompany> listCompanies() {
+        return courierCompanyRepository.findAllByOrderByNameAsc();
     }
 }

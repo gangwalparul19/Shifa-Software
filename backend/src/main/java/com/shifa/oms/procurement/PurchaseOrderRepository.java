@@ -36,4 +36,16 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
                                @Param("supplierId") Long supplierId,
                                @Param("q") String q,
                                Pageable pageable);
+
+    /**
+     * Sum of PO totals created within an inclusive timestamp window, for the GST
+     * dashboard's "purchases" figure. Returns {@code null} when no PO matches
+     * (callers coalesce to zero). Replaces a {@code findAll()} + Java filter.
+     */
+    @Query("""
+            SELECT COALESCE(SUM(po.totalAmount), 0) FROM PurchaseOrder po
+            WHERE po.createdAt >= :from AND po.createdAt < :to
+            """)
+    java.math.BigDecimal sumTotalCreatedBetween(@Param("from") java.time.LocalDateTime from,
+                                                @Param("to") java.time.LocalDateTime to);
 }

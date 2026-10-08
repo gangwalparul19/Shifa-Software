@@ -1,0 +1,14 @@
+-- In-house delivery end-to-end tracking (in-house delivery-partner feature).
+--
+-- An in-house order can now be assigned to an external local delivery partner
+-- (onboarded on the fly when Shifa's own staff can't deliver). Such a vendor
+-- hands over a ready-made tracking link once the parcel is booked — which does
+-- not necessarily fit a per-carrier {awb} template. This column stores that
+-- vendor-provided tracking URL verbatim, per order, so the "Track shipment"
+-- button on the order drawer opens the real page.
+--
+-- When set it takes precedence over the courier company's tracking_url_template;
+-- when null, tracking falls back to the template (CourierCompany.trackingUrl).
+--
+-- Additive / nullable — safe on existing data.
+ALTER TABLE courier_records ADD COLUMN tracking_url VARCHAR(500) NULL AFTER shipping_label_key;

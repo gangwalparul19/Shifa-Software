@@ -33,6 +33,7 @@ public class AdminNotificationOutboxSink implements OutboxEventSink {
             OutboxEvent.EVENT_CLAIM_FILED_REQUIRED,
             OutboxEvent.EVENT_COURIER_ASSIGN_FAILED,
             OutboxEvent.EVENT_WHATSAPP_FAILED,
+            OutboxEvent.EVENT_EMAIL_FAILED,
             OutboxEvent.EVENT_BACKUP_FAILED,
             OutboxEvent.EVENT_LOW_STOCK);
 
@@ -77,6 +78,8 @@ public class AdminNotificationOutboxSink implements OutboxEventSink {
                     "Courier assignment failed" + suffix(orderCode);
             case OutboxEvent.EVENT_WHATSAPP_FAILED ->
                     "WhatsApp notification failed" + suffix(orderCode);
+            case OutboxEvent.EVENT_EMAIL_FAILED ->
+                    "Email notification failed" + suffix(orderCode);
             case OutboxEvent.EVENT_BACKUP_FAILED ->
                     "Backup failed";
             case OutboxEvent.EVENT_LOW_STOCK ->
@@ -108,6 +111,9 @@ public class AdminNotificationOutboxSink implements OutboxEventSink {
             case OutboxEvent.EVENT_WHATSAPP_FAILED -> compact(
                     "Template", payload.get("templateName"),
                     "Error", payload.get("error"));
+            case OutboxEvent.EVENT_EMAIL_FAILED -> compact(
+                    "Subject", payload.get("subject"),
+                    "Error", payload.get("error"));
             case OutboxEvent.EVENT_BACKUP_FAILED -> compact(
                     "Date", payload.get("backupDate"),
                     "Error", payload.get("error"));
@@ -124,6 +130,7 @@ public class AdminNotificationOutboxSink implements OutboxEventSink {
         return switch (type) {
             case OutboxEvent.EVENT_COURIER_ASSIGN_FAILED,
                  OutboxEvent.EVENT_WHATSAPP_FAILED,
+                 OutboxEvent.EVENT_EMAIL_FAILED,
                  OutboxEvent.EVENT_BACKUP_FAILED,
                  OutboxEvent.EVENT_CLAIM_FILED_REQUIRED -> AdminNotification.SEVERITY_DANGER;
             case OutboxEvent.EVENT_LOW_STOCK -> AdminNotification.SEVERITY_WARNING;

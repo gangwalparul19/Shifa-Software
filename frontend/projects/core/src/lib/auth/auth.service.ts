@@ -6,11 +6,11 @@ import { AuthTokenStore } from './auth-token.store';
 import {
   AuthSession,
   LoginCredentials,
-  RegisterRequest,
   Role,
   TokenResponse,
 } from '../models/auth.model';
 import { decodeJwtPayload } from './jwt.util';
+import { initialsOf } from './initials.util';
 
 /**
  * Application-facing authentication service shared by both apps.
@@ -39,8 +39,21 @@ export class AuthService {
     if (!claims) {
       return null;
     }
-    return { userId: claims.uid, username: claims.sub, role: claims.role };
+    return {
+      userId: claims.uid,
+      username: claims.sub,
+      role: claims.role,
+      fullName: claims.name?.trim() || undefined,
+      mustChangePassword: claims.pwd === true,
+    };
   });
+
+  /**
+   * Whether the signed-in user must set a new password before using the app
+   * (an admin reset their password to the temporary one). Drives routing to the
+   * change-password screen and the guard that blocks the rest of the app.
+   */
+  readonly mustChangePassword = computed<boolean>(() => this.session()?.mustChangePassword === true);
 
   /** Whether a user is currently signed in. */
   readonly isAuthenticated = computed<boolean>(() => this.session() !== null);
@@ -48,21 +61,25 @@ export class AuthService {
   /** The signed-in user's role, or {@code null}. */
   readonly role = computed<Role | null>(() => this.session()?.role ?? null);
 
+  /**
+   * The name to show the user in the UI: their full name when the token carries
+   * it, otherwise their username. Salespeople sign in with their mobile number,
+   * so never render {@code session().username} as a greeting — use this.
+   */
+  readonly displayName = computed<string | null>(() => {
+    const session = this.session();
+    if (!session) {
+      return null;
+    }
+    return session.fullName ?? session.username;
+  });
+
+  /** Up to two initials for the signed-in user's avatar (never blank when signed in). */
+  readonly initials = computed<string>(() => initialsOf(this.displayName()));
+
   /** Authenticates and stores the resulting token pair. */
   login(credentials: LoginCredentials): Observable<AuthSession> {
     return this.api.post<TokenResponse>('/api/auth/login', credentials).pipe(
-      tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken)),
-      map(() => this.requireSession()),
-    );
-  }
-
-  /**
-   * Registers a new customer and stores the returned token pair (auto-login).
-   * The registration endpoint is public; a 409 propagates when the username is
-   * already taken so callers can surface a friendly message.
-   */
-  register(request: RegisterRequest): Observable<AuthSession> {
-    return this.api.post<TokenResponse>('/api/auth/register', request).pipe(
       tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken)),
       map(() => this.requireSession()),
     );
@@ -80,6 +97,18 @@ export class AuthService {
         tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken)),
         map(() => this.requireSession()),
       );
+  }
+
+  /**
+   * Sets a new password for the signed-in user (self-service / forced change
+   * after an admin reset) and stores the fresh token pair returned — which no
+   * longer carries the force-change flag, so the user can proceed.
+   */
+  changePassword(newPassword: string): Observable<AuthSession> {
+    return this.api.post<TokenResponse>('/api/me/password', { newPassword }).pipe(
+      tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken)),
+      map(() => this.requireSession()),
+    );
   }
 
   /** Clears the stored session (client-side sign-out). */

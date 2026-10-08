@@ -1,11 +1,16 @@
 package com.shifa.oms.order;
 
+import com.shifa.oms.audit.AuditEventRepository;
+import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.auth.AuthPrincipal;
+import com.shifa.oms.auth.CurrentUserService;
 import com.shifa.oms.auth.Role;
 import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.label.LabelService;
 import com.shifa.oms.order.dto.ApprovalQueueItemResponse;
 import com.shifa.oms.order.dto.OrderResponse;
+import com.shifa.oms.platform.outbox.OutboxEventPublisher;
+import com.shifa.oms.platform.outbox.OutboxEventRepository;
 import com.shifa.oms.platform.storage.StorageService;
 import com.shifa.oms.statemachine.IllegalStatusTransitionException;
 import com.shifa.oms.statemachine.OrderStatus;
@@ -23,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -53,7 +59,15 @@ class AdminOrderServiceTest {
         // Real LabelService with an in-memory storage backend so approval can
         // auto-generate the internal label (Req 10.1-10.3) without touching disk.
         LabelService labelService = new LabelService(orderRepository, inMemoryStorage());
-        service = new AdminOrderService(orderRepository, labelService);
+        // Real central workflow service; audit is best-effort against a mock repo
+        // (no Mockito mock of a concrete class — Java 25).
+        AuditService auditService = new AuditService(
+                mock(AuditEventRepository.class), new CurrentUserService());
+        OrderWorkflowService workflowService = new OrderWorkflowService(auditService);
+        OutboxEventPublisher outboxEventPublisher =
+                new OutboxEventPublisher(mock(OutboxEventRepository.class));
+        service = new AdminOrderService(orderRepository, labelService, workflowService,
+                outboxEventPublisher);
         lenient().when(orderRepository.save(any(OrderEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
     }
@@ -137,6 +151,51 @@ class AdminOrderServiceTest {
         verify(orderRepository).save(order);
     }
 
+    // --- Payment-verification gate on approval ------------------------------
+
+    @Test
+    void approveBlockedWhenPaymentNotVerified() {
+        OrderEntity order = orderIn(OrderStatus.PENDING_ADMIN_APPROVAL);
+        order.markPaymentPendingVerification(); // payment awaiting verification
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.approve(1L, admin))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("payment is verified");
+
+        // Not approved, no label generated, no history, nothing saved.
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PENDING_ADMIN_APPROVAL);
+        assertThat(order.getStatusHistory()).isEmpty();
+        verify(orderRepository, never()).save(any(OrderEntity.class));
+    }
+
+    @Test
+    void approveAllowedWhenPaymentVerified() {
+        OrderEntity order = orderIn(OrderStatus.PENDING_ADMIN_APPROVAL);
+        order.recordPaymentVerification(
+                com.shifa.oms.order.PaymentVerificationStatus.VERIFIED, 2L,
+                java.time.LocalDateTime.now(), null);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+        OrderResponse response = service.approve(1L, admin);
+
+        assertThat(response.orderStatus()).isEqualTo(OrderStatus.LABEL_GENERATED);
+        verify(orderRepository).save(order);
+    }
+
+    @Test
+    void approveBlockedWhenPaymentRejected() {
+        OrderEntity order = orderIn(OrderStatus.PENDING_ADMIN_APPROVAL);
+        order.recordPaymentVerification(
+                com.shifa.oms.order.PaymentVerificationStatus.REJECTED, 2L,
+                java.time.LocalDateTime.now(), "mismatch");
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.approve(1L, admin))
+                .isInstanceOf(ValidationException.class);
+        verify(orderRepository, never()).save(any(OrderEntity.class));
+    }
+
     // --- Reject legal transition + reason stored (Req 9.4) ------------------
 
     @Test
@@ -177,6 +236,66 @@ class AdminOrderServiceTest {
                 .isInstanceOf(IllegalStatusTransitionException.class);
 
         assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.REJECTED);
+        verify(orderRepository, never()).save(any(OrderEntity.class));
+    }
+
+    // --- Save delivery method without approving (change-delivery-method) ----
+
+    @Test
+    void updateDeliveryMethodSavesWithoutApprovingPendingOrder() {
+        OrderEntity order = orderIn(OrderStatus.PENDING_ADMIN_APPROVAL);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+        OrderResponse response = service.updateDeliveryMethod(1L, "IN_HOUSE", admin);
+
+        // Delivery method changed, but the order is NOT approved — status stays
+        // Pending and no history row is appended.
+        assertThat(response.deliveryMethod()).isEqualTo(DeliveryMethod.IN_HOUSE);
+        assertThat(order.getDeliveryMethod()).isEqualTo(DeliveryMethod.IN_HOUSE);
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PENDING_ADMIN_APPROVAL);
+        assertThat(order.getStatusHistory()).isEmpty();
+        verify(orderRepository).save(order);
+    }
+
+    @Test
+    void updateDeliveryMethodRejectedOncePastDispatch() {
+        OrderEntity order = orderIn(OrderStatus.HANDED_TO_DELIVERY);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.updateDeliveryMethod(1L, "IN_HOUSE", admin))
+                .isInstanceOf(OrderNotEditableException.class);
+
+        verify(orderRepository, never()).save(any(OrderEntity.class));
+    }
+
+    @Test
+    void switchingQuikShipFailureToInHouseClearsTheFailureReason() {
+        // A QuikShipX order that failed (e.g. non-serviceable pincode) is at
+        // Label_Generated with a stored failure reason; switching it to in-house
+        // clears the reason and flips the delivery method.
+        OrderEntity order = orderIn(OrderStatus.LABEL_GENERATED);
+        order.setQuikShipXFailureReason("585216 is non serviceable pincode");
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+        OrderResponse response = service.updateDeliveryMethod(1L, "IN_HOUSE", admin);
+
+        assertThat(response.deliveryMethod()).isEqualTo(DeliveryMethod.IN_HOUSE);
+        assertThat(order.getDeliveryMethod()).isEqualTo(DeliveryMethod.IN_HOUSE);
+        assertThat(order.getQuikShipXFailureReason()).isNull();
+        assertThat(response.quikShipXFailureReason()).isNull();
+        verify(orderRepository).save(order);
+    }
+
+    @Test
+    void updateDeliveryMethodRejectsCounterSaleToQuikShipX() {
+        OrderEntity order = orderIn(OrderStatus.PENDING_ADMIN_APPROVAL);
+        order.setLeadSource(LeadSource.COUNTER_SALE);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.updateDeliveryMethod(1L, "QUIKSHIPX", admin))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Counter Sale");
+
         verify(orderRepository, never()).save(any(OrderEntity.class));
     }
 

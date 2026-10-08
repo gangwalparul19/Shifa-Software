@@ -1,0 +1,88 @@
+/* Voucher entry — most styling comes from the shared Tabler theme + global
+   styles.css. Component-scoped tweaks for the Dr/Cr balance footer + the
+   mobile stacked line cards (the desktop table keeps the Tabler table styles). */
+
+.ve-balance__total {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Mobile stacked line cards (<768px) ------------------------------- */
+.ve-linecard {
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  border-radius: 0.75rem;
+  background: var(--tblr-bg-surface-secondary, #fbfcfd);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.ve-linecard + .ve-linecard {
+  margin-top: 0.75rem;
+}
+.ve-linecard__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ve-linecard__label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tblr-secondary, #6b7b72);
+}
+.ve-linecard__row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+/* Comfortable tap targets for the Dr/Cr toggle + amount. */
+.ve-linecard__side {
+  flex: 0 0 5rem;
+  min-height: 2.75rem;
+  font-weight: 600;
+}
+.ve-linecard__amount {
+  flex: 1 1 auto;
+  min-height: 2.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Prominent balance footer ----------------------------------------- */
+.ve-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  background: var(--shifa-green-050, #f2f9f5);
+  border-top: 2px solid var(--shifa-green-100, #e4f2ea);
+}
+.ve-footer__totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.75rem;
+}
+.ve-footer__total {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+.ve-footer__key {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tblr-secondary, #6b7b72);
+}
+.ve-footer__total .ve-balance__total {
+  font-size: 1.15rem;
+  color: var(--shifa-green-700, #1a4f38);
+}
+.ve-footer__status .badge {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.6rem;
+}

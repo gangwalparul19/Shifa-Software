@@ -158,7 +158,9 @@ class SettingsServiceTest {
                 "+91 90000 00000",
                 "care@shifaherbal.example",
                 5,
-                null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null,
+                null, null, null,
+                null, null);
     }
 
     /** Mutable holder for the Wave 3 optional fields so tests can tweak individual values. */
@@ -197,6 +199,11 @@ class SettingsServiceTest {
                 b.bankAccountNumber,
                 b.bankIfsc,
                 b.bankBranch,
-                b.gstSlabs);
+                b.gstSlabs,
+                null,
+                null,
+                null,
+                null,
+                null);
     }
 }

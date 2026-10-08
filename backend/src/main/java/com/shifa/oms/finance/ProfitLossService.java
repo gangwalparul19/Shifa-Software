@@ -50,7 +50,7 @@ public class ProfitLossService {
 
     /** Order statuses that never count towards revenue. */
     private static final Set<OrderStatus> NON_REVENUE_STATUSES =
-            EnumSet.of(OrderStatus.REJECTED, OrderStatus.CANCELLED);
+            EnumSet.of(OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED);
 
     private final OrderRepository orderRepository;
     private final ReceivableRepository receivableRepository;

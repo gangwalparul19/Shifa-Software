@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shifa OMS — Final Quotation</title>
+<style>
+  :root{
+    --green:#1F5D3F; --green-2:#1F7A4D; --green-dark:#0f3d27; --gold:#C8A24A;
+    --bg:#eef2ee; --card:#ffffff; --text:#22332b; --muted:#6b7b72; --line:#e2e8e4;
+    --shadow:0 6px 24px rgba(15,61,39,.10);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5;font-size:14px;}
+  .wrap{max-width:900px;margin:0 auto;padding:0 20px 20px;}
+
+  header.brand{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;
+    padding:22px 24px;text-align:center;position:relative;overflow:hidden;}
+  header.brand::after{content:"🌿";position:absolute;right:12px;bottom:-24px;font-size:140px;opacity:.10;}
+  header.brand .leaf{font-size:30px;}
+  header.brand h1{margin:6px 0 2px;font-size:26px;letter-spacing:.3px;}
+  header.brand p{margin:0;color:#dceee2;font-size:14px;}
+  .rule{height:4px;background:var(--gold);}
+
+  .final-badge{display:inline-block;background:var(--gold);color:#3a2c05;font-weight:800;
+    font-size:12px;letter-spacing:1px;border-radius:999px;padding:5px 16px;margin-top:12px;}
+
+  /* Meta grid */
+  .meta{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0 6px;}
+  .meta .m{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;}
+  .meta .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;}
+  .meta .v{font-size:14px;font-weight:600;color:var(--green-dark);margin-top:2px;}
+  @media(max-width:640px){.meta{grid-template-columns:repeat(2,1fr);}}
+
+  .intro{background:#fff;border-left:4px solid var(--green);border-radius:10px;
+    padding:10px 16px;margin:10px 0;box-shadow:var(--shadow);font-size:13.5px;}
+
+  h2{color:var(--green-dark);font-size:18px;margin:14px 0 6px;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 16px 10px;
+    margin:8px 0;box-shadow:var(--shadow);}
+
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px;}
+  th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--line);vertical-align:top;}
+  thead th{background:var(--green);color:#fff;font-weight:600;border-bottom:none;}
+  thead th:first-child{border-radius:8px 0 0 0;}
+  thead th:last-child{border-radius:0 8px 0 0;}
+  td.num,th.num{text-align:right;white-space:nowrap;}
+  .sub td{font-weight:600;background:#f5faf6;}
+  .gst td{color:var(--muted);}
+  .total td{font-weight:800;font-size:17px;background:#e6f4ec;color:var(--green-dark);
+    border-bottom:none;}
+  .muted-sub{color:var(--muted);font-size:12.5px;}
+
+  .notes{list-style:none;margin:8px 0 0;padding:0;}
+  .notes li{position:relative;padding:5px 0 5px 28px;font-size:13.5px;border-bottom:1px dashed var(--line);}
+  .notes li:last-child{border-bottom:none;}
+  .notes li .ic{position:absolute;left:0;top:8px;color:var(--green);font-size:16px;}
+  .notes li strong{color:var(--green-dark);}
+
+  .inc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 20px;margin:8px 0 0;padding:0;list-style:none;}
+  .inc-grid li{position:relative;padding:6px 0 6px 22px;font-size:13.5px;}
+  .inc-grid li::before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:900;}
+  @media(max-width:640px){.inc-grid{grid-template-columns:1fr;}}
+
+  .sign{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:36px 0 0;}
+  .sign .box{border-top:2px solid var(--green-dark);padding-top:8px;font-size:13px;color:var(--muted);}
+  @media(max-width:640px){.sign{grid-template-columns:1fr;gap:36px;}}
+
+  footer{text-align:center;color:var(--muted);font-size:11.5px;margin-top:10px;padding:10px;
+    border-top:1px solid var(--line);background:linear-gradient(to bottom,#ffffff,#f8f9fa);}
+  footer b{color:var(--green-dark);}
+  footer a{color:var(--green);text-decoration:none;font-weight:500;}
+
+  /* Clean pagination for PDF export — keep small blocks whole, avoid orphan headings.
+     (Long cards are allowed to flow so pages pack tightly.) */
+  table, .why-price{break-inside:avoid;}
+  h2{break-after:avoid;}
+</style>
+</head>
+<body>
+
+<header class="brand">
+  <div class="leaf">🌿</div>
+  <h1>Shifa OMS — Final Quotation</h1>
+  <p>Order Management System for Shifa Herbal Remedies</p>
+  <span class="final-badge">✔ FINAL — FROM OUR SIDE</span>
+</header>
+<div class="rule"></div>
+
+<div class="wrap">
+
+  <div class="meta">
+    <div class="m"><div class="k">Prepared for</div><div class="v">Shifa Herbal Remedies</div></div>
+    <div class="m"><div class="k">Prepared by</div><div class="v">Weblithic</div></div>
+    <div class="m"><div class="k">Date</div><div class="v">16 July 2026</div></div>
+    <div class="m"><div class="k">Valid for</div><div class="v">7 days</div></div>
+  </div>
+
+  <div class="intro">
+    Following our discussions, we are pleased to confirm the final, agreed quotation for the
+    <strong>Shifa Order Management System</strong> — a complete, purpose-built platform delivered with
+    virtual training and full source-code handover. All amounts below are <strong>exclusive of GST</strong>.
+    A GST invoice can be provided on request (18% GST) — see the optional GST breakdown below.
+  </div>
+
+  <!-- COST SUMMARY -->
+  <h2>Cost Summary</h2>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Details</th>
+          <th class="num">Amount (₹)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>One-time Development</strong></td>
+          <td>Complete OMS — 17 modules, weekend virtual training, source-code handover
+            <div class="muted-sub">Fixed, one-time platform cost</div></td>
+          <td class="num">35,000</td>
+        </tr>
+        <tr>
+          <td><strong>AMC / Support</strong></td>
+          <td>Post-launch support &amp; maintenance — ₹5,000/month × 3 months
+            <div class="muted-sub">Bug fixes, updates and priority support after go-live</div></td>
+          <td class="num">15,000</td>
+        </tr>
+        <tr class="total">
+          <td colspan="2">Total Payable (excl. GST)</td>
+          <td class="num">₹50,000</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="muted-sub" style="margin:4px 2px 0;">Prices are exclusive of GST. A GST invoice is optional — see below.</p>
+  </div>
+
+  <!-- OPTIONAL GST -->
+  <h2>If a GST Invoice Is Required (Optional)</h2>
+  <div class="card">
+    <p style="margin:12px 2px;font-size:14px;color:var(--text);">
+      Our quotation is <strong>exclusive of GST</strong>. If you would like a GST invoice, <strong>18% GST</strong>
+      applies and we will share a valid GST bill:
+    </p>
+    <table>
+      <tbody>
+        <tr>
+          <td>Subtotal (excl. GST)</td>
+          <td class="num">50,000</td>
+        </tr>
+        <tr class="gst">
+          <td>GST @ 18%</td>
+          <td class="num">9,000</td>
+        </tr>
+        <tr class="total">
+          <td>Total (incl. GST)</td>
+          <td class="num">₹59,000</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- WHAT'S INCLUDED -->
+  <h2>Included in the One-time Build</h2>
+  <div class="card">
+    <p style="margin:8px 2px;font-size:13.5px;line-height:1.7;color:var(--text);">
+      Role-based dashboards (Admin / Sales / Packer / Accountant) · Order management &amp; approval workflow ·
+      Packing, barcode labels &amp; dispatch · Courier integration &amp; tracking · COD reconciliation &amp; receivables ·
+      Finance (GST invoices, P&amp;L, expenses) · Product catalog &amp; inventory · Leads &amp; CRM with Customer 360 ·
+      Returns / refunds · Procurement (suppliers &amp; POs) · Staff management &amp; verification ·
+      Sales performance &amp; targets · Analytics, forecasting &amp; insights · Installable mobile app (PWA) ·
+      Staff announcements &amp; notifications.
+    </p>
+  </div>
+
+  <!-- NOTES & TERMS -->
+  <h2>Notes &amp; Terms</h2>
+  <div class="card">
+    <ul class="notes">
+      <li><i class="ic">▸</i><strong>GST:</strong> All prices are exclusive of GST. A GST invoice is optional — if required, <strong>18% GST</strong> applies and a valid GST bill is shared.</li>
+      <li><i class="ic">▸</i><strong>Server / hosting:</strong> Approximately <strong>₹10,000 per year</strong> towards cloud server &amp; infrastructure, borne by the client.</li>
+      <li><i class="ic">▸</i><strong>WhatsApp charges:</strong> Borne by the client, paid directly to the WhatsApp provider (~₹1.20–1.40 per order) — a pass-through cost we do not mark up.</li>
+      <li><i class="ic">▸</i><strong>Capacity:</strong> Provisioned to support <strong>up to 25 concurrent users</strong>. Higher concurrent usage requires increased server capacity, at additional client-borne cost.</li>
+      <li><i class="ic">▸</i><strong>Handover &amp; training:</strong> Complete source-code handover and weekend <strong>virtual</strong> team training are included; source-code ownership transfers to the client on full and final payment.</li>
+      <li><i class="ic">▸</i><strong>Payment terms:</strong> Payments are due against each invoice per the agreed schedule; work commences on receipt of the initial payment.</li>
+      <li><i class="ic">▸</i><strong>Scope &amp; change requests:</strong> Covers the modules listed above. New features, integrations or changes beyond this scope are estimated and billed separately.</li>
+      <li><i class="ic">▸</i><strong>Support scope:</strong> The 3-month support covers bug fixes, minor updates and priority support — not new feature development (quoted separately).</li>
+      <li><i class="ic">▸</i><strong>Timeline &amp; data:</strong> Delivery depends on timely client inputs and approvals. The client owns business-data accuracy and should retain independent copies of critical data.</li>
+      <li><i class="ic">▸</i><strong>Warranty &amp; liability:</strong> Software is delivered as agreed; Weblithic's total liability is limited to the fees paid under this quotation, with no liability for indirect or consequential losses.</li>
+      <li><i class="ic">▸</i><strong>Confidentiality &amp; cancellation:</strong> Both parties keep each other's information confidential. Amounts paid for completed work are non-refundable.</li>
+      <li><i class="ic">▸</i><strong>Validity:</strong> This quotation is valid for <strong>7 days</strong> from the date above; terms are finalised in a mutually signed agreement.</li>
+    </ul>
+  </div>
+
+
+</div>
+
+<footer>
+  <b>Shifa Herbal Remedies — OMS.</b> Final quotation — confirmed terms.<br />
+  Figures in ₹ (exclusive of GST) · GST 18% extra on request (invoice shared) · Third-party charges (WhatsApp, hosting) are client-borne · Valid 7 days.<br /><br />
+  Developed by <a href="http://www.weblithic.com" target="_blank">Weblithic</a>
+</footer>
+
+</body>
+</html>

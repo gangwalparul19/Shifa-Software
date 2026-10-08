@@ -66,6 +66,35 @@ public record ProductRequest(
         Integer lowStockThreshold,
 
         /** When true the product joins the storefront featured collection. */
-        Boolean featured
+        Boolean featured,
+
+        /**
+         * Optional minimum selling price (per-line floor). When present it must be
+         * ≤ salePrice ≤ mrp (validated in the service). Null keeps the existing
+         * minimum / defaults to the sale price (product-catalog-pricing-gst Req 1.1, 1.2).
+         */
+        @DecimalMin(value = "0.00", message = "minimumRate must not be negative")
+        @Digits(integer = 10, fraction = 2, message = "minimumRate must be a DECIMAL(12,2) value")
+        BigDecimal minimumRate,
+
+        /** Optional pack size / weight / volume descriptor, e.g. "100ML" (Req 1.4). */
+        @Size(max = 32, message = "wtMl must be at most 32 characters")
+        String wtMl,
+
+        /**
+         * Optional GST Unit Quantity Code (e.g. NOS, PCS, KGS, MLT) for the GSTR-1
+         * HSN summary; null/blank defaults to {@code NOS} in code at report time
+         * (gst-filing-compliance Req 3.2).
+         */
+        @Size(max = 10, message = "uqc must be at most 10 characters")
+        String uqc,
+
+        /**
+         * Optional per-unit sourcing cost (V79, ENHANCEMENT 3.6), used only for the
+         * per-channel margin estimate. Null leaves it unset; must be non-negative.
+         */
+        @DecimalMin(value = "0.00", message = "costPrice must not be negative")
+        @Digits(integer = 10, fraction = 2, message = "costPrice must be a DECIMAL(12,2) value")
+        BigDecimal costPrice
 ) {
 }

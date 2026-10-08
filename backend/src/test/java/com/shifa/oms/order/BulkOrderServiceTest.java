@@ -57,9 +57,18 @@ class BulkOrderServiceTest {
     @BeforeEach
     void setUp() {
         LabelService labelService = new LabelService(orderRepository, inMemoryStorage());
-        AdminOrderService adminOrderService = new AdminOrderService(orderRepository, labelService);
-        PackingService packingService =
-                new PackingService(orderRepository, new OutboxEventPublisher(outboxEventRepository));
+        // Real central workflow service; audit is best-effort against a mock repo
+        // (no Mockito mock of a concrete class — Java 25).
+        com.shifa.oms.audit.AuditService auditService = new com.shifa.oms.audit.AuditService(
+                org.mockito.Mockito.mock(com.shifa.oms.audit.AuditEventRepository.class),
+                new com.shifa.oms.auth.CurrentUserService());
+        OrderWorkflowService workflowService = new OrderWorkflowService(auditService);
+        AdminOrderService adminOrderService =
+                new AdminOrderService(orderRepository, labelService, workflowService,
+                        new OutboxEventPublisher(outboxEventRepository));
+        PackingService packingService = new PackingService(
+                orderRepository, new OutboxEventPublisher(outboxEventRepository), workflowService,
+                org.mockito.Mockito.mock(com.shifa.oms.auth.UserRepository.class));
         service = new BulkOrderService(adminOrderService, packingService, orderRepository);
 
         lenient().when(orderRepository.save(any(OrderEntity.class)))
@@ -119,6 +128,24 @@ class BulkOrderServiceTest {
     }
 
     @Test
+    void bulkApproveSkipsOrderWithUnverifiedPayment() {
+        OrderEntity verifiedOk = orderIn(1L, OrderStatus.PENDING_ADMIN_APPROVAL);
+        OrderEntity unverified = orderIn(2L, OrderStatus.PENDING_ADMIN_APPROVAL);
+        unverified.markPaymentPendingVerification(); // payment awaiting verification
+        lenient().when(orderRepository.findById(1L)).thenReturn(Optional.of(verifiedOk));
+        lenient().when(orderRepository.findById(2L)).thenReturn(Optional.of(unverified));
+
+        BulkActionResult result = service.bulkApprove(List.of(1L, 2L), admin);
+
+        assertThat(result.succeeded()).containsExactly(1L);
+        assertThat(result.skipped()).hasSize(1);
+        assertThat(result.skipped().get(0).id()).isEqualTo(2L);
+        assertThat(result.skipped().get(0).reason()).contains("Payment not verified");
+        // The unverified order was never approved.
+        assertThat(unverified.getOrderStatus()).isEqualTo(OrderStatus.PENDING_ADMIN_APPROVAL);
+    }
+
+    @Test
     void bulkApproveWithEmptyIdsReturnsEmptyResult() {
         BulkActionResult result = service.bulkApprove(List.of(), admin);
 
@@ -160,5 +187,47 @@ class BulkOrderServiceTest {
                     assertThat(s.reason()).contains("not ready to pack");
                 });
         assertThat(ready.getOrderStatus()).isEqualTo(OrderStatus.PACKED);
+    }
+
+    // --- bulk in-house dispatch status update -------------------------------
+
+    @Test
+    void bulkDeliveryStatusUpdatesInHouseAndSkipsCourierOrders() {
+        // A real ManualDeliveryService is the per-order primitive; wire a
+        // BulkOrderService through the 4-arg constructor so the bulk method works.
+        com.shifa.oms.audit.AuditService auditService = new com.shifa.oms.audit.AuditService(
+                org.mockito.Mockito.mock(com.shifa.oms.audit.AuditEventRepository.class),
+                new com.shifa.oms.auth.CurrentUserService());
+        OrderWorkflowService workflowService = new OrderWorkflowService(auditService);
+        ManualDeliveryService manualDelivery = new ManualDeliveryService(
+                orderRepository, workflowService,
+                org.mockito.Mockito.mock(com.shifa.oms.reconciliation.ReceivableRepository.class),
+                new OutboxEventPublisher(outboxEventRepository));
+        BulkOrderService bulk = new BulkOrderService(
+                new AdminOrderService(orderRepository,
+                        new LabelService(orderRepository, inMemoryStorage()), workflowService,
+                        new OutboxEventPublisher(outboxEventRepository)),
+                new PackingService(orderRepository, new OutboxEventPublisher(outboxEventRepository),
+                        workflowService, org.mockito.Mockito.mock(com.shifa.oms.auth.UserRepository.class)),
+                orderRepository, manualDelivery);
+
+        OrderEntity inHouse = orderIn(1L, OrderStatus.HANDED_TO_DELIVERY);
+        inHouse.setDeliveryMethod(DeliveryMethod.IN_HOUSE);
+        OrderEntity courier = orderIn(2L, OrderStatus.HANDED_TO_DELIVERY);
+        courier.setDeliveryMethod(DeliveryMethod.QUIKSHIPX);
+        lenient().when(orderRepository.findById(1L)).thenReturn(Optional.of(inHouse));
+        lenient().when(orderRepository.findById(2L)).thenReturn(Optional.of(courier));
+
+        BulkActionResult result = bulk.bulkUpdateInHouseDeliveryStatus(
+                List.of(1L, 2L), OrderStatus.OUT_FOR_DELIVERY, null, admin);
+
+        // The in-house order advanced; the courier order was skipped (partner-tracked).
+        assertThat(result.succeeded()).containsExactly(1L);
+        assertThat(inHouse.getOrderStatus()).isEqualTo(OrderStatus.OUT_FOR_DELIVERY);
+        assertThat(result.skipped()).singleElement().satisfies(s -> {
+            assertThat(s.id()).isEqualTo(2L);
+            assertThat(s.reason()).contains("courier");
+        });
+        assertThat(courier.getOrderStatus()).isEqualTo(OrderStatus.HANDED_TO_DELIVERY);
     }
 }

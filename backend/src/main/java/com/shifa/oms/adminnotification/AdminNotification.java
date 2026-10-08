@@ -1,7 +1,10 @@
 package com.shifa.oms.adminnotification;
 
+import com.shifa.oms.auth.Role;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -46,6 +49,25 @@ public class AdminNotification {
 
     @Column(name = "severity", nullable = false, length = 20)
     private String severity = SEVERITY_INFO;
+
+    /**
+     * The staff role this notification is addressed to (Req 13.4). When set and
+     * {@link #recipientUserId} is null, the notification is available to every
+     * active user holding that role. Persisted as the {@link Role} name on
+     * {@code admin_notifications.recipient_role} (V24), mirroring {@code User.role}.
+     * {@code recipientRole} and {@code recipientUserId} both null = legacy admin broadcast.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "recipient_role", length = 20)
+    private Role recipientRole;
+
+    /**
+     * The specific user this notification is addressed to (e.g. the creating
+     * salesperson, Req 7.3). Mapped to {@code admin_notifications.recipient_user_id}
+     * (V24). Null (with {@link #recipientRole} also null) = legacy admin broadcast.
+     */
+    @Column(name = "recipient_user_id")
+    private Long recipientUserId;
 
     @Column(name = "order_id")
     private Long orderId;
@@ -114,6 +136,24 @@ public class AdminNotification {
 
     public String getSeverity() {
         return severity;
+    }
+
+    public Role getRecipientRole() {
+        return recipientRole;
+    }
+
+    /** Addresses this notification to every active user of a role (Req 13.4). */
+    public void setRecipientRole(Role recipientRole) {
+        this.recipientRole = recipientRole;
+    }
+
+    public Long getRecipientUserId() {
+        return recipientUserId;
+    }
+
+    /** Addresses this notification to a specific user, e.g. the creating salesperson (Req 7.3). */
+    public void setRecipientUserId(Long recipientUserId) {
+        this.recipientUserId = recipientUserId;
     }
 
     public Long getOrderId() {

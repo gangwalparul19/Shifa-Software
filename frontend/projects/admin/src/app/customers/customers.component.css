@@ -1,2 +1,518 @@
-/* Customers / CRM view — layout relies on shared global table, drawer and
-   badge styles; nothing feature-specific is required here. */
+/* Customers / CRM view — the desktop table relies on shared global table,
+   drawer and badge styles. The mobile avatar list below is scoped here and
+   mirrors the client mockup (Req 11.1, 14.2, 14.3). */
+
+.shifa-cust-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Contact-list row: avatar · name/phone/meta · compact call+WhatsApp actions.
+   Tapping the row (anywhere but the actions) opens the Customer 360 drawer. */
+.shifa-cust {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 44px;
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 14px;
+  padding: 0.75rem 0.85rem;
+  box-shadow: 0 1px 2px rgba(15, 51, 36, 0.05);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.shifa-cust:active {
+  background: #fafdfb;
+}
+.shifa-cust:hover {
+  box-shadow: 0 4px 14px rgba(15, 51, 36, 0.12);
+  border-color: rgba(15, 51, 36, 0.14);
+}
+
+/* Green-tinted circular avatar with initials (matches the app's brand). */
+.shifa-cust__avatar {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--shifa-green-100, #e4f2ea);
+  color: var(--shifa-green-700, #164632);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.shifa-cust__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.shifa-cust__name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 700;
+  color: #1c2b24;
+  line-height: 1.25;
+}
+.shifa-cust__nametext {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shifa-cust__phone {
+  color: #5a6761;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+  margin-top: 0.05rem;
+}
+.shifa-cust__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: #64726b;
+  font-size: 0.8rem;
+  margin-top: 0.2rem;
+}
+.shifa-cust__meta i {
+  color: var(--shifa-green-600, #1f5d3f);
+  font-size: 0.9rem;
+}
+.shifa-cust__dot {
+  color: #c3cdc7;
+}
+.shifa-cust__spent {
+  font-weight: 700;
+  color: #1c2b24;
+}
+/* Small "Repeat" tag inline with the name. */
+.shifa-cust__tag {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  background: var(--shifa-green-100, #e4f2ea);
+  color: var(--shifa-green-700, #164632);
+}
+
+/* Compact round call / WhatsApp actions on the right (no bulky text buttons). */
+.shifa-cust__actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.shifa-cust__act {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(15, 51, 36, 0.12);
+  background: #fff;
+  color: #45524b;
+  font-size: 1.05rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.shifa-cust__act:hover {
+  background: #f2f9f5;
+  color: var(--shifa-green-700, #164632);
+  border-color: rgba(31, 93, 63, 0.3);
+}
+.shifa-cust__act--wa {
+  color: #1aa851;
+  border-color: rgba(26, 168, 81, 0.35);
+}
+.shifa-cust__act--wa:hover {
+  background: #e9f9ef;
+  color: #137a3b;
+  border-color: rgba(26, 168, 81, 0.55);
+}
+
+/* ==========================================================================
+   Customer detail drawer — themed to match the app (green header, soft cards,
+   compact paginated order history that fits the narrow drawer).
+   ========================================================================== */
+.cust-dr .cust-dr__head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 1rem 1.15rem;
+  background: linear-gradient(135deg, var(--shifa-green-600, #1f5d3f), var(--shifa-green-700, #164632));
+  color: #fff;
+}
+.cust-dr__avatar {
+  flex: 0 0 auto;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.cust-dr__headmain {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cust-dr__name {
+  font-weight: 700;
+  font-size: 1.05rem;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cust-dr__mobile {
+  display: inline-flex;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+.cust-dr__mobile:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+.cust-dr__tag {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--shifa-green-700, #164632);
+}
+.cust-dr__close {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.cust-dr__close:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+.cust-dr__body {
+  background: #f6f9f7;
+}
+
+/* Two stat cards. */
+.cust-dr__stats {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+.cust-dr__stat {
+  flex: 1 1 0;
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+}
+.cust-dr__stat-label {
+  font-size: 0.75rem;
+  color: #64726b;
+}
+.cust-dr__stat-label i {
+  color: var(--shifa-green-600, #1f5d3f);
+}
+.cust-dr__stat-val {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #1c2b24;
+  line-height: 1.2;
+  margin-top: 0.15rem;
+}
+
+/* First/last/account facts card. */
+.cust-dr__facts {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.35rem 0.9rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+  margin-bottom: 1.1rem;
+}
+.cust-dr__fact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0;
+  font-size: 0.9rem;
+}
+.cust-dr__fact + .cust-dr__fact {
+  border-top: 1px solid rgba(15, 51, 36, 0.06);
+}
+.cust-dr__fact-k {
+  color: #64726b;
+}
+.cust-dr__fact-v {
+  font-weight: 600;
+  color: #1c2b24;
+}
+
+/* Section label with a count chip. */
+.cust-dr__label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--shifa-green-700, #164632);
+  margin-bottom: 0.5rem;
+}
+.cust-dr__count {
+  background: var(--shifa-green-100, #e4f2ea);
+  color: var(--shifa-green-700, #164632);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  font-size: 0.72rem;
+}
+.cust-dr__empty {
+  background: #fff;
+  border: 1px dashed rgba(15, 51, 36, 0.15);
+  border-radius: 12px;
+  padding: 1rem;
+  color: #6b7a72;
+  font-size: 0.88rem;
+  text-align: center;
+}
+
+/* Compact order-history rows (fit the narrow drawer, no horizontal overflow). */
+.cust-oh-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.cust-oh {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.6rem 0.75rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+  text-decoration: none;
+  color: inherit;
+  transition: box-shadow 0.15s ease;
+}
+.cust-oh:hover {
+  box-shadow: 0 4px 14px rgba(15, 51, 36, 0.12);
+}
+.cust-oh__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cust-oh__code {
+  font-weight: 700;
+  color: var(--shifa-green-700, #164632);
+}
+.cust-oh__date {
+  display: block;
+  color: #64726b;
+  font-size: 0.78rem;
+  margin: 0.05rem 0 0.3rem;
+}
+.cust-oh__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.cust-oh__right {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.cust-oh__total {
+  font-weight: 700;
+  color: #1c2b24;
+  white-space: nowrap;
+}
+.cust-oh__chev {
+  color: #9aa8a0;
+}
+
+/* ==========================================================================
+   Customer 360 additions — risk banner, delivery mini-metrics, tags, notes
+   (FEATURE-ROADMAP §1).
+   ========================================================================== */
+
+/* Risk banner: colour-accented by data-level. */
+.cust-dr__risk {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-left: 4px solid #9aa8a0;
+  border-radius: 12px;
+  padding: 0.7rem 0.85rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+  margin-bottom: 1rem;
+}
+.cust-dr__risk[data-level='LOW'] {
+  border-left-color: #2fb344;
+}
+.cust-dr__risk[data-level='MEDIUM'] {
+  border-left-color: #f59f00;
+}
+.cust-dr__risk[data-level='HIGH'] {
+  border-left-color: #d63939;
+}
+.cust-dr__risk-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.cust-dr__risk-rate {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #45524b;
+}
+.cust-dr__risk-msg {
+  margin-top: 0.4rem;
+  font-size: 0.86rem;
+  color: #45524b;
+}
+
+/* Delivery reliability mini-metrics (4-up). */
+.cust-dr__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 1.1rem;
+}
+.cust-dr__metric {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.5rem 0.4rem;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+}
+.cust-dr__metric-v {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1c2b24;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cust-dr__metric-k {
+  font-size: 0.68rem;
+  color: #64726b;
+}
+
+/* Tags. */
+.cust-dr__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+.cust-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--shifa-green-100, #e4f2ea);
+  color: var(--shifa-green-700, #164632);
+  border-radius: 999px;
+  padding: 0.15rem 0.3rem 0.15rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.cust-tag__x {
+  border: none;
+  background: rgba(22, 70, 50, 0.12);
+  color: var(--shifa-green-700, #164632);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  font-size: 0.7rem;
+  line-height: 1;
+}
+.cust-tag__x:hover {
+  background: rgba(214, 57, 57, 0.18);
+  color: #d63939;
+}
+.cust-dr__muted {
+  color: #8a988f;
+  font-size: 0.83rem;
+}
+
+/* Inline add-row (tag input + button). */
+.cust-dr__inline {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1.1rem;
+}
+.cust-dr__inline .form-control {
+  flex: 1 1 auto;
+}
+
+/* Note add + timeline. */
+.cust-dr__note-add {
+  margin-bottom: 0.75rem;
+}
+.cust-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.1rem;
+}
+.cust-note {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.6rem 0.75rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+}
+.cust-note__text {
+  font-size: 0.88rem;
+  color: #1c2b24;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.cust-note__meta {
+  margin-top: 0.3rem;
+  font-size: 0.72rem;
+  color: #8a988f;
+}
+
+/* One-tap WhatsApp quick-actions row in the Customer 360 drawer. */
+.cust-dr__wa {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}

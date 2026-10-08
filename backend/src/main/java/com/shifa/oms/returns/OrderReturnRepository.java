@@ -47,4 +47,21 @@ public interface OrderReturnRepository extends JpaRepository<OrderReturn, Long> 
                              @Param("from") LocalDateTime from,
                              @Param("to") LocalDateTime to,
                              Pageable pageable);
+
+    /**
+     * Sum of refund amounts for returns in a given status created within an
+     * inclusive timestamp window, for the GST dashboard's "refunds" figure.
+     * Returns {@code null} when none match (callers coalesce to zero). Replaces a
+     * {@code findAll()} + Java filter.
+     */
+    @Query("""
+            SELECT COALESCE(SUM(r.refundAmount), 0) FROM OrderReturn r
+            WHERE r.status = :status AND r.createdAt >= :from AND r.createdAt < :to
+            """)
+    java.math.BigDecimal sumRefundByStatusCreatedBetween(@Param("status") ReturnStatus status,
+                                                         @Param("from") LocalDateTime from,
+                                                         @Param("to") LocalDateTime to);
+
+    /** Removes every return for an order — used by the admin hard-delete of an order. */
+    void deleteByOrderId(Long orderId);
 }

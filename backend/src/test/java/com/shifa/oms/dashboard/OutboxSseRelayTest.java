@@ -157,12 +157,12 @@ class OutboxSseRelayTest {
         private Object lastData;
 
         @Override
-        public boolean hasActiveEmitters() {
+        public boolean hasActiveAdmins() {
             return active;
         }
 
         @Override
-        public void broadcast(String eventName, Object data) {
+        public void broadcastToAdmins(String eventName, Object data) {
             broadcasts.add(eventName);
             lastData = data;
         }

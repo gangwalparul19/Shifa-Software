@@ -22,6 +22,8 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -48,22 +50,60 @@ public class ReturnService {
     private static final Set<ReturnStatus> ACTIVE_STATUSES =
             EnumSet.of(ReturnStatus.REQUESTED, ReturnStatus.APPROVED);
 
+    /** Source-type key for the refund ledger posting (matches SourceType.RETURN_REFUND). */
+    private static final String LEDGER_SOURCE_RETURN_REFUND = "RETURN_REFUND";
+
     private final OrderReturnRepository returnRepository;
     private final OrderRepository orderRepository;
     private final StockService stockService;
     private final AuditService auditService;
     private final CurrentUserService currentUserService;
+    /**
+     * Staff directory (nullable): resolves each order's {@code created_by} to the
+     * salesperson's display name for the returns list. Null under the legacy test
+     * constructor — the name is then omitted.
+     */
+    private final com.shifa.oms.auth.UserRepository userRepository;
+    /**
+     * Outbox publisher (nullable): posts a cash refund to the ledger
+     * (ENHANCEMENT 2.3). Null under the legacy test constructors — the refund then
+     * records/transitions exactly as before with no ledger side effect.
+     */
+    private final com.shifa.oms.platform.outbox.OutboxEventPublisher outboxEventPublisher;
 
     public ReturnService(OrderReturnRepository returnRepository,
                          OrderRepository orderRepository,
                          StockService stockService,
                          AuditService auditService,
                          CurrentUserService currentUserService) {
+        this(returnRepository, orderRepository, stockService, auditService, currentUserService, null, null);
+    }
+
+    public ReturnService(OrderReturnRepository returnRepository,
+                         OrderRepository orderRepository,
+                         StockService stockService,
+                         AuditService auditService,
+                         CurrentUserService currentUserService,
+                         com.shifa.oms.auth.UserRepository userRepository) {
+        this(returnRepository, orderRepository, stockService, auditService, currentUserService,
+                userRepository, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ReturnService(OrderReturnRepository returnRepository,
+                         OrderRepository orderRepository,
+                         StockService stockService,
+                         AuditService auditService,
+                         CurrentUserService currentUserService,
+                         com.shifa.oms.auth.UserRepository userRepository,
+                         com.shifa.oms.platform.outbox.OutboxEventPublisher outboxEventPublisher) {
         this.returnRepository = returnRepository;
         this.orderRepository = orderRepository;
         this.stockService = stockService;
         this.auditService = auditService;
         this.currentUserService = currentUserService;
+        this.userRepository = userRepository;
+        this.outboxEventPublisher = outboxEventPublisher;
     }
 
     /**
@@ -71,13 +111,17 @@ public class ReturnService {
      * At most one active (non-terminal) return may exist per order. New returns
      * start {@link ReturnStatus#REQUESTED}.
      *
-     * @throws ResourceNotFoundException when the order does not exist
+     * @param orderIdOrCode either the order's numeric database id or its
+     *                      human-readable order code (e.g. {@code SHR-20260916-JGM9})
+     *                      — resolved via {@link #resolveOrder(String)}
+     * @throws ResourceNotFoundException when no order matches
      * @throws ValidationException       when the order is not returnable or already
      *                                   has an active return
      */
     @Transactional
-    public ReturnResponse create(Long orderId, String reason, String notes) {
-        OrderEntity order = requireOrder(orderId);
+    public ReturnResponse create(String orderIdOrCode, String reason, String notes) {
+        OrderEntity order = resolveOrder(orderIdOrCode);
+        Long orderId = order.getId();
         if (!RETURNABLE_STATUSES.contains(order.getOrderStatus())) {
             throw new ValidationException(
                     "A return can only be created for a delivered or RTO order (order "
@@ -92,7 +136,7 @@ public class ReturnService {
         auditService.record(AuditActions.RETURN_CREATED, AuditActions.ENTITY_RETURN,
                 String.valueOf(saved.getId()),
                 "Return requested for order " + order.getOrderCode() + ": " + reason);
-        return ReturnResponse.from(saved);
+        return ReturnResponse.from(saved, order.getOrderCode());
     }
 
     /**
@@ -127,7 +171,7 @@ public class ReturnService {
                 String.valueOf(returnId),
                 "Return approved" + (restock ? " (restocked)" : "")
                         + (refundAmount != null ? ", refund " + refundAmount : ""));
-        return ReturnResponse.from(saved);
+        return ReturnResponse.from(saved, orderCodeFor(ret.getOrderId()));
     }
 
     /**
@@ -147,7 +191,7 @@ public class ReturnService {
         auditService.record(AuditActions.RETURN_REJECTED, AuditActions.ENTITY_RETURN,
                 String.valueOf(returnId), "Return rejected"
                         + (notes != null && !notes.isBlank() ? ": " + notes : ""));
-        return ReturnResponse.from(saved);
+        return ReturnResponse.from(saved, orderCodeFor(ret.getOrderId()));
     }
 
     /**
@@ -157,38 +201,167 @@ public class ReturnService {
      * @throws ValidationException when the return is not APPROVED
      */
     @Transactional
-    public ReturnResponse markRefunded(Long returnId, BigDecimal refundAmount) {
+    public ReturnResponse markRefunded(Long returnId, BigDecimal refundAmount, RefundMethod refundMethod) {
         OrderReturn ret = requireReturn(returnId);
         requireTransition(ret, ReturnStatus.REFUNDED);
         ret.setRefundAmount(refundAmount);
+        if (refundMethod != null) {
+            ret.setRefundMethod(refundMethod);
+        }
         ret.changeStatus(ReturnStatus.REFUNDED);
         OrderReturn saved = returnRepository.save(ret);
         auditService.record(AuditActions.RETURN_REFUNDED, AuditActions.ENTITY_RETURN,
-                String.valueOf(returnId), "Return refunded: " + refundAmount);
-        return ReturnResponse.from(saved);
+                String.valueOf(returnId), "Return refunded: " + refundAmount
+                        + (refundMethod != null ? " via " + refundMethod : ""));
+        // Post the cash refund to the ledger (ENHANCEMENT 2.3): Dr Sales / Cr Cash.
+        publishRefundLedgerPost(saved);
+        return ReturnResponse.from(saved, orderCodeFor(ret.getOrderId()));
     }
 
-    /** Filtered, paged return listing (newest-first by default via the pageable). */
+    /**
+     * Best-effort ledger posting for a refunded return (ENHANCEMENT 2.3): enqueues
+     * a {@code LEDGER_POST} for source {@code RETURN_REFUND} keyed by the return
+     * id, but only when actual cash was refunded (a pure-COD return refunds
+     * nothing, so there is no cash movement to book). Never throws — the return
+     * state change must not be rolled back by a posting hiccup; the drainer retries.
+     */
+    private void publishRefundLedgerPost(OrderReturn ret) {
+        if (outboxEventPublisher == null || ret.getId() == null) {
+            return;
+        }
+        BigDecimal refund = ret.getRefundAmount();
+        if (refund == null || refund.signum() <= 0) {
+            return;
+        }
+        try {
+            outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_RETURN_REFUND, ret.getId());
+        } catch (RuntimeException e) {
+            // best-effort; the drainer / a later recompute will pick it up
+        }
+    }
+
+    /**
+     * Automatically raises + finalizes a sales-return record when an order is
+     * marked RTO (returned to origin) via the manual scan flow (client request:
+     * "RTO should have a sales return entry for the CA calculations so GSTR1
+     * will show the sales return"). Without this, RTO was purely an order
+     * lifecycle status with no {@link OrderReturn} row — and
+     * {@code Gstr1ReturnService.buildCreditNotes} only ever looks at
+     * {@link OrderReturn} rows in {@link ReturnStatus#REFUNDED}, so an RTO'd
+     * order's reversed sale would never surface as a GSTR-1 credit note.
+     *
+     * <p>Creates the return {@code REQUESTED} and immediately advances it
+     * through {@code APPROVED} → {@code REFUNDED} in one call (an RTO'd parcel
+     * is a fait accompli the moment it's marked — there is no separate admin
+     * approval step for it, unlike a customer-initiated return/refund request).
+     * Stock is deliberately <strong>not</strong> auto-restocked — that remains a
+     * manual inventory decision once the physical parcel is inspected, mirroring
+     * the existing "Create return" manual flow. Skipped (no-op) when the order
+     * already has an active return (idempotent against a double-RTO/duplicate
+     * call).
+     *
+     * <p><strong>Two different amounts are recorded (V64), and conflating them is
+     * a GST/accounting error:</strong>
+     * <ul>
+     *   <li>{@code creditNoteValue} = the order's <em>full</em> GST-inclusive total.
+     *       An RTO reverses the entire supply, so the credit note carries the whole
+     *       invoice value plus its GST regardless of how little was collected. This
+     *       is what lands in GSTR-1 CDNR/CDNUR.</li>
+     *   <li>{@code refundAmount} = the CASH actually owed back, i.e. only what the
+     *       customer had already paid ({@code amountReceived}) — zero for a pure COD
+     *       order, where the customer never paid anything. This is what the money
+     *       reports / P&amp;L count as a refund.</li>
+     * </ul>
+     * Using the order total for both would report a cash refund that never
+     * happened (the whole order value for a COD parcel that was never paid for).
+     *
+     * @param orderId    the RTO'd order's id
+     * @param reasonNote a human-readable RTO reason (recorded in the return's reason)
+     * @return the created return's response, or {@code null} if skipped (an active return already exists)
+     */
+    @Transactional
+    public ReturnResponse createAutoReturnForRto(Long orderId, String reasonNote) {
+        if (returnRepository.existsByOrderIdAndStatusIn(orderId, ACTIVE_STATUSES)) {
+            return null;
+        }
+        Long actorId = currentUserId();
+        String reason = "Returned to origin (RTO)" + (reasonNote != null && !reasonNote.isBlank()
+                ? ": " + reasonNote : "");
+        OrderReturn ret = returnRepository.save(new OrderReturn(
+                orderId, reason, "Automatically raised when the order was marked RTO.", actorId));
+        auditService.record(AuditActions.RETURN_CREATED, AuditActions.ENTITY_RETURN,
+                String.valueOf(ret.getId()), "Return auto-created for RTO order id " + orderId);
+
+        OrderEntity order = requireOrder(orderId);
+        // Whole supply reversed → credit note for the full invoice value.
+        BigDecimal creditNoteValue = nz(order.getTotalAmount());
+        // Cash owed back = only what the customer actually paid, never more than the
+        // order value (a pure COD order yields zero).
+        BigDecimal cashRefund = nz(order.getAmountReceived()).min(creditNoteValue);
+
+        ret.changeStatus(ReturnStatus.APPROVED);
+        returnRepository.save(ret);
+        auditService.record(AuditActions.RETURN_APPROVED, AuditActions.ENTITY_RETURN,
+                String.valueOf(ret.getId()), "Return auto-approved for RTO order " + order.getOrderCode());
+
+        ret.setCreditNoteValue(creditNoteValue);
+        ret.setRefundAmount(cashRefund);
+        // A pure-COD RTO refunds no cash; a prepaid RTO owes back what was paid.
+        ret.setRefundMethod(cashRefund.signum() > 0 ? RefundMethod.ORIGINAL_PAYMENT
+                : RefundMethod.COD_NOT_COLLECTED);
+        ret.changeStatus(ReturnStatus.REFUNDED);
+        OrderReturn saved = returnRepository.save(ret);
+        auditService.record(AuditActions.RETURN_REFUNDED, AuditActions.ENTITY_RETURN,
+                String.valueOf(ret.getId()),
+                "Return auto-settled for RTO order " + order.getOrderCode()
+                        + ": credit note " + creditNoteValue + ", cash refund " + cashRefund);
+        // Book the cash refund (if any) to the ledger (ENHANCEMENT 2.3).
+        publishRefundLedgerPost(saved);
+
+        return ReturnResponse.from(saved, order.getOrderCode());
+    }
+
+    private static BigDecimal nz(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
+    }
+
+    /**
+     * Filtered, paged return listing (newest-first by default via the pageable).
+     * Order codes are batch-resolved (one query) rather than N+1'd per row.
+     */
     @Transactional(readOnly = true)
     public PageResponse<ReturnResponse> list(ReturnStatus status, String q,
                                              LocalDateTime from, LocalDateTime to,
                                              Pageable pageable) {
         Page<OrderReturn> page = returnRepository.search(status, blankToNull(q), from, to, pageable);
-        return PageResponse.of(page, ReturnResponse::from);
+        List<Long> orderIds = page.getContent().stream().map(OrderReturn::getOrderId).toList();
+        // Batch-load the orders once to resolve BOTH the order code and the
+        // salesperson (created_by) name per row, avoiding an N+1.
+        Map<Long, OrderEntity> ordersById = ordersFor(orderIds);
+        Map<Long, String> names = salespersonNames(ordersById.values());
+        return PageResponse.of(page, r -> {
+            OrderEntity order = ordersById.get(r.getOrderId());
+            String code = order != null ? order.getOrderCode() : null;
+            String sp = (order != null && order.getCreatedBy() != null)
+                    ? names.get(order.getCreatedBy()) : null;
+            return ReturnResponse.from(r, code, sp);
+        });
     }
 
     /** All returns for a given order, newest first. */
     @Transactional(readOnly = true)
     public List<ReturnResponse> getByOrder(Long orderId) {
+        String orderCode = orderCodeFor(orderId);
         return returnRepository.findByOrderIdOrderByCreatedAtDesc(orderId).stream()
-                .map(ReturnResponse::from)
+                .map(r -> ReturnResponse.from(r, orderCode))
                 .toList();
     }
 
     /** A single return by id, or a 404. */
     @Transactional(readOnly = true)
     public ReturnResponse get(Long id) {
-        return ReturnResponse.from(requireReturn(id));
+        OrderReturn ret = requireReturn(id);
+        return ReturnResponse.from(ret, orderCodeFor(ret.getOrderId()));
     }
 
     // --- Internal helpers ---------------------------------------------------
@@ -215,10 +388,92 @@ public class ReturnService {
                         "Order " + orderId + " does not exist."));
     }
 
+    /**
+     * Resolves an order from either its numeric database id (e.g. {@code "5"})
+     * or its human-readable order code (e.g. {@code SHR-20260916-JGM9}) —
+     * whichever the caller has to hand. A purely-digit input is tried as an id
+     * first (falling back to a code lookup on that same string, in case an order
+     * code were ever purely numeric); anything else is looked up by code
+     * directly.
+     *
+     * @throws ResourceNotFoundException when no order matches either form
+     */
+    private OrderEntity resolveOrder(String orderIdOrCode) {
+        String trimmed = orderIdOrCode == null ? "" : orderIdOrCode.trim();
+        if (trimmed.matches("\\d+")) {
+            Optional<OrderEntity> byId = orderRepository.findById(Long.valueOf(trimmed));
+            if (byId.isPresent()) {
+                return byId.get();
+            }
+        }
+        return orderRepository.findByOrderCode(trimmed)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Order '" + trimmed + "' does not exist."));
+    }
+
     private OrderReturn requireReturn(Long returnId) {
         return returnRepository.findById(returnId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Return " + returnId + " does not exist."));
+    }
+
+    /**
+     * Best-effort single-order code lookup for a response (null if the order no
+     * longer exists — should not happen in practice, but a return must never 404
+     * just because its order code couldn't be resolved).
+     */
+    private String orderCodeFor(Long orderId) {
+        if (orderId == null) {
+            return null;
+        }
+        return orderRepository.findById(orderId).map(OrderEntity::getOrderCode).orElse(null);
+    }
+
+    /** Batch order-code resolution for a page of returns (avoids N+1 queries). */
+    private Map<Long, String> orderCodesFor(List<Long> orderIds) {
+        List<Long> distinct = orderIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (distinct.isEmpty()) {
+            return Map.of();
+        }
+        return orderRepository.findAllById(distinct).stream()
+                .collect(java.util.stream.Collectors.toMap(OrderEntity::getId, OrderEntity::getOrderCode));
+    }
+
+    /** Batch-loads the orders for a page of returns, keyed by id (avoids an N+1). */
+    private Map<Long, OrderEntity> ordersFor(List<Long> orderIds) {
+        List<Long> distinct = orderIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (distinct.isEmpty()) {
+            return Map.of();
+        }
+        return orderRepository.findAllById(distinct).stream()
+                .collect(java.util.stream.Collectors.toMap(OrderEntity::getId, java.util.function.Function.identity()));
+    }
+
+    /**
+     * Batch-resolves the display names of the salespeople who created the given
+     * orders (full name, else username). Empty when there is no staff directory
+     * (test/legacy) or no creators, so the name is simply omitted.
+     */
+    private Map<Long, String> salespersonNames(java.util.Collection<OrderEntity> orders) {
+        Map<Long, String> names = new java.util.HashMap<>();
+        if (userRepository == null) {
+            return names;
+        }
+        java.util.Set<Long> ids = new java.util.HashSet<>();
+        for (OrderEntity o : orders) {
+            if (o.getCreatedBy() != null) {
+                ids.add(o.getCreatedBy());
+            }
+        }
+        if (ids.isEmpty()) {
+            return names;
+        }
+        for (com.shifa.oms.auth.User u : userRepository.findAllById(ids)) {
+            String name = (u.getFullName() != null && !u.getFullName().isBlank())
+                    ? u.getFullName() : u.getUsername();
+            names.put(u.getId(), name);
+        }
+        return names;
     }
 
     private Long currentUserId() {

@@ -32,6 +32,11 @@ import { RouterLink } from '@angular/router';
   `,
   styles: [
     `
+      .shifa-auth__card .card {
+        border: 1px solid rgba(15, 51, 36, 0.08);
+        border-radius: 16px;
+        box-shadow: 0 12px 34px rgba(15, 51, 36, 0.14);
+      }
       .shifa-forbidden-icon {
         display: grid;
         place-items: center;
@@ -41,6 +46,11 @@ import { RouterLink } from '@angular/router';
         font-size: 2.2rem;
         color: #b42318;
         background: #fdecea;
+      }
+      .shifa-auth .btn-primary {
+        min-height: 48px;
+        font-weight: 600;
+        border-radius: 10px;
       }
     `,
   ],

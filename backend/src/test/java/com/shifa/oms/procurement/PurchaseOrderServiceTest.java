@@ -13,6 +13,8 @@ import com.shifa.oms.procurement.dto.PurchaseOrderItemRequest;
 import com.shifa.oms.procurement.dto.PurchaseOrderResponse;
 import com.shifa.oms.procurement.dto.ReceiveLineRequest;
 import com.shifa.oms.procurement.dto.ReceivePurchaseOrderRequest;
+import com.shifa.oms.platform.outbox.OutboxEventPublisher;
+import com.shifa.oms.platform.outbox.OutboxEventRepository;
 import com.shifa.oms.product.ProductRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
@@ -64,7 +67,8 @@ class PurchaseOrderServiceTest {
         stockService = new RecordingStockService();
         service = new PurchaseOrderService(purchaseOrderRepository, sequenceRepository,
                 supplierRepository, productRepository, stockService,
-                new NoopAuditService(), new CurrentUserService());
+                new NoopAuditService(), new CurrentUserService(),
+                new OutboxEventPublisher(mock(OutboxEventRepository.class)));
         lenient().when(purchaseOrderRepository.save(any(PurchaseOrder.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
     }

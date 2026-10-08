@@ -7,6 +7,8 @@ import com.shifa.oms.common.PageResponse;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.finance.dto.ExpenseRequest;
 import com.shifa.oms.finance.dto.ExpenseResponse;
+import com.shifa.oms.platform.outbox.OutboxEventPublisher;
+import com.shifa.oms.platform.outbox.OutboxEventRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
@@ -39,7 +42,8 @@ class ExpenseServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ExpenseService(expenseRepository, new NoopAuditService(), new CurrentUserService());
+        service = new ExpenseService(expenseRepository, new NoopAuditService(), new CurrentUserService(),
+                new OutboxEventPublisher(mock(OutboxEventRepository.class)));
         lenient().when(expenseRepository.save(any(Expense.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
     }

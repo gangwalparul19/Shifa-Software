@@ -7,6 +7,14 @@
   flex-wrap: wrap;
 }
 
+/* Compact period dropdown (replaces the 9-chip segmented control). */
+.shifa-period-select {
+  min-width: 10rem;
+}
+.shifa-period-select .form-select {
+  font-weight: 600;
+}
+
 /* --- Sales SVG chart ----------------------------------------------------- */
 .chart {
   width: 100%;
@@ -242,4 +250,187 @@
 apx-chart {
   display: block;
   width: 100%;
+}
+
+/* --- KPI tiles: three per row on mobile --------------------------------- */
+/* Keeps operational summaries compact on phones while wider breakpoints use
+   their existing responsive Bootstrap column definitions. */
+@media (max-width: 575.98px) {
+  .shifa-kpi-row > [class*='col-'] {
+    flex: 0 0 33.333333%;
+    max-width: 33.333333%;
+    width: 33.333333%;
+  }
+}
+
+/* --- KPI Overview header + View All link -------------------------------- */
+.shifa-kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.25rem 0 0.6rem;
+}
+.shifa-kpi-head__label {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--shifa-green-700, #164632);
+}
+.shifa-view-all {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--shifa-green-600, #1f5d3f);
+  text-decoration: none;
+}
+.shifa-view-all:hover {
+  text-decoration: underline;
+}
+
+/* --- Per-tile delta line ------------------------------------------------ */
+.shifa-tile-delta {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #6b7c74;
+}
+.shifa-tile-delta.up {
+  color: #2f9e44;
+}
+.shifa-tile-delta.down {
+  color: #d63939;
+}
+
+/* --- Sales Overview: period totals row ---------------------------------- */
+.shifa-period-totals {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(15, 51, 36, 0.08);
+}
+.shifa-period-totals__item {
+  min-width: 0;
+}
+
+/* Customize-dashboard popover (FEATURE-ROADMAP §6.4). */
+.shifa-customize {
+  position: relative;
+}
+.shifa-customize__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 1050;
+  min-width: 220px;
+  box-shadow: 0 12px 32px rgba(15, 51, 36, 0.18);
+}
+.shifa-customize__panel .dropdown-item {
+  cursor: pointer;
+  border-radius: 6px;
+}
+.shifa-customize__panel .dropdown-item:hover {
+  background: var(--shifa-green-50, #f2f9f5);
+}
+
+/* Simplified Salesperson Home — big, obvious action cards (product-audit §3.1) */
+.shifa-home-cta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  text-decoration: none;
+  color: var(--tblr-body-color, #22332b);
+  border: 2px solid #e2e8e4;
+  min-height: 96px;
+}
+.shifa-home-cta:hover {
+  border-color: #1f5d3f;
+}
+.shifa-home-cta__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: #e4f2ea;
+  color: #1f5d3f;
+  font-size: 28px;
+  flex: none;
+}
+.shifa-home-cta__title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f3d27;
+  display: block;
+}
+.shifa-home-cta__sub {
+  font-size: 13px;
+  color: #6b7b72;
+  display: block;
+}
+.shifa-home-cta--primary {
+  background: linear-gradient(135deg, #eaf3ec, #ffffff);
+  border-color: #1f5d3f;
+}
+.shifa-home-cta--primary .shifa-home-cta__icon {
+  background: #1f5d3f;
+  color: #fff;
+}
+
+/* --- "My Day" salesperson card ---------------------------------------- */
+.md-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+.md-tile {
+  text-align: center;
+  padding: 0.5rem 0.25rem;
+  background: var(--shifa-green-050, #f2f9f5);
+  border-radius: 10px;
+}
+.md-tile__v {
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: #182a21;
+  line-height: 1.2;
+}
+.md-tile__k {
+  font-size: 0.72rem;
+  color: #64726b;
+  margin-top: 0.15rem;
+}
+.md-progress {
+  height: 8px;
+  border-radius: 999px;
+}
+
+
+/* Team-lead dashboard highlights strip (clarity enhancement). */
+.tl-highlight {
+  border-left: 3px solid var(--shifa-green-500, #1f5d3f);
+  background: var(--shifa-green-050, #f2f9f5);
+}
+.tl-highlight__item {
+  font-size: 0.9rem;
+  color: #45524b;
+}
+
+/* --- My tasks inbox: small coloured priority dot (task 13) --------------- */
+.shifa-task-dot {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 1rem;
 }

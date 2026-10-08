@@ -1,6 +1,73 @@
 import { Money, OrderStatus, PaymentStatus } from 'core';
 
 /**
+ * A single row in a packing work queue, mirroring the backend
+ * {@code PackingQueueRow}. Carries the order date and the salesperson name
+ * (resolved from {@code created_by}) so the packer/admin sees who punched the
+ * order and when.
+ */
+export interface PackingQueueRow {
+  id: number;
+  orderCode: string;
+  customerName: string;
+  /** The salesperson who created the order (null when unknown). */
+  salespersonName?: string | null;
+  totalAmount: Money;
+  /** Order creation timestamp (ISO). */
+  createdAt?: string;
+  orderStatus: OrderStatus | string;
+  paymentStatus: PaymentStatus | string;
+  /**
+   * QUIKSHIPX (courier partner) or IN_HOUSE. Drives which label buttons show on
+   * the Orders-to-Pack row and which status section the order lands in after
+   * handover (auto QuickShip vs manual In-House).
+   */
+  deliveryMethod?: 'QUIKSHIPX' | 'IN_HOUSE' | string;
+  /**
+   * Where the order originated (SALESPERSON / SHOPIFY / STORE / STOREFRONT).
+   * Drives the Portal-vs-Shopify queue filter: "Portal" = everything except
+   * SHOPIFY.
+   */
+  source?: 'SALESPERSON' | 'SHOPIFY' | 'STORE' | 'STOREFRONT' | string;
+  /** The order/packaging note (null when none) — shown so the packer sees special instructions. */
+  notes?: string | null;
+  /** QuikShipX tracking id / AWB (null for in-house or not yet allotted). */
+  awb?: string | null;
+  /** The QuikShipX-hosted shipping-label PDF URL (null when none) — the "Print QuikShip label" target. */
+  quikShipXLabelUrl?: string | null;
+  /** Whether the QuikShipX courier label has already been printed. */
+  quikShipXLabelPrinted?: boolean;
+  /** The QuikShipX-side status string (e.g. "Tracking ID Assigned", "In Transit"), null for in-house. */
+  quikShipXStatus?: string | null;
+}
+
+/**
+ * The packing team's work queues + shipment-status sections (packing-workflow
+ * redesign), mirroring the backend {@code PackingQueueResponse}. Newest-first.
+ */
+export interface PackingQueue {
+  /** Orders in {@code Label_Generated} — ready to be packed (QuikShipX + in-house). */
+  ordersToPack: PackingQueueRow[];
+  /** Orders in {@code Packed} — ready to hand over. */
+  awaitingHandover: PackingQueueRow[];
+  /** Handed-over COURIER orders (read-only) — QuikShipX pickup + tracking drives these. */
+  quikShipStatus: PackingQueueRow[];
+  /** Handed-over IN-HOUSE orders — the team advances these manually. */
+  inHouseDeliveries: PackingQueueRow[];
+}
+
+/**
+ * Result of a bulk delivery-status update, mirroring the backend
+ * {@code BulkActionResult}: {@code succeeded} holds the ids that were updated;
+ * {@code skipped} holds those that could not (with a reason — e.g. courier order,
+ * or the move is illegal from the current status).
+ */
+export interface BulkDeliveryStatusResult {
+  succeeded: number[];
+  skipped: { id: number; reason: string }[];
+}
+
+/**
  * Compact order summary returned inside a successful scan response. Mirrors the
  * backend {@code OrderSummaryResponse}.
  */
@@ -25,8 +92,91 @@ export interface PackingScanResponse {
   order: ScannedOrderSummary;
 }
 
+/** Server-proposed action after resolving a packing barcode, before confirmation. */
+export type PackingNextAction = 'PACK' | 'HANDOVER' | 'DISPATCH' | 'NONE';
+
+/**
+ * Read-only result of {@code POST /api/packing/scan-preview}. It identifies the
+ * order and current status, then proposes the next valid packing action. The
+ * final action request still checks authorization and state on the server.
+ */
+export interface PackingScanPreviewResponse {
+  message: string;
+  order: ScannedOrderSummary;
+  nextAction: PackingNextAction;
+  nextStatus: OrderStatus | string | null;
+  /** The order/packaging note (null when none) — shown right away on scan for the packer. */
+  notes?: string | null;
+}
+
 /** How a single scan resolved, for the in-session scan log. */
-export type ScanOutcome = 'packed' | 'not-recognized' | 'wrong-status' | 'error';
+export type ScanOutcome = 'packed' | 'moved' | 'not-recognized' | 'wrong-status' | 'error';
+
+// --- Daily pick-list / packing manifest (enhancement) -----------------------
+
+/** One aggregated product row on the pick-list, mirroring the backend {@code PickListLine}. */
+export interface PickListLine {
+  productId: number | null;
+  productName: string;
+  sku?: string | null;
+  totalQuantity: number;
+  /** How many distinct orders need this product (context, not a sum). */
+  orderCount: number;
+}
+
+/**
+ * The daily pick-list / packing manifest, mirroring the backend
+ * {@code PickListResponse}: every product needed across all orders currently
+ * awaiting packing, aggregated into one sheet.
+ */
+export interface PickList {
+  orderCount: number;
+  lines: PickListLine[];
+}
+
+// --- RTO (returned to origin) manual marking (label redesign feature) --------
+
+/**
+ * The categorized reason an order was marked RTO, mirroring the backend
+ * {@code RtoReason} enum.
+ */
+export type RtoReason =
+  | 'CUSTOMER_UNAVAILABLE'
+  | 'CUSTOMER_REFUSED'
+  | 'ADDRESS_ISSUE'
+  | 'DAMAGED_IN_TRANSIT'
+  | 'OTHER';
+
+/** Selectable RTO-reason options for the "Mark RTO" picker. */
+export const RTO_REASON_OPTIONS: { value: RtoReason; label: string }[] = [
+  { value: 'CUSTOMER_UNAVAILABLE', label: 'Customer unavailable' },
+  { value: 'CUSTOMER_REFUSED', label: 'Customer refused delivery' },
+  { value: 'ADDRESS_ISSUE', label: 'Address issue' },
+  { value: 'DAMAGED_IN_TRANSIT', label: 'Damaged in transit' },
+  { value: 'OTHER', label: 'Other' },
+];
+
+/**
+ * Read-only result of {@code POST /api/packing/rto-preview}. Identifies the
+ * order and current status, and reports whether marking it RTO is currently a
+ * legal move; the final mark request still checks authorization and state on
+ * the server. Mirrors the backend {@code RtoScanPreviewResponse}.
+ */
+export interface RtoScanPreviewResponse {
+  message: string;
+  order: ScannedOrderSummary;
+  eligible: boolean;
+  /**
+   * Whether the scanned barcode was the delivery partner's own barcode (the
+   * single scannable barcode printed on the label when a partner is assigned)
+   * rather than our internal order code — mirrors the backend.
+   */
+  scannedViaCourier: boolean;
+  /** The delivery partner's display name, when {@code scannedViaCourier} (else null/undefined). */
+  courierName?: string | null;
+  /** The scanned AWB value, when {@code scannedViaCourier} (else null/undefined). */
+  courierAwb?: string | null;
+}
 
 /** One entry in the running scan log shown in the UI. */
 export interface ScanLogEntry {

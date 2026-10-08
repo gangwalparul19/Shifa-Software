@@ -34,7 +34,7 @@ export interface MetricCards {
   dispatchedOrders: number;
   deliveredOrders: number;
   rtoCount: number;
-  courierLostCount: number;
+  redispatchCount: number;
   totalCodPendingFromCourier: number;
   totalLossClaimPendingFromCourier: number;
   conversionRate: number;
@@ -81,6 +81,51 @@ export interface LiveStats {
   totalLossToClaim: number;
 }
 
+/**
+ * The owner's one-screen snapshot (ENHANCEMENT 1.2): today's trading plus the
+ * actionable backlog, from {@code GET /api/admin/dashboard/owner-snapshot}.
+ */
+export interface OwnerSnapshot {
+  date: string;
+  ordersToday: number;
+  revenueToday: number;
+  approvalsWaiting: number;
+  paymentsPending: number;
+  failedDeliveries: number;
+  rtoCount: number;
+  codToCollect: number;
+  codOverSla: number;
+  codOverSlaAmount: number;
+  pendingClaims: number;
+  stuckShipments: number;
+  topSalespersonName: string | null;
+  topSalespersonRevenue: number;
+  attentionTotal: number;
+}
+
+/**
+ * Per-channel revenue + estimated gross margin (ENHANCEMENT 3.6), from
+ * {@code GET /api/admin/dashboard/channel-margin}. Layers product cost onto the
+ * channel split so the owner sees true margin per channel, not just revenue.
+ */
+export interface ChannelMargin {
+  channel: string;
+  orderCount: number;
+  revenue: number;
+  discount: number;
+  estimatedCogs: number;
+  grossMargin: number;
+  marginPct: number;
+  costCoveragePct: number;
+}
+
+export interface ChannelMarginReport {
+  from: string | null;
+  to: string | null;
+  channels: ChannelMargin[];
+  total: ChannelMargin;
+}
+
 /** Activity-card counts (Req 19.6). */
 export interface ActivityCards {
   ordersToFulfill: number;
@@ -91,13 +136,106 @@ export interface ActivityCards {
   courierClaimsPending: number;
 }
 
+/**
+ * The role-shaped payload of {@code GET /api/dashboard/summary} (design §6.7,
+ * §7.1, Req 3.1–3.6). Exactly one of the per-role sections is populated (the one
+ * matching {@link role}); the rest are {@code null}. A {@code SALESPERSON} sees
+ * only their own orders (scoped server-side).
+ */
+export interface RoleDashboardSummary {
+  role: string;
+  salesperson: SalespersonSummary | null;
+  admin: AdminSummary | null;
+  packing: PackingSummary | null;
+  accountant: AccountantSummary | null;
+}
+
+/** A salesperson's own orders grouped by status + count awaiting approval (Req 3.2). */
+export interface SalespersonSummary {
+  /** Map keyed by the backend {@code OrderStatus} name (e.g. "PENDING_ADMIN_APPROVAL"). */
+  ordersByStatus: Record<string, number>;
+  awaitingApproval: number;
+  /**
+   * Lead pipeline-by-stage counts keyed by the backend {@code LeadStatus} name
+   * (NEW/CONTACTED/QUOTED), for the salesperson's own leads (Req 6.6, lead-management).
+   */
+  leadPipeline: Record<string, number>;
+  /** Number of the salesperson's leads with a due follow-up (Req 6.6, lead-management). */
+  dueFollowUps: number;
+}
+
+/**
+ * The admin leads/conversion overview (Req 6.6, lead-management): total leads
+ * captured, the number won, the overall conversion rate ({@code won / leads} as
+ * a fraction; 0 when there are no leads), and the current pipeline-by-stage counts.
+ */
+export interface LeadsSummary {
+  totalLeads: number;
+  won: number;
+  conversionRate: number;
+  pipelineByStage: Record<string, number>;
+}
+
+/** A single insight headline shown on the admin dashboard tile. */
+export interface InsightHeadline {
+  type: string;
+  severity: string;
+  title: string;
+}
+
+/**
+ * The admin statistical-insights overview (statistical-insights-engine, Req
+ * 11.1, 11.2): counts of the latest computed date's non-dismissed insights by
+ * severity (INFO/WARNING/DANGER) and the top few headlines. Both are empty when
+ * no insights have been computed yet.
+ */
+export interface InsightsSummary {
+  countsBySeverity: Record<string, number>;
+  top: InsightHeadline[];
+}
+
+/** The admin operational overview (Req 3.3). */
+export interface AdminSummary {
+  pendingApproval: number;
+  /** Counts per active fulfilment stage, keyed by the backend status name. */
+  perActiveStage: Record<string, number>;
+  /** Counts per exception/terminal state, keyed by the backend status name. */
+  exceptionStates: Record<string, number>;
+  packedAwaitingHandover: number;
+  handedOverAwaitingDispatch: number;
+  /** The leads/conversion overview (Req 6.6, lead-management). */
+  leads: LeadsSummary | null;
+  /** The statistical-insights overview (Req 11.1, 11.2, statistical-insights-engine). */
+  insights: InsightsSummary | null;
+}
+
+/** The packer's work queues (Req 3.4). */
+export interface PackingSummary {
+  approvedAwaitingPacking: number;
+  packedToday: number;
+  awaitingHandover: number;
+  awaitingDispatch: number;
+  /** Packing throughput so far today (packed ÷ hours elapsed), packing-throughput enhancement. */
+  packedPerHour?: number;
+}
+
+/** The accountant's money overview (Req 3.5); amounts are decimal rupee values. */
+export interface AccountantSummary {
+  codPending: number;
+  settled: number;
+  outstandingReceivables: number;
+}
+
 /** The SSE event types the dashboard reacts to (Req 11.2, 13.3, 17.4, 12.4, 14.4). */
 export type AdminEventType =
+  | 'ORDER_AWAITING_APPROVAL'
   | 'ORDER_PACKED'
   | 'ORDER_STATUS_CHANGED'
   | 'CLAIM_FILED_REQUIRED'
   | 'COURIER_ASSIGN_FAILED'
-  | 'WHATSAPP_FAILED';
+  | 'WHATSAPP_FAILED'
+  /** A per-recipient bell notification pushed live to the addressed role/user. */
+  | 'NOTIFICATION';
 
 /** A real-time notification surfaced in the dashboard feed. */
 export interface AdminNotification {
@@ -107,4 +245,6 @@ export interface AdminNotification {
   severity: 'info' | 'success' | 'warning' | 'danger';
   receivedAt: Date;
   orderCode?: string;
+  /** The order id, when the event is order-scoped (for click-through routing). */
+  orderId?: number;
 }

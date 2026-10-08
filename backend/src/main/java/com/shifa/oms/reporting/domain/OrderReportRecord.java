@@ -1,5 +1,6 @@
 package com.shifa.oms.reporting.domain;
 
+import com.shifa.oms.order.LeadSource;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.statemachine.OrderStatus;
 
@@ -18,8 +19,8 @@ import java.util.Objects;
  * <p>Carries exactly the fields the salesperson-wise report needs (Req 20.3):
  * customer name/mobile, the product lines (name + quantity), the money fields,
  * payment/order status, COD settlement status, loss claim status, AWB, and the
- * order date, plus the salesperson id and destination state used by the grouped
- * reports.
+ * order date, plus the salesperson id ({@code createdBy}), destination state,
+ * and {@link LeadSource} used by the grouped reports (Req 16.1, 16.3).
  */
 public record OrderReportRecord(
         Long orderId,
@@ -37,7 +38,10 @@ public record OrderReportRecord(
         OrderStatus orderStatus,
         String codSettlementStatus,
         String claimStatus,
-        String awb) {
+        String awb,
+        LeadSource leadSource,
+        /** Persisted customer balance; null means legacy projection fallback. */
+        BigDecimal customerOutstanding) {
 
     public OrderReportRecord {
         products = products == null ? List.of() : List.copyOf(products);
@@ -45,6 +49,13 @@ public record OrderReportRecord(
         amountReceived = nz(amountReceived);
         codAmount = nz(codAmount);
     }
+
+    // NOTE: the former 16-arg and 17-arg telescoping constructors were removed
+    // (they had already caused two silent-field regressions). Every caller now
+    // uses the single canonical 18-component constructor and passes an explicit
+    // leadSource + customerOutstanding (null where not tracked), so a future
+    // field insert fails to compile at the call site rather than silently
+    // shifting values. See ARCHITECTURE.md §12 R2 / ENHANCEMENT.md §4.
 
     private static BigDecimal nz(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;

@@ -20,7 +20,8 @@ import java.util.Map;
  * OMS does not pull in an extra JWT library.
  *
  * <p>Tokens carry the subject username ({@code sub}), user id ({@code uid}), role
- * ({@code role}), token type ({@code typ}) and standard {@code iat}/{@code exp}
+ * ({@code role}), display name ({@code name}, omitted when blank), token type
+ * ({@code typ}) and standard {@code iat}/{@code exp}
  * timestamps. Access tokens are short-lived; refresh tokens live longer and are
  * accepted only by {@code /api/auth/refresh}. Validation checks the signature
  * (constant-time), the expiry, and — when requested — the token type.
@@ -120,6 +121,20 @@ public class JwtService {
         payload.put("sub", user.getUsername());
         payload.put("uid", user.getId());
         payload.put("role", user.getRole().name());
+        // Display name, so the client can greet the user by name instead of by
+        // username (salespeople sign in with their mobile number). Omitted when
+        // blank so the client falls back to the username.
+        String fullName = user.getFullName();
+        if (fullName != null && !fullName.isBlank()) {
+            payload.put("name", fullName.trim());
+        }
+        // Force-password-change flag: when true the user must set a new password
+        // before using the app. Carried on the token so a page reload / refresh
+        // still knows (not just the login response). Omitted when false to keep
+        // tokens small and backward-compatible with the client's optional read.
+        if (user.isMustChangePassword()) {
+            payload.put("pwd", true);
+        }
         payload.put("typ", type.name());
         payload.put("iat", issuedAt.getEpochSecond());
         payload.put("exp", expiresAt.getEpochSecond());

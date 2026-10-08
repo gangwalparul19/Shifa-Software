@@ -120,7 +120,8 @@ class AdminUserServiceTest {
         currentUserService.setPrincipal(new AuthPrincipal(1L, "admin", Role.ADMIN));
 
         AdminUserResponse response = service.update(5L,
-                new UpdateUserRequest("Packer Renamed", Role.ACCOUNTANT, true));
+                new UpdateUserRequest("Packer Renamed", Role.ACCOUNTANT, true,
+                        null, null, null, null, null, null, null));
 
         assertThat(response.role()).isEqualTo(Role.ACCOUNTANT);
         assertThat(response.fullName()).isEqualTo("Packer Renamed");
@@ -128,16 +129,24 @@ class AdminUserServiceTest {
     }
 
     @Test
-    void resetPasswordReEncodesPassword() {
+    void resetPasswordSetsTemporaryPasswordAndForcesChange() {
         User target = userWithId("salesperson1", Role.SALESPERSON, true, 7L);
         String originalHash = target.getPasswordHash();
         when(userRepository.findById(7L)).thenReturn(Optional.of(target));
         when(userRepository.save(Mockito.any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        service.resetPassword(7L, new ResetPasswordRequest("brandnew1"));
+        // The request body is ignored; the reset always sets the fixed temp password.
+        AdminUserResponse response = service.resetPassword(7L, new ResetPasswordRequest("brandnew1"));
 
         assertThat(target.getPasswordHash()).isNotEqualTo(originalHash);
-        assertThat(passwordEncoder.matches("brandnew1", target.getPasswordHash())).isTrue();
+        assertThat(passwordEncoder.matches(AdminUserService.TEMPORARY_PASSWORD, target.getPasswordHash())).isTrue();
+        assertThat(passwordEncoder.matches("brandnew1", target.getPasswordHash())).isFalse();
+        // The user is now forced to choose a new password and the reset is tracked.
+        assertThat(target.isMustChangePassword()).isTrue();
+        assertThat(target.getPasswordResetAt()).isNotNull();
+        assertThat(target.getPasswordResetCount()).isEqualTo(1);
+        assertThat(response.mustChangePassword()).isTrue();
+        assertThat(response.passwordResetCount()).isEqualTo(1);
     }
 
     @Test
@@ -173,7 +182,8 @@ class AdminUserServiceTest {
         currentUserService.setPrincipal(new AuthPrincipal(1L, "admin", Role.ADMIN));
 
         assertThatThrownBy(() -> service.update(1L,
-                new UpdateUserRequest("Admin", Role.SALESPERSON, true)))
+                new UpdateUserRequest("Admin", Role.SALESPERSON, true,
+                        null, null, null, null, null, null, null)))
                 .isInstanceOf(ValidationException.class);
 
         Mockito.verify(userRepository, never()).save(Mockito.any());

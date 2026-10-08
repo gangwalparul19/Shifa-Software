@@ -4,6 +4,8 @@ import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.domain.PaymentStatus;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Objects;
 
@@ -15,7 +17,10 @@ import java.util.Objects;
  * directly against the model (Property 18) and the bulk fan-out against a plain
  * list (Property 19).
  *
- * <p>The barcode value is always the order code (Req 10.1). The COD amount is
+ * <p>The label carries two barcodes (label redesign feature): a courier barcode
+ * (name + AWB, when a courier/AWB has been allotted) and an order barcode
+ * (always present, our own order code) — see {@link InternalLabelContent} for
+ * the full rationale. The COD amount is
  * included on the content <em>if and only if</em> the order's payment status is
  * {@code COD} or {@code Partially_Paid}; it is omitted (left {@code null}, with
  * {@code codApplicable=false}) for {@code Fully_Paid} orders (Req 10.2).
@@ -30,7 +35,41 @@ public class LabelContentBuilder {
      * @param order the source order aggregate (never {@code null})
      * @return the assembled, render-agnostic label content
      */
+    private static final DateTimeFormatter ORDERED_ON = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
     public InternalLabelContent buildInternal(OrderEntity order) {
+        return buildInternal(order, null);
+    }
+
+    /**
+     * Builds the internal-label content model for a single order, printing the
+     * seller/pickup details from {@code company} when provided (Req 10.1, 10.2).
+     *
+     * @param order   the source order aggregate (never {@code null})
+     * @param company the seller/brand details for the shipping label, or {@code null} for defaults
+     * @return the assembled, render-agnostic label content
+     */
+    public InternalLabelContent buildInternal(OrderEntity order, LabelCompany company) {
+        return buildInternal(order, company, null, null);
+    }
+
+    /**
+     * Builds the internal-label content with the courier barcode section
+     * populated when a courier + AWB have been allotted (label redesign
+     * feature).
+     *
+     * <p>The order barcode always encodes our own order code; the courier
+     * barcode (name + AWB) is shown ONLY when both are supplied, so the courier
+     * team can scan the parcel straight into their own system at pickup while
+     * the godown/RTO flow always has our order code to scan against.
+     *
+     * @param order       the source order aggregate (never {@code null})
+     * @param company     the seller/brand details, or {@code null} for defaults
+     * @param courierName the courier partner's display name, or {@code null}/blank when not yet allotted
+     * @param courierAwb  the allotted AWB, or {@code null}/blank when not yet allotted
+     */
+    public InternalLabelContent buildInternal(OrderEntity order, LabelCompany company,
+                                              String courierName, String courierAwb) {
         Objects.requireNonNull(order, "order");
 
         List<InternalLabelContent.LabelLineItem> items = order.getLineItems().stream()
@@ -38,10 +77,13 @@ public class LabelContentBuilder {
                 .toList();
 
         boolean codApplicable = isCodApplicable(order.getPaymentStatus());
+        LabelCompany c = company != null ? company : LabelCompany.defaults();
+        boolean hasCourier = courierAwb != null && !courierAwb.isBlank();
 
         return new InternalLabelContent(
                 order.getOrderCode(),
-                order.getOrderCode(),
+                hasCourier ? blankToNull(courierName) : null,
+                hasCourier ? courierAwb.trim() : null,
                 order.getCustomerName(),
                 order.getCustomerMobile(),
                 order.getAddressLine(),
@@ -50,7 +92,83 @@ public class LabelContentBuilder {
                 order.getPostalCode(),
                 items,
                 codApplicable,
-                codApplicable ? order.getCodAmount() : null);
+                codApplicable ? order.getCodAmount() : null,
+                formatOrderedOn(order.getCreatedAt()),
+                order.getTotalAmount(),
+                paymentLabel(order.getPaymentStatus()),
+                c.sellerName(),
+                c.pickupReturnAddress(),
+                c.sellerGstin(),
+                c.sellerAddress(),
+                // Shopify order id for a Shopify-imported order (shown on the label
+                // as "Shopify Order Id#"); null for a sales order → line omitted.
+                shopifyOrderIdOf(order));
+    }
+
+    /**
+     * The human Shopify order NUMBER to print on the label (e.g. {@code #25618}),
+     * for a Shopify-sourced order only — else {@code null} (the line is omitted).
+     *
+     * <p>Deliberately NOT the stored {@code shopify_order_id}: that column holds
+     * Shopify's internal numeric id (e.g. {@code 7421945479343}, our idempotency
+     * key), whereas the staff/customer-facing identifier is the order <em>number</em>
+     * (e.g. {@code 25618}). The number is already captured, verbatim, in the order
+     * note the importer writes ("Imported from Shopify #25618"), so it is parsed
+     * back out of the note here — no new column/migration. Falls back to
+     * {@code null} when the number can't be found, so the wrong internal id is
+     * never shown.
+     */
+    static String shopifyOrderIdOf(OrderEntity order) {
+        if (order.getSource() != com.shifa.oms.order.OrderSource.SHOPIFY) {
+            return null;
+        }
+        return shopifyOrderNumberFromNote(order.getNotes());
+    }
+
+    /**
+     * "Imported from Shopify #25618 — …" → "25618" (the digits only; null when not
+     * present). The renderer's caption already ends with '#', so the value is the
+     * bare number to avoid a doubled "## ".
+     */
+    static String shopifyOrderNumberFromNote(String note) {
+        if (note == null || note.isBlank()) {
+            return null;
+        }
+        java.util.regex.Matcher m = SHOPIFY_NOTE_NUMBER.matcher(note);
+        if (!m.find()) {
+            return null;
+        }
+        String digits = m.group(1);
+        return (digits == null || digits.isBlank()) ? null : digits;
+    }
+
+    /** Captures the order number after "Imported from Shopify" (optional '#'), e.g. "#25618" or "25618". */
+    private static final java.util.regex.Pattern SHOPIFY_NOTE_NUMBER =
+            java.util.regex.Pattern.compile("Imported from Shopify\\s*#?(\\d+)",
+                    java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    private static String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String formatOrderedOn(LocalDateTime createdAt) {
+        return createdAt != null ? createdAt.format(ORDERED_ON) : null;
+    }
+
+    /** Human label for the payment status, shown prominently on the label. */
+    private String paymentLabel(PaymentStatus status) {
+        if (status == null) {
+            return "PREPAID";
+        }
+        return switch (status) {
+            case FULLY_PAID -> "PREPAID";
+            case COD -> "COD";
+            case PARTIALLY_PAID -> "PARTIALLY PAID";
+        };
     }
 
     /**
@@ -62,8 +180,13 @@ public class LabelContentBuilder {
      * @return one {@link InternalLabelContent} per input order, in order
      */
     public List<InternalLabelContent> buildBulk(List<OrderEntity> orders) {
+        return buildBulk(orders, null);
+    }
+
+    /** Bulk build with shared seller/brand details on every label. */
+    public List<InternalLabelContent> buildBulk(List<OrderEntity> orders, LabelCompany company) {
         Objects.requireNonNull(orders, "orders");
-        return orders.stream().map(this::buildInternal).toList();
+        return orders.stream().map(o -> buildInternal(o, company)).toList();
     }
 
     /** COD is shown on the label for COD and Partially_Paid orders only (Req 10.2). */
@@ -72,6 +195,7 @@ public class LabelContentBuilder {
     }
 
     private InternalLabelContent.LabelLineItem toLabelLine(OrderLineItem item) {
-        return new InternalLabelContent.LabelLineItem(item.getProductName(), item.getQuantity());
+        return new InternalLabelContent.LabelLineItem(
+                item.getProductName(), item.getQuantity(), item.getLineTotal());
     }
 }

@@ -102,6 +102,19 @@ public class SettingsService {
         settings.setBankIfsc(bankIfsc != null ? bankIfsc.toUpperCase(java.util.Locale.ROOT) : null);
         settings.setBankBranch(trimToNull(request.bankBranch()));
         settings.setGstSlabs(gstSlabs);
+        // GST-filing configuration (stored as-is; the filing module's value objects
+        // clamp/default these on read — ReminderWindow [1,30] default 7,
+        // ReconciliationTolerance [0.00,9999.99] default 1.00, turnover drives the
+        // GSTR-1 HSN 4-vs-6 digit rule). Null leaves the field unset.
+        settings.setAggregateTurnover(request.aggregateTurnover());
+        settings.setGstReminderWindowDays(request.gstReminderWindowDays());
+        settings.setGstReconciliationTolerance(request.gstReconciliationTolerance());
+        // Config-driven auto-approval (V73): switch defaults to OFF when the field
+        // is absent; the threshold is stored as-is (service treats null/non-positive
+        // as "nothing qualifies"). Negative values are already rejected by bean
+        // validation on the request.
+        settings.setAutoApproveEnabled(Boolean.TRUE.equals(request.autoApproveEnabled()));
+        settings.setAutoApproveMaxAmount(request.autoApproveMaxAmount());
         return repository.save(settings);
     }
 
@@ -135,6 +148,20 @@ public class SettingsService {
             slabs.add(slab.stripTrailingZeros().toPlainString());
         }
         return slabs.isEmpty() ? null : String.join(",", slabs);
+    }
+
+    /** Whether incoming Shopify orders are imported (the Shopify integration switch). */
+    @Transactional
+    public boolean isShopifySyncEnabled() {
+        return getSettings().isShopifySyncEnabled();
+    }
+
+    /** Turns the Shopify integration on or off; returns the persisted settings. */
+    @Transactional
+    public AppSettings setShopifySyncEnabled(boolean enabled) {
+        AppSettings settings = getSettings();
+        settings.setShopifySyncEnabled(enabled);
+        return repository.save(settings);
     }
 
     /**

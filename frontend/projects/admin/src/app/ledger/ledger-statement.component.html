@@ -1,0 +1,179 @@
+<admin-page-header
+  title="Ledger statement"
+  subtitle="Account statement with opening balance, chronological entries, running balance, and closing balance"
+  [breadcrumbs]="[{ label: 'Accounting' }, { label: 'Ledger statement' }]"
+>
+</admin-page-header>
+
+<!-- ================= Selector + period toolbar ================= -->
+<div class="lg-toolbar">
+  <div class="lg-toolbar__row">
+    <!-- Ledger account selector -->
+    <div class="lg-field lg-field--grow">
+      <label class="form-label">Ledger account</label>
+      <select
+        class="form-select"
+        [value]="ledgerId() ?? ''"
+        (change)="onLedgerChange($any($event.target).value)"
+        [disabled]="metaLoading()"
+      >
+        <option value="">{{ metaLoading() ? 'Loading accounts…' : 'Select a ledger account…' }}</option>
+        @for (l of ledgers(); track l.id) {
+          <option [value]="l.id">{{ l.name }}</option>
+        }
+      </select>
+    </div>
+
+    <!-- Period mode toggle -->
+    <div class="lg-field">
+      <label class="form-label">Period by</label>
+      <div class="lg-modes">
+        <button
+          type="button"
+          class="lg-chip"
+          [class.is-active]="periodMode() === 'fy'"
+          (click)="setPeriodMode('fy')"
+        >
+          Financial year
+        </button>
+        <button
+          type="button"
+          class="lg-chip"
+          [class.is-active]="periodMode() === 'range'"
+          (click)="setPeriodMode('range')"
+        >
+          Date range
+        </button>
+      </div>
+    </div>
+
+    <!-- Financial-year picker -->
+    @if (periodMode() === 'fy') {
+      <div class="lg-field">
+        <label class="form-label">Financial year</label>
+        <select
+          class="form-select"
+          [value]="financialYearId() ?? ''"
+          (change)="onFinancialYearChange($any($event.target).value)"
+        >
+          <option value="">All / unspecified</option>
+          @for (fy of financialYears(); track fy.id) {
+            <option [value]="fy.id">{{ fy.label }}{{ fy.closed ? ' (closed)' : '' }}</option>
+          }
+        </select>
+      </div>
+    } @else {
+      <!-- Date range picker -->
+      <div class="lg-field">
+        <label class="form-label">From</label>
+        <input type="date" class="form-control" [value]="from()" (change)="onDateEdited('from', $any($event.target).value)" />
+      </div>
+      <div class="lg-field">
+        <label class="form-label">To</label>
+        <input type="date" class="form-control" [value]="to()" (change)="onDateEdited('to', $any($event.target).value)" />
+      </div>
+    }
+
+    <div class="lg-spacer"></div>
+    <div class="lg-field lg-field--action">
+      <button type="button" class="btn btn-primary" (click)="load()" [disabled]="ledgerId() === null || loading()">
+        <i class="ti ti-refresh me-1"></i>Apply
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= States ================= -->
+@if (ledgerId() === null) {
+  <div class="lg-card"><div class="lg-empty"><i class="ti ti-book-2 me-2"></i>Select a ledger account to view its statement.</div></div>
+} @else if (loading()) {
+  <div class="lg-card"><div class="lg-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading statement…</div></div>
+} @else if (error()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+} @else if (statement(); as s) {
+
+  <!-- ============ Account header + opening/closing balances ============ -->
+  <div class="lg-summary">
+    <div class="lg-summary__head">
+      <div>
+        <h2 class="lg-summary__name">{{ s.ledgerName }}</h2>
+        <span class="badge" [ngClass]="naturePillClass(s.nature)">{{ natureLabel(s.nature) }}</span>
+      </div>
+      <div class="lg-summary__period text-secondary">{{ s.from }} to {{ s.to }}</div>
+    </div>
+    <div class="lg-balances">
+      <div class="lg-balance">
+        <div class="lg-balance__label">Opening balance</div>
+        <div class="lg-balance__value">{{ balanceText(s.opening) }}</div>
+      </div>
+      <div class="lg-balance lg-balance--closing">
+        <div class="lg-balance__label">Closing balance</div>
+        <div class="lg-balance__value">{{ balanceText(s.closing) }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Entries table (chronological, with running balance) ============ -->
+  <div class="lg-card">
+    <div class="lg-card__head">
+      <h3 class="lg-card__title">Entries</h3>
+      <span class="text-secondary small">{{ s.rows.length }} entr{{ s.rows.length === 1 ? 'y' : 'ies' }}</span>
+    </div>
+    <div class="table-responsive">
+      <table class="lg-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Reference</th>
+            <th>Type</th>
+            <th>Narration</th>
+            <th class="num">Debit</th>
+            <th class="num">Credit</th>
+            <th class="num">Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Opening balance row -->
+          <tr class="lg-opening-row">
+            <td class="text-secondary">{{ s.from }}</td>
+            <td colspan="3" class="fw-bold">Opening balance</td>
+            <td class="num"></td>
+            <td class="num"></td>
+            <td class="num fw-bold">{{ balanceText(s.opening) }}</td>
+          </tr>
+
+          @for (r of s.rows; track $index) {
+            <tr>
+              <td class="text-secondary">{{ r.date }}</td>
+              <td class="shifa-mono">{{ r.reference }}</td>
+              <td>
+                @if (r.type) {
+                  <span class="lg-type-badge">{{ voucherTypeLabel(r.type) }}</span>
+                }
+              </td>
+              <td>{{ r.narration }}</td>
+              <td class="num">{{ r.debit !== null ? money(r.debit) : '' }}</td>
+              <td class="num">{{ r.credit !== null ? money(r.credit) : '' }}</td>
+              <td class="num">{{ balanceText(r.balanceAfter) }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="7" class="lg-empty">
+                <i class="ti ti-inbox me-2"></i>No entries in this period — the closing balance equals the opening balance.
+              </td>
+            </tr>
+          }
+
+          <!-- Closing balance row -->
+          <tr class="lg-closing-row">
+            <td class="text-secondary">{{ s.to }}</td>
+            <td colspan="3" class="fw-bold">Closing balance</td>
+            <td class="num"></td>
+            <td class="num"></td>
+            <td class="num fw-bold">{{ balanceText(s.closing) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+}

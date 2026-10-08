@@ -26,6 +26,15 @@ import { ToastService } from './toast.service';
             aria-hidden="true"
           ></i>
           <span class="shifa-toasts__text">{{ toast.text }}</span>
+          @if (toast.action; as action) {
+            <button
+              type="button"
+              class="shifa-toasts__action"
+              (click)="action.run(); toasts.dismiss(toast.id)"
+            >
+              {{ action.label }}
+            </button>
+          }
           <button
             type="button"
             class="shifa-toasts__close"
@@ -81,6 +90,22 @@ import { ToastService } from './toast.service';
         font-size: 0.9rem;
         line-height: 1.4;
         word-break: break-word;
+      }
+      .shifa-toasts__action {
+        flex: 0 0 auto;
+        border: 1px solid rgba(255, 255, 255, 0.55);
+        background: rgba(255, 255, 255, 0.16);
+        color: #fff;
+        font-size: 0.8rem;
+        font-weight: 600;
+        padding: 0.2rem 0.6rem;
+        border-radius: 999px;
+        cursor: pointer;
+        white-space: nowrap;
+        align-self: center;
+      }
+      .shifa-toasts__action:hover {
+        background: rgba(255, 255, 255, 0.28);
       }
       .shifa-toasts__close {
         flex: 0 0 auto;

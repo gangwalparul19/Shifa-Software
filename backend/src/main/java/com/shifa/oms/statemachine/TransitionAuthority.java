@@ -1,0 +1,286 @@
+package com.shifa.oms.statemachine;
+
+import com.shifa.oms.auth.Role;
+
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * Pure per-transition role authority for the order lifecycle (design
+ * &sect;4.1/&sect;4.2). While {@link OrderStatus} is the authority on transition
+ * <em>legality</em>, this component holds the orthogonal
+ * {@code (from, to) -> Set<Role> (+ SYSTEM)} map that says <em>who</em> may
+ * trigger each legal transition.
+ *
+ * <p>Two clean failure modes result: a role that is not permitted for an
+ * otherwise legal transition yields {@link UnauthorizedTransitionException}
+ * (HTTP 403, Req 1.5, 2.7, 12.5), whereas an illegal transition (absent from the
+ * table) yields {@link IllegalStatusTransitionException} (HTTP 409) at the state
+ * machine layer.
+ *
+ * <p>{@code SYSTEM} models the automatic actor behind courier-driven edges
+ * (webhook / poller / assignment drainer, Req 15.5). It is a synthetic actor,
+ * not a {@link Role}: courier progressions are authorized for {@code SYSTEM}
+ * only, and are never permitted to any staff role. The
+ * {@code Handed_To_Delivery -> Courier_Assigned} edge is shared — a packer/admin
+ * dispatches and the system completes the assignment — so it is permitted to
+ * {@code PACKING_USER}, {@code ADMIN}, and {@code SYSTEM}.
+ *
+ * <p>This class is pure and immutable with no Spring/persistence dependencies,
+ * so it can be exercised in-memory by property-based tests.
+ */
+public final class TransitionAuthority {
+
+    /**
+     * The set of actors permitted to trigger a single legal transition: any
+     * subset of the staff {@link Role}s plus an optional {@code SYSTEM} flag for
+     * automatic (courier-driven) transitions.
+     */
+    private record Authorization(Set<Role> roles, boolean system) {
+        Authorization {
+            roles = roles.isEmpty() ? Collections.emptySet()
+                    : Collections.unmodifiableSet(EnumSet.copyOf(roles));
+        }
+
+        boolean permitsRole(Role role) {
+            return role != null && roles.contains(role);
+        }
+    }
+
+    /** Edge key {@code (from, to)} into the authority table. */
+    private record Edge(OrderStatus from, OrderStatus to) {
+        Edge {
+            Objects.requireNonNull(from, "from");
+            Objects.requireNonNull(to, "to");
+        }
+    }
+
+    private final Map<Edge, Authorization> table = buildTable();
+
+    private static Map<Edge, Authorization> buildTable() {
+        Map<Edge, Authorization> t = new HashMap<>();
+
+        // Admin approval outcomes (Req 6.2, 6.3). ACCOUNTANT may also approve
+        // (client workflow: admin/accountant approve) — reject/cancel stay ADMIN.
+        put(t, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.APPROVED, false,
+                Role.ADMIN, Role.ACCOUNTANT);
+        put(t, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.REJECTED, false, Role.ADMIN);
+        put(t, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.CANCELLED, false, Role.ADMIN);
+
+        // Admin cancellation at any pre-delivery fulfilment stage (order-cancellation
+        // feature). An admin can cancel an order even after a courier tracking id
+        // (AWB) has been generated — e.g. the payment never arrived, or the customer
+        // cancels after a partial payment — with a mandatory note. For a QuikShipX
+        // order the cancel also tells the courier to abort the pickup. ADMIN only
+        // (never SYSTEM: the courier never drives CANCELLED); the legality of each
+        // edge is enforced by OrderStatus.canTransitionTo, so only these pre-delivery
+        // states are reachable (DELIVERED/CLOSED/COD_COLLECTED and the return/failure
+        // terminals have no CANCELLED edge — a delivered order is a Return, not a Cancel).
+        put(t, OrderStatus.APPROVED, OrderStatus.CANCELLED, false, Role.ADMIN);
+        put(t, OrderStatus.LABEL_GENERATED, OrderStatus.CANCELLED, false, Role.ADMIN);
+        put(t, OrderStatus.PACKED, OrderStatus.CANCELLED, false, Role.ADMIN);
+        put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.CANCELLED, false, Role.ADMIN);
+        put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.CANCELLED, false, Role.ADMIN);
+        put(t, OrderStatus.DISPATCHED, OrderStatus.CANCELLED, false, Role.ADMIN);
+        put(t, OrderStatus.IN_TRANSIT, OrderStatus.CANCELLED, false, Role.ADMIN);
+        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CANCELLED, false, Role.ADMIN);
+
+        // Payment-panel rejection: the Payment Verifier (or an admin) rejects a
+        // prepaid order's payment, moving it to the distinct PAYMENT_REJECTED
+        // terminal status (rejection-status feature). Allowed both before approval
+        // (order still pending) and after (the payment check runs alongside the
+        // lifecycle). ADMIN is included so an admin can also reject a payment.
+        put(t, OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.PAYMENT_REJECTED, false,
+                Role.PAYMENT_VERIFIER, Role.ADMIN);
+        put(t, OrderStatus.APPROVED, OrderStatus.PAYMENT_REJECTED, false,
+                Role.PAYMENT_VERIFIER, Role.ADMIN);
+
+        // Rework a rejected order back into the approval queue (rejection-status
+        // rework feature): the creating salesperson/team lead (or an admin) fixes the
+        // flagged issue and resubmits. Staff-only, no SYSTEM. Own-order scoping is
+        // enforced in the service layer (a team lead can resubmit their own or their
+        // team's orders; TEAM_LEAD can punch orders, so they can also rework rejected ones).
+        put(t, OrderStatus.REJECTED, OrderStatus.PENDING_ADMIN_APPROVAL, false,
+                Role.SALESPERSON, Role.TEAM_LEAD, Role.ADMIN);
+        put(t, OrderStatus.PAYMENT_REJECTED, OrderStatus.PENDING_ADMIN_APPROVAL, false,
+                Role.SALESPERSON, Role.TEAM_LEAD, Role.ADMIN);
+
+        // Auto label on approval — SYSTEM (label service) or ADMIN.
+        put(t, OrderStatus.APPROVED, OrderStatus.LABEL_GENERATED, true, Role.ADMIN);
+
+        // Packing barcode scan (Req 8.2).
+        put(t, OrderStatus.LABEL_GENERATED, OrderStatus.PACKED, false,
+                Role.PACKING_USER, Role.ADMIN);
+
+        // QuikShipX fast-forward: allotting a tracking id at approval hands the
+        // order straight to the courier (SYSTEM only), skipping manual packing.
+        put(t, OrderStatus.LABEL_GENERATED, OrderStatus.COURIER_ASSIGNED, true);
+
+        // Handover to the delivery courier (Req 9.2, 9.3).
+        put(t, OrderStatus.PACKED, OrderStatus.HANDED_TO_DELIVERY, false,
+                Role.PACKING_USER, Role.ADMIN);
+
+        // Dispatch (packer/admin) enqueues assignment which SYSTEM completes
+        // (Req 9.5, 10.1); a failed/retried assignment self-retains via SYSTEM.
+        put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.COURIER_ASSIGNED, true,
+                Role.PACKING_USER, Role.ADMIN);
+        put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.HANDED_TO_DELIVERY, true);
+
+        // Manual "Mark Delivered" for in-house (non-QuikShipX) orders: ADMIN,
+        // PACKING_USER, or the order's own SALESPERSON may mark it delivered
+        // directly (in-house-delivery feature). The order-instance check that
+        // this is genuinely an in-house order, and that a SALESPERSON caller owns
+        // the specific order, is enforced in the service layer — this table only
+        // expresses which roles may ever trigger the edge.
+        put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.DELIVERED, false,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+
+        // Manual in-house progression out of handover (in-house-delivery feature):
+        // an in-house order has no courier partner, so NO webhook/poll will ever
+        // move it along — staff advance it by hand through the same in-transit
+        // stages a courier would report. Staff-only edges (never SYSTEM, since no
+        // courier drives them); the in-house-only and salesperson-ownership checks
+        // live in the service layer, exactly as for the mark-delivered edge above.
+        put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.DISPATCHED, false,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.IN_TRANSIT, false,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.OUT_FOR_DELIVERY, false,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+
+        // Courier pickup + webhook/tracking progressions — SYSTEM only (Req 10.2,
+        // 10.3). Forward jumps from Courier_Assigned keep a QuikShipX tracking poll
+        // from stalling when an intermediate scan is skipped between polls.
+        //
+        // RTO is the one exception: alongside the automatic courier-driven edge,
+        // a packer/admin may also manually mark an order RTO by scanning its
+        // label (label redesign feature) — e.g. a parcel physically returns to
+        // the godown before the courier's webhook/poll reports it. That manual
+        // path requires a reason (enforced in the service layer); the table here
+        // only expresses which roles/SYSTEM may ever trigger the edge.
+        put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED, true);
+        put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.IN_TRANSIT, true);
+        put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.OUT_FOR_DELIVERY, true);
+        put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.DELIVERED, true);
+        put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN);
+        put(t, OrderStatus.COURIER_ASSIGNED, OrderStatus.REDISPATCH, true);
+        // The in-transit forward hops are shared: SYSTEM drives them for a courier
+        // order, and staff drive them by hand for an in-house order (which has no
+        // courier to report progress) — same reasoning as the manual RTO edges.
+        put(t, OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.DISPATCHED, OrderStatus.OUT_FOR_DELIVERY, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.DISPATCHED, OrderStatus.DELIVERED, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.DISPATCHED, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN);
+        put(t, OrderStatus.DISPATCHED, OrderStatus.REDISPATCH, true);
+        put(t, OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.IN_TRANSIT, OrderStatus.DELIVERED, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.IN_TRANSIT, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN);
+        put(t, OrderStatus.IN_TRANSIT, OrderStatus.REDISPATCH, true);
+        // Delivery outcomes (Req 11.1, 11.2): SYSTEM for courier orders, and staff
+        // for a manually-progressed in-house delivery.
+        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CUSTOMER_REJECTED, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERY_FAILED, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+
+        // Recovering from a failed/refused attempt: re-attempt the delivery, or give
+        // up and return to origin. SYSTEM is permitted too — a courier's tracking can
+        // legitimately report a fresh attempt, or the parcel coming back, after a
+        // failed one. RTO stays staff-restricted to ADMIN/PACKING_USER (it requires a
+        // categorized reason and raises the credit note), matching the other RTO edges.
+        put(t, OrderStatus.DELIVERY_FAILED, OrderStatus.OUT_FOR_DELIVERY, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.DELIVERY_FAILED, OrderStatus.RTO, true,
+                Role.PACKING_USER, Role.ADMIN);
+        put(t, OrderStatus.CUSTOMER_REJECTED, OrderStatus.OUT_FOR_DELIVERY, true,
+                Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.CUSTOMER_REJECTED, OrderStatus.RTO, true,
+                Role.PACKING_USER, Role.ADMIN);
+        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.RTO, true, Role.PACKING_USER, Role.ADMIN);
+        put(t, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.REDISPATCH, true);
+
+        // Settlement — ACCOUNTANT/ADMIN or SYSTEM (Req 16.1, 16.2). PACKING_USER
+        // and SALESPERSON are also permitted so the manual in-house "Mark
+        // Delivered" action (which immediately settles to Closed/COD_Collected in
+        // the same action) can complete for the same roles that trigger Delivered
+        // above; the order-instance ownership/in-house check lives in the service.
+        put(t, OrderStatus.DELIVERED, OrderStatus.CLOSED, true,
+                Role.ACCOUNTANT, Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+        put(t, OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED, true,
+                Role.ACCOUNTANT, Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
+
+        return Collections.unmodifiableMap(t);
+    }
+
+    private static void put(Map<Edge, Authorization> t, OrderStatus from, OrderStatus to,
+                            boolean system, Role... roles) {
+        Set<Role> roleSet = roles.length == 0 ? EnumSet.noneOf(Role.class) : EnumSet.of(roles[0], roles);
+        t.put(new Edge(from, to), new Authorization(roleSet, system));
+    }
+
+    /**
+     * Whether {@code role} may trigger the transition {@code from -> to}.
+     *
+     * @return {@code true} iff the transition appears in the authority table and
+     *         the role is one of its permitted staff roles. Always {@code false}
+     *         for a {@code null} role or a courier-only ({@code SYSTEM}) edge.
+     */
+    public boolean permits(OrderStatus from, OrderStatus to, Role role) {
+        Authorization auth = lookup(from, to);
+        return auth != null && auth.permitsRole(role);
+    }
+
+    /**
+     * Whether the automatic {@code SYSTEM} actor may trigger {@code from -> to}
+     * (courier assignment / webhook / poller driven transitions, Req 15.5).
+     */
+    public boolean permitsSystem(OrderStatus from, OrderStatus to) {
+        Authorization auth = lookup(from, to);
+        return auth != null && auth.system();
+    }
+
+    /**
+     * Asserts that {@code role} may trigger {@code from -> to}, throwing
+     * {@link UnauthorizedTransitionException} (HTTP 403) otherwise. The caller is
+     * expected to have already established the transition's legality via
+     * {@link OrderStatus#canTransitionTo(OrderStatus)}.
+     */
+    public void assertAuthorized(OrderStatus from, OrderStatus to, Role role) {
+        if (!permits(from, to, role)) {
+            throw new UnauthorizedTransitionException(
+                    "Role " + role + " is not permitted to transition an order from "
+                            + from + " to " + to + ".");
+        }
+    }
+
+    /**
+     * Asserts that the automatic {@code SYSTEM} actor may trigger
+     * {@code from -> to}, throwing {@link UnauthorizedTransitionException}
+     * otherwise.
+     */
+    public void assertSystemAuthorized(OrderStatus from, OrderStatus to) {
+        if (!permitsSystem(from, to)) {
+            throw new UnauthorizedTransitionException(
+                    "SYSTEM is not permitted to transition an order from "
+                            + from + " to " + to + ".");
+        }
+    }
+
+    private Authorization lookup(OrderStatus from, OrderStatus to) {
+        if (from == null || to == null) {
+            return null;
+        }
+        return table.get(new Edge(from, to));
+    }
+}

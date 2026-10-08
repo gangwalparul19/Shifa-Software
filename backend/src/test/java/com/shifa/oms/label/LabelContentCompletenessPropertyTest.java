@@ -36,9 +36,10 @@ class LabelContentCompletenessPropertyTest {
     void internalLabelContainsAllOrderDetailsAndCodIffCodOrPartial(@ForAll("orders") OrderEntity order) {
         InternalLabelContent content = builder.buildInternal(order);
 
-        // Order identifier + barcode value equal to the order code (Req 10.1).
+        // Order identifier is always present; no courier barcode is populated
+        // when the builder is called without courier details (Req 10.1).
         assertThat(content.orderCode()).isEqualTo(order.getOrderCode());
-        assertThat(content.barcodeValue()).isEqualTo(order.getOrderCode());
+        assertThat(content.hasCourierBarcode()).isFalse();
 
         // Customer details (Req 10.1).
         assertThat(content.customerName()).isEqualTo(order.getCustomerName());

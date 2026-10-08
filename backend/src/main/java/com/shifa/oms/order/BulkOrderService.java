@@ -2,6 +2,8 @@ package com.shifa.oms.order;
 
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.order.dto.BulkActionResult;
+import com.shifa.oms.order.dto.BulkPreviewResponse;
+import com.shifa.oms.order.dto.UpdateDeliveryStatusRequest;
 import com.shifa.oms.packing.PackingService;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.slf4j.Logger;
@@ -42,13 +44,29 @@ public class BulkOrderService {
     private final AdminOrderService adminOrderService;
     private final PackingService packingService;
     private final OrderRepository orderRepository;
+    /**
+     * Per-order in-house delivery-status primitive (nullable): backs the bulk
+     * in-house dispatch status update. Null under the legacy 3-arg constructor
+     * (existing tests) — {@link #bulkUpdateInHouseDeliveryStatus} then skips.
+     */
+    private final ManualDeliveryService manualDeliveryService;
 
+    /** Legacy constructor (tests): no bulk delivery-status update. */
     public BulkOrderService(AdminOrderService adminOrderService,
                             PackingService packingService,
                             OrderRepository orderRepository) {
+        this(adminOrderService, packingService, orderRepository, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public BulkOrderService(AdminOrderService adminOrderService,
+                            PackingService packingService,
+                            OrderRepository orderRepository,
+                            ManualDeliveryService manualDeliveryService) {
         this.adminOrderService = adminOrderService;
         this.packingService = packingService;
         this.orderRepository = orderRepository;
+        this.manualDeliveryService = manualDeliveryService;
     }
 
     /**
@@ -69,6 +87,13 @@ public class BulkOrderService {
             if (order.getOrderStatus() != OrderStatus.PENDING_ADMIN_APPROVAL) {
                 result.skipped(id, "Order is not awaiting approval (status: "
                         + order.getOrderStatus() + ").");
+                continue;
+            }
+            // Payment-verification gate (payment-verification-gated approval): an
+            // order with an unverified / rejected payment is skipped with a clear
+            // reason so the UI can list it as "verify payment first".
+            if (needsPaymentVerification(order)) {
+                result.skipped(id, "Payment not verified.");
                 continue;
             }
             try {
@@ -103,7 +128,7 @@ public class BulkOrderService {
                 continue;
             }
             try {
-                packingService.scan(order.getOrderCode(), actor.username());
+                packingService.scan(order.getOrderCode(), actor);
                 result.succeeded(id);
             } catch (RuntimeException ex) {
                 log.debug("Bulk mark-packed skipped order {}: {}", id, ex.getMessage());
@@ -111,6 +136,99 @@ public class BulkOrderService {
             }
         }
         return result.build();
+    }
+
+    /**
+     * Sets the delivery status of every eligible IN-HOUSE order in {@code ids} to
+     * {@code target} (Out_For_Delivery / Delivered / Dispatched / In_Transit /
+     * Customer_Rejected / Delivery_Failed), for the dispatch queue's multi-select.
+     *
+     * <p>Each order is delegated to {@link ManualDeliveryService#updateDeliveryStatus}
+     * in its own transaction, so it reuses exactly the same rules as the
+     * order-detail "Update status" action: the in-house-only gate (courier orders
+     * are tracked by the partner and are skipped with a reason), the state-machine
+     * legality check, and — on {@code Delivered} — the settlement hop to
+     * {@code Closed}/{@code COD_Collected}. A failure/skip on one order never rolls
+     * back the others (partial success, mirroring {@link #bulkApprove}).
+     *
+     * @param ids    the order ids to update
+     * @param target the delivery status to set on each
+     * @param note   optional note (required by the per-order primitive for the
+     *               failure outcomes Customer_Rejected / Delivery_Failed)
+     * @param actor  the acting principal (ADMIN / PACKING_USER; a salesperson may
+     *               only affect their own orders, enforced per-order)
+     */
+    public BulkActionResult bulkUpdateInHouseDeliveryStatus(List<Long> ids, OrderStatus target,
+                                                            String note, AuthPrincipal actor) {
+        BulkActionResult.Builder result = new BulkActionResult.Builder();
+        if (manualDeliveryService == null) {
+            // No primitive wired (legacy construction) — nothing can be updated.
+            for (Long id : distinct(ids)) {
+                result.skipped(id, "Bulk delivery-status update is unavailable.");
+            }
+            return result.build();
+        }
+        UpdateDeliveryStatusRequest request = new UpdateDeliveryStatusRequest(target, null, note);
+        for (Long id : distinct(ids)) {
+            try {
+                manualDeliveryService.updateDeliveryStatus(id, actor, request);
+                result.succeeded(id);
+            } catch (RuntimeException ex) {
+                log.debug("Bulk delivery-status update skipped order {}: {}", id, ex.getMessage());
+                result.skipped(id, reasonOf(ex));
+            }
+        }
+        return result.build();
+    }
+
+    /**
+     * Read-only eligibility preview. This is advisory only: every mutation
+     * still re-reads the order and re-checks the workflow in its own transaction.
+     */
+    public BulkPreviewResponse preview(String action, List<Long> ids) {
+        String normalized = action == null ? "" : action.trim().toUpperCase();
+        if (!List.of("APPROVE", "MARK_PACKED", "LABELS").contains(normalized)) {
+            throw new com.shifa.oms.common.ValidationException(
+                    "Unsupported bulk action. Use APPROVE, MARK_PACKED, or LABELS.");
+        }
+        List<BulkPreviewResponse.EligibleItem> eligible = new java.util.ArrayList<>();
+        List<BulkPreviewResponse.IneligibleItem> ineligible = new java.util.ArrayList<>();
+        for (Long id : distinct(ids)) {
+            OrderEntity order = orderRepository.findById(id).orElse(null);
+            if (order == null) {
+                ineligible.add(new BulkPreviewResponse.IneligibleItem(id, null, null, "Order not found."));
+                continue;
+            }
+            String reason = switch (normalized) {
+                case "APPROVE" -> order.getOrderStatus() != OrderStatus.PENDING_ADMIN_APPROVAL
+                        ? "Order is not awaiting approval."
+                        : (needsPaymentVerification(order) ? "Payment not verified." : null);
+                case "MARK_PACKED" -> order.getOrderStatus() == OrderStatus.LABEL_GENERATED
+                        ? null : "Order is not ready to pack.";
+                case "LABELS" -> null;
+                default -> "Unsupported bulk action.";
+            };
+            if (reason == null) {
+                eligible.add(new BulkPreviewResponse.EligibleItem(
+                        order.getId(), order.getOrderCode(), order.getOrderStatus()));
+            } else {
+                ineligible.add(new BulkPreviewResponse.IneligibleItem(
+                        order.getId(), order.getOrderCode(), order.getOrderStatus(), reason));
+            }
+        }
+        return new BulkPreviewResponse(normalized, distinct(ids).size(),
+                List.copyOf(eligible), List.copyOf(ineligible));
+    }
+
+    /**
+     * Whether an order's payment still needs verification before it can be
+     * approved: PENDING or REJECTED. A pure-COD order (null) or an already-VERIFIED
+     * order does not. Mirrors the authoritative gate in {@link AdminOrderService#approve}.
+     */
+    private static boolean needsPaymentVerification(OrderEntity order) {
+        PaymentVerificationStatus status = order.getPaymentVerificationStatus();
+        return status == PaymentVerificationStatus.PENDING
+                || status == PaymentVerificationStatus.REJECTED;
     }
 
     /** De-duplicates the requested ids while preserving request order. */

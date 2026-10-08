@@ -14,7 +14,6 @@ import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
-import com.shifa.oms.reconciliation.ReceivableEntity;
 import com.shifa.oms.reconciliation.ReceivableRepository;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
 import com.shifa.oms.reporting.domain.DateRange;
@@ -52,6 +51,10 @@ import java.util.Set;
 public class DashboardMetricsService {
 
     private static final DateTimeFormatter DAY_LABEL = DateTimeFormatter.ISO_LOCAL_DATE;
+
+    /** Statuses that never count towards revenue/turnover (rejected/cancelled). */
+    private static final Set<OrderStatus> NON_REVENUE =
+            EnumSet.of(OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED);
 
     /** Statuses treated as "delivered" for the delivered card and conversion rate. */
     private static final Set<OrderStatus> DELIVERED_STATES =
@@ -127,15 +130,11 @@ public class DashboardMetricsService {
     @Transactional(readOnly = true)
     public LiveStats liveStats() {
         LocalDate today = LocalDate.now(clock);
-        List<OrderEntity> orders = orderRepository.findAll();
-        long realtimeOrders = 0;
-        BigDecimal todaysCollection = BigDecimal.ZERO;
-        for (OrderEntity o : orders) {
-            if (o.getCreatedAt() != null && o.getCreatedAt().toLocalDate().equals(today)) {
-                realtimeOrders++;
-                todaysCollection = todaysCollection.add(nz(o.getAmountReceived()));
-            }
-        }
+        // SQL COUNT + SUM over today's half-open window, not findAll() every tick.
+        OrderRepository.DayLiveRow row = orderRepository.liveStatsBetween(
+                today.atStartOfDay(), today.plusDays(1).atStartOfDay());
+        long realtimeOrders = row != null ? row.getOrderCount() : 0;
+        BigDecimal todaysCollection = row != null ? nz(row.getCollection()) : BigDecimal.ZERO;
         return new LiveStats(
                 realtimeOrders,
                 scale(todaysCollection),
@@ -146,22 +145,11 @@ public class DashboardMetricsService {
     /** Activity-card counts (Req 19.6), also pushed periodically over SSE. */
     @Transactional(readOnly = true)
     public ActivityCards activityCards() {
-        List<OrderEntity> orders = orderRepository.findAll();
-        long toFulfill = 0;
-        long toCapture = 0;
-        long rto = 0;
-        for (OrderEntity o : orders) {
-            OrderStatus status = o.getOrderStatus();
-            if (TO_FULFILL_STATES.contains(status)) {
-                toFulfill++;
-            }
-            if (status == OrderStatus.PENDING_ADMIN_APPROVAL) {
-                toCapture++;
-            }
-            if (status == OrderStatus.RTO) {
-                rto++;
-            }
-        }
+        // SQL GROUP BY order_status, not findAll() + Java tally on every SSE tick.
+        java.util.Map<OrderStatus, Long> counts = statusCountMap();
+        long toFulfill = countOf(counts, TO_FULFILL_STATES);
+        long toCapture = counts.getOrDefault(OrderStatus.PENDING_ADMIN_APPROVAL, 0L);
+        long rto = counts.getOrDefault(OrderStatus.RTO, 0L);
         long whatsappSent = countSentWhatsapp();
         long codPending = countUnsettled(ReceivableType.COD_RECEIVABLE);
         long claimsPending = countUnsettled(ReceivableType.CLAIM_RECEIVABLE);
@@ -191,7 +179,7 @@ public class DashboardMetricsService {
                 delivered++;
             } else if (s == OrderStatus.RTO) {
                 rto++;
-            } else if (s == OrderStatus.COURIER_LOST) {
+            } else if (s == OrderStatus.REDISPATCH) {
                 lost++;
             }
         }
@@ -266,12 +254,19 @@ public class DashboardMetricsService {
         return result;
     }
 
-    /** Adds each windowed order's sales into the bucket whose range contains its date. */
+    /**
+     * Adds each windowed order's sales into the bucket whose range contains its
+     * date. Non-revenue orders (rejected / payment-rejected / cancelled) are
+     * skipped so the sales trend never counts a sale that didn't happen.
+     */
     private void fillSales(List<Bucket> buckets, List<OrderReportRecord> records) {
         if (buckets.isEmpty()) {
             return;
         }
         for (OrderReportRecord r : records) {
+            if (NON_REVENUE.contains(r.orderStatus())) {
+                continue;
+            }
             LocalDate date = r.orderDate();
             if (date == null) {
                 continue;
@@ -319,21 +314,43 @@ public class DashboardMetricsService {
                 o.getId(), o.getOrderCode(), orderDate, o.getCreatedBy(),
                 o.getCustomerName(), o.getCustomerMobile(), o.getState(), products,
                 o.getTotalAmount(), o.getAmountReceived(), o.getCodAmount(),
-                o.getPaymentStatus(), o.getOrderStatus(), null, null, null);
+                o.getPaymentStatus(), o.getOrderStatus(), null, null, null, o.getLeadSource(),
+                o.getCustomerOutstanding());
+    }
+
+    /** The GROUP BY order_status aggregate as an {@code OrderStatus -> count} map (unknown names skipped). */
+    private java.util.Map<OrderStatus, Long> statusCountMap() {
+        java.util.Map<OrderStatus, Long> map = new java.util.EnumMap<>(OrderStatus.class);
+        for (OrderRepository.StatusCountRow row : orderRepository.statusCounts()) {
+            if (row.getStatus() == null) {
+                continue;
+            }
+            try {
+                map.merge(OrderStatus.valueOf(row.getStatus()), row.getCount(), Long::sum);
+            } catch (IllegalArgumentException ignored) {
+                // A stored status name with no matching enum constant — skip it.
+            }
+        }
+        return map;
+    }
+
+    /** Sums the counts of the given statuses from a status-count map. */
+    private static long countOf(java.util.Map<OrderStatus, Long> counts, Set<OrderStatus> statuses) {
+        long total = 0;
+        for (OrderStatus s : statuses) {
+            total += counts.getOrDefault(s, 0L);
+        }
+        return total;
     }
 
     private BigDecimal unsettledTotal(ReceivableType type) {
-        BigDecimal total = BigDecimal.ZERO;
-        for (ReceivableEntity e : receivableRepository
-                .findByTypeAndSettledFalseOrderByCreatedAtDescIdDesc(type)) {
-            total = total.add(nz(e.getAmount()));
-        }
-        return scale(total);
+        // SQL SUM of unsettled amounts (V71 (type, settled) index) rather than
+        // loading rows and summing in Java.
+        return scale(nz(receivableRepository.sumAmountByTypeAndSettled(type, false)));
     }
 
     private long countUnsettled(ReceivableType type) {
-        return receivableRepository
-                .findByTypeAndSettledFalseOrderByCreatedAtDescIdDesc(type).size();
+        return receivableRepository.countByTypeAndSettledFalse(type);
     }
 
     /** WhatsApp messages successfully delivered (SENT {@code WHATSAPP_NOTIFY} outbox rows, Req 19.6). */

@@ -1,0 +1,270 @@
+<admin-page-header
+  title="Balance Sheet"
+  [subtitle]="periodLabel()"
+  [breadcrumbs]="[{ label: 'Accounting' }, { label: 'Balance Sheet' }]"
+></admin-page-header>
+
+<!-- ================= Period toolbar ================= -->
+<div class="bs-toolbar">
+  <div class="bs-toolbar__row">
+    <div class="bs-modes shifa-formtabs" role="tablist">
+      <button
+        type="button"
+        class="shifa-formtab"
+        [class.is-active]="periodMode() === 'fy'"
+        (click)="setMode('fy')"
+        role="tab"
+        [attr.aria-selected]="periodMode() === 'fy'"
+      >
+        <i class="ti ti-calendar me-1"></i> Financial year
+      </button>
+      <button
+        type="button"
+        class="shifa-formtab"
+        [class.is-active]="periodMode() === 'range'"
+        (click)="setMode('range')"
+        role="tab"
+        [attr.aria-selected]="periodMode() === 'range'"
+      >
+        <i class="ti ti-calendar-stats me-1"></i> Date range
+      </button>
+    </div>
+
+    <div class="bs-spacer"></div>
+
+    <div class="bs-controls">
+      @if (periodMode() === 'fy') {
+        <div>
+          <label class="form-label">Financial year</label>
+          <select
+            class="form-select"
+            [value]="financialYearId() ?? ''"
+            (change)="onFinancialYearChanged($any($event.target).value)"
+          >
+            <option value="">Current financial year</option>
+            @for (fy of financialYears(); track fy.id) {
+              <option [value]="fy.id">{{ fy.label }}{{ fy.closed ? ' (closed)' : '' }}</option>
+            }
+          </select>
+        </div>
+      } @else {
+        <div>
+          <label class="form-label">From</label>
+          <input
+            type="date"
+            class="form-control"
+            [value]="from()"
+            (change)="onDateEdited('from', $any($event.target).value)"
+          />
+        </div>
+        <div>
+          <label class="form-label">To (as at)</label>
+          <input
+            type="date"
+            class="form-control"
+            [value]="to()"
+            (change)="onDateEdited('to', $any($event.target).value)"
+          />
+        </div>
+      }
+      <label class="bs-compare form-check form-switch">
+        <input
+          class="form-check-input"
+          type="checkbox"
+          role="switch"
+          [checked]="comparative()"
+          (change)="toggleComparative()"
+        />
+        <span class="form-check-label">Compare prior period</span>
+      </label>
+      <button type="button" class="btn btn-primary" (click)="load()" [disabled]="loading()">
+        <i class="ti ti-refresh me-1"></i>Apply
+      </button>
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <div class="bs-card">
+    <div class="bs-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading Balance Sheet…</div>
+  </div>
+} @else if (error()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+} @else if (data(); as d) {
+  <!-- ============ Balanced / difference banner (Reqs 3.4, 13.2) ============ -->
+  @if (d.balanced) {
+    <div class="bs-banner bs-banner--ok">
+      <i class="ti ti-circle-check bs-banner__icon"></i>
+      <div>
+        <div class="bs-banner__title">Balanced as at {{ d.asAtDate }}</div>
+        <div class="bs-banner__sub">
+          Assets {{ money(d.assetsTotal) }} equal Liabilities &amp; Equity {{ money(d.liabilitiesAndEquityTotal) }}.
+          The Balance Sheet ties out for this period.
+        </div>
+      </div>
+    </div>
+  } @else {
+    <div class="bs-banner bs-banner--bad">
+      <i class="ti ti-alert-triangle bs-banner__icon"></i>
+      <div>
+        <div class="bs-banner__title">Out of balance by {{ money(difference()) }}</div>
+        <div class="bs-banner__sub">
+          Assets {{ money(d.assetsTotal) }} vs Liabilities &amp; Equity {{ money(d.liabilitiesAndEquityTotal) }}.
+          Review the opening balances and vouchers in this period.
+        </div>
+      </div>
+    </div>
+  }
+
+  <div class="bs-grid">
+    <!-- ============ Assets side ============ -->
+    <div class="bs-card">
+      <div class="bs-card__head">
+        <h3 class="bs-card__title">Assets</h3>
+        @if (d.comparative) {
+          <span class="text-secondary small">Prior period shown</span>
+        }
+      </div>
+      <div class="table-responsive">
+        <table class="bs-table">
+          <thead>
+            <tr>
+              <th>Group / ledger</th>
+              @if (d.comparative) {
+                <th class="num">Prior</th>
+              }
+              <th class="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (node of d.assets; track node.groupId) {
+              <ng-container
+                *ngTemplateOutlet="nodeRow; context: { $implicit: node, depth: 0, comparative: d.comparative }"
+              ></ng-container>
+            } @empty {
+              <tr>
+                <td [attr.colspan]="d.comparative ? 3 : 2" class="bs-empty">No asset balances in this period.</td>
+              </tr>
+            }
+          </tbody>
+          <tfoot>
+            <tr class="bs-total-row">
+              <td class="fw-bold">Total assets</td>
+              @if (d.comparative) {
+                <td class="num fw-bold">{{ d.priorAssetsTotal !== null ? money(d.priorAssetsTotal) : '—' }}</td>
+              }
+              <td class="num fw-bold">{{ money(d.assetsTotal) }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============ Liabilities & Equity side ============ -->
+    <div class="bs-card">
+      <div class="bs-card__head">
+        <h3 class="bs-card__title">Liabilities &amp; Equity</h3>
+        @if (d.comparative) {
+          <span class="text-secondary small">Prior period shown</span>
+        }
+      </div>
+      <div class="table-responsive">
+        <table class="bs-table">
+          <thead>
+            <tr>
+              <th>Group / ledger</th>
+              @if (d.comparative) {
+                <th class="num">Prior</th>
+              }
+              <th class="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (node of d.liabilitiesAndEquity; track node.groupId) {
+              <ng-container
+                *ngTemplateOutlet="nodeRow; context: { $implicit: node, depth: 0, comparative: d.comparative }"
+              ></ng-container>
+            } @empty {
+              <tr>
+                <td [attr.colspan]="d.comparative ? 3 : 2" class="bs-empty">No liability or equity balances in this period.</td>
+              </tr>
+            }
+            <!-- Injected current-period retained-earnings line (Reqs 3.2) -->
+            <tr class="bs-retained">
+              <td>
+                <span class="bs-node__name">
+                  <i class="ti ti-report-money me-1"></i>{{ d.retainedEarnings.label }}
+                  <span class="badge bg-purple-lt ms-1">{{ drcrLabel(d.retainedEarnings.side) }}</span>
+                </span>
+              </td>
+              @if (d.comparative) {
+                <td class="num">
+                  {{ d.retainedEarnings.priorAmount !== null ? money(d.retainedEarnings.priorAmount) : '—' }}
+                </td>
+              }
+              <td class="num">{{ money(d.retainedEarnings.amount) }}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="bs-total-row">
+              <td class="fw-bold">Total liabilities &amp; equity</td>
+              @if (d.comparative) {
+                <td class="num fw-bold">
+                  {{ d.priorLiabilitiesAndEquityTotal !== null ? money(d.priorLiabilitiesAndEquityTotal) : '—' }}
+                </td>
+              }
+              <td class="num fw-bold">{{ money(d.liabilitiesAndEquityTotal) }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ============ Recursive grouped-node row (drill-down) ============ -->
+<ng-template #nodeRow let-node let-depth="depth" let-comparative="comparative">
+  <tr
+    class="bs-node"
+    [class.bs-node--clickable]="hasChildren(node)"
+    (click)="hasChildren(node) && toggleGroup(node.groupId)"
+  >
+    <td>
+      <span class="bs-node__name" [style.paddingLeft.rem]="depth * 1.1">
+        @if (hasChildren(node)) {
+          <i class="ti bs-node__chev" [class.ti-chevron-right]="!isExpanded(node.groupId)" [class.ti-chevron-down]="isExpanded(node.groupId)"></i>
+        } @else {
+          <i class="ti ti-point bs-node__dot"></i>
+        }
+        <span class="fw-bold">{{ node.name }}</span>
+      </span>
+    </td>
+    @if (comparative) {
+      <td class="num">{{ node.priorAmount !== null ? money(node.priorAmount) : '—' }}</td>
+    }
+    <td class="num fw-bold">{{ money(node.amount) }}</td>
+  </tr>
+
+  @if (isExpanded(node.groupId)) {
+    <!-- Nested child groups -->
+    @for (child of node.childGroups; track child.groupId) {
+      <ng-container
+        *ngTemplateOutlet="nodeRow; context: { $implicit: child, depth: depth + 1, comparative: comparative }"
+      ></ng-container>
+    }
+    <!-- Leaf ledger accounts -->
+    @for (leaf of node.ledgers; track leaf.ledgerId) {
+      <tr class="bs-leaf">
+        <td>
+          <span class="bs-node__name" [style.paddingLeft.rem]="(depth + 1) * 1.1 + 0.4">
+            <i class="ti ti-file-invoice bs-leaf__icon"></i>{{ leaf.name }}
+          </span>
+        </td>
+        @if (comparative) {
+          <td class="num">{{ leaf.priorAmount !== null ? money(leaf.priorAmount) : '—' }}</td>
+        }
+        <td class="num">{{ money(leaf.amount) }}</td>
+      </tr>
+    }
+  }
+</ng-template>

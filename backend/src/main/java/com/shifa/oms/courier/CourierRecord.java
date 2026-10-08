@@ -36,6 +36,16 @@ public class CourierRecord {
     @Column(name = "shipping_label_key", length = 512)
     private String shippingLabelKey;
 
+    /**
+     * A vendor-provided, ready-made tracking link for an in-house delivery partner
+     * (in-house delivery-partner feature, V76). Stored verbatim — it may not fit a
+     * per-carrier {@code {awb}} template — and, when present, takes precedence over
+     * the courier company's {@code tracking_url_template}. Null for QuikShipX /
+     * automated-courier orders, which build their link from the company template.
+     */
+    @Column(name = "tracking_url", length = 500)
+    private String trackingUrl;
+
     @Column(name = "estimated_delivery")
     private LocalDate estimatedDelivery;
 
@@ -58,8 +68,22 @@ public class CourierRecord {
         this.estimatedDelivery = estimatedDelivery;
     }
 
+    /**
+     * As {@link #assign(Long, String, String, LocalDate)} but also records a
+     * vendor-provided direct tracking link (in-house delivery-partner feature).
+     */
+    public void assign(Long courierCompanyId, String awb, String shippingLabelKey,
+                       LocalDate estimatedDelivery, String trackingUrl) {
+        assign(courierCompanyId, awb, shippingLabelKey, estimatedDelivery);
+        this.trackingUrl = trackingUrl;
+    }
+
     public void setShippingLabelKey(String shippingLabelKey) {
         this.shippingLabelKey = shippingLabelKey;
+    }
+
+    public void setTrackingUrl(String trackingUrl) {
+        this.trackingUrl = trackingUrl;
     }
 
     public void setLastCourierStatus(String lastCourierStatus) {
@@ -84,6 +108,10 @@ public class CourierRecord {
 
     public String getShippingLabelKey() {
         return shippingLabelKey;
+    }
+
+    public String getTrackingUrl() {
+        return trackingUrl;
     }
 
     public LocalDate getEstimatedDelivery() {

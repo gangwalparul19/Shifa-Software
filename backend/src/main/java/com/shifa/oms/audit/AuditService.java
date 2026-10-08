@@ -71,6 +71,34 @@ public class AuditService {
     }
 
     /**
+     * Records an audit event for an explicitly supplied actor, rather than
+     * resolving one from the security context. Used for automatic transitions
+     * that run without an authenticated principal (e.g. the courier assignment
+     * drainer / webhook), which must be attributed to the {@code SYSTEM} actor
+     * (Req 15.5). Best-effort and never-throwing, exactly like {@link #record}.
+     *
+     * @param actorUserId   the actor's user id (nullable, e.g. {@code null} for SYSTEM)
+     * @param actorUsername the actor label (e.g. {@code "SYSTEM"})
+     * @param action        the action verb (see {@link AuditActions})
+     * @param entityType    the target entity type discriminator
+     * @param entityId      the target entity id (nullable)
+     * @param summary       a short human-readable description (nullable)
+     * @return the persisted event, or {@code null} when the write was skipped/failed
+     */
+    @Transactional
+    public AuditEvent record(Long actorUserId, String actorUsername, String action,
+                             String entityType, String entityId, String summary) {
+        try {
+            return repository.save(new AuditEvent(
+                    actorUserId, actorUsername, action, entityType, entityId, truncate(summary)));
+        } catch (RuntimeException e) {
+            log.warn("Failed to record audit event {} for {} {}: {}",
+                    action, entityType, entityId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Filtered, paged, newest-first audit trail for the admin console.
      *
      * @param action     exact action-verb filter (nullable)

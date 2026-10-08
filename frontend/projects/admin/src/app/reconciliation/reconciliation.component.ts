@@ -1,10 +1,18 @@
-import { DatePipe } from '@angular/common';
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { IstDatePipe } from '../shared/ist-date.pipe';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, FormControl, ReactiveFormsModule } from '@angular/forms';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { Money, ReceivableType, SortState } from 'core';
-import { ReconciliationService } from './reconciliation.service';
+import { HttpErrorResponse } from '@angular/common/http';
+import { ApiError } from 'core';
 import {
+  ReconciliationService,
+  RemittanceImportResult,
+  RemittanceRowStatus,
+} from './reconciliation.service';
+import {
+  CodAging,
+  CollectibleSummary,
   CourierSummary,
   ReceivableRow,
   Segregation,
@@ -44,7 +52,7 @@ type SettledFilter = 'all' | 'unsettled' | 'settled';
   selector: 'admin-reconciliation',
   imports: [
     ReactiveFormsModule,
-    DatePipe,
+    IstDatePipe,
     PageHeaderComponent,
     StatePanelComponent,
     DensityToggleComponent,
@@ -63,9 +71,67 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
   // --- Data ---------------------------------------------------------------
   protected readonly summary = signal<CourierSummary[]>([]);
   protected readonly receivables = signal<ReceivableRow[]>([]);
+
+  /**
+   * Aggregate outstanding KPI tiles across all couriers, summed from the
+   * per-courier summary already loaded (no new data). COD receivable = COD
+   * still to collect, claim receivable = loss claims owed, and the combined
+   * total outstanding.
+   */
+  protected readonly totalCodOutstanding = computed(() =>
+    this.sumMoney(this.summary().map((c) => c.codOutstanding)),
+  );
+  protected readonly totalClaimOutstanding = computed(() =>
+    this.sumMoney(this.summary().map((c) => c.claimOutstanding)),
+  );
+  protected readonly totalOutstanding = computed(() =>
+    this.sumMoney(this.summary().map((c) => c.totalOutstanding)),
+  );
   protected readonly unsettled = signal<UnsettledCod[]>([]);
   protected readonly segregation = signal<Segregation | null>(null);
   protected readonly claims = signal<ReceivableRow[]>([]);
+  /** COD aging buckets + courier-SLA flag (cod-aging enhancement). */
+  protected readonly codAging = signal<CodAging | null>(null);
+  /** One-tap collectible summary — courier-COD vs customer dues + claims (ENHANCEMENT 1.4). */
+  protected readonly collectible = signal<CollectibleSummary | null>(null);
+
+  // --- Client-side paging for the Unsettled-COD + Pending-Claims tabs -----
+  protected readonly unsettledPage = signal(0);
+  protected readonly unsettledSize = signal(readPageSize('unsettledCod', 10));
+  protected readonly unsettledTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.unsettled().length / this.unsettledSize())),
+  );
+  protected readonly unsettledPageItems = computed<UnsettledCod[]>(() => {
+    const s = this.unsettledPage() * this.unsettledSize();
+    return this.unsettled().slice(s, s + this.unsettledSize());
+  });
+
+  protected readonly claimsPage = signal(0);
+  protected readonly claimsSize = signal(readPageSize('pendingClaims', 10));
+  protected readonly claimsTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.claims().length / this.claimsSize())),
+  );
+  protected readonly claimsPageItems = computed<ReceivableRow[]>(() => {
+    const s = this.claimsPage() * this.claimsSize();
+    return this.claims().slice(s, s + this.claimsSize());
+  });
+
+  goToUnsettledPage(p: number): void {
+    this.unsettledPage.set(p);
+  }
+  setUnsettledSize(size: number): void {
+    this.unsettledSize.set(size);
+    writePageSize('unsettledCod', size);
+    this.unsettledPage.set(0);
+  }
+  goToClaimsPage(p: number): void {
+    this.claimsPage.set(p);
+  }
+  setClaimsSize(size: number): void {
+    this.claimsSize.set(size);
+    writePageSize('pendingClaims', size);
+    this.claimsPage.set(0);
+  }
 
   // --- UI state -----------------------------------------------------------
   protected readonly tab = signal<Tab>('receivables');
@@ -77,14 +143,25 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
   // --- Filters (receivables tab) ------------------------------------------
   protected readonly filterCourier = signal<number | null>(null);
   protected readonly filterType = signal<ReceivableType | null>(null);
-  protected readonly filterSettled = signal<SettledFilter>('all');
+  /** Default to Unsettled (outstanding) so the tab doesn't dump every settled row. */
+  protected readonly filterSettled = signal<SettledFilter>('unsettled');
   protected readonly search = new FormControl<string>('', { nonNullable: true });
   protected readonly fromDate = new FormControl<string>('', { nonNullable: true });
   protected readonly toDate = new FormControl<string>('', { nonNullable: true });
 
+  /** Whether the collapsible advanced-filter panel is open (collapsed by default). */
+  protected readonly filtersOpen = signal(false);
+  /** How many advanced filters deviate from their defaults, for the toggle badge. */
+  protected readonly activeReceivableFilterCount = signal(0);
+
+  /** Show/hide the advanced-filter panel. */
+  toggleFilters(): void {
+    this.filtersOpen.update((open) => !open);
+  }
+
   // --- Receivables paging + sort ------------------------------------------
   protected readonly recvPage = signal(0);
-  protected readonly recvSize = signal(readPageSize(TABLE_KEY, 20));
+  protected readonly recvSize = signal(readPageSize(TABLE_KEY, 10));
   protected readonly recvTotalPages = signal(0);
   protected readonly recvTotalElements = signal(0);
   protected readonly recvSort = signal<SortState>({ field: 'createdAt', dir: 'desc' });
@@ -99,6 +176,16 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
 
   private toastTimer?: ReturnType<typeof setTimeout>;
 
+  // --- Courier COD remittance import (enhancement) -------------------------
+  protected readonly remittanceOpen = signal(false);
+  protected readonly remittanceFile = signal<File | null>(null);
+  protected readonly remittanceBusy = signal(false);
+  protected readonly remittanceError = signal<string | null>(null);
+  /** The dry-run preview result (null until a file has been previewed). */
+  protected readonly remittancePreview = signal<RemittanceImportResult | null>(null);
+  /** The committed import result (null until the import is confirmed). */
+  protected readonly remittanceResult = signal<RemittanceImportResult | null>(null);
+
   ngOnInit(): void {
     this.loadAll();
 
@@ -112,6 +199,8 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     this.toDate.valueChanges
       .pipe(takeUntil(this.destroy$))
       .subscribe(() => this.reloadReceivables());
+
+    this.updateReceivableFilterCount();
   }
 
   ngOnDestroy(): void {
@@ -131,8 +220,23 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     this.refreshReceivables();
     this.refreshUnsettled();
     this.refreshSegregation();
+    this.refreshCodAging();
     this.refreshClaims(() => {
       this.loading.set(false);
+    });
+  }
+
+  /** Loads the COD aging buckets + SLA flag + the collectible summary (non-fatal on error). */
+  private refreshCodAging(): void {
+    this.service.collectibleSummary().subscribe({
+      next: (c) => this.collectible.set(c),
+      error: () => this.collectible.set(null),
+    });
+    this.service.codAging().subscribe({
+      next: (a) => this.codAging.set(a),
+      error: () => {
+        /* non-fatal; the aging widget simply doesn't render */
+      },
     });
   }
 
@@ -177,7 +281,19 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
   /** Reset the receivables list to page 0 and reload (on any filter/sort change). */
   private reloadReceivables(): void {
     this.recvPage.set(0);
+    this.updateReceivableFilterCount();
     this.refreshReceivables();
+  }
+
+  /** Recomputes how many advanced filters deviate from their defaults (badge). */
+  private updateReceivableFilterCount(): void {
+    let count = 0;
+    if (this.filterCourier() != null) count++;
+    if (this.filterType()) count++;
+    if (this.filterSettled() !== 'unsettled') count++;
+    if (this.fromDate.value) count++;
+    if (this.toDate.value) count++;
+    this.activeReceivableFilterCount.set(count);
   }
 
   goToReceivablesPage(page: number): void {
@@ -202,7 +318,7 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
   clearReceivableFilters(): void {
     this.filterCourier.set(null);
     this.filterType.set(null);
-    this.filterSettled.set('all');
+    this.filterSettled.set('unsettled');
     this.search.setValue('', { emitEvent: false });
     this.fromDate.setValue('', { emitEvent: false });
     this.toDate.setValue('', { emitEvent: false });
@@ -213,7 +329,7 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     return !!(
       this.filterCourier() != null ||
       this.filterType() ||
-      this.filterSettled() !== 'all' ||
+      this.filterSettled() !== 'unsettled' ||
       this.search.value ||
       this.fromDate.value ||
       this.toDate.value
@@ -224,6 +340,10 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     this.service.unsettledCod().subscribe({
       next: (rows) => {
         this.unsettled.set(rows);
+        const maxPage = Math.max(0, this.unsettledTotalPages() - 1);
+        if (this.unsettledPage() > maxPage) {
+          this.unsettledPage.set(maxPage);
+        }
         done?.();
       },
       error: () => done?.(),
@@ -244,6 +364,10 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     this.service.pendingClaims().subscribe({
       next: (rows) => {
         this.claims.set(rows);
+        const maxPage = Math.max(0, this.claimsTotalPages() - 1);
+        if (this.claimsPage() > maxPage) {
+          this.claimsPage.set(maxPage);
+        }
         done?.();
       },
       error: () => done?.(),
@@ -326,6 +450,12 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     return `₹${value}`;
   }
 
+  /** Sums a list of Money (decimal-string) values into a formatted ₹ total. */
+  private sumMoney(values: (Money | undefined | null)[]): string {
+    const total = values.reduce<number>((acc, v) => acc + Number(v ?? 0), 0);
+    return `₹${total.toFixed(2)}`;
+  }
+
   courierLabel(name: string | null): string {
     return name ?? 'Unassigned';
   }
@@ -340,5 +470,108 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
       clearTimeout(this.toastTimer);
     }
     this.toastTimer = setTimeout(() => this.toast.set(null), 4000);
+  }
+
+  // --- Courier COD remittance import (enhancement) --------------------------
+
+  openRemittanceImport(): void {
+    this.remittanceFile.set(null);
+    this.remittanceError.set(null);
+    this.remittancePreview.set(null);
+    this.remittanceResult.set(null);
+    this.remittanceBusy.set(false);
+    this.remittanceOpen.set(true);
+  }
+
+  closeRemittanceImport(): void {
+    this.remittanceOpen.set(false);
+    if (this.remittanceResult()) {
+      // Something was actually settled — refresh totals + lists.
+      this.loadAll();
+    }
+  }
+
+  /** Handles the file picker change; resets any prior preview/result. */
+  onRemittanceFileChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    this.remittanceFile.set(file);
+    this.remittancePreview.set(null);
+    this.remittanceResult.set(null);
+    this.remittanceError.set(null);
+  }
+
+  /** Step 1 — dry-run the import to preview the auto-match without settling anything. */
+  previewRemittance(): void {
+    const file = this.remittanceFile();
+    if (!file || this.remittanceBusy()) {
+      return;
+    }
+    this.remittanceBusy.set(true);
+    this.remittanceError.set(null);
+    this.remittanceResult.set(null);
+    this.service.importRemittance(file, true).subscribe({
+      next: (res) => {
+        this.remittancePreview.set(res);
+        this.remittanceBusy.set(false);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.remittanceBusy.set(false);
+        this.remittanceError.set(this.describeRemittanceError(err));
+      },
+    });
+  }
+
+  /** Step 2 — commit the import (dryRun=false), settling every clean match. */
+  confirmRemittance(): void {
+    const file = this.remittanceFile();
+    if (!file || this.remittanceBusy()) {
+      return;
+    }
+    this.remittanceBusy.set(true);
+    this.remittanceError.set(null);
+    this.service.importRemittance(file, false).subscribe({
+      next: (res) => {
+        this.remittanceResult.set(res);
+        this.remittanceBusy.set(false);
+        this.showToast(
+          'ok',
+          `Remittance import complete: ${res.settled} settled, ${res.mismatched + res.notFound + res.errors} need review.`,
+        );
+      },
+      error: (err: HttpErrorResponse) => {
+        this.remittanceBusy.set(false);
+        this.remittanceError.set(this.describeRemittanceError(err));
+      },
+    });
+  }
+
+  /** Tabler badge tone for a per-row remittance outcome. */
+  remittanceRowTone(status: RemittanceRowStatus): string {
+    switch (status) {
+      case 'SETTLED':
+        return 'done';
+      case 'ALREADY_SETTLED':
+        return 'progress';
+      case 'MISMATCH':
+        return 'pending';
+      case 'ERROR':
+        return 'bad';
+      default:
+        return 'neutral';
+    }
+  }
+
+  /** Formats a remittance row's amount (may be a raw number, unlike Money elsewhere). */
+  remittanceMoney(value: number | string | undefined | null): string {
+    if (value === undefined || value === null) {
+      return '—';
+    }
+    return `₹${value}`;
+  }
+
+  private describeRemittanceError(err: HttpErrorResponse): string {
+    const apiError = err.error as ApiError | undefined;
+    return apiError?.message ?? 'Could not process the CSV. Please check the file and try again.';
   }
 }

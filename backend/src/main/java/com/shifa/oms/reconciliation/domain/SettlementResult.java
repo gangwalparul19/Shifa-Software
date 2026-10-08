@@ -8,11 +8,11 @@ import java.util.Optional;
 
 /**
  * The immutable outcome of applying a settlement side effect to an order when it
- * enters {@code Delivered}, {@code RTO} or {@code Courier_Lost}
+ * enters {@code Delivered}, {@code RTO} or {@code Redispatch}
  * (Requirement 16.1, 16.2, 16.3, 17.2, 17.3).
  *
  * @param newStatus            the resulting order status (Closed / COD_Collected
- *                             / RTO / Courier_Lost)
+ *                             / RTO / Redispatch)
  * @param customerOutstanding  the order's customer outstanding amount after
  *                             settlement (always 0 for these transitions)
  * @param codAmount            the order's COD amount after settlement (cancelled

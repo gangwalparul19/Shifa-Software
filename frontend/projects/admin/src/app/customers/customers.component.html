@@ -4,8 +4,8 @@
   [breadcrumbs]="[{ label: 'Customers' }]"
 >
   <admin-density-toggle />
-  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
-    <i class="ti ti-refresh me-1"></i> Refresh
+  <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
+    <i class="ti ti-refresh"></i>
   </button>
 </admin-page-header>
 
@@ -48,7 +48,47 @@
     [message]="search.value ? 'No customers match your search.' : 'Customers appear here once orders come in.'"
   />
 } @else {
-  <div class="card">
+  <!-- Mobile: avatar rows with a kebab that opens the existing detail (Req 11.1) -->
+  <div class="shifa-cust-list d-md-none">
+    @for (c of customers(); track c.mobile) {
+      <div class="shifa-cust" (click)="openDetail(c)">
+        <div class="shifa-cust__avatar" aria-hidden="true">{{ customerInitials(c.name) }}</div>
+        <div class="shifa-cust__main">
+          <div class="shifa-cust__name">
+            <span class="shifa-cust__nametext">{{ c.name || '—' }}</span>
+            @if (c.repeatBuyer) {
+              <span class="shifa-cust__tag"><i class="ti ti-repeat"></i> Repeat</span>
+            }
+          </div>
+          <div class="shifa-cust__phone">{{ c.mobile }}</div>
+          <div class="shifa-cust__meta">
+            <i class="ti ti-shopping-bag"></i>{{ c.orderCount }} order{{ c.orderCount === 1 ? '' : 's' }}
+            <span class="shifa-cust__dot">·</span>
+            <span class="shifa-cust__spent">{{ money(c.totalSpent) }}</span>
+          </div>
+        </div>
+        <div class="shifa-cust__actions" (click)="stopRowClick($event)">
+          <a class="shifa-cust__act" [href]="'tel:' + c.mobile" aria-label="Call customer" title="Call">
+            <i class="ti ti-phone"></i>
+          </a>
+          <button type="button" class="shifa-cust__act shifa-cust__act--wa" (click)="sendWhatsAppSummary(c, $event)" aria-label="WhatsApp customer" title="WhatsApp">
+            <i class="ti ti-brand-whatsapp"></i>
+          </button>
+        </div>
+      </div>
+    }
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+
+  <!-- Desktop (≥768px): the existing rich customers table -->
+  <div class="card d-none d-md-block">
     <div class="table-responsive">
       <table class="table table-vcenter card-table table-hover stagger-rows">
         <thead>
@@ -69,7 +109,7 @@
               <td class="text-secondary">{{ c.mobile }}</td>
               <td class="text-end">{{ c.orderCount }}</td>
               <td class="text-end">{{ money(c.totalSpent) }}</td>
-              <td class="text-secondary">{{ c.lastOrderAt ? (c.lastOrderAt | date: 'dd MMM, HH:mm') : '—' }}</td>
+              <td class="text-secondary">{{ c.lastOrderAt ? (c.lastOrderAt | istDate: 'dd MMM, HH:mm') : '—' }}</td>
               <td>
                 <div class="d-flex flex-wrap gap-1">
                   @if (c.repeatBuyer) {
@@ -82,14 +122,15 @@
                   }
                 </div>
               </td>
-              <td class="text-end">
-                <button
-                  type="button"
-                  class="btn btn-sm btn-outline-primary"
-                  (click)="$event.stopPropagation(); openDetail(c)"
-                >
-                  View
-                </button>
+              <td class="text-end" (click)="stopRowClick($event)">
+                <div class="btn-list justify-content-end flex-nowrap">
+                  <a class="btn btn-sm btn-outline-secondary" [href]="'tel:' + c.mobile" title="Call customer" aria-label="Call customer">
+                    <i class="ti ti-phone"></i>
+                  </a>
+                  <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsAppSummary(c, $event)" title="WhatsApp customer" aria-label="WhatsApp customer">
+                    <i class="ti ti-brand-whatsapp"></i>
+                  </button>
+                </div>
               </td>
             </tr>
           }
@@ -107,92 +148,263 @@
   </div>
 }
 
-<!-- Detail drawer -->
-@if (detailLoading() || selectedDetail() || detailError()) {
+<!-- Detail drawer (Customer 360) -->
+@if (detailLoading() || selectedProfile() || detailError()) {
   <div class="shifa-overlay" (click)="closeDetail()"></div>
-  <aside class="shifa-drawer" role="dialog" aria-label="Customer detail">
+  <aside class="shifa-drawer cust-dr" role="dialog" aria-label="Customer detail">
     @if (detailLoading()) {
-      <div class="shifa-drawer__body">
+      <header class="cust-dr__head">
+        <span class="cust-dr__avatar">…</span>
+        <div class="cust-dr__headmain"><div class="cust-dr__name">Loading…</div></div>
+        <button type="button" class="cust-dr__close" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
+      </header>
+      <div class="shifa-drawer__body cust-dr__body">
         <div class="skeleton skeleton-line w-60 mb-3"></div>
         <div class="skeleton skeleton-card"></div>
       </div>
     } @else if (detailError()) {
-      <div class="shifa-drawer__body"><div class="alert alert-danger">{{ detailError() }}</div></div>
-    } @else if (selectedDetail(); as detail) {
-      <header class="shifa-drawer__head">
-        <div>
-          <h3 class="mb-1">{{ detail.summary.name || 'Customer' }}</h3>
-          <div class="text-secondary">{{ detail.summary.mobile }}</div>
+      <header class="cust-dr__head">
+        <div class="cust-dr__headmain"><div class="cust-dr__name">Customer</div></div>
+        <button type="button" class="cust-dr__close" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
+      </header>
+      <div class="shifa-drawer__body cust-dr__body"><div class="alert alert-danger">{{ detailError() }}</div></div>
+    } @else if (selectedProfile(); as profile) {
+      <!-- Themed green header: avatar + name + mobile + risk pill -->
+      <header class="cust-dr__head">
+        <span class="cust-dr__avatar">{{ customerInitials(profile.summary.name) }}</span>
+        <div class="cust-dr__headmain">
+          <div class="cust-dr__name">{{ profile.summary.name || 'Customer' }}</div>
+          <a class="cust-dr__mobile" href="tel:{{ profile.summary.mobile }}">
+            <i class="ti ti-phone me-1"></i>{{ profile.summary.mobile }}
+          </a>
         </div>
-        <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeDetail()" aria-label="Close">
-          <i class="ti ti-x"></i>
-        </button>
+        <span class="cust-dr__tag">
+          @if (profile.summary.repeatBuyer) { <i class="ti ti-repeat me-1"></i>Repeat } @else { New }
+        </span>
+        <button type="button" class="cust-dr__close" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
       </header>
 
-      <div class="shifa-drawer__body">
-        <div class="d-flex flex-wrap gap-1 mb-3">
-          @if (detail.summary.repeatBuyer) {
-            <span class="badge" data-group="done"><i class="ti ti-repeat me-1"></i>Repeat buyer</span>
-          }
-          @if (detail.summary.registered) {
-            <span class="badge" data-group="progress"><i class="ti ti-user-check me-1"></i>Registered</span>
-          } @else {
-            <span class="badge" data-group="neutral">Guest</span>
-          }
+      <div class="shifa-drawer__body cust-dr__body">
+        <!-- Tabbed navigation so the drawer doesn't require a long scroll -->
+        <div class="shifa-formtabs mb-3" role="tablist">
+          <button type="button" class="shifa-formtab" [class.is-active]="custTab() === 'overview'"
+            (click)="custTab.set('overview')" role="tab" [attr.aria-selected]="custTab() === 'overview'">
+            <i class="ti ti-user me-1"></i> Overview
+          </button>
+          <button type="button" class="shifa-formtab" [class.is-active]="custTab() === 'crm'"
+            (click)="custTab.set('crm')" role="tab" [attr.aria-selected]="custTab() === 'crm'">
+            <i class="ti ti-tags me-1"></i> CRM
+          </button>
+          <button type="button" class="shifa-formtab" [class.is-active]="custTab() === 'orders'"
+            (click)="custTab.set('orders')" role="tab" [attr.aria-selected]="custTab() === 'orders'">
+            <i class="ti ti-history me-1"></i> Orders
+          </button>
         </div>
 
-        <div class="row row-cards mb-4">
-          <div class="col-6">
-            <div class="card card-sm"><div class="card-body">
-              <div class="text-secondary small">Orders</div>
-              <div class="h2 mb-0">{{ detail.summary.orderCount }}</div>
-            </div></div>
+        @if (custTab() === 'overview') {
+        <!-- One-tap WhatsApp (click-to-chat, message pre-filled) -->
+        @if (profile.summary.mobile) {
+          <div class="cust-dr__wa mb-3">
+            @for (t of whatsappTemplates(); track t.key) {
+              <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsApp(profile, t.key)">
+                <i class="ti {{ t.icon }} me-1"></i>{{ t.title }}
+              </button>
+            }
           </div>
-          <div class="col-6">
-            <div class="card card-sm"><div class="card-body">
-              <div class="text-secondary small">Total spent</div>
-              <div class="h2 mb-0">{{ money(detail.summary.totalSpent) }}</div>
-            </div></div>
+        }
+        <!-- Risk banner (§1.2) -->
+        <div class="cust-dr__risk" [attr.data-level]="profile.risk.level">
+          <div class="cust-dr__risk-top">
+            <span class="badge {{ riskPillClass(profile.risk.level) }}">
+              <i class="ti ti-shield-half-filled me-1"></i>{{ riskLabel(profile.risk.level) }}
+            </span>
+            <span class="cust-dr__risk-rate">
+              {{ pct(profile.metrics.successRate) }}% delivery success
+            </span>
+          </div>
+          <div class="cust-dr__risk-msg">{{ profile.risk.message }}</div>
+        </div>
+
+        <!-- Stat cards -->
+        <div class="cust-dr__stats">
+          <div class="cust-dr__stat">
+            <div class="cust-dr__stat-label"><i class="ti ti-shopping-bag me-1"></i>Orders</div>
+            <div class="cust-dr__stat-val">{{ profile.summary.orderCount }}</div>
+          </div>
+          <div class="cust-dr__stat">
+            <div class="cust-dr__stat-label"><i class="ti ti-cash me-1"></i>Total spent</div>
+            <div class="cust-dr__stat-val">{{ money(profile.summary.totalSpent) }}</div>
           </div>
         </div>
 
-        <div class="row g-1 mb-4">
-          <div class="col-5 text-secondary">First order</div>
-          <div class="col-7">{{ detail.summary.firstOrderAt ? (detail.summary.firstOrderAt | date: 'dd MMM yyyy') : '—' }}</div>
-          <div class="col-5 text-secondary">Last order</div>
-          <div class="col-7">{{ detail.summary.lastOrderAt ? (detail.summary.lastOrderAt | date: 'dd MMM yyyy') : '—' }}</div>
+        <!-- Delivery reliability mini-metrics -->
+        <div class="cust-dr__metrics">
+          <div class="cust-dr__metric">
+            <span class="cust-dr__metric-v text-success">{{ profile.metrics.deliveredCount }}</span>
+            <span class="cust-dr__metric-k">Delivered</span>
+          </div>
+          <div class="cust-dr__metric">
+            <span class="cust-dr__metric-v text-danger">{{ profile.metrics.failedDeliveryCount }}</span>
+            <span class="cust-dr__metric-k">Failed</span>
+          </div>
+          <div class="cust-dr__metric">
+            <span class="cust-dr__metric-v">{{ profile.metrics.inFlightCount }}</span>
+            <span class="cust-dr__metric-k">In flight</span>
+          </div>
+          <div class="cust-dr__metric">
+            <span class="cust-dr__metric-v">{{ money(profile.metrics.outstanding) }}</span>
+            <span class="cust-dr__metric-k">Outstanding</span>
+          </div>
         </div>
+        }
 
-        <div class="subheader mb-2">Order history</div>
-        @if (detail.orders.length === 0) {
-          <p class="text-secondary mb-0">No orders on record.</p>
+        @if (custTab() === 'crm') {
+        <!-- Tags (§1.4) -->
+        <div class="cust-dr__label"><i class="ti ti-tags me-1"></i>Tags</div>
+        <div class="cust-dr__tags">
+          @for (t of profile.tags; track t) {
+            <span class="cust-tag">
+              {{ t }}
+              <button type="button" class="cust-tag__x" (click)="removeTag(t)" [attr.aria-label]="'Remove tag ' + t">
+                <i class="ti ti-x"></i>
+              </button>
+            </span>
+          } @empty {
+            <span class="cust-dr__muted">No tags yet.</span>
+          }
+        </div>
+        <form class="cust-dr__inline" (ngSubmit)="addTag()">
+          <input
+            type="text"
+            class="form-control form-control-sm"
+            [formControl]="newTag"
+            placeholder="Add a tag (e.g. VIP, wholesale)…"
+            maxlength="40"
+            aria-label="Add a tag"
+          />
+          <button type="submit" class="btn btn-sm btn-outline-primary" [disabled]="!newTag.value.trim() || savingTag()">
+            <i class="ti ti-plus"></i>
+          </button>
+        </form>
+        }
+
+        @if (custTab() === 'orders') {
+        <!-- Products bought (§1.1) -->
+        @if (profile.topProducts.length > 0) {
+          <div class="cust-dr__label"><i class="ti ti-leaf me-1"></i>Products bought</div>
+          <div class="cust-dr__facts">
+            @for (p of profile.topProducts; track p.productId ?? p.productName) {
+              <div class="cust-dr__fact">
+                <span class="cust-dr__fact-k">{{ p.productName }} <span class="cust-dr__muted">× {{ p.quantity }}</span></span>
+                <span class="cust-dr__fact-v">{{ money(p.amount) }}</span>
+              </div>
+            }
+          </div>
+        }
+        }
+
+        @if (custTab() === 'overview') {
+        <!-- First / last + account type -->
+        <div class="cust-dr__facts">
+          <div class="cust-dr__fact">
+            <span class="cust-dr__fact-k">First order</span>
+            <span class="cust-dr__fact-v">{{ profile.summary.firstOrderAt ? (profile.summary.firstOrderAt | istDate: 'dd MMM yyyy') : '—' }}</span>
+          </div>
+          <div class="cust-dr__fact">
+            <span class="cust-dr__fact-k">Last order</span>
+            <span class="cust-dr__fact-v">{{ profile.summary.lastOrderAt ? (profile.summary.lastOrderAt | istDate: 'dd MMM yyyy') : '—' }}</span>
+          </div>
+          <div class="cust-dr__fact">
+            <span class="cust-dr__fact-k">Account</span>
+            <span class="cust-dr__fact-v">{{ profile.summary.registered ? 'Registered' : 'Guest' }}</span>
+          </div>
+        </div>
+        }
+
+        @if (custTab() === 'crm') {
+        <!-- Notes timeline (§1.1) -->
+        <div class="cust-dr__label">
+          <i class="ti ti-notes me-1"></i>Notes
+          <span class="cust-dr__count">{{ profile.notes.length }}</span>
+        </div>
+        <form class="cust-dr__note-add" (ngSubmit)="addNote()">
+          <textarea
+            class="form-control form-control-sm"
+            [formControl]="newNote"
+            rows="2"
+            maxlength="1000"
+            placeholder="Add a note about this customer…"
+            aria-label="Add a note"
+          ></textarea>
+          <button type="submit" class="btn btn-sm btn-primary mt-1" [disabled]="!newNote.value.trim() || savingNote()">
+            <i class="ti ti-plus me-1"></i>Add note
+          </button>
+        </form>
+        @if (profile.notes.length > 0) {
+          <div class="cust-notes">
+            @for (n of profile.notes; track n.id) {
+              <div class="cust-note">
+                <div class="cust-note__text">{{ n.note }}</div>
+                <div class="cust-note__meta">
+                  <i class="ti ti-user me-1"></i>{{ n.authorName || 'Staff' }}
+                  · {{ n.createdAt | istDate }}
+                </div>
+              </div>
+            }
+          </div>
+        }
+
+        }
+
+        @if (custTab() === 'orders') {
+        <!-- One-tap reorder of the customer's most recent order -->
+        @if (lastReorderableId(profile); as oid) {
+          <a
+            class="btn btn-primary btn-sm mb-3"
+            [routerLink]="['/orders/new']"
+            [queryParams]="{ reorderFrom: oid }"
+            (click)="closeDetail()"
+          >
+            <i class="ti ti-repeat me-1"></i> Reorder last order
+          </a>
+        }
+        <!-- Order history (paginated — the list can grow) -->
+        <div class="cust-dr__label">
+          <i class="ti ti-history me-1"></i>Order history
+          <span class="cust-dr__count">{{ profile.orders.length }}</span>
+        </div>
+        @if (profile.orders.length === 0) {
+          <div class="cust-dr__empty"><i class="ti ti-package-off me-1"></i>No orders on record.</div>
         } @else {
-          <table class="table table-sm table-vcenter">
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Date</th>
-                <th class="text-end">Total</th>
-                <th>Status</th>
-                <th>Payment</th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (o of detail.orders; track o.orderCode) {
-                <tr>
-                  <td>
-                    <a class="fw-medium" [routerLink]="['/orders']" [queryParams]="{ q: o.orderCode }" (click)="closeDetail()">
-                      {{ o.orderCode }}
-                    </a>
-                  </td>
-                  <td class="text-secondary">{{ o.date ? (o.date | date: 'dd MMM, HH:mm') : '—' }}</td>
-                  <td class="text-end">{{ money(o.total) }}</td>
-                  <td><admin-status-badge [status]="o.orderStatus" /></td>
-                  <td><admin-status-badge [status]="o.paymentStatus" kind="payment" /></td>
-                </tr>
-              }
-            </tbody>
-          </table>
+          <div class="cust-oh-list">
+            @for (o of historyPageItems(); track o.orderCode) {
+              <a class="cust-oh" [routerLink]="['/orders']" [queryParams]="{ q: o.orderCode }" (click)="closeDetail()">
+                <div class="cust-oh__main">
+                  <span class="cust-oh__code shifa-mono">{{ o.orderCode }}</span>
+                  <span class="cust-oh__date">{{ o.date ? (o.date | istDate) : '—' }}</span>
+                  <div class="cust-oh__pills">
+                    <admin-status-badge [status]="o.orderStatus" />
+                    <admin-status-badge [status]="o.paymentStatus" kind="payment" />
+                  </div>
+                </div>
+                <div class="cust-oh__right">
+                  <span class="cust-oh__total">{{ money(o.total) }}</span>
+                  <i class="ti ti-chevron-right cust-oh__chev"></i>
+                </div>
+              </a>
+            }
+          </div>
+          @if (historyTotalPages() > 1) {
+            <admin-pagination
+              [page]="historyPage()"
+              [totalPages]="historyTotalPages()"
+              [totalElements]="profile.orders.length"
+              [size]="historySize()"
+              (pageChange)="goToHistoryPage($event)"
+              (sizeChange)="setHistorySize($event)"
+            />
+          }
+        }
         }
       </div>
     }

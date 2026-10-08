@@ -18,9 +18,15 @@ public interface CourierRecordRepository extends JpaRepository<CourierRecord, Lo
     /** The courier record for an order, if one exists. */
     Optional<CourierRecord> findByOrderId(Long orderId);
 
+    /** All courier records for the given order ids (batch load, avoids N+1). */
+    List<CourierRecord> findByOrderIdIn(java.util.Collection<Long> orderIds);
+
     /** The courier record bearing an AWB, if one exists (webhook/poll lookup). */
     Optional<CourierRecord> findByAwb(String awb);
 
     /** All records that have an AWB assigned (poll fallback candidate set). */
     List<CourierRecord> findByAwbIsNotNull();
+
+    /** Removes the courier record for an order — used by the admin hard-delete of an order. */
+    void deleteByOrderId(Long orderId);
 }

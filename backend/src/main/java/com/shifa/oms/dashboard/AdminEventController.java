@@ -1,5 +1,7 @@
 package com.shifa.oms.dashboard;
 
+import com.shifa.oms.auth.AuthPrincipal;
+import com.shifa.oms.auth.CurrentUserService;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -8,41 +10,45 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
- * The admin dashboard's Server-Sent Events stream (Req 11.2, 13.3, 17.4, 19.5,
- * 19.6; design: "Real-time notifications (Admin Dashboard)").
+ * The staff Server-Sent Events stream (Req 11.2, 13.3, 17.4, 19.5, 19.6; design:
+ * "Real-time notifications").
  *
- * <p>{@code GET /api/admin/events} opens a long-lived {@code text/event-stream}
- * that the {@link OutboxSseRelay} pushes typed events onto: {@code ORDER_PACKED}
- * (Req 11.2), {@code ORDER_STATUS_CHANGED} (Req 13.3), {@code CLAIM_FILED_REQUIRED}
- * (Req 17.4), {@code COURIER_ASSIGN_FAILED} (Req 12.4), {@code WHATSAPP_FAILED}
- * (Req 14.4), plus periodic {@code LIVE_STATS} (Req 19.5) and {@code ACTIVITY}
- * (Req 19.6) snapshots.
+ * <p>{@code GET /api/admin/events} opens a long-lived {@code text/event-stream}.
+ * The connection is registered with the caller's {@link com.shifa.oms.auth.Role}
+ * and user id so events are delivered to the right audience:
+ * <ul>
+ *   <li>Admins receive the admin-dashboard signals (operational
+ *       {@code ORDER_PACKED}/{@code ORDER_STATUS_CHANGED}/… relayed by
+ *       {@link OutboxSseRelay}, plus periodic {@code LIVE_STATS}/{@code ACTIVITY});</li>
+ *   <li>Every staff role receives a lightweight {@code NOTIFICATION} event when a
+ *       bell notification is addressed to their role or user id, so their unread
+ *       badge updates live (scoped by {@link AdminSseBroker#sendToRecipients}).</li>
+ * </ul>
  *
  * <p><strong>Authentication for EventSource.</strong> The browser
  * {@code EventSource} API cannot set an {@code Authorization} header, so this
- * admin-only stream additionally accepts the access token as an
- * {@code ?access_token=} query parameter, which
- * {@link com.shifa.oms.auth.JwtAuthenticationFilter} validates exactly like a
- * bearer token (same signature/expiry/type checks). The stream still requires
- * the {@code ADMIN} authority via {@code @PreAuthorize}, so a missing or
- * non-admin token yields 401/403 before the stream opens. (A short-lived
- * one-time SSE ticket would be a stricter alternative; the query-param token was
- * chosen for v1 simplicity and is only read on this endpoint.)
+ * stream additionally accepts the access token as an {@code ?access_token=}
+ * query parameter, which {@link com.shifa.oms.auth.JwtAuthenticationFilter}
+ * validates exactly like a bearer token. The stream requires an authenticated
+ * staff role via {@code @PreAuthorize} (never a storefront {@code CUSTOMER}).
  */
 @RestController
 @RequestMapping("/api/admin/events")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','CA','SALESPERSON','TEAM_LEAD','PACKING_USER','PAYMENT_VERIFIER')")
 public class AdminEventController {
 
     private final AdminSseBroker broker;
+    private final CurrentUserService currentUserService;
 
-    public AdminEventController(AdminSseBroker broker) {
+    public AdminEventController(AdminSseBroker broker, CurrentUserService currentUserService) {
         this.broker = broker;
+        this.currentUserService = currentUserService;
     }
 
-    /** Opens the admin SSE stream and registers the connection with the broker. */
+    /** Opens the staff SSE stream, scoped to the caller's role + user id. */
     @GetMapping(produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream() {
-        return broker.register();
+        AuthPrincipal principal = currentUserService.requireCurrentUser();
+        return broker.register(principal.role(), principal.userId());
     }
 }

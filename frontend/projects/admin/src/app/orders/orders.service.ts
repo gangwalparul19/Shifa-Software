@@ -3,18 +3,33 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient, OrderStatus, PageResponse, PaymentStatus } from 'core';
 import {
+  AssignableCreator,
+  CourierCompanyOption,
   CreateOrderRequest,
+  CustomerPrefillResponse,
+  DeliveryMethod,
+  DuplicateCheckResponse,
+  ManualStage,
   OrderDetail,
   OrderSummary,
-  PaymentTransaction,
+  QuikShipPublishAck,
+  PaymentScreenshot,
+  QuikShipShipment,
+  QuikShipTracking,
   ScreenshotUploadResponse,
+  StoreOrderRequest,
+  UpdateOrderRequest,
 } from './orders.model';
 
 /** Filters + paging for the admin all-orders page (server-side, Wave 2). */
 export interface OrderPageQuery {
   q?: string | null;
   status?: OrderStatus | string | null;
+  /** Coarse lifecycle group key (e.g. PENDING_APPROVAL); expands server-side to a status set. */
+  statusGroup?: string | null;
   paymentStatus?: PaymentStatus | string | null;
+  /** Exact order provenance filter (e.g. SHOPIFY to show only Shopify-imported orders). */
+  source?: string | null;
   /** Inclusive lower bound, yyyy-MM-dd. */
   from?: string | null;
   /** Inclusive upper bound, yyyy-MM-dd. */
@@ -23,6 +38,12 @@ export interface OrderPageQuery {
   size?: number;
   /** `field,dir` sort expression (e.g. "createdAt,desc"). */
   sort?: string | null;
+  /**
+   * ADMIN-only drill-down: narrow the listing to a single salesperson's orders
+   * (their user id). Ignored by the backend for non-admins (they are already
+   * scoped to their own orders).
+   */
+  createdBy?: number | null;
 }
 
 /** One skipped row in a bulk operation, with the reason it was skipped. */
@@ -35,6 +56,37 @@ export interface BulkSkip {
 export interface BulkResult {
   succeeded: number[];
   skipped: BulkSkip[];
+}
+
+export interface BulkPreviewItem {
+  id: number;
+  orderCode?: string | null;
+  currentStatus?: OrderStatus | null;
+  reason?: string;
+}
+
+export interface BulkPreview {
+  action: string;
+  requested: number;
+  eligible: BulkPreviewItem[];
+  ineligible: BulkPreviewItem[];
+}
+
+/** Result of an admin order cancellation (order-cancellation feature). */
+export interface CancelOrderResult {
+  order: OrderDetail;
+  /** Whether a QuikShipX cancel was attempted (false for in-house / not-yet-shipped). */
+  courierCancelAttempted: boolean;
+  /** Whether QuikShipX confirmed the cancellation (courier pickup aborted). */
+  courierCancelAccepted: boolean;
+  /** Detail from the courier (why it was/wasn't confirmed), for a follow-up note. */
+  courierMessage?: string | null;
+}
+
+/** Result of an admin order delete (delete-order feature): the removed id + code. */
+export interface DeleteOrderResult {
+  id: number;
+  orderCode: string;
 }
 
 /**
@@ -62,6 +114,16 @@ export class OrdersService {
   }
 
   /**
+   * Create an in-shop (POS / counter) store order (store-order feature, ADMIN
+   * only) via {@code POST /api/orders/store}. No payment screenshot, no delivery
+   * partner, ad-hoc items allowed; a fully-paid sale is auto-approved + closed by
+   * the server, a partial payment leaves it approved with the balance tracked.
+   */
+  createStoreOrder(payload: StoreOrderRequest): Observable<OrderDetail> {
+    return this.api.post<OrderDetail>('/api/orders/store', payload);
+  }
+
+  /**
    * Upload a payment screenshot (step one of the two-step flow) via
    * {@code POST /api/orders/payment-screenshots} as multipart form field
    * {@code file}. Returns the storage {@code key} to attach as
@@ -75,6 +137,36 @@ export class OrdersService {
     const form = new FormData();
     form.append('file', file);
     return this.api.post<ScreenshotUploadResponse>('/api/orders/payment-screenshots', form);
+  }
+
+  /**
+   * Whether prior orders exist for a customer mobile number
+   * ({@code GET /api/orders/duplicate-check?mobile=}, SALESPERSON + ADMIN,
+   * Req 22.2). Powers the repeat-customer hint on the New Order form.
+   */
+  duplicateCheck(mobile: string): Observable<DuplicateCheckResponse> {
+    return this.api.get<DuplicateCheckResponse>('/api/orders/duplicate-check', {
+      params: { mobile },
+    });
+  }
+
+  /**
+   * Customer + shipping details from the customer's most recent order
+   * ({@code GET /api/orders/last-by-mobile?mobile=}, SALESPERSON + ADMIN), to
+   * pre-fill the New Order form when a known mobile is entered.
+   */
+  lastCustomerByMobile(mobile: string): Observable<CustomerPrefillResponse> {
+    return this.api.get<CustomerPrefillResponse>('/api/orders/last-by-mobile', {
+      params: { mobile },
+    });
+  }
+
+  /**
+   * Active salespeople + team leads an ADMIN may place an order on behalf of
+   * (the "place on behalf of" picker on the New Order form). ADMIN-only endpoint.
+   */
+  assignableCreators(): Observable<AssignableCreator[]> {
+    return this.api.get<AssignableCreator[]>('/api/orders/assignable-creators');
   }
 
   /** Search orders by name / mobile / order code / AWB, role-scoped (Req 22.1). */
@@ -100,8 +192,14 @@ export class OrdersService {
     if (query.status) {
       params['status'] = query.status;
     }
+    if (query.statusGroup) {
+      params['statusGroup'] = query.statusGroup;
+    }
     if (query.paymentStatus) {
       params['paymentStatus'] = query.paymentStatus;
+    }
+    if (query.source) {
+      params['source'] = query.source;
     }
     if (query.from) {
       params['from'] = query.from;
@@ -112,7 +210,83 @@ export class OrdersService {
     if (query.sort) {
       params['sort'] = query.sort;
     }
+    if (query.createdBy != null) {
+      params['createdBy'] = query.createdBy;
+    }
     return this.api.get<PageResponse<OrderSummary>>('/api/admin/orders', { params });
+  }
+
+  /**
+   * Downloads the CURRENT filtered + scoped orders list as a file
+   * ({@code GET /api/admin/orders/export}). Sends the same filters as
+   * {@link page} (minus paging) plus the format; the server applies the
+   * identical role scope and returns a CSV/Excel attachment as a Blob.
+   */
+  exportOrders(query: OrderPageQuery, format: 'csv' | 'xlsx'): Observable<Blob> {
+    const params: Record<string, string> = { format };
+    const q = query.q?.trim();
+    if (q) {
+      params['q'] = q;
+    }
+    if (query.status) {
+      params['status'] = String(query.status);
+    }
+    if (query.statusGroup) {
+      params['statusGroup'] = query.statusGroup;
+    }
+    if (query.paymentStatus) {
+      params['paymentStatus'] = String(query.paymentStatus);
+    }
+    if (query.source) {
+      params['source'] = String(query.source);
+    }
+    if (query.from) {
+      params['from'] = query.from;
+    }
+    if (query.to) {
+      params['to'] = query.to;
+    }
+    if (query.createdBy != null) {
+      params['createdBy'] = String(query.createdBy);
+    }
+    return this.http.get(this.api.url('/api/admin/orders/export'), {
+      params,
+      responseType: 'blob',
+    });
+  }
+
+  /**
+   * Approve a single order → Approved, via {@code POST /api/admin/orders/{id}/approve}.
+   * {@code deliveryMethod}, when provided, sets/overrides the order's delivery
+   * partner as part of approving (in-house-delivery feature) — omit to leave
+   * the order's current value unchanged. Used by the Orders-page detail drawer
+   * so the admin can pick the delivery partner right there, same as the
+   * Approval Queue page.
+   */
+  approve(id: number, deliveryMethod?: DeliveryMethod): Observable<OrderDetail> {
+    return this.api.post<OrderDetail>(
+      `/api/admin/orders/${id}/approve`,
+      deliveryMethod ? { deliveryMethod } : {},
+    );
+  }
+
+  /**
+   * Save the order's delivery method WITHOUT approving, via
+   * {@code PUT /api/admin/orders/{id}/delivery-method} (change-delivery-method
+   * feature). Lets an admin set/change the delivery partner on a still-pending
+   * (pre-dispatch) order and persist just that — the order's lifecycle status is
+   * left unchanged (no approval, no label, no QuikShipX trigger). ADMIN only.
+   */
+  updateDeliveryMethod(id: number, deliveryMethod: DeliveryMethod): Observable<OrderDetail> {
+    return this.api.put<OrderDetail>(
+      `/api/admin/orders/${id}/delivery-method`,
+      { deliveryMethod },
+    );
+  }
+
+  /** Read-only server eligibility check; this never reserves or mutates orders. */
+  bulkPreview(action: 'APPROVE' | 'MARK_PACKED' | 'LABELS', ids: number[]): Observable<BulkPreview> {
+    return this.api.post<BulkPreview>(`/api/admin/orders/bulk-preview?action=${action}`, { ids });
   }
 
   /** Bulk-approve the given orders; returns a partial-result summary. */
@@ -141,14 +315,144 @@ export class OrdersService {
     return this.api.get<OrderDetail>(`/api/orders/${id}`);
   }
 
-  /** Online-payment transactions for an order (Phase E), ADMIN/ACCOUNTANT. */
-  payments(id: number): Observable<PaymentTransaction[]> {
-    return this.api.get<PaymentTransaction[]>(`/api/orders/${id}/payments`);
+  /**
+   * Admin edit-order (edit-order feature): corrects the customer / shipping /
+   * line-item / lead-source / note / GSTIN / discount details a salesperson
+   * entered, via {@code PUT /api/admin/orders/{id}} (ADMIN-only). Only allowed
+   * while the order is still {@code Pending_Admin_Approval} or {@code Approved}
+   * — a 409 is returned once fulfilment has begun.
+   */
+  updateOrder(id: number, payload: UpdateOrderRequest): Observable<OrderDetail> {
+    return this.api.put<OrderDetail>(`/api/admin/orders/${id}`, payload);
   }
 
-  /** Fetch the payment screenshot as a Blob for inline rendering (Req 21.2). */
+  /**
+   * Edit an order the caller punched, while it is still awaiting approval
+   * (own-pending-edit feature), via {@code PUT /api/orders/{id}} (SALESPERSON/
+   * ADMIN/TEAM_LEAD, own-order scoped, PENDING only). Distinct from the ADMIN
+   * {@link updateOrder} which can also edit an APPROVED order.
+   */
+  updateOwnOrder(id: number, payload: UpdateOrderRequest): Observable<OrderDetail> {
+    return this.api.put<OrderDetail>(`/api/orders/${id}`, payload);
+  }
+
+  /**
+   * Rework a REJECTED / PAYMENT_REJECTED order back into the approval queue
+   * (rejection-status rework feature), via {@code POST /api/orders/{id}/resubmit}
+   * (SALESPERSON/ADMIN/TEAM_LEAD, own-order scoped). Re-applies the corrected
+   * details and moves the order back to {@code Pending_Admin_Approval} with the
+   * same order code + full history.
+   */
+  resubmit(id: number, payload: UpdateOrderRequest): Observable<OrderDetail> {
+    return this.api.post<OrderDetail>(`/api/orders/${id}/resubmit`, payload);
+  }
+
+  /**
+   * Cancel an order with a mandatory note (order-cancellation feature), via
+   * {@code POST /api/admin/orders/{id}/cancel} (ADMIN-only). Works at any
+   * pre-delivery stage — including after a QuikShipX tracking id (AWB) has been
+   * generated — and, for a QuikShipX order, tells the courier to abort the
+   * pickup. Returns the cancelled order plus whether the courier-side cancel was
+   * attempted/confirmed so the UI can flag a needed follow-up.
+   */
+  cancel(id: number, note: string): Observable<CancelOrderResult> {
+    return this.api.post<CancelOrderResult>(`/api/admin/orders/${id}/cancel`, { note });
+  }
+
+  /**
+   * Permanently delete an order and all its records (delete-order feature), via
+   * {@code DELETE /api/admin/orders/{id}} (ADMIN-only). The backend removes every
+   * child row and refuses with a 409 if the order was already approved into the
+   * accounts ledger (such an order must be cancelled, not deleted).
+   */
+  deleteOrder(id: number): Observable<DeleteOrderResult> {
+    return this.api.delete<DeleteOrderResult>(`/api/admin/orders/${id}`);
+  }
+
+  /**
+   * The soft-deleted (inactive) orders, newest-deleted first — backs the admin
+   * "Deleted orders" view, via {@code GET /api/admin/orders/deleted} (ADMIN-only).
+   */
+  deletedOrders(): Observable<OrderSummary[]> {
+    return this.api.get<OrderSummary[]>('/api/admin/orders/deleted');
+  }
+
+  /**
+   * Restore a previously soft-deleted order (delete-order feature), via
+   * {@code POST /api/admin/orders/{id}/restore} (ADMIN-only). The order becomes
+   * active again and reappears across the whole app.
+   */
+  restoreOrder(id: number): Observable<DeleteOrderResult> {
+    return this.api.post<DeleteOrderResult>(`/api/admin/orders/${id}/restore`, {});
+  }
+
+  /**
+   * Manually attaches a courier name + AWB to an order (ADMIN-only; "assign
+   * courier early" enhancement), via
+   * {@code POST /api/admin/orders/{id}/assign-courier}. Usable any time before
+   * dispatch so the internal label's courier barcode can render right away,
+   * instead of waiting for automatic in-house assignment (which only runs
+   * after dispatch). Does not change the order's lifecycle status.
+   */
+  assignCourier(
+    id: number,
+    courierName: string,
+    awb: string,
+    trackingUrl = '',
+  ): Observable<void> {
+    return this.api.post<void>(`/api/admin/orders/${id}/assign-courier`, {
+      courierName,
+      awb,
+      trackingUrl,
+    });
+  }
+
+  /**
+   * The known delivery partners (courier companies), alphabetical — backs the
+   * "Assign courier" modal's dropdown (delivery-partner dropdown enhancement),
+   * via {@code GET /api/admin/orders/courier-companies} (ADMIN-only).
+   */
+  courierCompanies(): Observable<CourierCompanyOption[]> {
+    return this.api.get<CourierCompanyOption[]>('/api/admin/orders/courier-companies');
+  }
+
+  /**
+   * Manually advance an IN_HOUSE order's delivery status
+   * ({@code POST /api/orders/{id}/delivery-status}, in-house-delivery feature) —
+   * an in-house order has no courier partner, so no webhook reports progress.
+   * Optionally records/updates the vehicle reference in the same call.
+   * {@code DELIVERED} also settles the order (closed / COD collected).
+   */
+  updateDeliveryStatus(
+    id: number,
+    status: ManualStage,
+    opts: { vehicleNumber?: string | null; note?: string | null } = {},
+  ): Observable<OrderDetail> {
+    const body: { status: ManualStage; vehicleNumber?: string; note?: string } = { status };
+    if (opts.vehicleNumber && opts.vehicleNumber.trim()) {
+      body.vehicleNumber = opts.vehicleNumber.trim();
+    }
+    if (opts.note && opts.note.trim()) {
+      body.note = opts.note.trim();
+    }
+    return this.api.post<OrderDetail>(`/api/orders/${id}/delivery-status`, body);
+  }
+
+  /** Fetch the PRIMARY payment screenshot as a Blob for inline rendering (Req 21.2). */
   paymentScreenshot(id: number): Observable<Blob> {
     return this.http.get(this.api.url(`/api/orders/${id}/payment-screenshot`), {
+      responseType: 'blob',
+    });
+  }
+
+  /** List every payment proof attached to an order, in upload order (V65). */
+  paymentScreenshots(id: number): Observable<PaymentScreenshot[]> {
+    return this.api.get<PaymentScreenshot[]>(`/api/orders/${id}/payment-screenshots`);
+  }
+
+  /** Fetch one specific payment proof as a Blob for inline rendering (V65). */
+  paymentScreenshotById(id: number, screenshotId: number): Observable<Blob> {
+    return this.http.get(this.api.url(`/api/orders/${id}/payment-screenshots/${screenshotId}`), {
       responseType: 'blob',
     });
   }
@@ -163,5 +467,50 @@ export class OrdersService {
     return this.http.get(this.api.url(`/api/orders/${id}/invoice`), {
       responseType: 'blob',
     });
+  }
+
+  /**
+   * Fetch the internal packing label PDF (Code128 barcode + order/customer
+   * details) as a Blob so it can be opened/printed
+   * ({@code GET /api/admin/labels/internal/{id}}, ADMIN + PACKING_USER).
+   */
+  label(id: number): Observable<Blob> {
+    return this.http.get(this.api.url(`/api/admin/labels/internal/${id}`), {
+      responseType: 'blob',
+    });
+  }
+
+  /**
+   * The QuikShipX shipment mirror for an order
+   * ({@code GET /api/orders/{id}/quikshipx}, ADMIN). 404 when not yet published.
+   */
+  quikShipShipment(id: number): Observable<QuikShipShipment> {
+    return this.api.get<QuikShipShipment>(`/api/orders/${id}/quikshipx`);
+  }
+
+  /**
+   * (Re)queue an order for publication to QuikShipX
+   * ({@code POST /api/orders/{id}/quikshipx/publish}, ADMIN). Idempotent.
+   */
+  quikShipPublish(id: number): Observable<QuikShipPublishAck> {
+    return this.api.post<QuikShipPublishAck>(`/api/orders/${id}/quikshipx/publish`, {});
+  }
+
+  /**
+   * Admin per-order QuikShipX recovery for a stuck order (no tracking id yet):
+   * re-queues its failed QuikShipX events / re-enqueues the missing step
+   * ({@code POST /api/orders/{id}/quikshipx/retry}, ADMIN). Idempotent.
+   */
+  quikShipRetry(id: number): Observable<QuikShipPublishAck> {
+    return this.api.post<QuikShipPublishAck>(`/api/orders/${id}/quikshipx/retry`, {});
+  }
+
+  /**
+   * Live QuikShipX tracking for an order — current status + scan timeline
+   * ({@code GET /api/orders/{id}/quikshipx/track}). Also refreshes the internal
+   * order status server-side (idempotent). 404 when not yet published.
+   */
+  quikShipTrack(id: number): Observable<QuikShipTracking> {
+    return this.api.get<QuikShipTracking>(`/api/orders/${id}/quikshipx/track`);
   }
 }

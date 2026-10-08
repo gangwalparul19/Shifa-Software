@@ -7,36 +7,47 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The order lifecycle status (Requirement 8.1). An order is in exactly one of
- * these 15 states at any time.
+ * The order lifecycle status (Requirement 8.1; design &sect;2.1, &sect;4.1). An
+ * order is in exactly one of these states at any time.
  *
  * <p>The allowed source&nbsp;&rarr;&nbsp;target transitions are encoded as an
  * explicit table (design: "Order Status State Machine"). A transition that is
  * not present in the table is illegal and must be rejected, leaving the current
- * status unchanged (Requirement 8.3). The single initial status for every new
- * order is {@link #PENDING_ADMIN_APPROVAL} (Requirement 8.2, 3.6, 7.11).
+ * status unchanged (Requirement 8.3, 12.3, 12.4). The single initial status for
+ * every new order is {@link #PENDING_ADMIN_APPROVAL} (Requirement 8.2, 3.6, 7.11).
  *
- * <p>This enum only encodes transition <em>legality</em>. Settlement and
- * receivable side effects that accompany certain transitions
- * ({@code Delivered}, {@code RTO}, {@code Courier_Lost}) are implemented
- * separately in task&nbsp;5.
+ * <p>The role-based-order-workflow feature adds three states:
+ * {@link #HANDED_TO_DELIVERY} (a handover step between {@link #PACKED} and
+ * {@link #COURIER_ASSIGNED}) and two distinct downstream delivery outcomes,
+ * {@link #CUSTOMER_REJECTED} and {@link #DELIVERY_FAILED}. Courier assignment now
+ * runs from {@link #HANDED_TO_DELIVERY} (on dispatch), not directly from
+ * {@link #PACKED} (design &sect;4.1).
+ *
+ * <p>This enum only encodes transition <em>legality</em>. Per-transition role
+ * authorization lives in {@link TransitionAuthority}; settlement and receivable
+ * side effects that accompany certain transitions ({@code Delivered},
+ * {@code RTO}, {@code Redispatch}) are implemented separately.
  */
 public enum OrderStatus {
 
     PENDING_ADMIN_APPROVAL,
     APPROVED,
     REJECTED,
+    PAYMENT_REJECTED,
     LABEL_GENERATED,
     PACKED,
+    HANDED_TO_DELIVERY,
     COURIER_ASSIGNED,
     DISPATCHED,
     IN_TRANSIT,
     OUT_FOR_DELIVERY,
     DELIVERED,
+    CUSTOMER_REJECTED,
+    DELIVERY_FAILED,
     COD_COLLECTED,
     CLOSED,
     RTO,
-    COURIER_LOST,
+    REDISPATCH,
     CANCELLED;
 
     /** The status assigned to every newly created order (Requirement 8.2). */
@@ -51,30 +62,77 @@ public enum OrderStatus {
     private static Map<OrderStatus, Set<OrderStatus>> buildTransitions() {
         Map<OrderStatus, Set<OrderStatus>> table = new EnumMap<>(OrderStatus.class);
 
-        // Admin approval outcomes (Req 9.3, 9.4).
-        table.put(PENDING_ADMIN_APPROVAL, EnumSet.of(APPROVED, REJECTED, CANCELLED));
-        // Label service generates the internal label (Req 10.3).
-        table.put(APPROVED, EnumSet.of(LABEL_GENERATED));
-        // Packing barcode scan (Req 11.1).
-        table.put(LABEL_GENERATED, EnumSet.of(PACKED));
-        // Courier assignment succeeds, or errors and retains Packed (Req 12.2, 12.4).
-        table.put(PACKED, EnumSet.of(COURIER_ASSIGNED, PACKED));
-        // Pickup (Req 13.1).
-        table.put(COURIER_ASSIGNED, EnumSet.of(DISPATCHED));
-        // Courier webhook progressions (Req 13.2, 17.1).
-        table.put(DISPATCHED, EnumSet.of(IN_TRANSIT, OUT_FOR_DELIVERY, RTO, COURIER_LOST));
-        table.put(IN_TRANSIT, EnumSet.of(OUT_FOR_DELIVERY, DELIVERED, RTO, COURIER_LOST));
-        table.put(OUT_FOR_DELIVERY, EnumSet.of(DELIVERED, RTO, COURIER_LOST));
+        // Admin approval outcomes (Req 9.3, 9.4). PAYMENT_REJECTED is the payment
+        // verifier's rejection of a prepaid order awaiting verification — a distinct
+        // terminal rejection from the admin's REJECTED (rejection-status feature).
+        table.put(PENDING_ADMIN_APPROVAL, EnumSet.of(APPROVED, REJECTED, PAYMENT_REJECTED, CANCELLED));
+        // Label service generates the internal label (Req 10.3). A prepaid order
+        // may also be payment-rejected by the verifier after approval (the payment
+        // check runs alongside the lifecycle), so allow that terminal edge here too.
+        // An admin may also CANCEL the order at any fulfilment stage up to (but not
+        // including) delivery — e.g. the payment never arrived, or the customer
+        // cancels after a partial payment. When the order has already been handed to
+        // the courier, cancelling here also tells the courier to abort the pickup
+        // (order-cancellation feature). The CANCELLED edge is therefore added to
+        // every pre-delivery fulfilment state below.
+        table.put(APPROVED, EnumSet.of(LABEL_GENERATED, PAYMENT_REJECTED, CANCELLED));
+        // Packing barcode scan (Req 8.2). Every order — QuikShipX and in-house
+        // alike — now flows through the warehouse's manual packing queue: the
+        // courier tracking id/label are allotted on approval but the order stays
+        // Label_Generated ("Orders to Pack") until it is physically packed. The old
+        // Label_Generated → Courier_Assigned fast-forward was removed (packing-
+        // workflow redesign); courier assignment runs on handover instead.
+        table.put(LABEL_GENERATED, EnumSet.of(PACKED, CANCELLED));
+        // Handover to the delivery courier (Req 9.2, 9.3). Courier assignment no
+        // longer runs directly from Packed — it moves to the handover step.
+        table.put(PACKED, EnumSet.of(HANDED_TO_DELIVERY, CANCELLED));
+        // Dispatch enqueues courier assignment (Req 9.5, 10.1); a failed/retried
+        // assignment self-retains Handed_To_Delivery (Req 10.4). An in-house
+        // (non-QuikShipX) order never gets a courier assignment — its own team
+        // delivers it directly, so it needs direct edges out of this step: either
+        // straight to Delivered (the one-shot mark-delivered action) or into the
+        // in-transit stages, which staff advance MANUALLY because no courier
+        // webhook will ever do it (in-house-delivery feature).
+        table.put(HANDED_TO_DELIVERY, EnumSet.of(
+                COURIER_ASSIGNED, HANDED_TO_DELIVERY,
+                DISPATCHED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, CANCELLED));
+        // Pickup (Req 10.2) + forward courier progressions so a QuikShipX tracking
+        // poll never stalls when an intermediate scan (e.g. picked-up) is skipped
+        // between polls — all SYSTEM-driven.
+        table.put(COURIER_ASSIGNED, EnumSet.of(
+                DISPATCHED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, RTO, REDISPATCH, CANCELLED));
+        // Courier webhook/tracking progressions (Req 10.3) + a direct Delivered
+        // for a skipped in-transit scan.
+        table.put(DISPATCHED, EnumSet.of(IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, RTO, REDISPATCH, CANCELLED));
+        table.put(IN_TRANSIT, EnumSet.of(OUT_FOR_DELIVERY, DELIVERED, RTO, REDISPATCH, CANCELLED));
+        // New delivery outcomes Customer_Rejected / Delivery_Failed (Req 11.1, 11.2).
+        table.put(OUT_FOR_DELIVERY,
+                EnumSet.of(DELIVERED, CUSTOMER_REJECTED, DELIVERY_FAILED, RTO, REDISPATCH, CANCELLED));
         // Settlement outcomes (Req 16.1, 16.2).
         table.put(DELIVERED, EnumSet.of(CLOSED, COD_COLLECTED));
 
-        // Terminal states — no outgoing transitions.
+        // A failed/refused delivery attempt is NOT the end of the road: the parcel is
+        // still in hand, so it can be re-attempted (back to Out_For_Delivery) or given
+        // up on and returned to origin (RTO, which reverses the sale with a credit
+        // note). Without these edges a failed attempt was a dead end with no way to
+        // retry or close the order.
+        table.put(CUSTOMER_REJECTED, EnumSet.of(OUT_FOR_DELIVERY, RTO));
+        table.put(DELIVERY_FAILED, EnumSet.of(OUT_FOR_DELIVERY, RTO));
+
+        // A rejected order is NOT a dead end (rejection-status rework feature): the
+        // salesperson who created it can fix the flagged issue (rate / address /
+        // payment) and resubmit it back to Pending_Admin_Approval for a fresh
+        // review. Both admin REJECTED and payment-panel PAYMENT_REJECTED allow this
+        // single recovery edge.
+        table.put(REJECTED, EnumSet.of(PENDING_ADMIN_APPROVAL));
+        table.put(PAYMENT_REJECTED, EnumSet.of(PENDING_ADMIN_APPROVAL));
+
+        // Terminal states — no outgoing transitions (Req 12.7).
         table.put(COD_COLLECTED, EnumSet.noneOf(OrderStatus.class));
         table.put(CLOSED, EnumSet.noneOf(OrderStatus.class));
-        table.put(REJECTED, EnumSet.noneOf(OrderStatus.class));
         table.put(CANCELLED, EnumSet.noneOf(OrderStatus.class));
         table.put(RTO, EnumSet.noneOf(OrderStatus.class));
-        table.put(COURIER_LOST, EnumSet.noneOf(OrderStatus.class));
+        table.put(REDISPATCH, EnumSet.noneOf(OrderStatus.class));
 
         // Freeze the table so it cannot be mutated at runtime.
         Map<OrderStatus, Set<OrderStatus>> frozen = new EnumMap<>(OrderStatus.class);

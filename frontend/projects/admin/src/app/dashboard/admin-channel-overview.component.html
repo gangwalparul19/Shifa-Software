@@ -1,0 +1,528 @@
+<!-- ===================== Toolbar: channel + period + customize ===================== -->
+<div class="co-toolbar card mb-3">
+  <div class="card-body">
+    <div class="co-toolbar__row">
+      <div class="co-channels" role="group" aria-label="Order channel">
+        @for (c of channels; track c.value) {
+          <button type="button" class="co-channel" [class.is-active]="channel() === c.value"
+            [style.--ch]="c.color" [attr.aria-pressed]="channel() === c.value"
+            (click)="selectChannel(c.value)">
+            <i class="ti {{ c.icon }}" aria-hidden="true"></i>
+            <span>{{ c.label }}</span>
+          </button>
+        }
+      </div>
+
+      <div class="co-toolbar__right">
+        <div class="shifa-period">
+          <label for="co-period" class="visually-hidden">Time period</label>
+          <select id="co-period" class="form-select" [value]="period()"
+            (change)="selectPeriod($any($event.target).value)">
+            @for (opt of periodOptions; track opt.value) {
+              <option [value]="opt.value">{{ opt.label }}</option>
+            }
+          </select>
+        </div>
+        <div class="co-customize">
+          <button type="button" class="btn btn-outline-secondary" (click)="toggleCustomize()"
+            [attr.aria-expanded]="customizeOpen()" title="Show or hide sections">
+            <i class="ti ti-layout-grid-add me-1" aria-hidden="true"></i>Customize
+          </button>
+          @if (customizeOpen()) {
+            <div class="shifa-backdrop-transparent" (click)="toggleCustomize()"></div>
+            <div class="card co-customize__panel">
+              <div class="card-body p-2">
+                <div class="text-secondary small px-1 pb-1">Show sections</div>
+                @for (s of sections; track s.key) {
+                  <label class="dropdown-item d-flex align-items-center gap-2 py-1">
+                    <input type="checkbox" class="form-check-input m-0" [checked]="visible(s.key)"
+                      (change)="toggleSection(s.key)" />
+                    <span>{{ s.label }}</span>
+                  </label>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+
+    @if (period() === 'CUSTOM') {
+      <div class="co-custom">
+        <div>
+          <label class="form-label" for="co-from">From</label>
+          <input id="co-from" type="date" class="form-control" [value]="customFrom()"
+            (change)="customFrom.set($any($event.target).value)" />
+        </div>
+        <div>
+          <label class="form-label" for="co-to">To</label>
+          <input id="co-to" type="date" class="form-control" [value]="customTo()"
+            (change)="customTo.set($any($event.target).value)" />
+        </div>
+        <button type="button" class="btn btn-primary" [disabled]="!canApplyCustom()" (click)="load()">
+          <i class="ti ti-filter me-1" aria-hidden="true"></i>Apply
+        </button>
+      </div>
+    }
+
+    <div class="co-scope">
+      <span class="co-dot" [style.background]="channelColor()"></span>
+      Showing <strong>{{ channelLabel() }}</strong> · {{ periodLabel() }}
+      @if (loading() && data()) {
+        <span class="spinner-border spinner-border-sm ms-2" aria-label="Refreshing"></span>
+      }
+    </div>
+  </div>
+</div>
+
+@if (error()) {
+  <div class="alert alert-danger d-flex align-items-center" role="alert">
+    <i class="ti ti-alert-triangle me-2" aria-hidden="true"></i>
+    <span class="me-auto">{{ error() }}</span>
+    <button type="button" class="btn btn-sm btn-danger" (click)="load()">Retry</button>
+  </div>
+}
+
+@if (loading() && !data()) {
+  <div class="row row-cards mb-3">
+    @for (s of [1, 2, 3, 4, 5, 6]; track s) {
+      <div class="col-6 col-md-4 col-xl-2">
+        <div class="card"><div class="card-body">
+          <div class="skeleton skeleton-line sm w-40"></div>
+          <div class="skeleton skeleton-line w-80 mt-3" style="height: 1.6rem"></div>
+        </div></div>
+      </div>
+    }
+  </div>
+}
+
+@if (data(); as d) {
+
+  <!-- ===================== Channel comparison (All mode) ===================== -->
+  @if (visible('split') && d.channel === 'ALL') {
+    <div class="shifa-section-title">Channel comparison</div>
+    <div class="row row-cards g-2 g-md-3 mb-3">
+      @for (row of splitCards(); track row.key) {
+        <div class="col-12 col-md-4">
+          <button type="button" class="card co-split w-100 text-start" [style.--ch]="row.color"
+            (click)="pickSplit(row.key)"
+            [attr.title]="row.key === 'ALL' ? 'View these orders' : 'Show only ' + row.label">
+            <div class="card-body">
+              <div class="co-split__head">
+                <span class="co-split__icon"><i class="ti {{ row.icon }}" aria-hidden="true"></i></span>
+                <span class="co-split__name">{{ row.label }}</span>
+                @if (row.key !== 'ALL') {
+                  <span class="co-split__share">{{ row.t.revenueSharePct }}% of revenue</span>
+                }
+              </div>
+              <div class="co-split__revenue">{{ inr(row.t.revenue) }}</div>
+              <div class="co-split__meta">
+                <span><strong>{{ row.t.orders }}</strong> orders</span>
+                <span>Avg <strong>{{ inr(row.t.avgOrderValue) }}</strong></span>
+                <span class="co-chg" [class.up]="changeDir(row.t.revenueChangePct) === 'up'"
+                  [class.down]="changeDir(row.t.revenueChangePct) === 'down'"
+                  title="Revenue vs previous period">{{ changeText(row.t.revenueChangePct) }}</span>
+              </div>
+              @if (row.key !== 'ALL') {
+                <div class="co-split__bar" aria-hidden="true"><span [style.width.%]="share(row.t)"></span></div>
+              }
+            </div>
+          </button>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ===================== Headline KPIs ===================== -->
+  @if (visible('kpis')) {
+    <div class="shifa-section-title">Headline · {{ channelLabel() }}</div>
+    <div class="row row-cards g-2 g-md-3 mb-3">
+      <div class="col-6 col-md-4 col-xl-2">
+        <button type="button" class="card co-kpi w-100 text-start" style="--accent: #1f5d3f" (click)="drill()">
+          <div class="card-body">
+            <div class="subheader">Revenue</div>
+            <div class="h2 m-0 count-up" [shifaCountUp]="d.kpis.revenue" countFormat="inr"></div>
+            <div class="co-chg small" [class.up]="changeDir(d.kpis.revenueChangePct) === 'up'"
+              [class.down]="changeDir(d.kpis.revenueChangePct) === 'down'">
+              {{ changeText(d.kpis.revenueChangePct) }} vs prev
+            </div>
+          </div>
+        </button>
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <button type="button" class="card co-kpi w-100 text-start" style="--accent: #206bc4" (click)="drill()">
+          <div class="card-body">
+            <div class="subheader">Orders</div>
+            <div class="h2 m-0 count-up" [shifaCountUp]="d.kpis.orders" countFormat="int"></div>
+            <div class="co-chg small" [class.up]="changeDir(d.kpis.ordersChangePct) === 'up'"
+              [class.down]="changeDir(d.kpis.ordersChangePct) === 'down'">
+              {{ changeText(d.kpis.ordersChangePct) }} vs prev
+            </div>
+          </div>
+        </button>
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <div class="card co-kpi" style="--accent: #0ca678">
+          <div class="card-body">
+            <div class="subheader">Avg order value</div>
+            <div class="h2 m-0 count-up" [shifaCountUp]="d.kpis.avgOrderValue" countFormat="inr"></div>
+            <div class="text-secondary small">Excl. cancelled</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <button type="button" class="card co-kpi w-100 text-start" style="--accent: #2fb344" (click)="drill('DELIVERED')">
+          <div class="card-body">
+            <div class="subheader">Delivery success</div>
+            <div class="h2 m-0">
+              @if (d.kpis.deliverySuccessPct !== null) { {{ d.kpis.deliverySuccessPct }}% } @else { — }
+            </div>
+            <div class="text-secondary small">{{ d.kpis.delivered }} delivered · {{ d.kpis.failedReturned }} returned</div>
+          </div>
+        </button>
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <button type="button" class="card co-kpi w-100 text-start" style="--accent: #d63939" (click)="drill('FAILED_RETURNED')">
+          <div class="card-body">
+            <div class="subheader">Returned / failed</div>
+            <div class="h2 m-0 count-up" [shifaCountUp]="d.kpis.failedReturned" countFormat="int"></div>
+            <div class="text-secondary small">{{ d.kpis.cancelledRejected }} cancelled / rejected</div>
+          </div>
+        </button>
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <div class="card co-kpi" style="--accent: #f59f00">
+          <div class="card-body">
+            <div class="subheader">To collect on delivery</div>
+            <div class="h2 m-0 count-up" [shifaCountUp]="d.kpis.codToCollect" countFormat="inr"></div>
+            <div class="text-secondary small">{{ d.kpis.inProgress }} orders in progress</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ===================== Revenue trend + pipeline ===================== -->
+  @if (visible('trend')) {
+    <div class="row row-cards mb-3">
+      <div class="col-lg-8">
+        <div class="card h-100">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title mb-0">Revenue trend</h3>
+              <p class="card-subtitle text-secondary m-0">
+                @if (d.channel === 'ALL') { Portal vs Shopify } @else { {{ channelLabel() }} }
+                · vs previous period
+              </p>
+            </div>
+            <div class="card-actions">
+              <div class="btn-group btn-group-sm" role="group" aria-label="Group by">
+                @for (b of buckets; track b.value) {
+                  <button type="button" class="btn" [class.btn-primary]="d.bucket === b.value"
+                    [class.active]="d.bucket === b.value" (click)="selectBucket(b.value)">{{ b.label }}</button>
+                }
+              </div>
+            </div>
+          </div>
+          <div class="card-body">
+            @if (trendChart(); as tc) {
+              <apx-chart [series]="tc.series" [chart]="tc.chart" [colors]="tc.colors"
+                [dataLabels]="tc.dataLabels" [stroke]="tc.stroke" [fill]="tc.fill"
+                [plotOptions]="tc.plotOptions" [xaxis]="tc.xaxis" [yaxis]="tc.yaxis"
+                [legend]="tc.legend" [tooltip]="tc.tooltip" [grid]="tc.grid"></apx-chart>
+            } @else {
+              <div class="empty">
+                <div class="empty-icon"><i class="ti ti-chart-bar-off" aria-hidden="true"></i></div>
+                <p class="empty-title">No sales in the selected period</p>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="card h-100">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title mb-0">Order pipeline</h3>
+              <p class="card-subtitle text-secondary m-0">{{ d.kpis.orders }} orders · tap a stage to view</p>
+            </div>
+          </div>
+          <div class="list-group list-group-flush">
+            @for (s of pipelineRows(); track s.group) {
+              <button type="button" class="list-group-item list-group-item-action co-stage"
+                [disabled]="s.count === 0" (click)="drill(s.group)">
+                <div class="co-stage__top">
+                  <span class="co-stage__label"><i class="ti {{ s.icon }}" [style.color]="s.color" aria-hidden="true"></i>{{ s.label }}</span>
+                  <strong>{{ s.count }}</strong>
+                </div>
+                <div class="co-stage__bar" aria-hidden="true"><span [style.width.%]="s.widthPct" [style.background]="s.color"></span></div>
+              </button>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ===================== Work queues (live) ===================== -->
+  @if (visible('queues')) {
+    <div class="shifa-section-title">Work queues <span class="co-muted">· right now</span></div>
+    <div class="row row-cards g-2 g-md-3 mb-3">
+      @if (d.queues.portal; as pq) {
+        <div [class]="d.queues.shopify ? 'col-lg-6' : 'col-lg-9'">
+          <div class="card h-100 co-queue" [style.--ch]="CHANNEL_COLOR.PORTAL">
+            <div class="card-header">
+              <h3 class="card-title mb-0"><i class="ti ti-building-store me-1" aria-hidden="true"></i>Portal fulfilment</h3>
+            </div>
+            <div class="card-body">
+              <div class="co-queue__grid">
+                <button type="button" class="co-queue__item" (click)="go('/approval-queue')">
+                  <span class="co-queue__num" [class.hot]="pq.pendingApproval > 0">{{ pq.pendingApproval }}</span>
+                  <span class="co-queue__lbl">Pending approval</span>
+                </button>
+                <button type="button" class="co-queue__item" (click)="go('/packing')">
+                  <span class="co-queue__num">{{ pq.toPack }}</span>
+                  <span class="co-queue__lbl">To pack</span>
+                </button>
+                <button type="button" class="co-queue__item" (click)="go('/packing')">
+                  <span class="co-queue__num">{{ pq.awaitingHandover }}</span>
+                  <span class="co-queue__lbl">Awaiting handover</span>
+                </button>
+                <button type="button" class="co-queue__item" (click)="go('/packing')">
+                  <span class="co-queue__num">{{ pq.awaitingDispatch }}</span>
+                  <span class="co-queue__lbl">Awaiting dispatch</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+      @if (d.queues.shopify; as sq) {
+        <div [class]="d.queues.portal ? 'col-lg-4' : 'col-lg-9'">
+          <div class="card h-100 co-queue" [style.--ch]="CHANNEL_COLOR.SHOPIFY">
+            <div class="card-header">
+              <h3 class="card-title mb-0 d-flex align-items-center gap-2"><admin-channel-logo source="SHOPIFY" />Shopify fulfilment</h3>
+            </div>
+            <div class="card-body">
+              <div class="co-queue__grid co-queue__grid--3">
+                <button type="button" class="co-queue__item" (click)="go('/shopify-sync')">
+                  <span class="co-queue__num" [class.danger]="sq.stuck > 0">{{ sq.stuck }}</span>
+                  <span class="co-queue__lbl">No tracking ID</span>
+                </button>
+                <button type="button" class="co-queue__item" (click)="go('/packing')">
+                  <span class="co-queue__num" [class.hot]="sq.labelsToPrint > 0">{{ sq.labelsToPrint }}</span>
+                  <span class="co-queue__lbl">Labels to print</span>
+                </button>
+                <button type="button" class="co-queue__item" (click)="drillQueue('SHIPPED', 'SHOPIFY')">
+                  <span class="co-queue__num">{{ sq.awaitingPickup }}</span>
+                  <span class="co-queue__lbl">Awaiting pickup</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+      <div class="col-lg-2">
+        <a class="card h-100 co-insight text-reset text-decoration-none" routerLink="/insights" title="View insights">
+          <div class="card-body">
+            <div class="subheader"><i class="ti ti-bulb me-1" aria-hidden="true"></i>Insights</div>
+            <div class="h1 m-0">{{ insightTotal() }}</div>
+            <div class="small text-secondary">{{ insightDanger() }} danger · {{ insightWarning() }} warning</div>
+          </div>
+        </a>
+      </div>
+    </div>
+  }
+
+  <!-- ===================== Payments & cash ===================== -->
+  @if (visible('payments')) {
+    <div class="row row-cards mb-3">
+      <div class="col-lg-4">
+        <div class="card h-100">
+          <div class="card-header"><h3 class="card-title mb-0">Payment mix</h3></div>
+          <div class="card-body">
+            @if (mixChart(); as mc) {
+              <apx-chart [series]="mc.series" [labels]="mc.labels" [colors]="mc.colors" [chart]="mc.chart"
+                [legend]="mc.legend" [dataLabels]="mc.dataLabels" [plotOptions]="mc.plotOptions"
+                [stroke]="mc.stroke" [tooltip]="mc.tooltip"></apx-chart>
+            } @else {
+              <div class="empty py-3"><p class="empty-title">No orders in the period</p></div>
+            }
+            <div class="co-mix">
+              @for (m of d.payments.mix; track m.status) {
+                <div class="co-mix__row"><span>{{ m.label }}</span><span>{{ m.orders }} · {{ inr(m.amount) }}</span></div>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-8">
+        <div class="card h-100">
+          <div class="card-header">
+            <h3 class="card-title mb-0">Cash position</h3>
+          </div>
+          <div class="card-body">
+            <div class="row g-3">
+              @if (d.channel !== 'SHOPIFY') {
+                <div class="col-6 col-md-4">
+                  <div class="co-cash" style="--accent: #206bc4">
+                    <div class="co-cash__lbl">Collected by team</div>
+                    <div class="co-cash__val">{{ inr(d.payments.collectedByTeam) }}</div>
+                    <div class="co-cash__sub">Today {{ inr(d.payments.todayCollectedByTeam) }}</div>
+                  </div>
+                </div>
+              }
+              @if (d.channel !== 'PORTAL') {
+                <div class="col-6 col-md-4">
+                  <div class="co-cash" style="--accent: #5e8e3e">
+                    <div class="co-cash__lbl">Paid on Shopify</div>
+                    <div class="co-cash__val">{{ inr(d.payments.paidOnShopify) }}</div>
+                    <div class="co-cash__sub">Today {{ inr(d.payments.todayPaidOnShopify) }}</div>
+                  </div>
+                </div>
+              }
+              <div class="col-6 col-md-4">
+                <div class="co-cash" style="--accent: #f59f00">
+                  <div class="co-cash__lbl">To collect on delivery</div>
+                  <div class="co-cash__val">{{ inr(d.payments.codToCollect) }}</div>
+                  <div class="co-cash__sub">From customers, this period</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-4">
+                <div class="co-cash" style="--accent: #17a2b8">
+                  <div class="co-cash__lbl">Pending from courier</div>
+                  <div class="co-cash__val">{{ inr(d.payments.codPendingFromCourier) }}</div>
+                  <div class="co-cash__sub">Collected, not yet settled</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-4">
+                <div class="co-cash" style="--accent: #d63939">
+                  <div class="co-cash__lbl">Loss claims pending</div>
+                  <div class="co-cash__val">{{ inr(d.payments.lossClaimPending) }}</div>
+                  <div class="co-cash__sub">Lost / damaged parcels</div>
+                </div>
+              </div>
+              <div class="col-6 col-md-4">
+                <div class="co-cash" style="--accent: #1f5d3f">
+                  <div class="co-cash__lbl">Orders today</div>
+                  <div class="co-cash__val">{{ d.payments.todayOrders }}</div>
+                  <div class="co-cash__sub">{{ channelLabel() }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ===================== Performance ===================== -->
+  @if (visible('performance')) {
+    <div class="row row-cards mb-3">
+      @if (d.channel !== 'SHOPIFY') {
+        <div class="col-lg-4">
+          <ng-container *ngTemplateOutlet="board; context: { title: 'Top salespeople', icon: 'ti-user-star', rows: d.performance.topSalespeople, unit: 'orders', empty: 'No portal sales in the period' }"></ng-container>
+        </div>
+      }
+      <div [class]="d.channel === 'SHOPIFY' ? 'col-lg-6' : 'col-lg-4'">
+        <ng-container *ngTemplateOutlet="board; context: { title: 'Top products', icon: 'ti-leaf', rows: d.performance.topProducts, unit: 'units', empty: 'No products sold in the period' }"></ng-container>
+      </div>
+      <div [class]="d.channel === 'SHOPIFY' ? 'col-lg-6' : 'col-lg-4'">
+        <ng-container *ngTemplateOutlet="board; context: { title: 'Top states', icon: 'ti-map-pin', rows: d.performance.topStates, unit: 'orders', empty: 'No orders in the period' }"></ng-container>
+      </div>
+    </div>
+  }
+}
+
+<ng-template #board let-title="title" let-icon="icon" let-rows="rows" let-unit="unit" let-empty="empty">
+  <div class="card h-100">
+    <div class="card-header"><h3 class="card-title mb-0"><i class="ti {{ icon }} me-1" aria-hidden="true"></i>{{ title }}</h3></div>
+    @if (rows.length === 0) {
+      <div class="card-body text-secondary small">{{ empty }}</div>
+    } @else {
+      <div class="list-group list-group-flush">
+        @for (r of rows; track r.name; let i = $index) {
+          <div class="list-group-item co-rank">
+            <div class="co-rank__top">
+              <span class="co-rank__pos">{{ i + 1 }}</span>
+              <span class="co-rank__name">{{ r.name }}</span>
+              <span class="co-rank__rev">{{ inr(r.revenue) }}</span>
+            </div>
+            <div class="co-rank__sub">{{ r.count }} {{ unit }}</div>
+            <div class="co-rank__bar" aria-hidden="true"><span [style.width.%]="barPct(r, rows)"></span></div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</ng-template>
+
+<!-- ===================== Activity + notifications (all channels) ===================== -->
+@if (visible('activity')) {
+  <div class="row row-cards">
+    @if (activity(); as a) {
+      <div class="col-lg-7">
+        <div class="card h-100">
+          <div class="card-header">
+            <h3 class="card-title mb-0">Activity</h3>
+            <span class="ms-auto small text-secondary">All channels</span>
+          </div>
+          <div class="card-body">
+            <div class="row g-3">
+              <div class="col-6 col-md-4"><div class="shifa-act"><div class="h2 m-0">{{ a.ordersToFulfill }}</div><div class="text-secondary small">Orders to fulfill</div></div></div>
+              <div class="col-6 col-md-4"><div class="shifa-act"><div class="h2 m-0">{{ a.paymentsToCapture }}</div><div class="text-secondary small">Awaiting approval</div></div></div>
+              <div class="col-6 col-md-4"><div class="shifa-act warn"><div class="h2 m-0">{{ a.rtoAlerts }}</div><div class="text-secondary small">RTO alerts</div></div></div>
+              <div class="col-6 col-md-4"><div class="shifa-act"><div class="h2 m-0">{{ a.whatsappNotificationsSent }}</div><div class="text-secondary small">WhatsApp sent</div></div></div>
+              <div class="col-6 col-md-4"><div class="shifa-act"><div class="h2 m-0">{{ a.codSettlementsPending }}</div><div class="text-secondary small">Courier settlements pending</div></div></div>
+              <div class="col-6 col-md-4"><div class="shifa-act warn"><div class="h2 m-0">{{ a.courierClaimsPending }}</div><div class="text-secondary small">Courier claims pending</div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    }
+    <div class="col-lg-5">
+      <div class="card h-100">
+        <div class="card-header">
+          <h3 class="card-title mb-0">Notifications</h3>
+          <div class="card-actions">
+            <span class="live-indicator" [class]="events.status()">
+              <span class="dot"></span>
+              @switch (events.status()) {
+                @case ('open') { Live }
+                @case ('connecting') { Connecting… }
+                @default { Offline }
+              }
+            </span>
+            @if (events.notifications().length > 0) {
+              <button type="button" class="btn btn-sm btn-ghost-secondary ms-2" (click)="clearNotifications()">Clear</button>
+            }
+          </div>
+        </div>
+        <div class="card-body p-0">
+          @if (events.notifications().length === 0) {
+            <div class="empty py-4">
+              <div class="empty-icon"><i class="ti ti-bell-off" aria-hidden="true"></i></div>
+              <p class="empty-title">No new notifications</p>
+            </div>
+          } @else {
+            <div class="list-group list-group-flush co-feed">
+              @for (note of events.notifications(); track note.receivedAt.getTime()) {
+                <div class="list-group-item">
+                  <div class="d-flex align-items-start">
+                    <span class="shifa-note-dot mt-1 me-2" [class.bg-success]="note.severity === 'success'"
+                      [class.bg-info]="note.severity === 'info'" [class.bg-warning]="note.severity === 'warning'"
+                      [class.bg-danger]="note.severity === 'danger'"></span>
+                    <div>
+                      <div class="fw-medium">{{ note.title }}</div>
+                      <div class="text-secondary small">{{ note.detail }}</div>
+                    </div>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+}

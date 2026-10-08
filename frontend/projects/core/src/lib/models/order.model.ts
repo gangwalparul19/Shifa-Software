@@ -15,32 +15,58 @@ export enum PaymentStatus {
 }
 
 /**
- * The 15 order lifecycle states defined by the state machine (backend Req 8.1).
+ * The order lifecycle states defined by the state machine (backend Req 8.1).
  * New orders start in {@link OrderStatus.PENDING_ADMIN_APPROVAL} (Req 8.2).
+ *
+ * <p>The role-based-order-workflow feature adds three states:
+ * {@link OrderStatus.HANDED_TO_DELIVERY} (a handover step between
+ * {@link OrderStatus.PACKED} and {@link OrderStatus.COURIER_ASSIGNED}) and two
+ * distinct downstream delivery outcomes, {@link OrderStatus.CUSTOMER_REJECTED}
+ * and {@link OrderStatus.DELIVERY_FAILED}.
  */
 export enum OrderStatus {
-  PENDING_ADMIN_APPROVAL = 'Pending_Admin_Approval',
-  APPROVED = 'Approved',
-  REJECTED = 'Rejected',
-  CANCELLED = 'Cancelled',
-  LABEL_GENERATED = 'Label_Generated',
-  PACKED = 'Packed',
-  COURIER_ASSIGNED = 'Courier_Assigned',
-  DISPATCHED = 'Dispatched',
-  IN_TRANSIT = 'In_Transit',
-  OUT_FOR_DELIVERY = 'Out_For_Delivery',
-  DELIVERED = 'Delivered',
+  // String values MUST equal the backend enum name() — that's what Jackson puts
+  // on the wire (no custom enum serialization). Using the uppercase names (like
+  // PaymentStatus) is what makes status comparisons — pill/badge colours, return
+  // eligibility, grouping — actually match the API responses.
+  PENDING_ADMIN_APPROVAL = 'PENDING_ADMIN_APPROVAL',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  PAYMENT_REJECTED = 'PAYMENT_REJECTED',
+  CANCELLED = 'CANCELLED',
+  LABEL_GENERATED = 'LABEL_GENERATED',
+  PACKED = 'PACKED',
+  HANDED_TO_DELIVERY = 'HANDED_TO_DELIVERY',
+  COURIER_ASSIGNED = 'COURIER_ASSIGNED',
+  DISPATCHED = 'DISPATCHED',
+  IN_TRANSIT = 'IN_TRANSIT',
+  OUT_FOR_DELIVERY = 'OUT_FOR_DELIVERY',
+  DELIVERED = 'DELIVERED',
+  CUSTOMER_REJECTED = 'CUSTOMER_REJECTED',
+  DELIVERY_FAILED = 'DELIVERY_FAILED',
   RTO = 'RTO',
-  COURIER_LOST = 'Courier_Lost',
-  COD_COLLECTED = 'COD_Collected',
-  CLOSED = 'Closed',
+  REDISPATCH = 'REDISPATCH',
+  COD_COLLECTED = 'COD_COLLECTED',
+  CLOSED = 'CLOSED',
 }
 
 /** Origin of the order. */
 export enum OrderSource {
   STOREFRONT = 'STOREFRONT',
   SALESPERSON = 'SALESPERSON',
+  /** Imported automatically from the Shopify storefront via webhook. */
+  SHOPIFY = 'SHOPIFY',
+  /** In-shop POS / counter sale punched by an admin for a walk-in customer. */
+  STORE = 'STORE',
 }
+
+/**
+ * The categorized reason an order was rejected (rejection-status feature).
+ * Admin rejections carry RATE_ISSUE / ADDRESS_PINCODE_ISSUE / OTHER; a payment-
+ * panel rejection is always PAYMENT_ISSUE (set server-side). Matches the backend
+ * RejectReason enum name() on the wire.
+ */
+export type RejectReason = 'RATE_ISSUE' | 'ADDRESS_PINCODE_ISSUE' | 'PAYMENT_ISSUE' | 'OTHER';
 
 /** Mirrors the backend Order DTO (`orders` table + line items). */
 export interface Order {

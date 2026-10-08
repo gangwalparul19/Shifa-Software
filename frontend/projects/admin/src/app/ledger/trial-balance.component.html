@@ -1,0 +1,151 @@
+<admin-page-header
+  title="Trial Balance"
+  [subtitle]="periodLabel()"
+  [breadcrumbs]="[{ label: 'Accounting' }, { label: 'Trial Balance' }]"
+></admin-page-header>
+
+<!-- ================= Period toolbar ================= -->
+<div class="tb-toolbar">
+  <div class="tb-toolbar__row">
+    <div class="tb-modes shifa-formtabs" role="tablist">
+      <button
+        type="button"
+        class="shifa-formtab"
+        [class.is-active]="periodMode() === 'fy'"
+        (click)="setMode('fy')"
+        role="tab"
+        [attr.aria-selected]="periodMode() === 'fy'"
+      >
+        <i class="ti ti-calendar me-1"></i> Financial year
+      </button>
+      <button
+        type="button"
+        class="shifa-formtab"
+        [class.is-active]="periodMode() === 'range'"
+        (click)="setMode('range')"
+        role="tab"
+        [attr.aria-selected]="periodMode() === 'range'"
+      >
+        <i class="ti ti-calendar-stats me-1"></i> Date range
+      </button>
+    </div>
+
+    <div class="tb-spacer"></div>
+
+    <div class="tb-controls">
+      @if (periodMode() === 'fy') {
+        <div>
+          <label class="form-label">Financial year</label>
+          <select
+            class="form-select"
+            [value]="financialYearId() ?? ''"
+            (change)="onFinancialYearChanged($any($event.target).value)"
+          >
+            <option value="">Current financial year</option>
+            @for (fy of financialYears(); track fy.id) {
+              <option [value]="fy.id">{{ fy.label }}{{ fy.closed ? ' (closed)' : '' }}</option>
+            }
+          </select>
+        </div>
+      } @else {
+        <div>
+          <label class="form-label">From</label>
+          <input
+            type="date"
+            class="form-control"
+            [value]="from()"
+            (change)="onDateEdited('from', $any($event.target).value)"
+          />
+        </div>
+        <div>
+          <label class="form-label">To</label>
+          <input
+            type="date"
+            class="form-control"
+            [value]="to()"
+            (change)="onDateEdited('to', $any($event.target).value)"
+          />
+        </div>
+      }
+      <button type="button" class="btn btn-primary" (click)="load()" [disabled]="loading()">
+        <i class="ti ti-refresh me-1"></i>Apply
+      </button>
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <div class="tb-card">
+    <div class="tb-empty"><span class="spinner-border spinner-border-sm me-2"></span>Loading Trial Balance…</div>
+  </div>
+} @else if (error()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+} @else if (data(); as d) {
+  <!-- ============ Balanced / difference banner (Reqs 14.3, 14.4, 18.2) ============ -->
+  @if (d.balanced) {
+    <div class="tb-banner tb-banner--ok">
+      <i class="ti ti-circle-check tb-banner__icon"></i>
+      <div>
+        <div class="tb-banner__title">Balanced</div>
+        <div class="tb-banner__sub">
+          Debit total {{ money(d.debitTotal) }} equals credit total {{ money(d.creditTotal) }}.
+          The ledger obeys the double-entry rule for this period.
+        </div>
+      </div>
+    </div>
+  } @else {
+    <div class="tb-banner tb-banner--bad">
+      <i class="ti ti-alert-triangle tb-banner__icon"></i>
+      <div>
+        <div class="tb-banner__title">Out of balance by {{ money(difference()) }}</div>
+        <div class="tb-banner__sub">
+          Debit total {{ money(d.debitTotal) }} vs credit total {{ money(d.creditTotal) }}.
+          Review the opening balances and vouchers in this period.
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ============ Per-account closing balances ============ -->
+  <div class="tb-card">
+    <div class="tb-card__head">
+      <h3 class="tb-card__title">Closing balances</h3>
+      <span class="text-secondary small">{{ d.rows.length }} account{{ d.rows.length === 1 ? '' : 's' }}</span>
+    </div>
+    <div class="table-responsive">
+      <table class="tb-table">
+        <thead>
+          <tr>
+            <th>Ledger account</th>
+            <th>Nature</th>
+            <th class="num">Debit</th>
+            <th class="num">Credit</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (r of d.rows; track r.ledgerId) {
+            <tr>
+              <td class="fw-bold">{{ r.ledgerName }}</td>
+              <td><span class="badge" [class]="naturePillClass(r.nature)">{{ natureLabel(r.nature) }}</span></td>
+              <td class="num">{{ n(r.debitBalance) > 0 ? money(r.debitBalance) : '—' }}</td>
+              <td class="num">{{ n(r.creditBalance) > 0 ? money(r.creditBalance) : '—' }}</td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="4" class="tb-empty">No ledger accounts have an opening balance or a voucher line in this period.</td>
+            </tr>
+          }
+        </tbody>
+        @if (d.rows.length) {
+          <tfoot>
+            <tr class="tb-total-row">
+              <td class="fw-bold" colspan="2">Total</td>
+              <td class="num fw-bold" [class.text-danger]="!d.balanced">{{ money(d.debitTotal) }}</td>
+              <td class="num fw-bold" [class.text-danger]="!d.balanced">{{ money(d.creditTotal) }}</td>
+            </tr>
+          </tfoot>
+        }
+      </table>
+    </div>
+  </div>
+}

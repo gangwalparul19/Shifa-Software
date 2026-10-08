@@ -1,0 +1,21 @@
+-- GST: separate the CASH refunded to the customer from the VALUE OF SUPPLY
+-- reversed by a credit note. They are different numbers and were sharing one
+-- column, which produced both wrong money reporting and (for legacy rows) a
+-- wrong credit note.
+--
+-- Example: order of Rs 1000 partially paid (Rs 300 prepaid, Rs 700 COD) which
+-- then RTOs. Under GST the whole supply is reversed, so the credit note is for
+-- the full Rs 1000 + its GST — regardless of how little was collected. But the
+-- CASH we owe the customer back is only the Rs 300 actually received (and for a
+-- pure COD order, nothing at all).
+--
+--   refund_amount     -> cash actually refundable/refunded to the customer
+--                        (feeds the money reports / P&L "refunds")
+--   credit_note_value  -> GST-inclusive value of supply reversed
+--                        (feeds the GSTR-1 CDNR/CDNUR credit note)
+--
+-- Nullable and additive: existing rows keep NULL and the GSTR-1 builder falls
+-- back to refund_amount for them, preserving today's figures for already-filed
+-- periods.
+ALTER TABLE order_returns
+    ADD COLUMN credit_note_value DECIMAL(12,2) NULL;

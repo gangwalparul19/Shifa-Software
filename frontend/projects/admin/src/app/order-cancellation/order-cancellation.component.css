@@ -1,0 +1,31 @@
+.oc-note {
+  border-left: 4px solid #4299e1;
+}
+.oc-note__icon {
+  font-size: 1.25rem;
+  color: #4299e1;
+  flex: 0 0 auto;
+}
+
+.oc-btn {
+  min-height: 44px;
+}
+
+.oc-item {
+  padding: 0.75rem 1rem;
+}
+
+.oc-modal {
+  width: min(560px, 100%);
+  margin: 0;
+}
+
+.oc-summary {
+  background: #f8fafc;
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.9rem;
+  display: grid;
+  gap: 0.2rem;
+}

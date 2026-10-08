@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -11,8 +11,12 @@ import {
   StockMovement,
 } from './inventory.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { humanizeStatus } from '../shared/status-badge.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 
@@ -46,15 +50,19 @@ const ADJUST_REASONS = [
   selector: 'admin-inventory',
   imports: [
     ReactiveFormsModule,
-    DatePipe,
+    IstDatePipe,
     PageHeaderComponent,
+    PaginationComponent,
     StatePanelComponent,
     DensityToggleComponent,
+    RowActionsMenuComponent,
   ],
   templateUrl: './inventory.component.html',
   styleUrl: './inventory.component.css',
 })
 export class InventoryComponent implements OnInit {
+  /** Humanises a stock-movement type (SALE → Sale, ADJUSTMENT → Adjustment). */
+  protected readonly humanize = humanizeStatus;
   private readonly service = inject(InventoryService);
   private readonly confirm = inject(ConfirmService);
   private readonly toasts = inject(ToastService);
@@ -89,6 +97,32 @@ export class InventoryComponent implements OnInit {
 
   protected readonly lowStockCount = computed(
     () => this.items().filter((r) => r.stockStatus !== StockStatus.IN_STOCK && r.trackInventory).length,
+  );
+
+  // --- Client-side paging (over the filtered list) ------------------------
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('inventory', 10));
+  protected readonly totalElements = computed(() => this.visibleItems().length);
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil(this.totalElements() / this.size())),
+  );
+  protected readonly pageItems = computed<InventoryProduct[]>(() => {
+    const s = this.page() * this.size();
+    return this.visibleItems().slice(s, s + this.size());
+  });
+
+  // --- Stock summary KPIs (derived from the loaded rows) ------------------
+  /** Tracked products currently in stock. */
+  protected readonly inStockCount = computed(
+    () => this.items().filter((r) => r.trackInventory && r.stockStatus === StockStatus.IN_STOCK).length,
+  );
+  /** Tracked products at or below their low-stock threshold. */
+  protected readonly lowCount = computed(
+    () => this.items().filter((r) => r.trackInventory && r.stockStatus === StockStatus.LOW_STOCK).length,
+  );
+  /** Tracked products with no stock on hand. */
+  protected readonly outCount = computed(
+    () => this.items().filter((r) => r.trackInventory && r.stockStatus === StockStatus.OUT_OF_STOCK).length,
   );
 
   // --- Modal state --------------------------------------------------------
@@ -131,6 +165,7 @@ export class InventoryComponent implements OnInit {
     source$.subscribe({
       next: (rows) => {
         this.items.set(rows);
+        this.page.set(0);
         this.loading.set(false);
       },
       error: () => {
@@ -142,11 +177,24 @@ export class InventoryComponent implements OnInit {
 
   applySearch(): void {
     this.searchTerm.set(this.search.value);
+    this.page.set(0);
   }
 
   clearSearch(): void {
     this.search.setValue('');
     this.searchTerm.set('');
+    this.page.set(0);
+  }
+
+  // --- Paging handlers ----------------------------------------------------
+  goToPage(p: number): void {
+    this.page.set(p);
+  }
+
+  setSize(s: number): void {
+    this.size.set(s);
+    writePageSize('inventory', s);
+    this.page.set(0);
   }
 
   toggleLowStock(): void {
@@ -189,6 +237,32 @@ export class InventoryComponent implements OnInit {
         return 'Low stock';
       default:
         return 'In stock';
+    }
+  }
+
+  /** Per-row kebab actions mirroring the original Restock / Adjust / History buttons. */
+  rowActions(row: InventoryProduct): RowAction[] {
+    return [
+      {
+        key: 'restock',
+        label: 'Restock',
+        icon: 'ti-package-import',
+        variant: 'primary',
+        disabled: !row.trackInventory,
+      },
+      { key: 'adjust', label: 'Adjust', icon: 'ti-adjustments', disabled: !row.trackInventory },
+      { key: 'history', label: 'Stock history', icon: 'ti-history' },
+    ];
+  }
+
+  /** Dispatches a kebab action for the given inventory row. */
+  onRowAction(key: string, row: InventoryProduct): void {
+    if (key === 'restock') {
+      this.openRestock(row);
+    } else if (key === 'adjust') {
+      this.openAdjust(row);
+    } else if (key === 'history') {
+      this.openHistory(row);
     }
   }
 

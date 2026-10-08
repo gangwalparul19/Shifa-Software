@@ -1,0 +1,11 @@
+/* Analytics — relies on shared Tabler card/table/badge styles. */
+
+/* Cohort retention grid: compact, colour-coded cells. */
+.cohort-grid th,
+.cohort-grid td {
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+.cohort-grid tbody td {
+  border-radius: 4px;
+}

@@ -19,6 +19,8 @@ export interface ApprovalQueueItem {
   orderCode: string;
   source: OrderSource;
   createdBy?: number;
+  /** Name of the salesperson who punched the order (created_by → display name). */
+  salespersonName?: string | null;
   customerName: string;
   customerMobile: string;
   addressLine: string;
@@ -32,4 +34,38 @@ export interface ApprovalQueueItem {
   paymentScreenshotAvailable: boolean;
   items: ApprovalLineItem[];
   createdAt?: string;
+  /**
+   * The order's current delivery method (defaults to IN_HOUSE at order entry).
+   * Shown/editable in the review drawer so the admin can pick/override the
+   * delivery partner as part of approving (in-house-delivery feature).
+   */
+  deliveryMethod?: 'QUIKSHIPX' | 'IN_HOUSE';
+  /**
+   * Payment authenticity verification state (payment-verification-gated
+   * approval): PENDING / VERIFIED / REJECTED, or null for a pure-COD order
+   * (nothing to verify). The admin cannot approve until this is VERIFIED or null;
+   * the queue shows a verified icon when VERIFIED.
+   */
+  paymentVerificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
+  /**
+   * Other order codes whose payment proof is byte-identical to this order's
+   * (duplicate-screenshot detection, V72). Non-empty = a duplicate flag is shown
+   * and the order is excluded from "approve all (no duplicates)".
+   */
+  duplicateOrderCodes?: string[];
+  /** The order/packaging note the salesperson added (null when none). */
+  notes?: string | null;
+}
+
+/** Payment verification state (mirrors the backend {@code PaymentVerificationStatus}). */
+export type PaymentVerificationStatus = 'PENDING' | 'VERIFIED' | 'REJECTED';
+
+/**
+ * Result of a bulk-approve call, mirroring the backend {@code BulkActionResult}.
+ * {@code succeeded} holds the ids that transitioned; {@code skipped} holds the
+ * ids that could not (with a human-readable reason, e.g. no longer pending).
+ */
+export interface BulkApproveResult {
+  succeeded: number[];
+  skipped: { id: number; reason: string }[];
 }

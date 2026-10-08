@@ -1,6 +1,7 @@
 package com.shifa.oms.auth;
 
 import jakarta.servlet.DispatcherType;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,6 +18,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -41,6 +43,15 @@ import java.util.List;
 @EnableConfigurationProperties(JwtProperties.class)
 public class SecurityConfig {
 
+    /**
+     * Extra CORS allowed origins (comma-separated), appended to the built-in
+     * localhost + production origins. Lets a non-prod box (e.g. the demo at
+     * {@code https://shifa-demo.weblithic.online}) permit its own domain via
+     * {@code app.security.cors.extra-origins} without changing the prod default.
+     */
+    @Value("${app.security.cors.extra-origins:}")
+    private List<String> extraCorsOrigins;
+
     /** BCrypt password hashing for stored credentials (Req 5.1). */
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -55,8 +66,17 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(List.of(
-                "http://localhost:*", "http://127.0.0.1:*"));
+        List<String> origins = new ArrayList<>(List.of(
+                "http://localhost:*", "http://127.0.0.1:*",
+                "https://shifa.weblithic.online"));
+        if (extraCorsOrigins != null) {
+            for (String o : extraCorsOrigins) {
+                if (o != null && !o.isBlank()) {
+                    origins.add(o.trim());
+                }
+            }
+        }
+        config.setAllowedOriginPatterns(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("Authorization"));
@@ -98,6 +118,10 @@ public class SecurityConfig {
                                 "/", "/index.html", "/favicon.ico",
                                 "/manifest.webmanifest", "/ngsw-worker.js", "/ngsw.json",
                                 "/assets/**", "/*.js", "/*.css").permitAll()
+                        // Liveness/readiness health check is public (load balancers,
+                        // uptime monitors); all other actuator endpoints require auth.
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers("/actuator/**").authenticated()
                         // Everything else under the API requires authentication.
                         .requestMatchers("/api/**").authenticated()
                         // Non-API paths (served static shell) are open.

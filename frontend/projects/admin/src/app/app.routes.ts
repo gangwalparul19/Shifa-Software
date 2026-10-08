@@ -1,19 +1,27 @@
-import { Routes } from '@angular/router';
-import { createRoleGuard, Role } from 'core';
+import { inject } from '@angular/core';
+import { CanActivateFn, Router, Routes, UrlTree } from '@angular/router';
+import { AuthService, createRoleGuard, Role } from 'core';
 import { LoginComponent } from './auth/login.component';
+import { ChangePasswordComponent } from './auth/change-password.component';
 import { ForbiddenComponent } from './auth/forbidden.component';
 import { DashboardComponent } from './dashboard/dashboard.component';
 import { AdminShellComponent } from './shell/admin-shell.component';
 import { ApprovalQueueComponent } from './approval/approval-queue.component';
 import { OrdersComponent } from './orders/orders.component';
 import { NewOrderComponent } from './orders/new-order.component';
+import { EditOrderComponent } from './orders/edit-order.component';
 import { ProductsComponent } from './products/products.component';
 import { InventoryComponent } from './inventory/inventory.component';
 import { ScanComponent } from './packing/scan.component';
+import { RtoComponent } from './packing/rto.component';
+import { PickListComponent } from './packing/pick-list.component';
 import { ReconciliationComponent } from './reconciliation/reconciliation.component';
 import { ReportsComponent } from './reports/reports.component';
 import { SettingsComponent } from './settings/settings.component';
 import { UsersComponent } from './users/users.component';
+import { SalespeopleComponent } from './salespeople/salespeople.component';
+import { MyProfileComponent } from './my-profile/my-profile.component';
+import { ProfileApprovalsComponent } from './profile-approvals/profile-approvals.component';
 import { CustomersComponent } from './customers/customers.component';
 import { ReturnsComponent } from './returns/returns.component';
 import { NotificationsComponent } from './notifications/notifications.component';
@@ -22,6 +30,34 @@ import { SuppliersComponent } from './suppliers/suppliers.component';
 import { PurchaseOrdersComponent } from './purchase-orders/purchase-orders.component';
 import { ExpensesComponent } from './expenses/expenses.component';
 import { ProfitLossComponent } from './finance/profit-loss.component';
+import { LeadsComponent } from './leads/leads.component';
+import { DueFollowUpsComponent } from './leads/due-follow-ups.component';
+import { InsightsComponent } from './insights/insights.component';
+import { BackupsComponent } from './backups/backups.component';
+import { PaymentsComponent } from './payments/payments.component';
+import { AnnouncementsComponent } from './announcements/announcements.component';
+import { AnalyticsComponent } from './analytics/analytics.component';
+import { ShopifySyncComponent } from './shopify-sync/shopify-sync.component';
+import { OrderCancellationComponent } from './order-cancellation/order-cancellation.component';
+import { DeletedOrdersComponent } from './deleted-orders/deleted-orders.component';
+import { TeamComponent } from './team/team.component';
+import { TeamsOverviewComponent } from './dashboard/teams-overview.component';
+import { DeliveryPartnersPageComponent } from './dashboard/delivery-partners-page.component';
+import { WhatsappTemplatesComponent } from './whatsapp/whatsapp-templates.component';
+import { CaGstDashboardComponent } from './ca-gst/ca-gst-dashboard.component';
+import { GstFilingComponent } from './ca-gst/gst-filing.component';
+import { GstReconciliationComponent } from './ca-gst/gst-reconciliation.component';
+import { TeamPerformanceComponent } from './team/team-performance.component';
+import { LeaderboardComponent } from './leaderboard/leaderboard.component';
+import { ChartOfAccountsComponent } from './ledger/chart-of-accounts.component';
+import { VoucherEntryComponent } from './ledger/voucher-entry.component';
+import { DayBookComponent } from './ledger/day-book.component';
+import { TrialBalanceComponent } from './ledger/trial-balance.component';
+import { LedgerStatementComponent } from './ledger/ledger-statement.component';
+import { BalanceSheetComponent } from './ledger/balance-sheet.component';
+import { ProfitAndLossComponent } from './ledger/profit-and-loss.component';
+import { CashFlowComponent } from './ledger/cash-flow.component';
+import { ExceptionsComponent } from './exceptions/exceptions.component';
 
 const LOGIN_PATH = '/login';
 const FORBIDDEN_PATH = '/forbidden';
@@ -33,11 +69,17 @@ export const staffGuard = createRoleGuard(
   Role.ADMIN,
   Role.ACCOUNTANT,
   Role.SALESPERSON,
+  Role.TEAM_LEAD,
   Role.PACKING_USER,
+  Role.PAYMENT_VERIFIER,
+  Role.CA,
 );
 
 /** Admin-only sections (management/approval/configuration, Req 5.4). */
 export const adminOnlyGuard = createRoleGuard(LOGIN_PATH, FORBIDDEN_PATH, Role.ADMIN);
+
+/** CA (GST/accounting) dashboard is limited to CA and Admin (CA GST dashboard, Req 1). */
+export const adminOrCaGuard = createRoleGuard(LOGIN_PATH, FORBIDDEN_PATH, Role.ADMIN, Role.CA);
 
 /** Order entry (New Order) is limited to Salesperson and Admin (Req 7). */
 export const salespersonGuard = createRoleGuard(
@@ -47,12 +89,80 @@ export const salespersonGuard = createRoleGuard(
   Role.SALESPERSON,
 );
 
-/** Reconciliation/settlement sections are limited to Accountant and Admin. */
+/**
+ * Order entry (New Order) — Salesperson, Admin AND Team Lead. A team lead may
+ * punch orders on behalf of their team; the backend attributes the order to the
+ * lead and scopes it back to them. Separate from {@link salespersonGuard} so a
+ * team lead does NOT gain access to the salesperson-only Leads/Products pages.
+ */
+export const orderEntryGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.SALESPERSON,
+  Role.TEAM_LEAD,
+);
+
+/**
+ * Reports are open to Admin, Accountant AND Salesperson — the backend scopes a
+ * salesperson to their own orders and blocks money/operations reports, so a
+ * salesperson sees only their own sales/product/customer reports.
+ */
+export const reportsGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.ACCOUNTANT,
+  Role.SALESPERSON,
+  Role.CA,
+);
+
+/** Reconciliation/settlement + finance sections are limited to Accountant, CA and Admin. */
 export const accountantGuard = createRoleGuard(
   LOGIN_PATH,
   FORBIDDEN_PATH,
   Role.ADMIN,
   Role.ACCOUNTANT,
+  Role.CA,
+);
+
+/**
+ * General Ledger / accounting module (general-ledger-accounting, Req 16.1–16.3).
+ * View access is granted to ADMIN, ACCOUNTANT and CA. Post/reverse/CoA-edit are
+ * additionally enforced ADMIN/ACCOUNTANT-only on the backend (CA is read-only,
+ * Req 16.4, 16.5), and the voucher-entry UI hides its mutating affordances for CA.
+ */
+export const accountingGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.ACCOUNTANT,
+  Role.CA,
+);
+
+/**
+ * WhatsApp template management (V44) — ADMIN, ACCOUNTANT and TEAM_LEAD may add
+ * and customize the one-tap message templates staff send.
+ */
+export const whatsappTemplatesGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.ACCOUNTANT,
+  Role.TEAM_LEAD,
+);
+
+/**
+ * Customers / CRM is open to Admin, Accountant and Salesperson. A salesperson is
+ * scoped by the backend to only the customers derived from their own orders
+ * (Req 5.4, 5.5); admin/accountant see every customer.
+ */
+export const customersGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.ACCOUNTANT,
+  Role.SALESPERSON,
 );
 
 /** Packing (barcode scan) is limited to Packing_User and Admin (Req 11). */
@@ -63,13 +173,55 @@ export const packingGuard = createRoleGuard(
   Role.PACKING_USER,
 );
 
+/** Payment verification dashboard is limited to Payment_Verifier and Admin (product-audit §4.4). */
+export const paymentVerifierGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.PAYMENT_VERIFIER,
+);
+
+/** Team-lead performance dashboard is limited to Team_Lead and Admin. */
+export const teamLeadGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.TEAM_LEAD,
+);
+
+/**
+ * Blocks the whole admin shell while the signed-in user must set a new password
+ * (an admin reset their password to the temporary one). Such a user is bounced
+ * to {@code /change-password} until they choose a new password, which clears the
+ * flag. Runs after {@link staffGuard}, so the user is already authenticated.
+ */
+export const forcePasswordChangeGuard: CanActivateFn = (): boolean | UrlTree => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  if (auth.isAuthenticated() && auth.mustChangePassword()) {
+    return router.createUrlTree(['/change-password']);
+  }
+  return true;
+};
+
 export const routes: Routes = [
   { path: 'login', component: LoginComponent },
+  // Forced / self-service password change — outside the shell (no app chrome),
+  // reachable while the force-change flag is set. Requires an authenticated
+  // session; createAuthGuard-style check lives in the component via AuthService.
+  { path: 'change-password', component: ChangePasswordComponent },
   { path: 'forbidden', component: ForbiddenComponent },
+  // Public, unauthenticated customer order tracking (ENHANCEMENT 2.2) — opaque
+  // token, outside the admin shell/guards. Lazy so it stays out of the main bundle.
+  {
+    path: 'track/:token',
+    loadComponent: () =>
+      import('./track/public-tracking.component').then((m) => m.PublicTrackingComponent),
+  },
   {
     path: '',
     component: AdminShellComponent,
-    canActivate: [staffGuard],
+    canActivate: [staffGuard, forcePasswordChangeGuard],
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
       { path: 'dashboard', component: DashboardComponent },
@@ -82,8 +234,19 @@ export const routes: Routes = [
         // Salesperson/admin order entry (Req 7). Registered before the
         // all-orders view; the server enforces the same role restriction.
         path: 'orders/new',
+        // orderEntryGuard allows Team Lead in addition to Salesperson/Admin.
         component: NewOrderComponent,
-        canActivate: [salespersonGuard],
+        canActivate: [orderEntryGuard],
+      },
+      {
+        // Edit-order: an ADMIN may correct any editable order (PENDING/APPROVED,
+        // PUT /api/admin/orders/{id}); the creating SALESPERSON/TEAM_LEAD may edit
+        // their OWN order while it is still PENDING (PUT /api/orders/{id}). The
+        // component picks the endpoint by role; the server enforces ownership +
+        // editable-status (404 out-of-scope, 400/409 once past the editable window).
+        path: 'orders/:id/edit',
+        component: EditOrderComponent,
+        canActivate: [orderEntryGuard],
       },
       {
         // All-orders view; any staff may reach it (the backend scopes a
@@ -93,10 +256,41 @@ export const routes: Routes = [
         canActivate: [staffGuard],
       },
       {
-        // Customers / CRM (ADMIN + ACCOUNTANT, Set B — Feature 1).
+        // Due follow-ups view (SALESPERSON + ADMIN, Req 5.2). Registered before
+        // the pipeline list so the more specific path wins. The backend scopes a
+        // salesperson to their own leads.
+        path: 'leads/follow-ups',
+        component: DueFollowUpsComponent,
+        canActivate: [salespersonGuard],
+      },
+      {
+        // Leads pipeline / capture (SALESPERSON + ADMIN, Req 8). The backend
+        // scopes a salesperson to their own leads; admins see all.
+        path: 'leads',
+        component: LeadsComponent,
+        canActivate: [salespersonGuard],
+      },
+      {
+        path: 'exceptions',
+        component: ExceptionsComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Statistical Insights (ADMIN only, statistical-insights-engine Req 13).
+        // The backend GET is open to SALESPERSON too, but the admin-only
+        // recompute/dismiss actions live on this screen, so the route is gated
+        // to ADMIN (mirrors the other admin-only management sections).
+        path: 'insights',
+        component: InsightsComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Customers / CRM (ADMIN + ACCOUNTANT + SALESPERSON). The backend scopes
+        // a salesperson to only the customers derived from orders they created
+        // (Req 5.4, 5.5); admin/accountant see every customer.
         path: 'customers',
         component: CustomersComponent,
-        canActivate: [accountantGuard],
+        canActivate: [customersGuard],
       },
       {
         // Returns / Refunds (ADMIN + ACCOUNTANT view; mutations gated in the
@@ -118,9 +312,12 @@ export const routes: Routes = [
         canActivate: [adminOnlyGuard],
       },
       {
+        // Products (ADMIN + SALESPERSON). A salesperson gets read-only access —
+        // the list + product detail — with all mutation affordances hidden in the
+        // UI and enforced ADMIN-only on the backend.
         path: 'products',
         component: ProductsComponent,
-        canActivate: [adminOnlyGuard],
+        canActivate: [salespersonGuard],
       },
       {
         // Inventory / stock management (ADMIN only — the backend inventory
@@ -159,6 +356,20 @@ export const routes: Routes = [
         canActivate: [packingGuard],
       },
       {
+        // RTO (returned to origin) scan page (label redesign feature): scan a
+        // returned parcel's order barcode, choose a reason, mark it RTO.
+        path: 'packing/rto',
+        component: RtoComponent,
+        canActivate: [packingGuard],
+      },
+      {
+        // Daily pick-list / packing manifest (enhancement): every product
+        // needed across all orders awaiting packing, aggregated onto one sheet.
+        path: 'packing/pick-list',
+        component: PickListComponent,
+        canActivate: [packingGuard],
+      },
+      {
         path: 'reconciliation',
         component: ReconciliationComponent,
         canActivate: [accountantGuard],
@@ -168,7 +379,7 @@ export const routes: Routes = [
         // scopes a salesperson to their own orders if reached directly (Req 20).
         path: 'reports',
         component: ReportsComponent,
-        canActivate: [accountantGuard],
+        canActivate: [reportsGuard],
       },
       {
         // Company + GST configuration (ADMIN only, Req 5.4).
@@ -181,6 +392,184 @@ export const routes: Routes = [
         path: 'users',
         component: UsersComponent,
         canActivate: [adminOnlyGuard],
+      },
+      {
+        // Salespeople directory: onboarding profiles + ID verification (ADMIN only).
+        path: 'salespeople',
+        component: SalespeopleComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Self-service "My Profile" — any authenticated staff member. Changes are
+        // submitted for admin approval (not applied directly).
+        path: 'my-profile',
+        component: MyProfileComponent,
+        canActivate: [staffGuard],
+      },
+      {
+        // Admin approval queue for staff profile change requests (ADMIN only).
+        path: 'profile-approvals',
+        component: ProfileApprovalsComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Database backups: run on-demand + review history (ADMIN only, Req 24).
+        path: 'backups',
+        component: BackupsComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Payment verification dashboard (PAYMENT_VERIFIER + ADMIN, product-audit §4.4).
+        path: 'payments',
+        component: PaymentsComponent,
+        canActivate: [paymentVerifierGuard],
+      },
+      {
+        // Staff announcement banners (ADMIN only, FEATURE-ROADMAP §8.4).
+        path: 'announcements',
+        component: AnnouncementsComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Customizable WhatsApp message templates (ADMIN / ACCOUNTANT / TEAM_LEAD, V44).
+        path: 'whatsapp-templates',
+        component: WhatsappTemplatesComponent,
+        canActivate: [whatsappTemplatesGuard],
+      },
+      {
+        // Analytics suite: targets & incentives, retention, forecasting
+        // (ADMIN only, FEATURE-ROADMAP §6).
+        path: 'analytics',
+        component: AnalyticsComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Retired: the Portal / Shopify / All split now lives on the main
+        // dashboard. Old bookmarks land there.
+        path: 'channel-dashboard',
+        redirectTo: 'dashboard',
+        pathMatch: 'full',
+      },
+      {
+        // Shopify sync: list stuck Shopify orders + one-click recover to QuikShipX (ADMIN only).
+        path: 'shopify-sync',
+        component: ShopifySyncComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Order cancellation: cancel an order (even after an AWB) with a note,
+        // propagating the cancellation to the courier (ADMIN only).
+        path: 'order-cancellation',
+        component: OrderCancellationComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        path: 'deleted-orders',
+        component: DeletedOrdersComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // CA (Chartered Accountant) GST & accounting dashboard (ADMIN + CA).
+        path: 'ca/gst',
+        component: CaGstDashboardComponent,
+        canActivate: [adminOrCaGuard],
+      },
+      {
+        // GST returns filing workspace: calendar, prepare/file/reopen, snapshots,
+        // filing-aware export (ADMIN + CA, gst-returns-filing Req 10.1).
+        path: 'ca/gst/filing',
+        component: GstFilingComponent,
+        canActivate: [adminOrCaGuard],
+      },
+      {
+        // GST ledger reconciliation: five compared figures + drill-down
+        // (ADMIN + CA, gst-returns-filing Req 10.1).
+        path: 'ca/gst/reconciliation',
+        component: GstReconciliationComponent,
+        canActivate: [adminOrCaGuard],
+      },
+      {
+        // General Ledger — Chart of Accounts (ADMIN + ACCOUNTANT + CA view; CoA
+        // edits ADMIN/ACCOUNTANT-only server-side, CA read-only). Req 16.1–16.3.
+        path: 'accounting/chart-of-accounts',
+        component: ChartOfAccountsComponent,
+        canActivate: [accountingGuard],
+      },
+      {
+        // Manual double-entry voucher entry + reversal (ADMIN/ACCOUNTANT post;
+        // CA read-only server-side, entry UI hidden for CA). Req 16.1–16.4.
+        path: 'accounting/vouchers/new',
+        component: VoucherEntryComponent,
+        canActivate: [accountingGuard],
+      },
+      {
+        // Day Book — chronological voucher listing (read). Req 13, 16.1–16.3.
+        path: 'accounting/day-book',
+        component: DayBookComponent,
+        canActivate: [accountingGuard],
+      },
+      {
+        // Trial Balance (read). Req 14, 16.1–16.3, 18.2.
+        path: 'accounting/trial-balance',
+        component: TrialBalanceComponent,
+        canActivate: [accountingGuard],
+      },
+      {
+        // Ledger statement — per-account statement with running balance (read).
+        // The account is chosen in-page, so no route param is needed. Req 12.
+        path: 'accounting/ledger-statement',
+        component: LedgerStatementComponent,
+        canActivate: [accountingGuard],
+      },
+      {
+        // Balance Sheet — assets vs liabilities-and-equity as at a date (read).
+        // Financial statements Phase 2, Req 10.1, 10.2, 11.3.
+        path: 'accounting/balance-sheet',
+        component: BalanceSheetComponent,
+        canActivate: [accountingGuard],
+      },
+      {
+        // Profit & Loss — income vs expenses for a period (read). Req 10.1, 10.2, 11.3.
+        path: 'accounting/profit-and-loss',
+        component: ProfitAndLossComponent,
+        canActivate: [accountingGuard],
+      },
+      {
+        // Cash Flow — direct-method cash/bank movement for a period (read).
+        // Req 10.1, 10.2, 11.3.
+        path: 'accounting/cash-flow',
+        component: CashFlowComponent,
+        canActivate: [accountingGuard],
+      },
+      {
+        // Team management: assign salespeople to a team lead (ADMIN only).
+        path: 'team',
+        component: TeamComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Team-wise sales with status overview (ADMIN only) — linked from the dashboard.
+        path: 'teams-overview',
+        component: TeamsOverviewComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Orders by delivery partner: QuikShipX / In-house (Ishika Enterprise) / POS (ADMIN only).
+        path: 'delivery-partners',
+        component: DeliveryPartnersPageComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // Team-lead performance dashboard (TEAM_LEAD + ADMIN).
+        path: 'team-performance',
+        component: TeamPerformanceComponent,
+        canActivate: [teamLeadGuard],
+      },
+      {
+        // Sales leaderboard (ADMIN + SALESPERSON) — moved off the dashboard.
+        path: 'leaderboard',
+        component: LeaderboardComponent,
+        canActivate: [salespersonGuard],
       },
     ],
   },

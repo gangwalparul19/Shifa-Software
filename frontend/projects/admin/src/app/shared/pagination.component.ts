@@ -80,6 +80,16 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
         flex-wrap: wrap;
         gap: 0.5rem 1rem;
         padding: 0.75rem 1rem;
+        /* Pin the pager to the bottom of the viewport so it is ALWAYS visible and
+           reachable, no matter how long the list is or how short the window.
+           Sticky (not fixed) keeps it inside its card/section flow — it rests at
+           the natural bottom and only "sticks" once the list is taller than the
+           viewport, so short lists are unaffected. */
+        position: sticky;
+        bottom: 0;
+        z-index: 5;
+        background: var(--tblr-bg-surface, #fff);
+        border-top: 1px solid var(--tblr-border-color, #e6e7e9);
       }
       .shifa-pager__info {
         font-size: 0.85rem;
@@ -119,7 +129,7 @@ export class PaginationComponent {
   /** Total number of rows across all pages. */
   @Input() totalElements = 0;
   /** Current page size (rows per page). */
-  @Input() size = 20;
+  @Input() size = 10;
 
   /** Whether to show the rows-per-page selector. */
   @Input() showSize = true;

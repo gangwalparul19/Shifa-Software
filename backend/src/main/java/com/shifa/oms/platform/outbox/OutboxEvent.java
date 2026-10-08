@@ -44,6 +44,38 @@ public class OutboxEvent {
     public static final String EVENT_ORDER_PACKED = "ORDER_PACKED";
 
     /**
+     * Event type emitted when a salesperson punches a new order that lands in the
+     * admin approval queue ({@code Pending_Admin_Approval}), so admins get a
+     * real-time "order needs approval" nudge over the SSE stream. Its payload
+     * carries the order id/code, customer name, and total; the frontend routes a
+     * toast click through to the approval queue. Aggregate {@code ORDER}.
+     */
+    public static final String EVENT_ORDER_AWAITING_APPROVAL = "ORDER_AWAITING_APPROVAL";
+
+    /**
+     * Event type emitted when an order is punched, so the QuikShipX drainer can
+     * create the shipment out-of-band (QuikShipX create-order → their Pending
+     * section). Its payload carries the order id/code; the drainer reloads the
+     * aggregate. Only published when the QuikShipX integration is enabled.
+     */
+    public static final String EVENT_QUIKSHIPX_CREATE = "QUIKSHIPX_CREATE";
+
+    /**
+     * Event type emitted when an order is admin-approved, so the QuikShipX drainer
+     * can mirror the shipment status to Confirmed (and, once QuikShipX documents a
+     * confirm endpoint, push it). Payload carries the order id/code.
+     */
+    public static final String EVENT_QUIKSHIPX_CONFIRM = "QUIKSHIPX_CONFIRM";
+
+    /**
+     * Event type emitted after an order is confirmed, so the QuikShipX drainer
+     * allots a tracking id (AWB) + label via {@code allot-tracking-id} out-of-band
+     * (their Confirmed → Tracking ID Assigned). Decoupled from confirm so the
+     * Confirmed status sticks and the allot retries independently. Idempotent.
+     */
+    public static final String EVENT_QUIKSHIPX_ALLOT = "QUIKSHIPX_ALLOT";
+
+    /**
      * Event type emitted when an order becomes {@code Packed} so the courier
      * drainer can request an AWB + shipping label out-of-band (Req 12.1). Its
      * payload carries the order id/code; the drainer reloads the aggregate.
@@ -58,7 +90,7 @@ public class OutboxEvent {
     public static final String EVENT_COURIER_ASSIGN_FAILED = "COURIER_ASSIGN_FAILED";
 
     /**
-     * Event type emitted when an order becomes {@code Courier_Lost} and a claim
+     * Event type emitted when an order becomes {@code Redispatch} and a claim
      * receivable is recorded, so the admin is told to file a claim (Req 17.4).
      */
     public static final String EVENT_CLAIM_FILED_REQUIRED = "CLAIM_FILED_REQUIRED";
@@ -68,7 +100,7 @@ public class OutboxEvent {
 
     /**
      * Event type emitted when an order reaches a customer-facing lifecycle state
-     * (Dispatched / Out_For_Delivery / Delivered / RTO / Courier_Lost) so the
+     * (Dispatched / Out_For_Delivery / Delivered / RTO / Redispatch) so the
      * WhatsApp drainer can send the pre-approved template message out-of-band
      * (Req 14.1, 14.2). Its payload carries the resolved template name and
      * ordered parameters, so the drainer never re-loads the aggregate.
@@ -84,6 +116,24 @@ public class OutboxEvent {
     public static final String EVENT_WHATSAPP_FAILED = "WHATSAPP_FAILED";
 
     /**
+     * Event type emitted when an order reaches a customer milestone
+     * (Approved / Dispatched / Delivered) that warrants a customer email
+     * (Req 7.2, 10.7, 11.4, 13.5, 13.6). Its payload carries the resolved
+     * recipient, subject, and plain-text body, so the {@code EmailOutboxDrainer}
+     * sends without re-loading the order aggregate. Mirrors
+     * {@link #EVENT_WHATSAPP_NOTIFY}.
+     */
+    public static final String EVENT_EMAIL_NOTIFY = "EMAIL_NOTIFY";
+
+    /**
+     * Event type emitted when a customer email send fails after its retries are
+     * exhausted, so the admin is notified and the order flagged for review
+     * (Req 14.5). Consumed by the admin notifications center, mirroring
+     * {@link #EVENT_WHATSAPP_FAILED}.
+     */
+    public static final String EVENT_EMAIL_FAILED = "EMAIL_FAILED";
+
+    /**
      * Aggregate type discriminator for platform/system-scoped events that are not
      * tied to an order (e.g. a scheduled backup run).
      */
@@ -91,6 +141,40 @@ public class OutboxEvent {
 
     /** Aggregate type discriminator for product-scoped events (e.g. low stock). */
     public static final String AGGREGATE_PRODUCT = "PRODUCT";
+
+    /** Aggregate type discriminator for lead-scoped events (e.g. follow-up due). */
+    public static final String AGGREGATE_LEAD = "LEAD";
+
+    /**
+     * Aggregate type discriminator for General-Ledger auto-posting events. The
+     * aggregate id is the source document's id; the concrete source type
+     * (ORDER / PURCHASE_ORDER / EXPENSE / PAYMENT) and id are carried on the
+     * payload so the {@code LedgerPostingDrainer} can derive the voucher without
+     * re-deriving them from the aggregate id alone.
+     */
+    public static final String AGGREGATE_LEDGER_SOURCE = "LEDGER_SOURCE";
+
+    /**
+     * Event type emitted (in the source module's own committed transaction) when
+     * a sales order, purchase bill, expense, or payment/receipt is recorded, so
+     * the General Ledger can post the balanced double-entry voucher out-of-band
+     * (Reqs 8.1, 9.1, 10.1, 11.1, 11.2). Its payload carries {@code sourceType}
+     * (ORDER / PURCHASE_ORDER / EXPENSE / PAYMENT) and {@code sourceId}; the
+     * {@code LedgerPostingDrainer} consumes {@code PENDING} rows of this type,
+     * builds + posts the voucher, and never touches the source aggregate (Req
+     * 17.4). Idempotency is enforced at the destination (unique voucher source
+     * key), so a re-delivery or double publish is safe (Reqs 8.4, 9.3, 10.3,
+     * 11.4).
+     */
+    public static final String EVENT_LEDGER_POST = "LEDGER_POST";
+
+    /**
+     * Event type emitted by the {@code FollowUpReminderJob} when a non-terminal
+     * lead's follow-up date is due, so an in-app reminder is delivered to the
+     * lead owner (design &sect;Follow-up Reminders). Its aggregate is
+     * {@link #AGGREGATE_LEAD} with the lead id.
+     */
+    public static final String EVENT_LEAD_FOLLOW_UP_DUE = "LEAD_FOLLOW_UP_DUE";
 
     /**
      * Event type emitted when a stock decrement drives a tracked product into the
@@ -109,6 +193,16 @@ public class OutboxEvent {
      * aggregate id) because a backup is not order-scoped.
      */
     public static final String EVENT_BACKUP_FAILED = "BACKUP_FAILED";
+
+    /**
+     * Event type emitted for each notifiable (WARNING/DANGER) statistical insight
+     * produced by a computation run, so the admin is alerted
+     * (statistical-insights-engine, design §Reuse). Its aggregate is
+     * {@link #AGGREGATE_SYSTEM} (with the persisted insight id as the aggregate
+     * id) because an insight is not order-scoped; the returned event's id is used
+     * as the de-dup {@code sourceEventId} of the staff notification it drives.
+     */
+    public static final String EVENT_INSIGHT_ALERT = "INSIGHT_ALERT";
 
     /** Delivery status for a freshly written, not-yet-consumed event. */
     public static final String STATUS_PENDING = "PENDING";
@@ -195,6 +289,20 @@ public class OutboxEvent {
         this.attempts += 1;
         this.status = STATUS_FAILED;
         this.lastError = truncate(error);
+        this.nextAttemptAt = null;
+    }
+
+    /**
+     * Re-queues a (typically {@code FAILED}) event for a fresh delivery attempt:
+     * status back to {@code PENDING}, attempts reset to 0, error cleared, and due
+     * immediately. Used by the self-healing re-drive so a transiently-failed
+     * integration event (e.g. a courier API that briefly returned HTTP 500) gets
+     * the full retry ladder again once the dependency recovers.
+     */
+    public void requeue() {
+        this.status = STATUS_PENDING;
+        this.attempts = 0;
+        this.lastError = null;
         this.nextAttemptAt = null;
     }
 

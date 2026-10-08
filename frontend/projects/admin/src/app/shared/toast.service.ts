@@ -3,12 +3,20 @@ import { Injectable, signal } from '@angular/core';
 /** The visual/semantic flavour of a toast. */
 export type ToastKind = 'success' | 'error' | 'info';
 
+/** An optional click-through action rendered as a button on a toast. */
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 /** A single queued toast notification. */
 export interface ToastMessage {
   /** Monotonic id used for tracking and dismissal. */
   id: number;
   kind: ToastKind;
   text: string;
+  /** Optional call-to-action button (e.g. "Review" → navigate to the queue). */
+  action?: ToastAction;
 }
 
 /**
@@ -47,6 +55,15 @@ export class ToastService {
     return this.push('info', text, durationMs);
   }
 
+  /**
+   * Shows a toast with an optional click-through action button. Used for
+   * real-time nudges (e.g. "New order needs approval → Review"). The action
+   * lingers longer by default so it is not missed.
+   */
+  notify(kind: ToastKind, text: string, action?: ToastAction, durationMs = 8000): number {
+    return this.push(kind, text, durationMs, action);
+  }
+
   /** Removes a toast (used by the auto-dismiss timer and the close button). */
   dismiss(id: number): void {
     const timer = this.timers.get(id);
@@ -64,9 +81,9 @@ export class ToastService {
     this.toasts.set([]);
   }
 
-  private push(kind: ToastKind, text: string, durationMs: number): number {
+  private push(kind: ToastKind, text: string, durationMs: number, action?: ToastAction): number {
     const id = ++this.seq;
-    this.toasts.update((list) => [...list, { id, kind, text }]);
+    this.toasts.update((list) => [...list, { id, kind, text, action }]);
     if (durationMs > 0) {
       this.timers.set(
         id,

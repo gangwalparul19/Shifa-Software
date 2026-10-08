@@ -1,19 +1,27 @@
-import { DatePipe } from '@angular/common';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { AuthService, Money, Role, SortState } from 'core';
 import { ReturnsService } from './returns.service';
-import { ReturnResponse, ReturnStatus } from './returns.model';
+import {
+  REFUND_METHOD_LABELS,
+  REFUND_METHOD_OPTIONS,
+  RefundMethod,
+  ReturnResponse,
+  ReturnStatus,
+} from './returns.model';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { SortableHeaderComponent } from '../shared/sortable-header.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ToastService } from '../shared/toast.service';
 import { toggleSort, sortParam } from '../shared/sort.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
+import { relativeTime } from '../shared/time.util';
 
 /** Sort fields the backend accepts for the admin returns listing. */
 const SORT_FIELDS = new Set(['createdAt', 'updatedAt', 'status', 'refundAmount']);
@@ -36,12 +44,13 @@ type ReturnModal = 'approve' | 'reject' | 'refund' | 'create' | null;
   imports: [
     ReactiveFormsModule,
     RouterLink,
-    DatePipe,
+    IstDatePipe,
     PageHeaderComponent,
     StatePanelComponent,
     DensityToggleComponent,
     PaginationComponent,
     SortableHeaderComponent,
+    RowActionsMenuComponent,
   ],
   templateUrl: './returns.component.html',
   styleUrl: './returns.component.css',
@@ -50,6 +59,7 @@ export class ReturnsComponent implements OnInit, OnDestroy {
   private readonly service = inject(ReturnsService);
   private readonly auth = inject(AuthService);
   private readonly toasts = inject(ToastService);
+  private readonly route = inject(ActivatedRoute);
 
   protected readonly statusOptions: ReturnStatus[] = ['REQUESTED', 'APPROVED', 'REFUNDED', 'REJECTED'];
 
@@ -61,9 +71,24 @@ export class ReturnsComponent implements OnInit, OnDestroy {
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
 
+  /**
+   * Summary tiles for the returns currently on screen, grouped by status
+   * (pending review / approved / refunded). Derived from the loaded page — no
+   * new endpoint — to give an at-a-glance sense of the visible pipeline.
+   */
+  protected readonly requestedCount = computed(
+    () => this.returns().filter((r) => r.status === 'REQUESTED').length,
+  );
+  protected readonly approvedCount = computed(
+    () => this.returns().filter((r) => r.status === 'APPROVED').length,
+  );
+  protected readonly refundedCount = computed(
+    () => this.returns().filter((r) => r.status === 'REFUNDED').length,
+  );
+
   // --- Paging + sort ------------------------------------------------------
   protected readonly page = signal(0);
-  protected readonly size = signal(readPageSize(TABLE_KEY, 20));
+  protected readonly size = signal(readPageSize(TABLE_KEY, 10));
   protected readonly totalPages = signal(0);
   protected readonly totalElements = signal(0);
   protected readonly sort = signal<SortState>({ field: 'createdAt', dir: 'desc' });
@@ -94,10 +119,16 @@ export class ReturnsComponent implements OnInit, OnDestroy {
     nonNullable: true,
     validators: [Validators.required, Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)],
   });
+  /** How the refund was paid back (ENHANCEMENT 2.3); blank = unspecified. */
+  protected readonly refundMethod = new FormControl<string>('', { nonNullable: true });
+  /** Refund-method options for the modal picker. */
+  protected readonly refundMethodOptions = REFUND_METHOD_OPTIONS;
   protected readonly createForm = new FormGroup({
+    // Accepts either the numeric order id or the human-readable order code
+    // (e.g. SHR-20260916-JGM9) — whatever the admin has on hand.
     orderId: new FormControl<string>('', {
       nonNullable: true,
-      validators: [Validators.required, Validators.pattern(/^\d{1,18}$/)],
+      validators: [Validators.required, Validators.maxLength(40)],
     }),
     reason: new FormControl<string>('', {
       nonNullable: true,
@@ -114,6 +145,14 @@ export class ReturnsComponent implements OnInit, OnDestroy {
       .pipe(debounceTime(300), distinctUntilChanged(), takeUntil(this.destroy$))
       .subscribe(() => this.resetAndLoad());
     this.filters.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => this.resetAndLoad());
+
+    // Deep link (RTO scan page's "Create a return?" suggestion): ?createOrder=
+    // pre-opens the Create return modal with that order code already filled in.
+    const createOrder = this.route.snapshot.queryParamMap.get('createOrder');
+    if (createOrder && this.canManage()) {
+      this.openCreate();
+      this.createForm.patchValue({ orderId: createOrder });
+    }
   }
 
   ngOnDestroy(): void {
@@ -212,12 +251,44 @@ export class ReturnsComponent implements OnInit, OnDestroy {
     return `₹${value}`;
   }
 
+  /** Short relative time (enhancement: relative timestamps) — shown alongside the exact date. */
+  protected readonly relativeTime = relativeTime;
+
   canApproveOrReject(r: ReturnResponse): boolean {
     return this.canManage() && r.status === 'REQUESTED';
   }
 
   canMarkRefunded(r: ReturnResponse): boolean {
     return this.canRefund() && r.status === 'APPROVED';
+  }
+
+  /** Human label for a refund method (ENHANCEMENT 2.3), or null when unspecified. */
+  refundMethodLabel(method: RefundMethod | null | undefined): string | null {
+    return method ? REFUND_METHOD_LABELS[method] : null;
+  }
+
+  /** Status- and role-gated per-row kebab actions. */
+  rowActions(r: ReturnResponse): RowAction[] {
+    const actions: RowAction[] = [];
+    if (this.canApproveOrReject(r)) {
+      actions.push({ key: 'approve', label: 'Approve', icon: 'ti-check', variant: 'success' });
+      actions.push({ key: 'reject', label: 'Reject', icon: 'ti-x', variant: 'danger' });
+    }
+    if (this.canMarkRefunded(r)) {
+      actions.push({ key: 'refund', label: 'Mark refunded', icon: 'ti-cash', variant: 'primary' });
+    }
+    return actions;
+  }
+
+  /** Dispatches a kebab action for the given return row. */
+  onRowAction(key: string, r: ReturnResponse): void {
+    if (key === 'approve') {
+      this.openApprove(r);
+    } else if (key === 'reject') {
+      this.openReject(r);
+    } else if (key === 'refund') {
+      this.openRefund(r);
+    }
   }
 
   // --- Modals -------------------------------------------------------------
@@ -240,6 +311,7 @@ export class ReturnsComponent implements OnInit, OnDestroy {
     this.activeReturn.set(r);
     this.modalError.set(null);
     this.refundAmount.setValue(r.refundAmount ? String(r.refundAmount) : '');
+    this.refundMethod.setValue(r.refundMethod ?? '');
     this.modal.set('refund');
   }
 
@@ -298,7 +370,10 @@ export class ReturnsComponent implements OnInit, OnDestroy {
     }
     this.submitting.set(true);
     this.modalError.set(null);
-    this.service.refund(r.id, { refundAmount: Number(this.refundAmount.value) }).subscribe({
+    const method = this.refundMethod.value
+      ? (this.refundMethod.value as RefundMethod)
+      : undefined;
+    this.service.refund(r.id, { refundAmount: Number(this.refundAmount.value), refundMethod: method }).subscribe({
       next: () => this.afterMutation('Return marked refunded.'),
       error: () => this.failMutation('Could not mark the return refunded.'),
     });
@@ -314,13 +389,13 @@ export class ReturnsComponent implements OnInit, OnDestroy {
     this.modalError.set(null);
     this.service
       .create({
-        orderId: Number(raw.orderId),
+        orderId: raw.orderId.trim(),
         reason: raw.reason.trim(),
         notes: raw.notes.trim() || undefined,
       })
       .subscribe({
         next: () => this.afterMutation('Return created.'),
-        error: () => this.failMutation('Could not create the return. Check the order id.'),
+        error: () => this.failMutation('Could not create the return. Check the order id/code.'),
       });
   }
 

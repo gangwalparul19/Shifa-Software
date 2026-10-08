@@ -32,7 +32,7 @@ public record DashboardMetricsResponse(
             long dispatchedOrders,
             long deliveredOrders,
             long rtoCount,
-            long courierLostCount,
+            long redispatchCount,
             BigDecimal totalCodPendingFromCourier,
             BigDecimal totalLossClaimPendingFromCourier,
             BigDecimal conversionRate) {

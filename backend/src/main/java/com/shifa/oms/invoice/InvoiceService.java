@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -101,11 +102,26 @@ public class InvoiceService {
      */
     @Transactional
     public InvoiceDocument invoicePdf(Long id, AuthPrincipal actor) {
-        Optional<Long> constraint = scopeResolver.creatorConstraint(actor);
-        OrderEntity order = constraint
-                .map(createdBy -> orderRepository.findByIdAndCreatedBy(id, createdBy))
-                .orElseGet(() -> orderRepository.findById(id))
-                .orElseThrow(() -> new ResourceNotFoundException("Order " + id + " does not exist."));
+        // Scope like order detail: salesperson → own order; team lead → an order
+        // by any of their salespeople; admin/accountant → any order.
+        Optional<List<Long>> scope = scopeResolver.creatorScope(actor);
+        OrderEntity order;
+        if (scope.isPresent()) {
+            List<Long> ids = scope.get();
+            Optional<OrderEntity> found;
+            if (ids.isEmpty()) {
+                found = Optional.empty();
+            } else if (ids.size() == 1) {
+                found = orderRepository.findByIdAndCreatedBy(id, ids.get(0));
+            } else {
+                found = orderRepository.findByIdAndCreatedByIn(id, ids);
+            }
+            order = found.orElseThrow(
+                    () -> new ResourceNotFoundException("Order " + id + " does not exist."));
+        } else {
+            order = orderRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Order " + id + " does not exist."));
+        }
         return render(order);
     }
 

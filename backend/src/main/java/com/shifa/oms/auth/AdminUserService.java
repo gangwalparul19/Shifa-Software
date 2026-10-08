@@ -11,6 +11,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -32,6 +33,14 @@ import java.util.List;
  */
 @Service
 public class AdminUserService {
+
+    /**
+     * The fixed temporary password an admin reset sets. The user signs in with
+     * this and is then forced to choose their own strong password. Kept as a
+     * single source of truth (also used by the self-service change-password
+     * flow to reject reusing it).
+     */
+    public static final String TEMPORARY_PASSWORD = "Welcome@123";
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -99,14 +108,35 @@ public class AdminUserService {
         user.setFullName(request.fullName().trim());
         user.setRole(request.role());
         user.setActive(active);
+        // Contact + onboarding profile — the admin can edit every detail here
+        // (blank strings normalised to null; the ID document/photo and the
+        // verification decision keep their dedicated staff endpoints).
+        user.setEmail(blankToNull(request.email()));
+        user.setMobile(blankToNull(request.mobile()));
+        user.setDateOfBirth(request.dateOfBirth());
+        user.setAddress(blankToNull(request.address()));
+        user.setJoinedOn(request.joinedOn());
+        user.setIdProofType(request.idProofType());
+        user.setIdProofNumber(blankToNull(request.idProofNumber()));
         return AdminUserResponse.from(userRepository.save(user));
     }
 
-    /** Re-encodes and sets a new password for the user. */
+    /**
+     * Resets the user's password to the fixed temporary password
+     * ({@value #TEMPORARY_PASSWORD}) and forces them to choose a new strong
+     * password on their next login. Records when the reset happened and bumps a
+     * running count so the admin panel can show "last reset" and "times reset".
+     *
+     * <p>The request body is accepted for backward compatibility but ignored —
+     * the admin never chooses the password; it is always the temporary one.
+     */
     @Transactional
     public AdminUserResponse resetPassword(Long id, ResetPasswordRequest request) {
         User user = require(id);
-        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        user.setPasswordHash(passwordEncoder.encode(TEMPORARY_PASSWORD));
+        user.setMustChangePassword(true);
+        user.setPasswordResetAt(LocalDateTime.now());
+        user.setPasswordResetCount(user.getPasswordResetCount() + 1);
         return AdminUserResponse.from(userRepository.save(user));
     }
 
@@ -149,5 +179,14 @@ public class AdminUserService {
 
     private boolean isLastActiveAdmin() {
         return userRepository.countByRoleAndActiveTrue(Role.ADMIN) <= 1;
+    }
+
+    /** Trims a string and maps blank/empty to {@code null} for nullable columns. */
+    private static String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

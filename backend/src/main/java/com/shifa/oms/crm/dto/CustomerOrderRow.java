@@ -16,7 +16,8 @@ public record CustomerOrderRow(
         LocalDateTime date,
         BigDecimal total,
         OrderStatus orderStatus,
-        PaymentStatus paymentStatus
+        PaymentStatus paymentStatus,
+        Long orderId
 ) {
 
     public static CustomerOrderRow from(OrderEntity order) {
@@ -25,6 +26,7 @@ public record CustomerOrderRow(
                 order.getCreatedAt(),
                 order.getTotalAmount(),
                 order.getOrderStatus(),
-                order.getPaymentStatus());
+                order.getPaymentStatus(),
+                order.getId());
     }
 }

@@ -2,20 +2,31 @@ package com.shifa.oms.mail;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.time.Duration;
+
 /**
  * Configuration for outbound email, bound from {@code app.mail.*} (Feature E3),
  * mirroring {@link com.shifa.oms.notification.WhatsAppProperties}.
  *
- * @param mode     backend selector: {@code MOCK} (local dev, default, logs only)
- *                 or {@code SMTP} (real send via {@code spring.mail.*})
- * @param from     the From address applied to every outbound message
- * @param digestTo recipient(s) for the daily sales digest; blank disables the
- *                 digest email (Feature C4)
- * @param brand    branding + theme used by the HTML email templates
- *                 ({@code app.mail.brand.*})
+ * @param mode         backend selector: {@code MOCK} (local dev, default, logs only)
+ *                     or {@code SMTP} (real send via {@code spring.mail.*})
+ * @param from         the From address applied to every outbound message
+ * @param digestTo     recipient(s) for the daily sales digest; blank disables the
+ *                     digest email (Feature C4)
+ * @param digestEnabled whether the internal scheduler may send the daily report
+ *                     (default {@code true}); set {@code false} when an external
+ *                     Lambda drives it via the ADMIN trigger endpoint
+ * @param brand        branding + theme used by the HTML email templates
+ *                     ({@code app.mail.brand.*})
+ * @param maxAttempts  maximum send attempts before the {@code EMAIL_NOTIFY} outbox
+ *                     event is marked FAILED and an ADMIN alert raised (Req 14.5);
+ *                     mirrors {@code app.whatsapp.max-attempts}
+ * @param retryBackoff delay before the next email send attempt after a failure;
+ *                     mirrors {@code app.whatsapp.retry-backoff}
  */
 @ConfigurationProperties(prefix = "app.mail")
-public record MailProperties(String mode, String from, String digestTo, Brand brand) {
+public record MailProperties(String mode, String from, String digestTo, Boolean digestEnabled, Brand brand,
+                             Integer maxAttempts, Duration retryBackoff, Boolean weeklyEnabled) {
 
     public MailProperties {
         if (mode == null || mode.isBlank()) {
@@ -27,14 +38,48 @@ public record MailProperties(String mode, String from, String digestTo, Brand br
         if (digestTo == null) {
             digestTo = "";
         }
+        if (digestEnabled == null) {
+            digestEnabled = Boolean.TRUE;
+        }
         if (brand == null) {
             brand = new Brand(null, null, null, null, null, null, null);
         }
+        if (maxAttempts == null || maxAttempts < 1) {
+            maxAttempts = 3;
+        }
+        if (retryBackoff == null) {
+            retryBackoff = Duration.ofSeconds(30);
+        }
+        // Weekly consolidated report is OFF by default — an admin opts in via
+        // app.mail.weekly-enabled / REPORT_WEEKLY_ENABLED (scheduled-report-delivery).
+        if (weeklyEnabled == null) {
+            weeklyEnabled = Boolean.FALSE;
+        }
+    }
+
+    /**
+     * Whether the internal scheduler may send the WEEKLY consolidated report
+     * ({@code app.mail.weekly-enabled} / {@code REPORT_WEEKLY_ENABLED}). Default
+     * {@code false} — the weekly digest is opt-in so it never starts emailing
+     * unexpectedly (scheduled-report-delivery enhancement).
+     */
+    public boolean isWeeklyEnabled() {
+        return weeklyEnabled != null && weeklyEnabled;
     }
 
     /** Whether the mock (log-only) backend is selected. */
     public boolean isMock() {
         return "MOCK".equalsIgnoreCase(mode);
+    }
+
+    /**
+     * Whether the internal scheduler is allowed to send the daily report
+     * ({@code app.mail.digest-enabled} / {@code REPORT_DIGEST_ENABLED}, default
+     * {@code true}). Set to {@code false} when an external Lambda drives the
+     * report via the ADMIN trigger endpoint, to avoid a double-send.
+     */
+    public boolean isDigestEnabled() {
+        return digestEnabled == null || digestEnabled;
     }
 
     /**

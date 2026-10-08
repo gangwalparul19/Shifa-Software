@@ -51,9 +51,39 @@ public class Product {
     @Column(name = "sale_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal salePrice = BigDecimal.ZERO;
 
+    /**
+     * Optional per-unit cost price — what Shifa pays to source one unit (V79,
+     * ENHANCEMENT 3.6). Null until an admin records it; used only for the
+     * per-channel margin estimate, never for pricing or the price band.
+     */
+    @Column(name = "cost_price", precision = 12, scale = 2)
+    private BigDecimal costPrice;
+
+    /**
+     * Optional minimum selling price (per-line floor). When present, an order
+     * line's rate must be within {@code [minimumRate, mrp]} (price band). Null on
+     * legacy rows is treated as a floor equal to {@link #salePrice}
+     * (product-catalog-pricing-gst Req 1.1, 1.5, 5.2).
+     */
+    @Column(name = "minimum_rate", precision = 12, scale = 2)
+    private BigDecimal minimumRate;
+
     /** Optional HSN code, surfaced on GST tax invoices when present (Req: GST). */
     @Column(name = "hsn_code", length = 20)
     private String hsnCode;
+
+    /** Human-readable pack size / weight / volume descriptor (e.g. "100ML", "60 TB PP", "Combo"). */
+    @Column(name = "wt_ml", length = 32)
+    private String wtMl;
+
+    /**
+     * Optional GST Unit Quantity Code (e.g. NOS, PCS, KGS, MLT) for the GSTR-1
+     * HSN summary (Table 12). Nullable on legacy rows; the default {@code NOS} is
+     * applied in code ({@code Uqc.resolve}) at report time, not as a DB default,
+     * so existing products need no backfill (gst-filing-compliance Req 3.2, 14.2).
+     */
+    @Column(name = "uqc", length = 10)
+    private String uqc;
 
     /**
      * Optional per-product GST rate percent (e.g. 5.00 / 12.00 / 18.00) used on
@@ -173,12 +203,45 @@ public class Product {
         this.salePrice = salePrice;
     }
 
+    /** The optional per-unit sourcing cost (V79), or {@code null} if not recorded. */
+    public BigDecimal getCostPrice() {
+        return costPrice;
+    }
+
+    public void setCostPrice(BigDecimal costPrice) {
+        this.costPrice = costPrice;
+    }
+
+    public BigDecimal getMinimumRate() {
+        return minimumRate;
+    }
+
+    public void setMinimumRate(BigDecimal minimumRate) {
+        this.minimumRate = minimumRate;
+    }
+
     public String getHsnCode() {
         return hsnCode;
     }
 
     public void setHsnCode(String hsnCode) {
         this.hsnCode = hsnCode;
+    }
+
+    public String getWtMl() {
+        return wtMl;
+    }
+
+    public void setWtMl(String wtMl) {
+        this.wtMl = wtMl;
+    }
+
+    public String getUqc() {
+        return uqc;
+    }
+
+    public void setUqc(String uqc) {
+        this.uqc = uqc;
     }
 
     public BigDecimal getGstRate() {

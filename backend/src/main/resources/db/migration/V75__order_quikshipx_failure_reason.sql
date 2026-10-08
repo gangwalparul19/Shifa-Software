@@ -1,0 +1,11 @@
+-- QuikShipX failure reason (courier-failure re-route feature).
+--
+-- When QuikShipX permanently rejects an order (e.g. "585216 is non serviceable
+-- pincode", or any create/confirm/allot failure that exhausts retries), the
+-- reason is captured here so it is visible on the order-detail drawer and the
+-- admin can decide to re-route the order to in-house delivery. Null for every
+-- order that has not had a permanent QuikShipX failure; cleared when the order
+-- is successfully (re)published / allotted, or when it is switched to in-house.
+--
+-- Additive / nullable — safe on existing data.
+ALTER TABLE orders ADD COLUMN quikshipx_failure_reason VARCHAR(500) NULL AFTER shopify_order_id;

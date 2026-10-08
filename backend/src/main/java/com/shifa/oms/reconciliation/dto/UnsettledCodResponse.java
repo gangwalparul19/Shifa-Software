@@ -26,5 +26,8 @@ public record UnsettledCodResponse(
         String courierName,
         String awb,
         BigDecimal amount,
-        LocalDateTime createdAt) {
+        LocalDateTime createdAt,
+        // Name of the salesperson who punched the order (resolved from
+        // created_by; full name, else username; null when unknown).
+        String salespersonName) {
 }

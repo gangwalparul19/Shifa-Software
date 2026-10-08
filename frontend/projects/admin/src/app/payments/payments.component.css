@@ -1,0 +1,93 @@
+/* Payment verification dashboard (product-audit §4.4) */
+.pay-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 61, 39, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 1080;
+}
+.pay-modal {
+  width: 100%;
+  max-width: 460px;
+  margin: 0;
+  box-shadow: 0 20px 60px rgba(15, 61, 39, 0.3);
+}
+.pay-modal-img {
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow: auto;
+  margin: 0;
+  box-shadow: 0 20px 60px rgba(15, 61, 39, 0.3);
+}
+
+/* Payment-verifier home: workload KPI + how-to card (clarity enhancement). */
+.pay-kpi {
+  border-left: 3px solid var(--shifa-green-500, #1f5d3f);
+}
+.pay-kpi .subheader {
+  font-size: 0.7rem;
+}
+.pay-kpi .h1 {
+  font-size: 2rem;
+}
+.pay-kpi__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.9rem;
+  font-size: 1.6rem;
+  color: var(--shifa-green-600, #1f5d3f);
+  background: var(--shifa-green-100, #e4f2ea);
+}
+.pay-guide {
+  background: var(--shifa-green-050, #f2f9f5);
+}
+.pay-guide__icon {
+  color: var(--shifa-green-600, #1f5d3f);
+}
+
+/* --- Duplicate payment-proof column (linked order codes) --- */
+.pay-code {
+  text-decoration: none;
+  color: var(--shifa-green-700, #164632);
+}
+.pay-code:disabled {
+  color: inherit;
+  opacity: 1;
+  cursor: default;
+}
+.pay-dup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  align-items: flex-start;
+}
+.pay-dup__flag {
+  display: inline-flex;
+  align-items: center;
+}
+.pay-dup__codes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.pay-dup__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.pay-dup__code {
+  text-decoration: underline;
+  color: var(--tblr-danger, #b42318);
+  font-size: 0.86rem;
+}
+.pay-dup__details {
+  width: 26px;
+  height: 26px;
+  color: #62707a;
+}

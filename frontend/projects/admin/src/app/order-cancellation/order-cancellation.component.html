@@ -1,0 +1,214 @@
+<admin-page-header
+  title="Cancel Order"
+  subtitle="Cancel an order with a note — even after a courier tracking ID is generated"
+  [breadcrumbs]="[{ label: 'Cancel Order' }]"
+></admin-page-header>
+
+<!-- What this page does -->
+<div class="card oc-note mb-3">
+  <div class="card-body d-flex gap-2">
+    <i class="ti ti-info-circle oc-note__icon" aria-hidden="true"></i>
+    <div class="small">
+      Use this to cancel an order the customer no longer wants, or where the payment never arrived — including
+      after it has been handed to the courier. For a <strong>QuikShip</strong> order the cancellation is also
+      sent to the courier so they do <strong>not</strong> send anyone to pick the parcel up. A delivered order
+      can't be cancelled here (that's a return). Every cancellation needs a note and is recorded.
+    </div>
+  </div>
+</div>
+
+<!-- Search -->
+<div class="card mb-3">
+  <div class="card-body">
+    <form class="d-flex flex-wrap gap-2" (submit)="$event.preventDefault(); search()">
+      <div class="input-icon flex-grow-1">
+        <span class="input-icon-addon"><i class="ti ti-search"></i></span>
+        <input
+          type="search"
+          class="form-control"
+          placeholder="Search by order code, customer name, mobile, or AWB…"
+          [(ngModel)]="searchTerm"
+          name="q"
+          aria-label="Search orders to cancel"
+        />
+      </div>
+      <button type="submit" class="btn btn-primary oc-btn" [disabled]="loading()">
+        <i class="ti ti-search me-1"></i>Search
+      </button>
+      @if (searchTerm) {
+        <button type="button" class="btn btn-outline-secondary oc-btn" (click)="clearSearch()" [disabled]="loading()">
+          Clear
+        </button>
+      }
+    </form>
+  </div>
+</div>
+
+<!-- List -->
+@if (loading() && orders().length === 0) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading orders…" />
+} @else if (error()) {
+  <admin-state-panel variant="error" [card]="true" [message]="error()!" (retry)="search()" />
+} @else if (orders().length === 0) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-circle-check"
+    title="No cancellable orders found"
+    [message]="searchTerm ? 'No pre-delivery orders match your search.' : 'There are no orders that can be cancelled right now.'"
+  />
+} @else {
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Cancellable orders</h3>
+      <span class="ms-auto text-secondary small">{{ totalElements() }} order(s)</span>
+    </div>
+
+    <!-- Mobile cards -->
+    <div class="list-group list-group-flush d-md-none">
+      @for (o of pageItems(); track o.id) {
+        <div class="list-group-item oc-item">
+          <div class="d-flex justify-content-between align-items-start gap-2">
+            <div class="min-w-0">
+              <a class="fw-semibold shifa-mono" routerLink="/orders" [queryParams]="{ q: o.orderCode }">{{ o.orderCode }}</a>
+              <div class="text-secondary small text-truncate">{{ o.customerName }} · {{ o.customerMobile }}</div>
+            </div>
+            <admin-status-badge [status]="o.orderStatus" />
+          </div>
+          <div class="d-flex justify-content-between align-items-center small mt-1">
+            <span>
+              @if (o.deliveryMethod === 'IN_HOUSE') {
+                <span class="badge bg-teal-lt"><i class="ti ti-home me-1"></i>In-House</span>
+              } @else {
+                <admin-channel-logo [quikShip]="true" />
+              }
+              @if (o.quikShipXAwb) { <span class="shifa-mono text-secondary ms-1">AWB {{ o.quikShipXAwb }}</span> }
+            </span>
+            <span class="fw-semibold">{{ o.totalAmount | currency: 'INR' : 'symbol' : '1.0-2' }}</span>
+          </div>
+          <button type="button" class="btn btn-outline-danger btn-sm w-100 mt-2" (click)="openCancel(o)">
+            <i class="ti ti-ban me-1"></i>Cancel order
+          </button>
+        </div>
+      }
+    </div>
+
+    <!-- Desktop table -->
+    <div class="table-responsive d-none d-md-block">
+      <table class="table card-table table-vcenter">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>Courier</th>
+            <th>Status</th>
+            <th class="text-end">Total</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (o of pageItems(); track o.id) {
+            <tr>
+              <td>
+                <a class="shifa-mono" routerLink="/orders" [queryParams]="{ q: o.orderCode }">{{ o.orderCode }}</a>
+                @if (o.source === 'SHOPIFY') { <admin-channel-logo class="ms-1" [source]="o.source" /> }
+              </td>
+              <td>{{ o.customerName }}<div class="text-secondary small">{{ o.customerMobile }}</div></td>
+              <td>
+                @if (o.deliveryMethod === 'IN_HOUSE') {
+                  <span class="badge bg-teal-lt"><i class="ti ti-home me-1"></i>In-House</span>
+                } @else {
+                  <admin-channel-logo [quikShip]="true" />
+                }
+                @if (o.quikShipXAwb) {
+                  <div class="shifa-mono text-secondary small mt-1">AWB {{ o.quikShipXAwb }}</div>
+                }
+              </td>
+              <td><admin-status-badge [status]="o.orderStatus" /></td>
+              <td class="text-end">{{ o.totalAmount | currency: 'INR' : 'symbol' : '1.0-2' }}</td>
+              <td class="text-end">
+                <button type="button" class="btn btn-outline-danger btn-sm" (click)="openCancel(o)">
+                  <i class="ti ti-ban me-1"></i>Cancel
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+}
+
+<!-- Cancel modal -->
+@if (target(); as o) {
+  <div class="shifa-modal" role="dialog" aria-modal="true" aria-label="Cancel order">
+    <div class="card oc-modal">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-ban text-danger me-1"></i>Cancel {{ o.orderCode }}</h3>
+        <button type="button" class="btn-close ms-auto" (click)="closeCancel()" [disabled]="cancelling()" aria-label="Close"></button>
+      </div>
+      <div class="card-body">
+        <div class="oc-summary mb-3">
+          <div><span class="text-secondary">Customer:</span> {{ o.customerName }} · {{ o.customerMobile }}</div>
+          <div><span class="text-secondary">Status:</span> {{ humanize(o.orderStatus) }}</div>
+          <div><span class="text-secondary">Total:</span> {{ o.totalAmount | currency: 'INR' : 'symbol' : '1.0-2' }}</div>
+        </div>
+
+        <!-- Contextual warnings -->
+        @if (hasCourierShipment(o)) {
+          <div class="alert alert-warning py-2 px-3 small mb-2">
+            <i class="ti ti-truck-delivery me-1"></i>
+            This order already has a courier tracking ID (<span class="shifa-mono">{{ o.quikShipXAwb }}</span>).
+            Cancelling will also ask <strong>QuikShip</strong> to stop the pickup. If the courier doesn't confirm,
+            you'll be told to follow up with them directly.
+          </div>
+        }
+        <div class="alert alert-info py-2 px-3 small mb-2">
+          <i class="ti ti-cash me-1"></i>
+          Any amount already paid is <strong>not</strong> refunded automatically — note any refund due in the box
+          below so finance can action it.
+        </div>
+        <div class="alert alert-info py-2 px-3 small mb-3">
+          <i class="ti ti-receipt-tax me-1"></i>
+          If this order was already invoiced in a filed GST period, cancelling will affect that period's figures.
+          For a parcel already in transit, consider <strong>RTO (return to origin)</strong> instead — it's the
+          GST-safe way to reverse a shipment with a credit note.
+        </div>
+
+        <label class="form-label" for="oc-note">Cancellation note <span class="text-danger">*</span></label>
+        <textarea
+          id="oc-note"
+          class="form-control"
+          rows="3"
+          maxlength="500"
+          placeholder="Why is this order being cancelled? (e.g. payment never received, customer cancelled after part payment — ₹200 refund due)"
+          [value]="cancelNote()"
+          (input)="cancelNote.set($any($event.target).value)"
+          [disabled]="cancelling()"
+        ></textarea>
+        <div class="form-hint">Required. Shown on the order + the audit trail.</div>
+      </div>
+      <div class="card-footer d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-outline-secondary" (click)="closeCancel()" [disabled]="cancelling()">
+          Keep order
+        </button>
+        <button type="button" class="btn btn-danger" (click)="confirmCancel()" [disabled]="cancelling() || !cancelNote().trim()">
+          @if (cancelling()) {
+            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Cancelling…
+          } @else {
+            <i class="ti ti-ban me-1"></i>Cancel this order
+          }
+        </button>
+      </div>
+    </div>
+  </div>
+}

@@ -2,10 +2,20 @@ package com.shifa.oms.packing;
 
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.CurrentUserService;
+import com.shifa.oms.order.dto.OrderResponse;
+import com.shifa.oms.packing.dto.HandoverRequest;
+import com.shifa.oms.packing.dto.MarkRtoRequest;
+import com.shifa.oms.packing.dto.PackageCountRequest;
+import com.shifa.oms.packing.dto.PackingQueueResponse;
+import com.shifa.oms.packing.dto.PackingScanPreviewResponse;
 import com.shifa.oms.packing.dto.PackingScanRequest;
 import com.shifa.oms.packing.dto.PackingScanResponse;
+import com.shifa.oms.packing.dto.PickListResponse;
+import com.shifa.oms.packing.dto.RtoScanPreviewResponse;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,17 +37,159 @@ public class PackingController {
 
     private final PackingService packingService;
     private final CurrentUserService currentUserService;
+    private final com.shifa.oms.order.BulkOrderService bulkOrderService;
 
-    public PackingController(PackingService packingService, CurrentUserService currentUserService) {
+    public PackingController(PackingService packingService, CurrentUserService currentUserService,
+                             com.shifa.oms.order.BulkOrderService bulkOrderService) {
         this.packingService = packingService;
         this.currentUserService = currentUserService;
+        this.bulkOrderService = bulkOrderService;
     }
 
-    /** Scan a packed order's barcode to mark it Packed (Req 11.1, 11.3, 11.4). */
+    /**
+     * The packing work queues (awaiting packing / handover / dispatch), oldest
+     * first, so the packer can see what to work on and reprint labels (Req 9-11).
+     */
+    @GetMapping("/queue")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public PackingQueueResponse queue() {
+        return packingService.queue();
+    }
+
+    /**
+     * The daily pick-list / packing manifest (enhancement): every product needed
+     * across all orders currently awaiting packing, aggregated into one sheet so
+     * the packer picks stock once per product instead of per order.
+     */
+    @GetMapping("/pick-list")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public PickListResponse pickList() {
+        return packingService.pickList();
+    }
+
+    /**
+     * The "Print Labels" section (Shopify integration): Shopify orders that
+     * reached QuikShipX "Tracking ID Assigned", split into those whose QuikShipX
+     * label still needs printing and those already printed. Each row carries the
+     * QuikShipX label URL so the packer can open/print it (single or multi-select).
+     */
+    @GetMapping("/print-labels")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public com.shifa.oms.packing.dto.PrintLabelQueueResponse printLabels() {
+        return packingService.printLabelQueue();
+    }
+
+    /**
+     * Marks the given orders' QuikShipX labels as printed (moves them from the
+     * "to print" list into the "printed" list). Idempotent; skips anything that
+     * is not a Shopify Tracking-ID-Assigned order with a shipment. Returns the
+     * count newly marked. Does not change the order's lifecycle status.
+     */
+    @PostMapping("/mark-label-printed")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public MarkLabelPrintedResponse markLabelPrinted(
+            @Valid @RequestBody com.shifa.oms.order.dto.BulkOrderIdsRequest request) {
+        int marked = packingService.markLabelsPrinted(request.ids());
+        return new MarkLabelPrintedResponse(marked);
+    }
+
+    /** Response for the mark-label-printed action: how many rows were newly marked printed. */
+    public record MarkLabelPrintedResponse(int marked) {
+    }
+
+    /**
+     * Resolves a scanned internal-label barcode without changing the order. The
+     * response tells the packing UI which authorised operation can be confirmed:
+     * pack, handover, dispatch, or no further packing action.
+     */
+    @PostMapping("/scan-preview")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public PackingScanPreviewResponse preview(@Valid @RequestBody PackingScanRequest request) {
+        return packingService.preview(request.barcode());
+    }
+
+    /** Scan a labelled order's barcode to mark it Packed (Req 11.1, 11.3, 11.4). */
     @PostMapping("/scan")
     @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
     public PackingScanResponse scan(@Valid @RequestBody PackingScanRequest request) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
-        return packingService.scan(request.barcode(), actor.username());
+        return packingService.scan(request.barcode(), actor);
+    }
+
+    /**
+     * Hand a packed order over to the delivery courier
+     * ({@code PACKED → HANDED_TO_DELIVERY}, Req 9.2, 9.3). Returns the updated
+     * order; a non-{@code PACKED} order yields 409 {@code ORDER_NOT_HANDOVERABLE}.
+     */
+    @PostMapping("/{id}/handover")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public OrderResponse handover(@PathVariable Long id,
+                                  @Valid @RequestBody(required = false) HandoverRequest request) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return packingService.handover(id, actor, request);
+    }
+
+    /**
+     * Dispatch a handed-over order by enqueuing courier assignment (Req 10.1).
+     * Returns the order; a non-{@code HANDED_TO_DELIVERY} order yields 409
+     * {@code ORDER_NOT_DISPATCHABLE}.
+     */
+    @PostMapping("/{id}/dispatch")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public OrderResponse dispatch(@PathVariable Long id) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return packingService.dispatch(id, actor);
+    }
+
+    /**
+     * Multi-select in-house dispatch status update: sets the chosen delivery
+     * status (Out_For_Delivery / Delivered / …) on every selected IN-HOUSE order,
+     * skipping courier-partner orders (tracked by the partner) and any order the
+     * move is illegal for, with a per-order reason (partial success). Reuses the
+     * same per-order rules as the order-detail "Update status" action, including
+     * settlement on Delivered.
+     */
+    @PostMapping("/dispatch/bulk-status")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public com.shifa.oms.order.dto.BulkActionResult bulkDeliveryStatus(
+            @Valid @RequestBody com.shifa.oms.packing.dto.BulkDeliveryStatusRequest request) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return bulkOrderService.bulkUpdateInHouseDeliveryStatus(
+                request.ids(), request.status(), request.note(), actor);
+    }
+
+    /**
+     * Set how many boxes an order ships in (product-audit §4.2 — multi-pack).
+     * The label print then produces one label copy per box. Returns the updated
+     * order.
+     */
+    @PostMapping("/{id}/packages")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public OrderResponse setPackages(@PathVariable Long id, @Valid @RequestBody PackageCountRequest request) {
+        return packingService.setPackageCount(id, request.packageCount());
+    }
+
+    /**
+     * Resolves a scanned order-label barcode for the RTO page without changing
+     * the order (label redesign feature). Reports whether marking it RTO is
+     * currently a legal move so the UI can gate the reason form.
+     */
+    @PostMapping("/rto-preview")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public RtoScanPreviewResponse rtoPreview(@Valid @RequestBody PackingScanRequest request) {
+        return packingService.rtoPreview(request.barcode());
+    }
+
+    /**
+     * Marks a scanned order RTO (returned to origin) with a required categorized
+     * reason and optional note, after explicit confirmation on the RTO page
+     * (label redesign feature). A non-RTO-eligible order yields 409
+     * {@code ORDER_NOT_RTO_ELIGIBLE}.
+     */
+    @PostMapping("/{id}/rto")
+    @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
+    public OrderResponse markRto(@PathVariable Long id, @Valid @RequestBody MarkRtoRequest request) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return packingService.markRto(id, request, actor);
     }
 }

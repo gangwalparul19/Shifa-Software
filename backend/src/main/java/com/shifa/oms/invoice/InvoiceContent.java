@@ -140,12 +140,21 @@ public record InvoiceContent(
             int quantity,
             BigDecimal rate,
             BigDecimal amount,
-            String hsnCode) {
+            String hsnCode,
+            BigDecimal discount,
+            BigDecimal gstRatePercent) {
 
         public InvoiceLineItem {
             Objects.requireNonNull(productName, "productName");
             Objects.requireNonNull(rate, "rate");
             Objects.requireNonNull(amount, "amount");
+            discount = discount == null ? BigDecimal.ZERO.setScale(2) : discount;
+        }
+
+        /** Backward-compatible factory without per-line discount/GST rate (plain invoice). */
+        public InvoiceLineItem(int position, String productName, int quantity,
+                               BigDecimal rate, BigDecimal amount, String hsnCode) {
+            this(position, productName, quantity, rate, amount, hsnCode, BigDecimal.ZERO.setScale(2), null);
         }
     }
 

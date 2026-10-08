@@ -6,26 +6,17 @@ export enum Role {
   ADMIN = 'ADMIN',
   ACCOUNTANT = 'ACCOUNTANT',
   SALESPERSON = 'SALESPERSON',
+  TEAM_LEAD = 'TEAM_LEAD',
   PACKING_USER = 'PACKING_USER',
+  PAYMENT_VERIFIER = 'PAYMENT_VERIFIER',
+  /** Chartered Accountant — accounting, taxation, GST dashboard/report (read-only finance). */
+  CA = 'CA',
   CUSTOMER = 'CUSTOMER',
 }
 
 /** Credentials posted to {@code POST /api/auth/login}. */
 export interface LoginCredentials {
   username: string;
-  password: string;
-}
-
-/**
- * Customer self-registration payload posted to {@code POST /api/auth/register}.
- * The backend derives the login username (email when present, else mobile),
- * creates a {@link Role.CUSTOMER} account, and returns a token pair for
- * immediate auto-login.
- */
-export interface RegisterRequest {
-  fullName: string;
-  mobile: string;
-  email?: string;
   password: string;
 }
 
@@ -40,6 +31,12 @@ export interface TokenResponse {
   expiresIn: number;
   role: Role;
   username: string;
+  /**
+   * Whether the user must set a new password before using the app (an admin
+   * reset their password to the temporary one). The client routes to the
+   * change-password screen when true.
+   */
+  mustChangePassword?: boolean;
 }
 
 /** The decoded identity of the currently authenticated user. */
@@ -47,4 +44,16 @@ export interface AuthSession {
   userId: number;
   username: string;
   role: Role;
+  /**
+   * The user's full name, when the access token carries it. Absent for tokens
+   * issued before the claim existed, so prefer {@code AuthService.displayName}
+   * over reading this directly.
+   */
+  fullName?: string;
+  /**
+   * When true, the user signed in with an admin-reset temporary password and
+   * must set a new strong password before using the app. Read from the JWT
+   * {@code pwd} claim so it survives a page reload.
+   */
+  mustChangePassword?: boolean;
 }

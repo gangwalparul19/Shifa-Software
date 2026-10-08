@@ -1,6 +1,19 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { ApiClient, PageResponse, Product, ProductVisibility, StockStatus } from 'core';
+import { ApiClient, Money, PageResponse, Product, ProductVisibility, StockStatus } from 'core';
+
+/**
+ * Read-only per-product sales stats for the product-detail "Sales Overview"
+ * card ({@code GET /api/admin/products/{id}/stats}). Mirrors the backend
+ * {@code ProductSalesStatsResponse}: both figures are scoped to the current
+ * calendar month and exclude non-revenue (rejected/cancelled) orders.
+ */
+export interface ProductSalesStats {
+  /** Revenue for the product this month (Money decimal string; "0.00" when none). */
+  salesThisMonth: Money;
+  /** Distinct qualifying orders containing the product this month (0 when none). */
+  ordersThisMonth: number;
+}
 
 /** Filters + paging for the admin product grid (server-side, Wave 2). */
 export interface ProductPageQuery {
@@ -25,12 +38,18 @@ export interface ProductRequest {
   description?: string;
   mrp: string;
   salePrice: string;
+  /** Optional minimum selling price (per-line floor); must be ≤ salePrice ≤ mrp. */
+  minimumRate?: string | null;
+  /** Optional per-unit sourcing cost for margin analytics (ENHANCEMENT 3.6). */
+  costPrice?: string | null;
   hsnCode?: string;
   /**
    * Optional per-product GST rate percent (e.g. "12" or "18.00"); null/omitted
    * falls back to the settings default rate.
    */
   gstRate?: string | null;
+  /** Optional pack size / weight / volume descriptor, e.g. "100ML". */
+  wtMl?: string | null;
   visibility: ProductVisibility;
   /** Optional category id; null/undefined leaves the product uncategorised. */
   categoryId?: number | null;
@@ -115,6 +134,15 @@ export class ProductsService {
   /** A single product for editing, regardless of visibility (Req 6.3). */
   get(id: number): Observable<Product> {
     return this.api.get<Product>(`/api/admin/products/${id}`);
+  }
+
+  /**
+   * Per-product current-month sales stats for the detail "Sales Overview"
+   * (Req 9.2). Backed by {@code GET /api/admin/products/{id}/stats}; read access
+   * matches the other product read endpoints (ADMIN or SALESPERSON).
+   */
+  stats(id: number): Observable<ProductSalesStats> {
+    return this.api.get<ProductSalesStats>(`/api/admin/products/${id}/stats`);
   }
 
   /** Create a product; a duplicate SKU is rejected with a 409 (Req 6.1, 6.2). */

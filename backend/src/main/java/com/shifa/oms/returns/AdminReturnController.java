@@ -40,7 +40,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/admin/returns")
-@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT')")
+@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','CA')")
 public class AdminReturnController {
 
     /** Whitelist of API sort fields → JPA properties for the returns table. */
@@ -96,7 +96,11 @@ public class AdminReturnController {
         return returnService.getByOrder(orderId);
     }
 
-    /** Creates a new return for a returnable order (ADMIN only). */
+    /**
+     * Creates a new return for a returnable order (ADMIN only). {@code orderId}
+     * accepts either the order's numeric id or its human-readable order code
+     * (e.g. {@code SHR-20260916-JGM9}).
+     */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('ADMIN')")
@@ -121,6 +125,7 @@ public class AdminReturnController {
     /** Marks an approved return as refunded (ADMIN or ACCOUNTANT). */
     @PostMapping("/{id}/refund")
     public ReturnResponse refund(@PathVariable Long id, @Valid @RequestBody RefundReturnRequest request) {
-        return returnService.markRefunded(id, request.refundAmount());
+        return returnService.markRefunded(id, request.refundAmount(), request.refundMethod());
     }
 }
+

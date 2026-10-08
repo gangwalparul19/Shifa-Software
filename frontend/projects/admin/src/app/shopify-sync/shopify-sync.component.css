@@ -1,0 +1,153 @@
+.ss-switch {
+  border-left: 4px solid #98a2b3;
+}
+.ss-switch.is-on {
+  border-left-color: #2fb344;
+}
+.ss-switch.is-off {
+  border-left-color: #d63939;
+}
+.ss-switch__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.ss-switch__text {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.ss-switch__title {
+  font-weight: 700;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+}
+.ss-switch__desc {
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--tblr-secondary, #667085);
+}
+.ss-switch__control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  font-weight: 600;
+}
+.ss-switch__control .form-check-input {
+  width: 2.75rem;
+  height: 1.5rem;
+  cursor: pointer;
+}
+
+.ss-hero__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ss-stats {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.ss-stat__value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #1f5d3f;
+  line-height: 1.1;
+}
+.ss-stat__value--warn {
+  color: #d97706;
+}
+.ss-stat__value--ok {
+  color: #2fb344;
+}
+
+.ss-awb {
+  font-weight: 600;
+  color: #1f5d3f;
+  letter-spacing: 0.02em;
+}
+
+.ss-stat__label {
+  font-size: 0.8rem;
+  color: var(--tblr-secondary, #667085);
+}
+
+.ss-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ss-btn {
+  min-height: 44px;
+}
+
+.ss-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  background: #fff8e6;
+  border: 1px solid #f5d37a;
+  font-size: 0.9rem;
+}
+
+.ss-help {
+  margin-top: 0.85rem;
+  font-size: 0.85rem;
+  color: var(--tblr-secondary, #667085);
+}
+
+.ss-result {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: #eaf5ee;
+  color: #1f5d3f;
+  font-size: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.ss-item {
+  min-height: 44px;
+}
+
+.ss-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.ss-chip {
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  background: #f1f5f3;
+  color: #1f5d3f;
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.ss-chip:hover {
+  background: #e1ede6;
+}
+
+@media (max-width: 575.98px) {
+  .ss-actions,
+  .ss-actions .ss-btn {
+    width: 100%;
+  }
+}

@@ -12,6 +12,7 @@ import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderSource;
+import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.returns.dto.ReturnResponse;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -78,10 +80,12 @@ class ReturnServiceTest {
 
     @Test
     void createSucceedsFromDeliveredOrder() {
-        when(orderRepository.findById(1L)).thenReturn(Optional.of(orderIn(OrderStatus.DELIVERED, 1)));
+        OrderEntity order = orderIn(OrderStatus.DELIVERED, 1);
+        ReflectionTestUtils.setField(order, "id", 1L);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(returnRepository.existsByOrderIdAndStatusIn(anyLong(), any())).thenReturn(false);
 
-        ReturnResponse response = service.create(1L, "Damaged", "box crushed");
+        ReturnResponse response = service.create("1", "Damaged", "box crushed");
 
         assertThat(response.status()).isEqualTo(ReturnStatus.REQUESTED);
         assertThat(response.reason()).isEqualTo("Damaged");
@@ -89,10 +93,26 @@ class ReturnServiceTest {
     }
 
     @Test
-    void createFromNonReturnableStatusIsRejected() {
-        when(orderRepository.findById(1L)).thenReturn(Optional.of(orderIn(OrderStatus.APPROVED, 1)));
+    void createAcceptsOrderCodeInsteadOfNumericId() {
+        OrderEntity order = orderIn(OrderStatus.DELIVERED, 1);
+        ReflectionTestUtils.setField(order, "id", 1L);
+        // The order code is not purely numeric, so resolveOrder goes straight to
+        // the code lookup (findByOrderCode), never touching findById.
+        when(orderRepository.findByOrderCode("SHR-000123")).thenReturn(Optional.of(order));
+        when(returnRepository.existsByOrderIdAndStatusIn(anyLong(), any())).thenReturn(false);
 
-        assertThatThrownBy(() -> service.create(1L, "Damaged", null))
+        ReturnResponse response = service.create("SHR-000123", "Damaged", null);
+
+        assertThat(response.status()).isEqualTo(ReturnStatus.REQUESTED);
+    }
+
+    @Test
+    void createFromNonReturnableStatusIsRejected() {
+        OrderEntity order = orderIn(OrderStatus.APPROVED, 1);
+        ReflectionTestUtils.setField(order, "id", 1L);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.create("1", "Damaged", null))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("delivered or RTO");
     }
@@ -100,8 +120,9 @@ class ReturnServiceTest {
     @Test
     void createForMissingOrderIsNotFound() {
         when(orderRepository.findById(9L)).thenReturn(Optional.empty());
+        when(orderRepository.findByOrderCode("9")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.create(9L, "Damaged", null))
+        assertThatThrownBy(() -> service.create("9", "Damaged", null))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -109,10 +130,12 @@ class ReturnServiceTest {
 
     @Test
     void createBlockedWhenAnActiveReturnAlreadyExists() {
-        when(orderRepository.findById(1L)).thenReturn(Optional.of(orderIn(OrderStatus.RTO, 1)));
+        OrderEntity order = orderIn(OrderStatus.RTO, 1);
+        ReflectionTestUtils.setField(order, "id", 1L);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(returnRepository.existsByOrderIdAndStatusIn(anyLong(), any())).thenReturn(true);
 
-        assertThatThrownBy(() -> service.create(1L, "Wrong size", null))
+        assertThatThrownBy(() -> service.create("1", "Wrong size", null))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("already has an active return");
     }
@@ -169,7 +192,7 @@ class ReturnServiceTest {
         OrderReturn ret = new OrderReturn(1L, "Damaged", null, null); // REQUESTED
         when(returnRepository.findById(5L)).thenReturn(Optional.of(ret));
 
-        assertThatThrownBy(() -> service.markRefunded(5L, new BigDecimal("10.00")))
+        assertThatThrownBy(() -> service.markRefunded(5L, new BigDecimal("10.00"), null))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("mark refunded");
     }
@@ -182,11 +205,62 @@ class ReturnServiceTest {
         ret.changeStatus(ReturnStatus.APPROVED);
         when(returnRepository.findById(5L)).thenReturn(Optional.of(ret));
 
-        ReturnResponse response = service.markRefunded(5L, new BigDecimal("199.50"));
+        ReturnResponse response = service.markRefunded(5L, new BigDecimal("199.50"), RefundMethod.UPI);
 
         assertThat(response.status()).isEqualTo(ReturnStatus.REFUNDED);
         assertThat(response.refundAmount()).isEqualByComparingTo("199.50");
         assertThat(response.updatedAt()).isNotNull();
+    }
+
+    // --- RTO auto-return: credit-note value vs cash refund (V64) ------------
+
+    /**
+     * The CA scenario: a ₹1000 order partially paid (₹300 prepaid, ₹700 COD) that
+     * later RTOs. Under GST the whole supply is reversed, so the credit note must
+     * carry the full ₹1000; but the only cash owed back is the ₹300 actually
+     * collected. Conflating the two reported a ₹1000 cash refund that never
+     * happened.
+     */
+    @Test
+    void rtoAutoReturnCreditsTheFullSupplyButRefundsOnlyTheCashCollected() {
+        OrderEntity order = orderIn(OrderStatus.RTO, 2);
+        ReflectionTestUtils.setField(order, "id", 1L);
+        order.applyAmounts(new BigDecimal("1000.00"), new BigDecimal("300.00"),
+                new BigDecimal("700.00"), new BigDecimal("700.00"), PaymentStatus.PARTIALLY_PAID);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        when(returnRepository.existsByOrderIdAndStatusIn(anyLong(), any())).thenReturn(false);
+
+        ReturnResponse response = service.createAutoReturnForRto(1L, "CUSTOMER_UNAVAILABLE");
+
+        assertThat(response.status()).isEqualTo(ReturnStatus.REFUNDED);
+        // GST: the entire invoice value is reversed by the credit note.
+        assertThat(response.creditNoteValue()).isEqualByComparingTo("1000.00");
+        // Money: only the prepaid part is actually refundable.
+        assertThat(response.refundAmount()).isEqualByComparingTo("300.00");
+    }
+
+    /** A pure COD RTO: full credit note, but no cash was ever taken, so no refund. */
+    @Test
+    void rtoAutoReturnOnACodOrderRefundsNoCash() {
+        OrderEntity order = orderIn(OrderStatus.RTO, 1);
+        ReflectionTestUtils.setField(order, "id", 1L);
+        order.applyAmounts(new BigDecimal("1000.00"), BigDecimal.ZERO,
+                new BigDecimal("1000.00"), new BigDecimal("1000.00"), PaymentStatus.COD);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        when(returnRepository.existsByOrderIdAndStatusIn(anyLong(), any())).thenReturn(false);
+
+        ReturnResponse response = service.createAutoReturnForRto(1L, "CUSTOMER_REFUSED");
+
+        assertThat(response.creditNoteValue()).isEqualByComparingTo("1000.00");
+        assertThat(response.refundAmount()).isEqualByComparingTo("0.00");
+    }
+
+    /** Idempotent: a second RTO mark must not raise a duplicate return. */
+    @Test
+    void rtoAutoReturnIsSkippedWhenAnActiveReturnAlreadyExists() {
+        when(returnRepository.existsByOrderIdAndStatusIn(anyLong(), any())).thenReturn(true);
+
+        assertThat(service.createAutoReturnForRto(1L, "OTHER")).isNull();
     }
 
     // --- reject transitions to REJECTED and stores notes --------------------

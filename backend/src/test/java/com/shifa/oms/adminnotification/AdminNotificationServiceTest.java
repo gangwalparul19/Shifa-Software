@@ -1,6 +1,8 @@
 package com.shifa.oms.adminnotification;
 
 import com.shifa.oms.adminnotification.dto.AdminNotificationResponse;
+import com.shifa.oms.auth.AuthPrincipal;
+import com.shifa.oms.auth.Role;
 import com.shifa.oms.common.PageResponse;
 import com.shifa.oms.common.ResourceNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
@@ -130,5 +132,96 @@ class AdminNotificationServiceTest {
     void unreadCountReturnsRepositoryCount() {
         when(repository.countByReadFalse()).thenReturn(11L);
         assertThat(service.unreadCount()).isEqualTo(11L);
+    }
+
+    // --- markReadForUser: ownership check (notification-ownership fix) -------
+
+    @Test
+    void markReadForUserSucceedsWhenAddressedToTheCallersUserId() {
+        AdminNotification n = new AdminNotification("LEAD_FOLLOW_UP_DUE", "Follow up", null,
+                AdminNotification.SEVERITY_INFO, null, null, 1L);
+        n.setRecipientUserId(42L);
+        when(repository.findById(3L)).thenReturn(Optional.of(n));
+        when(repository.save(any(AdminNotification.class))).thenAnswer(inv -> inv.getArgument(0));
+        AuthPrincipal caller = new AuthPrincipal(42L, "sales1", Role.SALESPERSON);
+
+        AdminNotificationResponse response = service.markReadForUser(3L, caller);
+
+        assertThat(response.read()).isTrue();
+    }
+
+    @Test
+    void markReadForUserSucceedsWhenAddressedToTheCallersRole() {
+        AdminNotification n = new AdminNotification("INSIGHT_ALERT", "Insight", null,
+                AdminNotification.SEVERITY_WARNING, null, null, 2L);
+        n.setRecipientRole(Role.ADMIN);
+        when(repository.findById(4L)).thenReturn(Optional.of(n));
+        when(repository.save(any(AdminNotification.class))).thenAnswer(inv -> inv.getArgument(0));
+        AuthPrincipal caller = new AuthPrincipal(1L, "admin", Role.ADMIN);
+
+        AdminNotificationResponse response = service.markReadForUser(4L, caller);
+
+        assertThat(response.read()).isTrue();
+    }
+
+    @Test
+    void markReadForUserSucceedsForAdminOnALegacyBroadcast() {
+        // Both recipientRole and recipientUserId null = legacy admin broadcast.
+        AdminNotification n = new AdminNotification("LOW_STOCK", "Low stock", null,
+                AdminNotification.SEVERITY_WARNING, null, null, 5L);
+        when(repository.findById(6L)).thenReturn(Optional.of(n));
+        when(repository.save(any(AdminNotification.class))).thenAnswer(inv -> inv.getArgument(0));
+        AuthPrincipal admin = new AuthPrincipal(1L, "admin", Role.ADMIN);
+
+        AdminNotificationResponse response = service.markReadForUser(6L, admin);
+
+        assertThat(response.read()).isTrue();
+    }
+
+    @Test
+    void markReadForUserRejectsANotificationAddressedToAnotherUser() {
+        AdminNotification n = new AdminNotification("LEAD_FOLLOW_UP_DUE", "Follow up", null,
+                AdminNotification.SEVERITY_INFO, null, null, 7L);
+        n.setRecipientUserId(42L); // addressed to a different user
+        when(repository.findById(3L)).thenReturn(Optional.of(n));
+        AuthPrincipal otherUser = new AuthPrincipal(99L, "sales2", Role.SALESPERSON);
+
+        assertThatThrownBy(() -> service.markReadForUser(3L, otherUser))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(repository, never()).save(any(AdminNotification.class));
+    }
+
+    @Test
+    void markReadForUserRejectsANotificationAddressedToAnotherRole() {
+        AdminNotification n = new AdminNotification("INSIGHT_ALERT", "Insight", null,
+                AdminNotification.SEVERITY_WARNING, null, null, 8L);
+        n.setRecipientRole(Role.ADMIN);
+        when(repository.findById(4L)).thenReturn(Optional.of(n));
+        AuthPrincipal salesperson = new AuthPrincipal(5L, "sales1", Role.SALESPERSON);
+
+        assertThatThrownBy(() -> service.markReadForUser(4L, salesperson))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(repository, never()).save(any(AdminNotification.class));
+    }
+
+    @Test
+    void markReadForUserRejectsALegacyBroadcastForANonAdmin() {
+        AdminNotification n = new AdminNotification("LOW_STOCK", "Low stock", null,
+                AdminNotification.SEVERITY_WARNING, null, null, 9L);
+        when(repository.findById(6L)).thenReturn(Optional.of(n));
+        AuthPrincipal salesperson = new AuthPrincipal(5L, "sales1", Role.SALESPERSON);
+
+        assertThatThrownBy(() -> service.markReadForUser(6L, salesperson))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(repository, never()).save(any(AdminNotification.class));
+    }
+
+    @Test
+    void markReadForUserUnknownIdIsRejected() {
+        when(repository.findById(404L)).thenReturn(Optional.empty());
+        AuthPrincipal caller = new AuthPrincipal(1L, "admin", Role.ADMIN);
+
+        assertThatThrownBy(() -> service.markReadForUser(404L, caller))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 }

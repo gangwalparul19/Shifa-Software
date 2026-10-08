@@ -37,6 +37,10 @@ public class ShippingLabelRenderer {
 
     private final BarcodeGenerator barcodeGenerator;
 
+    /** Lazily-decoded, cached bundled brand logo (see {@link #bundledLogo()}). */
+    private Image bundledLogo;
+    private boolean bundledLogoLoaded;
+
     public ShippingLabelRenderer(BarcodeGenerator barcodeGenerator) {
         this.barcodeGenerator = Objects.requireNonNull(barcodeGenerator, "barcodeGenerator");
     }
@@ -184,15 +188,36 @@ public class ShippingLabelRenderer {
         }
     }
 
-    /** Builds a logo Image from bytes, or {@code null} when absent/undecodable. */
+    /**
+     * Builds a logo Image from the given bytes, falling back to the bundled
+     * {@code brand/LOGO.png} classpath resource when no Settings logo is supplied
+     * (mirrors {@code LabelPdfRenderer}, so every label — internal or courier —
+     * carries the Shifa mark even before a logo is uploaded in Settings).
+     */
     private Image logoImage(byte[] logoPng) {
-        if (logoPng == null || logoPng.length == 0) {
-            return null;
+        if (logoPng != null && logoPng.length > 0) {
+            try {
+                return Image.getInstance(logoPng);
+            } catch (Exception ignored) {
+                // Fall through to the bundled brand logo below.
+            }
         }
-        try {
-            return Image.getInstance(logoPng);
+        return bundledLogo();
+    }
+
+    /** The bundled brand logo, decoded once and cached (or {@code null} if missing). */
+    private Image bundledLogo() {
+        if (bundledLogoLoaded) {
+            return bundledLogo;
+        }
+        bundledLogoLoaded = true;
+        try (java.io.InputStream in = getClass().getResourceAsStream("/brand/LOGO.png")) {
+            if (in != null) {
+                bundledLogo = Image.getInstance(in.readAllBytes());
+            }
         } catch (Exception e) {
-            return null;
+            bundledLogo = null;
         }
+        return bundledLogo;
     }
 }

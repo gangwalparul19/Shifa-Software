@@ -13,6 +13,7 @@ import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import com.shifa.oms.common.ApiException;
 import com.shifa.oms.reporting.domain.TabularData;
+import com.shifa.oms.reporting.dto.ReportSummary;
 import com.shifa.oms.settings.AppSettings;
 import com.shifa.oms.settings.CompanyLogoService;
 import com.shifa.oms.settings.SettingsService;
@@ -24,6 +25,8 @@ import org.springframework.stereotype.Component;
 
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -68,6 +71,10 @@ public class PdfReportExporter {
     private static final Font HEADER_FONT = new Font(Font.HELVETICA, 9, Font.BOLD, WHITE);
     private static final Font BODY_FONT = new Font(Font.HELVETICA, 8, Font.NORMAL, BODY_COLOR);
     private static final Font FOOTER_FONT = new Font(Font.HELVETICA, 7, Font.NORMAL, MUTED);
+    private static final Font SUBTITLE_FONT = new Font(Font.HELVETICA, 9, Font.NORMAL, MUTED);
+    private static final Font KPI_LABEL_FONT = new Font(Font.HELVETICA, 7, Font.NORMAL, MUTED);
+    private static final Font KPI_VALUE_FONT = new Font(Font.HELVETICA, 13, Font.BOLD, DARK_GREEN);
+    private static final Font KPI_SECTION_FONT = new Font(Font.HELVETICA, 9, Font.BOLD, BRAND_GREEN);
 
     private static final String DEFAULT_COMPANY_NAME = "Shifa Herbal Remedies";
     private static final String TAGLINE = "Pure Herbal Wellness, Naturally";
@@ -99,8 +106,19 @@ public class PdfReportExporter {
         this(null, null);
     }
 
-    /** Renders the table into PDF bytes with the given title. */
+    /** Renders the table into PDF bytes with the given title (no subtitle/KPIs). */
     public byte[] export(String title, TabularData table) {
+        return export(title, null, null, table);
+    }
+
+    /**
+     * Renders a branded PDF with a titled header, an optional subtitle (e.g. the
+     * date range), an optional KPI summary band (total sales, orders, average
+     * order value, previous-period change and top performers), and the report
+     * table. The table rows/columns are unchanged (Property 24); the KPI band is
+     * additive context above the table.
+     */
+    public byte[] export(String title, String subtitle, ReportSummary summary, TabularData table) {
         Document document = new Document(PageSize.A4.rotate(), 24, 24, 24, 24);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
@@ -108,6 +126,15 @@ public class PdfReportExporter {
             document.open();
 
             writeBrandHeader(document, title);
+
+            if (subtitle != null && !subtitle.isBlank()) {
+                Paragraph sub = new Paragraph(subtitle, SUBTITLE_FONT);
+                sub.setSpacingAfter(8f);
+                document.add(sub);
+            }
+            if (summary != null) {
+                writeKpis(document, summary);
+            }
 
             List<List<String>> matrix = toMatrix(table);
             int columns = table.columnCount();
@@ -145,6 +172,82 @@ public class PdfReportExporter {
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "REPORT_PDF_FAILED",
                     "Failed to render the report PDF file.");
         }
+    }
+
+    /**
+     * Renders the KPI summary band: a "Summary" caption, a four-card row (Total
+     * Sales / Orders / Avg Order Value / vs Previous) and a three-card row of top
+     * performers (Product / State / Salesperson). Gives the reader an at-a-glance
+     * summary before the detailed table.
+     */
+    private void writeKpis(Document document, ReportSummary s) throws DocumentException {
+        Paragraph caption = new Paragraph("Summary", KPI_SECTION_FONT);
+        caption.setSpacingAfter(4f);
+        document.add(caption);
+
+        PdfPTable cards = new PdfPTable(4);
+        cards.setWidthPercentage(100);
+        cards.setSpacingAfter(6f);
+        cards.addCell(kpiCard("Total Sales", "Rs. " + money(s.totalSales())));
+        cards.addCell(kpiCard("Orders", Long.toString(s.orderCount())));
+        cards.addCell(kpiCard("Avg Order Value", "Rs. " + money(avgOrderValue(s))));
+        cards.addCell(kpiCard("vs Previous Period", changeText(s)));
+        document.add(cards);
+
+        PdfPTable performers = new PdfPTable(3);
+        performers.setWidthPercentage(100);
+        performers.setSpacingAfter(10f);
+        performers.addCell(kpiCard("Top Product", orDash(s.topProduct())));
+        performers.addCell(kpiCard("Top State", orDash(s.topState())));
+        performers.addCell(kpiCard("Top Salesperson", topSalesperson(s)));
+        document.add(performers);
+    }
+
+    /** A single KPI "card" cell: small muted label above a bold green value. */
+    private static PdfPCell kpiCard(String label, String value) {
+        PdfPCell cell = new PdfPCell();
+        cell.setPadding(8f);
+        cell.setBackgroundColor(ROW_TINT);
+        cell.setBorderColor(BORDER_GRAY);
+        cell.setBorderWidth(0.5f);
+        Paragraph l = new Paragraph(label, KPI_LABEL_FONT);
+        Paragraph v = new Paragraph(value, KPI_VALUE_FONT);
+        v.setSpacingBefore(2f);
+        cell.addElement(l);
+        cell.addElement(v);
+        return cell;
+    }
+
+    private static BigDecimal avgOrderValue(ReportSummary s) {
+        BigDecimal total = s.totalSales() == null ? BigDecimal.ZERO : s.totalSales();
+        return s.orderCount() == 0
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : total.divide(BigDecimal.valueOf(s.orderCount()), 2, RoundingMode.HALF_UP);
+    }
+
+    private static String changeText(ReportSummary s) {
+        if (!s.salesChangeApplicable() || s.salesChangePercent() == null) {
+            return "\u2014";
+        }
+        BigDecimal p = s.salesChangePercent();
+        String sign = p.signum() > 0 ? "+" : "";
+        return sign + p.toPlainString() + "%";
+    }
+
+    private static String money(BigDecimal v) {
+        return (v == null ? BigDecimal.ZERO : v).toPlainString();
+    }
+
+    private static String orDash(String value) {
+        return value == null || value.isBlank() ? "\u2014" : value;
+    }
+
+    /** The top salesperson's name, falling back to the id, then a dash. */
+    private static String topSalesperson(ReportSummary s) {
+        if (s.topSalespersonName() != null && !s.topSalespersonName().isBlank()) {
+            return s.topSalespersonName();
+        }
+        return s.topSalespersonId() == null ? "\u2014" : "#" + s.topSalespersonId();
     }
 
     /** Renders the full-width green brand band plus the report title + gold divider. */

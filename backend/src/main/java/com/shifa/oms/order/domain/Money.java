@@ -69,6 +69,15 @@ public final class Money implements Comparable<Money> {
         return new Money(this.amount.multiply(BigDecimal.valueOf(quantity)));
     }
 
+    /**
+     * Returns this value rounded to the nearest whole rupee (HALF_UP), e.g.
+     * {@code 2679.99 → 2680.00}, {@code 100.49 → 100.00} (product-audit §4.6).
+     * The result keeps the standard scale of 2 (as {@code .00}).
+     */
+    public Money roundToWholeRupees() {
+        return new Money(this.amount.setScale(0, ROUNDING));
+    }
+
     /** The underlying normalized {@link BigDecimal} (scale 2). */
     public BigDecimal toBigDecimal() {
         return amount;

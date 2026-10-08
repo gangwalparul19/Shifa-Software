@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shifa OMS — PuTTY Setup, Build & Deploy Guide</title>
+<style>
+  :root{
+    --green:#1F5D3F; --green-2:#1F7A4D; --green-dark:#0f3d27; --gold:#C8A24A;
+    --bg:#eef2ee; --card:#ffffff; --text:#22332b; --muted:#6b7b72; --line:#e2e8e4;
+    --shadow:0 6px 24px rgba(15,61,39,.10); --blue:#2563eb; --red:#dc2626;
+    --code-bg:#0f3d27; --code-text:#e8f5ec;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.65;font-size:15px;}
+
+  header.brand{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;
+    padding:34px 24px;text-align:center;position:relative;overflow:hidden;}
+  header.brand::after{content:"🔑";position:absolute;right:18px;bottom:-10px;font-size:110px;opacity:.10;}
+  header.brand h1{margin:6px 0 4px;font-size:26px;}
+  header.brand p{margin:0;color:#dceee2;}
+  .rule{height:4px;background:var(--gold);}
+
+  .layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;gap:28px;
+    padding:0 20px 90px;}
+  .sidebar{position:sticky;top:0;align-self:start;max-height:100vh;overflow-y:auto;padding:22px 0;}
+  .sidebar h3{margin:14px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);}
+  .sidebar ol{list-style:none;margin:0;padding:0;}
+  .sidebar a{display:block;padding:7px 12px;border-radius:8px;color:var(--text);text-decoration:none;
+    font-size:13.5px;border-left:3px solid transparent;}
+  .sidebar a:hover{background:#e3efe7;color:var(--green-dark);}
+  .sidebar a.active{background:#e6f4ec;border-left-color:var(--green);color:var(--green-dark);font-weight:700;}
+  .content{min-width:0;padding-top:22px;}
+
+  .intro{background:linear-gradient(135deg,#eaf3ec,#fff);border:2px solid var(--green);border-radius:14px;
+    padding:20px 24px;margin:0 0 24px;}
+  .intro ul{margin:8px 0 0;padding-left:20px;} .intro li{margin:5px 0;}
+
+  .part{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--green);
+    border-radius:12px;padding:22px 26px;margin:20px 0;box-shadow:var(--shadow);scroll-margin-top:14px;}
+  .part h2{margin:0 0 6px;font-size:20px;color:var(--green-dark);display:flex;align-items:center;gap:12px;}
+  .part .num{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;
+    background:var(--green);color:#fff;border-radius:50%;font-size:15px;font-weight:800;flex:none;}
+  .part h3{color:var(--green-dark);font-size:15.5px;margin:18px 0 6px;}
+  .part ol,.part ul{padding-left:22px;} .part li{margin:6px 0;}
+
+  pre{background:var(--code-bg);color:var(--code-text);border-radius:10px;padding:15px 16px;overflow-x:auto;
+    font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;font-size:12.5px;line-height:1.6;margin:10px 0;}
+  code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;background:#e6f0ea;
+    color:var(--green-dark);padding:1px 6px;border-radius:5px;font-size:12.5px;}
+  pre code{background:none;color:inherit;padding:0;}
+  .pc{display:inline-block;background:var(--gold);color:#3a2c05;font-size:10.5px;font-weight:800;
+    padding:1px 7px;border-radius:4px;letter-spacing:.4px;vertical-align:middle;margin-right:6px;}
+  .srv{display:inline-block;background:#1f5d3f;color:#fff;font-size:10.5px;font-weight:800;
+    padding:1px 7px;border-radius:4px;letter-spacing:.4px;vertical-align:middle;margin-right:6px;}
+
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 11px;border:1px solid var(--line);vertical-align:top;}
+  th{background:var(--green);color:#fff;font-weight:600;}
+  tr:nth-child(even) td{background:#f2f8f4;}
+
+  .verify{background:#eef7f1;border:1px solid var(--green);border-radius:9px;padding:11px 16px;margin:12px 0;
+    font-size:14px;color:#1f5d3f;} .verify b{color:var(--green-dark);} .verify::before{content:"✔ ";font-weight:900;}
+  .note{border-radius:9px;padding:11px 16px;margin:12px 0;font-size:13.8px;}
+  .note.warn{background:#fff8e8;border:1px solid var(--gold);color:#7a5c12;}
+  .note.tip{background:#eef5ff;border:1px solid var(--blue);color:#1e3a8a;}
+
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin:6px 0 0;font-size:12.5px;color:var(--muted);}
+  footer{text-align:center;color:var(--muted);font-size:13px;margin-top:20px;padding:20px;
+    border-top:1px solid var(--line);background:linear-gradient(to bottom,#ffffff,#f8f9fa);}
+  footer b{color:var(--green-dark);} footer a{color:var(--green);text-decoration:none;font-weight:500;}
+
+  @media(max-width:880px){
+    .layout{grid-template-columns:1fr;}
+    .sidebar{position:static;max-height:none;border-bottom:1px solid var(--line);}
+  }
+</style>
+</head>
+<body>
+
+<header class="brand">
+  <h1>🌿 Shifa OMS — PuTTY Setup, Build &amp; Deploy</h1>
+  <p>Connect to EC2 with PuTTY · build on your PC · deploy with PSCP · start the server</p>
+</header>
+<div class="rule"></div>
+
+<div class="layout">
+  <nav class="sidebar">
+    <h3>Contents</h3>
+    <ol>
+      <li><a href="#vars">0 · Your values</a></li>
+      <li><a href="#p1">1 · Install PuTTY tools</a></li>
+      <li><a href="#p2">2 · Convert .pem → .ppk</a></li>
+      <li><a href="#p3">3 · Configure PuTTY session</a></li>
+      <li><a href="#p4">4 · Connect (SSH)</a></li>
+      <li><a href="#p5">5 · Build on your PC</a></li>
+      <li><a href="#p6">6 · Upload with PSCP</a></li>
+      <li><a href="#p7">7 · Deploy on the instance</a></li>
+      <li><a href="#p8">8 · Start / stop the server</a></li>
+      <li><a href="#cheat">9 · All commands (cheat sheet)</a></li>
+      <li><a href="#trouble">⚠ Troubleshooting</a></li>
+    </ol>
+  </nav>
+
+  <main class="content">
+
+    <div class="intro">
+      <p style="margin:0;">Everything you need to run the app from Windows using <b>PuTTY</b>: convert your
+      key, connect, build the app on your PC, push it to the EC2 instance with <b>PSCP</b>, and start the
+      server — with a single copy-paste <b>command cheat sheet</b> at the end.</p>
+      <div class="legend">
+        <span><span class="pc">PC</span> run on your Windows PC (PowerShell/CMD)</span>
+        <span><span class="srv">EC2</span> run on the server (PuTTY SSH window)</span>
+      </div>
+    </div>
+
+    <!-- VALUES -->
+    <section class="part" id="vars">
+      <h2><span class="num">0</span> Your deployment values</h2>
+      <table>
+        <tr><th>Thing</th><th>Value</th></tr>
+        <tr><td>Instance public IP (Elastic IP)</td><td><code>13.234.22.207</code></td></tr>
+        <tr><td>SSH user</td><td><code>ubuntu</code></td></tr>
+        <tr><td>Original AWS key (.pem)</td><td><code>C:\Users\Parul\Downloads\shifa-admin.pem</code></td></tr>
+        <tr><td>PuTTY key (.ppk, you create in Part 2)</td><td><code>C:\Users\Parul\Downloads\shifa-admin.ppk</code></td></tr>
+        <tr><td>Project root (PC)</td><td><code>c:\E Drive\Shifa-Software</code></td></tr>
+        <tr><td>Backend JAR (after build)</td><td><code>backend\target\shifa-oms-0.0.1-SNAPSHOT.jar</code></td></tr>
+        <tr><td>Admin bundle (after build)</td><td><code>frontend\dist\admin\browser</code></td></tr>
+        <tr><td>App service name</td><td><code>shifa-oms</code></td></tr>
+        <tr><td>App URL</td><td><code>http://13.234.22.207/</code></td></tr>
+      </table>
+      <div class="note tip">If you ever stop/start the instance and the IP changes, update <code>13.234.22.207</code> everywhere below with the new Elastic IP.</div>
+    </section>
+
+    <!-- P1 -->
+    <section class="part" id="p1">
+      <h2><span class="num">1</span> Install the PuTTY tools</h2>
+      <p>You need three programs from the PuTTY suite (all included in the standard installer from
+      <code>putty.org</code> → the MSI installer):</p>
+      <ul>
+        <li><b>putty.exe</b> — the SSH terminal (run commands on the server).</li>
+        <li><b>puttygen.exe</b> — converts the AWS <code>.pem</code> key into PuTTY's <code>.ppk</code> format.</li>
+        <li><b>pscp.exe</b> — copies files from your PC to the server (PuTTY's version of <code>scp</code>).</li>
+      </ul>
+      <div class="verify"><b>Verify:</b> you can find PuTTY, PuTTYgen and PSCP in the Start menu / install folder (usually <code>C:\Program Files\PuTTY\</code>).</div>
+      <div class="note tip">Installing the full MSI puts <code>pscp.exe</code> on your PATH so you can run <code>pscp</code> from any PowerShell/CMD window. If not, run it with its full path: <code>"C:\Program Files\PuTTY\pscp.exe"</code>.</div>
+    </section>
+
+    <!-- P2 -->
+    <section class="part" id="p2">
+      <h2><span class="num">2</span> Convert the .pem key to .ppk (PuTTYgen)</h2>
+      <p>PuTTY doesn't use AWS's <code>.pem</code> directly — convert it once:</p>
+      <ol>
+        <li>Open <b>PuTTYgen</b>.</li>
+        <li>Menu <b>Conversions → Import key</b>.</li>
+        <li>Select <code>C:\Users\Parul\Downloads\shifa-admin.pem</code> → Open.</li>
+        <li>(Optional) set a passphrase for extra security, or leave blank for convenience.</li>
+        <li>Click <b>Save private key</b> → save as <code>C:\Users\Parul\Downloads\shifa-admin.ppk</code>
+          (confirm "save without a passphrase" if you left it blank).</li>
+      </ol>
+      <div class="verify"><b>Verify:</b> <code>shifa-admin.ppk</code> now exists next to your <code>.pem</code>.</div>
+      <div class="note warn">Keep both key files private. Never share, commit, or email them — anyone with the key can log into your server.</div>
+    </section>
+
+    <!-- P3 -->
+    <section class="part" id="p3">
+      <h2><span class="num">3</span> Configure &amp; save a PuTTY session</h2>
+      <ol>
+        <li>Open <b>PuTTY</b>.</li>
+        <li><b>Session</b> screen → <b>Host Name</b>: <code>ubuntu&#64;13.234.22.207</code> · <b>Port</b>: <code>22</code> · <b>Connection type</b>: <b>SSH</b>.</li>
+        <li>Left tree → <b>Connection → SSH → Auth → Credentials</b> → <b>Private key file for authentication</b> → <b>Browse</b> → pick <code>shifa-admin.ppk</code>.</li>
+        <li>(Optional) <b>Connection → Data → Auto-login username</b>: <code>ubuntu</code>.</li>
+        <li>(Optional, avoids idle disconnects) <b>Connection</b> → <b>Seconds between keepalives</b>: <code>30</code>.</li>
+        <li>Go back to <b>Session</b> → under <b>Saved Sessions</b> type <code>shifa-oms</code> → <b>Save</b>.</li>
+      </ol>
+      <div class="verify"><b>Verify:</b> <code>shifa-oms</code> appears in the Saved Sessions list — next time just double-click it.</div>
+    </section>
+
+    <!-- P4 -->
+    <section class="part" id="p4">
+      <h2><span class="num">4</span> Connect (open the SSH window)</h2>
+      <ol>
+        <li>In PuTTY, select the <b>shifa-oms</b> saved session → <b>Open</b> (or double-click it).</li>
+        <li>First time only: a <b>security alert</b> about the host key appears → click <b>Accept</b>.</li>
+        <li>If you set a passphrase on the key, enter it now.</li>
+      </ol>
+      <div class="verify"><b>Verify:</b> you see the prompt <code>ubuntu&#64;ip-172-31-3-104:~$</code> — you're on the server.</div>
+    </section>
+
+    <!-- P5 -->
+    <section class="part" id="p5">
+      <h2><span class="num">5</span> Build the app on your PC</h2>
+      <p><span class="pc">PC</span> Open PowerShell in the project root and build both artifacts. <b>Always build on your PC — never on the small instance.</b></p>
+<pre><span class="pc">PC</span>cd "c:\E Drive\Shifa-Software"
+
+REM 1) Backend JAR
+mvn -f "backend/pom.xml" -DskipTests package
+
+REM 2) Angular admin bundle
+npm --prefix frontend ci
+npm --prefix frontend run build:admin
+
+REM 3) Zip the admin bundle for upload (PowerShell)
+Compress-Archive -Path "frontend\dist\admin\browser\*" -DestinationPath "admin.zip" -Force</pre>
+      <div class="verify"><b>Verify:</b> <code>backend\target\shifa-oms-0.0.1-SNAPSHOT.jar</code> and <code>admin.zip</code> both exist.</div>
+      <div class="note tip">Use <code>npm --prefix frontend ci</code> the first time (clean install); afterwards <code>npm --prefix frontend install</code> is fine and faster.</div>
+    </section>
+
+    <!-- P6 -->
+    <section class="part" id="p6">
+      <h2><span class="num">6</span> Upload the build with PSCP</h2>
+      <p><span class="pc">PC</span> PSCP is PuTTY's file-copy tool. It uses the <b>.ppk</b> key. Run from a PowerShell/CMD window on your PC:</p>
+<pre><span class="pc">PC</span>REM Upload the JAR (renamed to shifa-oms.jar on the server)
+pscp -i "C:\Users\Parul\Downloads\shifa-admin.ppk" "c:\E Drive\Shifa-Software\backend\target\shifa-oms-0.0.1-SNAPSHOT.jar" ubuntu&#64;13.234.22.207:/home/ubuntu/shifa-oms.jar
+
+REM Upload the admin bundle zip
+pscp -i "C:\Users\Parul\Downloads\shifa-admin.ppk" "c:\E Drive\Shifa-Software\admin.zip" ubuntu&#64;13.234.22.207:/home/ubuntu/</pre>
+      <div class="verify"><b>Verify:</b> PSCP prints a progress bar reaching 100% for each file with no error.</div>
+      <div class="note tip">If <code>pscp</code> isn't recognised, use the full path: <code>"C:\Program Files\PuTTY\pscp.exe" -i ...</code>. If it prompts about the host key the first time, type <code>y</code>.</div>
+    </section>
+
+    <!-- P7 -->
+    <section class="part" id="p7">
+      <h2><span class="num">7</span> Deploy on the instance</h2>
+      <p><span class="srv">EC2</span> In your PuTTY SSH window, swap in the new files and restart. This never touches the database or the env file.</p>
+<pre><span class="srv">EC2</span>REM Put the new JAR in place
+sudo mv ~/shifa-oms.jar /opt/shifa/shifa-oms.jar
+
+REM Replace the admin web files
+sudo rm -rf /var/www/shifa/admin/*
+sudo unzip -o ~/admin.zip -d /var/www/shifa/admin
+
+REM Fix ownership, then restart backend + reload web
+sudo chown -R shifa:shifa /opt/shifa
+sudo systemctl restart shifa-oms
+sudo systemctl reload nginx</pre>
+      <div class="verify"><b>Verify:</b> <code>sudo systemctl status shifa-oms</code> shows <b>active (running)</b>, and the app at <code>http://13.234.22.207/</code> shows your changes after a refresh (Ctrl+F5).</div>
+      <div class="note tip"><b>Database/schema changes</b> deploy automatically: add a new Flyway file <code>V39__...sql</code> before building — it applies on the next restart. Your live data is preserved.</div>
+    </section>
+
+    <!-- P8 -->
+    <section class="part" id="p8">
+      <h2><span class="num">8</span> Start / stop / check the server</h2>
+      <p><span class="srv">EC2</span> The backend runs as the <code>shifa-oms</code> systemd service (auto-starts on boot).</p>
+<pre><span class="srv">EC2</span>REM Start / stop / restart the backend
+sudo systemctl start shifa-oms
+sudo systemctl stop shifa-oms
+sudo systemctl restart shifa-oms
+
+REM Status + live logs (Ctrl+C to stop watching)
+sudo systemctl status shifa-oms
+sudo journalctl -u shifa-oms -f
+
+REM Make sure it starts automatically on reboot
+sudo systemctl enable shifa-oms</pre>
+      <h3>Web server (Nginx) &amp; database (MySQL)</h3>
+<pre><span class="srv">EC2</span>sudo systemctl reload nginx      REM apply nginx config changes
+sudo systemctl restart nginx     REM full restart
+sudo systemctl status nginx
+
+sudo systemctl status mysql      REM database service
+sudo tail -f /var/log/nginx/error.log</pre>
+      <div class="verify"><b>Verify a healthy start:</b> the logs show <code>Tomcat started on port 8080</code> and <code>Started ...Application</code>.</div>
+    </section>
+
+    <!-- CHEAT SHEET -->
+    <section class="part" id="cheat" style="border-left-color:var(--gold);">
+      <h2><span class="num" style="background:var(--gold);color:#3a2c05;">9</span> All commands in one place</h2>
+
+      <h3>A) Build + upload (on your PC)</h3>
+<pre><span class="pc">PC</span>cd "c:\E Drive\Shifa-Software"
+mvn -f "backend/pom.xml" -DskipTests package
+npm --prefix frontend install
+npm --prefix frontend run build:admin
+Compress-Archive -Path "frontend\dist\admin\browser\*" -DestinationPath "admin.zip" -Force
+
+pscp -i "C:\Users\Parul\Downloads\shifa-admin.ppk" "c:\E Drive\Shifa-Software\backend\target\shifa-oms-0.0.1-SNAPSHOT.jar" ubuntu&#64;13.234.22.207:/home/ubuntu/shifa-oms.jar
+pscp -i "C:\Users\Parul\Downloads\shifa-admin.ppk" "c:\E Drive\Shifa-Software\admin.zip" ubuntu&#64;13.234.22.207:/home/ubuntu/</pre>
+
+      <h3>B) Deploy + restart (in PuTTY, on the server)</h3>
+<pre><span class="srv">EC2</span>sudo mv ~/shifa-oms.jar /opt/shifa/shifa-oms.jar
+sudo rm -rf /var/www/shifa/admin/* && sudo unzip -o ~/admin.zip -d /var/www/shifa/admin
+sudo chown -R shifa:shifa /opt/shifa
+sudo systemctl restart shifa-oms && sudo systemctl reload nginx
+sudo systemctl status shifa-oms --no-pager</pre>
+
+      <h3>C) Start the server / everyday operations (in PuTTY)</h3>
+<pre><span class="srv">EC2</span>sudo systemctl start shifa-oms        REM start backend
+sudo systemctl restart shifa-oms      REM restart backend
+sudo systemctl stop shifa-oms         REM stop backend
+sudo systemctl status shifa-oms       REM is it running?
+sudo journalctl -u shifa-oms -f       REM live logs
+sudo systemctl reload nginx           REM reload web server
+sudo systemctl status mysql           REM database status</pre>
+
+      <div class="note tip">Typical redeploy = run <b>A</b> on your PC, then <b>B</b> in PuTTY. To just (re)start the server, use <b>C</b>.</div>
+    </section>
+
+    <!-- TROUBLE -->
+    <section class="part" id="trouble" style="border-left-color:var(--gold);">
+      <h2><span class="num" style="background:var(--gold);color:#3a2c05;">⚠</span> Troubleshooting</h2>
+      <table>
+        <thead><tr><th>Symptom</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>PuTTY: "server refused our key" / can't log in</td><td>You're using the <code>.pem</code> instead of the <code>.ppk</code>. Point PuTTY (Connection → SSH → Auth) at <code>shifa-admin.ppk</code> from Part 2.</td></tr>
+          <tr><td>PuTTY: "Network error: Connection timed out"</td><td>Instance not running, wrong IP, or security group doesn't allow SSH (22) from your IP. Check EC2 console.</td></tr>
+          <tr><td><code>pscp</code> not recognised</td><td>Use the full path <code>"C:\Program Files\PuTTY\pscp.exe"</code>, or add PuTTY to your PATH.</td></tr>
+          <tr><td>PSCP "Fatal: Received unexpected ..." / auth fails</td><td>Make sure you pass the <b>.ppk</b> with <code>-i</code>, and the username is <code>ubuntu</code>.</td></tr>
+          <tr><td>App didn't update after deploy</td><td>Hard-refresh the browser (Ctrl+F5). Confirm the JAR/zip actually uploaded (PSCP hit 100%) and you restarted the service.</td></tr>
+          <tr><td><b>502 Bad Gateway</b></td><td>Backend down: <code>sudo journalctl -u shifa-oms -e</code>. Often a DB password mismatch in <code>/etc/shifa/shifa.env</code>.</td></tr>
+          <tr><td>Backend won't start</td><td>Check logs: <code>sudo journalctl -u shifa-oms -n 50 --no-pager</code>. Look for the first ERROR line.</td></tr>
+          <tr><td>IP changed after stop/start</td><td>Elastic IP should stay attached. If it changed, update <code>13.234.22.207</code> in the PuTTY session and the PSCP commands.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <b>Shifa Herbal Remedies — OMS.</b> PuTTY setup, build &amp; deploy guide · prepared for internal use.<br>
+  Keep your <code>.pem</code>/<code>.ppk</code> keys private.<br><br>
+  Developed by <a href="http://www.weblithic.com" target="_blank">Weblithic</a>
+</footer>
+
+<script>
+  const links = Array.from(document.querySelectorAll('.sidebar a'));
+  const map = {};
+  links.forEach(a => { const id = a.getAttribute('href').slice(1); const el = document.getElementById(id); if (el) map[id] = a; });
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) { links.forEach(l => l.classList.remove('active')); const a = map[e.target.id]; if (a) a.classList.add('active'); }
+    });
+  }, { rootMargin: '-10% 0px -80% 0px', threshold: 0 });
+  Object.keys(map).forEach(id => obs.observe(document.getElementById(id)));
+</script>
+
+</body>
+</html>

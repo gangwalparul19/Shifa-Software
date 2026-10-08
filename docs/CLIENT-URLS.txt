@@ -1,0 +1,115 @@
+═══════════════════════════════════════════════════════════════
+  SHIFA OMS - CLIENT DOCUMENTATION URLS
+═══════════════════════════════════════════════════════════════
+
+📋 FEATURES GUIDE (Interactive with Screenshots)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+http://13.207.62.222/docs/Shifa-Features-Guide.html
+
+Description:
+- Complete showcase of all features with 31 screenshots
+- Interactive navigation sidebar
+- Mobile-responsive design
+- Covers all 12 modules and workflows
+
+Content Sections:
+1. Dashboard & Overview (Admin, Salesperson, Packer, Accountant)
+2. Order Management (Entry, Lifecycle, Filters)
+3. Approval Workflow (Queue, Status Transitions)
+4. Packing Operations (Queues, Scanner, Labels)
+5. Courier Integration (Assignment, Tracking)
+6. COD Management (Receivables, Settlement)
+7. Finance & Accounting (P&L, Expenses, Invoices)
+8. Product Catalog (Products, Inventory, Stock)
+9. Leads & CRM (Pipeline, Follow-ups, Conversion)
+10. Returns Management (RTO, Customer Returns)
+11. Procurement (Suppliers, Purchase Orders)
+12. Staff Management (Profiles, Verification, Self-service)
+13. Insights Engine (Statistical Analytics)
+14. Mobile Experience (Responsive Design, Bottom Tabs)
+
+
+💰 PRICING & INVESTMENT PROPOSAL (Interactive)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+http://13.207.62.222/docs/Shifa-Pricing-Interactive.html
+
+Description:
+- Complete pricing breakdown
+- Interactive module selection
+- Payment plan options
+- AMC comparison
+- Monthly cost calculator
+
+Pricing Highlights:
+- One-time Build: ₹39,999
+- AMC Standard: ₹6,999/month (first 3 months)
+- AMC Growth: ₹9,999/month (first 3 months)
+- Payment Plan: ₹15K + ₹15K + ₹9,999
+- 12 Modules included
+
+
+═══════════════════════════════════════════════════════════════
+  DEPLOYMENT STATUS
+═══════════════════════════════════════════════════════════════
+
+Server: 13.207.62.222
+Path: /opt/shifa/public/docs/
+Files: 33 total (2 HTML + 31 PNG screenshots)
+Access: Public (no authentication required)
+Mobile: Fully responsive
+
+
+═══════════════════════════════════════════════════════════════
+  SHARING TEMPLATE
+═══════════════════════════════════════════════════════════════
+
+WhatsApp Message:
+─────────────────
+Hi [Client Name],
+
+Here are the Shifa OMS documentation links:
+
+📋 Features Guide (with screenshots):
+http://13.207.62.222/docs/Shifa-Features-Guide.html
+
+💰 Pricing & Investment Details:
+http://13.207.62.222/docs/Shifa-Pricing-Interactive.html
+
+Both are mobile-friendly. Please review and let me know if you have questions.
+
+Best regards,
+Weblithic Team
+
+
+Email Subject: Shifa OMS Documentation
+────────────────────────────────────────
+Dear [Client Name],
+
+Please find the comprehensive Shifa OMS documentation:
+
+Features Guide: http://13.207.62.222/docs/Shifa-Features-Guide.html
+Pricing Details: http://13.207.62.222/docs/Shifa-Pricing-Interactive.html
+
+Both documents are mobile-responsive and can be viewed on any device.
+
+Best regards,
+Weblithic Team
+http://www.weblithic.com
+
+
+═══════════════════════════════════════════════════════════════
+  NOTES
+═══════════════════════════════════════════════════════════════
+
+✅ URLs work on all devices (desktop, mobile, tablet)
+✅ No login required - easy client access
+✅ Professional presentation with Weblithic branding
+✅ Screenshots demonstrate actual working application
+✅ Interactive navigation and filtering
+
+📝 Keep these URLs handy for client meetings and proposals
+
+═══════════════════════════════════════════════════════════════
+Developed & Powered by Weblithic
+http://www.weblithic.com
+═══════════════════════════════════════════════════════════════

@@ -4,16 +4,24 @@ import com.shifa.oms.audit.AuditActions;
 import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.CurrentUserService;
+import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.common.PageRequests;
 import com.shifa.oms.common.PageResponse;
+import com.shifa.oms.courier.CourierAssignmentService;
+import com.shifa.oms.courier.dto.AssignCourierRequest;
 import com.shifa.oms.label.LabelService;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.order.dto.ApprovalQueueItemResponse;
+import com.shifa.oms.order.dto.ApproveOrderRequest;
 import com.shifa.oms.order.dto.BulkActionResult;
 import com.shifa.oms.order.dto.BulkOrderIdsRequest;
+import com.shifa.oms.order.dto.BulkPreviewResponse;
+import com.shifa.oms.order.dto.CancelOrderRequest;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.order.dto.RejectOrderRequest;
+import com.shifa.oms.order.dto.UpdateDeliveryMethodRequest;
+import com.shifa.oms.order.dto.UpdateOrderRequest;
 import com.shifa.oms.statemachine.OrderStatus;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
@@ -23,9 +31,11 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -71,17 +81,75 @@ public class AdminOrderController {
     private final LabelService labelService;
     private final CurrentUserService currentUserService;
     private final AuditService auditService;
+    private final SalespersonScopeResolver scopeResolver;
+    private final OrderService orderService;
+    private final CourierAssignmentService courierAssignmentService;
+
+    private final ChannelSummaryService channelSummaryService;
+    private final DeliveryPartnerService deliveryPartnerService;
+    private final OrderExportService orderExportService;
+    private final OrderDeletionService orderDeletionService;
 
     public AdminOrderController(AdminOrderService adminOrderService,
                                 BulkOrderService bulkOrderService,
                                 LabelService labelService,
                                 CurrentUserService currentUserService,
-                                AuditService auditService) {
+                                AuditService auditService,
+                                SalespersonScopeResolver scopeResolver,
+                                OrderService orderService,
+                                CourierAssignmentService courierAssignmentService,
+                                ChannelSummaryService channelSummaryService,
+                                DeliveryPartnerService deliveryPartnerService,
+                                OrderExportService orderExportService,
+                                OrderDeletionService orderDeletionService) {
         this.adminOrderService = adminOrderService;
         this.bulkOrderService = bulkOrderService;
         this.labelService = labelService;
         this.currentUserService = currentUserService;
         this.auditService = auditService;
+        this.scopeResolver = scopeResolver;
+        this.orderService = orderService;
+        this.courierAssignmentService = courierAssignmentService;
+        this.channelSummaryService = channelSummaryService;
+        this.deliveryPartnerService = deliveryPartnerService;
+        this.orderExportService = orderExportService;
+        this.orderDeletionService = orderDeletionService;
+    }
+
+    /**
+     * ADMIN-only channel dashboard: order metrics split by origin channel
+     * (portal vs Shopify) plus the combined total, over an optional date window,
+     * so an admin can track and differentiate own-portal orders from the
+     * auto-imported Shopify orders. Explicitly {@code hasRole('ADMIN')} (matching
+     * the class default) so a salesperson/team lead/accountant can never see it.
+     *
+     * @param from inclusive lower-bound {@code created_at} date (yyyy-MM-dd), optional
+     * @param to   inclusive upper-bound {@code created_at} date (yyyy-MM-dd), optional
+     */
+    @GetMapping("/channel-summary")
+    @PreAuthorize("hasRole('ADMIN')")
+    public com.shifa.oms.order.dto.ChannelSummaryResponse channelSummary(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return channelSummaryService.summary(from, to);
+    }
+
+    /**
+     * ADMIN-only delivery-partner dashboard: order metrics split by the three
+     * fulfilment partners (QuikShipX courier / in-house "Ishika Enterprise" / POS
+     * store) plus the combined total, over an optional date window — in transit,
+     * delivered, cancelled, COD still to collect, revenue, etc. per partner.
+     * Explicitly {@code hasRole('ADMIN')} (matching the class default).
+     *
+     * @param from inclusive lower-bound {@code created_at} date (yyyy-MM-dd), optional
+     * @param to   inclusive upper-bound {@code created_at} date (yyyy-MM-dd), optional
+     */
+    @GetMapping("/delivery-partner-summary")
+    @PreAuthorize("hasRole('ADMIN')")
+    public com.shifa.oms.order.dto.DeliveryPartnerSummaryResponse deliveryPartnerSummary(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return deliveryPartnerService.summary(from, to);
     }
 
     /**
@@ -98,18 +166,104 @@ public class AdminOrderController {
      * @param sort          {@code field,dir} — one of createdAt/orderCode/customerName/totalAmount/orderStatus/paymentStatus
      */
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','TEAM_LEAD','CA','PAYMENT_VERIFIER')")
     public PageResponse<OrderSummaryResponse> list(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false) String statusGroup,
             @RequestParam(required = false) PaymentStatus paymentStatus,
+            @RequestParam(required = false) String source,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
-            @RequestParam(required = false) String sort) {
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) Long createdBy) {
+        // Salespeople see only the orders they punched; a team lead sees the orders
+        // punched by their assigned salespeople; admin/accountant see all. The set
+        // is resolved server-side (never from a client filter) so it can't be spoofed.
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        java.util.Collection<Long> creatorIds = scopeResolver.creatorScope(actor).orElse(null);
+        // Drill-down: an ADMIN may narrow the list to a single salesperson's orders
+        // (e.g. tapping a leaderboard / salespeople row → their orders). Only ADMIN
+        // gets this client-supplied narrowing — every other role stays bound to its
+        // own server-derived scope above, so this can't widen or escape it.
+        if (createdBy != null && actor.role() == com.shifa.oms.auth.Role.ADMIN) {
+            creatorIds = java.util.List.of(createdBy);
+        }
         Pageable pageable = PageRequests.of(page, size, sort, SORT_WHITELIST, DEFAULT_SORT);
+        // Parse leniently so a stale pre-collapse group key (e.g. PACKAGING/COMPLETED)
+        // maps to the new group instead of 400ing.
+        OrderStatusGroup group = OrderStatusGroup.from(statusGroup);
+        // Source filter: "PORTAL" is a synthetic alias meaning "everything except
+        // Shopify" (used by the default UI view). A real enum value (SHOPIFY,
+        // SALESPERSON, STORE, …) is an exact-match filter.
+        com.shifa.oms.order.OrderSource exactSource = null;
+        com.shifa.oms.order.OrderSource excludeSource = null;
+        if (source != null && !source.isBlank()) {
+            if ("PORTAL".equalsIgnoreCase(source.trim())) {
+                excludeSource = com.shifa.oms.order.OrderSource.SHOPIFY;
+            } else {
+                try {
+                    exactSource = com.shifa.oms.order.OrderSource.valueOf(source.trim().toUpperCase(java.util.Locale.ROOT));
+                } catch (IllegalArgumentException ignored) {
+                    // Unknown source value — ignore so stale clients don't 400.
+                }
+            }
+        }
         return PageResponse.of(
-                adminOrderService.listOrders(q, status, paymentStatus, from, to, pageable));
+                adminOrderService.listOrders(
+                        q, status, group, paymentStatus, from, to, pageable, creatorIds, exactSource, excludeSource));
+    }
+
+    /**
+     * Exports the CURRENT filtered + scoped Orders list as CSV or Excel
+     * (list-export enhancement). Accepts the same filter params as {@link #list}
+     * and applies the identical server-resolved salesperson/team-lead scope, so
+     * the file is exactly what the caller sees on screen (never wider). Capped at
+     * {@link OrderExportService#MAX_ROWS} rows. Streamed as an attachment.
+     *
+     * @param format {@code xlsx} (default) or {@code csv}
+     */
+    @GetMapping("/export")
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','TEAM_LEAD','CA')")
+    public ResponseEntity<byte[]> export(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false) String statusGroup,
+            @RequestParam(required = false) PaymentStatus paymentStatus,
+            @RequestParam(required = false) String source,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String format,
+            @RequestParam(required = false) Long createdBy) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        java.util.Collection<Long> creatorIds = scopeResolver.creatorScope(actor).orElse(null);
+        if (createdBy != null && actor.role() == com.shifa.oms.auth.Role.ADMIN) {
+            creatorIds = java.util.List.of(createdBy);
+        }
+        OrderStatusGroup group = OrderStatusGroup.from(statusGroup);
+        // Source filter: "PORTAL" = everything except Shopify (mirrors the list endpoint).
+        com.shifa.oms.order.OrderSource exactSource = null;
+        com.shifa.oms.order.OrderSource excludeSource = null;
+        if (source != null && !source.isBlank()) {
+            if ("PORTAL".equalsIgnoreCase(source.trim())) {
+                excludeSource = com.shifa.oms.order.OrderSource.SHOPIFY;
+            } else {
+                try {
+                    exactSource = com.shifa.oms.order.OrderSource.valueOf(source.trim().toUpperCase(java.util.Locale.ROOT));
+                } catch (IllegalArgumentException ignored) { }
+            }
+        }
+        OrderExportService.ExportResult result = orderExportService.export(
+                q, status, group, paymentStatus, from, to, creatorIds, exactSource, excludeSource, format);
+        auditService.record(AuditActions.ORDERS_EXPORTED, AuditActions.ENTITY_ORDER, null,
+                "Exported orders list (" + result.filename() + ")");
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(result.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + result.filename() + "\"")
+                .body(result.content());
     }
 
     /** The approval queue of pending-approval orders with review details (Req 9.1, 9.2). */
@@ -118,11 +272,19 @@ public class AdminOrderController {
         return adminOrderService.approvalQueue();
     }
 
-    /** Approve a pending order → Approved (Req 9.3). */
+    /**
+     * Approve a pending order → Approved (Req 9.3). Optionally carries the
+     * delivery method the admin has chosen/overridden for this order
+     * (in-house-delivery feature) — an absent/empty body approves with the
+     * order's existing delivery method unchanged.
+     */
     @PostMapping("/{id}/approve")
-    public OrderResponse approve(@PathVariable Long id) {
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT')")
+    public OrderResponse approve(@PathVariable Long id,
+                                 @Valid @RequestBody(required = false) ApproveOrderRequest request) {
         AuthPrincipal admin = currentUserService.requireCurrentUser();
-        OrderResponse response = adminOrderService.approve(id, admin);
+        String deliveryMethod = request != null ? request.deliveryMethod() : null;
+        OrderResponse response = adminOrderService.approve(id, admin, deliveryMethod);
         auditService.record(AuditActions.ORDER_APPROVED, AuditActions.ENTITY_ORDER,
                 String.valueOf(id), "Approved order " + response.orderCode());
         return response;
@@ -132,10 +294,151 @@ public class AdminOrderController {
     @PostMapping("/{id}/reject")
     public OrderResponse reject(@PathVariable Long id, @Valid @RequestBody RejectOrderRequest request) {
         AuthPrincipal admin = currentUserService.requireCurrentUser();
-        OrderResponse response = adminOrderService.reject(id, request.reason(), admin);
+        OrderResponse response = adminOrderService.reject(id, request.category(), request.reason(), admin);
         auditService.record(AuditActions.ORDER_REJECTED, AuditActions.ENTITY_ORDER,
                 String.valueOf(id), "Rejected order " + response.orderCode() + ": " + request.reason());
         return response;
+    }
+
+    /**
+     * Cancel an order with a required note → Cancelled (order-cancellation
+     * feature). Works at any pre-delivery stage — including after a QuikShipX
+     * tracking id (AWB) has been generated — and, for a QuikShipX order, requests
+     * cancellation at the courier so the pickup is aborted. 400 if the note is
+     * blank; 409 if the order is already delivered/closed/returned (a delivered
+     * order is a Return, not a Cancel). The service records its own detailed audit
+     * (with the courier-cancel outcome).
+     */
+    @PostMapping("/{id}/cancel")
+    public CancelOrderResponse cancel(@PathVariable Long id, @Valid @RequestBody CancelOrderRequest request) {
+        AuthPrincipal admin = currentUserService.requireCurrentUser();
+        AdminOrderService.CancelResult result = adminOrderService.cancel(id, request.note(), admin);
+        return new CancelOrderResponse(result.order(), result.courierCancelAttempted(),
+                result.courierCancelAccepted(), result.courierMessage());
+    }
+
+    /** API response for a cancellation: the cancelled order + courier-cancel outcome. */
+    public record CancelOrderResponse(OrderResponse order, boolean courierCancelAttempted,
+                                      boolean courierCancelAccepted, String courierMessage) {
+    }
+
+    /**
+     * Permanently delete an order and all its records (delete-order feature;
+     * ADMIN only via the class-level guard). Use this to wipe a mistaken / spam /
+     * abandoned order entirely instead of leaving it as a rejected/cancelled
+     * record. 404 if the order does not exist; 409 if the order was already
+     * approved into the accounts ledger (it must be cancelled, not deleted, to
+     * keep the General Ledger and GST periods intact). A deleted order — like a
+     * rejected/cancelled one — is excluded from every sales figure.
+     */
+    @DeleteMapping("/{id}")
+    public DeleteOrderResponse delete(@PathVariable Long id) {
+        AuthPrincipal admin = currentUserService.requireCurrentUser();
+        String code = orderDeletionService.delete(id, admin);
+        return new DeleteOrderResponse(id, code);
+    }
+
+    /** API response for a delete: the removed order id + code (for the confirmation toast). */
+    public record DeleteOrderResponse(Long id, String orderCode) {
+    }
+
+    /**
+     * The soft-deleted (inactive) orders, newest-deleted first — the admin
+     * "Deleted orders" view (ADMIN only via the class-level guard). These are the
+     * orders hidden everywhere else by the soft-delete flag; this is the one place
+     * they are listed so an admin can review and restore them.
+     */
+    @GetMapping("/deleted")
+    public List<OrderSummaryResponse> deleted() {
+        return orderDeletionService.listDeleted();
+    }
+
+    /**
+     * Restore a previously soft-deleted order (delete-order feature; ADMIN only).
+     * Sets {@code active = true} so the order reappears across the whole app.
+     * 404 if no order with that id exists.
+     */
+    @PostMapping("/{id}/restore")
+    public DeleteOrderResponse restore(@PathVariable Long id) {
+        AuthPrincipal admin = currentUserService.requireCurrentUser();
+        String code = orderDeletionService.restore(id, admin);
+        return new DeleteOrderResponse(id, code);
+    }
+
+    /**
+     * Admin edit-order (edit-order feature): corrects the customer / shipping /
+     * line-item / lead-source / note / GSTIN / discount details a salesperson
+     * entered. Re-prices the edited items through the same pricing engine used
+     * at creation and reconciles tracked-product stock. Only allowed while the
+     * order is still {@code Pending_Admin_Approval} or {@code Approved} — a 409
+     * ({@code ORDER_NOT_EDITABLE}) is returned once fulfilment has begun.
+     */
+    @PutMapping("/{id}")
+    public OrderResponse update(@PathVariable Long id, @Valid @RequestBody UpdateOrderRequest request) {
+        AuthPrincipal admin = currentUserService.requireCurrentUser();
+        // The field-level "what changed" ORDER_UPDATED audit is recorded inside
+        // OrderService.updateOrder (co-located with the actual field mutation, so
+        // it captures the real old→new diff). No duplicate bare audit here.
+        return orderService.updateOrder(id, request, admin);
+    }
+
+    /**
+     * Admin "save delivery method" (change-delivery-method feature): sets/changes
+     * the order's delivery partner ({@code QUIKSHIPX} or {@code IN_HOUSE}) and
+     * saves it WITHOUT approving the order. Previously the delivery method could
+     * only be persisted as a side effect of approving; this lets an admin correct
+     * it on a still-pending order on its own. Only allowed while the order is
+     * pre-dispatch (409 once handed to a courier). A Counter Sale cannot be set to
+     * QUIKSHIPX (400). The service records its own ORDER_UPDATED audit with the
+     * old→new change; no status change / label / QuikShipX trigger.
+     */
+    @PutMapping("/{id}/delivery-method")
+    public OrderResponse updateDeliveryMethod(@PathVariable Long id,
+                                              @Valid @RequestBody UpdateDeliveryMethodRequest request) {
+        AuthPrincipal admin = currentUserService.requireCurrentUser();
+        return adminOrderService.updateDeliveryMethod(id, request.deliveryMethod(), admin);
+    }
+
+    /**
+     * Manually attaches a courier name + AWB to an order (ADMIN only; "assign
+     * courier early" enhancement). Usable any time before dispatch so the
+     * internal label's courier barcode can render as soon as staff know the
+     * courier + AWB, rather than waiting for automatic in-house assignment
+     * (which only runs after dispatch). Does not change the order's lifecycle
+     * status.
+     */
+    @PostMapping("/{id}/assign-courier")
+    public void assignCourier(@PathVariable Long id, @Valid @RequestBody AssignCourierRequest request) {
+        courierAssignmentService.manuallyAssign(
+                id, request.courierName(), request.awb(), request.trackingUrl());
+        auditService.record(AuditActions.COURIER_MANUALLY_ASSIGNED, AuditActions.ENTITY_ORDER,
+                String.valueOf(id),
+                "Manually assigned courier " + request.courierName()
+                        + " (AWB " + request.awb()
+                        + (request.trackingUrl() == null || request.trackingUrl().isBlank()
+                            ? "" : ", tracking link")
+                        + ")");
+    }
+
+    /**
+     * The known delivery partners (courier companies), alphabetical (delivery-
+     * partner dropdown enhancement): backs the "Assign courier" modal's picker
+     * so the admin selects a known partner (e.g. QuikShipX, Blue Dart) instead
+     * of free-typing a name that could create a duplicate/typo'd company.
+     */
+    @GetMapping("/courier-companies")
+    public List<com.shifa.oms.courier.dto.CourierCompanyResponse> courierCompanies() {
+        return courierAssignmentService.listCompanies().stream()
+                .map(com.shifa.oms.courier.dto.CourierCompanyResponse::from)
+                .toList();
+    }
+
+    /** Read-only eligibility preview; final mutations still re-check each order. */
+    @PostMapping("/bulk-preview")
+    public BulkPreviewResponse bulkPreview(
+            @RequestParam String action,
+            @Valid @RequestBody BulkOrderIdsRequest request) {
+        return bulkOrderService.preview(action, request.ids());
     }
 
     /**

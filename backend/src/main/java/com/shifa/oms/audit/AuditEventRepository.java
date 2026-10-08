@@ -46,4 +46,12 @@ public interface AuditEventRepository extends JpaRepository<AuditEvent, Long> {
                             @Param("from") LocalDateTime from,
                             @Param("to") LocalDateTime to,
                             Pageable pageable);
+
+    /**
+     * Every audit event recorded for a single entity, in chronological order (oldest first). Backs the
+     * ledger voucher audit-trail view ({@code GET /api/accounting/vouchers/{id}/audit}, Req 15.4): pass
+     * {@code entityType = ENTITY_VOUCHER} and the voucher id as {@code entityId}.
+     */
+    java.util.List<AuditEvent> findByEntityTypeAndEntityIdOrderByCreatedAtAscIdAsc(String entityType,
+                                                                                   String entityId);
 }

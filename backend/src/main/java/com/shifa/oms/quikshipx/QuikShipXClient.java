@@ -1,0 +1,83 @@
+package com.shifa.oms.quikshipx;
+
+import com.shifa.oms.quikshipx.QuikShipXModels.AllotResult;
+import com.shifa.oms.quikshipx.QuikShipXModels.CancelResult;
+import com.shifa.oms.quikshipx.QuikShipXModels.CreatePayload;
+import com.shifa.oms.quikshipx.QuikShipXModels.CreateResult;
+import com.shifa.oms.quikshipx.QuikShipXModels.TrackResult;
+
+/**
+ * The client contract for the three QuikShipX operations, with a
+ * {@link MockQuikShipXClient} (deterministic, no network) and an
+ * {@link HttpQuikShipXClient} selected by {@code app.quikshipx.mode}. Mirrors the
+ * existing {@code CourierClient} pattern. The client injects the shipper
+ * credentials from {@link QuikShipXProperties}, so callers never handle the
+ * secret.
+ */
+public interface QuikShipXClient {
+
+    /**
+     * Creates a shipment ({@code POST /api/create-order-v1}). The order appears in
+     * QuikShipX's Pending (LIVE secret) or Test (TEST secret) section.
+     *
+     * @param payload the customer/shipment/product sections; the client adds
+     *                {@code shipper_details}
+     * @return the acceptance, carrying QuikShipX's order id when parseable
+     * @throws QuikShipXException on transport failure, timeout, or rejection
+     */
+    CreateResult createOrder(CreatePayload payload) throws QuikShipXException;
+
+    /**
+     * Allots a tracking id (AWB) for a previously-created shipment
+     * ({@code POST /api/allot-tracking-id-v1}).
+     *
+     * @param shipperOrderId QuikShipX's order id from {@link #createOrder}
+     * @return the AWB, courier, and label URL
+     * @throws QuikShipXException on transport failure, timeout, or a not-ready /
+     *         rejection response
+     */
+    AllotResult allotTrackingId(String shipperOrderId) throws QuikShipXException;
+
+    /**
+     * The current status of a shipment by AWB ({@code POST /api/track-order-v1}
+     * with {@code tracking_type=awb}). Used by the scheduled courier poller,
+     * which is keyed by AWB.
+     *
+     * @param awb the AWB to track
+     * @return the current QuikShipX status + scan timeline
+     * @throws QuikShipXException on transport failure, timeout, or a not-trackable
+     *         / rejection response
+     */
+    TrackResult trackOrder(String awb) throws QuikShipXException;
+
+    /**
+     * The current status of a shipment by QuikShipX order id
+     * ({@code POST /api/track-order-v1} with {@code tracking_type=order_id}).
+     * Preferred for interactive tracking because the QuikShipX order id is stored
+     * from create-order (available before an AWB is allotted), and it is the
+     * partner's own tracking key — we do not track with any individual carrier.
+     *
+     * @param shipperOrderId QuikShipX's order id (from create-order)
+     * @return the current QuikShipX status + scan timeline (the response also
+     *         carries the AWB)
+     * @throws QuikShipXException on transport failure, timeout, or a not-trackable
+     *         / rejection response
+     */
+    TrackResult trackOrderById(String shipperOrderId) throws QuikShipXException;
+
+    /**
+     * Requests cancellation of a shipment at QuikShipX so the courier is NOT sent
+     * to pick the parcel up ({@code POST /api/cancel-order-v1}; order-cancellation
+     * feature). Used when an admin cancels an order after it has been handed to the
+     * courier — e.g. payment never arrived, or the customer cancels after a partial
+     * payment.
+     *
+     * @param shipperOrderId QuikShipX's own order id (from create-order), the stable
+     *                       cancel key available even before an AWB is allotted
+     * @return whether QuikShipX accepted the cancellation, plus a detail message
+     * @throws QuikShipXException on transport failure or timeout (retryable per the
+     *         usual classification); a documented "already cancelled" / "not found"
+     *         response is returned as a non-accepted {@link CancelResult}, not thrown
+     */
+    CancelResult cancelOrder(String shipperOrderId) throws QuikShipXException;
+}

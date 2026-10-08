@@ -1,6 +1,8 @@
 package com.shifa.oms.crm;
 
+import com.shifa.oms.auth.CurrentUserService;
 import com.shifa.oms.auth.Role;
+import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.auth.UserRepository;
 import com.shifa.oms.common.PageResponse;
 import com.shifa.oms.common.ResourceNotFoundException;
@@ -35,6 +37,14 @@ import java.util.Set;
  * to return a customer's order history as compact rows.
  *
  * <p>No new table is introduced — this is pure aggregation over existing data.
+ *
+ * <p><strong>Salesperson scoping (Req 5.4, 5.5).</strong> Because a customer is
+ * derived purely from orders, the same {@link SalespersonScopeResolver} rule the
+ * order/report modules use is applied here: when the caller is a
+ * {@code SALESPERSON}, both the list aggregation and the detail lookup are
+ * constrained to orders they created ({@code created_by = currentUserId}), so a
+ * salesperson only sees their own customers and cannot open a customer outside
+ * their scope (out-of-scope → 404). ADMIN / ACCOUNTANT remain unscoped.
  */
 @Service
 public class CustomerService {
@@ -42,13 +52,30 @@ public class CustomerService {
     private final CustomerRepository customerRepository;
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
+    private final CurrentUserService currentUserService;
+    private final SalespersonScopeResolver scopeResolver;
 
     public CustomerService(CustomerRepository customerRepository,
                            OrderRepository orderRepository,
-                           UserRepository userRepository) {
+                           UserRepository userRepository,
+                           CurrentUserService currentUserService,
+                           SalespersonScopeResolver scopeResolver) {
         this.customerRepository = customerRepository;
         this.orderRepository = orderRepository;
         this.userRepository = userRepository;
+        this.currentUserService = currentUserService;
+        this.scopeResolver = scopeResolver;
+    }
+
+    /**
+     * The {@code created_by} constraint for the current caller, or {@code null}
+     * when unscoped (ADMIN / ACCOUNTANT). A {@code SALESPERSON} resolves to their
+     * own user id so every CRM query is filtered to orders they created.
+     */
+    private Long scopeConstraint() {
+        return currentUserService.currentUser()
+                .flatMap(scopeResolver::creatorConstraint)
+                .orElse(null);
     }
 
     /**
@@ -64,7 +91,8 @@ public class CustomerService {
         // avoids Spring Data's native-query sort qualifying the SELECT alias with
         // the table alias (o.totalSpent), which MySQL rejects. The customer set is
         // small, so this is inexpensive and robust.
-        List<CustomerSummaryProjection> rows = customerRepository.aggregateAll(blankToNull(q));
+        List<CustomerSummaryProjection> rows =
+                customerRepository.aggregateAll(blankToNull(q), scopeConstraint());
 
         // Batch-resolve which mobiles map to a registered account.
         List<String> mobiles = rows.stream()
@@ -126,6 +154,15 @@ public class CustomerService {
     public CustomerDetailResponse get(String mobile) {
         String key = mobile == null ? "" : mobile.trim();
         List<OrderEntity> orders = orderRepository.findByCustomerMobileOrderByCreatedAtDesc(key);
+        // Salesperson scoping (Req 5.5): restrict the history to orders this
+        // salesperson created. A customer whose orders all fall outside the
+        // caller's scope is indistinguishable from one that does not exist (404).
+        Long createdBy = scopeConstraint();
+        if (createdBy != null) {
+            orders = orders.stream()
+                    .filter(order -> createdBy.equals(order.getCreatedBy()))
+                    .toList();
+        }
         if (orders.isEmpty()) {
             throw new ResourceNotFoundException(
                     "No customer found for mobile " + key + ".");

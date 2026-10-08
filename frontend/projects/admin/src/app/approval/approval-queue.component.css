@@ -30,3 +30,467 @@
     animation: none;
   }
 }
+
+/* ==========================================================================
+   Approval queue — mobile card list (<768px), mockup-faithful.
+   Rounded white cards with a soft shadow: order code + amount on top,
+   customer + date and a payment status pill below, an items summary line,
+   then full-width Approve / Reject / Review actions (≥44px touch targets).
+   The rich approval table takes over at ≥768px.
+   ========================================================================== */
+.shifa-appr-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.shifa-appr {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.65rem 0.8rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+  transition: box-shadow 0.15s ease;
+}
+.shifa-appr:hover {
+  box-shadow: 0 4px 14px rgba(15, 51, 36, 0.12);
+}
+/* Top block: id/customer on the left, compact amount on the right. */
+.shifa-appr__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+  cursor: pointer;
+}
+.shifa-appr__idwrap {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+/* Action row below the top block: Verify/Verified (left), payment pill (middle,
+   pushed right), kebab (rightmost). Uses the full width so nothing stacks into a
+   cramped column. */
+.shifa-appr__actionrow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(15, 51, 36, 0.06);
+}
+.shifa-appr__verify {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+/* Payment pill hugs the right, just left of the kebab. */
+.shifa-appr__pay {
+  margin-left: auto;
+}
+/* When there's no verify/verified badge, the pill still sits on the right. */
+.shifa-appr__verify:empty {
+  display: none;
+}
+.shifa-appr__code {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #1c2b24;
+  letter-spacing: 0.02em;
+}
+.shifa-appr__amount {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #1c2b24;
+  white-space: nowrap;
+}
+.shifa-appr__meta {
+  color: #64726b;
+  font-size: 0.8rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shifa-appr__items {
+  color: #45524b;
+  font-size: 0.8rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shifa-appr__actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+.shifa-appr__actions .btn {
+  flex: 1 1 0;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}
+/* Review is a compact icon-only button; Reject/Approve take the remaining width. */
+.shifa-appr__actions .shifa-appr__review {
+  flex: 0 0 auto;
+  width: 40px;
+}
+
+/* ==========================================================================
+   Approval review drawer — themed, mockup-faithful. Reuses the global
+   .shifa-drawer chrome and restyles the content: a Shifa-green header with an
+   avatar + order code + payment pill, soft sectioned cards, an accented totals
+   block, and a clean line-items table.
+   ========================================================================== */
+
+/* Green header banner (replaces the plain drawer head). */
+.sa-dr .sa-dr__head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 1rem 1.15rem;
+  background: linear-gradient(135deg, var(--shifa-green-600, #1f5d3f), var(--shifa-green-700, #164632));
+  color: #fff;
+}
+.sa-dr__avatar {
+  flex: 0 0 auto;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.sa-dr__headmain {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sa-dr__code {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+.sa-dr__sub {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.85);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sa-dr__pill {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--shifa-green-700, #164632);
+}
+.sa-dr__close {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.sa-dr__close:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+/* Body — soft canvas with sectioned cards. */
+.sa-dr__body {
+  background: #f6f9f7;
+}
+.sa-dr__section {
+  margin-bottom: 1.1rem;
+}
+.sa-dr__section:last-child {
+  margin-bottom: 0;
+}
+.sa-dr__label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--shifa-green-700, #164632);
+  margin-bottom: 0.45rem;
+}
+.sa-dr__card {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.85rem 0.95rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+}
+.sa-dr__card.p-0 {
+  padding: 0;
+  overflow: hidden;
+}
+/* The salesperson's order note: amber tint so it stands out, pre-wrapped to
+   preserve line breaks the salesperson typed, scrollable when very long. */
+.sa-dr__note {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(255, 193, 7, 0.1);
+  border-color: rgba(255, 193, 7, 0.25);
+  color: #664d03;
+  max-height: 10rem;
+  overflow-y: auto;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.sa-dr__cust {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.sa-dr__mobile {
+  display: inline-flex;
+  align-items: center;
+  color: var(--shifa-green-700, #164632);
+  font-size: 0.9rem;
+  text-decoration: none;
+  margin-top: 0.15rem;
+}
+.sa-dr__mobile:hover {
+  text-decoration: underline;
+}
+.sa-dr__round {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--shifa-green-050, #f2f9f5);
+  color: var(--shifa-green-700, #164632);
+  border: 1px solid rgba(15, 51, 36, 0.1);
+  font-size: 1.15rem;
+  text-decoration: none;
+}
+.sa-dr__round:hover {
+  background: var(--shifa-green-100, #e4f2ea);
+}
+.sa-dr__addr {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed rgba(15, 51, 36, 0.12);
+  color: #45524b;
+  font-size: 0.85rem;
+}
+
+/* Line-items table with a tinted header. */
+.sa-dr__items thead th {
+  background: var(--shifa-green-050, #f2f9f5);
+  color: var(--shifa-green-700, #164632);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid rgba(15, 51, 36, 0.08);
+}
+.sa-dr__items td,
+.sa-dr__items th {
+  padding: 0.55rem 0.75rem;
+}
+
+/* Accented totals block. */
+.sa-dr__totals {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.4rem 0.95rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+}
+.sa-dr__totline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0;
+  color: #45524b;
+  font-size: 0.9rem;
+}
+.sa-dr__totline + .sa-dr__totline {
+  border-top: 1px solid rgba(15, 51, 36, 0.06);
+}
+.sa-dr__totline--cod {
+  margin: 0.25rem -0.95rem -0.4rem;
+  padding: 0.6rem 0.95rem;
+  background: var(--shifa-green-050, #f2f9f5);
+  border-top: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 0 0 12px 12px;
+  color: var(--shifa-green-700, #164632);
+  font-weight: 600;
+}
+.sa-dr__totline--cod strong {
+  color: var(--shifa-green-700, #164632);
+}
+
+.sa-dr__shot {
+  width: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+}
+.sa-dr__empty {
+  background: #fff;
+  border: 1px dashed rgba(15, 51, 36, 0.15);
+  border-radius: 12px;
+  padding: 1rem;
+  color: #6b7a72;
+  font-size: 0.88rem;
+  text-align: center;
+}
+
+/* Footer sits on a clean white bar above the fold. */
+.sa-dr__foot {
+  background: #fff;
+}
+
+/* ==========================================================================
+   Bulk selection bar + row selection affordances.
+   ========================================================================== */
+.shifa-bulkbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 10px;
+  padding: 0.5rem 0.8rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.05);
+}
+.shifa-bulkbar__all {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-weight: 600;
+  color: #1c2b24;
+  cursor: pointer;
+}
+.shifa-bulkbar__count {
+  font-weight: 700;
+  color: var(--shifa-green-700, #164632);
+}
+.shifa-bulkbar__hint,
+.shifa-bulkbar__count {
+  font-size: 0.85rem;
+}
+
+/* Needs-action count badge in the page header. */
+.shifa-appr__needs {
+  align-self: center;
+  font-weight: 600;
+}
+
+/* Leading checkbox on the mobile approval card. */
+.shifa-appr__check {
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+}
+
+/* Selected-row highlight (desktop table + mobile card). */
+.shifa-rowlink.is-selected {
+  background: var(--shifa-green-050, #f2f9f5);
+}
+.shifa-appr.is-selected {
+  border-color: var(--shifa-green-600, #1f5d3f);
+  box-shadow: 0 0 0 1px var(--shifa-green-600, #1f5d3f), 0 4px 14px rgba(15, 51, 36, 0.12);
+}
+
+/* --- Verify-payment-first modal: per-order review (screenshot + duplicate) --- */
+.sa-verify-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.sa-verify-item {
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  border-radius: 0.6rem;
+  padding: 0.75rem;
+  background: #fff;
+}
+/* Highlight a duplicate-proof order so the admin can't miss it. */
+.sa-verify-item.is-dup {
+  border-color: #f1aeb5;
+  background: #fff6f6;
+  box-shadow: inset 3px 0 0 var(--tblr-danger, #d63939);
+}
+.sa-verify-item__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.sa-verify-item__dup {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  margin-top: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.5rem;
+  background: #fde4e2;
+  color: #b42318;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+.sa-verify-item__dup .ti {
+  font-size: 1.05rem;
+  flex: 0 0 auto;
+  margin-top: 0.05rem;
+}
+.sa-verify-item__shots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.sa-verify-item__shot {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  border-radius: 0.5rem;
+  object-fit: contain;
+}
+.sa-verify-item__noshot {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.5rem;
+  background: #f6f7f8;
+  color: #62707a;
+  font-size: 0.86rem;
+}
+
+/* Widen just this modal (screenshots need room) without touching the global. */
+.shifa-modal.sa-verify-modal {
+  width: min(760px, calc(100vw - 2rem));
+}
+
+/* Note rendering handled by the shared admin-note-cell component. */

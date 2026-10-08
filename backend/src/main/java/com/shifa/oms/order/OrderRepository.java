@@ -1,11 +1,13 @@
 package com.shifa.oms.order;
 
 import com.shifa.oms.statemachine.OrderStatus;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,17 +28,58 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     boolean existsByOrderCode(String orderCode);
 
     /**
+     * The order already imported from a given Shopify order id, or empty when none.
+     * Backs idempotency for the Shopify {@code orders/create} webhook so a retry /
+     * redelivery of the same Shopify order is recognised and not duplicated (V68).
+     */
+    Optional<OrderEntity> findByShopifyOrderId(String shopifyOrderId);
+
+    /**
      * The order whose {@code order_code} equals this value (the value encoded in
      * the internal-label barcode), or empty when no order matches. Backs the
      * packing barcode scan lookup (Req 11.1, 11.3).
      */
     Optional<OrderEntity> findByOrderCode(String orderCode);
 
+    /** Lookup by the opaque customer tracking token (ENHANCEMENT 2.2, V77). */
+    Optional<OrderEntity> findByTrackingToken(String trackingToken);
+
     /**
      * All orders in a given lifecycle status, most recent first. Used to build
      * the admin approval queue of {@code Pending_Admin_Approval} orders (Req 9.1).
      */
     List<OrderEntity> findByOrderStatusOrderByCreatedAtDesc(OrderStatus orderStatus);
+
+    /**
+     * All orders in a given status AND from a given origin channel, most recent
+     * first. Backs the Packaging "Print Labels" section (Shopify orders that
+     * reached {@code Courier_Assigned} / Tracking ID Assigned) and the
+     * Shopify-recovery backfill (Shopify orders stuck at an earlier status).
+     */
+    List<OrderEntity> findBySourceAndOrderStatusOrderByCreatedAtDesc(OrderSource source, OrderStatus orderStatus);
+
+    /**
+     * All orders in a given lifecycle status, oldest first (FIFO). Backs the
+     * packing work queues (awaiting packing / handover / dispatch) so the packer
+     * clears the oldest orders first.
+     */
+    List<OrderEntity> findByOrderStatusOrderByCreatedAtAsc(OrderStatus orderStatus);
+
+    /**
+     * All orders in a given payment-verification state, oldest first (FIFO).
+     * Backs the Payment Verifier's queue of prepaid payments awaiting
+     * authenticity checks (product-audit §4.4).
+     */
+    List<OrderEntity> findByPaymentVerificationStatusOrderByCreatedAtAsc(
+            PaymentVerificationStatus paymentVerificationStatus);
+
+    /**
+     * All orders in a given payment-verification state, NEWEST first. The Payment
+     * Verification queue lists the most recently punched orders first (client
+     * request: every order screen defaults to newest-first).
+     */
+    List<OrderEntity> findByPaymentVerificationStatusOrderByCreatedAtDesc(
+            PaymentVerificationStatus paymentVerificationStatus);
 
     /**
      * All orders in any of the given lifecycle statuses, most recent first. Backs
@@ -49,6 +92,63 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     long countByCustomerMobile(String customerMobile);
 
     /**
+     * The most recent order for a customer mobile number, used to pre-fill the
+     * New Order form's customer + shipping details from the customer's last order.
+     */
+    java.util.Optional<OrderEntity> findFirstByCustomerMobileOrderByCreatedAtDescIdDesc(String customerMobile);
+
+    /**
+     * Best-selling product ids across the whole business (by units sold), for the
+     * order-entry "favorites" quick-add. Excludes rejected/cancelled orders.
+     */
+    @Query(value = """
+            SELECT li.product_id
+            FROM line_items li
+            JOIN orders o ON o.id = li.order_id
+            WHERE li.product_id IS NOT NULL
+              AND o.active = 1
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
+            GROUP BY li.product_id
+            ORDER BY SUM(li.quantity) DESC
+            """, nativeQuery = true)
+    List<Long> topSoldProductIds(Pageable pageable);
+
+    /** As {@link #topSoldProductIds} but limited to a single salesperson's orders. */
+    @Query(value = """
+            SELECT li.product_id
+            FROM line_items li
+            JOIN orders o ON o.id = li.order_id
+            WHERE li.product_id IS NOT NULL
+              AND o.created_by = :createdBy
+              AND o.active = 1
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
+            GROUP BY li.product_id
+            ORDER BY SUM(li.quantity) DESC
+            """, nativeQuery = true)
+    List<Long> topSoldProductIdsByCreator(@Param("createdBy") Long createdBy, Pageable pageable);
+
+    /**
+     * Products frequently bought in the SAME order as any of {@code productIds}
+     * (co-occurrence), ranked by how many orders they co-occur in — powers the
+     * "frequently bought together" upsell. Excludes the input products themselves
+     * and rejected/cancelled orders.
+     */
+    @Query(value = """
+            SELECT li2.product_id
+            FROM line_items li1
+            JOIN line_items li2 ON li2.order_id = li1.order_id AND li2.product_id <> li1.product_id
+            JOIN orders o ON o.id = li1.order_id
+            WHERE li1.product_id IN (:productIds)
+              AND li2.product_id IS NOT NULL
+              AND li2.product_id NOT IN (:productIds)
+              AND o.active = 1
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
+            GROUP BY li2.product_id
+            ORDER BY COUNT(DISTINCT o.id) DESC
+            """, nativeQuery = true)
+    List<Long> relatedProductIds(@Param("productIds") Collection<Long> productIds, Pageable pageable);
+
+    /**
      * All orders created within an inclusive timestamp window, used by the P&L
      * report (Feature C3) to sum revenue. The finance service filters out
      * REJECTED / CANCELLED orders when summing revenue.
@@ -56,11 +156,19 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     List<OrderEntity> findByCreatedAtBetween(java.time.LocalDateTime from, java.time.LocalDateTime to);
 
     /**
-     * How many times a coupon code has been redeemed by a given customer mobile
-     * (Phase D per-customer limit enforcement). The coupon code is stored
-     * upper-cased on the order, so callers pass a normalized code.
+     * Orders created within an inclusive timestamp window with their line items
+     * eagerly fetched in one query, for the GST accounting service — which reads
+     * every order's line tax snapshots and would otherwise N+1 a lazy
+     * {@code getLineItems()} per order. {@code DISTINCT} collapses the join
+     * cartesian product back to one row per order.
      */
-    long countByCouponCodeAndCustomerMobile(String couponCode, String customerMobile);
+    @Query("""
+            SELECT DISTINCT o FROM OrderEntity o
+            LEFT JOIN FETCH o.lineItems
+            WHERE o.createdAt >= :from AND o.createdAt < :to
+            """)
+    List<OrderEntity> findByCreatedAtBetweenWithLineItems(@Param("from") java.time.LocalDateTime from,
+                                                          @Param("to") java.time.LocalDateTime to);
 
     /**
      * Orders for a customer mobile number, most recent first (Req 15.1 agent
@@ -68,8 +176,37 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
      */
     List<OrderEntity> findByCustomerMobileOrderByCreatedAtDesc(String customerMobile);
 
+    /**
+     * Active (not REJECTED/CANCELLED) orders for a customer mobile created within
+     * a timestamp window, most recent first. Backs same-day duplicate detection at
+     * order entry (a customer may reach two salespeople the same day and get the
+     * same order punched twice). A REJECTED/CANCELLED prior order is deliberately
+     * excluded so a legitimate re-punch after a rejection is not blocked.
+     */
+    @Query("""
+            select o from OrderEntity o
+            where o.customerMobile = :mobile
+              and o.createdAt >= :from and o.createdAt < :to
+              and o.orderStatus not in (
+                  com.shifa.oms.statemachine.OrderStatus.REJECTED,
+                  com.shifa.oms.statemachine.OrderStatus.CANCELLED)
+            order by o.createdAt desc, o.id desc
+            """)
+    List<OrderEntity> findActiveByCustomerMobileInWindow(
+            @Param("mobile") String mobile,
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to") java.time.LocalDateTime to);
+
     /** An order visible to a salesperson only when they created it (Req 5.5). */
     Optional<OrderEntity> findByIdAndCreatedBy(Long id, Long createdBy);
+
+    /**
+     * An order visible to a team lead only when it was created by one of their
+     * assigned salespeople ({@code created_by IN (:createdByIds)}). Backs
+     * team-scoped order detail/invoice access. Callers must not pass an empty
+     * collection (a team lead with no members is short-circuited to "not found").
+     */
+    Optional<OrderEntity> findByIdAndCreatedByIn(Long id, java.util.Collection<Long> createdByIds);
 
     /**
      * Role-scoped search over name / mobile / order code / id / AWB (Req 22.1).
@@ -83,7 +220,8 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     @Query(value = """
             SELECT DISTINCT o.* FROM orders o
             LEFT JOIN courier_records cr ON cr.order_id = o.id
-            WHERE (:createdBy IS NULL OR o.created_by = :createdBy)
+            WHERE o.active = 1
+              AND (:createdBy IS NULL OR o.created_by = :createdBy)
               AND ( LOWER(o.customer_name)  LIKE CONCAT('%', LOWER(:term), '%')
                  OR o.customer_mobile       LIKE CONCAT('%', :term, '%')
                  OR LOWER(o.order_code)     LIKE CONCAT('%', LOWER(:term), '%')
@@ -96,10 +234,67 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     /** All orders for a scope (no search term), most recent first. */
     @Query(value = """
             SELECT o.* FROM orders o
-            WHERE (:createdBy IS NULL OR o.created_by = :createdBy)
+            WHERE o.active = 1
+              AND (:createdBy IS NULL OR o.created_by = :createdBy)
             ORDER BY o.created_at DESC
             """, nativeQuery = true)
     List<OrderEntity> findAllScoped(@Param("createdBy") Long createdBy);
+
+    /**
+     * All soft-deleted (inactive) orders, most recent first — the admin "Deleted
+     * orders" view / restore screen. This is a {@code nativeQuery} so it bypasses
+     * the entity-level {@code @SQLRestriction("active = 1")} (which hides inactive
+     * orders from every other read); it is the ONLY read path that intentionally
+     * returns deleted orders.
+     */
+    @Query(value = """
+            SELECT o.* FROM orders o
+            WHERE o.active = 0
+            ORDER BY o.updated_at DESC, o.id DESC
+            """, nativeQuery = true)
+    List<OrderEntity> findDeleted();
+
+    /**
+     * A single order by id REGARDLESS of its active flag (native, so the
+     * {@code @SQLRestriction} does not hide an inactive one). Used only by the
+     * restore action, which must load a soft-deleted order to reactivate it.
+     */
+    @Query(value = "SELECT o.* FROM orders o WHERE o.id = :id", nativeQuery = true)
+    Optional<OrderEntity> findByIdIncludingInactive(@Param("id") Long id);
+
+    /**
+     * All orders created by any of the given users, most recent first — the
+     * team-lead equivalent of {@link #findAllScoped(Long)}. Callers must pass a
+     * non-empty collection (short-circuit to an empty list when a team lead has
+     * no assigned salespeople).
+     */
+    @Query(value = """
+            SELECT o.* FROM orders o
+            WHERE o.active = 1
+              AND o.created_by IN (:createdByIds)
+            ORDER BY o.created_at DESC
+            """, nativeQuery = true)
+    List<OrderEntity> findAllScopedIn(@Param("createdByIds") java.util.Collection<Long> createdByIds);
+
+    /**
+     * Role-scoped search restricted to a set of creators (team-lead variant of
+     * {@link #search(String, Long)}). Callers pass a non-empty set of the team's
+     * salesperson ids.
+     */
+    @Query(value = """
+            SELECT DISTINCT o.* FROM orders o
+            LEFT JOIN courier_records cr ON cr.order_id = o.id
+            WHERE o.active = 1
+              AND o.created_by IN (:createdByIds)
+              AND ( LOWER(o.customer_name)  LIKE CONCAT('%', LOWER(:term), '%')
+                 OR o.customer_mobile       LIKE CONCAT('%', :term, '%')
+                 OR LOWER(o.order_code)     LIKE CONCAT('%', LOWER(:term), '%')
+                 OR CAST(o.id AS CHAR)      LIKE CONCAT('%', :term, '%')
+                 OR LOWER(cr.awb)           LIKE CONCAT('%', LOWER(:term), '%') )
+            ORDER BY o.created_at DESC
+            """, nativeQuery = true)
+    List<OrderEntity> searchIn(@Param("term") String term,
+                               @Param("createdByIds") java.util.Collection<Long> createdByIds);
 
     /**
      * A logged-in customer's order history (Phase B): orders linked to their
@@ -109,8 +304,9 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
      */
     @Query(value = """
             SELECT o.* FROM orders o
-            WHERE o.customer_user_id = :userId
-               OR (:mobile IS NOT NULL AND o.customer_mobile = :mobile)
+            WHERE o.active = 1
+              AND ( o.customer_user_id = :userId
+               OR (:mobile IS NOT NULL AND o.customer_mobile = :mobile) )
             ORDER BY o.created_at DESC
             """, nativeQuery = true)
     List<OrderEntity> findCustomerHistory(@Param("userId") Long userId, @Param("mobile") String mobile);
@@ -123,6 +319,7 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     @Query(value = """
             SELECT o.* FROM orders o
             WHERE o.order_code = :orderCode
+              AND o.active = 1
               AND ( o.customer_user_id = :userId
                  OR (:mobile IS NOT NULL AND o.customer_mobile = :mobile) )
             """, nativeQuery = true)
@@ -141,10 +338,450 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             SELECT COUNT(*) FROM orders o
             JOIN line_items li ON li.order_id = o.id
             WHERE li.product_id = :productId
+              AND o.active = 1
               AND ( o.customer_user_id = :userId
                  OR (:mobile IS NOT NULL AND o.customer_mobile = :mobile) )
             """, nativeQuery = true)
     long countCustomerPurchasesOfProduct(@Param("userId") Long userId,
                                          @Param("mobile") String mobile,
                                          @Param("productId") Long productId);
+
+    /**
+     * Per-product current-month sales aggregate for the product-detail "Sales
+     * Overview" (product stats endpoint): the sum of the product's line totals
+     * and the count of distinct orders containing the product, over orders
+     * created within {@code [startInclusive, endExclusive)} and NOT in the
+     * excluded (non-revenue) statuses. {@code order_status} is persisted as its
+     * enum name, so {@code excludedStatuses} carries the status names to exclude
+     * (e.g. {@code REJECTED}, {@code CANCELLED} — matching the P&amp;L revenue
+     * definition). {@code SUM} is coalesced to 0 so a product with no qualifying
+     * sales still returns a row.
+     */
+    @Query(value = """
+            SELECT COALESCE(SUM(li.line_total), 0) AS revenue,
+                   COUNT(DISTINCT o.id)            AS orderCount
+            FROM line_items li
+            JOIN orders o ON o.id = li.order_id
+            WHERE li.product_id = :productId
+              AND o.active = 1
+              AND o.created_at >= :startInclusive
+              AND o.created_at <  :endExclusive
+              AND o.order_status NOT IN (:excludedStatuses)
+            """, nativeQuery = true)
+    ProductSalesAggregate productSalesStats(@Param("productId") Long productId,
+                                            @Param("startInclusive") java.time.LocalDateTime startInclusive,
+                                            @Param("endExclusive") java.time.LocalDateTime endExclusive,
+                                            @Param("excludedStatuses") java.util.Collection<String> excludedStatuses);
+
+    /**
+     * Projection over {@link #productSalesStats}: {@code revenue} is the summed
+     * line total (never null — coalesced to 0) and {@code orderCount} the number
+     * of distinct qualifying orders.
+     */
+    interface ProductSalesAggregate {
+        java.math.BigDecimal getRevenue();
+
+        long getOrderCount();
+    }
+
+    /**
+     * Per-salesperson order aggregate for the Salesperson 360 leaderboard
+     * (FEATURE request): one row per {@code created_by} with total/this-month/today
+     * order counts, revenue (all + this month, excluding REJECTED/CANCELLED),
+     * delivered vs failed delivery counts, and outstanding COD. {@code monthStart}
+     * / {@code dayStart} bound the windowed sums.
+     */
+    @Query(value = """
+            SELECT o.created_by AS salespersonId,
+                   COUNT(*) AS ordersTotal,
+                   SUM(CASE WHEN o.created_at >= :monthStart THEN 1 ELSE 0 END) AS ordersThisMonth,
+                   SUM(CASE WHEN o.created_at >= :dayStart THEN 1 ELSE 0 END) AS ordersToday,
+                   COALESCE(SUM(CASE WHEN o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
+                                     THEN o.total_amount ELSE 0 END), 0) AS revenueTotal,
+                   COALESCE(SUM(CASE WHEN o.created_at >= :monthStart
+                                      AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
+                                     THEN o.total_amount ELSE 0 END), 0) AS revenueThisMonth,
+                   SUM(CASE WHEN o.order_status IN ('DELIVERED','COD_COLLECTED','CLOSED')
+                            THEN 1 ELSE 0 END) AS deliveredCount,
+                   SUM(CASE WHEN o.order_status IN ('CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH')
+                            THEN 1 ELSE 0 END) AS failedCount,
+                   COALESCE(SUM(o.customer_outstanding), 0) AS codOutstanding
+            FROM orders o
+            WHERE o.created_by IS NOT NULL
+              AND o.active = 1
+            GROUP BY o.created_by
+            """, nativeQuery = true)
+    List<SalespersonOrderAggregate> salespersonOrderStats(
+            @Param("monthStart") java.time.LocalDateTime monthStart,
+            @Param("dayStart") java.time.LocalDateTime dayStart);
+
+    /** Projection over {@link #salespersonOrderStats} (one row per salesperson). */
+    interface SalespersonOrderAggregate {
+        Long getSalespersonId();
+
+        long getOrdersTotal();
+
+        long getOrdersThisMonth();
+
+        long getOrdersToday();
+
+        java.math.BigDecimal getRevenueTotal();
+
+        java.math.BigDecimal getRevenueThisMonth();
+
+        long getDeliveredCount();
+
+        long getFailedCount();
+
+        java.math.BigDecimal getCodOutstanding();
+    }
+
+    // --- Analytics §6 aggregates (targets / retention / forecasting) --------
+
+    /**
+     * Per-salesperson revenue + order count over a window {@code [from, to)},
+     * excluding REJECTED/CANCELLED (sales-targets attainment, FEATURE-ROADMAP §6.1).
+     */
+    @Query(value = """
+            SELECT o.created_by AS salespersonId,
+                   COUNT(*) AS orderCount,
+                   COALESCE(SUM(o.total_amount), 0) AS revenue
+            FROM orders o
+            WHERE o.created_by IS NOT NULL
+              AND o.active = 1
+              AND o.created_at >= :from AND o.created_at < :to
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
+            GROUP BY o.created_by
+            """, nativeQuery = true)
+    List<SalespersonRevenueRow> salespersonRevenueBetween(
+            @Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+
+    /** Projection over {@link #salespersonRevenueBetween}. */
+    interface SalespersonRevenueRow {
+        Long getSalespersonId();
+
+        long getOrderCount();
+
+        java.math.BigDecimal getRevenue();
+    }
+
+    /**
+     * (mobile, created_at) for every non-rejected/cancelled order, ordered by
+     * customer then time — the raw signal for cohort/retention analysis
+     * (FEATURE-ROADMAP §6.3). Lightweight projection (no line items).
+     */
+    @Query(value = """
+            SELECT o.customer_mobile AS mobile, o.created_at AS createdAt
+            FROM orders o
+            WHERE o.customer_mobile IS NOT NULL AND o.customer_mobile <> ''
+              AND o.active = 1
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
+            ORDER BY o.customer_mobile, o.created_at
+            """, nativeQuery = true)
+    List<CustomerOrderDateRow> customerOrderDates();
+
+    /** Projection over {@link #customerOrderDates}. */
+    interface CustomerOrderDateRow {
+        String getMobile();
+
+        java.time.LocalDateTime getCreatedAt();
+    }
+
+    /**
+     * Per-product units sold + distinct orders over a window {@code [from, to)},
+     * excluding REJECTED/CANCELLED — the demand signal for forecasting
+     * (FEATURE-ROADMAP §6.5).
+     */
+    @Query(value = """
+            SELECT li.product_id AS productId,
+                   MAX(li.product_name) AS productName,
+                   COALESCE(SUM(li.quantity), 0) AS units,
+                   COUNT(DISTINCT o.id) AS orders
+            FROM line_items li
+            JOIN orders o ON o.id = li.order_id
+            WHERE li.product_id IS NOT NULL
+              AND o.active = 1
+              AND o.created_at >= :from AND o.created_at < :to
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
+            GROUP BY li.product_id
+            """, nativeQuery = true)
+    List<ProductDemandRow> productDemandBetween(
+            @Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+
+    /** Projection over {@link #productDemandBetween}. */
+    interface ProductDemandRow {
+        Long getProductId();
+
+        String getProductName();
+
+        long getUnits();
+
+        long getOrders();
+    }
+
+    /**
+     * Total customer COD still expected — sum of {@code customer_outstanding} on
+     * orders not in a terminal collected/failed/cancelled state (cash forecast,
+     * FEATURE-ROADMAP §6.5).
+     */
+    @Query(value = """
+            SELECT COALESCE(SUM(o.customer_outstanding), 0) FROM orders o
+            WHERE o.active = 1
+              AND o.order_status NOT IN
+              ('CLOSED','COD_COLLECTED','REJECTED','PAYMENT_REJECTED','CANCELLED',
+               'DELIVERY_FAILED','CUSTOMER_REJECTED','RTO','REDISPATCH')
+            """, nativeQuery = true)
+    java.math.BigDecimal sumOutstandingCodActive();
+
+    /**
+     * COD collected since a timestamp — sum of {@code cod_amount} on orders that
+     * reached {@code COD_COLLECTED} and were last updated on/after {@code since}
+     * (recent collection run-rate for the cash forecast, FEATURE-ROADMAP §6.5).
+     */
+    @Query(value = """
+            SELECT COALESCE(SUM(o.cod_amount), 0) FROM orders o
+            WHERE o.order_status = 'COD_COLLECTED' AND o.active = 1 AND o.updated_at >= :since
+            """, nativeQuery = true)
+    java.math.BigDecimal sumCodCollectedSince(@Param("since") java.time.LocalDateTime since);
+
+    // --- Dashboard status-count aggregates (perf: avoid findAll + Java counting) ---
+
+    /**
+     * Count of orders grouped by {@code order_status} across ALL orders — the
+     * SQL replacement for loading every order just to tally statuses on the admin
+     * / packing dashboards. One row per present status; absent statuses simply do
+     * not appear (callers default them to zero).
+     */
+    @Query(value = """
+            SELECT o.order_status AS status, COUNT(*) AS count
+            FROM orders o
+            WHERE o.active = 1
+            GROUP BY o.order_status
+            """, nativeQuery = true)
+    List<StatusCountRow> statusCounts();
+
+    /**
+     * As {@link #statusCounts()} but scoped to a single creator (salesperson
+     * dashboard). A {@code null} {@code createdBy} means "no scope" (admin acting
+     * as a salesperson) and counts across all orders — matching
+     * {@link #findAllScoped(Long)} semantics exactly.
+     */
+    @Query(value = """
+            SELECT o.order_status AS status, COUNT(*) AS count
+            FROM orders o
+            WHERE o.active = 1
+              AND (:createdBy IS NULL OR o.created_by = :createdBy)
+            GROUP BY o.order_status
+            """, nativeQuery = true)
+    List<StatusCountRow> statusCountsForCreator(@Param("createdBy") Long createdBy);
+
+    /**
+     * As {@link #statusCounts()} but scoped to a set of creators (team-lead
+     * dashboard). Callers must pass a non-empty collection — mirrors
+     * {@link #findAllScopedIn(java.util.Collection)}.
+     */
+    @Query(value = """
+            SELECT o.order_status AS status, COUNT(*) AS count
+            FROM orders o
+            WHERE o.active = 1
+              AND o.created_by IN (:createdByIds)
+            GROUP BY o.order_status
+            """, nativeQuery = true)
+    List<StatusCountRow> statusCountsForCreatorIn(
+            @Param("createdByIds") java.util.Collection<Long> createdByIds);
+
+    /** Projection over the dashboard status-count aggregates (status name + count). */
+    interface StatusCountRow {
+
+        /** The {@code order_status} value as its stored name, e.g. {@code "PACKED"}. */
+        String getStatus();
+
+        long getCount();
+    }
+
+    /**
+     * Count of orders currently in {@code PACKED} that were last updated within
+     * the given half-open day window {@code [dayStart, dayEnd)} — the SQL form of
+     * the packing dashboard's "packed today" tally.
+     */
+    @Query(value = """
+            SELECT COUNT(*) FROM orders o
+            WHERE o.order_status = 'PACKED'
+              AND o.active = 1
+              AND o.updated_at >= :dayStart AND o.updated_at < :dayEnd
+            """, nativeQuery = true)
+    long countPackedBetween(@Param("dayStart") java.time.LocalDateTime dayStart,
+                            @Param("dayEnd") java.time.LocalDateTime dayEnd);
+
+    /**
+     * Today's live headline: the number of orders created in the half-open window
+     * {@code [dayStart, dayEnd)} and the sum of their {@code amount_received} — the
+     * SQL form of the SSE live-stats tally (was a full {@code findAll()} + Java
+     * loop on every SSE tick).
+     */
+    @Query(value = """
+            SELECT COUNT(*) AS orderCount, COALESCE(SUM(o.amount_received), 0) AS collection
+            FROM orders o
+            WHERE o.active = 1
+              AND o.created_at >= :dayStart AND o.created_at < :dayEnd
+            """, nativeQuery = true)
+    DayLiveRow liveStatsBetween(@Param("dayStart") java.time.LocalDateTime dayStart,
+                                @Param("dayEnd") java.time.LocalDateTime dayEnd);
+
+    /** Projection over today's live-stats aggregate (order count + received sum). */
+    interface DayLiveRow {
+
+        long getOrderCount();
+
+        java.math.BigDecimal getCollection();
+    }
+
+    // --- Delivery-performance analytics (ENHANCEMENT 3.3) -------------------
+
+    /**
+     * Delivered vs failed counts grouped by destination state, over orders that
+     * reached a terminal delivery outcome (delivered ∪ failed). Backs the
+     * delivery-performance analytics (which regions have high RTO). Blank state →
+     * {@code "(unknown)"}.
+     */
+    @Query(value = """
+            SELECT COALESCE(NULLIF(TRIM(o.state), ''), '(unknown)') AS dimension,
+                   SUM(CASE WHEN o.order_status IN ('DELIVERED','COD_COLLECTED','CLOSED') THEN 1 ELSE 0 END) AS delivered,
+                   SUM(CASE WHEN o.order_status IN ('CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH') THEN 1 ELSE 0 END) AS failed
+            FROM orders o
+            WHERE o.active = 1
+              AND o.order_status IN
+              ('DELIVERED','COD_COLLECTED','CLOSED','CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH')
+            GROUP BY COALESCE(NULLIF(TRIM(o.state), ''), '(unknown)')
+            """, nativeQuery = true)
+    List<DeliveryOutcomeRow> deliveryOutcomeByState();
+
+    /**
+     * Delivered vs failed counts grouped by the first 3 digits of the destination
+     * pincode (the postal "band"/sorting region), over terminal-outcome orders.
+     * A blank/short pincode → {@code "(unknown)"}.
+     */
+    @Query(value = """
+            SELECT CASE WHEN o.postal_code IS NULL OR CHAR_LENGTH(TRIM(o.postal_code)) < 3
+                        THEN '(unknown)' ELSE SUBSTRING(TRIM(o.postal_code), 1, 3) END AS dimension,
+                   SUM(CASE WHEN o.order_status IN ('DELIVERED','COD_COLLECTED','CLOSED') THEN 1 ELSE 0 END) AS delivered,
+                   SUM(CASE WHEN o.order_status IN ('CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH') THEN 1 ELSE 0 END) AS failed
+            FROM orders o
+            WHERE o.active = 1
+              AND o.order_status IN
+              ('DELIVERED','COD_COLLECTED','CLOSED','CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH')
+            GROUP BY CASE WHEN o.postal_code IS NULL OR CHAR_LENGTH(TRIM(o.postal_code)) < 3
+                          THEN '(unknown)' ELSE SUBSTRING(TRIM(o.postal_code), 1, 3) END
+            """, nativeQuery = true)
+    List<DeliveryOutcomeRow> deliveryOutcomeByPincodeBand();
+
+    /**
+     * Delivered vs failed counts grouped by the assigned courier company (via
+     * {@code courier_records}), over terminal-outcome orders. Orders with no
+     * courier record (e.g. in-house with none assigned) group under
+     * {@code "(unassigned)"}.
+     */
+    @Query(value = """
+            SELECT COALESCE(cc.name, '(unassigned)') AS dimension,
+                   SUM(CASE WHEN o.order_status IN ('DELIVERED','COD_COLLECTED','CLOSED') THEN 1 ELSE 0 END) AS delivered,
+                   SUM(CASE WHEN o.order_status IN ('CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH') THEN 1 ELSE 0 END) AS failed
+            FROM orders o
+            LEFT JOIN courier_records cr ON cr.order_id = o.id
+            LEFT JOIN courier_companies cc ON cc.id = cr.courier_company_id
+            WHERE o.active = 1
+              AND o.order_status IN
+              ('DELIVERED','COD_COLLECTED','CLOSED','CUSTOMER_REJECTED','DELIVERY_FAILED','RTO','REDISPATCH')
+            GROUP BY COALESCE(cc.name, '(unassigned)')
+            """, nativeQuery = true)
+    List<DeliveryOutcomeRow> deliveryOutcomeByCourier();
+
+    /** Projection over the delivery-performance aggregates (dimension + delivered/failed counts). */
+    interface DeliveryOutcomeRow {
+
+        /** The grouping value (state name / pincode band / courier name). */
+        String getDimension();
+
+        long getDelivered();
+
+        long getFailed();
+    }
+
+    // --- Channel margin (ENHANCEMENT 3.6) -----------------------------------
+
+    /**
+     * Per-channel ({@code orders.source}) revenue, discount and order count over a
+     * window, EXCLUDING non-revenue orders. No line join (so {@code total_amount}
+     * is summed once per order); COGS is a separate query to avoid the join fan-out.
+     */
+    @Query(value = """
+            SELECT o.source AS channel,
+                   COUNT(*) AS orderCount,
+                   COALESCE(SUM(o.total_amount), 0) AS revenue,
+                   COALESCE(SUM(o.discount_amount), 0) AS discount
+            FROM orders o
+            WHERE o.active = 1
+              AND o.created_at >= :from AND o.created_at < :to
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
+            GROUP BY o.source
+            """, nativeQuery = true)
+    List<ChannelRevenueRow> channelRevenueBetween(@Param("from") java.time.LocalDateTime from,
+                                                  @Param("to") java.time.LocalDateTime to);
+
+    /**
+     * Per-channel estimated COGS over a window: {@code SUM(line.quantity *
+     * product.cost_price)} for revenue orders, plus the gross line value that DID
+     * vs did NOT have a recorded cost (so the margin view can flag partial cost
+     * coverage). Joined via {@code line_items} → {@code products}; a line whose
+     * product has no cost contributes zero COGS and to {@code lineValueWithoutCost}.
+     */
+    @Query(value = """
+            SELECT o.source AS channel,
+                   COALESCE(SUM(CASE WHEN p.cost_price IS NOT NULL
+                                     THEN li.quantity * p.cost_price ELSE 0 END), 0) AS cogs,
+                   COALESCE(SUM(CASE WHEN p.cost_price IS NOT NULL THEN li.line_total ELSE 0 END), 0) AS lineValueWithCost,
+                   COALESCE(SUM(CASE WHEN p.cost_price IS NULL THEN li.line_total ELSE 0 END), 0) AS lineValueWithoutCost
+            FROM orders o
+            JOIN line_items li ON li.order_id = o.id
+            LEFT JOIN products p ON p.id = li.product_id
+            WHERE o.active = 1
+              AND o.created_at >= :from AND o.created_at < :to
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
+            GROUP BY o.source
+            """, nativeQuery = true)
+    List<ChannelCogsRow> channelCogsBetween(@Param("from") java.time.LocalDateTime from,
+                                            @Param("to") java.time.LocalDateTime to);
+
+    /** Per-channel revenue aggregate (channel = orders.source name). */
+    interface ChannelRevenueRow {
+        String getChannel();
+
+        long getOrderCount();
+
+        java.math.BigDecimal getRevenue();
+
+        java.math.BigDecimal getDiscount();
+    }
+
+    /** Per-channel COGS aggregate + cost-coverage split (channel = orders.source name). */
+    interface ChannelCogsRow {
+        String getChannel();
+
+        java.math.BigDecimal getCogs();
+
+        java.math.BigDecimal getLineValueWithCost();
+
+        java.math.BigDecimal getLineValueWithoutCost();
+    }
+
+    // --- Owner snapshot counts (perf: single COUNT each) --------------------
+
+    /** Count of orders in a given payment-verification state (owner snapshot / exception triage). */
+    long countByPaymentVerificationStatus(com.shifa.oms.order.PaymentVerificationStatus status);
+
+    /**
+     * Count of orders QuikShipX permanently rejected (a non-null
+     * {@code quikshipx_failure_reason}, V75) — the "stuck shipments" the owner
+     * snapshot flags so an admin can re-route them to in-house delivery.
+     */
+    long countByQuikShipXFailureReasonIsNotNull();
 }

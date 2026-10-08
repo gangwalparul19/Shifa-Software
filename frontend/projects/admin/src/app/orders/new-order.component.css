@@ -5,3 +5,361 @@
   object-fit: cover;
   flex: 0 0 auto;
 }
+
+/* ==========================================================================
+   Add New Order — sectioned mobile-first form (Req 10), mockup-faithful.
+   Three labeled sections (Customer / Order / Payment) on a soft canvas, each
+   in a rounded white card, with a sticky bottom action bar. Scoped here.
+   ========================================================================== */
+.shifa-no {
+  /* Leave room so the last section clears the sticky footer + bottom nav. */
+  padding-bottom: 7rem;
+}
+.shifa-no__section {
+  margin-bottom: 0.9rem;
+}
+.shifa-no__title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1c2b24;
+  margin-bottom: 0.5rem;
+}
+.shifa-no__titlerow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+.shifa-no__titlerow .shifa-no__title {
+  margin-bottom: 0;
+}
+
+/* Rounded white section cards with a soft shadow (~12px radius). */
+.shifa-no__card {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+
+/* Bold labels + red asterisk on required fields (mockup style). */
+.shifa-no .form-label {
+  font-weight: 600;
+  color: #2b3a32;
+}
+.shifa-no .form-label.required::after {
+  content: ' *';
+  color: #d63939;
+  font-weight: 700;
+}
+/* Rounded, comfortable inputs. */
+.shifa-no .form-control,
+.shifa-no .form-select {
+  border-radius: 10px;
+  min-height: 44px;
+}
+
+/* --- Order line cards --------------------------------------------------- */
+.shifa-no__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.shifa-line {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+.shifa-line__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+.shifa-line__idx {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--shifa-green-700, #164632);
+}
+.shifa-line__remove {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #c0392b;
+  font-size: 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.shifa-line__remove:hover:not(:disabled) {
+  background: #fde4e2;
+}
+.shifa-line__remove:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.shifa-line__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+.shifa-line__total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.7rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(15, 51, 36, 0.08);
+  color: #45524b;
+}
+
+/* --- Quantity stepper (− value +), ≥44px targets ------------------------ */
+.shifa-stepper {
+  display: flex;
+  align-items: stretch;
+}
+.shifa-stepper__btn {
+  flex: 0 0 auto;
+  width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--tblr-border-color, #dbe0dd);
+  background: var(--shifa-green-050, #f2f9f5);
+  color: var(--shifa-green-700, #164632);
+  font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.shifa-stepper__btn:first-child {
+  border-radius: 10px 0 0 10px;
+}
+.shifa-stepper__btn:last-child {
+  border-radius: 0 10px 10px 0;
+}
+.shifa-stepper__btn:hover {
+  background: var(--shifa-green-100, #e4f2ea);
+}
+.shifa-stepper__val.form-control {
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  text-align: center;
+  min-height: 44px;
+  /* Hide the native number spinners so the ± buttons are the control. */
+  -moz-appearance: textfield;
+}
+.shifa-stepper__val.form-control::-webkit-outer-spin-button,
+.shifa-stepper__val.form-control::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* --- Running totals ----------------------------------------------------- */
+.shifa-no__totals {
+  padding: 0.85rem 1rem;
+}
+.shifa-no__totline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+  color: #45524b;
+}
+
+/* --- Sticky bottom action bar ------------------------------------------- */
+.shifa-no__footer {
+  position: sticky;
+  /* Clear the fixed bottom tab bar (~56px) + iOS safe-area inset. */
+  bottom: calc(3.75rem + env(safe-area-inset-bottom, 0px));
+  z-index: 20;
+  display: flex;
+  gap: 0.75rem;
+  /* Opaque background so scrolling form content can't show through the bar
+     (was transparent on mobile, making the buttons appear to overlap the page). */
+  background: #fff;
+  border-top: 1px solid var(--tblr-border-color, #e6e7e9);
+  box-shadow: 0 -4px 14px rgba(15, 51, 36, 0.08);
+  border-radius: 0.6rem 0.6rem 0 0;
+  padding: 0.75rem;
+}
+.shifa-no__footer .btn {
+  min-height: 48px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.shifa-no__cancel {
+  flex: 0 0 40%;
+}
+.shifa-no__save {
+  flex: 1 1 auto;
+}
+
+/* On wider screens the bottom bar sits flush at the bottom of the content. */
+@media (min-width: 768px) {
+  .shifa-no__footer {
+    bottom: 0;
+    background: linear-gradient(to top, #fff 70%, rgba(255, 255, 255, 0));
+    padding: 1rem 0.25rem;
+    /* Desktop keeps the original flush, borderless look. */
+    border-top: 0;
+    box-shadow: none;
+    margin-inline: 0;
+  }
+  .shifa-no__cancel {
+    flex: 0 0 auto;
+    min-width: 8rem;
+  }
+  .shifa-no__save {
+    flex: 0 0 auto;
+    min-width: 12rem;
+  }
+  .shifa-no__footer {
+    justify-content: flex-end;
+  }
+}
+
+/* Guided New Order wizard (product-audit §3.2) */
+.shifa-wizard-steps {
+  display: flex;
+  gap: 6px;
+}
+.shifa-wizard-step {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 6px 2px;
+  cursor: pointer;
+  color: #6b7b72;
+  border-bottom: 3px solid #e2e8e4;
+}
+.shifa-wizard-step__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #e2e8e4;
+  color: #6b7b72;
+  font-weight: 800;
+  font-size: 14px;
+}
+.shifa-wizard-step__label {
+  font-size: 12px;
+  font-weight: 600;
+}
+.shifa-wizard-step.is-active {
+  color: #0f3d27;
+  border-bottom-color: #1f5d3f;
+}
+.shifa-wizard-step.is-active .shifa-wizard-step__num {
+  background: #1f5d3f;
+  color: #fff;
+}
+.shifa-wizard-step.is-done {
+  color: #1f5d3f;
+  border-bottom-color: #1f7a4d;
+}
+.shifa-wizard-step.is-done .shifa-wizard-step__num {
+  background: #1f7a4d;
+  color: #fff;
+}
+
+/* Review step summary */
+.shifa-review {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px 12px;
+}
+.shifa-review dt {
+  color: #6b7b72;
+  font-weight: 600;
+  font-size: 13px;
+}
+.shifa-review dd {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* Quick-add favorites + frequently-bought-together suggestion chips (Tranche 3) */
+.shifa-no__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.shifa-no__chips-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64726b;
+  width: 100%;
+}
+.shifa-chip {
+  border-radius: 999px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Entry-mode toggle (Guided vs Quick, item 3) ------------------------ */
+.shifa-no__modebar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.shifa-no__modehint {
+  font-size: 0.8rem;
+}
+
+/* One-hand payment shortcuts: sit BELOW the amount field (they only fill it) and
+   stay thumb-reachable. The amount field itself is where a partial payment is
+   typed, so these are a convenience for the two common cases, not the only input. */
+.shifa-payment-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.shifa-payment-quick .btn {
+  min-height: 44px;
+  flex: 1 1 9rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+}
+
+@media (max-width: 480px) {
+  .shifa-no__card {
+    padding: 0.85rem;
+  }
+  .shifa-no__footer {
+    gap: 0.5rem;
+    padding-inline: 0.5rem;
+  }
+  .shifa-no__footer .btn {
+    min-height: 50px;
+  }
+}

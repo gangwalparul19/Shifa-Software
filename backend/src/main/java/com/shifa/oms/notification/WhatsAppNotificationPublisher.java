@@ -41,6 +41,16 @@ public class WhatsAppNotificationPublisher {
      * @return the resolved message that was enqueued (useful for tests/callers)
      */
     public WhatsAppMessage enqueue(Long orderId, NotificationEvent event, NotificationContext context) {
+        return enqueue(orderId, event, context, null);
+    }
+
+    /**
+     * Overload carrying the creating salesperson's user id on the enqueued
+     * {@code WHATSAPP_NOTIFY} payload (from {@code OrderEntity.createdBy}) for
+     * traceability/addressing (design §5.2). A {@code null} id is omitted.
+     */
+    public WhatsAppMessage enqueue(Long orderId, NotificationEvent event,
+                                   NotificationContext context, Long salespersonUserId) {
         WhatsAppMessage message = messageFactory.build(event, context);
         outboxEventPublisher.publishWhatsAppNotify(
                 orderId,
@@ -48,7 +58,8 @@ public class WhatsAppNotificationPublisher {
                 event.name(),
                 message.recipientMobile(),
                 message.templateName(),
-                toParameterMaps(message.parameters()));
+                toParameterMaps(message.parameters()),
+                salespersonUserId);
         return message;
     }
 

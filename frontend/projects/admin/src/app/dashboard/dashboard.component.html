@@ -1,627 +1,654 @@
 <!-- Page header -->
 <admin-page-header title="Dashboard" subtitle="Business performance at a glance.">
-  <div class="btn-group btn-group-sm shifa-period" role="tablist" aria-label="Time period">
-    @for (opt of periodOptions; track opt.value) {
-      <button
-        type="button"
-        class="btn"
-        [class.active]="period() === opt.value"
-        [class.btn-primary]="period() === opt.value"
-        (click)="selectPeriod(opt.value)"
-      >
-        {{ opt.label }}
-      </button>
-    }
-  </div>
+  @if (isAdmin()) {
+    <a routerLink="/exceptions" class="btn btn-outline-danger shifa-touch">
+      <i class="ti ti-alert-triangle me-1"></i> Exception Center
+    </a>
+  }
+  @if (isTeamLead()) {
+    <a routerLink="/orders/new" class="btn btn-primary shifa-touch">
+      <i class="ti ti-plus me-1"></i> New Order
+    </a>
+  }
 </admin-page-header>
 
-@if (period() === 'CUSTOM') {
-  <div class="card mb-3 anim-fade-up">
-    <div class="card-body d-flex flex-wrap align-items-end gap-3">
-      <div>
-        <label class="form-label">From</label>
-        <input type="date" class="form-control" [value]="customFrom()" (change)="onCustomFrom($any($event.target).value)" />
-      </div>
-      <div>
-        <label class="form-label">To</label>
-        <input type="date" class="form-control" [value]="customTo()" (change)="onCustomTo($any($event.target).value)" />
-      </div>
-      <button type="button" class="btn btn-primary" [disabled]="!canApplyCustom()" (click)="applyCustom()">
-        <i class="ti ti-filter me-1"></i> Apply
-      </button>
+@if (isAdmin()) {
+
+<!-- Needs-attention triage strip: the three things an admin should action now. -->
+@if (summary()?.admin; as ad) {
+  <div class="row row-cards g-2 g-md-3 mb-3">
+    <div class="col-4">
+      <a routerLink="/approval-queue" class="card card-hover stat-accent text-reset text-decoration-none d-block" style="--accent: #f59f00; --accent-soft: #fdf1da">
+        <div class="card-body d-flex align-items-center justify-content-between py-2">
+          <div class="min-w-0">
+            <div class="subheader text-truncate">Approvals waiting</div>
+            <div class="h2 m-0">{{ ad.pendingApproval }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #f59f00; --accent-soft: #fdf1da"><i class="ti ti-checklist"></i></span>
+        </div>
+      </a>
+    </div>
+    <div class="col-4">
+      <a routerLink="/exceptions" class="card card-hover stat-accent text-reset text-decoration-none d-block" style="--accent: #d63939; --accent-soft: #fbe7e7">
+        <div class="card-body d-flex align-items-center justify-content-between py-2">
+          <div class="min-w-0">
+            <div class="subheader text-truncate">Exceptions</div>
+            <div class="h2 m-0">{{ adminExceptionTotal() }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #d63939; --accent-soft: #fbe7e7"><i class="ti ti-alert-triangle"></i></span>
+        </div>
+      </a>
+    </div>
+    <div class="col-4">
+      <a routerLink="/packing" class="card card-hover stat-accent text-reset text-decoration-none d-block" style="--accent: #0ca678; --accent-soft: #e3f7f0">
+        <div class="card-body d-flex align-items-center justify-content-between py-2">
+          <div class="min-w-0">
+            <div class="subheader text-truncate">Awaiting handover</div>
+            <div class="h2 m-0">{{ ad.packedAwaitingHandover }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #0ca678; --accent-soft: #e3f7f0"><i class="ti ti-package"></i></span>
+        </div>
+      </a>
     </div>
   </div>
 }
 
-@if (loadError()) {
-  <div class="alert alert-danger d-flex align-items-center anim-fade-up" role="alert">
-    <i class="ti ti-alert-triangle me-2"></i>
-    <span class="me-auto">{{ loadError() }}</span>
-    <button type="button" class="btn btn-sm btn-danger" (click)="reload()">Retry</button>
+<!-- Owner snapshot: today's trading + the actionable backlog (ENHANCEMENT 1.2). -->
+@if (ownerSnapshot(); as os) {
+  <div class="card anim-fade-up mb-3">
+    <div class="card-body">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <h3 class="card-title m-0">Today at a glance</h3>
+        <span class="badge" [class.bg-red-lt]="os.attentionTotal > 0" [class.bg-green-lt]="os.attentionTotal === 0">
+          {{ os.attentionTotal > 0 ? os.attentionTotal + ' need action' : 'All clear' }}
+        </span>
+      </div>
+      <div class="row g-2 g-md-3">
+        <!-- Today's trading -->
+        <div class="col-6 col-md-3">
+          <div class="p-2 rounded bg-azure-lt h-100">
+            <div class="subheader text-truncate">Orders today</div>
+            <div class="h2 m-0">{{ os.ordersToday }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="p-2 rounded bg-green-lt h-100">
+            <div class="subheader text-truncate">Received today</div>
+            <div class="h2 m-0">{{ inr(os.revenueToday) }}</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <a routerLink="/reconciliation" class="p-2 rounded bg-yellow-lt h-100 d-block text-reset text-decoration-none">
+            <div class="subheader text-truncate">COD to collect</div>
+            <div class="h2 m-0">{{ inr(os.codToCollect) }}</div>
+            @if (os.codOverSla > 0) {
+              <div class="small text-red">{{ os.codOverSla }} past SLA ({{ inr(os.codOverSlaAmount) }})</div>
+            }
+          </a>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="p-2 rounded bg-muted-lt h-100">
+            <div class="subheader text-truncate">Top salesperson today</div>
+            <div class="h3 m-0 text-truncate">{{ os.topSalespersonName || '—' }}</div>
+            @if (os.topSalespersonName) {
+              <div class="small text-secondary">{{ inr(os.topSalespersonRevenue) }}</div>
+            }
+          </div>
+        </div>
+        <!-- Actionable backlog -->
+        <div class="col-6 col-md-3">
+          <a routerLink="/approval-queue" class="p-2 rounded border h-100 d-block text-reset text-decoration-none">
+            <div class="subheader text-truncate">Approvals</div>
+            <div class="h2 m-0" [class.text-orange]="os.approvalsWaiting > 0">{{ os.approvalsWaiting }}</div>
+          </a>
+        </div>
+        <div class="col-6 col-md-3">
+          <a routerLink="/payments" class="p-2 rounded border h-100 d-block text-reset text-decoration-none">
+            <div class="subheader text-truncate">Payments to verify</div>
+            <div class="h2 m-0" [class.text-orange]="os.paymentsPending > 0">{{ os.paymentsPending }}</div>
+          </a>
+        </div>
+        <div class="col-6 col-md-3">
+          <a routerLink="/exceptions" class="p-2 rounded border h-100 d-block text-reset text-decoration-none">
+            <div class="subheader text-truncate">Failed deliveries</div>
+            <div class="h2 m-0" [class.text-red]="os.failedDeliveries > 0">{{ os.failedDeliveries }}</div>
+          </a>
+        </div>
+        <div class="col-6 col-md-3">
+          <a routerLink="/shopify-sync" class="p-2 rounded border h-100 d-block text-reset text-decoration-none">
+            <div class="subheader text-truncate">Stuck shipments</div>
+            <div class="h2 m-0" [class.text-red]="os.stuckShipments > 0">{{ os.stuckShipments }}</div>
+          </a>
+        </div>
+      </div>
+      <div class="text-secondary small mt-2">
+        <i class="ti ti-bell me-1"></i>Threshold alerts (COD overdue, stuck shipments, delivery failures)
+        are delivered to your notifications — enable browser push from the bell to get them on your phone.
+      </div>
+    </div>
   </div>
 }
 
-<!-- Welcome hero + sales sparkline -->
-<div class="row row-cards mb-3">
-  <div class="col-lg-8">
-    <div class="card shifa-hero anim-fade-up h-100">
+<!-- Per-channel margin (ENHANCEMENT 3.6): revenue + estimated gross margin by channel, this month. -->
+@if (channelMargin(); as cm) {
+  @if (cm.total.revenue > 0) {
+    <div class="card anim-fade-up mb-3">
       <div class="card-body">
-        <div class="shifa-hero__grid">
-          <div class="shifa-hero__content">
-            <div class="shifa-hero__pretitle">Overview</div>
-            <h2 class="shifa-hero__greet">
-              {{ greeting() }}@if (auth.session(); as s) {, {{ s.username }}}
-            </h2>
-            <p class="shifa-hero__sub">Here's what's happening across Shifa Herbal Remedies today.</p>
-            <div class="shifa-hero__kpis">
-              <div class="shifa-hero__kpi-box">
-                <div class="shifa-hero__kpi-label">Today's collection</div>
-                <div class="shifa-hero__kpi count-up" [shifaCountUp]="live()?.todaysCollection ?? 0" countFormat="inr"></div>
-              </div>
-              <div class="shifa-hero__kpi-box">
-                <div class="shifa-hero__kpi-label">Conversion rate</div>
-                <div class="shifa-hero__kpi d-flex align-items-center gap-2">
-                  <span class="count-up" [shifaCountUp]="metrics()?.cards?.conversionRate ?? 0" countFormat="percent"></span>
-                  @if (metrics()) {
-                    <span
-                      class="shifa-hero__trend"
-                      [class.up]="changeDirection() === 'up'"
-                      [class.down]="changeDirection() === 'down'"
-                    >
-                      @switch (changeDirection()) {
-                        @case ('up') { <i class="ti ti-trending-up"></i> }
-                        @case ('down') { <i class="ti ti-trending-down"></i> }
-                        @default { <i class="ti ti-minus"></i> }
-                      }
-                      {{ changeText() }}
-                    </span>
-                  }
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="shifa-hero__art" aria-hidden="true">
-            <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="60" cy="60" r="56" fill="rgba(255,255,255,0.08)" />
-              <path
-                d="M60 96c0-26 8-44 30-56C82 22 66 20 54 28 40 37 34 56 40 74c3 9 11 17 20 22z"
-                fill="rgba(255,255,255,0.9)"
-              />
-              <path d="M60 96C58 74 62 50 84 40" stroke="rgba(31,93,63,0.55)" stroke-width="2" fill="none" />
-              <path d="M60 96c0-26 8-44 30-56" stroke="rgba(31,93,63,0.25)" stroke-width="1.5" fill="none" />
-            </svg>
-          </div>
+        <h3 class="card-title mb-1">Channel margin · this month</h3>
+        <div class="text-secondary small mb-2">Revenue and estimated gross margin by channel (set product cost prices for accuracy).</div>
+        <div class="table-responsive">
+          <table class="table table-vcenter card-table">
+            <thead>
+              <tr>
+                <th>Channel</th>
+                <th class="text-end">Orders</th>
+                <th class="text-end">Revenue</th>
+                <th class="text-end">Est. COGS</th>
+                <th class="text-end">Gross margin</th>
+                <th class="text-end">Margin %</th>
+                <th class="text-end">Cost data</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of cm.channels; track c.channel) {
+                <tr>
+                  <td class="fw-medium">{{ c.channel }}</td>
+                  <td class="text-end">{{ c.orderCount }}</td>
+                  <td class="text-end">{{ inr(c.revenue) }}</td>
+                  <td class="text-end">{{ inr(c.estimatedCogs) }}</td>
+                  <td class="text-end fw-semibold">{{ inr(c.grossMargin) }}</td>
+                  <td class="text-end">{{ c.marginPct }}%</td>
+                  <td class="text-end" [class.text-warning]="c.costCoveragePct < 100">{{ c.costCoveragePct }}%</td>
+                </tr>
+              }
+            </tbody>
+            <tfoot>
+              <tr class="fw-semibold">
+                <td>Total</td>
+                <td class="text-end">{{ cm.total.orderCount }}</td>
+                <td class="text-end">{{ inr(cm.total.revenue) }}</td>
+                <td class="text-end">{{ inr(cm.total.estimatedCogs) }}</td>
+                <td class="text-end">{{ inr(cm.total.grossMargin) }}</td>
+                <td class="text-end">{{ cm.total.marginPct }}%</td>
+                <td class="text-end">{{ cm.total.costCoveragePct }}%</td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
+        @if (cm.total.costCoveragePct < 100) {
+          <div class="text-secondary small"><i class="ti ti-info-circle me-1"></i>Margin is an estimate — {{ 100 - cm.total.costCoveragePct }}% of sales have no product cost set. Add cost prices on the Products page for a true figure.</div>
+        }
       </div>
     </div>
-  </div>
-  <div class="col-lg-4">
-    <div class="card card-hover h-100 anim-fade-up">
-      <div class="card-body d-flex flex-column">
-        <div class="d-flex align-items-start justify-content-between">
-          <div>
-            <div class="subheader">Total sales</div>
-            <div class="h1 m-0 count-up" [shifaCountUp]="metrics()?.cards?.totalSales ?? 0" countFormat="inr"></div>
-            <div class="text-secondary small mt-1">Selected period</div>
-          </div>
-          <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-chart-line"></i></span>
-        </div>
-        <div class="shifa-spark-wrap mt-auto pt-3">
-          @if (salesSpark(); as sp) {
-            <svg
-              class="shifa-spark"
-              [attr.viewBox]="'0 0 ' + sp.w + ' ' + sp.h"
-              preserveAspectRatio="none"
-              role="img"
-              aria-label="Sales trend sparkline"
-            >
-              <path class="spark-area" [attr.d]="sp.area" />
-              <polyline class="spark-line" [attr.points]="sp.line" />
-            </svg>
-          } @else {
-            <div class="text-secondary small">Not enough data for a trend yet.</div>
-          }
-        </div>
-      </div>
+  }
+}
+
+<!-- Team-wise sales with status: which team is heading where + leads to call. -->
+<admin-teams-overview-widget />
+
+<!-- Channel-aware admin dashboard: Portal / Shopify / All (see admin-channel-overview). -->
+<admin-channel-overview [insights]="summary()?.admin?.insights ?? null" />
+
+<!-- Orders by delivery partner (QuikShipX / In-house / POS) now lives on its own
+     sidebar page at /delivery-partners (Analytics & Reports). -->
+
+} @else {
+
+<!-- ===================== Role-shaped dashboard (non-admin) ===================== -->
+<!-- Salesperson / Packer / Accountant see the queues + metrics for their role
+     (Req 3.2–3.5, §7.1), built from GET /api/dashboard/summary. -->
+<div class="card shifa-hero anim-fade-up mb-3">
+  <div class="card-body">
+    <div class="shifa-hero__content">
+      <div class="shifa-hero__pretitle">Overview</div>
+      <h2 class="shifa-hero__greet">
+        {{ greeting() }}@if (auth.displayName(); as name) {, {{ name }}}
+      </h2>
+      <p class="shifa-hero__sub m-0">
+        {{ isTeamLead() ? "Here's how your team is performing across Shifa Herbal Remedies." : "Here's your work at a glance across Shifa Herbal Remedies." }}
+      </p>
     </div>
   </div>
 </div>
 
-<!-- Loading skeletons -->
-@if (loading() && !metrics()) {
-  <div class="row row-cards mb-1">
-    @for (s of [1, 2, 3, 4, 5, 6, 7, 8]; track s) {
-      <div class="col-sm-6 col-lg-3">
-        <div class="card">
-          <div class="card-body">
-            <div class="skeleton skeleton-line sm w-40"></div>
-            <div class="skeleton skeleton-line w-80 mt-3" style="height: 1.6rem"></div>
-          </div>
-        </div>
+@if (summaryError()) {
+  <div class="alert alert-danger d-flex align-items-center anim-fade-up" role="alert">
+    <i class="ti ti-alert-triangle me-2"></i>
+    <span class="me-auto">{{ summaryError() }}</span>
+    <button type="button" class="btn btn-sm btn-danger" (click)="loadSummary()">Retry</button>
+  </div>
+}
+
+@if (summaryLoading() && !summary()) {
+  <div class="row row-cards g-2 g-md-3 mb-1">
+    @for (s of [1, 2, 3, 4]; track s) {
+      <div class="col-6 col-md-3">
+        <div class="card"><div class="card-body">
+          <div class="skeleton skeleton-line sm w-40"></div>
+          <div class="skeleton skeleton-line w-80 mt-3" style="height: 1.6rem"></div>
+        </div></div>
       </div>
     }
   </div>
 }
 
-<!-- Live stats strip (Req 19.5) -->
-@if (live(); as ls) {
-  <div class="shifa-section-title">Today (live)</div>
-  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
-    <div class="col-4 col-md-3 col-xl-2">
-      <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div>
-            <div class="subheader">Orders today</div>
-            <div class="h2 m-0 count-up" [shifaCountUp]="ls.realtimeOrderCount" countFormat="int"></div>
-          </div>
-          <span class="stat-icon"><i class="ti ti-shopping-bag"></i></span>
-        </div>
+<!-- Salesperson (Req 3.2) -->
+@if (summary()?.salesperson; as sp) {
+  <!-- Simplified home: big, obvious actions first (product-audit §3.1).
+       Team leads use the compact New Order action in the page header instead. -->
+  @if (!isTeamLead()) {
+    <div class="row row-cards g-2 g-md-3 mb-3 shifa-home-cta-row">
+      <div class="col-12 col-md-6">
+        <a routerLink="/orders/new" class="card card-hover shifa-home-cta shifa-home-cta--primary shifa-touch">
+          <span class="shifa-home-cta__icon"><i class="ti ti-plus"></i></span>
+          <span class="shifa-home-cta__text">
+            <span class="shifa-home-cta__title">New Order</span>
+            <span class="shifa-home-cta__sub">Punch a customer order</span>
+          </span>
+        </a>
+      </div>
+      <div class="col-6 col-md-3">
+        <a routerLink="/orders" class="card card-hover shifa-home-cta shifa-touch">
+          <span class="shifa-home-cta__icon"><i class="ti ti-receipt"></i></span>
+          <span class="shifa-home-cta__title">My Orders</span>
+        </a>
+      </div>
+      <div class="col-6 col-md-3">
+        <a routerLink="/leads" class="card card-hover shifa-home-cta shifa-touch">
+          <span class="shifa-home-cta__icon"><i class="ti ti-user-plus"></i></span>
+          <span class="shifa-home-cta__title">My Leads</span>
+        </a>
       </div>
     </div>
-    <div class="col-6 col-md-4 col-lg-3">
-      <div class="card card-hover stat-accent" style="--accent: #206bc4; --accent-soft: #e7f0fb">
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div>
-            <div class="subheader">Today's collection</div>
-            <div class="h2 m-0 count-up" [shifaCountUp]="ls.todaysCollection" countFormat="inr"></div>
-          </div>
-          <span class="stat-icon" style="--accent: #206bc4; --accent-soft: #e7f0fb"><i class="ti ti-cash"></i></span>
-        </div>
-      </div>
-    </div>
-    <div class="col-6 col-md-4 col-lg-3">
-      <div class="card card-hover stat-accent" style="--accent: #0ca678; --accent-soft: #e3f7f0">
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div>
-            <div class="subheader">COD to collect</div>
-            <div class="h2 m-0 count-up" [shifaCountUp]="ls.totalCodToCollect" countFormat="inr"></div>
-          </div>
-          <span class="stat-icon" style="--accent: #0ca678; --accent-soft: #e3f7f0"><i class="ti ti-truck-return"></i></span>
-        </div>
-      </div>
-    </div>
-    <div class="col-6 col-md-4 col-lg-3">
-      <div class="card card-hover stat-accent" style="--accent: #d63939; --accent-soft: #fbe7e7">
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div>
-            <div class="subheader">Loss to claim</div>
-            <div class="h2 m-0 count-up" [shifaCountUp]="ls.totalLossToClaim" countFormat="inr"></div>
-          </div>
-          <span class="stat-icon" style="--accent: #d63939; --accent-soft: #fbe7e7"><i class="ti ti-alert-triangle"></i></span>
-        </div>
-      </div>
-    </div>
-  </div>
-}
+  }
 
-@if (metrics(); as m) {
-  <!-- Metric cards (Req 19.1) — grouped into scannable sections -->
+  @if (isTeamLead()) {
+    <div class="shifa-section-title">Your team</div>
+    <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
+      <div class="col-4 col-md-4">
+        <a [routerLink]="['/team-performance']" fragment="team-members" class="card card-hover stat-accent shifa-card-link text-reset text-decoration-none d-block" style="--accent: #7950f2; --accent-soft: #eeeaff">
+          <div class="card-body d-flex align-items-center justify-content-between">
+            <div>
+              <div class="subheader">Salespeople</div>
+              <div class="h1 m-0">{{ teamPerformance()?.memberCount ?? '—' }}</div>
+              <div class="text-secondary small mt-1">View details</div>
+            </div>
+            <span class="stat-icon" style="--accent: #7950f2; --accent-soft: #eeeaff"><i class="ti ti-users"></i></span>
+          </div>
+        </a>
+      </div>
+      <div class="col-4 col-md-4">
+        <a routerLink="/team-performance" class="card card-hover stat-accent shifa-card-link text-reset text-decoration-none d-block" style="--accent: #206bc4; --accent-soft: #e7f0fb">
+          <div class="card-body d-flex align-items-center justify-content-between">
+            <div>
+              <div class="subheader">Team orders</div>
+              <div class="h1 m-0">{{ teamPerformance()?.ordersTotal ?? '—' }}</div>
+              <div class="text-secondary small mt-1">All time</div>
+            </div>
+            <span class="stat-icon" style="--accent: #206bc4; --accent-soft: #e7f0fb"><i class="ti ti-receipt"></i></span>
+          </div>
+        </a>
+      </div>
+      <div class="col-4 col-md-4">
+        <a routerLink="/team-performance" class="card card-hover stat-accent shifa-card-link text-reset text-decoration-none d-block" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
+          <div class="card-body d-flex align-items-center justify-content-between">
+            <div>
+              <div class="subheader">Revenue (month)</div>
+              <div class="h1 m-0">{{ money(teamPerformance()?.revenueThisMonth) }}</div>
+              <div class="text-secondary small mt-1">{{ teamPerformance()?.ordersThisMonth ?? 0 }} orders</div>
+            </div>
+            <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-chart-line"></i></span>
+          </div>
+        </a>
+      </div>
+    </div>
+    <!-- Team highlights: top performer + best-converting source + delivery success -->
+    @if (teamPerformance(); as tp) {
+      <div class="card mb-3 tl-highlight">
+        <div class="card-body d-flex flex-wrap align-items-center gap-3 py-2">
+          <span class="tl-highlight__item">
+            <i class="ti ti-trophy text-warning me-1"></i>
+            Top performer: <b>{{ tp.topPerformerName || '—' }}</b>
+          </span>
+          <span class="tl-highlight__item">
+            <i class="ti ti-target text-primary me-1"></i>
+            Best source: <b>{{ tp.topSource || '—' }}</b>
+          </span>
+          <span class="tl-highlight__item">
+            <i class="ti ti-truck-delivery text-success me-1"></i>
+            Delivery success: <b>{{ tp.deliverySuccessRate }}%</b>
+          </span>
+          <a class="btn btn-sm btn-outline-primary ms-auto shifa-touch" routerLink="/team-performance">
+            <i class="ti ti-chart-arrows me-1"></i> Full performance
+          </a>
+        </div>
+      </div>
+    }
+  }
 
-  <!-- Orders group (count metrics → 3 per row on mobile) -->
-  <div class="shifa-section-title">Orders</div>
-  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
-    <div class="col-4 col-md-3 col-xl-2">
-      <div
-        class="card card-hover stat-accent shifa-card-link"
-        style="--accent: #206bc4; --accent-soft: #e7f0fb"
-        role="button"
-        tabindex="0"
-        title="View these orders"
-        (click)="drillAll()"
-        (keydown.enter)="drillAll()"
-        (keydown.space)="$event.preventDefault(); drillAll()"
-      >
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div>
-            <div class="subheader">Total Orders</div>
-            <div class="h1 m-0 count-up" [shifaCountUp]="m.cards.totalOrders" countFormat="int"></div>
+  <!-- ===== My Day (salesperson only): today + month target + payments to chase ===== -->
+  @if (isSalesperson() && myDay(); as d) {
+    <div class="shifa-section-title">My day</div>
+    <div class="card mb-3 md-card">
+      <div class="card-body">
+        <div class="md-grid">
+          <div class="md-tile">
+            <div class="md-tile__v">{{ d.ordersToday }}</div>
+            <div class="md-tile__k">Orders today</div>
           </div>
-          <span class="stat-icon" style="--accent: #206bc4; --accent-soft: #e7f0fb"><i class="ti ti-shopping-cart"></i></span>
+          <div class="md-tile">
+            <div class="md-tile__v">{{ money(d.revenueToday) }}</div>
+            <div class="md-tile__k">Revenue today</div>
+          </div>
+          <div class="md-tile">
+            <div class="md-tile__v" [class.text-danger]="d.pendingPaymentsCount > 0">{{ money(d.pendingPaymentsAmount) }}</div>
+            <div class="md-tile__k">To collect ({{ d.pendingPaymentsCount }})</div>
+          </div>
         </div>
-      </div>
-    </div>
-    <div class="col-4 col-md-3 col-xl-2">
-      <div
-        class="card card-hover stat-accent shifa-card-link"
-        style="--accent: #f59f00; --accent-soft: #fdf1da"
-        role="button"
-        tabindex="0"
-        title="View pending orders"
-        (click)="drillDown(OrderStatus.PENDING_ADMIN_APPROVAL)"
-        (keydown.enter)="drillDown(OrderStatus.PENDING_ADMIN_APPROVAL)"
-        (keydown.space)="$event.preventDefault(); drillDown(OrderStatus.PENDING_ADMIN_APPROVAL)"
-      >
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div>
-            <div class="subheader">Pending</div>
-            <div class="h1 m-0 count-up" [shifaCountUp]="m.cards.pendingOrders" countFormat="int"></div>
-          </div>
-          <span class="stat-icon" style="--accent: #f59f00; --accent-soft: #fdf1da"><i class="ti ti-clock"></i></span>
-        </div>
-      </div>
-    </div>
-    <div class="col-4 col-md-3 col-xl-2">
-      <div
-        class="card card-hover stat-accent shifa-card-link"
-        style="--accent: #0ca678; --accent-soft: #e3f7f0"
-        role="button"
-        tabindex="0"
-        title="View packed orders"
-        (click)="drillDown(OrderStatus.PACKED)"
-        (keydown.enter)="drillDown(OrderStatus.PACKED)"
-        (keydown.space)="$event.preventDefault(); drillDown(OrderStatus.PACKED)"
-      >
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div>
-            <div class="subheader">Packed</div>
-            <div class="h1 m-0 count-up" [shifaCountUp]="m.cards.packedOrders" countFormat="int"></div>
-          </div>
-          <span class="stat-icon" style="--accent: #0ca678; --accent-soft: #e3f7f0"><i class="ti ti-package"></i></span>
-        </div>
-      </div>
-    </div>
-    <div class="col-4 col-md-3 col-xl-2">
-      <div
-        class="card card-hover stat-accent shifa-card-link"
-        style="--accent: #4263eb; --accent-soft: #e8ecfd"
-        role="button"
-        tabindex="0"
-        title="View dispatched orders"
-        (click)="drillDown(OrderStatus.DISPATCHED)"
-        (keydown.enter)="drillDown(OrderStatus.DISPATCHED)"
-        (keydown.space)="$event.preventDefault(); drillDown(OrderStatus.DISPATCHED)"
-      >
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div>
-            <div class="subheader">Dispatched</div>
-            <div class="h1 m-0 count-up" [shifaCountUp]="m.cards.dispatchedOrders" countFormat="int"></div>
-          </div>
-          <span class="stat-icon" style="--accent: #4263eb; --accent-soft: #e8ecfd"><i class="ti ti-truck-delivery"></i></span>
-        </div>
-      </div>
-    </div>
-    <div class="col-4 col-md-3 col-xl-2">
-      <div
-        class="card card-hover stat-accent shifa-card-link"
-        style="--accent: #2fb344; --accent-soft: #e5f6e8"
-        role="button"
-        tabindex="0"
-        title="View delivered orders"
-        (click)="drillDown(OrderStatus.DELIVERED)"
-        (keydown.enter)="drillDown(OrderStatus.DELIVERED)"
-        (keydown.space)="$event.preventDefault(); drillDown(OrderStatus.DELIVERED)"
-      >
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div>
-            <div class="subheader">Delivered</div>
-            <div class="h1 m-0 count-up" [shifaCountUp]="m.cards.deliveredOrders" countFormat="int"></div>
-          </div>
-          <span class="stat-icon" style="--accent: #2fb344; --accent-soft: #e5f6e8"><i class="ti ti-circle-check"></i></span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Exceptions group (count metrics → 3 per row on mobile) -->
-  <div class="shifa-section-title">Exceptions</div>
-  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
-    <div class="col-4 col-md-3 col-xl-2">
-      <div
-        class="card card-hover stat-accent shifa-card-link"
-        style="--accent: #f76707; --accent-soft: #fdeade"
-        role="button"
-        tabindex="0"
-        title="View RTO orders"
-        (click)="drillDown(OrderStatus.RTO)"
-        (keydown.enter)="drillDown(OrderStatus.RTO)"
-        (keydown.space)="$event.preventDefault(); drillDown(OrderStatus.RTO)"
-      >
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div>
-            <div class="subheader">RTO</div>
-            <div class="h1 m-0 count-up" [shifaCountUp]="m.cards.rtoCount" countFormat="int"></div>
-          </div>
-          <span class="stat-icon" style="--accent: #f76707; --accent-soft: #fdeade"><i class="ti ti-arrow-back-up"></i></span>
-        </div>
-      </div>
-    </div>
-    <div class="col-4 col-md-3 col-xl-2">
-      <div
-        class="card card-hover stat-accent shifa-card-link"
-        style="--accent: #d63939; --accent-soft: #fbe7e7"
-        role="button"
-        tabindex="0"
-        title="View courier-lost orders"
-        (click)="drillDown(OrderStatus.COURIER_LOST)"
-        (keydown.enter)="drillDown(OrderStatus.COURIER_LOST)"
-        (keydown.space)="$event.preventDefault(); drillDown(OrderStatus.COURIER_LOST)"
-      >
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div>
-            <div class="subheader">Courier Lost</div>
-            <div class="h1 m-0 count-up" [shifaCountUp]="m.cards.courierLostCount" countFormat="int"></div>
-          </div>
-          <span class="stat-icon" style="--accent: #d63939; --accent-soft: #fbe7e7"><i class="ti ti-alert-octagon"></i></span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Finance group (money → 2 per row on mobile; conversion count → 3) -->
-  <div class="shifa-section-title">Finance</div>
-  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
-    <div class="col-6 col-md-4 col-lg-3">
-      <div class="card card-hover stat-accent" style="--accent: #17a2b8; --accent-soft: #e2f4f7">
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div>
-            <div class="subheader">COD Pending (Courier)</div>
-            <div class="h2 m-0 count-up" [shifaCountUp]="m.cards.totalCodPendingFromCourier" countFormat="inr"></div>
-          </div>
-          <span class="stat-icon" style="--accent: #17a2b8; --accent-soft: #e2f4f7"><i class="ti ti-cash-banknote"></i></span>
-        </div>
-      </div>
-    </div>
-    <div class="col-6 col-md-4 col-lg-3">
-      <div class="card card-hover stat-accent" style="--accent: #d63939; --accent-soft: #fbe7e7">
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div>
-            <div class="subheader">Loss Claim Pending</div>
-            <div class="h2 m-0 count-up" [shifaCountUp]="m.cards.totalLossClaimPendingFromCourier" countFormat="inr"></div>
-          </div>
-          <span class="stat-icon" style="--accent: #d63939; --accent-soft: #fbe7e7"><i class="ti ti-file-alert"></i></span>
-        </div>
-      </div>
-    </div>
-    <div class="col-4 col-md-3 col-lg-3">
-      <div class="card card-hover stat-accent" style="--accent: #ae3ec9; --accent-soft: #f6e6fa">
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div>
-            <div class="subheader">Conversion Rate</div>
-            <div class="h2 m-0 count-up" [shifaCountUp]="m.cards.conversionRate" countFormat="percent"></div>
-          </div>
-          <span class="stat-icon" style="--accent: #ae3ec9; --accent-soft: #f6e6fa"><i class="ti ti-trending-up"></i></span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="row row-cards mb-3">
-    <!-- Sales graph (Req 19.4) -->
-    <div class="col-lg-8">
-      <div class="card h-100">
-        <div class="card-header">
-          <div>
-            <h3 class="card-title mb-0">Sales</h3>
-            <p class="card-subtitle text-secondary m-0">Current period vs previous period</p>
-          </div>
-          <div class="card-actions d-flex align-items-center gap-2">
-            <span
-              class="badge shifa-change"
-              [class.bg-success-lt]="changeDirection() === 'up'"
-              [class.bg-danger-lt]="changeDirection() === 'down'"
-              [class.bg-secondary-lt]="changeDirection() === 'flat'"
-            >
-              @switch (changeDirection()) {
-                @case ('up') { <i class="ti ti-trending-up me-1"></i> }
-                @case ('down') { <i class="ti ti-trending-down me-1"></i> }
-                @default { <i class="ti ti-minus me-1"></i> }
-              }
-              {{ changeText() }}
+        <!-- Monthly target progress -->
+        <div class="md-target mt-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="text-secondary small">
+              <i class="ti ti-target me-1"></i>This month: {{ money(d.monthRevenue) }}
+              @if (d.monthTarget) { of {{ money(d.monthTarget) }} }
             </span>
-            <div class="btn-group btn-group-sm" role="group">
-              @for (b of buckets; track b.value) {
-                <button
-                  type="button"
-                  class="btn"
-                  [class.btn-primary]="m.bucket === b.value"
-                  [class.active]="m.bucket === b.value"
-                  (click)="selectBucket(b.value)"
-                >
-                  {{ b.label }}
-                </button>
-              }
-            </div>
+            @if (d.monthTarget) {
+              <span class="fw-semibold" [class.text-success]="d.targetProgressPct >= 100">{{ d.targetProgressPct }}%</span>
+            } @else {
+              <span class="text-secondary small">No target set</span>
+            }
           </div>
-        </div>
-        <div class="card-body">
-          @if (revenueChart(); as rc) {
-            <apx-chart
-              [series]="rc.series"
-              [chart]="rc.chart"
-              [colors]="rc.colors"
-              [dataLabels]="rc.dataLabels"
-              [stroke]="rc.stroke"
-              [fill]="rc.fill"
-              [xaxis]="rc.xaxis"
-              [yaxis]="rc.yaxis"
-              [legend]="rc.legend"
-              [tooltip]="rc.tooltip"
-              [grid]="rc.grid"
-              [markers]="rc.markers"
-            ></apx-chart>
-          } @else {
-            <div class="empty">
-              <div class="empty-icon"><i class="ti ti-chart-bar-off"></i></div>
-              <p class="empty-title">No sales in the selected period</p>
+          @if (d.monthTarget) {
+            <div class="progress md-progress">
+              <div
+                class="progress-bar"
+                [class.bg-success]="d.targetProgressPct >= 100"
+                [style.width.%]="d.targetProgressPct > 100 ? 100 : d.targetProgressPct"
+              ></div>
             </div>
           }
-        </div>
-      </div>
-    </div>
-
-    <!-- Orders by status (Req 19.1) — donut in the shared status tones (A1) -->
-    <div class="col-lg-4">
-      <div class="card h-100">
-        <div class="card-header">
-          <h3 class="card-title mb-0">Orders by status</h3>
-          <p class="card-subtitle text-secondary m-0">Click a slice to view those orders</p>
-        </div>
-        <div class="card-body d-flex align-items-center justify-content-center">
-          @if (statusChart(); as sc) {
-            <apx-chart
-              class="w-100"
-              [series]="sc.series"
-              [chart]="sc.chart"
-              [labels]="sc.labels"
-              [colors]="sc.colors"
-              [legend]="sc.legend"
-              [dataLabels]="sc.dataLabels"
-              [stroke]="sc.stroke"
-              [plotOptions]="sc.plotOptions"
-              [tooltip]="sc.tooltip"
-              [responsive]="sc.responsive"
-            ></apx-chart>
-          } @else {
-            <div class="empty">
-              <div class="empty-icon"><i class="ti ti-chart-donut-3"></i></div>
-              <p class="empty-title">No orders in the selected period</p>
-            </div>
-          }
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Top performers (Req 19.7) — compact leaderboard cards (A1) -->
-  <div class="row row-cards mb-3">
-    <div class="col-12">
-      <div class="card">
-        <div class="card-header"><h3 class="card-title mb-0">Top performers</h3></div>
-        <div class="card-body">
-          <div class="row g-3">
-            <div class="col-md-4">
-              <div class="shifa-leader">
-                <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-user-star"></i></span>
-                <div>
-                  <div class="subheader">Top salesperson</div>
-                  <div class="fw-medium">{{ m.topPerformers.topSalespersonName ?? '—' }}</div>
-                </div>
-              </div>
-            </div>
-            <div class="col-md-4">
-              <div class="shifa-leader">
-                <span class="stat-icon" style="--accent: #0ca678; --accent-soft: #e3f7f0"><i class="ti ti-leaf"></i></span>
-                <div>
-                  <div class="subheader">Top product</div>
-                  <div class="fw-medium">{{ m.topPerformers.topProduct ?? '—' }}</div>
-                </div>
-              </div>
-            </div>
-            <div class="col-md-4">
-              <div class="shifa-leader">
-                <span class="stat-icon" style="--accent: #206bc4; --accent-soft: #e7f0fb"><i class="ti ti-map-pin"></i></span>
-                <div>
-                  <div class="subheader">Top state</div>
-                  <div class="fw-medium">{{ m.topPerformers.topState ?? '—' }}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-}
-
-<div class="row row-cards">
-  <!-- Activity cards (Req 19.6) -->
-  @if (activity(); as a) {
-    <div class="col-lg-7">
-      <div class="card h-100">
-        <div class="card-header"><h3 class="card-title mb-0">Activity</h3></div>
-        <div class="card-body">
-          <div class="row g-3 stagger">
-            <div class="col-6 col-md-4">
-              <div class="shifa-act">
-                <div class="h2 m-0 count-up" [shifaCountUp]="a.ordersToFulfill" countFormat="int"></div>
-                <div class="text-secondary small">Orders to fulfill</div>
-              </div>
-            </div>
-            <div class="col-6 col-md-4">
-              <div class="shifa-act">
-                <div class="h2 m-0 count-up" [shifaCountUp]="a.paymentsToCapture" countFormat="int"></div>
-                <div class="text-secondary small">Payments to capture</div>
-              </div>
-            </div>
-            <div class="col-6 col-md-4">
-              <div class="shifa-act warn">
-                <div class="h2 m-0 count-up" [shifaCountUp]="a.rtoAlerts" countFormat="int"></div>
-                <div class="text-secondary small">RTO alerts</div>
-              </div>
-            </div>
-            <div class="col-6 col-md-4">
-              <div class="shifa-act">
-                <div class="h2 m-0 count-up" [shifaCountUp]="a.whatsappNotificationsSent" countFormat="int"></div>
-                <div class="text-secondary small">WhatsApp sent</div>
-              </div>
-            </div>
-            <div class="col-6 col-md-4">
-              <div class="shifa-act">
-                <div class="h2 m-0 count-up" [shifaCountUp]="a.codSettlementsPending" countFormat="int"></div>
-                <div class="text-secondary small">COD settlements pending</div>
-              </div>
-            </div>
-            <div class="col-6 col-md-4">
-              <div class="shifa-act warn">
-                <div class="h2 m-0 count-up" [shifaCountUp]="a.courierClaimsPending" countFormat="int"></div>
-                <div class="text-secondary small">Courier claims pending</div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
   }
 
-  <!-- Real-time notification feed (Req 11.2, 13.3, 17.4) -->
-  <div class="col-lg-5">
-    <div class="card h-100">
-      <div class="card-header">
-        <h3 class="card-title mb-0">Notifications</h3>
-        <div class="card-actions">
-          <span class="live-indicator" [class]="events.status()">
-            <span class="dot"></span>
-            @switch (events.status()) {
-              @case ('open') { Live }
-              @case ('connecting') { Connecting… }
-              @default { Offline }
-            }
-          </span>
-          @if (events.notifications().length > 0) {
-            <button type="button" class="btn btn-sm btn-ghost-secondary ms-2" (click)="clearNotifications()">
-              Clear
+  <!-- ===== My tasks: one ranked actionable inbox (reorder-due + win-back) ===== -->
+  @if (isSalesperson() && taskInbox().length > 0) {
+    <div class="shifa-section-title d-flex align-items-center justify-content-between">
+      <span><i class="ti ti-checklist me-1"></i>My tasks</span>
+      <span class="text-secondary small">Who to call today — most urgent first</span>
+    </div>
+    <div class="card mb-3">
+      <div class="list-group list-group-flush">
+        @for (t of taskInbox(); track t.kind + t.mobile) {
+          <div class="list-group-item d-flex align-items-center gap-2">
+            <span class="shifa-task-dot" [style.background]="t.accent"><i [class]="t.icon"></i></span>
+            <div class="flex-fill min-w-0">
+              <div class="fw-medium text-truncate">{{ t.customerName || 'Customer' }}</div>
+              <div class="text-secondary small">{{ t.mobile }} · {{ t.reason }}</div>
+            </div>
+            <a class="btn btn-icon btn-outline-secondary shifa-touch" [href]="'tel:' + t.mobile" title="Call" aria-label="Call">
+              <i class="ti ti-phone"></i>
+            </a>
+            <button type="button" class="btn btn-icon btn-outline-success shifa-touch" (click)="waTask(t)" title="WhatsApp" aria-label="WhatsApp">
+              <i class="ti ti-brand-whatsapp"></i>
             </button>
-          }
-        </div>
-      </div>
-      <div class="card-body p-0">
-        @if (events.notifications().length === 0) {
-          <div class="empty py-4">
-            <div class="empty-icon"><i class="ti ti-bell-off"></i></div>
-            <p class="empty-title">No new notifications</p>
-          </div>
-        } @else {
-          <div class="list-group list-group-flush">
-            @for (note of events.notifications(); track note.receivedAt.getTime()) {
-              <div class="list-group-item feed-item">
-                <div class="d-flex align-items-start">
-                  <span
-                    class="shifa-note-dot mt-1 me-2"
-                    [class.bg-success]="note.severity === 'success'"
-                    [class.bg-info]="note.severity === 'info'"
-                    [class.bg-warning]="note.severity === 'warning'"
-                    [class.bg-danger]="note.severity === 'danger'"
-                  ></span>
-                  <div>
-                    <div class="fw-medium">{{ note.title }}</div>
-                    <div class="text-secondary small">{{ note.detail }}</div>
-                  </div>
-                </div>
-              </div>
-            }
           </div>
         }
       </div>
     </div>
+  }
+
+  <!-- ===== Win-back: lapsed customers to call (salesperson only) ===== -->
+  @if (isSalesperson() && winBack().length > 0) {
+    <div class="shifa-section-title d-flex align-items-center justify-content-between">
+      <span><i class="ti ti-phone-call me-1"></i>Win-back list</span>
+      <span class="text-secondary small">No order in a while — call the top spenders</span>
+    </div>
+    <div class="card mb-3">
+      <div class="list-group list-group-flush">
+        @for (c of winBack(); track c.mobile) {
+          <div class="list-group-item d-flex align-items-center gap-2">
+            <div class="flex-fill min-w-0">
+              <div class="fw-medium text-truncate">{{ c.customerName || 'Customer' }}</div>
+              <div class="text-secondary small">
+                {{ c.mobile }} · {{ c.orderCount }} order{{ c.orderCount === 1 ? '' : 's' }} ·
+                {{ money(c.totalValue) }} · {{ c.daysSinceLastOrder }}d ago
+              </div>
+            </div>
+            <a class="btn btn-icon btn-outline-secondary shifa-touch" [href]="'tel:' + c.mobile" title="Call" aria-label="Call">
+              <i class="ti ti-phone"></i>
+            </a>
+            <button type="button" class="btn btn-icon btn-outline-success shifa-touch" (click)="waCustomer(c)" title="WhatsApp" aria-label="WhatsApp">
+              <i class="ti ti-brand-whatsapp"></i>
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- ===== Due for reorder: cadence-predicted repeat purchases (salesperson) ===== -->
+  @if (isSalesperson() && reorderDue().length > 0) {
+    <div class="shifa-section-title d-flex align-items-center justify-content-between">
+      <span><i class="ti ti-rotate-clockwise me-1"></i>Due for reorder</span>
+      <span class="text-secondary small">Based on their buying pattern</span>
+    </div>
+    <div class="card mb-3">
+      <div class="list-group list-group-flush">
+        @for (c of reorderDue(); track c.mobile) {
+          <div class="list-group-item d-flex align-items-center gap-2">
+            <div class="flex-fill min-w-0">
+              <div class="fw-medium text-truncate">{{ c.customerName || 'Customer' }}</div>
+              <div class="text-secondary small">
+                {{ c.mobile }} · every ~{{ c.avgIntervalDays }}d ·
+                {{ c.overdueDays >= 0 ? c.overdueDays + 'd overdue' : 'due in ' + (-c.overdueDays) + 'd' }}
+              </div>
+            </div>
+            <a class="btn btn-icon btn-outline-secondary shifa-touch" [href]="'tel:' + c.mobile" title="Call" aria-label="Call">
+              <i class="ti ti-phone"></i>
+            </a>
+            <button type="button" class="btn btn-icon btn-outline-success shifa-touch" (click)="waReorder(c)" title="WhatsApp" aria-label="WhatsApp">
+              <i class="ti ti-brand-whatsapp"></i>
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <div class="shifa-section-title">{{ isTeamLead() ? 'Team orders' : 'My orders' }}</div>
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
+    <div class="col-6 col-md-4 col-xl-3">
+      <div class="card card-hover stat-accent" style="--accent: #f59f00; --accent-soft: #fdf1da">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Awaiting approval</div>
+            <div class="h1 m-0 count-up" [shifaCountUp]="sp.awaitingApproval" countFormat="int"></div>
+          </div>
+          <span class="stat-icon" style="--accent: #f59f00; --accent-soft: #fdf1da"><i class="ti ti-clock"></i></span>
+        </div>
+      </div>
+    </div>
   </div>
-</div>
+
+  <div class="shifa-section-title d-flex align-items-center justify-content-between">
+    <span>By status</span>
+    @if (salespersonStageGroups().length > 0) {
+      <span class="text-secondary small">{{ salespersonOrderTotal() }} order{{ salespersonOrderTotal() === 1 ? '' : 's' }}</span>
+    }
+  </div>
+  @if (salespersonStageGroups().length === 0) {
+    <div class="empty py-4">
+      <div class="empty-icon"><i class="ti ti-inbox"></i></div>
+      <p class="empty-title">No orders yet</p>
+      @if (isTeamLead()) {
+        <p class="empty-subtitle text-secondary">Orders punched by your team will appear here.</p>
+      } @else {
+        <p class="empty-subtitle text-secondary">Create your first order to see it here.</p>
+        <a class="btn btn-primary mt-2 shifa-touch" routerLink="/orders/new"><i class="ti ti-plus me-1"></i> New order</a>
+      }
+    </div>
+  } @else {
+    <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
+      @for (s of salespersonStageGroups(); track s.key) {
+        <div class="col-6 col-md-4 col-xl-3">
+          <div class="card card-hover stat-accent" [style.--accent]="s.accent" [style.--accent-soft]="s.accentSoft">
+            <div class="card-body d-flex align-items-center justify-content-between">
+              <div>
+                <div class="subheader">{{ s.label }}</div>
+                <div class="h1 m-0 count-up" [shifaCountUp]="s.value" countFormat="int"></div>
+              </div>
+              <span class="stat-icon" [style.--accent]="s.accent" [style.--accent-soft]="s.accentSoft"><i [class]="s.icon"></i></span>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- My leads: pipeline-by-stage counts + due-follow-up badge (Req 6.6). Hidden
+       for a team lead (read-only oversight — they don't own a lead pipeline). -->
+  @if (!isTeamLead()) {
+  <div class="shifa-section-title d-flex align-items-center justify-content-between">
+    <span>My leads</span>
+    <a class="btn btn-sm btn-outline-primary shifa-touch" routerLink="/leads/follow-ups">
+      <i class="ti ti-calendar-event me-1"></i> Due follow-ups
+      @if (dueFollowUps() > 0) {
+        <span class="badge bg-red text-white ms-1">{{ dueFollowUps() }}</span>
+      }
+    </a>
+  </div>
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-kpi-row">
+    <div class="col-6 col-md-4 col-xl-3">
+      <div class="card card-hover stat-accent" style="--accent: #f59f00; --accent-soft: #fdf1da">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Due follow-ups</div>
+            <div class="h1 m-0 count-up" [shifaCountUp]="dueFollowUps()" countFormat="int"></div>
+          </div>
+          <span class="stat-icon" style="--accent: #f59f00; --accent-soft: #fdf1da"><i class="ti ti-calendar-event"></i></span>
+        </div>
+      </div>
+    </div>
+    @for (s of salespersonLeadStages(); track s.key) {
+      <div class="col-6 col-md-4 col-xl-3">
+        <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
+          <div class="card-body d-flex align-items-center justify-content-between">
+            <div>
+              <div class="subheader">{{ s.label }} leads</div>
+              <div class="h1 m-0 count-up" [shifaCountUp]="s.value" countFormat="int"></div>
+            </div>
+            <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-user-plus"></i></span>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+  <div class="mb-3">
+    <a class="btn btn-primary shifa-touch" routerLink="/leads"><i class="ti ti-user-plus me-1"></i> Open pipeline</a>
+  </div>
+  }
+}
+
+<!-- Packer (Req 3.4) -->
+@if (summary()?.packing; as pk) {
+  <div class="shifa-section-title">Packing queues</div>
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
+    <div class="col-6 col-md-3">
+      <a class="card card-hover stat-accent text-reset text-decoration-none" routerLink="/packing" style="--accent: #206bc4; --accent-soft: #e7f0fb">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Orders to pack</div>
+            <div class="h1 m-0 count-up" [shifaCountUp]="pk.approvedAwaitingPacking" countFormat="int"></div>
+          </div>
+          <span class="stat-icon" style="--accent: #206bc4; --accent-soft: #e7f0fb"><i class="ti ti-box"></i></span>
+        </div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card card-hover stat-accent" style="--accent: #2fb344; --accent-soft: #e5f6e8">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Packed today</div>
+            <div class="h1 m-0 count-up" [shifaCountUp]="pk.packedToday" countFormat="int"></div>
+            @if (pk.packedPerHour) {
+              <div class="text-secondary small"><i class="ti ti-bolt me-1"></i>{{ pk.packedPerHour }}/hour</div>
+            }
+          </div>
+          <span class="stat-icon" style="--accent: #2fb344; --accent-soft: #e5f6e8"><i class="ti ti-circle-check"></i></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="card card-hover stat-accent text-reset text-decoration-none" routerLink="/packing" style="--accent: #0ca678; --accent-soft: #e3f7f0">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Awaiting handover</div>
+            <div class="h1 m-0 count-up" [shifaCountUp]="pk.awaitingHandover" countFormat="int"></div>
+          </div>
+          <span class="stat-icon" style="--accent: #0ca678; --accent-soft: #e3f7f0"><i class="ti ti-package"></i></span>
+        </div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="card card-hover stat-accent text-reset text-decoration-none" routerLink="/packing" style="--accent: #4263eb; --accent-soft: #e8ecfd">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Handed to delivery</div>
+            <div class="h1 m-0 count-up" [shifaCountUp]="pk.awaitingDispatch" countFormat="int"></div>
+          </div>
+          <span class="stat-icon" style="--accent: #4263eb; --accent-soft: #e8ecfd"><i class="ti ti-truck-delivery"></i></span>
+        </div>
+      </a>
+    </div>
+  </div>
+  <a class="btn btn-primary shifa-touch" routerLink="/packing"><i class="ti ti-barcode me-1"></i> Open packing</a>
+}
+
+<!-- Accountant (Req 3.5) -->
+@if (summary()?.accountant; as ac) {
+  <div class="shifa-section-title">Delivery collections &amp; receivables</div>
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger">
+    <div class="col-6 col-md-4">
+      <a class="card card-hover stat-accent text-reset text-decoration-none" routerLink="/reconciliation" style="--accent: #17a2b8; --accent-soft: #e2f4f7">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">On-delivery pending</div>
+            <div class="h2 m-0">{{ inr(ac.codPending) }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #17a2b8; --accent-soft: #e2f4f7"><i class="ti ti-cash-banknote"></i></span>
+        </div>
+      </a>
+    </div>
+    <div class="col-6 col-md-4">
+      <a class="card card-hover stat-accent text-reset text-decoration-none" routerLink="/reconciliation" style="--accent: #2fb344; --accent-soft: #e5f6e8">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Settled</div>
+            <div class="h2 m-0">{{ inr(ac.settled) }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #2fb344; --accent-soft: #e5f6e8"><i class="ti ti-checks"></i></span>
+        </div>
+      </a>
+    </div>
+    <div class="col-12 col-md-4">
+      <a class="card card-hover stat-accent text-reset text-decoration-none" routerLink="/reconciliation" style="--accent: #d63939; --accent-soft: #fbe7e7">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Outstanding receivables</div>
+            <div class="h2 m-0">{{ inr(ac.outstandingReceivables) }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #d63939; --accent-soft: #fbe7e7"><i class="ti ti-report-money"></i></span>
+        </div>
+      </a>
+    </div>
+  </div>
+  <p class="text-secondary small mb-2">
+    <i class="ti ti-info-circle me-1"></i>
+    Tap a tile to open Reconciliation — settle collected COD, chase the courier for pending remittance, and clear outstanding receivables oldest-first.
+  </p>
+  <a class="btn btn-primary shifa-touch" routerLink="/reconciliation"><i class="ti ti-cash-register me-1"></i> Open reconciliation</a>
+}
+
+}

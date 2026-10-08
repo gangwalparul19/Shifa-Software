@@ -1,0 +1,31 @@
+{
+  "index": "/index.html",
+  "assetGroups": [
+    {
+      "name": "app-shell",
+      "installMode": "prefetch",
+      "updateMode": "prefetch",
+      "resources": {
+        "files": [
+          "/logo.png",
+          "/index.html",
+          "/manifest.webmanifest",
+          "/*.css",
+          "/*.js"
+        ]
+      }
+    },
+    {
+      "name": "assets",
+      "installMode": "lazy",
+      "updateMode": "prefetch",
+      "resources": {
+        "files": [
+          "/products/**",
+          "/media/**",
+          "/*.(svg|woff2|woff|ttf|eot|jpg|jpeg|png|webp|gif)"
+        ]
+      }
+    }
+  ]
+}

@@ -72,13 +72,13 @@ class SettlementProcessorTest {
     }
 
     @Test
-    void courierLostRecordsClaimForNetAmountRegardlessOfPayment() {
+    void redispatchRecordsClaimForNetAmountRegardlessOfPayment() {
         OrderSettlementView prepaid = new OrderSettlementView(
                 14L, 3L, PaymentStatus.FULLY_PAID, Money.of("900.00"), Money.ZERO);
 
-        SettlementResult result = processor.onCourierLost(prepaid);
+        SettlementResult result = processor.onRedispatch(prepaid);
 
-        assertThat(result.newStatus()).isEqualTo(OrderStatus.COURIER_LOST);
+        assertThat(result.newStatus()).isEqualTo(OrderStatus.REDISPATCH);
         assertThat(result.customerOutstanding()).isEqualTo(Money.ZERO);
         Receivable claim = result.receivable().orElseThrow();
         assertThat(claim.type()).isEqualTo(ReceivableType.CLAIM_RECEIVABLE);
@@ -92,7 +92,7 @@ class SettlementProcessorTest {
         ledger.record(processor.onDelivered(new OrderSettlementView(
                 1L, 1L, PaymentStatus.COD, Money.of("500.00"), Money.of("500.00")))
                 .receivable().orElseThrow());
-        ledger.record(processor.onCourierLost(new OrderSettlementView(
+        ledger.record(processor.onRedispatch(new OrderSettlementView(
                 2L, 1L, PaymentStatus.FULLY_PAID, Money.of("900.00"), Money.ZERO))
                 .receivable().orElseThrow());
         // Courier 1 RTO produces no receivable (excluded from COD totals).

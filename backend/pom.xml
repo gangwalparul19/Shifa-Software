@@ -28,6 +28,8 @@
         <openpdf.version>2.0.3</openpdf.version>
         <zxing.version>3.5.3</zxing.version>
         <oci.sdk.version>3.54.0</oci.sdk.version>
+        <aws.sdk.version>2.29.29</aws.sdk.version>
+        <webpush.version>5.1.1</webpush.version>
     </properties>
 
     <dependencyManagement>
@@ -36,6 +38,13 @@
                 <groupId>com.oracle.oci.sdk</groupId>
                 <artifactId>oci-java-sdk-bom</artifactId>
                 <version>${oci.sdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${aws.sdk.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -53,6 +62,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- Actuator — liveness/readiness + /actuator/health for ops monitoring -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
         <!-- Security -->
@@ -116,10 +131,35 @@
             <version>${zxing.version}</version>
         </dependency>
 
+        <!-- Web Push (VAPID) — staff browser push notifications (FEATURE-ROADMAP §8.3).
+             Sending is gated on VAPID keys being configured (app.push.*); a no-op otherwise. -->
+        <dependency>
+            <groupId>nl.martijndwars</groupId>
+            <artifactId>web-push</artifactId>
+            <version>${webpush.version}</version>
+        </dependency>
+        <!-- BouncyCastle provider — required by web-push for VAPID/ECDH crypto. -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.78.1</version>
+        </dependency>
+
         <!-- OCI SDK - Object Storage (screenshots, PDFs, DB backups) -->
         <dependency>
             <groupId>com.oracle.oci.sdk</groupId>
             <artifactId>oci-java-sdk-objectstorage</artifactId>
+        </dependency>
+
+        <!-- AWS SDK - S3 (labels + payment screenshots when app.storage.provider=S3) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+        </dependency>
+        <!-- Lightweight sync HTTP client for the S3 client (avoids Netty/CRT) -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>apache-client</artifactId>
         </dependency>
 
         <!-- Test -->
@@ -139,6 +179,13 @@
             <groupId>net.jqwik</groupId>
             <artifactId>jqwik</artifactId>
             <version>${jqwik.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- In-memory DB for the full-context DI smoke test (ApplicationContextLoadsTest) -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

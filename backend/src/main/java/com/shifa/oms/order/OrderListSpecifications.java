@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 
@@ -35,9 +36,100 @@ public final class OrderListSpecifications {
     public static Specification<OrderEntity> build(String q, OrderStatus status,
                                                    PaymentStatus paymentStatus,
                                                    LocalDate from, LocalDate to) {
+        return build(q, status, paymentStatus, from, to, null);
+    }
+
+    /**
+     * As {@link #build(String, OrderStatus, PaymentStatus, LocalDate, LocalDate)}
+     * but additionally scopes the result to a single creator when {@code createdBy}
+     * is non-null. This lets a salesperson browse the same paged/filtered orders
+     * table restricted to the orders they punched (any status), while admins pass
+     * {@code null} to see every order.
+     */
+    public static Specification<OrderEntity> build(String q, OrderStatus status,
+                                                   PaymentStatus paymentStatus,
+                                                   LocalDate from, LocalDate to,
+                                                   Long createdBy) {
+        return build(q, status, null, paymentStatus, from, to, createdBy);
+    }
+
+    /**
+     * As {@link #build(String, OrderStatus, PaymentStatus, LocalDate, LocalDate, Long)}
+     * with an additional coarse {@link OrderStatusGroup} filter: when
+     * {@code statusGroup} is non-null the result is restricted to
+     * {@code orderStatus IN (group members)}. The exact {@code status} and the
+     * coarse {@code statusGroup} are independent and AND-combined if both are set
+     * (the frontend sends at most one).
+     */
+    public static Specification<OrderEntity> build(String q, OrderStatus status,
+                                                   OrderStatusGroup statusGroup,
+                                                   PaymentStatus paymentStatus,
+                                                   LocalDate from, LocalDate to,
+                                                   Long createdBy) {
+        return build(q, status, statusGroup, paymentStatus, from, to,
+                createdBy == null ? null : List.of(createdBy));
+    }
+
+    /**
+     * Canonical builder scoping to a <em>set</em> of creators: a
+     * {@code SALESPERSON} passes a singleton of their own id, a {@code TEAM_LEAD}
+     * passes their team's ids, and an unscoped admin/accountant passes
+     * {@code null}. A present-but-empty collection means "scoped to nothing" and
+     * matches no rows (a team lead with no assigned salespeople).
+     */
+    public static Specification<OrderEntity> build(String q, OrderStatus status,
+                                                   OrderStatusGroup statusGroup,
+                                                   PaymentStatus paymentStatus,
+                                                   LocalDate from, LocalDate to,
+                                                   Collection<Long> creatorIds) {
+        return build(q, status, statusGroup, paymentStatus, from, to, creatorIds, null);
+    }
+
+    /**
+     * As the {@code creatorIds} canonical builder with an additional exact
+     * {@link OrderSource} filter: when {@code source} is non-null the result is
+     * restricted to {@code source = source} (e.g. only Shopify-imported orders).
+     * Orthogonal to status/payment; AND-combined with every other filter.
+     */
+    public static Specification<OrderEntity> build(String q, OrderStatus status,
+                                                   OrderStatusGroup statusGroup,
+                                                   PaymentStatus paymentStatus,
+                                                   LocalDate from, LocalDate to,
+                                                   Collection<Long> creatorIds,
+                                                   OrderSource source) {
+        return build(q, status, statusGroup, paymentStatus, from, to, creatorIds, source, null);
+    }
+
+    /**
+     * As the {@code source} canonical builder, with an additional
+     * {@code excludeSource} filter: when non-null, rows matching that source are
+     * excluded (e.g. "Portal" = {@code excludeSource=SHOPIFY}). If BOTH
+     * {@code source} and {@code excludeSource} are set, {@code source} wins
+     * (an exact-match always trumps an exclusion).
+     */
+    public static Specification<OrderEntity> build(String q, OrderStatus status,
+                                                   OrderStatusGroup statusGroup,
+                                                   PaymentStatus paymentStatus,
+                                                   LocalDate from, LocalDate to,
+                                                   Collection<Long> creatorIds,
+                                                   OrderSource source,
+                                                   OrderSource excludeSource) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
+            if (source != null) {
+                predicates.add(cb.equal(root.get("source"), source));
+            } else if (excludeSource != null) {
+                predicates.add(cb.notEqual(root.get("source"), excludeSource));
+            }
+            if (creatorIds != null) {
+                if (creatorIds.isEmpty()) {
+                    // Scoped to nothing (e.g. a team lead with no team) — match no rows.
+                    predicates.add(cb.disjunction());
+                } else {
+                    predicates.add(root.get("createdBy").in(creatorIds));
+                }
+            }
             if (q != null && !q.isBlank()) {
                 String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
                 predicates.add(cb.or(
@@ -47,6 +139,9 @@ public final class OrderListSpecifications {
             }
             if (status != null) {
                 predicates.add(cb.equal(root.get("orderStatus"), status));
+            }
+            if (statusGroup != null && !statusGroup.statuses().isEmpty()) {
+                predicates.add(root.get("orderStatus").in(statusGroup.statuses()));
             }
             if (paymentStatus != null) {
                 predicates.add(cb.equal(root.get("paymentStatus"), paymentStatus));

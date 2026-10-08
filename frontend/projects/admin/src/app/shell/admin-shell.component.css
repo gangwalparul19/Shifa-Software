@@ -2,234 +2,166 @@
   display: block;
 }
 
-/* --- Top header (subtle Shifa-green tint) -------------------------------- */
+/* --- Top app bar (solid dark-green banner, matches client mockup) ------- */
 .shifa-navbar {
   position: relative;
-  /* Faint green-tinted surface instead of flat white */
-  background: linear-gradient(180deg, var(--shifa-green-050) 0%, #ffffff 100%);
-  border-bottom: 1px solid var(--shifa-green-100);
-  box-shadow: 0 1px 4px rgba(15, 51, 36, 0.05);
-  min-height: 3.75rem;
-  padding-block: 0.5rem;
+  /* Solid brand-green banner with white content (mockup app bar). */
+  background: var(--shifa-green-600);
+  border-bottom: 1px solid var(--shifa-green-800);
+  box-shadow: 0 2px 10px rgba(15, 51, 36, 0.18);
+  min-height: 3.5rem;
+  padding-block: 0.4rem;
   z-index: 1030;
 }
-/* Thin green -> gold accent line across the very top of the app */
+/* Thin gold accent line across the very top for a crisp brand edge */
 .shifa-navbar::before {
   content: '';
   position: absolute;
   inset: 0 0 auto 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--shifa-green-600) 0%, var(--shifa-green-400) 55%, var(--shifa-gold) 100%);
-}
-
-/* Make the leaf brand mark pop a little more on the tinted bar */
-.shifa-navbar .shifa-brand__mark {
-  background: linear-gradient(135deg, var(--shifa-green-500), var(--shifa-green-700));
-  box-shadow: 0 2px 8px rgba(31, 93, 63, 0.32), 0 0 0 3px rgba(201, 162, 39, 0.18);
-}
-
-/* Global search slot: fills the middle of the top bar on desktop; on mobile it
-   shrinks to just the search icon button (the input expands to an overlay). */
-.shifa-navbar__search {
-  min-width: 0;
-}
-@media (max-width: 767.98px) {
-  .shifa-navbar__search {
-    flex: 0 0 auto;
-  }
-}
-
-/* --- Horizontal menu bar (soft green tint) ------------------------------ */
-.shifa-menu {
-  background: var(--shifa-green-050);
-  border-bottom: 1px solid var(--shifa-green-100);
-  z-index: 1020;
-}
-.shifa-menu .navbar {
-  padding-block: 0;
-}
-.shifa-menu .navbar-nav {
-  gap: 0.15rem;
-}
-.shifa-menu .nav-link {
-  position: relative;
-  padding: 0.7rem 0.85rem;
-  gap: 0.45rem;
-  font-weight: 500;
-  font-size: 0.9rem;
-  color: #3f5249;
-  border-radius: 0.5rem;
-  transition: color 0.15s ease, background-color 0.15s ease;
-}
-.shifa-menu .nav-link .nav-link-icon {
-  display: inline-flex;
-  align-items: center;
-  font-size: 1.1rem;
-  opacity: 0.85;
-  color: var(--shifa-green-500);
-}
-.shifa-menu .nav-link:hover {
-  color: var(--shifa-green-700);
-  background: rgba(31, 93, 63, 0.07);
-}
-.shifa-menu .nav-link:hover .nav-link-icon {
-  opacity: 1;
-}
-/* Active item: green text + green underline accent (Tabler treatment) */
-.shifa-menu .nav-item .nav-link.active {
-  color: var(--shifa-green-700);
-  font-weight: 600;
-}
-.shifa-menu .nav-item .nav-link.active .nav-link-icon {
-  opacity: 1;
-  color: var(--shifa-green-600);
-}
-.shifa-menu .nav-item .nav-link.active::after {
-  content: '';
-  position: absolute;
-  left: 0.5rem;
-  right: 0.5rem;
-  bottom: -1px;
   height: 2px;
-  background: linear-gradient(90deg, var(--shifa-green-600), var(--shifa-gold));
-  border-radius: 2px 2px 0 0;
-}
-.shifa-menu .nav-link.disabled {
-  color: #aab4ad;
-  cursor: default;
+  background: linear-gradient(90deg, var(--shifa-gold) 0%, rgba(201, 162, 39, 0) 100%);
 }
 
-/* --- Desktop nav group (dropdown) --------------------------------------- */
-.shifa-navgroup {
-  position: relative;
-}
-.shifa-navgroup__toggle {
-  display: inline-flex;
+.shifa-appbar__inner {
+  display: flex;
   align-items: center;
-  background: transparent;
+  gap: 0.5rem;
+  /* Bootstrap sets `.navbar > .container-xl { flex-wrap: inherit }` which resolves
+     to wrap and pushes the search onto a second row — force a single row. */
+  flex-wrap: nowrap;
+}
+
+/* Left cluster: hamburger + page title */
+.shifa-appbar__lead {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.shifa-appbar__burger {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
   border: 0;
-  cursor: pointer;
-  font-family: inherit;
+  background: transparent;
+  color: #ffffff;
+  font-size: 1.4rem;
 }
-.shifa-navgroup__caret {
-  font-size: 1rem;
-  margin-left: 0.15rem;
-  opacity: 0.7;
-  transition: transform 0.18s var(--shifa-ease);
+.shifa-appbar__burger:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
 }
-.shifa-navgroup__toggle[aria-expanded='true'] .shifa-navgroup__caret {
-  transform: rotate(180deg);
-}
-
-/* Floating dropdown panel */
-.shifa-navgroup__panel {
-  position: absolute;
-  top: calc(100% + 0.35rem);
-  left: 0.35rem;
-  min-width: 232px;
-  z-index: 1050;
-  box-shadow: 0 12px 32px rgba(15, 51, 36, 0.18);
-  border-color: var(--shifa-green-100);
-}
-.shifa-navgroup__item {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.55rem 0.7rem;
-  border-radius: 0.45rem;
-  color: #3f5249;
-  font-size: 0.9rem;
-  font-weight: 500;
-  transition: color 0.14s ease, background-color 0.14s ease;
-}
-.shifa-navgroup__item .nav-link-icon {
-  display: inline-flex;
-  font-size: 1.1rem;
-  color: var(--shifa-green-500);
-  opacity: 0.9;
-}
-.shifa-navgroup__item:hover {
-  background: rgba(31, 93, 63, 0.08);
-  color: var(--shifa-green-700);
-}
-.shifa-navgroup__item.active {
-  background: var(--shifa-green-100);
-  color: var(--shifa-green-700);
+.shifa-appbar__title {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--shifa-font-display, inherit);
+  font-size: 1.05rem;
   font-weight: 600;
+  line-height: 1.1;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.shifa-navgroup__item.active .nav-link-icon {
-  opacity: 1;
-  color: var(--shifa-green-600);
-}
-
-/* --- Mobile nav group (labelled section, no floating dropdown) ---------- */
-.shifa-navgroup-m__label {
+.shifa-appbar__titlewrap {
+  min-width: 0;
   display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.6rem 0.5rem 0.3rem;
-  font-size: 0.7rem;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.05;
+}
+.shifa-appbar__eyebrow {
+  font-size: 0.68rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--shifa-green-600);
-}
-.shifa-navgroup-m__label i {
-  font-size: 1rem;
-}
-
-/* On mobile the menu items stack as full-width, comfortably tappable rows */
-@media (max-width: 767.98px) {
-  .shifa-menu .navbar {
-    padding-block: 0.5rem;
-  }
-  .shifa-menu .navbar-nav {
-    gap: 0.15rem;
-    width: 100%;
-  }
-  .shifa-menu .nav-item {
-    width: 100%;
-  }
-  .shifa-menu .nav-link {
-    width: 100%;
-    min-height: 2.75rem;
-    padding: 0.7rem 0.75rem;
-    border-radius: 0.5rem;
-    font-size: 0.95rem;
-  }
-  .shifa-menu .nav-link .nav-link-icon {
-    font-size: 1.25rem;
-    margin-right: 0.25rem;
-  }
-  .shifa-menu .nav-item .nav-link.active {
-    background: var(--shifa-green-100);
-    color: var(--shifa-green-700);
-  }
-  .shifa-menu .nav-item .nav-link.active::after {
-    display: none;
-  }
-
-  /* Mobile grouped sections: full-width label + slightly indented children */
-  .shifa-navgroup-m {
-    width: 100%;
-  }
-  .shifa-navgroup-m + .shifa-navgroup-m,
-  .nav-item + .shifa-navgroup-m {
-    margin-top: 0.25rem;
-    border-top: 1px solid var(--shifa-green-100);
-    padding-top: 0.25rem;
-  }
-  .shifa-navgroup-m__item {
-    padding-left: 1.5rem;
-  }
+  color: rgba(255, 255, 255, 0.65);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* --- User dropdown ------------------------------------------------------- */
+/* --- Dark-bar account controls (white text/icons for contrast) ---------- */
+.shifa-usermenu__btn {
+  color: #eafff2;
+}
+.shifa-usermenu__btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+.shifa-usermenu__btn .fw-medium {
+  color: #ffffff;
+}
+.shifa-usermenu__btn .text-secondary {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+.shifa-usermenu__btn .ti {
+  color: rgba(255, 255, 255, 0.8);
+}
+/* Avatar chip reads as a translucent white tile on the green banner. */
+.shifa-navbar .shifa-avatar {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+/* Right cluster: search + live pill + bell + user */
+.shifa-appbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+  justify-content: flex-end;
+}
+.shifa-appbar__search {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+
+/* The account menu is a white popover, so its actions must not inherit the
+   navbar's pale ghost-button color. */
+.shifa-usermenu__action {
+  color: #33443a !important;
+  text-decoration: none;
+}
+.shifa-usermenu__action .ti {
+  color: #1f5d3f !important;
+}
+.shifa-usermenu__action:hover,
+.shifa-usermenu__action:focus-visible {
+  color: #164632 !important;
+  background: rgba(31, 93, 63, 0.1);
+}
+.shifa-usermenu__action:hover .ti,
+.shifa-usermenu__action:focus-visible .ti {
+  color: #164632 !important;
+}
+
+/* Backward-compatible selector for any remaining secondary action in the panel. */
+.shifa-usermenu__panel .btn-ghost-secondary {
+  color: #33443a !important;
+}
+.shifa-usermenu__panel .btn-ghost-secondary .ti {
+  color: #1f5d3f !important;
+}
+.shifa-usermenu__panel .btn-ghost-secondary:hover,
+.shifa-usermenu__panel .btn-ghost-secondary:focus-visible {
+  color: #164632 !important;
+  background: rgba(31, 93, 63, 0.1);
+}
+.shifa-usermenu__panel .btn-ghost-secondary:hover .ti,
+.shifa-usermenu__panel .btn-ghost-secondary:focus-visible .ti {
+  color: #164632 !important;
+}
 .shifa-usermenu {
   position: relative;
 }
 .shifa-usermenu__btn {
   border-radius: 0.5rem;
+  min-height: 44px;
 }
 .shifa-usermenu__panel {
   position: absolute;
@@ -245,8 +177,659 @@
   z-index: 1040;
 }
 
+/* --- Page body: leave room for the fixed bottom tab bar ----------------- */
+.shifa-appshell__body {
+  /* 56px bar + comfortable gap + iOS safe-area inset */
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* --- Bottom tab bar (Req 2, Req 14.4) ----------------------------------- */
+.shifa-bottomnav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1035;
+  display: flex;
+  align-items: stretch;
+  background: #ffffff;
+  border-top: 1px solid var(--shifa-green-100);
+  box-shadow: 0 -2px 12px rgba(15, 51, 36, 0.08);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.shifa-bottomnav__tab {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  /* >= 44px touch target (Req 14.2) */
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 4px;
+  color: #5b6b62;
+  text-decoration: none;
+  font-size: 0.68rem;
+  font-weight: 500;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.shifa-bottomnav__icon {
+  font-size: 1.4rem;
+  line-height: 1;
+  opacity: 0.9;
+}
+.shifa-bottomnav__label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shifa-bottomnav__tab:hover {
+  color: var(--shifa-green-700);
+  background: rgba(31, 93, 63, 0.05);
+}
+/* Active tab: green text/icon + top accent bar */
+.shifa-bottomnav__tab.active {
+  color: var(--shifa-green-700);
+  font-weight: 600;
+}
+.shifa-bottomnav__tab.active .shifa-bottomnav__icon {
+  opacity: 1;
+  color: var(--shifa-green-600);
+}
+.shifa-bottomnav__tab.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 18%;
+  right: 18%;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: linear-gradient(90deg, var(--shifa-green-600), var(--shifa-gold));
+}
+
+/* On wider viewports keep the same bottom bar + hamburger model (simplest,
+   consistent). Constrain the tab row so it doesn't stretch uncomfortably wide
+   and center it. */
+@media (min-width: 768px) {
+  .shifa-bottomnav {
+    justify-content: center;
+    gap: 0.5rem;
+    padding-inline: 1rem;
+  }
+  .shifa-bottomnav__tab {
+    flex: 0 1 160px;
+    flex-direction: row;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+  }
+  .shifa-bottomnav__icon {
+    font-size: 1.2rem;
+  }
+}
+
+/* --- Hamburger off-canvas navigation drawer (Req 3) --------------------- */
+/* Reuses the global .shifa-overlay backdrop + .shifa-drawer chrome, re-anchored
+   to slide in from the LEFT (the hamburger lives on the left of the app bar). */
+.shifa-navdrawer {
+  right: auto;
+  left: 0;
+  width: min(320px, 88vw);
+  box-shadow: 12px 0 40px rgba(15, 34, 58, 0.22);
+  animation: shifaNavDrawerIn 0.28s var(--shifa-ease) both;
+}
+@keyframes shifaNavDrawerIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@media (max-width: 575.98px) {
+  .shifa-navdrawer {
+    width: min(320px, 88vw);
+  }
+}
+
+.shifa-navdrawer__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.shifa-navdrawer__group + .shifa-navdrawer__group,
+.shifa-navdrawer__item + .shifa-navdrawer__group {
+  margin-top: 0.35rem;
+  border-top: 1px solid var(--shifa-green-100);
+  padding-top: 0.35rem;
+}
+.shifa-navdrawer__label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.5rem 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--shifa-green-600);
+}
+.shifa-navdrawer__label i {
+  font-size: 1rem;
+}
+.shifa-navdrawer__item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 44px;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.5rem;
+  color: #3f5249;
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.14s ease, background-color 0.14s ease;
+}
+.shifa-navdrawer__item--child {
+  padding-left: 1.35rem;
+}
+.shifa-navdrawer__item .nav-link-icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 1.2rem;
+  color: var(--shifa-green-500);
+  opacity: 0.9;
+}
+.shifa-navdrawer__item:hover {
+  background: rgba(31, 93, 63, 0.08);
+  color: var(--shifa-green-700);
+}
+.shifa-navdrawer__item.active {
+  background: var(--shifa-green-100);
+  color: var(--shifa-green-700);
+  font-weight: 600;
+}
+.shifa-navdrawer__item.active .nav-link-icon {
+  opacity: 1;
+  color: var(--shifa-green-600);
+}
+.shifa-navdrawer__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Drawer footer: signed-in user + logout */
+.shifa-navdrawer__foot {
+  align-items: center;
+  justify-content: space-between;
+}
+.shifa-navdrawer__user {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 0.5rem;
+  padding: 0.25rem 0.4rem;
+  transition: background 0.15s ease;
+}
+.shifa-navdrawer__user:hover {
+  background: rgba(31, 93, 63, 0.08);
+}
+
+/* Clickable name/role block in the top-bar account dropdown. */
+.shifa-usermenu__id {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 0.5rem;
+  transition: background 0.15s ease;
+}
+.shifa-usermenu__id:hover {
+  background: rgba(31, 93, 63, 0.08);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .shifa-menu .navbar-collapse {
-    transition: none;
+  .shifa-navdrawer {
+    animation: none;
+  }
+}
+
+/* --- Desktop "app frame" (mobile-first app, contained on wide screens) ---
+   The chrome is designed mobile-first. On a wide desktop the full-bleed green
+   banner and the fixed bottom bar stretch edge-to-edge and read as empty /
+   stretched. From the tablet breakpoint up we therefore center the whole shell
+   to a comfortable content width and frame it (side borders + soft shadow) over
+   a tinted "desk" background, so the top bar, page body, and bottom nav all
+   align to the same width the content actually uses. */
+@media (min-width: 768px) {
+  :host {
+    /* The area outside the framed app reads as a subtle green-tinted desk. */
+    background: #e7efea;
+  }
+
+  .shifa-appshell {
+    max-width: var(--shifa-shell-max, 900px);
+    margin-inline: auto;
+    min-height: 100vh;
+    background: var(--tblr-body-bg, #ffffff);
+    border-inline: 1px solid var(--shifa-green-100);
+    box-shadow: 0 0 42px rgba(15, 51, 36, 0.12);
+  }
+
+  /* The top banner is inside the framed shell, so it already spans exactly the
+     frame; keep its inner container flush to the frame edges (no double gutter). */
+  .shifa-appbar__inner {
+    max-width: none;
+  }
+
+  /* The bottom bar is position:fixed (viewport-anchored). Rather than a full-bleed
+     strip, present it as a floating, contained pill centered under the content —
+     clearly "not full width" and hugging the content it serves. */
+  .shifa-bottomnav {
+    left: 50%;
+    right: auto;
+    bottom: 0.85rem;
+    transform: translateX(-50%);
+    width: calc(100% - 2rem);
+    max-width: var(--shifa-bottomnav-max, 560px);
+    border: 1px solid var(--shifa-green-100);
+    border-radius: 999px;
+    box-shadow: 0 8px 28px rgba(15, 51, 36, 0.16);
+    padding-inline: 0.5rem;
+    overflow: hidden;
+  }
+  /* Soften the active-tab accent so it fits the rounded pill. */
+  .shifa-bottomnav__tab.active::before {
+    left: 26%;
+    right: 26%;
+  }
+}
+
+/* PWA chrome — offline chip, install button, app banners (FEATURE-ROADMAP §8.1). */
+.shifa-offline-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: #fff4e6;
+  color: #b5651d;
+  border: 1px solid #f0c99a;
+}
+/* Install entry in the hamburger drawer: a <button> styled as a nav item + accent. */
+.shifa-navdrawer__install {
+  width: 100%;
+  border: 1px solid var(--shifa-green-200, #b7d8c6);
+  background: var(--shifa-green-050, #f2f9f5);
+  cursor: pointer;
+  text-align: left;
+  margin-top: 0.5rem;
+  color: var(--shifa-green-700);
+  font-weight: 600;
+}
+.shifa-navdrawer__install:hover {
+  background: var(--shifa-green-100);
+}
+/* Install action sits in the dark app bar beside Offline. Keep it from
+   shrinking away when search/bell/account controls compete for width. */
+.shifa-install-btn {
+  flex: 0 0 auto;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  min-width: 44px;
+  padding-inline: 0.65rem;
+  white-space: nowrap;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.72) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  font-weight: 700;
+}
+.shifa-install-btn .ti {
+  color: #ffffff !important;
+}
+.shifa-install-btn:hover,
+.shifa-install-btn:focus-visible {
+  color: #164632 !important;
+  border-color: #ffffff !important;
+  background: #ffffff !important;
+}
+.shifa-install-btn:hover .ti,
+.shifa-install-btn:focus-visible .ti {
+  color: #164632 !important;
+}
+@media (max-width: 575.98px) {
+  .shifa-install-btn {
+    width: 40px;
+    padding-inline: 0;
+  }
+}
+.shifa-app-banner {
+  margin-top: 0.75rem;
+  margin-bottom: 0;
+}
+
+/* Collapsible nav groups in the hamburger drawer (collapsed by default). */
+.shifa-navdrawer__label--toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.shifa-navdrawer__label--toggle:hover {
+  color: var(--shifa-green-700, #164632);
+}
+.shifa-navdrawer__chev {
+  margin-left: auto;
+  font-size: 1rem;
+  transition: transform 0.2s ease;
+  opacity: 0.7;
+}
+.shifa-navdrawer__group.is-open .shifa-navdrawer__chev {
+  transform: rotate(180deg);
+}
+
+/* ---------------------------------------------------------------------------
+   Laptop / desktop (≥992px): use the FULL screen width instead of the framed
+   ~900px phone-style column, so the admin can work comfortably. Mobile and
+   small tablets keep the framed mobile-first layout above. This only removes
+   the frame + lets the content container span the viewport; no page markup
+   changes, so nothing else breaks. Applies app-wide and going forward.
+
+   Breakpoint is 768px (tablet-and-up) so laptops/tablets reliably show the
+   persistent sidebar; only true phones (<768px) keep the hamburger + bottom
+   tabs. (Lowered from 992px — narrower laptop viewports were falling back to
+   the mobile layout and losing the sidebar.)
+   --------------------------------------------------------------------------- */
+@media (min-width: 768px) {
+  :host {
+    /* No "desk" backdrop when the app fills the screen. */
+    background: var(--tblr-body-bg, #ffffff);
+  }
+
+  .shifa-appshell {
+    max-width: 100%;
+    margin-inline: 0;
+    border-inline: 0;
+    box-shadow: none;
+    /* Reserve the left gutter for the fixed desktop sidebar. */
+    padding-left: var(--shifa-sidebar-w);
+  }
+
+  /* The shell's own content containers (top bar inner + page body) span the
+     full width with comfortable side padding, so pages use the whole screen. */
+  .shifa-appshell .container-xl {
+    max-width: 100%;
+    padding-inline: 1.5rem;
+  }
+
+  /* The persistent sidebar replaces the mobile hamburger + bottom tab bar on
+     desktop, so hide both there. */
+  .shifa-appbar__burger {
+    display: none;
+  }
+  .shifa-bottomnav {
+    display: none !important;
+  }
+
+  /* No bottom-tab-bar clearance needed on desktop. */
+  .shifa-appshell__body {
+    padding-bottom: 1.5rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Persistent DESKTOP sidebar (≥992px). Hidden below that width, where the
+   hamburger off-canvas drawer + bottom tab bar remain the navigation. Reuses
+   the same role-filtered navEntries() the drawer renders, presented as an
+   always-visible left rail so the desktop layout reads like a desktop admin
+   app rather than a stretched phone screen.
+   --------------------------------------------------------------------------- */
+:host {
+  --shifa-sidebar-w: 250px;
+}
+
+.shifa-sidebar {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .shifa-sidebar {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: var(--shifa-sidebar-w);
+    background: #ffffff;
+    border-right: 1px solid rgba(4, 32, 69, 0.08);
+    z-index: 1031; /* above the sticky top bar's default stacking */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .shifa-sidebar__brand {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.7rem 0.75rem;
+    background: #ffffff;
+    border-bottom: 1px solid rgba(4, 32, 69, 0.06);
+  }
+
+  .shifa-sidebar__brandlink {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+  }
+
+  /* Top collapse/expand toggle — a small icon button beside the brand logo. */
+  .shifa-sidebar__toptoggle {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid rgba(4, 32, 69, 0.08);
+    border-radius: 8px;
+    background: transparent;
+    color: #67736c;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.14s ease, color 0.14s ease;
+  }
+  .shifa-sidebar__toptoggle:hover {
+    background: var(--shifa-green-050, #f2f9f5);
+    color: var(--shifa-green-700, #1a4f38);
+    border-color: var(--shifa-green-200, #b5dcc6);
+  }
+
+  .shifa-sidebar__nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.08rem;
+    padding: 0.6rem 0.55rem 1.75rem;
+  }
+
+  .shifa-sidebar__group {
+    margin-top: 0.35rem;
+  }
+
+  .shifa-sidebar__grouplabel {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.6rem;
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: #8a97a0;
+  }
+  .shifa-sidebar__grouplabel i {
+    font-size: 0.95rem;
+    color: var(--shifa-green-500, #2b7a52);
+  }
+
+  /* Group header is a full-width toggle button (accordion). */
+  .shifa-sidebar__grouptoggle {
+    width: 100%;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    border-radius: 0.55rem;
+    transition: background-color 0.14s ease, color 0.14s ease;
+  }
+  .shifa-sidebar__grouptoggle:hover {
+    background: var(--shifa-green-050, #f2f9f5);
+    color: var(--shifa-green-700, #1a4f38);
+  }
+  .shifa-sidebar__chev {
+    margin-left: auto;
+    font-size: 0.9rem !important;
+    color: #9aa7a0 !important;
+    transition: transform 0.18s ease;
+  }
+  .shifa-sidebar__group.is-open > .shifa-sidebar__grouptoggle .shifa-sidebar__chev {
+    transform: rotate(180deg);
+  }
+
+  .shifa-sidebar__item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: 0.55rem;
+    color: #3a4a42;
+    font-weight: 500;
+    font-size: 0.9rem;
+    line-height: 1.2;
+    transition: background-color 0.14s ease, color 0.14s ease;
+  }
+  .shifa-sidebar__item i {
+    flex: 0 0 auto;
+    font-size: 1.15rem;
+    color: #67736c;
+  }
+  .shifa-sidebar__item--child {
+    padding-left: 0.95rem;
+  }
+  .shifa-sidebar__text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .shifa-sidebar__item:hover {
+    background: var(--shifa-green-050, #f2f9f5);
+    color: var(--shifa-green-700, #1a4f38);
+  }
+  .shifa-sidebar__item:hover i {
+    color: var(--shifa-green-600, #1f5d3f);
+  }
+  .shifa-sidebar__item.active {
+    background: var(--shifa-green-100, #e4f2ea);
+    color: var(--shifa-green-700, #1a4f38);
+    font-weight: 600;
+  }
+  .shifa-sidebar__item.active i {
+    color: var(--shifa-green-600, #1f5d3f);
+  }
+
+  /* Toggle button pinned at the bottom of the sidebar. */
+  .shifa-sidebar__toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: auto;
+    position: sticky;
+    bottom: 0;
+    padding: 0.7rem 1rem;
+    border: 0;
+    border-top: 1px solid rgba(4, 32, 69, 0.06);
+    background: #ffffff;
+    color: #67736c;
+    font-size: 0.82rem;
+    cursor: pointer;
+    z-index: 2;
+    transition: background 0.14s ease, color 0.14s ease;
+  }
+  .shifa-sidebar__toggle:hover {
+    background: var(--shifa-green-050, #f2f9f5);
+    color: var(--shifa-green-700, #1a4f38);
+  }
+  .shifa-sidebar__toggle i {
+    font-size: 1.15rem;
+    flex: none;
+  }
+
+  /* ---- Collapsed state: icon-only rail ---- */
+  .shifa-sidebar.is-collapsed {
+    width: 60px;
+    overflow: visible;
+  }
+  .shifa-sidebar.is-collapsed .shifa-brand__logo {
+    width: 28px;
+    height: 28px;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__brand {
+    justify-content: center;
+    padding: 0.7rem 0.5rem;
+  }
+  /* Collapsed: hide the brand logo link, leave just the toggle (the expand control). */
+  .shifa-sidebar.is-collapsed .shifa-sidebar__brandlink {
+    display: none;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__nav {
+    padding: 0.4rem 0;
+  }
+  /* Hide all text in collapsed mode — labels, group titles, chevrons */
+  .shifa-sidebar.is-collapsed .shifa-sidebar__text,
+  .shifa-sidebar.is-collapsed .shifa-sidebar__grouplabel span,
+  .shifa-sidebar.is-collapsed .shifa-sidebar__chev {
+    display: none;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__item {
+    justify-content: center;
+    padding: 0.55rem 0;
+    gap: 0;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__item i {
+    font-size: 1.25rem;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__grouplabel {
+    justify-content: center;
+    padding: 0.4rem 0;
+    gap: 0;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__item--child {
+    padding-left: 0;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__toggle {
+    justify-content: center;
+    padding: 0.7rem 0;
+    gap: 0;
+  }
+  .shifa-sidebar.is-collapsed .shifa-sidebar__toggle span {
+    display: none;
+  }
+
+  /* When the sidebar is collapsed, the content shifts left. */
+  .shifa-appshell.sidebar-collapsed {
+    padding-left: 60px;
   }
 }

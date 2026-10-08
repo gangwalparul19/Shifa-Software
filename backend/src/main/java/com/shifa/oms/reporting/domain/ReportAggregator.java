@@ -1,9 +1,12 @@
 package com.shifa.oms.reporting.domain;
 
+import com.shifa.oms.order.LeadSource;
 import com.shifa.oms.reporting.domain.ReportRows.DailyRow;
+import com.shifa.oms.reporting.domain.ReportRows.DeliveryOutcome;
 import com.shifa.oms.reporting.domain.ReportRows.MonthlyRow;
 import com.shifa.oms.reporting.domain.ReportRows.ProductRow;
 import com.shifa.oms.reporting.domain.ReportRows.StateRow;
+import com.shifa.oms.statemachine.OrderStatus;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -34,11 +37,37 @@ import java.util.TreeMap;
  */
 public class ReportAggregator {
 
+    /**
+     * Order statuses that never produced sellable revenue and MUST be excluded
+     * from every sales / turnover figure (matches the P&amp;L and performance
+     * definition): an admin-rejected, payment-rejected, or cancelled order is not
+     * a sale. Grouped-count / status-breakdown reports keep counting them (they
+     * exist to show them) — only the money/sales aggregations drop them.
+     */
+    private static final java.util.Set<OrderStatus> NON_REVENUE = java.util.EnumSet.of(
+            OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED);
+
     /** The orders whose order date falls within the window (Req 20.2). */
     public List<OrderReportRecord> within(List<OrderReportRecord> orders, DateRange window) {
         List<OrderReportRecord> result = new ArrayList<>();
         for (OrderReportRecord o : orders) {
             if (window.contains(o.orderDate())) {
+                result.add(o);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Windowed orders that count as revenue — same as {@link #within} but with the
+     * {@link #NON_REVENUE} statuses (rejected / payment-rejected / cancelled)
+     * removed. Used by every sales/turnover aggregation so those orders never
+     * inflate a salesperson's total or the company turnover.
+     */
+    public List<OrderReportRecord> revenueWithin(List<OrderReportRecord> orders, DateRange window) {
+        List<OrderReportRecord> result = new ArrayList<>();
+        for (OrderReportRecord o : within(orders, window)) {
+            if (!NON_REVENUE.contains(o.orderStatus())) {
                 result.add(o);
             }
         }
@@ -51,7 +80,7 @@ public class ReportAggregator {
     public List<DailyRow> daily(List<OrderReportRecord> orders, DateRange window) {
         Map<LocalDate, long[]> counts = new TreeMap<>();
         Map<LocalDate, BigDecimal> sales = new TreeMap<>();
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             counts.computeIfAbsent(o.orderDate(), k -> new long[1])[0]++;
             sales.merge(o.orderDate(), o.totalAmount(), BigDecimal::add);
         }
@@ -66,7 +95,7 @@ public class ReportAggregator {
     public List<MonthlyRow> monthly(List<OrderReportRecord> orders, DateRange window) {
         Map<YearMonth, long[]> counts = new TreeMap<>();
         Map<YearMonth, BigDecimal> sales = new TreeMap<>();
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             YearMonth ym = YearMonth.from(o.orderDate());
             counts.computeIfAbsent(ym, k -> new long[1])[0]++;
             sales.merge(ym, o.totalAmount(), BigDecimal::add);
@@ -86,7 +115,7 @@ public class ReportAggregator {
     public List<ProductRow> productWise(List<OrderReportRecord> orders, DateRange window) {
         Map<String, long[]> qty = new LinkedHashMap<>();
         Map<String, BigDecimal> sales = new LinkedHashMap<>();
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             for (OrderReportRecord.ProductLine line : o.products()) {
                 qty.computeIfAbsent(line.productName(), k -> new long[1])[0] += line.quantity();
                 sales.merge(line.productName(), line.lineTotal(), BigDecimal::add);
@@ -110,7 +139,7 @@ public class ReportAggregator {
     public List<StateRow> stateWise(List<OrderReportRecord> orders, DateRange window) {
         Map<String, long[]> counts = new LinkedHashMap<>();
         Map<String, BigDecimal> sales = new LinkedHashMap<>();
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             String state = o.state() == null ? "" : o.state();
             counts.computeIfAbsent(state, k -> new long[1])[0]++;
             sales.merge(state, o.totalAmount(), BigDecimal::add);
@@ -121,6 +150,39 @@ public class ReportAggregator {
         }
         rows.sort(Comparator.comparing(StateRow::totalSales).reversed()
                 .thenComparing(StateRow::state));
+        return rows;
+    }
+
+    /**
+     * Customer-wise report: one row per customer (keyed by mobile, falling back
+     * to name when the mobile is blank) within the window, with their order
+     * count and total sales, ordered by sales descending then customer name.
+     */
+    public List<ReportRows.CustomerRow> customerWise(List<OrderReportRecord> orders, DateRange window) {
+        Map<String, long[]> counts = new LinkedHashMap<>();
+        Map<String, BigDecimal> sales = new LinkedHashMap<>();
+        Map<String, String> names = new LinkedHashMap<>();
+        Map<String, String> mobiles = new LinkedHashMap<>();
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
+            String mobile = o.customerMobile() == null ? "" : o.customerMobile();
+            String name = o.customerName() == null ? "" : o.customerName();
+            String key = !mobile.isBlank() ? mobile : name;
+            counts.computeIfAbsent(key, k -> new long[1])[0]++;
+            sales.merge(key, o.totalAmount(), BigDecimal::add);
+            names.putIfAbsent(key, name);
+            mobiles.putIfAbsent(key, mobile);
+        }
+        List<ReportRows.CustomerRow> rows = new ArrayList<>();
+        for (Map.Entry<String, long[]> e : counts.entrySet()) {
+            String key = e.getKey();
+            rows.add(new ReportRows.CustomerRow(
+                    names.getOrDefault(key, ""),
+                    mobiles.getOrDefault(key, ""),
+                    e.getValue()[0],
+                    scale(sales.get(key))));
+        }
+        rows.sort(Comparator.comparing(ReportRows.CustomerRow::totalSales).reversed()
+                .thenComparing(ReportRows.CustomerRow::customerName));
         return rows;
     }
 
@@ -138,20 +200,114 @@ public class ReportAggregator {
         return rows;
     }
 
+    // --- Grouped-count reports (Req 16.1, 16.2, 16.3, 16.4) -----------------
+
+    /** The label a {@code null} lead source is reported under (Req 16.1). */
+    public static final String UNSPECIFIED_LEAD_SOURCE = "UNSPECIFIED";
+
+    /** The label a {@code null} salesperson ({@code createdBy}) is reported under. */
+    public static final String UNSPECIFIED_SALESPERSON = "UNSPECIFIED";
+
+    /**
+     * Orders grouped by {@link LeadSource} over the window, keyed by the source
+     * name with a {@code null} lead source bucketed as {@code UNSPECIFIED}
+     * (Req 16.1). Keys are ordered by descending count then key name.
+     */
+    public List<ReportRows.CountRow> ordersByLeadSource(List<OrderReportRecord> orders, DateRange window) {
+        Map<String, long[]> counts = new LinkedHashMap<>();
+        for (OrderReportRecord o : within(orders, window)) {
+            String key = o.leadSource() == null ? UNSPECIFIED_LEAD_SOURCE : o.leadSource().name();
+            counts.computeIfAbsent(key, k -> new long[1])[0]++;
+        }
+        return toSortedCountRows(counts);
+    }
+
+    /**
+     * Orders grouped by {@link OrderStatus} over the window (Req 16.2). Keys are
+     * ordered by descending count then status name.
+     */
+    public List<ReportRows.CountRow> ordersByStatus(List<OrderReportRecord> orders, DateRange window) {
+        Map<String, long[]> counts = new LinkedHashMap<>();
+        for (OrderReportRecord o : within(orders, window)) {
+            String key = o.orderStatus() == null ? "" : o.orderStatus().name();
+            counts.computeIfAbsent(key, k -> new long[1])[0]++;
+        }
+        return toSortedCountRows(counts);
+    }
+
+    /**
+     * Orders grouped by salesperson ({@code createdBy}) over the window
+     * (Req 16.3), keyed by the salesperson id as a string with a {@code null}
+     * creator bucketed as {@code UNSPECIFIED}. Ordered by descending count then key.
+     */
+    public List<ReportRows.CountRow> ordersBySalesperson(List<OrderReportRecord> orders, DateRange window) {
+        Map<String, long[]> counts = new LinkedHashMap<>();
+        for (OrderReportRecord o : within(orders, window)) {
+            String key = o.salespersonId() == null
+                    ? UNSPECIFIED_SALESPERSON : Long.toString(o.salespersonId());
+            counts.computeIfAbsent(key, k -> new long[1])[0]++;
+        }
+        return toSortedCountRows(counts);
+    }
+
+    /**
+     * The delivery-outcome summary over the window (Req 16.4): the counts of
+     * {@code DELIVERED}, {@code CUSTOMER_REJECTED}, {@code DELIVERY_FAILED}, and
+     * {@code CANCELLED} (kept separate), plus the delivery success rate as a
+     * percentage {@code DELIVERED / (DELIVERED + CUSTOMER_REJECTED +
+     * DELIVERY_FAILED + CANCELLED) * 100}, or {@code 0} when the denominator is 0.
+     */
+    public DeliveryOutcome deliveryOutcome(List<OrderReportRecord> orders, DateRange window) {
+        long delivered = 0;
+        long customerRejected = 0;
+        long deliveryFailed = 0;
+        long cancelled = 0;
+        for (OrderReportRecord o : within(orders, window)) {
+            OrderStatus s = o.orderStatus();
+            if (s == OrderStatus.DELIVERED) {
+                delivered++;
+            } else if (s == OrderStatus.CUSTOMER_REJECTED) {
+                customerRejected++;
+            } else if (s == OrderStatus.DELIVERY_FAILED) {
+                deliveryFailed++;
+            } else if (s == OrderStatus.CANCELLED) {
+                cancelled++;
+            }
+        }
+        long denominator = delivered + customerRejected + deliveryFailed + cancelled;
+        BigDecimal successRate = denominator == 0
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.valueOf(delivered)
+                        .multiply(BigDecimal.valueOf(100))
+                        .divide(BigDecimal.valueOf(denominator), 2, RoundingMode.HALF_UP);
+        return new DeliveryOutcome(delivered, customerRejected, deliveryFailed, cancelled, successRate);
+    }
+
+    /** Orders a group-count map by descending count then key name into {@code CountRow}s. */
+    private static List<ReportRows.CountRow> toSortedCountRows(Map<String, long[]> counts) {
+        List<ReportRows.CountRow> rows = new ArrayList<>();
+        for (Map.Entry<String, long[]> e : counts.entrySet()) {
+            rows.add(new ReportRows.CountRow(e.getKey(), e.getValue()[0]));
+        }
+        rows.sort(Comparator.comparingLong(ReportRows.CountRow::orderCount).reversed()
+                .thenComparing(ReportRows.CountRow::key));
+        return rows;
+    }
+
     // --- Metrics (Req 19.3, 19.4, 19.7) -------------------------------------
 
     /** Total sales (sum of {@code totalAmount}) over the windowed orders (Req 19.3). */
     public BigDecimal totalSales(List<OrderReportRecord> orders, DateRange window) {
         BigDecimal total = BigDecimal.ZERO;
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             total = total.add(o.totalAmount());
         }
         return scale(total);
     }
 
-    /** Number of orders within the window (Req 19.3). */
+    /** Number of revenue orders within the window (Req 19.3; excludes non-revenue). */
     public long orderCount(List<OrderReportRecord> orders, DateRange window) {
-        return within(orders, window).size();
+        return revenueWithin(orders, window).size();
     }
 
     /**
@@ -171,7 +327,7 @@ public class ReportAggregator {
     /** Top salesperson by total sales within the window (argmax), if any (Req 19.7). */
     public Optional<Long> topSalesperson(List<OrderReportRecord> orders, DateRange window) {
         Map<Long, BigDecimal> byPerson = new LinkedHashMap<>();
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             if (o.salespersonId() == null) {
                 continue;
             }
@@ -183,7 +339,7 @@ public class ReportAggregator {
     /** Top-selling product by quantity within the window (argmax), if any (Req 19.7). */
     public Optional<String> topProduct(List<OrderReportRecord> orders, DateRange window) {
         Map<String, BigDecimal> byProduct = new LinkedHashMap<>();
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             for (OrderReportRecord.ProductLine line : o.products()) {
                 byProduct.merge(line.productName(), BigDecimal.valueOf(line.quantity()), BigDecimal::add);
             }
@@ -194,7 +350,7 @@ public class ReportAggregator {
     /** Top state by total sales within the window (argmax), if any (Req 19.7). */
     public Optional<String> topState(List<OrderReportRecord> orders, DateRange window) {
         Map<String, BigDecimal> byState = new LinkedHashMap<>();
-        for (OrderReportRecord o : within(orders, window)) {
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
             String state = o.state() == null ? "" : o.state();
             byState.merge(state, o.totalAmount(), BigDecimal::add);
         }

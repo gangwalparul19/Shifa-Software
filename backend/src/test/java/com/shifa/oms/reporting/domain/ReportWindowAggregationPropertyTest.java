@@ -61,13 +61,24 @@ class ReportWindowAggregationPropertyTest {
             }
         }
 
-        // within() returns exactly that set.
+        // within() returns exactly the windowed set (every status).
         assertThat(aggregator.within(orders, window)).containsExactlyInAnyOrderElementsOf(expected);
 
-        // Order count and total sales are computed over exactly the windowed orders.
-        assertThat(aggregator.orderCount(orders, window)).isEqualTo(expected.size());
-        BigDecimal expectedSales = BigDecimal.ZERO;
+        // Sales/turnover aggregations exclude non-revenue orders (rejected /
+        // payment-rejected / cancelled) — those are not sales.
+        java.util.Set<OrderStatus> nonRevenue = java.util.EnumSet.of(
+                OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED);
+        List<OrderReportRecord> expectedRevenue = new ArrayList<>();
         for (OrderReportRecord o : expected) {
+            if (!nonRevenue.contains(o.orderStatus())) {
+                expectedRevenue.add(o);
+            }
+        }
+
+        // Order count and total sales are computed over exactly the windowed REVENUE orders.
+        assertThat(aggregator.orderCount(orders, window)).isEqualTo(expectedRevenue.size());
+        BigDecimal expectedSales = BigDecimal.ZERO;
+        for (OrderReportRecord o : expectedRevenue) {
             expectedSales = expectedSales.add(o.totalAmount());
         }
         assertThat(aggregator.totalSales(orders, window))
@@ -82,16 +93,17 @@ class ReportWindowAggregationPropertyTest {
             dailyOrderSum += r.orderCount();
             dailySalesSum = dailySalesSum.add(r.totalSales());
         }
-        assertThat(dailyOrderSum).isEqualTo(expected.size());
+        assertThat(dailyOrderSum).isEqualTo(expectedRevenue.size());
         assertThat(dailySalesSum).isEqualByComparingTo(expectedSales.setScale(2, RoundingMode.HALF_UP));
 
-        // Salesperson-wise report: exactly the windowed orders, one row each (Req 20.3).
+        // Salesperson-wise report is a DETAIL listing — it still returns every
+        // windowed order (incl. rejected/cancelled), not just revenue ones (Req 20.3).
         assertThat(aggregator.salespersonWise(orders, window))
                 .containsExactlyInAnyOrderElementsOf(expected);
 
-        // Product-wise: total quantity equals the windowed product quantities.
+        // Product-wise: total quantity equals the windowed REVENUE product quantities.
         Map<String, Long> expectedQty = new LinkedHashMap<>();
-        for (OrderReportRecord o : expected) {
+        for (OrderReportRecord o : expectedRevenue) {
             for (OrderReportRecord.ProductLine line : o.products()) {
                 expectedQty.merge(line.productName(), (long) line.quantity(), Long::sum);
             }
@@ -102,9 +114,9 @@ class ReportWindowAggregationPropertyTest {
         }
         assertThat(actualQty).isEqualTo(expectedQty);
 
-        // State-wise: order counts per state match the windowed set.
+        // State-wise: order counts per state match the windowed REVENUE set.
         Map<String, Long> expectedStateCounts = new LinkedHashMap<>();
-        for (OrderReportRecord o : expected) {
+        for (OrderReportRecord o : expectedRevenue) {
             expectedStateCounts.merge(o.state() == null ? "" : o.state(), 1L, Long::sum);
         }
         Map<String, Long> actualStateCounts = new LinkedHashMap<>();
@@ -113,8 +125,8 @@ class ReportWindowAggregationPropertyTest {
         }
         assertThat(actualStateCounts).isEqualTo(expectedStateCounts);
 
-        // Top performers are the argmax within the window.
-        assertTopPerformers(orders, window, expected);
+        // Top performers are the argmax within the window, over REVENUE orders only.
+        assertTopPerformers(orders, window, expectedRevenue);
     }
 
     private void assertTopPerformers(List<OrderReportRecord> orders, DateRange window,
@@ -200,7 +212,7 @@ class ReportWindowAggregationPropertyTest {
                     return new OrderReportRecord(
                             oid, "SHR-" + oid, EPOCH.plusDays(off), sp,
                             "Cust" + oid, "9000000000", st, ls,
-                            total, BigDecimal.ZERO, total, pay, os, "N/A", "N/A", null);
+                            total, BigDecimal.ZERO, total, pay, os, "N/A", "N/A", null, null, null);
                 });
     }
 

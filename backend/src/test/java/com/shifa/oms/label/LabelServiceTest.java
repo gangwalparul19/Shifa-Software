@@ -7,6 +7,8 @@ import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderSource;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.platform.storage.StorageService;
+import com.shifa.oms.quikshipx.OrderShipment;
+import com.shifa.oms.quikshipx.OrderShipmentRepository;
 import com.shifa.oms.statemachine.IllegalStatusTransitionException;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -43,6 +46,9 @@ class LabelServiceTest {
 
     @Mock
     private OrderRepository orderRepository;
+
+    @Mock
+    private OrderShipmentRepository orderShipmentRepository;
 
     private LabelService labelService;
     private final LabelContentBuilder builder = new LabelContentBuilder();
@@ -76,6 +82,42 @@ class LabelServiceTest {
                 order(OrderStatus.APPROVED, PaymentStatus.FULLY_PAID, BigDecimal.ZERO));
         assertThat(content.codApplicable()).isFalse();
         assertThat(content.codAmount()).isNull();
+    }
+
+    // --- Shopify order number on the label (not the internal shopify_order_id) ---
+
+    @Test
+    void shopifyOrderNumberShownFromNoteNotTheInternalId() {
+        OrderEntity order = new OrderEntity(
+                "SHR-20261002-ZRJU", OrderSource.SHOPIFY, null,
+                "vivek veer", "9277779000", "Deepali residency", "Thane", "Maharashtra", "421503");
+        order.applyAmounts(new BigDecimal("1099.00"), new BigDecimal("1099.00"),
+                BigDecimal.ZERO, BigDecimal.ZERO, PaymentStatus.FULLY_PAID);
+        order.setOrderStatus(OrderStatus.LABEL_GENERATED);
+        order.setShopifyOrderId("7421945479343");      // internal id (idempotency key)
+        order.setNotes("Imported from Shopify #25618"); // human order number
+
+        InternalLabelContent content = builder.buildInternal(order);
+
+        // The label must carry the human order number (25618), NOT the internal id.
+        assertThat(content.shopifyOrderId()).isEqualTo("25618");
+    }
+
+    @Test
+    void salesOrderHasNoShopifyNumberOnLabel() {
+        InternalLabelContent content = builder.buildInternal(
+                order(OrderStatus.APPROVED, PaymentStatus.COD, new BigDecimal("240.00")));
+        assertThat(content.shopifyOrderId()).isNull();
+    }
+
+    @Test
+    void shopifyOrderNumberIsNullWhenNoteHasNoNumber() {
+        assertThat(LabelContentBuilder.shopifyOrderNumberFromNote(null)).isNull();
+        assertThat(LabelContentBuilder.shopifyOrderNumberFromNote("Imported from Shopify #25618"))
+                .isEqualTo("25618");
+        assertThat(LabelContentBuilder.shopifyOrderNumberFromNote("Imported from Shopify 25618 — gift"))
+                .isEqualTo("25618");
+        assertThat(LabelContentBuilder.shopifyOrderNumberFromNote("Call before delivery")).isNull();
     }
 
     // --- Label generation flips status to Label_Generated (Req 10.3) --------
@@ -146,6 +188,66 @@ class LabelServiceTest {
     void emptyBulkRequestIsRejected() {
         assertThatThrownBy(() -> labelService.bulkInternalLabelPdf(List.of()))
                 .isInstanceOf(ValidationException.class);
+    }
+
+    // --- Courier barcode: present once a courier/AWB is allotted, order
+    // barcode always present regardless (label redesign feature) ------------
+
+    @Test
+    void orderBarcodeAlwaysPresentAndCourierBarcodeAbsentWhenNoShipmentRepositoryWired() {
+        // The lightweight test constructor (no QuikShipX/courier collaborators)
+        // never has a courier barcode — matches every other test in this class.
+        OrderEntity order = order(OrderStatus.LABEL_GENERATED, PaymentStatus.COD, new BigDecimal("240.00"));
+        InternalLabelContent content = builder.buildInternal(order);
+        assertThat(content.orderCode()).isEqualTo(order.getOrderCode());
+        assertThat(content.hasCourierBarcode()).isFalse();
+    }
+
+    @Test
+    void courierBarcodePresentWhenAwbAllotted() {
+        LabelService service = new LabelService(
+                orderRepository, new InMemoryStorage(), null, null, orderShipmentRepository);
+        OrderEntity order = order(OrderStatus.LABEL_GENERATED, PaymentStatus.COD, new BigDecimal("240.00"));
+        ReflectionTestUtils.setField(order, "id", 1L);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        OrderShipment shipment = new OrderShipment(1L, order.getOrderCode());
+        shipment.recordCreated("SHIPPER-1", true);
+        shipment.recordTrackingId("AWB123456", "COURIER-1", "Sub Courier", "https://labels.example/x.pdf");
+        when(orderShipmentRepository.findByOrderId(1L)).thenReturn(Optional.of(shipment));
+
+        byte[] pdf = service.internalLabelPdf(1L);
+        assertThat(pdf).isNotEmpty();
+        assertThat(new String(pdf, 0, 5)).startsWith("%PDF-");
+    }
+
+    @Test
+    void noCourierBarcodeWhenShipmentHasNoAwbYet() {
+        // Confirmed but not yet allotted a tracking id — no AWB on the shipment.
+        LabelService service = new LabelService(
+                orderRepository, new InMemoryStorage(), null, null, orderShipmentRepository);
+        OrderEntity order = order(OrderStatus.LABEL_GENERATED, PaymentStatus.COD, new BigDecimal("240.00"));
+        ReflectionTestUtils.setField(order, "id", 1L);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        OrderShipment shipment = new OrderShipment(1L, order.getOrderCode());
+        shipment.recordCreated("SHIPPER-1", true);
+        when(orderShipmentRepository.findByOrderId(1L)).thenReturn(Optional.of(shipment));
+
+        byte[] pdf = service.internalLabelPdf(1L);
+        assertThat(pdf).isNotEmpty();
+    }
+
+    @Test
+    void noCourierBarcodeWhenNoShipmentExists() {
+        // In-house delivery orders never get a shipment row at all.
+        LabelService service = new LabelService(
+                orderRepository, new InMemoryStorage(), null, null, orderShipmentRepository);
+        OrderEntity order = order(OrderStatus.LABEL_GENERATED, PaymentStatus.COD, new BigDecimal("240.00"));
+        ReflectionTestUtils.setField(order, "id", 1L);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        when(orderShipmentRepository.findByOrderId(1L)).thenReturn(Optional.empty());
+
+        byte[] pdf = service.internalLabelPdf(1L);
+        assertThat(pdf).isNotEmpty();
     }
 
     // --- Helpers ------------------------------------------------------------

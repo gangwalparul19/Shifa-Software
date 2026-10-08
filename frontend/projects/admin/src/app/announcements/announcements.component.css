@@ -1,0 +1,4 @@
+/* Announcements management — relies on shared card/alert/button styles. */
+.opacity-60 {
+  opacity: 0.6;
+}

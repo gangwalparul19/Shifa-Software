@@ -75,14 +75,21 @@ class CourierAssignmentIntegrationTest {
                 "MOCK", null, null, null, Duration.ofSeconds(10), 3,
                 Duration.ofSeconds(30), "Shifa Express");
 
+        // Real central workflow service; audit is best-effort against a mock repo
+        // (no Mockito mock of a concrete class — Java 25).
+        com.shifa.oms.order.OrderWorkflowService workflowService =
+                new com.shifa.oms.order.OrderWorkflowService(new com.shifa.oms.audit.AuditService(
+                        mock(com.shifa.oms.audit.AuditEventRepository.class),
+                        new com.shifa.oms.auth.CurrentUserService()));
+
         assignmentService = new CourierAssignmentService(
                 orderRepository, courierRecordRepository, courierCompanyRepository,
-                client, shippingLabelService, storage, properties);
+                client, shippingLabelService, storage, properties, workflowService);
     }
 
     @Test
     void assignmentRequestsAwbStoresLabelAndMovesToCourierAssigned() {
-        OrderEntity order = packedCodOrder();
+        OrderEntity order = handedOverCodOrder();
         when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
 
         assignmentService.assignForOrder(10L);
@@ -104,8 +111,8 @@ class CourierAssignmentIntegrationTest {
     }
 
     @Test
-    void assignmentIsIdempotentWhenOrderNotPacked() {
-        OrderEntity order = packedCodOrder();
+    void assignmentIsIdempotentWhenOrderNotHandedOver() {
+        OrderEntity order = handedOverCodOrder();
         order.setOrderStatus(OrderStatus.COURIER_ASSIGNED);
         when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
 
@@ -116,7 +123,125 @@ class CourierAssignmentIntegrationTest {
         assertThat(savedRecord).isNull();
     }
 
-    private OrderEntity packedCodOrder() {
+    // --- Manual courier/AWB assignment ("assign courier early" enhancement) -----
+
+    @Test
+    void manuallyAssignCreatesACourierRecordWithoutChangingOrderStatus() {
+        OrderEntity order = handedOverCodOrder();
+        order.setOrderStatus(OrderStatus.APPROVED); // well before dispatch
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        when(courierCompanyRepository.findFirstByName("Shifa Express"))
+                .thenReturn(Optional.of(new CourierCompany("Shifa Express", null)));
+
+        assignmentService.manuallyAssign(10L, "Shifa Express", "AWB-EARLY-001");
+
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.APPROVED); // unchanged
+        assertThat(order.getStatusHistory()).isEmpty(); // no transition recorded
+        assertThat(savedRecord).isNotNull();
+        assertThat(savedRecord.getAwb()).isEqualTo("AWB-EARLY-001");
+    }
+
+    @Test
+    void manuallyAssignUpdatesAnExistingRecord() {
+        OrderEntity order = handedOverCodOrder();
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        CourierRecord existing = new CourierRecord(10L);
+        existing.assign(1L, "OLD-AWB", "labels/shipping/old.pdf", LocalDate.now());
+        when(courierRecordRepository.findByOrderId(10L)).thenReturn(Optional.of(existing));
+        when(courierCompanyRepository.findFirstByName("Shifa Express"))
+                .thenReturn(Optional.of(new CourierCompany("Shifa Express", null)));
+
+        assignmentService.manuallyAssign(10L, "Shifa Express", "NEW-AWB-002");
+
+        assertThat(savedRecord.getAwb()).isEqualTo("NEW-AWB-002");
+        // The prior label key/ETA are preserved (manual assign only touches courier + AWB).
+        assertThat(savedRecord.getShippingLabelKey()).isEqualTo("labels/shipping/old.pdf");
+    }
+
+    /**
+     * In-house delivery-partner feature: onboarding a new partner on the fly and
+     * capturing a vendor-provided tracking id + ready-made tracking link. The link
+     * is persisted verbatim on the record (so the order drawer can open it) and the
+     * order's status is untouched.
+     */
+    @Test
+    void manuallyAssignRecordsVendorTrackingIdAndLink() {
+        OrderEntity order = handedOverCodOrder();
+        order.setOrderStatus(OrderStatus.HANDED_TO_DELIVERY);
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        // A partner not seen before is onboarded (resolveCompany creates it).
+        when(courierCompanyRepository.findFirstByName("Local Runner"))
+                .thenReturn(Optional.empty());
+        when(courierCompanyRepository.save(any(CourierCompany.class)))
+                .thenAnswer(i -> i.getArgument(0));
+
+        assignmentService.manuallyAssign(
+                10L, "Local Runner", "LR-55", "https://track.localrunner.in/LR-55");
+
+        assertThat(savedRecord).isNotNull();
+        assertThat(savedRecord.getAwb()).isEqualTo("LR-55");
+        assertThat(savedRecord.getTrackingUrl()).isEqualTo("https://track.localrunner.in/LR-55");
+        assertThat(order.getStatusHistory()).isEmpty(); // status untouched
+    }
+
+    /**
+     * A vendor may give a tracking link but no clean AWB — the link is still
+     * captured so the parcel is trackable.
+     */
+    @Test
+    void manuallyAssignAcceptsATrackingLinkWithoutAnAwb() {
+        OrderEntity order = handedOverCodOrder();
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        when(courierCompanyRepository.findFirstByName("Local Runner"))
+                .thenReturn(Optional.of(new CourierCompany("Local Runner", null)));
+
+        assignmentService.manuallyAssign(
+                10L, "Local Runner", "  ", "https://track.localrunner.in/abc");
+
+        assertThat(savedRecord.getAwb()).isNull();
+        assertThat(savedRecord.getTrackingUrl()).isEqualTo("https://track.localrunner.in/abc");
+    }
+
+    @Test
+    void manuallyAssignRejectsBlankCourierName() {
+        assertThat(
+                org.assertj.core.api.Assertions.catchThrowable(
+                        () -> assignmentService.manuallyAssign(10L, "  ", "AWB-1")))
+                .isInstanceOf(com.shifa.oms.common.ValidationException.class);
+    }
+
+    /**
+     * A blank AWB is allowed (in-house-delivery feature): an in-house delivery, or
+     * a parcel handed to a local operator / bus / train, has no tracking number.
+     * The partner is still recorded (so the app can show who has the parcel) with a
+     * null AWB, and the label falls back to our own order-code barcode.
+     */
+    @Test
+    void manuallyAssignAcceptsABlankAwbAndRecordsThePartnerWithoutOne() {
+        OrderEntity order = handedOverCodOrder();
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        when(courierCompanyRepository.findFirstByName("In-House"))
+                .thenReturn(Optional.of(new CourierCompany("In-House", null)));
+
+        assignmentService.manuallyAssign(10L, "In-House", "   ");
+
+        assertThat(savedRecord).isNotNull();
+        assertThat(savedRecord.getAwb()).isNull();
+        // Status is untouched, exactly as for an AWB-bearing manual assignment.
+        assertThat(order.getStatusHistory()).isEmpty();
+    }
+
+    @Test
+    void manuallyAssignForMissingOrderIsNotFound() {
+        when(orderRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThat(
+                org.assertj.core.api.Assertions.catchThrowable(
+                        () -> assignmentService.manuallyAssign(99L, "Shifa Express", "AWB-1")))
+                .isInstanceOf(com.shifa.oms.common.ResourceNotFoundException.class);
+    }
+
+    private OrderEntity handedOverCodOrder() {
         OrderEntity order = new OrderEntity(
                 "SHR-000777", OrderSource.STOREFRONT, null,
                 "Asha", "9812345678", "12 MG Road", "Pune", "Maharashtra", "411001");
@@ -124,7 +249,8 @@ class CourierAssignmentIntegrationTest {
                 new BigDecimal("120.00"), new BigDecimal("240.00")));
         order.applyAmounts(new BigDecimal("240.00"), BigDecimal.ZERO.setScale(2),
                 new BigDecimal("240.00"), new BigDecimal("240.00"), PaymentStatus.COD);
-        order.setOrderStatus(OrderStatus.PACKED);
+        // Courier assignment now runs from Handed_To_Delivery (design §4.1).
+        order.setOrderStatus(OrderStatus.HANDED_TO_DELIVERY);
         return order;
     }
 

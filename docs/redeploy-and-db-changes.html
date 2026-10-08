@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shifa OMS — Redeploying Code &amp; Database Changes (what happens to your data)</title>
+<style>
+  :root{--green:#1F5D3F;--green-700:#184b32;--green-50:#eef4f0;--gold:#C9A227;
+    --ink:#1f2a24;--muted:#5b6b62;--line:#dce7e0;--danger:#b23b3b;--warn:#8a6d00;--ok:#1f7a4d;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);background:var(--green-50);line-height:1.6}
+  .band{background:linear-gradient(135deg,var(--green),var(--green-700));color:#fff;padding:32px 24px;border-bottom:4px solid var(--gold)}
+  .wrap{max-width:960px;margin:0 auto;padding:24px}
+  .band .wrap{padding:0}
+  h1{margin:0 0 6px;font-size:1.7rem}.sub{opacity:.9;margin:0}
+  h2{color:var(--green);margin-top:34px;font-size:1.2rem;display:flex;align-items:center;gap:10px}
+  .step{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;border-radius:50%;
+    background:var(--green);color:#fff;font-size:.9rem;font-weight:700;flex:0 0 auto;padding:0 6px}
+  h3{color:var(--green-700);margin:18px 0 6px;font-size:1rem}
+  pre{background:#0f2a1e;color:#eafff2;border-radius:10px;padding:14px 16px;overflow:auto;font-size:.84rem;line-height:1.5}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  p code,li code,td code{background:#e5efe9;color:var(--green-700);padding:1px 5px;border-radius:4px;font-size:.88em}
+  .note{background:#fff;border-left:4px solid var(--gold);border-radius:8px;padding:12px 16px;margin:14px 0;font-size:.92rem}
+  .note.warn{border-left-color:var(--warn)}.note.ok{border-left-color:var(--ok)}.note.danger{border-left-color:var(--danger)}
+  .toc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:18px 0}
+  .toc ol{margin:8px 0 0;padding-left:22px;columns:2}
+  @media(max-width:640px){.toc ol{columns:1}}
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:12px 0;font-size:.9rem}
+  th,td{padding:10px 13px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}th{background:var(--green);color:#fff}
+  tr:last-child td{border-bottom:0}
+  a{color:var(--green-700)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:14px 0}
+  .foot{color:var(--muted);font-size:.82rem;margin:30px 0 10px}
+  .diagram{background:#0f2a1e;color:#eafff2;border-radius:10px;padding:16px;font-size:.8rem;overflow:auto;white-space:pre}
+  .pill{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:999px}
+  .pill.safe{background:#e5f2ea;color:var(--ok)}
+  .pill.care{background:#fbf3d9;color:var(--warn)}
+  .pill.stop{background:#f7e2e2;color:var(--danger)}
+  kbd{background:#e5efe9;color:var(--green-700);padding:1px 6px;border-radius:4px;font-size:.85em;font-family:ui-monospace,monospace}
+</style>
+</head>
+<body>
+<div class="band"><div class="wrap">
+  <h1>Redeploying Code &amp; Database Changes</h1>
+  <p class="sub">What steps to run for a code change vs a DB change — and exactly what happens to your live data when you deploy a new JAR.</p>
+</div></div>
+
+<div class="wrap">
+
+  <div class="note ok">
+    <strong>The one-line answer.</strong> Deploying a new JAR <strong>does not wipe or reset your database</strong>. Your tables and rows are stored in
+    MySQL / RDS, not inside the app. On startup the app runs <strong>Flyway</strong>, which only applies <em>new</em> migration files it hasn't seen yet
+    and never re-runs old ones. Hibernate is set to <code>ddl-auto: validate</code>, so it <strong>checks</strong> the schema matches the code but <strong>never
+    changes data</strong>. Existing orders, customers, products, leads — all preserved across redeploys.
+  </div>
+
+  <div class="toc"><strong>On this page</strong>
+    <ol>
+      <li>How the app treats your data (the model)</li>
+      <li>Which kind of change am I making?</li>
+      <li>Path A — Code-only change</li>
+      <li>Path B — Database change (new migration)</li>
+      <li>What happens to data on re-run (scenarios)</li>
+      <li>Always back up first</li>
+      <li>The seed migrations (V22 / V27) warning</li>
+      <li>Rollback if a deploy goes wrong</li>
+      <li>Common errors &amp; fixes</li>
+      <li>Copy-paste cheat sheet</li>
+    </ol>
+  </div>
+
+  <h2><span class="step">1</span> How the app treats your data (the model)</h2>
+  <p>Three pieces decide what happens on every deploy. Understanding them removes all the guesswork:</p>
+  <table>
+    <thead><tr><th>Piece</th><th>Setting</th><th>What it means for your data</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Where data lives</strong></td><td>MySQL / RDS on disk</td><td>The database is a <em>separate</em> process from the app. Replacing the JAR never touches the data files.</td></tr>
+      <tr><td><strong>Flyway migrations</strong></td><td><code>spring.flyway.enabled: true</code>, <code>baseline-on-migrate: true</code>, files in <code>db/migration</code></td><td>On startup Flyway looks at the <code>flyway_schema_history</code> table, sees which <code>V1…Vnn</code> scripts already ran, and applies <strong>only the new ones</strong>. Already-applied scripts are skipped forever.</td></tr>
+      <tr><td><strong>Hibernate DDL</strong></td><td><code>ddl-auto: validate</code></td><td>Hibernate <strong>only verifies</strong> the tables match the entity classes. It will <strong>never</strong> create, drop, or alter tables or delete rows. If the schema doesn't match, the app refuses to start (a safe fail).</td></tr>
+    </tbody>
+  </table>
+  <div class="note ok"><strong>Bottom line:</strong> the schema is owned by your versioned SQL migrations, not by the app auto-magically. That's exactly why redeploys are safe and predictable.</div>
+
+  <h2><span class="step">2</span> Which kind of change am I making?</h2>
+  <table>
+    <thead><tr><th>Your change</th><th>Path</th><th>Data impact</th></tr></thead>
+    <tbody>
+      <tr><td>Java logic, bug fix, new endpoint, Angular UI change — <em>no schema change</em></td><td><strong>Path A</strong> (§3)</td><td><span class="pill safe">Zero</span> data untouched</td></tr>
+      <tr><td>New table / column / index, or a data backfill</td><td><strong>Path B</strong> (§4)</td><td><span class="pill care">Additive</span> your new migration runs once</td></tr>
+      <tr><td>Rename/drop a column, change a type, delete data</td><td><strong>Path B + care</strong> (§4, §6)</td><td><span class="pill stop">Destructive</span> back up first, review twice</td></tr>
+    </tbody>
+  </table>
+  <p>Not sure? If you didn't add a file under <code>backend/src/main/resources/db/migration/</code>, it's a <strong>code-only</strong> change (Path A).</p>
+
+  <h2><span class="step">3</span> Path A — Code-only change (no DB change)</h2>
+  <p>Backend logic, a new API, or a frontend tweak. Nothing about the database changes.</p>
+  <h3>On your PC — build the artifacts</h3>
+  <pre># Backend JAR
+cd "c:\E Drive\Shifa-Software\backend"
+mvn -DskipTests package        # produces target\shifa-oms-*.jar
+
+# Admin UI (only if you changed the frontend)
+cd "c:\E Drive\Shifa-Software\frontend"
+npm ci
+npx ng build admin --configuration production --base-href /</pre>
+  <h3>Upload to the server</h3>
+  <pre>scp -i "C:\path\to\shifa-key.pem" "..\backend\target\shifa-oms-0.0.1-SNAPSHOT.jar" ubuntu@&lt;PUBLIC_IP&gt;:/home/ubuntu/shifa-oms.jar
+# frontend only if rebuilt:
+scp -i "C:\path\to\shifa-key.pem" -r ".\dist\admin\browser\*" ubuntu@&lt;PUBLIC_IP&gt;:/home/ubuntu/admin-dist</pre>
+  <h3>On the server — swap in &amp; restart</h3>
+  <pre>sudo cp ~/shifa-oms.jar /opt/shifa/shifa-oms.jar &amp;&amp; sudo chown shifa:shifa /opt/shifa/shifa-oms.jar
+# frontend only if rebuilt:
+sudo rm -rf /var/www/shifa/admin/* &amp;&amp; sudo cp -r ~/admin-dist/* /var/www/shifa/admin/
+sudo chown -R www-data:www-data /var/www/shifa
+
+sudo systemctl restart shifa-oms &amp;&amp; sudo systemctl reload nginx
+sudo journalctl -u shifa-oms -f       # watch for "Started Application" / "Tomcat started on port 8080"</pre>
+  <div class="note ok"><strong>Data impact: none.</strong> Flyway sees no new migrations and does nothing to the schema; Hibernate validates and starts. Every existing row is exactly as it was.</div>
+
+  <h2><span class="step">4</span> Path B — Database change (add a new migration)</h2>
+  <div class="note danger"><strong>Golden rule: never edit a migration that has already run.</strong> Flyway stores a checksum of every applied script; changing <code>V1…V27</code> after they've run makes the app <strong>fail to start</strong> with a "checksum mismatch". To change the schema, always add the <em>next</em> new file.</div>
+  <h3>Step 1 — create the next versioned file</h3>
+  <p>The highest existing version is <code>V27</code>, so your next file is <code>V28__short_description.sql</code> in
+  <code>backend/src/main/resources/db/migration/</code>. Use the next number each time (<code>V29</code>, <code>V30</code>…).</p>
+  <pre>-- V28__add_customer_notes.sql   (additive = safe)
+ALTER TABLE customers ADD COLUMN notes VARCHAR(500) NULL;
+CREATE INDEX ix_customers_created_at ON customers (created_at);</pre>
+  <div class="note"><strong>Prefer additive, nullable changes.</strong> Adding a nullable column or a new table/index doesn't touch existing rows. If you must add a <code>NOT NULL</code> column, give it a <code>DEFAULT</code> or backfill in the same script so existing rows stay valid (Hibernate's <code>validate</code> will reject a mismatch on startup).</p></div>
+  <h3>Step 2 — if you touch an entity, update the Java too</h3>
+  <p>Because <code>ddl-auto: validate</code> compares entities to the schema, a new <em>mapped</em> column needs both the migration <strong>and</strong> the matching JPA field. Add a column the entities don't map? Fine — validate ignores extra unmapped columns. Map a field with no column? Startup fails. Keep them in sync.</p>
+  <h3>Step 3 — build, upload, restart (same as Path A)</h3>
+  <p>Rebuild the JAR (the new <code>V28</code> file is bundled inside it), <code>scp</code> it up, and restart the service. On startup Flyway detects <code>V28</code> is new, runs it once, records it in <code>flyway_schema_history</code>, and the app starts.</p>
+  <pre>sudo cp ~/shifa-oms.jar /opt/shifa/shifa-oms.jar &amp;&amp; sudo chown shifa:shifa /opt/shifa/shifa-oms.jar
+sudo systemctl restart shifa-oms
+sudo journalctl -u shifa-oms -f   # look for "Migrating schema ... to version 28"</pre>
+  <div class="note ok"><strong>Data impact:</strong> only what your <code>V28</code> script does. Additive scripts preserve all existing rows; a destructive script (drop/rename/delete) does exactly what you wrote — which is why §6 (back up first) matters here.</div>
+
+  <h2><span class="step">5</span> What happens to data on re-run — every scenario</h2>
+  <table>
+    <thead><tr><th>You do this</th><th>What Flyway / Hibernate does</th><th>Your data</th></tr></thead>
+    <tbody>
+      <tr><td>Redeploy the <strong>same</strong> JAR (restart)</td><td>No new migrations; validate passes</td><td><span class="pill safe">Unchanged</span></td></tr>
+      <tr><td>Deploy a JAR with <strong>only code changes</strong></td><td>No new migrations; validate passes</td><td><span class="pill safe">Unchanged</span></td></tr>
+      <tr><td>Deploy a JAR with a <strong>new additive migration</strong> (V28 add column/table)</td><td>Runs V28 once, records it</td><td><span class="pill safe">Preserved</span> + new empty column/table</td></tr>
+      <tr><td>Deploy a JAR with a <strong>destructive migration</strong> (drop/rename/DELETE)</td><td>Runs it once, as written</td><td><span class="pill stop">Changes as scripted</span> — back up first</td></tr>
+      <tr><td>You <strong>edited an already-applied</strong> V1–V27 file</td><td>Checksum mismatch → <strong>app won't start</strong></td><td><span class="pill care">Untouched</span> but app is down until reverted</td></tr>
+      <tr><td>You restore an <strong>old dump over the live DB</strong></td><td>Overwrites everything</td><td><span class="pill stop">Replaced</span> — never do this on live data</td></tr>
+    </tbody>
+  </table>
+  <div class="note warn"><strong>Rebuilding the JAR does not reset the database.</strong> A "fresh" reset only happens if you point the app at an <em>empty</em> database (or drop the schema yourself). As long as you keep pointing at the same <code>shifa_dashboard</code> / RDS instance, your data carries over every deploy.</div>
+
+  <h2><span class="step">6</span> Always back up before a deploy (especially Path B)</h2>
+  <p>For code-only deploys a backup is optional; for any schema/data change, take one <strong>first</strong>. You have three options:</p>
+  <h3>a) The app's own nightly backup (automatic)</h3>
+  <p>The backend already runs <code>mysqldump --single-transaction</code> every night at <strong>02:00</strong> (<code>app.backup.cron</code>), gzips it, and stores it. Good safety net, but it's yesterday's data — take a fresh one before a risky change.</p>
+  <h3>b) Manual dump on the server (works for local MySQL <em>and</em> RDS)</h3>
+  <pre># local MySQL on the EC2:
+mysqldump -u shifa -p --single-transaction shifa_dashboard &gt; ~/shifa_$(date +%F_%H%M).sql
+# RDS (point host at the endpoint):
+mysqldump -h &lt;rds-endpoint&gt; -u shifa -p --single-transaction shifa_dashboard &gt; ~/shifa_$(date +%F_%H%M).sql</pre>
+  <h3>c) RDS snapshot (managed DB only) <span class="pill care">recommended before schema changes</span></h3>
+  <p>Console → RDS → your instance → <strong>Actions → Take snapshot</strong>, or by CLI. A snapshot is a full point-in-time restore point:</p>
+  <pre>aws rds create-db-snapshot --region ap-south-1 \
+  --db-instance-identifier shifa-mysql \
+  --db-snapshot-identifier shifa-before-v28-$(date +%Y%m%d-%H%M)</pre>
+  <div class="note"><strong>Restore</strong> creates a <em>new</em> RDS instance from the snapshot; you then repoint <code>DB_HOST</code> in <code>/etc/shifa/shifa.env</code>. RDS also keeps automated backups (point-in-time restore) for the retention window you set.</div>
+
+  <h2><span class="step">7</span> The seed migrations (V22 / V27) — production warning</h2>
+  <p>Two migrations insert <strong>demo/test data</strong>: <code>V22</code> (demo dataset) and <code>V27</code> (large NOW()-relative test seed). They run automatically on a fresh DB and are perfect for a client demo.</p>
+  <div class="note warn">For a <strong>clean production</strong> database with no fake rows, decide this <em>before first launch</em>: either remove <code>V22</code>/<code>V27</code> from the build, or start from an empty DB and enter real data through the admin UI. Once these have run on a database, don't delete the files afterward — that triggers Flyway's "missing migration" check. Removing them only makes sense for a brand-new environment.</div>
+
+  <h2><span class="step">8</span> Rollback if a deploy goes wrong</h2>
+  <table>
+    <thead><tr><th>Problem</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>New code is buggy, <strong>no</strong> migration was added</td><td>Copy the previous JAR back to <code>/opt/shifa/shifa-oms.jar</code> and restart. Data was never touched.</td></tr>
+      <tr><td>App won't start after editing an old migration</td><td>Revert that file to its original content, rebuild, redeploy. (Never edit applied migrations.)</td></tr>
+      <tr><td>A migration ran but the new code is bad</td><td>Roll the <strong>code</strong> back to the previous JAR. The additive schema change is harmless to old code (extra columns/tables are ignored).</td></tr>
+      <tr><td>A destructive migration lost data</td><td>Restore from your pre-deploy dump / RDS snapshot (§6), then repoint <code>DB_HOST</code> if you restored to a new instance.</td></tr>
+    </tbody>
+  </table>
+  <div class="note"><strong>Tip:</strong> keep the last known-good JAR on the server (e.g. <code>~/shifa-oms.prev.jar</code>) so rollback is a one-line copy + restart.</div>
+
+  <h2><span class="step">9</span> Common errors &amp; fixes</h2>
+  <table>
+    <thead><tr><th>Log message</th><th>Cause</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td><code>Validate failed: migration checksum mismatch</code></td><td>You edited an already-applied migration</td><td>Revert the file to its original bytes; add a new <code>Vnn</code> for the real change.</td></tr>
+      <tr><td><code>Schema validation: missing column / table</code></td><td>Entity maps something the DB doesn't have</td><td>Add the migration that creates it, or fix the entity mapping.</td></tr>
+      <tr><td><code>Detected applied migration not resolved locally</code></td><td>A migration file was deleted after running</td><td>Restore the file, or (last resort, non-prod) clean the history.</td></tr>
+      <tr><td><code>Access denied for user</code> on start</td><td>Wrong <code>DB_*</code> values in <code>shifa.env</code></td><td>Fix credentials/endpoint; <code>sudo systemctl restart shifa-oms</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <h2><span class="step">10</span> Copy-paste cheat sheet</h2>
+  <div class="card">
+    <h3>Code-only redeploy</h3>
+    <pre>mvn -f "backend/pom.xml" -DskipTests package
+scp -i key.pem backend\target\shifa-oms-*.jar ubuntu@HOST:/home/ubuntu/shifa-oms.jar
+ssh: sudo cp ~/shifa-oms.jar /opt/shifa/shifa-oms.jar &amp;&amp; sudo systemctl restart shifa-oms</pre>
+    <h3>Database change</h3>
+    <pre>1. add backend/src/main/resources/db/migration/V28__desc.sql   (never edit V1..V27)
+2. (RDS) aws rds create-db-snapshot ... shifa-before-v28-...    (back up first)
+3. mvn -f "backend/pom.xml" -DskipTests package   (new migration is inside the JAR)
+4. scp up + sudo systemctl restart shifa-oms
+5. sudo journalctl -u shifa-oms -f   -> "Migrating schema ... to version 28"</pre>
+  </div>
+
+  <div class="note ok"><strong>Remember:</strong> new JAR ≠ new database. Your data lives in MySQL/RDS and survives every deploy. Flyway only <em>adds</em> what's new; Hibernate only <em>checks</em>. Back up before any schema change, keep migrations append-only, and you can redeploy as often as you like with confidence.</div>
+
+  <p class="foot">Shifa OMS · Redeploy &amp; DB change runbook · pairs with <a href="deployment-aws.html">deployment-aws.html</a> and <code>docs/DEPLOYMENT-AWS.md</code> (§14). Prices/paths are region- and setup-dependent — confirm against your live server.</p>
+
+</div>
+</body>
+</html>

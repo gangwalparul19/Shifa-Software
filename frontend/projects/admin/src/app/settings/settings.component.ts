@@ -9,6 +9,7 @@ import {
 } from '@angular/forms';
 import { ApiError } from 'core';
 import { AppSettings, SettingsService } from './settings.service';
+import { DeliveryState, StatesService } from '../shared/states.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
@@ -66,6 +67,7 @@ function gstSlabsValidator(control: AbstractControl): ValidationErrors | null {
 })
 export class SettingsComponent implements OnInit, OnDestroy {
   private readonly service = inject(SettingsService);
+  private readonly statesService = inject(StatesService);
   private readonly fb = inject(FormBuilder);
   private readonly confirmService = inject(ConfirmService);
   private readonly toasts = inject(ToastService);
@@ -74,6 +76,25 @@ export class SettingsComponent implements OnInit, OnDestroy {
   protected readonly loadError = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly formError = signal<string | null>(null);
+
+  // --- Category tabs ------------------------------------------------------
+  /** The settings categories, split into tabs so the page isn't one long scroll. */
+  protected readonly settingsTabs = [
+    { key: 'gst', label: 'GST & Invoice', icon: 'ti-receipt-tax' },
+    { key: 'company', label: 'Company', icon: 'ti-building-store' },
+    { key: 'bank', label: 'Bank', icon: 'ti-building-bank' },
+    { key: 'automation', label: 'Automation', icon: 'ti-robot' },
+    { key: 'states', label: 'States', icon: 'ti-map-pin' },
+  ] as const;
+
+  /** Which settings category is currently shown. */
+  protected readonly activeTab =
+    signal<'gst' | 'company' | 'bank' | 'automation' | 'states'>('gst');
+
+  /** Switch the visible settings category. */
+  setTab(key: 'gst' | 'company' | 'bank' | 'automation' | 'states'): void {
+    this.activeTab.set(key);
+  }
 
   // --- Company logo state -------------------------------------------------
   /** Object URL for the current logo preview, or null when no logo is set. */
@@ -85,6 +106,17 @@ export class SettingsComponent implements OnInit, OnDestroy {
   /** The current object URL, tracked so it can be revoked to avoid leaks. */
   private currentObjectUrl: string | null = null;
 
+  // --- Delivery states (order-entry typeahead master list) ----------------
+  protected readonly states = signal<DeliveryState[]>([]);
+  protected readonly statesLoading = signal(true);
+  protected readonly statesError = signal<string | null>(null);
+  protected readonly stateBusyId = signal<number | 'new' | null>(null);
+  /** Free-text field for adding a new delivery state. */
+  protected readonly newStateName = this.fb.nonNullable.control('', [
+    Validators.required,
+    Validators.maxLength(100),
+  ]);
+
   protected readonly form = this.fb.nonNullable.group({
     gstEnabled: [false],
     gstin: ['', [Validators.maxLength(20)]],
@@ -95,6 +127,11 @@ export class SettingsComponent implements OnInit, OnDestroy {
     stateCode: ['', [Validators.maxLength(4)]],
     gstRatePercent: ['5.00', [Validators.required, Validators.pattern(/^\d{1,3}(\.\d{1,2})?$/)]],
     pricesIncludeGst: [true],
+    // --- Low-stock + GST-filing configuration ------------------------------
+    lowStockThreshold: ['', [Validators.pattern(/^\d{1,7}$/)]],
+    aggregateTurnover: ['', [Validators.pattern(/^\d{1,13}(\.\d{1,2})?$/)]],
+    gstReminderWindowDays: ['', [Validators.pattern(/^([1-9]|[12]\d|30)$/)]],
+    gstReconciliationTolerance: ['', [Validators.pattern(/^\d{1,4}(\.\d{1,2})?$/)]],
     invoiceFooterNote: ['', [Validators.maxLength(500)]],
     contactPhone: ['', [Validators.maxLength(20)]],
     contactEmail: ['', [Validators.maxLength(120)]],
@@ -108,6 +145,9 @@ export class SettingsComponent implements OnInit, OnDestroy {
     bankAccountNumber: ['', [Validators.maxLength(40)]],
     bankIfsc: ['', [Validators.maxLength(20), Validators.pattern(IFSC_PATTERN)]],
     bankBranch: ['', [Validators.maxLength(120)]],
+    // --- Order auto-approval (V73, DEFAULT OFF) ----------------------------
+    autoApproveEnabled: [false],
+    autoApproveMaxAmount: ['', [Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
   });
 
   ngOnInit(): void {
@@ -116,10 +156,110 @@ export class SettingsComponent implements OnInit, OnDestroy {
       this.applyGstinValidators(enabled);
     });
     this.load();
+    this.loadStates();
   }
 
   ngOnDestroy(): void {
     this.revokeObjectUrl();
+  }
+
+  // --- Delivery states ----------------------------------------------------
+
+  /** Loads the full delivery-state master list for the management table. */
+  loadStates(): void {
+    this.statesLoading.set(true);
+    this.statesError.set(null);
+    this.statesService.listAll().subscribe({
+      next: (rows) => {
+        this.states.set(rows);
+        this.statesLoading.set(false);
+      },
+      error: () => {
+        this.statesError.set('Could not load delivery states.');
+        this.statesLoading.set(false);
+      },
+    });
+  }
+
+  /** Adds a new delivery state from the free-text field. */
+  addState(): void {
+    if (this.stateBusyId() !== null) {
+      return;
+    }
+    if (this.newStateName.invalid) {
+      this.newStateName.markAsTouched();
+      return;
+    }
+    const name = this.newStateName.value.trim();
+    if (!name) {
+      return;
+    }
+    this.stateBusyId.set('new');
+    this.statesService.create({ name }).subscribe({
+      next: (created) => {
+        this.stateBusyId.set(null);
+        this.states.update((list) =>
+          [...list, created].sort(
+            (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+          ),
+        );
+        this.newStateName.reset('');
+        this.toasts.success(`Added "${created.name}".`);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.stateBusyId.set(null);
+        this.toasts.error(this.describeError(err, 'Could not add the state.'));
+      },
+    });
+  }
+
+  /** Enables / disables a state (controls whether it appears in the order picker). */
+  toggleState(state: DeliveryState): void {
+    if (this.stateBusyId() !== null) {
+      return;
+    }
+    this.stateBusyId.set(state.id);
+    this.statesService
+      .update(state.id, { name: state.name, active: !state.active, sortOrder: state.sortOrder })
+      .subscribe({
+        next: (updated) => {
+          this.stateBusyId.set(null);
+          this.states.update((list) => list.map((s) => (s.id === updated.id ? updated : s)));
+        },
+        error: (err: HttpErrorResponse) => {
+          this.stateBusyId.set(null);
+          this.toasts.error(this.describeError(err, 'Could not update the state.'));
+        },
+      });
+  }
+
+  /** Removes a state from the master list, after confirmation. */
+  async removeState(state: DeliveryState): Promise<void> {
+    if (this.stateBusyId() !== null) {
+      return;
+    }
+    const confirmed = await this.confirmService.confirm({
+      title: 'Remove state',
+      message: `Remove "${state.name}" from the delivery-state list?`,
+      confirmLabel: 'Remove',
+      danger: true,
+      icon: 'ti-trash',
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.stateBusyId.set(state.id);
+    this.statesService.delete(state.id).subscribe({
+      next: () => {
+        this.stateBusyId.set(null);
+        this.states.update((list) => list.filter((s) => s.id !== state.id));
+        this.toasts.success(`Removed "${state.name}".`);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.stateBusyId.set(null);
+        this.toasts.error(this.describeError(err, 'Could not remove the state.'));
+      },
+    });
   }
 
   private applyGstinValidators(gstEnabled: boolean): void {
@@ -149,8 +289,12 @@ export class SettingsComponent implements OnInit, OnDestroy {
           city: s.city ?? '',
           state: s.state ?? '',
           stateCode: s.stateCode ?? '',
-          gstRatePercent: s.gstRatePercent ?? '5.00',
+          gstRatePercent: s.gstRatePercent != null ? String(s.gstRatePercent) : '5.00',
           pricesIncludeGst: s.pricesIncludeGst,
+          lowStockThreshold: s.lowStockThreshold != null ? String(s.lowStockThreshold) : '',
+          aggregateTurnover: s.aggregateTurnover != null ? String(s.aggregateTurnover) : '',
+          gstReminderWindowDays: s.gstReminderWindowDays != null ? String(s.gstReminderWindowDays) : '',
+          gstReconciliationTolerance: s.gstReconciliationTolerance != null ? String(s.gstReconciliationTolerance) : '',
           invoiceFooterNote: s.invoiceFooterNote ?? '',
           contactPhone: s.contactPhone ?? '',
           contactEmail: s.contactEmail ?? '',
@@ -162,6 +306,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
           bankAccountNumber: s.bankAccountNumber ?? '',
           bankIfsc: s.bankIfsc ?? '',
           bankBranch: s.bankBranch ?? '',
+          autoApproveEnabled: s.autoApproveEnabled ?? false,
+          autoApproveMaxAmount: s.autoApproveMaxAmount != null ? String(s.autoApproveMaxAmount) : '',
         });
         this.applyGstinValidators(s.gstEnabled);
         this.loading.set(false);
@@ -174,36 +320,93 @@ export class SettingsComponent implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * Maps each form control to the settings tab that holds it, so an invalid save
+   * can switch the user to the tab containing the first invalid field (otherwise
+   * the error would be on a hidden tab and the Save button would appear to do
+   * nothing).
+   */
+  private readonly controlTab: Record<string, 'gst' | 'company' | 'bank' | 'automation'> = {
+    gstEnabled: 'gst',
+    gstin: 'gst',
+    gstRatePercent: 'gst',
+    pricesIncludeGst: 'gst',
+    invoiceNumberPrefix: 'gst',
+    invoiceTerms: 'gst',
+    gstSlabs: 'gst',
+    lowStockThreshold: 'gst',
+    aggregateTurnover: 'gst',
+    gstReminderWindowDays: 'gst',
+    gstReconciliationTolerance: 'gst',
+    legalName: 'company',
+    addressLine: 'company',
+    city: 'company',
+    state: 'company',
+    stateCode: 'company',
+    contactPhone: 'company',
+    contactEmail: 'company',
+    invoiceFooterNote: 'company',
+    bankName: 'bank',
+    bankAccountName: 'bank',
+    bankAccountNumber: 'bank',
+    bankIfsc: 'bank',
+    bankBranch: 'bank',
+    autoApproveEnabled: 'automation',
+    autoApproveMaxAmount: 'automation',
+  };
+
   save(): void {
     if (this.saving()) {
       return;
     }
     if (this.form.invalid) {
       this.form.markAllAsTouched();
+      // Switch to the tab holding the first invalid control and tell the user,
+      // so a validation error on a hidden tab is never a silent no-op.
+      const firstInvalid = Object.keys(this.form.controls).find(
+        (name) => this.form.get(name)?.invalid,
+      );
+      const tab = firstInvalid ? this.controlTab[firstInvalid] : undefined;
+      if (tab && tab !== this.activeTab()) {
+        this.setTab(tab);
+      }
+      this.formError.set('Some settings need attention. Check the highlighted fields and try again.');
       return;
     }
     const raw = this.form.getRawValue();
+    // Coerce every value to a trimmed string before use: a numeric field the
+    // backend serialized as a JSON number (e.g. gstRatePercent as BigDecimal)
+    // would otherwise reach the form as a number and crash on `.trim()`.
+    const str = (v: unknown): string => (v == null ? '' : String(v).trim());
     const request: AppSettings = {
       gstEnabled: raw.gstEnabled,
-      gstin: raw.gstin.trim() || null,
-      legalName: raw.legalName.trim(),
-      addressLine: raw.addressLine.trim() || null,
-      city: raw.city.trim() || null,
-      state: raw.state.trim() || null,
-      stateCode: raw.stateCode.trim() || null,
-      gstRatePercent: raw.gstRatePercent.trim(),
+      gstin: str(raw.gstin) || null,
+      legalName: str(raw.legalName),
+      addressLine: str(raw.addressLine) || null,
+      city: str(raw.city) || null,
+      state: str(raw.state) || null,
+      stateCode: str(raw.stateCode) || null,
+      gstRatePercent: str(raw.gstRatePercent),
       pricesIncludeGst: raw.pricesIncludeGst,
-      invoiceFooterNote: raw.invoiceFooterNote.trim() || null,
-      contactPhone: raw.contactPhone.trim() || null,
-      contactEmail: raw.contactEmail.trim() || null,
-      invoiceNumberPrefix: raw.invoiceNumberPrefix.trim() || null,
-      invoiceTerms: raw.invoiceTerms.trim() || null,
-      gstSlabs: raw.gstSlabs.trim() || null,
-      bankName: raw.bankName.trim() || null,
-      bankAccountName: raw.bankAccountName.trim() || null,
-      bankAccountNumber: raw.bankAccountNumber.trim() || null,
-      bankIfsc: raw.bankIfsc.trim().toUpperCase() || null,
-      bankBranch: raw.bankBranch.trim() || null,
+      lowStockThreshold: str(raw.lowStockThreshold) ? Number(str(raw.lowStockThreshold)) : null,
+      aggregateTurnover: str(raw.aggregateTurnover) || null,
+      gstReminderWindowDays: str(raw.gstReminderWindowDays)
+        ? Number(str(raw.gstReminderWindowDays))
+        : null,
+      gstReconciliationTolerance: str(raw.gstReconciliationTolerance) || null,
+      invoiceFooterNote: str(raw.invoiceFooterNote) || null,
+      contactPhone: str(raw.contactPhone) || null,
+      contactEmail: str(raw.contactEmail) || null,
+      invoiceNumberPrefix: str(raw.invoiceNumberPrefix) || null,
+      invoiceTerms: str(raw.invoiceTerms) || null,
+      gstSlabs: str(raw.gstSlabs) || null,
+      bankName: str(raw.bankName) || null,
+      bankAccountName: str(raw.bankAccountName) || null,
+      bankAccountNumber: str(raw.bankAccountNumber) || null,
+      bankIfsc: str(raw.bankIfsc).toUpperCase() || null,
+      bankBranch: str(raw.bankBranch) || null,
+      autoApproveEnabled: raw.autoApproveEnabled,
+      autoApproveMaxAmount: str(raw.autoApproveMaxAmount) || null,
     };
 
     this.saving.set(true);

@@ -35,5 +35,8 @@ public record ReceivableResponse(
         BigDecimal amount,
         boolean settled,
         LocalDate settledDate,
-        LocalDateTime createdAt) {
+        LocalDateTime createdAt,
+        // Name of the salesperson who punched the order (resolved from
+        // created_by; full name, else username; null when unknown).
+        String salespersonName) {
 }

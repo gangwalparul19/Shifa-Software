@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shifa OMS — Pricing &amp; Investment Proposal</title>
+<style>
+  :root{
+    --green:#1F5D3F; --green-2:#1F7A4D; --green-dark:#0f3d27; --gold:#C8A24A;
+    --bg:#eef2ee; --card:#ffffff; --text:#22332b; --muted:#6b7b72; --line:#e2e8e4;
+    --shadow:0 6px 24px rgba(15,61,39,.10); --blue:#2563eb; --red:#dc2626;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.65;font-size:15px;}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 20px 90px;}
+
+  header.brand{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;
+    padding:38px 24px;text-align:center;position:relative;overflow:hidden;}
+  header.brand::after{content:"🌿";position:absolute;right:10px;bottom:-24px;font-size:150px;opacity:.10;}
+  header.brand .leaf{font-size:32px;}
+  header.brand h1{margin:6px 0 4px;font-size:28px;}
+  header.brand p{margin:0;color:#dceee2;}
+  .rule{height:4px;background:var(--gold);}
+
+  /* Hero pricing card */
+  .hero-price{background:linear-gradient(135deg,#ffffff,#f8fdf9);border:3px solid var(--green);
+    border-radius:20px;padding:40px;margin:32px 0;text-align:center;box-shadow:0 12px 40px rgba(15,61,39,.15);}
+  .hero-price .label{color:var(--muted);font-size:14px;text-transform:uppercase;letter-spacing:1px;
+    font-weight:700;margin-bottom:8px;}
+  .hero-price .amount{font-size:56px;color:var(--green-dark);font-weight:900;line-height:1;margin:12px 0;}
+  .hero-price .amount span{font-size:32px;font-weight:700;}
+  .hero-price .desc{color:var(--muted);font-size:16px;margin:16px 0;max-width:600px;margin-left:auto;margin-right:auto;}
+  .hero-price .savings{display:inline-block;background:#fff8e8;border:2px solid var(--gold);
+    padding:12px 24px;border-radius:999px;font-size:15px;font-weight:700;color:#7a5c12;margin-top:16px;}
+  /* Value-led hero: lead with what they get; the price is revealed on click. */
+  .hero-price .hero-headline{font-size:22px;font-weight:800;color:var(--green-dark);
+    line-height:1.35;margin:6px auto 4px;max-width:640px;}
+  .hero-reveal{margin-top:14px;}
+  .hero-reveal summary{display:inline-block;cursor:pointer;list-style:none;background:var(--green);
+    color:#fff;font-weight:700;font-size:15px;padding:12px 28px;border-radius:999px;
+    box-shadow:0 6px 18px rgba(15,61,39,.18);transition:.2s;}
+  .hero-reveal summary::-webkit-details-marker{display:none;}
+  .hero-reveal summary::marker{content:'';}
+  .hero-reveal summary:hover{background:var(--green-dark);transform:translateY(-1px);}
+  .hero-reveal[open] summary{background:var(--green-dark);margin-bottom:6px;}
+  .hero-price .amount em{font-size:18px;font-weight:700;color:var(--muted);font-style:normal;}
+  /* ROI / value-in-context box */
+  .roi{background:linear-gradient(135deg,#eef7f1,#ffffff);border:2px solid var(--green);
+    border-radius:16px;padding:26px 28px;margin:28px 0;}
+  .roi h2{margin:0 0 8px;}
+  .roi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:18px 0 6px;}
+  .roi-box{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center;}
+  .roi-box .num{font-size:24px;font-weight:900;color:var(--green-dark);line-height:1.1;}
+  .roi-box .cap{font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.35;}
+  .roi-note{font-size:14.5px;color:#2b3a33;margin:10px 0 0;}
+  @media(max-width:640px){.roi-grid{grid-template-columns:repeat(2,1fr);}}
+  
+  @media(max-width:640px){
+    .hero-price{padding:30px 20px;}
+    .hero-price .amount{font-size:42px;}
+    .hero-price .amount span{font-size:26px;}
+  }
+
+  h2{color:var(--green-dark);font-size:26px;margin:48px 0 12px;text-align:center;}
+  .section-intro{text-align:center;color:var(--muted);max-width:700px;margin:0 auto 32px;font-size:16px;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px 28px;margin:16px 0;
+    box-shadow:var(--shadow);}
+
+  /* Comparison bars */
+  .comparison{margin:32px 0;}
+  .comp-item{margin:24px 0;}
+  .comp-label{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-weight:600;}
+  .comp-label .name{font-size:15px;color:var(--text);}
+  .comp-label .price{font-size:18px;color:var(--green-dark);}
+  .comp-bar{height:48px;background:#f5f5f5;border-radius:10px;position:relative;overflow:hidden;
+    border:1px solid var(--line);}
+  .comp-bar .fill{height:100%;display:flex;align-items:center;padding:0 16px;color:#fff;
+    font-weight:700;font-size:14px;transition:width 1s ease;}
+  .comp-bar .fill.us{background:linear-gradient(90deg,var(--green),var(--green-2));}
+  .comp-bar .fill.them{background:linear-gradient(90deg,#dc2626,#ef4444);}
+  .comp-bar .fill.shopify{background:linear-gradient(90deg,#2563eb,#3b82f6);}
+
+  /* Why choose us grid */
+  .why-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;margin:32px 0;}
+  .why-card{background:linear-gradient(135deg,#eaf3ec,#fff);border:2px solid var(--green);
+    border-radius:14px;padding:24px;text-align:center;}
+  .why-card .icon{font-size:42px;margin-bottom:12px;}
+  .why-card h3{margin:0 0 8px;font-size:18px;color:var(--green-dark);}
+  .why-card p{margin:0;font-size:14px;color:var(--text);line-height:1.6;}
+
+  /* Modules table */
+  table{width:100%;border-collapse:collapse;margin:24px 0;font-size:14px;}
+  th,td{text-align:left;padding:12px 14px;border:1px solid var(--line);}
+  th{background:var(--green);color:#fff;font-weight:600;}
+  tr:nth-child(even) td{background:#f2f8f4;}
+  td.num,th.num{text-align:right;white-space:nowrap;}
+  tfoot td{font-weight:800;background:#e6f4ec !important;color:var(--green-dark);font-size:16px;}
+
+  /* Payment plans */
+  .plans-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;margin:32px 0;}
+  .plan-card{background:var(--card);border:2px solid var(--line);border-radius:14px;padding:24px;
+    transition:.2s;}
+  .plan-card:hover{border-color:var(--green);box-shadow:var(--shadow);}
+  .plan-card.recommended{border-color:var(--green);border-width:3px;position:relative;}
+  .plan-card.recommended::before{content:"RECOMMENDED";position:absolute;top:-12px;left:50%;
+    transform:translateX(-50%);background:var(--green);color:#fff;padding:4px 16px;border-radius:999px;
+    font-size:11px;font-weight:800;letter-spacing:1px;}
+  .plan-card h3{margin:0 0 8px;font-size:19px;color:var(--green-dark);}
+  .plan-card .price{font-size:32px;font-weight:800;color:var(--green-dark);margin:8px 0;}
+  .plan-card .desc{color:var(--muted);font-size:13px;margin:8px 0;line-height:1.5;}
+  .plan-card ul{margin:16px 0 0;padding:0;list-style:none;}
+  .plan-card li{padding:6px 0 6px 24px;position:relative;font-size:14px;}
+  .plan-card li::before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:900;}
+
+  /* Stats highlight */
+  .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:32px 0;}
+  .stat-box{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;
+    border-radius:12px;padding:24px;text-align:center;}
+  .stat-box .number{font-size:36px;font-weight:900;line-height:1;margin-bottom:8px;}
+  .stat-box .label{font-size:14px;opacity:.9;}
+
+  /* Spotlight banner */
+  .spotlight{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;border-radius:16px;
+    padding:28px 32px;margin:40px 0;box-shadow:0 10px 30px rgba(15,61,39,.22);position:relative;overflow:hidden;}
+  .spotlight::after{content:"🌿";position:absolute;right:-6px;bottom:-26px;font-size:130px;opacity:.10;}
+  .spotlight-badge{display:inline-block;background:var(--gold);color:#3a2c05;font-weight:800;font-size:12px;
+    border-radius:999px;padding:6px 16px;margin-bottom:12px;letter-spacing:.3px;}
+  .spotlight h3{margin:0 0 10px;font-size:22px;position:relative;z-index:1;}
+  .spotlight p{margin:0;color:#e3f2e9;font-size:15px;line-height:1.7;position:relative;z-index:1;}
+  .spotlight ul{margin:16px 0 0;padding:0;list-style:none;position:relative;z-index:1;}
+  .spotlight li{padding:8px 0 8px 28px;position:relative;color:#e3f2e9;}
+  .spotlight li::before{content:"✓";position:absolute;left:0;color:var(--gold);font-weight:900;font-size:18px;}
+
+  footer{text-align:center;color:var(--muted);font-size:13px;margin-top:64px;padding:20px;
+    border-top:1px solid var(--line);background:linear-gradient(to bottom,#ffffff,#f8f9fa);}
+  footer b{color:var(--green-dark);}
+  footer a{color:var(--green);text-decoration:none;font-weight:500;}
+  footer a:hover{color:var(--green-dark);text-decoration:underline;}
+  
+  @media(max-width:640px){
+    footer{padding:16px;font-size:12px;}
+  }
+</style>
+</head>
+<body>
+
+<header class="brand">
+  <div class="leaf">🌿</div>
+  <h1>Shifa OMS — Pricing Proposal</h1>
+  <p>Purpose-built Order Management System for Shifa Herbal Remedies</p>
+</header>
+<div class="rule"></div>
+
+<div class="wrap">
+
+  <!-- HERO PRICING (value-led; price revealed on click) -->
+  <div class="hero-price">
+    <div class="label">Complete Platform</div>
+    <div class="hero-headline">A purpose-built Order Management System for Shifa — 17 complete modules, weekend staff training and full source-code handover.</div>
+    <div class="desc">
+      One-time build · 17 complete modules · Weekend staff training · 1 month post-launch support · Source code handover · <strong>deployment &amp; hosting covered by us for the first 3 months</strong>
+    </div>
+    <details class="hero-reveal">
+      <summary>💰 View the investment</summary>
+      <div class="amount"><span>₹</span>47,500 <em>one-time</em></div>
+      <div class="savings">₹68,000 of delivered value for ₹47,500 · Save 57% vs. alternatives</div>
+    </details>
+  </div>
+
+  <!-- ROI / VALUE-IN-CONTEXT -->
+  <div class="roi">
+    <h2>📈 What it costs vs. what you sell</h2>
+    <p class="section-intro" style="margin:0;">
+      At roughly <strong>3,000 orders/month</strong> and an average order of <strong>₹300</strong>, you turn over about
+      <strong>₹9,00,000 every month</strong> (~₹1.08 crore/year). Here's how the platform compares to that:
+    </p>
+    <div class="roi-grid">
+      <div class="roi-box">
+        <div class="num">₹9,00,000</div>
+        <div class="cap">Your monthly sales<br>(3,000 × ₹300)</div>
+      </div>
+      <div class="roi-box">
+        <div class="num">₹47,500</div>
+        <div class="cap">One-time build — about <strong>5%</strong> of a single month's sales</div>
+      </div>
+      <div class="roi-box">
+        <div class="num">~₹6.6–7K<span style="font-size:13px;">/mo</span></div>
+        <div class="cap">Running cost — about <strong>₹2.4 per order</strong> (WhatsApp + hosting)</div>
+      </div>
+      <div class="roi-box">
+        <div class="num">3 months</div>
+        <div class="cap">Deployment &amp; hosting on us; after that ~₹2,500–3,000/mo</div>
+      </div>
+    </div>
+    <p class="roi-note">
+      In short: the entire build is about <strong>one-twentieth of one month's revenue</strong>, and day-to-day running
+      costs work out to roughly <strong>₹2.4 per order</strong> — so the system effectively pays for itself within the first few days of use.
+    </p>
+  </div>
+
+  <!-- SAVINGS COMPARISON -->
+  <h2>📊 How Much You Save</h2>
+  <p class="section-intro">
+    Compare our pricing against typical alternatives. Shifa OMS costs <strong>57% less</strong> than local vendors and <strong>62% less</strong> than Shopify over 1 year.
+  </p>
+
+  <div class="card">
+    <div class="comparison">
+      <div class="comp-item">
+        <div class="comp-label">
+          <span class="name">🌿 Shifa OMS (Us)</span>
+          <span class="price">₹47,500</span>
+        </div>
+        <div class="comp-bar">
+          <div class="fill us" style="width:43%;">43% of typical cost</div>
+        </div>
+      </div>
+
+      <div class="comp-item">
+        <div class="comp-label">
+          <span class="name">🧰 Local WordPress Vendor</span>
+          <span class="price">₹1,10,000</span>
+        </div>
+        <div class="comp-bar">
+          <div class="fill them" style="width:100%;">132% more expensive</div>
+        </div>
+      </div>
+
+      <div class="comp-item">
+        <div class="comp-label">
+          <span class="name">🛒 Shopify (1 year)</span>
+          <span class="price">₹1,25,000</span>
+        </div>
+        <div class="comp-bar">
+          <div class="fill shopify" style="width:113%;">163% more expensive</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="number">57%</div>
+        <div class="label">Savings vs. Local Vendors</div>
+      </div>
+      <div class="stat-box">
+        <div class="number">62%</div>
+        <div class="label">Savings vs. Shopify (Year 1)</div>
+      </div>
+      <div class="stat-box">
+        <div class="number">₹62K+</div>
+        <div class="label">Money Saved Immediately</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WHY CHOOSE US -->
+  <h2>🌟 Why Choose Weblithic for Shifa OMS</h2>
+  <p class="section-intro">
+    We don't just build software—we deliver complete systems with training, support, and proven workflows.
+  </p>
+
+  <div class="why-grid">
+    <div class="why-card">
+      <div class="icon">⚡</div>
+      <h3>Pre-Built & Tested</h3>
+      <p>Not a from-scratch project. 490+ automated tests ensure everything works before you pay.</p>
+    </div>
+
+    <div class="why-card">
+      <div class="icon">🎯</div>
+      <h3>Purpose-Built Workflow</h3>
+      <p>Real order workflow engine with role-based access, audit trails, and COD reconciliation—not templates.</p>
+    </div>
+
+    <div class="why-card">
+      <div class="icon">👥</div>
+      <h3>Hands-On Training</h3>
+      <p>Full weekend on-site training with your team. We don't just hand over software and disappear.</p>
+    </div>
+
+    <div class="why-card">
+      <div class="icon">🔒</div>
+      <h3>Your Code, Your Data</h3>
+      <p>Complete source code handover. No monthly subscriptions, no vendor lock-in.</p>
+    </div>
+
+    <div class="why-card">
+      <div class="icon">📊</div>
+      <h3>Complete Financials</h3>
+      <p>GST invoices, P&L reports, COD reconciliation, Vyapar exports—all built-in.</p>
+    </div>
+
+    <div class="why-card">
+      <div class="icon">🚀</div>
+      <h3>Launch Support</h3>
+      <p>1 month of post-launch support included, plus deployment &amp; hosting covered by us for the first 3 months. Optional AMC after that.</p>
+    </div>
+  </div>
+
+  <!-- SPOTLIGHT EXCLUSIVE -->
+  <div class="spotlight">
+    <div class="spotlight-badge">★ Exclusive Training Included</div>
+    <h3>Weekend On-Site Training with Your Team</h3>
+    <p>
+      We spend a <strong>full weekend on-site with your sales team</strong>—training every salesperson on the app, then sitting with them for a couple of hours to process a real order end-to-end. We do the same with the admin on approvals, dispatch, and reconciliation. Your team goes live confident, not confused.
+    </p>
+    <ul>
+      <li>All salespeople trained together</li>
+      <li>First real order processed live, with us</li>
+      <li>Admin walkthrough: approve → dispatch → settle COD</li>
+      <li>1 session virtually, over a weekend</li>
+    </ul>
+  </div>
+
+  <!-- MODULES BREAKDOWN -->
+  <h2>📦 What's Included</h2>
+  <p class="section-intro">
+    17 complete modules covering everything from order capture to financial reconciliation, sales
+    intelligence, forecasting and a mobile app — all bundled into the one all-inclusive price.
+  </p>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:50px;">#</th>
+          <th>Module</th>
+          <th>What It Covers</th>
+          <th class="num" style="width:100px;">Value (₹)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td><strong>Role-Based Dashboard</strong></td>
+          <td>4 role-specific dashboards (Admin, Salesperson, Packer, Accountant) with KPIs and quick actions</td>
+          <td class="num">5,000</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td><strong>Order Management</strong></td>
+          <td>Order capture, lifecycle tracking, status history, filters, search</td>
+          <td class="num">6,000</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td><strong>Approval Workflow</strong></td>
+          <td>Admin approval queue, status transitions, notifications</td>
+          <td class="num">3,500</td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td><strong>Packing Operations</strong></td>
+          <td>Packing queues, barcode scanner, label generation, handover tracking</td>
+          <td class="num">4,500</td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td><strong>Courier Integration</strong></td>
+          <td>Courier assignment, tracking, AWB management, delivery status updates</td>
+          <td class="num">3,000</td>
+        </tr>
+        <tr>
+          <td>6</td>
+          <td><strong>COD Management</strong></td>
+          <td>Receivables tracking, settlement, outstanding reports, claims</td>
+          <td class="num">4,000</td>
+        </tr>
+        <tr>
+          <td>7</td>
+          <td><strong>Finance & Accounting</strong></td>
+          <td>P&L reports, expenses, GST invoices, Vyapar exports</td>
+          <td class="num">5,000</td>
+        </tr>
+        <tr>
+          <td>8</td>
+          <td><strong>Product Catalog</strong></td>
+          <td>Product management, inventory tracking, stock movements, low-stock alerts</td>
+          <td class="num">3,500</td>
+        </tr>
+        <tr>
+          <td>9</td>
+          <td><strong>Leads & CRM</strong></td>
+          <td>Lead capture, pipeline tracking, follow-ups, conversion to orders</td>
+          <td class="num">3,000</td>
+        </tr>
+        <tr>
+          <td>10</td>
+          <td><strong>Returns Management</strong></td>
+          <td>RTO tracking, customer returns, refund processing</td>
+          <td class="num">2,500</td>
+        </tr>
+        <tr>
+          <td>11</td>
+          <td><strong>Procurement</strong></td>
+          <td>Supplier management, purchase orders, stock inward</td>
+          <td class="num">2,500</td>
+        </tr>
+        <tr>
+          <td>12</td>
+          <td><strong>Staff Management</strong></td>
+          <td>Salesperson profiles, verification, ID proof upload, self-service profile updates</td>
+          <td class="num">5,000</td>
+        </tr>
+        <tr>
+          <td colspan="4" style="background:#eef7f1;color:#1f5d3f;font-weight:700;">
+            ✨ Phase 2 Enhancements — included at no extra cost
+          </td>
+        </tr>
+        <tr>
+          <td>13</td>
+          <td><strong>Customer 360 &amp; CRM Intelligence</strong></td>
+          <td>Full customer profile with delivery-reliability risk score, segment tags, notes timeline, products bought and order history; prepaid nudge for risky customers</td>
+          <td class="num">4,000</td>
+        </tr>
+        <tr>
+          <td>14</td>
+          <td><strong>Sales Performance &amp; Targets (Salesperson 360)</strong></td>
+          <td>Team leaderboard, per-rep KPIs (orders, revenue, conversion, delivery success) and monthly sales-target tracking so admins can coach and compare the team</td>
+          <td class="num">4,500</td>
+        </tr>
+        <tr>
+          <td>15</td>
+          <td><strong>Business Analytics &amp; Forecasting</strong></td>
+          <td>Customer retention cohorts (repeat-buyer rates), revenue &amp; product-demand forecasting, plus the automated statistical insights engine (anomalies, low-stock, RTO risk)</td>
+          <td class="num">5,000</td>
+        </tr>
+        <tr>
+          <td>16</td>
+          <td><strong>Mobile App, Offline &amp; Push</strong></td>
+          <td>Installable phone app (PWA), offline order capture that auto-syncs on reconnect, phone-camera barcode scanning for packing, and browser push notifications to staff</td>
+          <td class="num">5,500</td>
+        </tr>
+        <tr>
+          <td>17</td>
+          <td><strong>Staff Announcements &amp; Communication</strong></td>
+          <td>Admin-posted announcement banners every staff member sees on login — internal comms without WhatsApp groups</td>
+          <td class="num">1,500</td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="3"><strong>Total Delivered Value (17 modules)</strong></td>
+          <td class="num"><strong>₹68,000</strong></td>
+        </tr>
+        <tr>
+          <td colspan="3"><strong>🌿 Your All-Inclusive Price</strong></td>
+          <td class="num"><strong>₹47,500</strong></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- PAYMENT OPTIONS -->
+  <h2>💳 Flexible Payment Options</h2>
+  <p class="section-intro">
+    Choose the payment plan that works best for your cash flow.
+  </p>
+
+  <div class="plans-grid">
+    <div class="plan-card">
+      <h3>Full Payment</h3>
+      <div class="price">₹47,500</div>
+      <div class="desc">One-time payment, complete platform delivered</div>
+      <ul>
+        <li>No payment plan fees</li>
+        <li>Immediate deployment</li>
+        <li>Best overall value</li>
+      </ul>
+    </div>
+
+    <div class="plan-card recommended">
+      <h3>Payment Plan</h3>
+      <div class="price">₹15K + ₹15K + ₹17.5K</div>
+      <div class="desc">Spread across 3 milestones over 2-3 weeks</div>
+      <ul>
+        <li>₹15,000 on Day 1 (start)</li>
+        <li>₹15,000 after 7-day trial</li>
+        <li>₹17,500 when live in production</li>
+      </ul>
+    </div>
+
+    <div class="plan-card">
+      <h3>AMC (Optional)</h3>
+      <div class="price">₹6,999/month</div>
+      <div class="desc">Optional ongoing maintenance &amp; support (after the included 1-month support)</div>
+      <ul>
+        <li>Bug fixes & updates</li>
+        <li>Feature enhancements</li>
+        <li>Priority support</li>
+        <li>₹9,999/month for growth tier</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- RUNNING COSTS -->
+  <h2>📊 Ongoing Running Costs</h2>
+  <p class="section-intro">
+    Transparent breakdown of monthly operational costs after the one-time build.
+  </p>
+
+  <div style="background:#fff8e8;border:1px solid var(--gold);border-radius:10px;padding:16px 20px;margin:0 0 20px;font-size:14px;">
+    <strong style="color:#7a5c12;">📱 WhatsApp API Note:</strong> <span style="color:#8a6a12;">The WhatsApp API cost (₹1.20-1.40 per order for 4 messages) is directly paid by you to the WhatsApp service provider. We don't mark this up—it's a pass-through cost that you control based on your order volume.</span>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Details</th>
+          <th class="num">Monthly Cost (₹)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>AMC (Optional)</strong></td>
+          <td>Optional ongoing maintenance &amp; support (1 month included free, then optional)</td>
+          <td class="num">6,999 – 9,999</td>
+        </tr>
+        <tr>
+          <td><strong>Cloud Hosting &amp; Deployment</strong></td>
+          <td>AWS cloud (EC2 app server + managed RDS database) — <strong>covered by us for the first 3 months</strong>, then borne by you</td>
+          <td class="num">0 (first 3 mo), then 2,500 – 3,000</td>
+        </tr>
+        <tr>
+          <td><strong>WhatsApp API</strong></td>
+          <td>4 messages per order × ₹0.30-0.35 per message (client-borne cost, not charged by us)</td>
+          <td class="num">~1.20-1.40 per order</td>
+        </tr>
+        <tr>
+          <td><strong>WhatsApp Monthly</strong></td>
+          <td>Estimated 3,000 orders/month × ₹1.35 avg per order</td>
+          <td class="num">~4,050</td>
+        </tr>
+        <tr>
+          <td><strong>Domain & SSL</strong></td>
+          <td>Annual renewal (₹1,000/year)</td>
+          <td class="num">84</td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2"><strong>Estimated Monthly Total (with AMC)</strong></td>
+          <td class="num"><strong>₹13,633 – ₹17,133</strong></td>
+        </tr>
+        <tr>
+          <td colspan="2"><strong>Estimated Monthly Total (without AMC)</strong></td>
+          <td class="num"><strong>₹6,634 – ₹7,134</strong></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+</div>
+
+<footer>
+  <b>Shifa Herbal Remedies — OMS.</b> Pricing &amp; investment proposal prepared for client discussion.<br>
+  Indicative figures in ₹ · Third-party charges are pass-through · GST extra where applicable · Valid 30 days.<br>
+  <br>
+  Developed by <a href="http://www.weblithic.com" target="_blank">Weblithic</a>
+</footer>
+
+<script>
+  // Animate comparison bars on load
+  window.addEventListener('load', () => {
+    document.querySelectorAll('.comp-bar .fill').forEach(fill => {
+      const width = fill.style.width;
+      fill.style.width = '0%';
+      setTimeout(() => {
+        fill.style.width = width;
+      }, 300);
+    });
+  });
+</script>
+
+</body>
+</html>

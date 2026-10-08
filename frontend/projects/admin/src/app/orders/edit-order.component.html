@@ -1,0 +1,434 @@
+<admin-page-header
+  title="Edit Order"
+  subtitle="Correct the details a salesperson entered for this order."
+  [breadcrumbs]="[{ label: 'Orders', link: '/orders' }, { label: 'Edit' }]"
+/>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" loadingLabel="Loading order…" [card]="true" />
+} @else if (loadError()) {
+  <admin-state-panel
+    variant="error"
+    [message]="loadError()!"
+    (retry)="retryLoad()"
+    [card]="true"
+  />
+} @else {
+  <div class="alert alert-info anim-fade-up" role="status">
+    <i class="ti ti-receipt me-2"></i>
+    Editing <strong>{{ orderCode() }}</strong>. Payment details are not editable here.
+  </div>
+
+  @if (notEditable()) {
+    <div class="alert alert-danger anim-fade-up" role="alert">
+      <i class="ti ti-lock me-2"></i>
+      This order can no longer be edited — its current status is
+      <strong>{{ orderStatus() }}</strong>. Editing is only allowed before packing begins.
+    </div>
+  }
+
+  @if (serverErrors().length > 0) {
+    <div class="alert alert-danger" role="alert">
+      <div class="fw-medium mb-1"><i class="ti ti-alert-triangle me-1"></i> Please fix the following:</div>
+      <ul class="mb-0">
+        @for (e of serverErrors(); track $index) {
+          <li>{{ e }}</li>
+        }
+      </ul>
+    </div>
+  }
+
+  <form [formGroup]="form" (ngSubmit)="submit()" novalidate class="shifa-no">
+    <!-- ===================== Customer Details ===================== -->
+    <section class="shifa-no__section">
+      <h2 class="shifa-no__title">Customer Details</h2>
+      <div class="shifa-no__card">
+        <div class="row g-2 g-md-3">
+          <div class="col-6">
+            <label class="form-label required" for="customerName">Customer name</label>
+            <input
+              id="customerName"
+              type="text"
+              class="form-control"
+              formControlName="customerName"
+              maxlength="100"
+              autocomplete="off"
+              [class.is-invalid]="invalid('customerName')"
+            />
+            @if (invalid('customerName')) {
+              <div class="invalid-feedback">A customer name (max 100 chars) is required.</div>
+            }
+          </div>
+
+          <div class="col-6">
+            <label class="form-label required" for="customerMobile">Phone number</label>
+            <input
+              id="customerMobile"
+              type="tel"
+              inputmode="numeric"
+              class="form-control"
+              formControlName="customerMobile"
+              maxlength="10"
+              placeholder="10-digit mobile"
+              autocomplete="off"
+              [class.is-invalid]="invalid('customerMobile')"
+            />
+            @if (invalid('customerMobile')) {
+              <div class="invalid-feedback">Enter exactly 10 digits.</div>
+            }
+          </div>
+
+          <div class="col-6">
+            <label class="form-label" for="alternateMobile">Alternate number <span class="text-secondary">(optional)</span></label>
+            <input
+              id="alternateMobile"
+              type="tel"
+              inputmode="numeric"
+              class="form-control"
+              formControlName="alternateMobile"
+              maxlength="10"
+              placeholder="10-digit mobile"
+              autocomplete="off"
+              [class.is-invalid]="invalid('alternateMobile')"
+            />
+            @if (invalid('alternateMobile')) {
+              <div class="invalid-feedback">Enter exactly 10 digits, or leave blank.</div>
+            }
+          </div>
+
+          <div class="col-6">
+            <label class="form-label" for="customerEmail">Email <span class="text-secondary">(optional)</span></label>
+            <input
+              id="customerEmail"
+              type="email"
+              class="form-control"
+              formControlName="customerEmail"
+              maxlength="150"
+              inputmode="email"
+              autocomplete="off"
+              placeholder="name@example.com"
+              [class.is-invalid]="invalid('customerEmail')"
+            />
+            @if (invalid('customerEmail')) {
+              <div class="invalid-feedback">Enter a valid email address (max 150 chars).</div>
+            }
+          </div>
+
+          <!-- Lead source (origin channel) -->
+          <div class="col-6">
+            <label class="form-label required" for="leadSource">Lead source</label>
+            <select
+              id="leadSource"
+              class="form-select"
+              formControlName="leadSource"
+              [class.is-invalid]="invalid('leadSource')"
+            >
+              <option value="" disabled>Reached us via…</option>
+              @for (opt of leadSourceOptions; track opt.value) {
+                <option [value]="opt.value">{{ opt.label }}</option>
+              }
+            </select>
+            @if (invalid('leadSource')) {
+              <div class="invalid-feedback">Choose a lead source.</div>
+            }
+          </div>
+
+          @if (showLeadSourceNote()) {
+            <div class="col-6">
+              <label class="form-label" for="leadSourceNote">Lead source note</label>
+              <input
+                id="leadSourceNote"
+                type="text"
+                class="form-control"
+                formControlName="leadSourceNote"
+                maxlength="200"
+                autocomplete="off"
+                placeholder="Where did this lead come from?"
+                [class.is-invalid]="invalid('leadSourceNote')"
+              />
+              @if (invalid('leadSourceNote')) {
+                <div class="invalid-feedback">The note must be at most 200 characters.</div>
+              }
+            </div>
+          }
+
+          <!-- Buyer GSTIN (optional; classifies the sale as B2B for GSTR-1) -->
+          <div class="col-12">
+            <label class="form-label" for="buyerGstin">Buyer GSTIN <span class="text-secondary">(optional)</span></label>
+            <input
+              id="buyerGstin"
+              type="text"
+              class="form-control text-uppercase"
+              formControlName="buyerGstin"
+              maxlength="15"
+              autocomplete="off"
+              placeholder="15-char GSTIN (e.g. 27ABCDE1234F1Z5)"
+              (input)="onGstinInput($event)"
+              [class.is-invalid]="invalid('buyerGstin')"
+            />
+            @if (invalid('buyerGstin')) {
+              <div class="invalid-feedback">Enter a valid 15-character GSTIN, or leave blank.</div>
+            } @else {
+              <small class="form-hint">Fill in for a registered business buyer (B2B). Leave blank for regular customers.</small>
+            }
+          </div>
+
+          <!-- Delivery address -->
+          <div class="col-12">
+            <label class="form-label required" for="addressLine">Delivery address</label>
+            <textarea
+              id="addressLine"
+              class="form-control"
+              formControlName="addressLine"
+              rows="2"
+              maxlength="250"
+              autocomplete="off"
+              [class.is-invalid]="invalid('addressLine')"
+            ></textarea>
+            @if (invalid('addressLine')) {
+              <div class="invalid-feedback">An address (max 250 chars) is required.</div>
+            }
+          </div>
+
+          <div class="col-7">
+            <label class="form-label required" for="city">City</label>
+            <input
+              id="city"
+              type="text"
+              class="form-control"
+              formControlName="city"
+              maxlength="100"
+              autocomplete="off"
+              [class.is-invalid]="invalid('city')"
+            />
+            @if (invalid('city')) {
+              <div class="invalid-feedback">A city is required.</div>
+            }
+          </div>
+          <div class="col-5">
+            <label class="form-label required" for="postalCode">Pincode</label>
+            <input
+              id="postalCode"
+              type="text"
+              inputmode="numeric"
+              class="form-control"
+              formControlName="postalCode"
+              maxlength="6"
+              placeholder="6 digits"
+              autocomplete="off"
+              [class.is-invalid]="invalid('postalCode')"
+            />
+            @if (invalid('postalCode')) {
+              <div class="invalid-feedback">Enter exactly 6 digits.</div>
+            }
+          </div>
+          <div class="col-12">
+            <label class="form-label required" for="state">State</label>
+            <admin-state-typeahead
+              formControlName="state"
+              [options]="states()"
+              [invalid]="invalid('state')"
+              placeholder="Type to search a state (e.g. mh, tamilnadu)"
+            />
+            @if (invalid('state')) {
+              <div class="text-danger small mt-1">A state is required.</div>
+            }
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== Order Details (items + discount) ===================== -->
+    <section class="shifa-no__section">
+      <div class="shifa-no__titlerow">
+        <h2 class="shifa-no__title mb-0">Order Details</h2>
+        <button type="button" class="btn btn-sm btn-outline-primary" (click)="addItem()">
+          <i class="ti ti-plus me-1"></i> Add item
+        </button>
+      </div>
+
+      @if (productsLoading()) {
+        <div class="shifa-no__card">
+          <admin-state-panel variant="loading" loadingLabel="Loading products…" />
+        </div>
+      } @else if (productsError()) {
+        <div class="shifa-no__card">
+          <admin-state-panel variant="error" [message]="productsError()!" (retry)="loadProducts()" />
+        </div>
+      } @else {
+        <div class="shifa-no__lines" formArrayName="items">
+          @for (row of items.controls; track row; let i = $index) {
+            <div class="shifa-line" [formGroupName]="i">
+              <div class="shifa-line__head">
+                <span class="shifa-line__idx">Item {{ i + 1 }}</span>
+                <button
+                  type="button"
+                  class="shifa-line__remove"
+                  (click)="removeItem(i)"
+                  [disabled]="items.length <= 1"
+                  aria-label="Remove item"
+                  title="Remove item"
+                >
+                  <i class="ti ti-trash"></i>
+                </button>
+              </div>
+
+              <div class="mb-2">
+                <label class="form-label" [for]="'product-' + i">Product</label>
+                <admin-product-typeahead
+                  [products]="products()"
+                  [invalid]="itemInvalid(i, 'productId')"
+                  formControlName="productId"
+                  (selected)="onProductChange(i)"
+                />
+                @if (itemInvalid(i, 'productId')) {
+                  <div class="text-danger small mt-1">Choose a product.</div>
+                }
+              </div>
+
+              <div class="shifa-line__grid">
+                <div>
+                  <label class="form-label">Quantity</label>
+                  <div class="shifa-stepper">
+                    <button type="button" class="shifa-stepper__btn" (click)="decQty(i)" aria-label="Decrease quantity">
+                      <i class="ti ti-minus"></i>
+                    </button>
+                    <input
+                      type="number"
+                      class="form-control shifa-stepper__val"
+                      formControlName="quantity"
+                      min="1"
+                      max="999"
+                      step="1"
+                      [class.is-invalid]="itemInvalid(i, 'quantity')"
+                      aria-label="Quantity"
+                    />
+                    <button type="button" class="shifa-stepper__btn" (click)="incQty(i)" aria-label="Increase quantity">
+                      <i class="ti ti-plus"></i>
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label class="form-label" [for]="'rate-' + i">Price (₹)</label>
+                  <input
+                    [id]="'rate-' + i"
+                    type="number"
+                    class="form-control text-end"
+                    formControlName="rate"
+                    min="0"
+                    step="0.01"
+                    [class.is-invalid]="itemInvalid(i, 'rate') || !!lineRateError(i)"
+                    aria-label="Price"
+                  />
+                  @if (lineBand(i); as band) {
+                    @if (lineRateError(i); as err) {
+                      <div class="text-danger small mt-1">{{ err }} (allowed {{ band.min | inr }}–{{ band.max | inr }}).</div>
+                    } @else {
+                      <div class="form-hint">
+                        Range {{ band.min | inr }}–{{ band.max | inr }}@if (band.wtMl) { · {{ band.wtMl }} }
+                      </div>
+                    }
+                  }
+                </div>
+              </div>
+
+              <div class="shifa-line__total">
+                <span>Line total</span>
+                <span class="fw-bold">{{ formatMoney(lineTotals()[i] || 0) }}</span>
+              </div>
+            </div>
+          }
+        </div>
+
+        <!-- Discount (order-level: flat or percent) -->
+        <div class="shifa-no__card">
+          <label class="form-label">Discount <span class="text-secondary">(optional)</span></label>
+          <div class="row g-2">
+            <div class="col-5">
+              <select class="form-select" formControlName="discountType">
+                <option value="">No discount</option>
+                <option value="FLAT">Flat (₹)</option>
+                <option value="PERCENT">Percent (%)</option>
+              </select>
+            </div>
+            <div class="col-7">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                class="form-control"
+                formControlName="discountValue"
+                placeholder="0"
+                [attr.disabled]="!form.controls.discountType.value ? true : null"
+              />
+            </div>
+          </div>
+          @if (form.controls.discountType.value === 'PERCENT' && (form.controls.discountValue.value || 0) > 100) {
+            <div class="text-danger small mt-1">A percentage discount cannot exceed 100%.</div>
+          }
+        </div>
+
+        <!-- Running totals -->
+        <div class="shifa-no__card shifa-no__totals">
+          @if (discountPaise() > 0) {
+            <div class="shifa-no__totline">
+              <span class="text-secondary">Subtotal</span>
+              <span>{{ formatMoney(subtotalPaise()) }}</span>
+            </div>
+            <div class="shifa-no__totline">
+              <span class="text-secondary">Discount</span>
+              <span class="text-danger">− {{ formatMoney(discountPaise()) }}</span>
+            </div>
+          }
+          <div class="shifa-no__totline">
+            <span>Order total <span class="text-secondary">(incl. GST)</span></span>
+            <span class="fw-bold">{{ formatMoney(orderTotalPaise()) }}</span>
+          </div>
+        </div>
+      }
+    </section>
+
+    <!-- ===================== Notes ===================== -->
+    <section class="shifa-no__section">
+      <h2 class="shifa-no__title">Notes</h2>
+      <div class="shifa-no__card">
+        <label class="form-label" for="notes">Order note <span class="text-secondary">(optional)</span></label>
+        <textarea
+          id="notes"
+          class="form-control"
+          formControlName="notes"
+          rows="3"
+          maxlength="1000"
+          autocomplete="off"
+          placeholder="Any specific instruction from the customer for this order…"
+          [class.is-invalid]="invalid('notes')"
+        ></textarea>
+        @if (invalid('notes')) {
+          <div class="invalid-feedback">The note must be at most 1000 characters.</div>
+        } @else {
+          <div class="form-hint">Saved with the order and visible on the order details.</div>
+        }
+      </div>
+    </section>
+  </form>
+
+  <!-- Sticky bottom action bar -->
+  <div class="shifa-no__footer">
+    <button type="button" class="btn btn-outline-secondary shifa-no__cancel" (click)="cancel()" [disabled]="submitting()">
+      Cancel
+    </button>
+    <button
+      type="button"
+      class="btn btn-primary shifa-no__save"
+      (click)="submit()"
+      [disabled]="submitting() || notEditable()"
+    >
+      @if (submitting()) {
+        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+      } @else {
+        <i class="ti ti-check me-1"></i>
+      }
+      Save changes
+    </button>
+  </div>
+}

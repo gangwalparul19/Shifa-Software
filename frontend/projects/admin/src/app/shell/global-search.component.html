@@ -24,7 +24,7 @@
       class="form-control"
       [formControl]="query"
       (focus)="onFocus()"
-      placeholder="Search orders, products, customers…"
+      placeholder="Search orders, products, customers… (Ctrl+K)"
       autocomplete="off"
       role="combobox"
       aria-label="Global search"
@@ -50,6 +50,24 @@
             No matches for "{{ query.value }}"
           </div>
         } @else if (hasResults()) {
+          @if (quickActions().length) {
+            <div class="shifa-search__group">
+              <div class="shifa-search__grouphead">Actions</div>
+              @for (a of quickActions(); track a.route; let i = $index) {
+                <button
+                  type="button"
+                  class="shifa-search__item"
+                  role="option"
+                  [class.is-active]="activeIndex() === flatIndexOf('action', i)"
+                  (click)="selectAt(flatIndexOf('action', i))"
+                >
+                  <i class="{{ a.icon }} shifa-search__icon"></i>
+                  <span class="shifa-search__primary">{{ a.label }}</span>
+                  <span class="shifa-search__secondary">{{ a.hint }}</span>
+                </button>
+              }
+            </div>
+          }
           @if (orders().length) {
             <div class="shifa-search__group">
               <div class="shifa-search__grouphead">Orders</div>

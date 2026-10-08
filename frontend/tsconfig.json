@@ -4,8 +4,7 @@
   "compileOnSave": false,
   "compilerOptions": {
     "paths": {
-      "core": ["./projects/core/src/public-api.ts"],
-      "ui": ["./projects/ui/src/public-api.ts"]
+      "core": ["./projects/core/src/public-api.ts"]
     },
     "strict": true,
     "noImplicitOverride": true,
@@ -38,12 +37,6 @@
     },
     {
       "path": "./projects/core/tsconfig.spec.json"
-    },
-    {
-      "path": "./projects/ui/tsconfig.lib.json"
-    },
-    {
-      "path": "./projects/ui/tsconfig.spec.json"
     }
   ]
 }

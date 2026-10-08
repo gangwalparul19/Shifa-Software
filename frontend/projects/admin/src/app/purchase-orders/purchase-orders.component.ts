@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import {
@@ -27,6 +27,7 @@ import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { SortableHeaderComponent } from '../shared/sortable-header.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { StatusTone } from '../shared/status-badge.component';
@@ -51,12 +52,13 @@ const TABLE_KEY = 'purchase-orders';
   selector: 'admin-purchase-orders',
   imports: [
     ReactiveFormsModule,
-    DatePipe,
+    IstDatePipe,
     PageHeaderComponent,
     StatePanelComponent,
     DensityToggleComponent,
     PaginationComponent,
     SortableHeaderComponent,
+    RowActionsMenuComponent,
   ],
   templateUrl: './purchase-orders.component.html',
   styleUrl: './purchase-orders.component.css',
@@ -80,6 +82,20 @@ export class PurchaseOrdersComponent implements OnInit, OnDestroy {
   protected readonly pos = signal<PurchaseOrderSummaryResponse[]>([]);
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
+
+  // --- Summary KPIs (derived from the loaded page of purchase orders) -----
+  /** Open POs awaiting any receipt. */
+  protected readonly orderedCount = computed(
+    () => this.pos().filter((p) => p.status === 'ORDERED').length,
+  );
+  /** POs partly received (some stock still outstanding). */
+  protected readonly partialCount = computed(
+    () => this.pos().filter((p) => p.status === 'PARTIALLY_RECEIVED').length,
+  );
+  /** Fully received POs on this page. */
+  protected readonly receivedCount = computed(
+    () => this.pos().filter((p) => p.status === 'RECEIVED').length,
+  );
 
   // --- Reference data -----------------------------------------------------
   protected readonly suppliers = signal<SupplierResponse[]>([]);
@@ -107,7 +123,7 @@ export class PurchaseOrdersComponent implements OnInit, OnDestroy {
 
   // --- Paging + sort ------------------------------------------------------
   protected readonly page = signal(0);
-  protected readonly size = signal(readPageSize(TABLE_KEY, 20));
+  protected readonly size = signal(readPageSize(TABLE_KEY, 10));
   protected readonly totalPages = signal(0);
   protected readonly totalElements = signal(0);
   protected readonly sort = signal<SortState>({ field: 'createdAt', dir: 'desc' });
@@ -296,6 +312,33 @@ export class PurchaseOrdersComponent implements OnInit, OnDestroy {
   /** Remaining (not-yet-received) quantity on a line. */
   remaining(item: PurchaseOrderItemResponse): number {
     return Math.max(0, item.quantity - item.receivedQuantity);
+  }
+
+  /** Status-gated per-row kebab actions mirroring the original Receive / Cancel buttons. */
+  rowActions(po: PurchaseOrderSummaryResponse): RowAction[] {
+    const actions: RowAction[] = [];
+    if (this.isReceivable(po.status)) {
+      actions.push({ key: 'receive', label: 'Receive', icon: 'ti-package-import', variant: 'primary' });
+    }
+    if (this.isCancellable(po.status)) {
+      actions.push({
+        key: 'cancel',
+        label: 'Cancel',
+        icon: 'ti-ban',
+        variant: 'danger',
+        disabled: this.cancellingId() !== null,
+      });
+    }
+    return actions;
+  }
+
+  /** Dispatches a kebab action for the given purchase-order row. */
+  onRowAction(key: string, po: PurchaseOrderSummaryResponse): void {
+    if (key === 'receive') {
+      this.startReceive(po);
+    } else if (key === 'cancel') {
+      this.cancel(po);
+    }
   }
 
   // --- Detail drawer ------------------------------------------------------

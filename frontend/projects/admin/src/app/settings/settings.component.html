@@ -3,8 +3,25 @@
   subtitle="Company details and GST configuration for invoices."
   [breadcrumbs]="[{ label: 'Settings' }]"
 >
-  <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
-    <i class="ti ti-refresh me-1"></i> Reload
+  <a
+    class="btn btn-outline-primary"
+    href="user-manual.html"
+    target="_blank"
+    rel="noopener"
+    title="Open the Shifa OMS user manual in a new tab"
+  >
+    <i class="ti ti-book me-1"></i>
+    User Manual
+  </a>
+  <button
+    type="button"
+    class="btn btn-icon btn-outline-secondary"
+    (click)="load()"
+    [disabled]="loading()"
+    title="Reload"
+    aria-label="Reload"
+  >
+    <i class="ti ti-refresh"></i>
   </button>
 </admin-page-header>
 
@@ -23,7 +40,30 @@
     <button type="button" class="btn btn-sm btn-danger" (click)="load()">Retry</button>
   </div>
 } @else {
-  <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+  <!-- Category tabs — split the settings into focused sections -->
+  <div class="shifa-status-tabs mb-3" role="tablist" aria-label="Settings categories">
+    @for (tab of settingsTabs; track tab.key) {
+      <button
+        type="button"
+        role="tab"
+        class="shifa-status-tab"
+        [class.active]="activeTab() === tab.key"
+        [attr.aria-selected]="activeTab() === tab.key"
+        (click)="setTab(tab.key)"
+      >
+        <i class="ti {{ tab.icon }}"></i>
+        <span class="shifa-set-tablabel">{{ tab.label }}</span>
+      </button>
+    }
+  </div>
+
+  <form
+    [formGroup]="form"
+    (ngSubmit)="save()"
+    novalidate
+    class="shifa-settings"
+    [hidden]="activeTab() === 'states'"
+  >
     @if (formError(); as err) {
       <div class="alert alert-danger anim-fade-up" role="alert">
         <i class="ti ti-alert-triangle me-2"></i>{{ err }}
@@ -31,7 +71,7 @@
     }
 
     <!-- GST section -->
-    <div class="card mb-3">
+    <div class="card mb-3" [hidden]="activeTab() !== 'gst'">
       <div class="card-header">
         <h3 class="card-title mb-0"><i class="ti ti-receipt-tax me-2"></i>GST</h3>
       </div>
@@ -47,8 +87,8 @@
           standard invoice is used.
         </p>
 
-        <div class="row">
-          <div class="col-md-6 mb-3">
+        <div class="row g-2">
+          <div class="col-12 mb-2">
             <label class="form-label" [class.required]="form.controls.gstEnabled.value">GSTIN</label>
             <input type="text" class="form-control shifa-mono" formControlName="gstin" maxlength="20"
               autocomplete="off" placeholder="e.g. 23ABCDE1234F1Z5"
@@ -59,7 +99,7 @@
               </div>
             }
           </div>
-          <div class="col-md-3 mb-3">
+          <div class="col-6 col-md-3 mb-2">
             <label class="form-label required">GST rate %</label>
             <input type="text" inputmode="decimal" class="form-control" formControlName="gstRatePercent"
               placeholder="5.00"
@@ -68,30 +108,42 @@
               <div class="invalid-feedback">Enter a valid rate (e.g. 5 or 18.00).</div>
             }
           </div>
-          <div class="col-md-3 mb-3 d-flex align-items-end">
-            <label class="form-check form-switch mb-2">
+          <div class="col-12 mb-2">
+            <label class="form-label">GST pricing mode</label>
+            <label class="form-check form-switch mb-1">
               <input class="form-check-input" type="checkbox" formControlName="pricesIncludeGst" />
-              <span class="form-check-label">Prices include GST</span>
+              <span class="form-check-label">
+                {{ form.controls.pricesIncludeGst.value ? 'Inclusive — tax is within the price' : 'Exclusive — tax is added on top of the price' }}
+              </span>
             </label>
+            <div class="form-hint">
+              @if (form.controls.pricesIncludeGst.value) {
+                <strong>Inclusive:</strong> product prices already contain GST. Invoices show the taxable value
+                and CGST/SGST or IGST extracted from the price, and the grand total equals the order total.
+              } @else {
+                <strong>Exclusive:</strong> GST is added on top of the price. Invoices show the taxable value,
+                the GST added per rate, and a grand total higher than the pre-tax subtotal.
+              }
+            </div>
           </div>
         </div>
       </div>
     </div>
 
     <!-- Invoice & Tax section -->
-    <div class="card mb-3">
+    <div class="card mb-3" [hidden]="activeTab() !== 'gst'">
       <div class="card-header">
         <h3 class="card-title mb-0"><i class="ti ti-file-invoice me-2"></i>Invoice &amp; Tax</h3>
       </div>
       <div class="card-body">
-        <div class="row">
-          <div class="col-md-6 mb-3">
+        <div class="row g-2">
+          <div class="col-6 mb-2">
             <label class="form-label">Invoice number prefix</label>
             <input type="text" class="form-control shifa-mono" formControlName="invoiceNumberPrefix" maxlength="40"
               autocomplete="off" placeholder="e.g. SHR/24-25/" />
             <small class="form-hint">Appears on invoices, before the running number.</small>
           </div>
-          <div class="col-md-6 mb-3">
+          <div class="col-6 mb-2">
             <label class="form-label">GST slabs</label>
             <input type="text" class="form-control" formControlName="gstSlabs" maxlength="100"
               autocomplete="off" placeholder="0,5,12,18,28"
@@ -99,6 +151,16 @@
             <small class="form-hint">Comma-separated rates (0–28). Offered when setting a product's GST rate.</small>
             @if (form.controls.gstSlabs.touched && form.controls.gstSlabs.invalid) {
               <div class="invalid-feedback">Enter comma-separated numbers between 0 and 28 (e.g. 0,5,12,18,28).</div>
+            }
+          </div>
+          <div class="col-6 col-md-4 mb-2">
+            <label class="form-label">Low-stock threshold</label>
+            <input type="text" inputmode="numeric" class="form-control" formControlName="lowStockThreshold"
+              maxlength="7" autocomplete="off" placeholder="5"
+              [class.is-invalid]="form.controls.lowStockThreshold.touched && form.controls.lowStockThreshold.invalid" />
+            <small class="form-hint">A tracked product is "low stock" at or below this quantity (per-product overrides win).</small>
+            @if (form.controls.lowStockThreshold.touched && form.controls.lowStockThreshold.invalid) {
+              <div class="invalid-feedback">Enter a whole number (0 or more).</div>
             }
           </div>
         </div>
@@ -112,8 +174,54 @@
       </div>
     </div>
 
+    <!-- GST filing & reconciliation section -->
+    <div class="card mb-3" [hidden]="activeTab() !== 'gst'">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-report-money me-2"></i>GST filing &amp; reconciliation</h3>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">
+          <i class="ti ti-info-circle me-1"></i>
+          These drive the GST returns tools: HSN reporting detail, filing-calendar reminders, and the
+          reconciliation match tolerance. Leave blank to use the defaults.
+        </p>
+        <div class="row g-2">
+          <div class="col-12 col-md-5 mb-2">
+            <label class="form-label">Aggregate turnover (₹)</label>
+            <input type="text" inputmode="decimal" class="form-control shifa-mono" formControlName="aggregateTurnover"
+              maxlength="16" autocomplete="off" placeholder="e.g. 50000000"
+              [class.is-invalid]="form.controls.aggregateTurnover.touched && form.controls.aggregateTurnover.invalid" />
+            <small class="form-hint">Above ₹5 crore, GSTR-1 reports 6-digit HSN codes; otherwise 4-digit.</small>
+            @if (form.controls.aggregateTurnover.touched && form.controls.aggregateTurnover.invalid) {
+              <div class="invalid-feedback">Enter a positive amount (up to 2 decimals).</div>
+            }
+          </div>
+          <div class="col-6 col-md-3 mb-2">
+            <label class="form-label">Reminder window (days)</label>
+            <input type="text" inputmode="numeric" class="form-control" formControlName="gstReminderWindowDays"
+              maxlength="2" autocomplete="off" placeholder="7"
+              [class.is-invalid]="form.controls.gstReminderWindowDays.touched && form.controls.gstReminderWindowDays.invalid" />
+            <small class="form-hint">Days before a return's due date to flag it (1–30; default 7).</small>
+            @if (form.controls.gstReminderWindowDays.touched && form.controls.gstReminderWindowDays.invalid) {
+              <div class="invalid-feedback">Enter a whole number from 1 to 30.</div>
+            }
+          </div>
+          <div class="col-6 col-md-4 mb-2">
+            <label class="form-label">Reconciliation tolerance (₹)</label>
+            <input type="text" inputmode="decimal" class="form-control shifa-mono" formControlName="gstReconciliationTolerance"
+              maxlength="7" autocomplete="off" placeholder="1.00"
+              [class.is-invalid]="form.controls.gstReconciliationTolerance.touched && form.controls.gstReconciliationTolerance.invalid" />
+            <small class="form-hint">Differences at or below this are treated as reconciled (0–9999.99; default 1.00).</small>
+            @if (form.controls.gstReconciliationTolerance.touched && form.controls.gstReconciliationTolerance.invalid) {
+              <div class="invalid-feedback">Enter an amount from 0 to 9999.99 (up to 2 decimals).</div>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Bank details section -->
-    <div class="card mb-3">
+    <div class="card mb-3" [hidden]="activeTab() !== 'bank'">
       <div class="card-header">
         <h3 class="card-title mb-0"><i class="ti ti-building-bank me-2"></i>Bank details</h3>
       </div>
@@ -122,25 +230,23 @@
           <i class="ti ti-info-circle me-1"></i>
           These bank details appear on invoices so customers can pay by bank transfer.
         </p>
-        <div class="row">
-          <div class="col-md-6 mb-3">
+        <div class="row g-2">
+          <div class="col-6 mb-2">
             <label class="form-label">Bank name</label>
             <input type="text" class="form-control" formControlName="bankName" maxlength="120" autocomplete="off"
               placeholder="e.g. HDFC Bank" />
           </div>
-          <div class="col-md-6 mb-3">
+          <div class="col-6 mb-2">
             <label class="form-label">Account name</label>
             <input type="text" class="form-control" formControlName="bankAccountName" maxlength="120" autocomplete="off"
               placeholder="Account holder name" />
           </div>
-        </div>
-        <div class="row">
-          <div class="col-md-4 mb-3">
+          <div class="col-6 col-md-4 mb-2">
             <label class="form-label">Account number</label>
             <input type="text" class="form-control shifa-mono" formControlName="bankAccountNumber" maxlength="40"
               autocomplete="off" />
           </div>
-          <div class="col-md-4 mb-3">
+          <div class="col-6 col-md-4 mb-2">
             <label class="form-label">IFSC</label>
             <input type="text" class="form-control shifa-mono text-uppercase" formControlName="bankIfsc" maxlength="20"
               autocomplete="off" placeholder="e.g. HDFC0001234"
@@ -149,7 +255,7 @@
               <div class="invalid-feedback">Enter a valid IFSC (e.g. HDFC0001234).</div>
             }
           </div>
-          <div class="col-md-4 mb-3">
+          <div class="col-12 col-md-4 mb-2">
             <label class="form-label">Branch</label>
             <input type="text" class="form-control" formControlName="bankBranch" maxlength="120" autocomplete="off" />
           </div>
@@ -157,8 +263,43 @@
       </div>
     </div>
 
+    <!-- Automation: order auto-approval (V73, default OFF) -->
+    <div class="card mb-3" [hidden]="activeTab() !== 'automation'">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-robot me-2"></i>Order auto-approval</h3>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">
+          <i class="ti ti-info-circle me-1"></i>
+          When on, a new order is approved automatically if it is <strong>fully prepaid</strong>,
+          at or below the amount below, and from a <strong>low-risk customer</strong> (good delivery
+          history). Any COD balance, a higher value, or a medium/high-risk customer still goes to the
+          manual approval queue. Off by default.
+        </p>
+        <label class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" formControlName="autoApproveEnabled" />
+          <span class="form-check-label">
+            {{ form.controls.autoApproveEnabled.value ? 'Auto-approval enabled' : 'Auto-approval disabled' }}
+          </span>
+        </label>
+        <div class="row g-2">
+          <div class="col-12 col-md-6 mb-2">
+            <label class="form-label">Max order total eligible (₹)</label>
+            <input type="text" inputmode="decimal" class="form-control shifa-mono"
+              formControlName="autoApproveMaxAmount" maxlength="13" autocomplete="off"
+              placeholder="e.g. 2000"
+              [class.is-invalid]="form.controls.autoApproveMaxAmount.touched && form.controls.autoApproveMaxAmount.invalid" />
+            @if (form.controls.autoApproveMaxAmount.touched && form.controls.autoApproveMaxAmount.invalid) {
+              <div class="invalid-feedback">Enter a positive amount (up to 2 decimals).</div>
+            }
+            <div class="form-hint">Orders above this total always need manual approval. Leave blank to disable.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Company logo section -->
-    <div class="card mb-3">
+    <div class="card mb-3" [hidden]="activeTab() !== 'company'">
       <div class="card-header">
         <h3 class="card-title mb-0"><i class="ti ti-photo me-2"></i>Company logo</h3>
       </div>
@@ -214,7 +355,7 @@
     </div>
 
     <!-- Company section -->
-    <div class="card mb-3">
+    <div class="card mb-3" [hidden]="activeTab() !== 'company'">
       <div class="card-header">
         <h3 class="card-title mb-0"><i class="ti ti-building-store me-2"></i>Company</h3>
       </div>
@@ -233,30 +374,30 @@
           <input type="text" class="form-control" formControlName="addressLine" maxlength="250" autocomplete="off" />
         </div>
 
-        <div class="row">
-          <div class="col-md-5 mb-3">
+        <div class="row g-2">
+          <div class="col-6 col-md-5 mb-2">
             <label class="form-label">City</label>
             <input type="text" class="form-control" formControlName="city" maxlength="100" autocomplete="off" />
           </div>
-          <div class="col-md-5 mb-3">
+          <div class="col-6 col-md-2 mb-2">
+            <label class="form-label">State code</label>
+            <input type="text" class="form-control" formControlName="stateCode" maxlength="4" autocomplete="off"
+              placeholder="23" />
+          </div>
+          <div class="col-12 col-md-5 mb-2">
             <label class="form-label">State</label>
             <input type="text" class="form-control" formControlName="state" maxlength="100" autocomplete="off"
               placeholder="e.g. Madhya Pradesh" />
             <small class="form-hint">Used to decide intra-state (CGST+SGST) vs inter-state (IGST).</small>
           </div>
-          <div class="col-md-2 mb-3">
-            <label class="form-label">State code</label>
-            <input type="text" class="form-control" formControlName="stateCode" maxlength="4" autocomplete="off"
-              placeholder="23" />
-          </div>
         </div>
 
-        <div class="row">
-          <div class="col-md-6 mb-3">
+        <div class="row g-2">
+          <div class="col-6 mb-2">
             <label class="form-label">Contact phone</label>
             <input type="text" class="form-control" formControlName="contactPhone" maxlength="20" autocomplete="off" />
           </div>
-          <div class="col-md-6 mb-3">
+          <div class="col-6 mb-2">
             <label class="form-label">Contact email</label>
             <input type="text" class="form-control" formControlName="contactEmail" maxlength="120" autocomplete="off" />
           </div>
@@ -270,8 +411,8 @@
       </div>
     </div>
 
-    <div class="d-flex justify-content-end gap-2">
-      <button type="submit" class="btn btn-primary" [disabled]="saving()">
+    <div class="shifa-set-savebar">
+      <button type="submit" class="btn btn-primary shifa-set-save" [disabled]="saving()">
         @if (saving()) {
           <span class="spinner-border spinner-border-sm me-2"></span> Saving…
         } @else {
@@ -280,4 +421,110 @@
       </button>
     </div>
   </form>
+
+  <!-- Delivery states section (independent of the settings form above) -->
+  <div class="card mb-3" [hidden]="activeTab() !== 'states'">
+    <div class="card-header">
+      <h3 class="card-title mb-0"><i class="ti ti-map-pin me-2"></i>Delivery states</h3>
+    </div>
+    <div class="card-body">
+      <p class="text-secondary small mb-3">
+        <i class="ti ti-info-circle me-1"></i>
+        These states power the state typeahead on the <strong>New Order</strong> form. Disable a
+        state to hide it from the picker without deleting it.
+      </p>
+
+      <!-- Add a new state -->
+      <div class="row g-2 align-items-start mb-3">
+        <div class="col">
+          <input
+            type="text"
+            class="form-control"
+            [formControl]="newStateName"
+            maxlength="100"
+            autocomplete="off"
+            placeholder="Add a state (e.g. Maharashtra)"
+            (keydown.enter)="$event.preventDefault(); addState()"
+            [class.is-invalid]="newStateName.touched && newStateName.invalid"
+          />
+          @if (newStateName.touched && newStateName.invalid) {
+            <div class="invalid-feedback">A state name (max 100 chars) is required.</div>
+          }
+        </div>
+        <div class="col-auto">
+          <button
+            type="button"
+            class="btn btn-primary"
+            (click)="addState()"
+            [disabled]="stateBusyId() === 'new'"
+          >
+            @if (stateBusyId() === 'new') {
+              <span class="spinner-border spinner-border-sm me-1"></span>
+            } @else {
+              <i class="ti ti-plus me-1"></i>
+            }
+            Add
+          </button>
+        </div>
+      </div>
+
+      @if (statesLoading()) {
+        <div class="skeleton skeleton-line w-75 mb-2"></div>
+        <div class="skeleton skeleton-line w-50"></div>
+      } @else if (statesError()) {
+        <div class="alert alert-danger d-flex align-items-center" role="alert">
+          <i class="ti ti-alert-triangle me-2"></i>
+          <span class="me-auto">{{ statesError() }}</span>
+          <button type="button" class="btn btn-sm btn-danger" (click)="loadStates()">Retry</button>
+        </div>
+      } @else {
+        <div class="table-responsive">
+          <table class="table table-vcenter table-sm mb-0">
+            <thead>
+              <tr>
+                <th>State</th>
+                <th class="text-center">Active</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (s of states(); track s.id) {
+                <tr [class.text-secondary]="!s.active">
+                  <td>{{ s.name }}</td>
+                  <td class="text-center">
+                    <label class="form-check form-switch mb-0 d-inline-flex">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        [checked]="s.active"
+                        [disabled]="stateBusyId() === s.id"
+                        (change)="toggleState(s)"
+                      />
+                    </label>
+                  </td>
+                  <td class="text-end">
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-ghost-danger"
+                      (click)="removeState(s)"
+                      [disabled]="stateBusyId() === s.id"
+                      title="Remove state"
+                    >
+                      <i class="ti ti-trash"></i>
+                    </button>
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="3" class="text-center text-secondary py-3">
+                    No states yet. Add one above.
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  </div>
 }

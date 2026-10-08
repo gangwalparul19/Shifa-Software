@@ -1,15 +1,29 @@
-import { DatePipe } from '@angular/common';
-import { Component, OnDestroy, OnInit, effect, inject, signal } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { Money } from 'core';
+import { IstDatePipe } from '../shared/ist-date.pipe';
+import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
+import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { catchError, forkJoin, of } from 'rxjs';
+import { Money, RejectReason } from 'core';
+import { formatInr, formatCompactInr } from '../shared/inr.pipe';
 import { ApprovalService } from './approval.service';
 import { ApprovalQueueItem } from './approval.model';
 import { AdminEventsService } from '../dashboard/admin-events.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
-import { StatusBadgeComponent } from '../shared/status-badge.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
+import { StatusBadgeComponent, humanizeStatus } from '../shared/status-badge.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
+import { ChannelLogoComponent } from '../shared/channel-logo.component';
+import { NoteCellComponent } from '../shared/note-cell.component';
+import {
+  SourceFilterMode,
+  matchesSourceMode,
+  readSourceFilter,
+  writeSourceFilter,
+} from '../shared/source-filter.util';
+import { DELIVERY_METHOD_OPTIONS, DeliveryMethod } from '../orders/orders.model';
 
 interface Toast {
   kind: 'ok' | 'error';
@@ -29,27 +43,400 @@ interface Toast {
 @Component({
   selector: 'admin-approval-queue',
   imports: [
+    FormsModule,
     ReactiveFormsModule,
-    DatePipe,
+    IstDatePipe,
     PageHeaderComponent,
+    PaginationComponent,
     StatusBadgeComponent,
     StatePanelComponent,
     DensityToggleComponent,
+    RowActionsMenuComponent,
+    ChannelLogoComponent,
+    NoteCellComponent,
   ],
   templateUrl: './approval-queue.component.html',
   styleUrl: './approval-queue.component.css',
 })
 export class ApprovalQueueComponent implements OnInit, OnDestroy {
+  /** Humanises the order-source enum for display (e.g. SALESPERSON → Salesperson). */
+  protected readonly humanize = humanizeStatus;
   private readonly service = inject(ApprovalService);
   private readonly fb = inject(FormBuilder);
   private readonly confirmService = inject(ConfirmService);
   protected readonly events = inject(AdminEventsService);
 
-  protected readonly queue = signal<ApprovalQueueItem[]>([]);
+  protected readonly queueRaw = signal<ApprovalQueueItem[]>([]);
+
+  // --- Source filter (Portal / Shopify / All, default Portal) -------------
+  protected readonly sourceFilter = signal<SourceFilterMode>(readSourceFilter('shifa:approval-source'));
+
+  setSourceFilter(mode: SourceFilterMode): void {
+    this.sourceFilter.set(mode);
+    writeSourceFilter('shifa:approval-source', mode);
+    this.page.set(0);
+  }
+
+  /** Source-filtered approval queue (what the UI renders). */
+  protected readonly queue = computed(() =>
+    this.queueRaw().filter((item) => matchesSourceMode(item.source, this.sourceFilter())),
+  );
+
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
   protected readonly toast = signal<Toast | null>(null);
   protected readonly acting = signal(false);
+
+  // --- Client-side paging -------------------------------------------------
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('approvalQueue', 10));
+  protected readonly totalElements = computed(() => this.queue().length);
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil(this.totalElements() / this.size())),
+  );
+  protected readonly pageItems = computed<ApprovalQueueItem[]>(() => {
+    const s = this.page() * this.size();
+    return this.queue().slice(s, s + this.size());
+  });
+
+  // --- Bulk selection -----------------------------------------------------
+  /** Ids currently ticked for a bulk action. */
+  protected readonly selectedIds = signal<Set<number>>(new Set());
+  protected readonly selectionCount = computed(() => this.selectedIds().size);
+  /** True when every row on the current page is selected (drives the header box). */
+  protected readonly allOnPageSelected = computed(() => {
+    const rows = this.pageItems();
+    if (!rows.length) {
+      return false;
+    }
+    const sel = this.selectedIds();
+    return rows.every((r) => sel.has(r.id));
+  });
+
+  isSelected(id: number): boolean {
+    return this.selectedIds().has(id);
+  }
+
+  toggleSelection(id: number): void {
+    this.selectedIds.update((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  /** Select-all / clear-all for the rows on the current page. */
+  toggleSelectAllOnPage(): void {
+    const rows = this.pageItems();
+    this.selectedIds.update((prev) => {
+      const next = new Set(prev);
+      const allSelected = rows.length > 0 && rows.every((r) => next.has(r.id));
+      if (allSelected) {
+        rows.forEach((r) => next.delete(r.id));
+      } else {
+        rows.forEach((r) => next.add(r.id));
+      }
+      return next;
+    });
+  }
+
+  clearSelection(): void {
+    this.selectedIds.set(new Set());
+  }
+
+  // --- Payment-verification gating ---------------------------------------
+
+  /**
+   * Whether this order's payment still needs verification before it can be
+   * approved (PENDING or REJECTED). A pure-COD order (null) or an already-VERIFIED
+   * order does not — mirrors the authoritative server gate.
+   */
+  needsVerification(item: ApprovalQueueItem): boolean {
+    return (
+      item.paymentVerificationStatus === 'PENDING' ||
+      item.paymentVerificationStatus === 'REJECTED'
+    );
+  }
+
+  /** Whether the order's payment has been verified (drives the verified icon). */
+  isVerified(item: ApprovalQueueItem): boolean {
+    return item.paymentVerificationStatus === 'VERIFIED';
+  }
+
+  /** Whether this order has a suspected duplicate payment proof (V72). */
+  hasDuplicate(item: ApprovalQueueItem): boolean {
+    return (item.duplicateOrderCodes?.length ?? 0) > 0;
+  }
+
+  /** The selected rows whose payment still needs verifying before approval. */
+  private selectedUnverified(): ApprovalQueueItem[] {
+    const sel = this.selectedIds();
+    return this.queue().filter((i) => sel.has(i.id) && this.needsVerification(i));
+  }
+
+  /** True when any selected row carries a duplicate-proof flag (blocks approve-all). */
+  protected readonly selectionHasDuplicate = computed(() => {
+    const sel = this.selectedIds();
+    return this.queue().some((i) => sel.has(i.id) && this.hasDuplicate(i));
+  });
+
+  /**
+   * The orders listed in the "verify payment first" modal — the unverified
+   * orders the admin tried to approve. Verifying each clears the gate; once all
+   * are verified the admin can proceed with the (re-triggered) approval.
+   */
+  protected readonly verifyModalItems = signal<ApprovalQueueItem[]>([]);
+  /** The pending approval action to resume after the modal's orders are verified. */
+  private verifyModalThen: 'single' | 'bulk' | null = null;
+  private verifyModalSingle: ApprovalQueueItem | null = null;
+  /** Id currently being verified in the modal (spinner), or null. */
+  protected readonly verifyingId = signal<number | null>(null);
+
+  /**
+   * Payment-proof object URLs per order id, shown INSIDE the verify modal so the
+   * admin can review the screenshot(s) before verifying — no trip to the Payments
+   * page. Loaded on modal open; revoked on close.
+   */
+  protected readonly modalShots = signal<Record<number, string[]>>({});
+  /** Order ids whose proofs are still loading (per-order skeleton). */
+  protected readonly modalShotsLoading = signal<Set<number>>(new Set());
+  /** Order ids with no proof on file (so the modal shows a clear "no screenshot"). */
+  protected readonly modalShotsMissing = signal<Set<number>>(new Set());
+
+  /** Accessor for a given order's loaded proof URLs (template convenience). */
+  modalShotsFor(id: number): string[] {
+    return this.modalShots()[id] ?? [];
+  }
+
+  isModalShotsLoading(id: number): boolean {
+    return this.modalShotsLoading().has(id);
+  }
+
+  isModalShotsMissing(id: number): boolean {
+    return this.modalShotsMissing().has(id);
+  }
+
+  /**
+   * Opens the verify-payment-first modal for the given unverified orders,
+   * remembering the action to resume, and kicks off per-order screenshot
+   * loading so the proofs are visible inline.
+   */
+  private openVerifyModal(
+    items: ApprovalQueueItem[],
+    then: 'single' | 'bulk',
+    single: ApprovalQueueItem | null,
+  ): void {
+    this.revokeModalShots();
+    this.verifyModalThen = then;
+    this.verifyModalSingle = single;
+    this.verifyModalItems.set(items);
+    this.modalShots.set({});
+    this.modalShotsLoading.set(new Set(items.filter((i) => i.paymentScreenshotAvailable).map((i) => i.id)));
+    this.modalShotsMissing.set(new Set());
+    for (const item of items) {
+      this.loadModalShots(item);
+    }
+  }
+
+  /**
+   * Loads EVERY payment proof for one modal order as blobs (reusing the V65
+   * list + per-proof endpoints), with a fallback to the legacy single-proof
+   * endpoint. A proof whose bytes fail to load is skipped rather than failing
+   * the whole order.
+   */
+  private loadModalShots(item: ApprovalQueueItem): void {
+    if (!item.paymentScreenshotAvailable) {
+      this.markModalShotsMissing(item.id);
+      return;
+    }
+    this.service.paymentScreenshots(item.id).subscribe({
+      next: (shots) => {
+        if (shots.length === 0) {
+          this.loadLegacyModalShot(item);
+          return;
+        }
+        forkJoin(
+          shots.map((shot) =>
+            this.service.paymentScreenshotById(item.id, shot.id).pipe(catchError(() => of(null))),
+          ),
+        ).subscribe((blobs) => {
+          const urls = blobs
+            .filter((b): b is Blob => b !== null)
+            .map((b) => URL.createObjectURL(b));
+          this.setModalShots(item.id, urls);
+        });
+      },
+      error: () => this.loadLegacyModalShot(item),
+    });
+  }
+
+  private loadLegacyModalShot(item: ApprovalQueueItem): void {
+    this.service.paymentScreenshot(item.id).subscribe({
+      next: (blob) => this.setModalShots(item.id, [URL.createObjectURL(blob)]),
+      error: () => this.markModalShotsMissing(item.id),
+    });
+  }
+
+  private setModalShots(id: number, urls: string[]): void {
+    this.modalShots.update((prev) => ({ ...prev, [id]: urls }));
+    this.clearModalLoading(id);
+    if (urls.length === 0) {
+      this.markModalShotsMissing(id);
+    }
+  }
+
+  private markModalShotsMissing(id: number): void {
+    this.modalShotsMissing.update((prev) => new Set(prev).add(id));
+    this.clearModalLoading(id);
+  }
+
+  private clearModalLoading(id: number): void {
+    this.modalShotsLoading.update((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+
+  private revokeModalShots(): void {
+    for (const urls of Object.values(this.modalShots())) {
+      for (const url of urls) {
+        URL.revokeObjectURL(url);
+      }
+    }
+    this.modalShots.set({});
+    this.modalShotsLoading.set(new Set());
+    this.modalShotsMissing.set(new Set());
+  }
+
+  closeVerifyModal(): void {
+    this.revokeModalShots();
+    this.verifyModalItems.set([]);
+    this.verifyModalThen = null;
+    this.verifyModalSingle = null;
+    this.verifyingId.set(null);
+  }
+
+  /** True once every order in the verify modal has had its payment verified. */
+  protected readonly allModalVerified = computed(() =>
+    this.verifyModalItems().every((i) => i.paymentVerificationStatus === 'VERIFIED'),
+  );
+
+  /**
+   * Verifies one order's payment from the modal (reuses the Payment Verifier
+   * endpoint, which ADMIN may also call). Updates the row's status in place so
+   * the gate clears without reloading.
+   */
+  verifyPaymentInModal(item: ApprovalQueueItem): void {
+    if (this.verifyingId() !== null) {
+      return;
+    }
+    this.verifyingId.set(item.id);
+    this.service.verifyPayment(item.id).subscribe({
+      next: () => {
+        this.setVerified(item.id);
+        this.verifyingId.set(null);
+      },
+      error: () => {
+        this.verifyingId.set(null);
+        this.showToast('error', `Could not verify payment for ${item.orderCode}.`);
+      },
+    });
+  }
+
+  /** Marks a row VERIFIED locally (in the queue + the modal list). */
+  private setVerified(id: number): void {
+    const mark = (i: ApprovalQueueItem): ApprovalQueueItem =>
+      i.id === id ? { ...i, paymentVerificationStatus: 'VERIFIED' } : i;
+    this.queueRaw.update((items) => items.map(mark));
+    this.verifyModalItems.update((items) => items.map(mark));
+  }
+
+  /** Proceeds with the gated action once all modal orders are verified. */
+  proceedAfterVerify(): void {
+    if (!this.allModalVerified()) {
+      return;
+    }
+    const then = this.verifyModalThen;
+    // Look up the fresh item by id from the (now-verified) raw queue, so we
+    // don't pass a stale object whose paymentVerificationStatus is still
+    // PENDING (the old reference was captured before the modal opened). The
+    // approve() call below skips its own verification gate since the modal
+    // already confirmed it.
+    const singleId = this.verifyModalSingle?.id ?? null;
+    this.closeVerifyModal();
+    if (then === 'single' && singleId !== null) {
+      const fresh = this.queueRaw().find((i) => i.id === singleId);
+      if (fresh) {
+        void this.approve(fresh, true);
+      }
+    } else if (then === 'bulk') {
+      void this.bulkApprove();
+    }
+  }
+
+  /** Bulk-approve every ticked order, reporting a per-order summary. */
+  async bulkApprove(): Promise<void> {
+    if (this.acting()) {
+      return;
+    }
+    const ids = [...this.selectedIds()];
+    if (!ids.length) {
+      return;
+    }
+    // Block bulk approval while any selected order has a duplicate-proof flag —
+    // these must be reviewed individually, not swept through "approve all".
+    if (this.selectionHasDuplicate()) {
+      this.showToast(
+        'error',
+        'Some selected orders have a duplicate payment proof. Review them individually before approving.',
+      );
+      return;
+    }
+    // Gate: if any selected order's payment is unverified, open the verify modal
+    // first (screenshots shown inline) — the admin must verify those before the
+    // bulk approval runs.
+    const unverified = this.selectedUnverified();
+    if (unverified.length) {
+      this.openVerifyModal(unverified, 'bulk', null);
+      return;
+    }
+    const confirmed = await this.confirmService.confirm({
+      title: 'Approve selected orders',
+      message: `Approve ${ids.length} selected order${ids.length === 1 ? '' : 's'}? Each moves into fulfilment.`,
+      confirmLabel: `Approve ${ids.length}`,
+      icon: 'ti-checks',
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.acting.set(true);
+    this.service.bulkApprove(ids).subscribe({
+      next: (result) => {
+        const okCount = result.succeeded?.length ?? 0;
+        const skipCount = result.skipped?.length ?? 0;
+        result.succeeded?.forEach((id) => this.removeRow(id));
+        this.selectedIds.set(new Set());
+        this.acting.set(false);
+        if (skipCount === 0) {
+          this.showToast('ok', `Approved ${okCount} order${okCount === 1 ? '' : 's'}.`);
+        } else {
+          this.showToast(
+            okCount ? 'ok' : 'error',
+            `Approved ${okCount}, skipped ${skipCount}.`,
+          );
+        }
+      },
+      error: () => {
+        this.acting.set(false);
+        this.showToast('error', 'Could not complete the bulk approval.');
+      },
+    });
+  }
 
   /** True when a live status change may have altered the pending queue (A3). */
   protected readonly newActivity = signal(false);
@@ -58,9 +445,28 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
 
   /** The order shown in the detail drawer, or null when closed. */
   protected readonly selected = signal<ApprovalQueueItem | null>(null);
-  protected readonly screenshotUrl = signal<string | null>(null);
+  /**
+   * Object URLs of every payment proof for the order under review (V65). An order
+   * may carry several — a part payment plus the balance, a UPI receipt plus a bank
+   * confirmation — and the reviewing admin must see them all to approve/reject.
+   */
+  protected readonly screenshotUrls = signal<string[]>([]);
   protected readonly screenshotLoading = signal(false);
   protected readonly screenshotMissing = signal(false);
+  /** Index of the proof shown in the drawer, driven by the Snip tabs (V65). */
+  protected readonly activeSnip = signal(0);
+
+  /**
+   * The delivery method picked in the review drawer for the order currently
+   * open, defaulting to the order's own current value (in-house-delivery
+   * feature: the admin decides/overrides the delivery partner at approval).
+   */
+  protected readonly deliveryMethod = signal<DeliveryMethod>('IN_HOUSE');
+  protected readonly deliveryMethodOptions = DELIVERY_METHOD_OPTIONS;
+
+  setDeliveryMethod(value: string): void {
+    this.deliveryMethod.set(value === 'QUIKSHIPX' ? 'QUIKSHIPX' : 'IN_HOUSE');
+  }
 
   /** True while the invoice PDF is being fetched (review drawer). */
   protected readonly invoiceLoading = signal(false);
@@ -68,8 +474,18 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
   /** The order being rejected (reason modal open), or null. */
   protected readonly rejectTarget = signal<ApprovalQueueItem | null>(null);
   protected readonly rejectForm = this.fb.nonNullable.group({
+    // Categorized rejection reason (rejection-status feature): Rate Issue /
+    // Address-Pincode Issue / Other. Sent as `category` alongside the free-text note.
+    category: ['RATE_ISSUE' as RejectReason, [Validators.required]],
     reason: ['', [Validators.required, Validators.maxLength(500)]],
   });
+
+  /** The admin-facing reject categories (payment issue is set automatically by the payment panel). */
+  protected readonly rejectCategories: ReadonlyArray<{ value: RejectReason; label: string }> = [
+    { value: 'RATE_ISSUE', label: 'Rate Issue' },
+    { value: 'ADDRESS_PINCODE_ISSUE', label: 'Address / Pincode Issue' },
+    { value: 'OTHER', label: 'Other' },
+  ];
 
   private toastTimer?: ReturnType<typeof setTimeout>;
 
@@ -78,7 +494,9 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     // subtle, non-disruptive refresh pill rather than reloading mid-review.
     effect(() => {
       const notes = this.events.notifications();
-      const relevant = notes.filter((n) => n.type === 'ORDER_STATUS_CHANGED');
+      const relevant = notes.filter(
+        (n) => n.type === 'ORDER_STATUS_CHANGED' || n.type === 'ORDER_AWAITING_APPROVAL',
+      );
       const newestTs = relevant.length ? relevant[0].receivedAt.getTime() : 0;
       if (!this.activityInitialised) {
         this.activityInitialised = true;
@@ -105,6 +523,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.revokeScreenshot();
+    this.revokeModalShots();
     if (this.toastTimer) {
       clearTimeout(this.toastTimer);
     }
@@ -115,12 +534,13 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     this.loadError.set(null);
     this.service.queue().subscribe({
       next: (items) => {
-        this.queue.set(items);
+        this.queueRaw.set(items);
+        this.page.set(0);
         this.loading.set(false);
         // Now in sync with the live feed: hide the activity pill.
         const relevant = this.events
           .notifications()
-          .filter((n) => n.type === 'ORDER_STATUS_CHANGED');
+          .filter((n) => n.type === 'ORDER_STATUS_CHANGED' || n.type === 'ORDER_AWAITING_APPROVAL');
         this.lastSeenActivityTs = relevant.length ? relevant[0].receivedAt.getTime() : 0;
         this.newActivity.set(false);
       },
@@ -141,18 +561,68 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     return parts.length > 2 ? `${shown} +${parts.length - 2} more` : shown;
   }
 
+  /** Full ₹ amount with thousands separators (used for the desktop table + tooltips). */
   money(value: Money | undefined): string {
-    if (value === undefined || value === null) {
-      return '₹0.00';
+    return formatInr(value as number | string | null | undefined);
+  }
+
+  /** Compact ₹ amount (₹12.46K / ₹1.23L) for cramped mobile cards; pair with money() as the title. */
+  moneyCompact(value: Money | undefined): string {
+    return formatCompactInr(value as number | string | null | undefined);
+  }
+
+  /** Up-to-two-letter initials from a customer name, for the drawer avatar. */
+  initials(name: string | undefined): string {
+    const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) {
+      return '?';
     }
-    return `₹${value}`;
+    const first = parts[0][0] ?? '';
+    const last = parts.length > 1 ? parts[parts.length - 1][0] ?? '' : '';
+    return (first + last).toUpperCase();
+  }
+
+  /** Humanises an enum status (e.g. PARTIALLY_PAID → "Partially Paid") for the pill. */
+  formatStatus(status: string | undefined): string {
+    if (!status) {
+      return '';
+    }
+    return status
+      .toLowerCase()
+      .split('_')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+  }
+
+  /** A Google Maps search link for an order's shipping address. */
+  mapsUrl(item: ApprovalQueueItem): string {
+    const query = `${item.addressLine}, ${item.city}, ${item.state} ${item.postalCode}`;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   }
 
   // --- Detail drawer ------------------------------------------------------
 
   openDetail(item: ApprovalQueueItem): void {
     this.selected.set(item);
+    this.deliveryMethod.set(item.deliveryMethod ?? 'IN_HOUSE');
     this.loadScreenshot(item);
+  }
+
+  /** Per-row kebab actions (row click opens the detail, so it isn't repeated here). */
+  rowActions(): RowAction[] {
+    return [
+      { key: 'approve', label: 'Approve', icon: 'ti-check', variant: 'success', disabled: this.acting() },
+      { key: 'reject', label: 'Reject', icon: 'ti-x', variant: 'danger', disabled: this.acting() },
+    ];
+  }
+
+  /** Dispatches a kebab action for the given row. */
+  onRowAction(key: string, item: ApprovalQueueItem): void {
+    if (key === 'approve') {
+      void this.approve(item);
+    } else if (key === 'reject') {
+      this.openReject(item);
+    }
   }
 
   closeDetail(): void {
@@ -161,6 +631,14 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     this.screenshotMissing.set(false);
   }
 
+  /**
+   * Fetches EVERY payment proof for the order as blobs (V65) so the reviewing
+   * admin sees all the proof, not just the first. Proofs are enumerated first,
+   * then fetched; a proof whose bytes cannot be loaded is skipped rather than
+   * failing the whole set. If the listing itself is unavailable we fall back to
+   * the legacy single-proof endpoint, which keeps the drawer working for an
+   * order whose proofs predate V65.
+   */
   private loadScreenshot(item: ApprovalQueueItem): void {
     this.revokeScreenshot();
     this.screenshotMissing.set(false);
@@ -168,9 +646,36 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
       return;
     }
     this.screenshotLoading.set(true);
+    this.service.paymentScreenshots(item.id).subscribe({
+      next: (shots) => {
+        if (shots.length === 0) {
+          this.loadLegacyScreenshot(item);
+          return;
+        }
+        forkJoin(
+          shots.map((shot) =>
+            this.service.paymentScreenshotById(item.id, shot.id).pipe(catchError(() => of(null))),
+          ),
+        ).subscribe((blobs) => {
+          const urls = blobs
+            .filter((blob): blob is Blob => blob !== null)
+            .map((blob) => URL.createObjectURL(blob));
+          this.screenshotUrls.set(urls);
+          this.activeSnip.set(0);
+          this.screenshotMissing.set(urls.length === 0);
+          this.screenshotLoading.set(false);
+        });
+      },
+      error: () => this.loadLegacyScreenshot(item),
+    });
+  }
+
+  /** Fallback to the pre-V65 single-proof endpoint when the listing is unavailable. */
+  private loadLegacyScreenshot(item: ApprovalQueueItem): void {
     this.service.paymentScreenshot(item.id).subscribe({
       next: (blob) => {
-        this.screenshotUrl.set(URL.createObjectURL(blob));
+        this.screenshotUrls.set([URL.createObjectURL(blob)]);
+        this.activeSnip.set(0);
         this.screenshotLoading.set(false);
       },
       error: () => {
@@ -180,12 +685,17 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Shows the proof at the given tab index. */
+  selectSnip(index: number): void {
+    this.activeSnip.set(index);
+  }
+
   private revokeScreenshot(): void {
-    const url = this.screenshotUrl();
-    if (url) {
+    for (const url of this.screenshotUrls()) {
       URL.revokeObjectURL(url);
     }
-    this.screenshotUrl.set(null);
+    this.screenshotUrls.set([]);
+    this.activeSnip.set(0);
   }
 
   /** Download / open the PDF invoice for the reviewed order (auth-token blob fetch). */
@@ -216,10 +726,23 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
 
   // --- Approve ------------------------------------------------------------
 
-  async approve(item: ApprovalQueueItem): Promise<void> {
+  async approve(item: ApprovalQueueItem, skipVerifyGate = false): Promise<void> {
     if (this.acting()) {
       return;
     }
+    // Payment-verification gate: an order whose payment is still unverified /
+    // rejected cannot be approved — open the verify modal for it first (with the
+    // screenshot shown inline) and resume the approval once it's verified.
+    // Skipped when called from proceedAfterVerify() (the modal already confirmed).
+    if (!skipVerifyGate && this.needsVerification(item)) {
+      this.openVerifyModal([item], 'single', item);
+      return;
+    }
+    // The delivery-method picker only applies when approving from the open
+    // review drawer for this exact order (in-house-delivery feature); a
+    // kebab-menu/mobile-card quick-approve without opening the drawer leaves
+    // the order's existing delivery method unchanged.
+    const deliveryMethod = this.selected()?.id === item.id ? this.deliveryMethod() : undefined;
     const confirmed = await this.confirmService.confirm({
       title: 'Approve order',
       message: `Approve order ${item.orderCode} for ${item.customerName}? This moves it into fulfilment.`,
@@ -230,7 +753,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
       return;
     }
     this.acting.set(true);
-    this.service.approve(item.id).subscribe({
+    this.service.approve(item.id, deliveryMethod).subscribe({
       next: () => {
         this.removeRow(item.id);
         this.acting.set(false);
@@ -249,7 +772,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
   // --- Reject -------------------------------------------------------------
 
   openReject(item: ApprovalQueueItem): void {
-    this.rejectForm.reset({ reason: '' });
+    this.rejectForm.reset({ category: 'RATE_ISSUE', reason: '' });
     this.rejectTarget.set(item);
   }
 
@@ -266,13 +789,15 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
       this.rejectForm.markAllAsTouched();
       return;
     }
-    const reason = this.rejectForm.getRawValue().reason.trim();
+    const raw = this.rejectForm.getRawValue();
+    const reason = raw.reason.trim();
+    const category = raw.category as RejectReason;
     if (!reason) {
       this.rejectForm.markAllAsTouched();
       return;
     }
     this.acting.set(true);
-    this.service.reject(item.id, reason).subscribe({
+    this.service.reject(item.id, reason, category).subscribe({
       next: () => {
         this.removeRow(item.id);
         this.acting.set(false);
@@ -292,7 +817,30 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
   // --- Helpers ------------------------------------------------------------
 
   private removeRow(id: number): void {
-    this.queue.update((items) => items.filter((i) => i.id !== id));
+    this.queueRaw.update((items) => items.filter((i) => i.id !== id));
+    if (this.selectedIds().has(id)) {
+      this.selectedIds.update((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+    // Avoid being stranded on a now-empty trailing page.
+    const maxPage = Math.max(0, this.totalPages() - 1);
+    if (this.page() > maxPage) {
+      this.page.set(maxPage);
+    }
+  }
+
+  // --- Paging handlers ----------------------------------------------------
+  goToPage(p: number): void {
+    this.page.set(p);
+  }
+
+  setSize(s: number): void {
+    this.size.set(s);
+    writePageSize('approvalQueue', s);
+    this.page.set(0);
   }
 
   private showToast(kind: Toast['kind'], text: string): void {

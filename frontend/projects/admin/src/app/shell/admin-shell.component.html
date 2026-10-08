@@ -1,192 +1,418 @@
-<div class="page">
-  <!-- ===================== Top header (white) ===================== -->
-  <header class="navbar navbar-expand-md d-print-none sticky-top shifa-navbar">
-    <div class="container-xl">
-      <!-- Mobile hamburger toggles the horizontal menu -->
-      <button
-        class="navbar-toggler"
-        type="button"
-        (click)="toggleSidebar()"
-        [attr.aria-expanded]="sidebarOpen()"
-        aria-controls="navbar-menu"
-        aria-label="Toggle navigation"
-      >
-        <span class="navbar-toggler-icon"></span>
-      </button>
-
-      <!-- Brand -->
-      <div class="navbar-brand navbar-brand-autodark pe-0 pe-md-3">
-        <a routerLink="/dashboard" class="shifa-brand" aria-label="Shifa Herbal Remedies">
-          <span class="shifa-brand__mark"><i class="ti ti-leaf"></i></span>
-          <span class="shifa-brand__text">
-            <span class="shifa-brand__title">Shifa</span>
-            <span class="shifa-brand__subtitle">Herbal Remedies</span>
-          </span>
+<div class="page shifa-appshell" [class.sidebar-collapsed]="sidebarCollapsed()">
+  <!-- ===================== Desktop sidebar (≥992px only) =====================
+       A persistent left navigation for laptop/desktop, giving the admin a true
+       desktop layout instead of the mobile hamburger + bottom-tab paradigm.
+       It reuses the SAME role-filtered navEntries() as the drawer; on mobile it
+       is hidden via CSS (the hamburger drawer + bottom tabs stay). -->
+  @if (auth.session()) {
+    <aside class="shifa-sidebar d-print-none" [class.is-collapsed]="sidebarCollapsed()" aria-label="Primary navigation">
+      <div class="shifa-sidebar__brand">
+        <a routerLink="/dashboard" class="shifa-brand shifa-sidebar__brandlink" aria-label="Shifa Herbal Remedies">
+          <img src="/logo.png" alt="Shifa Herbal Remedies" class="shifa-brand__logo" />
         </a>
+        <button
+          type="button"
+          class="shifa-sidebar__toptoggle"
+          (click)="toggleSidebarCollapsed()"
+          [title]="sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+          [attr.aria-label]="sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+        >
+          <i class="ti" [class.ti-layout-sidebar-left-expand]="sidebarCollapsed()" [class.ti-layout-sidebar-left-collapse]="!sidebarCollapsed()"></i>
+        </button>
       </div>
-
-      <!-- Global search (inline on desktop, expanding icon on mobile) -->
-      <div class="shifa-navbar__search flex-fill order-md-first d-flex justify-content-md-center">
-        <admin-global-search />
-      </div>
-
-      <!-- Right side: live status + user menu -->
-      <div class="navbar-nav flex-row order-md-last">
-        <div class="d-flex align-items-center gap-2 gap-md-3">
-          <!-- Live SSE indicator -->
-          <span
-            class="live-indicator d-none d-sm-inline-flex"
-            [class]="events.status()"
-            [title]="'Real-time feed: ' + liveLabel()"
-          >
-            <span class="dot"></span>
-            <span>{{ liveLabel() }}</span>
-          </span>
-
-          <!-- Notifications bell (ADMIN only) -->
-          @if (isAdmin()) {
-            <admin-notification-bell />
-          }
-
-          <!-- User dropdown (Angular-driven) -->
-          @if (auth.session(); as session) {
-            <div class="shifa-usermenu">
+      <nav class="shifa-sidebar__nav" aria-label="All destinations">
+        @for (entry of navEntries(); track entry.label) {
+          @if (entry.kind === 'link') {
+            <a
+              class="shifa-sidebar__item"
+              [routerLink]="entry.path"
+              routerLinkActive="active"
+              [routerLinkActiveOptions]="{ exact: entry.path === '/dashboard' }"
+              [title]="sidebarCollapsed() ? entry.label : ''"
+            >
+              <i class="ti {{ entry.icon }}" aria-hidden="true"></i>
+              <span class="shifa-sidebar__text">{{ entry.label }}</span>
+            </a>
+          } @else {
+            <div class="shifa-sidebar__group" [class.is-open]="isSidebarGroupOpen(entry.label)">
               <button
                 type="button"
-                class="btn btn-ghost-secondary d-flex align-items-center gap-2 px-2 shifa-usermenu__btn"
-                (click)="toggleUserMenu()"
-                [attr.aria-expanded]="userMenuOpen()"
-                aria-haspopup="menu"
-                aria-label="Account menu"
+                class="shifa-sidebar__grouplabel shifa-sidebar__grouptoggle"
+                (click)="toggleSidebarGroup(entry.label)"
+                [attr.aria-expanded]="isSidebarGroupOpen(entry.label)"
+                [title]="sidebarCollapsed() ? entry.label : ''"
               >
-                <span class="avatar avatar-sm shifa-avatar" aria-hidden="true">
-                  {{ session.username.charAt(0).toUpperCase() }}
-                </span>
-                <span class="d-none d-sm-flex flex-column text-start lh-sm">
-                  <span class="fw-medium">{{ session.username }}</span>
-                  <span class="text-secondary small">{{ session.role }}</span>
-                </span>
-                <i class="ti ti-chevron-down text-secondary" aria-hidden="true"></i>
+                <i class="ti {{ entry.icon }}" aria-hidden="true"></i>
+                <span>{{ entry.label }}</span>
+                <i class="ti ti-chevron-down shifa-sidebar__chev" aria-hidden="true"></i>
               </button>
-
-              @if (userMenuOpen()) {
-                <div class="shifa-backdrop-transparent" (click)="closeUserMenu()"></div>
-                <div class="card shifa-usermenu__panel anim-pop">
-                  <div class="card-body p-2">
-                    <div class="px-2 py-1">
-                      <div class="fw-medium">{{ session.username }}</div>
-                      <div class="text-secondary small">{{ session.role }}</div>
-                    </div>
-                    <div class="dropdown-divider my-1"></div>
-                    <button
-                      type="button"
-                      class="btn btn-ghost-danger w-100 justify-content-start"
-                      (click)="closeUserMenu(); signOut()"
-                    >
-                      <i class="ti ti-logout me-2"></i> Logout
-                    </button>
-                  </div>
-                </div>
+              @if (isSidebarGroupOpen(entry.label)) {
+                @for (child of entry.children; track child.path) {
+                  <a
+                    class="shifa-sidebar__item shifa-sidebar__item--child"
+                    [routerLink]="child.path"
+                    routerLinkActive="active"
+                    [title]="sidebarCollapsed() ? child.label : ''"
+                  >
+                    <i class="ti {{ child.icon }}" aria-hidden="true"></i>
+                    <span class="shifa-sidebar__text">{{ child.label }}</span>
+                  </a>
+                }
               }
             </div>
           }
+        }
+      </nav>
+      <button
+        type="button"
+        class="shifa-sidebar__toggle"
+        (click)="toggleSidebarCollapsed()"
+        [title]="sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+        [attr.aria-label]="sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+      >
+        <i class="ti" [class.ti-layout-sidebar-left-expand]="sidebarCollapsed()" [class.ti-layout-sidebar-left-collapse]="!sidebarCollapsed()"></i>
+        @if (!sidebarCollapsed()) {
+          <span>Collapse</span>
+        }
+      </button>
+    </aside>
+  }
+
+  <!-- ===================== Top app bar ===================== -->
+  <header class="navbar d-print-none sticky-top shifa-navbar shifa-appbar">
+    <div class="container-xl shifa-appbar__inner">
+      <!-- Left: hamburger trigger + current screen title -->
+      <div class="shifa-appbar__lead">
+        <button
+          type="button"
+          class="btn btn-icon shifa-appbar__burger"
+          data-tour="hamburger"
+          (click)="toggleMenu()"
+          [attr.aria-expanded]="menuOpen()"
+          aria-controls="shifa-nav-drawer"
+          aria-label="Open navigation menu"
+        >
+          <i class="ti ti-menu-2" aria-hidden="true"></i>
+        </button>
+        <div class="shifa-appbar__titlewrap">
+          @if (pageContext(); as ctx) {
+            <span class="shifa-appbar__eyebrow">{{ ctx }}</span>
+          }
+          <h1 class="shifa-appbar__title" [title]="pageTitle()">{{ pageTitle() }}</h1>
         </div>
+      </div>
+
+      <!-- Right: global search, live status, notifications, account -->
+      <div class="shifa-appbar__actions">
+        <!-- Global search (inline on desktop, expanding icon on mobile) -->
+        @if (showGlobalSearch()) {
+          <div class="shifa-appbar__search" data-tour="global-search">
+            <admin-global-search #globalSearch />
+          </div>
+        }
+
+        <!-- Offline indicator (FEATURE-ROADMAP §8.1) -->
+        @if (!pwa.online()) {
+          <span class="shifa-offline-chip" title="You are offline — changes are saved and sync when you reconnect">
+            <i class="ti ti-wifi-off" aria-hidden="true"></i>
+            <span class="d-none d-sm-inline">Offline</span>
+          </span>
+        }
+
+        <!-- Install app (FEATURE-ROADMAP §8.1). Always render the action in a
+             normal browser; click-to-install uses the native prompt when available
+             and otherwise opens platform-specific instructions. -->
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-primary shifa-install-btn"
+          (click)="installApp()"
+          title="Install Shifa OMS as an app"
+          aria-label="Install Shifa OMS as an app"
+        >
+          <i class="ti ti-download me-1" aria-hidden="true"></i>
+          <span class="d-none d-sm-inline">Install app</span>
+        </button>
+
+        <!-- Live SSE indicator -->
+        <span
+          class="live-indicator d-none d-sm-inline-flex"
+          [class]="events.status()"
+          [title]="'Real-time feed: ' + liveLabel()"
+        >
+          <span class="dot"></span>
+          <span>{{ liveLabel() }}</span>
+        </span>
+
+        <!-- Per-user notifications bell (all staff roles, Req 13.4) -->
+        @if (auth.session()) {
+          <span data-tour="notif-bell"><admin-notification-bell /></span>
+        }
+
+        <!-- User dropdown (Angular-driven) -->
+        @if (auth.session(); as session) {
+          <div class="shifa-usermenu">
+            <button
+              type="button"
+              class="btn btn-ghost-secondary d-flex align-items-center gap-2 px-2 shifa-usermenu__btn"
+              (click)="toggleUserMenu()"
+              [attr.aria-expanded]="userMenuOpen()"
+              aria-haspopup="menu"
+              aria-label="Account menu"
+            >
+              <span class="avatar avatar-sm shifa-avatar" aria-hidden="true">
+                {{ auth.initials() }}
+              </span>
+              <span class="d-none d-md-flex flex-column text-start lh-sm">
+                <span class="fw-medium">{{ auth.displayName() }}</span>
+                <span class="text-secondary small">{{ roleLabel(session.role) }}</span>
+              </span>
+              <i class="ti ti-chevron-down text-secondary" aria-hidden="true"></i>
+            </button>
+
+            @if (userMenuOpen()) {
+              <div class="shifa-backdrop-transparent" (click)="closeUserMenu()"></div>
+              <div class="card shifa-usermenu__panel anim-pop">
+                <div class="card-body p-2">
+                  <a
+                    routerLink="/my-profile"
+                    class="shifa-usermenu__id px-2 py-1"
+                    (click)="closeUserMenu()"
+                    title="View my profile"
+                  >
+                    <div class="fw-medium">{{ auth.displayName() }}</div>
+                    <div class="text-secondary small">{{ roleLabel(session.role) }}</div>
+                    <div class="text-secondary small shifa-mono">{{ session.username }}</div>
+                  </a>
+                  <div class="dropdown-divider my-1"></div>
+                  <a
+                    routerLink="/my-profile"
+                    class="btn shifa-usermenu__action w-100 justify-content-start"
+                    (click)="closeUserMenu()"
+                  >
+                    <i class="ti ti-user-circle me-2"></i> My Profile
+                  </a>
+                  <button
+                    type="button"
+                    class="btn shifa-usermenu__action w-100 justify-content-start"
+                    (click)="closeUserMenu(); replayTour()"
+                  >
+                    <i class="ti ti-map-2 me-2"></i> Take the tour
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-ghost-danger w-100 justify-content-start"
+                    (click)="closeUserMenu(); signOut()"
+                  >
+                    <i class="ti ti-logout me-2"></i> Logout
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
+        }
       </div>
     </div>
   </header>
 
-  <!-- ===================== Horizontal menu bar (white) ===================== -->
-  <div class="navbar-expand-md shifa-menu d-print-none">
-    <div class="collapse navbar-collapse" id="navbar-menu" [class.show]="sidebarOpen()">
-      <div class="navbar">
-        <div class="container-xl">
-          <ul class="navbar-nav">
-            @for (entry of navEntries(); track entry.label) {
-              @if (entry.kind === 'link') {
-                <!-- Standalone link (Dashboard, Reports) -->
-                <li class="nav-item">
-                  <a
-                    class="nav-link"
-                    [routerLink]="entry.path"
-                    routerLinkActive="active"
-                    (click)="closeSidebar()"
-                  >
-                    <span class="nav-link-icon"><i class="ti {{ entry.icon }}"></i></span>
-                    <span class="nav-link-title">{{ entry.label }}</span>
-                  </a>
-                </li>
-              } @else {
-                <!-- ===== Group: desktop dropdown ===== -->
-                <li class="nav-item shifa-navgroup d-none d-md-block">
-                  <button
-                    type="button"
-                    class="nav-link shifa-navgroup__toggle"
-                    [class.active]="isGroupActive(entry) || openGroup() === entry.label"
-                    (click)="toggleGroup(entry.label)"
-                    [attr.aria-expanded]="openGroup() === entry.label"
-                    aria-haspopup="menu"
-                  >
-                    <span class="nav-link-icon"><i class="ti {{ entry.icon }}"></i></span>
-                    <span class="nav-link-title">{{ entry.label }}</span>
-                    <i class="ti ti-chevron-down shifa-navgroup__caret" aria-hidden="true"></i>
-                  </button>
-
-                  @if (openGroup() === entry.label) {
-                    <div class="shifa-backdrop-transparent" (click)="closeGroups()"></div>
-                    <div class="card shifa-navgroup__panel anim-pop" role="menu">
-                      <div class="card-body p-1">
-                        @for (child of entry.children; track child.path) {
-                          <a
-                            class="shifa-navgroup__item"
-                            role="menuitem"
-                            [routerLink]="child.path"
-                            routerLinkActive="active"
-                            (click)="closeGroups(); closeSidebar()"
-                          >
-                            <span class="nav-link-icon"><i class="ti {{ child.icon }}"></i></span>
-                            <span>{{ child.label }}</span>
-                          </a>
-                        }
-                      </div>
-                    </div>
-                  }
-                </li>
-
-                <!-- ===== Group: mobile section (no floating dropdown) ===== -->
-                <li class="nav-item d-md-none shifa-navgroup-m">
-                  <div class="shifa-navgroup-m__label">
-                    <i class="ti {{ entry.icon }}" aria-hidden="true"></i>
-                    <span>{{ entry.label }}</span>
-                  </div>
-                  @for (child of entry.children; track child.path) {
-                    <a
-                      class="nav-link shifa-navgroup-m__item"
-                      [routerLink]="child.path"
-                      routerLinkActive="active"
-                      (click)="closeSidebar()"
-                    >
-                      <span class="nav-link-icon"><i class="ti {{ child.icon }}"></i></span>
-                      <span class="nav-link-title">{{ child.label }}</span>
-                    </a>
-                  }
-                </li>
-              }
-            }
-          </ul>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- ===================== Page body ===================== -->
   <div class="page-wrapper">
-    <main class="page-body">
+    <main class="page-body shifa-appshell__body">
+      <div class="container-xl">
+        <!-- App-update ready banner (FEATURE-ROADMAP §8.1) -->
+        @if (pwa.updateReady()) {
+          <div class="alert alert-info d-flex align-items-center shifa-app-banner" role="status">
+            <i class="ti ti-rocket me-2"></i>
+            <div class="flex-fill">A new version of Shifa OMS is ready.</div>
+            <button type="button" class="btn btn-sm btn-info ms-2" (click)="pwa.applyUpdate()">
+              Update now
+            </button>
+          </div>
+        }
+
+        <!-- Staff announcement banners (FEATURE-ROADMAP §8.4) -->
+        @for (a of visibleAnnouncements(); track a.id) {
+          <div class="alert {{ annAlertClass(a.severity) }} d-flex align-items-center shifa-app-banner" role="status">
+            <i class="ti {{ annIcon(a.severity) }} me-2"></i>
+            <div class="flex-fill">{{ a.message }}</div>
+            <button
+              type="button"
+              class="btn-close ms-2"
+              (click)="dismissAnnouncement(a.id)"
+              aria-label="Dismiss announcement"
+            ></button>
+          </div>
+        }
+      </div>
       <div class="container-xl" [@routeFade]="pageTitle()">
         <router-outlet />
       </div>
     </main>
   </div>
+
+  <!-- ===================== Bottom tab bar (Req 2) ===================== -->
+  @if (auth.session() && bottomTabs().length) {
+    <nav class="shifa-bottomnav d-print-none" data-tour="bottom-tabs" aria-label="Primary">
+      @for (tab of bottomTabs(); track tab.label) {
+        <a
+          class="shifa-bottomnav__tab"
+          [class.active]="tab.path === activeTabPath()"
+          [routerLink]="tab.path"
+          (click)="closeMenu()"
+        >
+          <i class="ti {{ tab.icon }} shifa-bottomnav__icon" aria-hidden="true"></i>
+          <span class="shifa-bottomnav__label">{{ tab.label }}</span>
+        </a>
+      }
+    </nav>
+  }
 </div>
+
+<!-- ===================== Hamburger off-canvas drawer (Req 3) ===================== -->
+@if (menuOpen()) {
+  <div class="shifa-overlay" (click)="closeMenu()"></div>
+  <aside
+    id="shifa-nav-drawer"
+    class="shifa-drawer shifa-navdrawer"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Navigation menu"
+  >
+    <div class="shifa-drawer__head">
+      <a routerLink="/dashboard" class="shifa-brand" aria-label="Shifa Herbal Remedies" (click)="closeMenu()">
+        <img src="/logo.png" alt="Shifa Herbal Remedies" class="shifa-brand__logo" />
+      </a>
+      <button type="button" class="btn btn-icon" (click)="closeMenu()" aria-label="Close menu">
+        <i class="ti ti-x" aria-hidden="true"></i>
+      </button>
+    </div>
+
+    <div class="shifa-drawer__body">
+      <nav class="shifa-navdrawer__nav" aria-label="All destinations">
+        @for (entry of navEntries(); track entry.label) {
+          @if (entry.kind === 'link') {
+            <a
+              class="shifa-navdrawer__item"
+              [routerLink]="entry.path"
+              routerLinkActive="active"
+              (click)="closeMenu()"
+            >
+              <span class="nav-link-icon"><i class="ti {{ entry.icon }}"></i></span>
+              <span class="shifa-navdrawer__text">{{ entry.label }}</span>
+            </a>
+          } @else {
+            <div class="shifa-navdrawer__group" [class.is-open]="isGroupOpen(entry.label)">
+              <button
+                type="button"
+                class="shifa-navdrawer__label shifa-navdrawer__label--toggle"
+                (click)="toggleGroup(entry.label)"
+                [attr.aria-expanded]="isGroupOpen(entry.label)"
+              >
+                <i class="ti {{ entry.icon }}" aria-hidden="true"></i>
+                <span>{{ entry.label }}</span>
+                <i class="ti ti-chevron-down shifa-navdrawer__chev" aria-hidden="true"></i>
+              </button>
+              @if (isGroupOpen(entry.label)) {
+                @for (child of entry.children; track child.path) {
+                  <a
+                    class="shifa-navdrawer__item shifa-navdrawer__item--child"
+                    [routerLink]="child.path"
+                    routerLinkActive="active"
+                    (click)="closeMenu()"
+                  >
+                    <span class="nav-link-icon"><i class="ti {{ child.icon }}"></i></span>
+                    <span class="shifa-navdrawer__text">{{ child.label }}</span>
+                  </a>
+                }
+              }
+            </div>
+          }
+        }
+
+        <!-- Install app (FEATURE-ROADMAP §8.1) — discoverable entry point -->
+        @if (!pwa.installed()) {
+          <button
+            type="button"
+            class="shifa-navdrawer__item shifa-navdrawer__install"
+            (click)="closeMenu(); installApp()"
+          >
+            <span class="nav-link-icon"><i class="ti ti-device-mobile-down"></i></span>
+            <span class="shifa-navdrawer__text">Install app</span>
+          </button>
+        }
+      </nav>
+    </div>
+
+    @if (auth.session(); as session) {
+      <div class="shifa-drawer__foot shifa-navdrawer__foot">
+        <a class="shifa-navdrawer__user" routerLink="/my-profile" (click)="closeMenu()" title="View my profile">
+          <span class="avatar avatar-sm shifa-avatar" aria-hidden="true">
+            {{ auth.initials() }}
+          </span>
+          <span class="d-flex flex-column lh-sm">
+            <span class="fw-medium">{{ auth.displayName() }}</span>
+            <span class="text-secondary small">{{ roleLabel(session.role) }}</span>
+          </span>
+        </a>
+        <button
+          type="button"
+          class="btn btn-ghost-danger"
+          (click)="closeMenu(); signOut()"
+        >
+          <i class="ti ti-logout me-2"></i> Logout
+        </button>
+      </div>
+    }
+  </aside>
+}
+
+<!-- ===================== Install-app instructions (FEATURE-ROADMAP §8.1) ===================== -->
+@if (installHelpOpen()) {
+  <div class="shifa-overlay" (click)="closeInstallHelp()"></div>
+  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-modal="true" aria-label="Install Shifa OMS">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-device-mobile-down me-2"></i>Install Shifa OMS</h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeInstallHelp()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">
+          Add Shifa OMS to your home screen to open it like a native app — full screen, faster, and it
+          keeps working on patchy networks.
+        </p>
+
+        @if (pwa.isIos) {
+          <!-- iOS Safari never fires the auto prompt; must be added manually. -->
+          <div class="mb-2 fw-medium"><i class="ti ti-brand-safari me-1"></i>On iPhone / iPad (Safari)</div>
+          <ol class="ps-3 mb-0 small">
+            <li>Tap the <strong>Share</strong> button <i class="ti ti-share"></i> in the Safari toolbar.</li>
+            <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+            <li>Tap <strong>Add</strong> — the Shifa icon appears on your home screen.</li>
+          </ol>
+        } @else {
+          <div class="mb-2 fw-medium"><i class="ti ti-brand-chrome me-1"></i>On Android / Chrome / Edge</div>
+          <ol class="ps-3 mb-3 small">
+            <li>Open the browser <strong>⋮ menu</strong> (top-right).</li>
+            <li>Tap <strong>Install app</strong> (or <strong>Add to Home screen</strong>).</li>
+            <li>Confirm — the Shifa icon appears on your home screen.</li>
+          </ol>
+          <div class="alert alert-warning py-2 px-3 small mb-0">
+            <i class="ti ti-info-circle me-1"></i>
+            The one-tap install button only appears when the app is opened over <strong>https://</strong>.
+            If you're on a plain <code>http://</code> address or the local dev server, use the browser menu
+            steps above instead.
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+}
 
 <!-- App-wide toast notifications (single host for the whole admin) -->
 <admin-toasts />
+
+<!-- First-run guided tour overlay (enhancement) -->
+<admin-guided-tour />

@@ -2,15 +2,18 @@ package com.shifa.oms.reconciliation;
 
 import com.shifa.oms.common.PageRequests;
 import com.shifa.oms.common.PageResponse;
+import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
 import com.shifa.oms.reconciliation.dto.CourierSummaryResponse;
 import com.shifa.oms.reconciliation.dto.ReceivableResponse;
+import com.shifa.oms.reconciliation.dto.RemittanceImportResponse;
 import com.shifa.oms.reconciliation.dto.SegregationResponse;
 import com.shifa.oms.reconciliation.dto.SettleReceivableRequest;
 import com.shifa.oms.reconciliation.dto.UnsettledCodResponse;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,7 +22,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +55,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/recon")
-@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT')")
+@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','CA')")
 public class ReconciliationController {
 
     /** Whitelist of API sort fields → JPA properties for the receivables table. */
@@ -63,9 +69,15 @@ public class ReconciliationController {
             Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.DESC, "id"));
 
     private final ReconciliationService reconciliationService;
+    private final RemittanceImportService remittanceImportService;
+    private final CodAgingService codAgingService;
 
-    public ReconciliationController(ReconciliationService reconciliationService) {
+    public ReconciliationController(ReconciliationService reconciliationService,
+                                    RemittanceImportService remittanceImportService,
+                                    CodAgingService codAgingService) {
         this.reconciliationService = reconciliationService;
+        this.remittanceImportService = remittanceImportService;
+        this.codAgingService = codAgingService;
     }
 
     /**
@@ -123,6 +135,29 @@ public class ReconciliationController {
         return reconciliationService.unsettledCod();
     }
 
+    /**
+     * COD aging summary (cod-aging enhancement): unsettled COD grouped into aging
+     * buckets (0–7 / 8–15 / 16–30 / 30+ days) plus a courier-SLA flag for money
+     * owed beyond the expected payout window, so the accountant/CA can see what to
+     * chase and how overdue it is. Read-only.
+     */
+    @GetMapping("/cod-aging")
+    public com.shifa.oms.reconciliation.dto.CodAgingResponse codAging() {
+        return codAgingService.aging();
+    }
+
+    /**
+     * One-tap collectible summary (ENHANCEMENT 1.4): what the courier still owes
+     * us (unsettled COD + the over-SLA chase figure) versus what customers still
+     * owe directly, plus pending loss claims — the clean "what's left to collect"
+     * panel shown after a remittance import. Composes the COD aging with the
+     * order/receivable ledgers. Read-only.
+     */
+    @GetMapping("/collectible-summary")
+    public com.shifa.oms.reconciliation.dto.CollectibleSummaryResponse collectibleSummary() {
+        return reconciliationService.collectibleSummary(codAgingService.aging());
+    }
+
     /** Prepaid vs COD segregation of fulfilled orders (Req 18.4). */
     @GetMapping("/segregation")
     public SegregationResponse segregation() {
@@ -142,4 +177,37 @@ public class ReconciliationController {
             @RequestBody(required = false) SettleReceivableRequest request) {
         return reconciliationService.settle(id, request != null ? request.date() : null);
     }
+
+    /**
+     * Imports (or previews) a courier COD remittance sheet — CSV or a real Excel
+     * workbook ({@code .xlsx}/{@code .xls}) — auto-matching each row by AWB/order
+     * code/QuikShipX client-order-id to an order and settling its COD receivable
+     * (creating one first, via a Delivered/COD_Collected catch-up, when the
+     * order never received a courier delivery webhook) when the amount agrees
+     * (enhancement: "courier remittance import & auto-match"). Restricted to
+     * ADMIN + ACCOUNTANT (not CA — settling money is an operational action,
+     * unlike the class-level read access).
+     *
+     * @param file   the multipart CSV/Excel file (required; header needs an
+     *               amount column and at least one of an AWB/order-code/client-
+     *               order-id column — see {@link RemittanceImportService})
+     * @param dryRun when true (default), match + report only; when false, settle
+     *               every row that cleanly matches
+     * @return the aggregate import result with per-row outcomes
+     */
+    @PostMapping(path = "/remittance/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT')")
+    public RemittanceImportResponse importRemittance(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(name = "dryRun", defaultValue = "true") boolean dryRun) {
+        if (file == null || file.isEmpty()) {
+            throw new ValidationException("A CSV file is required.");
+        }
+        try {
+            return remittanceImportService.importFile(file.getBytes(), file.getOriginalFilename(), dryRun);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to read the uploaded file.", e);
+        }
+    }
 }
+

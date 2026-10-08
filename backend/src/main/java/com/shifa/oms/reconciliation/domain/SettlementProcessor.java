@@ -26,7 +26,7 @@ import java.util.function.LongSupplier;
  *       COD amount (Req 16.2).</li>
  *   <li><b>RTO</b> &rarr; cancel the COD amount (set 0), outstanding&nbsp;=&nbsp;0,
  *       no receivable — RTO orders are excluded from COD totals (Req 16.3).</li>
- *   <li><b>Courier_Lost</b> &rarr; record a {@code CLAIM_RECEIVABLE} equal to the
+ *   <li><b>Redispatch</b> &rarr; record a {@code CLAIM_RECEIVABLE} equal to the
  *       net order amount (prepaid or COD), outstanding&nbsp;=&nbsp;0 (Req 17.2, 17.3).</li>
  * </ul>
  *
@@ -96,14 +96,14 @@ public class SettlementProcessor {
 
     /**
      * Applies the settlement side effect for an order reaching
-     * {@code Courier_Lost}: a claim receivable equal to the net order amount is
+     * {@code Redispatch}: a claim receivable equal to the net order amount is
      * recorded regardless of prepaid/COD, and the customer outstanding is 0
      * (Requirement 17.2, 17.3).
      *
      * @param order the lost order
      * @return the settlement outcome, always carrying a claim receivable
      */
-    public SettlementResult onCourierLost(OrderSettlementView order) {
+    public SettlementResult onRedispatch(OrderSettlementView order) {
         Objects.requireNonNull(order, "order");
         Receivable claim = new Receivable(
                 receivableIdGenerator.getAsLong(),
@@ -112,6 +112,6 @@ public class SettlementProcessor {
                 ReceivableType.CLAIM_RECEIVABLE,
                 order.totalAmount());
         return new SettlementResult(
-                OrderStatus.COURIER_LOST, Money.ZERO, order.codAmount(), Optional.of(claim));
+                OrderStatus.REDISPATCH, Money.ZERO, order.codAmount(), Optional.of(claim));
     }
 }

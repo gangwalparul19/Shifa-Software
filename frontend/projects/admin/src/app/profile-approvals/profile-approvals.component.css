@@ -1,0 +1,16 @@
+.pa-card .card-header {
+  display: flex;
+  align-items: center;
+}
+.pa-card .avatar {
+  background: var(--shifa-green-100, #e6f4ec);
+  color: var(--shifa-green-700, #164632);
+  font-weight: 700;
+}
+.pa-diff td,
+.pa-diff th {
+  vertical-align: top;
+}
+.text-green {
+  color: var(--shifa-green-700, #164632) !important;
+}

@@ -1,0 +1,46 @@
+:host {
+  display: block;
+}
+
+/* --- Mobile backup run cards (<768px) ---------------------------------- */
+.shifa-bk-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.shifa-bk {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-left: 4px solid rgba(15, 51, 36, 0.15);
+  border-radius: 12px;
+  padding: 0.7rem 0.85rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+.shifa-bk.is-success {
+  border-left-color: #1f5d3f;
+}
+.shifa-bk.is-failed {
+  border-left-color: #b42318;
+}
+.shifa-bk__r1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.shifa-bk__when {
+  color: #64726b;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+.shifa-bk__key {
+  margin-top: 0.4rem;
+  color: #45524b;
+  font-size: 0.82rem;
+  word-break: break-all;
+}
+.shifa-bk__err {
+  margin-top: 0.4rem;
+  color: #b42318;
+  font-size: 0.85rem;
+}

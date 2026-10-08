@@ -28,6 +28,8 @@
     "@ngx-translate/http-loader": "^18.0.0",
     "@tabler/core": "^1.4.0",
     "@tabler/icons-webfont": "^3.44.0",
+    "@zxing/browser": "^0.2.1",
+    "@zxing/library": "^0.23.0",
     "apexcharts": "^5.16.0",
     "ng-apexcharts": "^2.4.0",
     "rxjs": "~7.8.0",

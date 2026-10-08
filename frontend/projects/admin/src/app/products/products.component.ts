@@ -1,18 +1,21 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Router } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import {
   ApiError,
+  AuthService,
   Category,
   Money,
   Product,
   ProductVisibility,
+  Role,
   SortState,
   StockStatus,
   stockBadgeLabel,
 } from 'core';
-import { ImportResult, ProductRequest, ProductsService } from './products.service';
+import { ImportResult, ProductRequest, ProductSalesStats, ProductsService } from './products.service';
 import { CategoriesService, CategoryRequest } from './categories.service';
 import { SettingsService } from '../settings/settings.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
@@ -20,10 +23,12 @@ import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { SortableHeaderComponent } from '../shared/sortable-header.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { toggleSort, sortParam } from '../shared/sort.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
+import { imageErrorFallback, productImageUrl, resolveImageUrl } from '../shared/product-image.util';
 
 /** Sort fields the backend accepts for the admin products listing. */
 const SORT_FIELDS = new Set(['name', 'sku', 'salePrice', 'mrp', 'stockQuantity', 'createdAt']);
@@ -47,6 +52,7 @@ const TABLE_KEY = 'products';
     DensityToggleComponent,
     PaginationComponent,
     SortableHeaderComponent,
+    RowActionsMenuComponent,
   ],
   templateUrl: './products.component.html',
   styleUrl: './products.component.css',
@@ -58,6 +64,16 @@ export class ProductsComponent implements OnInit, OnDestroy {
   private readonly fb = inject(FormBuilder);
   private readonly confirmService = inject(ConfirmService);
   private readonly toasts = inject(ToastService);
+  private readonly router = inject(Router);
+  private readonly auth = inject(AuthService);
+
+  /**
+   * Whether the signed-in user may mutate the catalog. Only ADMIN can
+   * create/edit/import products or manage categories; a SALESPERSON gets a
+   * read-only view (list + product detail), so every mutation affordance is
+   * hidden for non-admins. The backend enforces the same rule.
+   */
+  protected readonly canManage = computed(() => this.auth.hasAnyRole(Role.ADMIN));
 
   protected readonly Visibility = ProductVisibility;
   protected readonly Stock = StockStatus;
@@ -78,12 +94,17 @@ export class ProductsComponent implements OnInit, OnDestroy {
 
   // --- Paging + sort ------------------------------------------------------
   protected readonly page = signal(0);
-  protected readonly size = signal(readPageSize(TABLE_KEY, 20));
+  protected readonly size = signal(readPageSize(TABLE_KEY, 10));
   protected readonly totalPages = signal(0);
   protected readonly totalElements = signal(0);
   protected readonly sort = signal<SortState>({ field: 'name', dir: 'asc' });
 
   // --- Filters ------------------------------------------------------------
+  /** Whether the collapsible advanced-filter panel is open (collapsed on load). */
+  protected readonly filtersOpen = signal(false);
+  /** How many advanced filters (category/visibility/stock) are set, for the toggle badge. */
+  protected readonly activeFilterCount = signal(0);
+
   protected readonly search = new FormControl<string>('', { nonNullable: true });
   protected readonly filters = new FormGroup({
     category: new FormControl<string>('', { nonNullable: true }),
@@ -93,6 +114,20 @@ export class ProductsComponent implements OnInit, OnDestroy {
 
   private readonly destroy$ = new Subject<void>();
 
+  /** The product shown in the mobile-first detail drawer (Req 9); null when closed. */
+  protected readonly selectedProduct = signal<Product | null>(null);
+
+  /** The active image index for the product-detail carousel (Req 9.1). */
+  protected readonly heroIndex = signal(0);
+
+  // --- Product-detail "Sales Overview" stats (Req 9.2) -------------------
+  /** Current-month sales stats for the open product; null until loaded/when closed. */
+  protected readonly salesStats = signal<ProductSalesStats | null>(null);
+  /** True while the sales stats request is in flight. */
+  protected readonly statsLoading = signal(false);
+  /** True when the sales stats request failed (drawer still usable). */
+  protected readonly statsError = signal(false);
+
   /** The product being edited (form open); null when the form is closed. */
   protected readonly editing = signal<Product | null>(null);
   /** True when the form is open for a brand-new product. */
@@ -100,6 +135,12 @@ export class ProductsComponent implements OnInit, OnDestroy {
   protected readonly formOpen = computed(() => this.creating() || this.editing() !== null);
   /** A server-side error (e.g. duplicate SKU) shown at the top of the form. */
   protected readonly formError = signal<string | null>(null);
+
+  /**
+   * Active tab in the product form so it's split into Basics / Pricing &amp; Tax
+   * / Inventory tabs instead of one long scroll.
+   */
+  protected readonly formTab = signal<'basics' | 'pricing' | 'inventory'>('basics');
 
   // --- Categories management panel state ---------------------------------
   protected readonly categoriesOpen = signal(false);
@@ -110,7 +151,7 @@ export class ProductsComponent implements OnInit, OnDestroy {
   // --- CSV import state (Set B — Feature 5) ------------------------------
   /** The expected CSV columns, shown as a hint (sku/name/mrp/salePrice required). */
   protected readonly importColumns =
-    'sku,name,mrp,salePrice,hsnCode,gstRate,stockQuantity,trackInventory,category,visibility,description';
+    'sku,name,mrp,salePrice,minimumRate,hsnCode,wtMl,gstRate,stockQuantity,trackInventory,category,visibility,description';
   protected readonly importOpen = signal(false);
   protected readonly importFile = signal<File | null>(null);
   protected readonly importBusy = signal(false);
@@ -126,8 +167,11 @@ export class ProductsComponent implements OnInit, OnDestroy {
     description: [''],
     mrp: ['', [Validators.required, Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
     salePrice: ['', [Validators.required, Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
+    minimumRate: ['', [Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
+    costPrice: ['', [Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
     hsnCode: ['', [Validators.maxLength(20)]],
     gstRate: ['', [Validators.pattern(/^\d{1,3}(\.\d{1,2})?$/)]],
+    wtMl: ['', [Validators.maxLength(32)]],
     visibility: [ProductVisibility.PUBLISHED, [Validators.required]],
     categoryId: [''],
     stockQuantity: ['0', [Validators.pattern(/^\d{1,7}$/)]],
@@ -152,7 +196,22 @@ export class ProductsComponent implements OnInit, OnDestroy {
       .pipe(debounceTime(300), distinctUntilChanged(), takeUntil(this.destroy$))
       .subscribe(() => this.resetAndLoad());
 
-    this.filters.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => this.resetAndLoad());
+    this.filters.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => {
+      this.updateActiveFilterCount();
+      this.resetAndLoad();
+    });
+    this.updateActiveFilterCount();
+  }
+
+  /** Show/hide the advanced-filter panel. */
+  toggleFilters(): void {
+    this.filtersOpen.update((open) => !open);
+  }
+
+  /** Recomputes how many advanced filters (category/visibility/stock) are set. */
+  private updateActiveFilterCount(): void {
+    const f = this.filters.getRawValue();
+    this.activeFilterCount.set([f.category, f.visibility, f.stockStatus].filter((v) => !!v).length);
   }
 
   ngOnDestroy(): void {
@@ -226,6 +285,126 @@ export class ProductsComponent implements OnInit, OnDestroy {
     return !!(this.search.value || f.category || f.visibility || f.stockStatus);
   }
 
+  // --- Quick filter tabs (Req 8.2) ---------------------------------------
+  // Map the segmented tabs onto the existing server-side visibility/stock
+  // filters so paging + totals stay correct. The category dropdown is left
+  // untouched; switching a tab clears any active stock/visibility pairing.
+
+  /** Whether the given quick-filter tab reflects the current filter state. */
+  isTab(tab: 'ALL' | 'ACTIVE' | 'INACTIVE' | 'LOW'): boolean {
+    const f = this.filters.getRawValue();
+    switch (tab) {
+      case 'ACTIVE':
+        return f.visibility === ProductVisibility.PUBLISHED && !f.stockStatus;
+      case 'INACTIVE':
+        return f.visibility === ProductVisibility.HIDDEN && !f.stockStatus;
+      case 'LOW':
+        return f.stockStatus === StockStatus.LOW_STOCK && !f.visibility;
+      default:
+        return !f.visibility && !f.stockStatus;
+    }
+  }
+
+  /** Applies a quick-filter tab by driving the existing server-side filters. */
+  setTab(tab: 'ALL' | 'ACTIVE' | 'INACTIVE' | 'LOW'): void {
+    switch (tab) {
+      case 'ACTIVE':
+        this.filters.patchValue({ visibility: ProductVisibility.PUBLISHED, stockStatus: '' });
+        break;
+      case 'INACTIVE':
+        this.filters.patchValue({ visibility: ProductVisibility.HIDDEN, stockStatus: '' });
+        break;
+      case 'LOW':
+        this.filters.patchValue({ visibility: '', stockStatus: StockStatus.LOW_STOCK });
+        break;
+      default:
+        this.filters.patchValue({ visibility: '', stockStatus: '' });
+    }
+  }
+
+  // --- Product detail drawer (Req 9) -------------------------------------
+
+  /** Opens the mobile-first product detail drawer for a product (Req 8.4, 9). */
+  openDetail(product: Product): void {
+    this.heroIndex.set(0);
+    this.selectedProduct.set(product);
+    this.loadSalesStats(product.id);
+  }
+
+  /**
+   * Fetches the product's current-month sales stats for the "Sales Overview"
+   * card (Req 9.2). Failure is non-blocking: the drawer stays usable and the
+   * card shows a graceful zero/empty state.
+   */
+  private loadSalesStats(productId: number): void {
+    this.salesStats.set(null);
+    this.statsError.set(false);
+    this.statsLoading.set(true);
+    this.service.stats(productId).subscribe({
+      next: (stats) => {
+        this.salesStats.set(stats);
+        this.statsLoading.set(false);
+      },
+      error: () => {
+        this.statsError.set(true);
+        this.statsLoading.set(false);
+      },
+    });
+  }
+
+  /**
+   * The resolved image URLs for a product's detail carousel. Falls back to the
+   * single resolved primary image (placeholder-aware) when the product carries
+   * no image list, so there's always at least one slide.
+   */
+  detailImages(product: Product): string[] {
+    const imgs = (product.images ?? [])
+      .map((i) => resolveImageUrl(i.objectKey))
+      .filter((u) => !!u);
+    return imgs.length > 0 ? imgs : [this.thumb(product)];
+  }
+
+  /** The currently displayed carousel image URL for the open product. */
+  heroImage(product: Product): string {
+    const imgs = this.detailImages(product);
+    const idx = Math.min(this.heroIndex(), imgs.length - 1);
+    return imgs[idx] ?? this.thumb(product);
+  }
+
+  /** Selects a carousel slide by index (carousel dots). */
+  selectHero(index: number): void {
+    this.heroIndex.set(index);
+  }
+
+  /** Opens the Reports screen on the product-wise sales report (Req 9.2). */
+  viewSalesReport(): void {
+    this.closeDetail();
+    this.router.navigate(['/reports'], { queryParams: { type: 'product' } });
+  }
+
+  /** Closes the product detail drawer. */
+  closeDetail(): void {
+    this.selectedProduct.set(null);
+    this.salesStats.set(null);
+    this.statsError.set(false);
+    this.statsLoading.set(false);
+  }
+
+  /** Opens the edit form for the product currently shown in the detail drawer. */
+  editFromDetail(): void {
+    const product = this.selectedProduct();
+    if (!product) {
+      return;
+    }
+    this.closeDetail();
+    this.openEdit(product);
+  }
+
+  /** Star rating helper: whole/half/empty stars for a 0–5 average. */
+  hasRating(product: Product): boolean {
+    return product.averageRating != null && (product.reviewCount ?? 0) > 0;
+  }
+
   humanizeStock(status: string): string {
     return status
       .replaceAll('_', ' ')
@@ -280,16 +459,25 @@ export class ProductsComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** First image URL when it is a resolvable http(s) URL, else null (placeholder). */
-  thumb(product: Product): string | null {
-    const key = product.images?.[0]?.objectKey;
-    return key && /^https?:\/\//i.test(key) ? key : null;
+  /**
+   * Resolves the product's primary image to a browser URL, falling back to the
+   * shared placeholder when the product has no image. Handles relative keys
+   * (e.g. `products/shifa-01.jpg`) as well as absolute URLs.
+   */
+  thumb(product: Product): string {
+    return productImageUrl(product);
+  }
+
+  /** `<img (error)>` handler: swap a broken product image for the placeholder. */
+  onImgError(event: Event): void {
+    imageErrorFallback(event);
   }
 
   // --- Add / Edit product form -------------------------------------------
 
   openCreate(): void {
     this.formError.set(null);
+    this.formTab.set('basics');
     this.editing.set(null);
     this.form.reset({
       sku: '',
@@ -297,8 +485,11 @@ export class ProductsComponent implements OnInit, OnDestroy {
       description: '',
       mrp: '',
       salePrice: '',
+      minimumRate: '',
+      costPrice: '',
       hsnCode: '',
       gstRate: '',
+      wtMl: '',
       visibility: ProductVisibility.PUBLISHED,
       categoryId: '',
       stockQuantity: '0',
@@ -310,15 +501,22 @@ export class ProductsComponent implements OnInit, OnDestroy {
 
   openEdit(product: Product): void {
     this.formError.set(null);
+    this.formTab.set('basics');
     this.creating.set(false);
+    // The price/rate/gst form controls are string-typed (they mirror text inputs and
+    // are .trim()'d on save). The backend returns them as numbers/Money, so coerce to
+    // string here — otherwise save() calls .trim() on a number and throws.
     this.form.reset({
       sku: product.sku,
       name: product.name,
       description: product.description ?? '',
-      mrp: product.mrp,
-      salePrice: product.salePrice,
+      mrp: this.toFormString(product.mrp),
+      salePrice: this.toFormString(product.salePrice),
+      minimumRate: this.toFormString(product.minimumRate),
+      costPrice: this.toFormString(product.costPrice),
       hsnCode: product.hsnCode ?? '',
-      gstRate: product.gstRate ?? '',
+      gstRate: this.toFormString(product.gstRate),
+      wtMl: product.wtMl ?? '',
       visibility: product.visibility,
       categoryId: product.category ? String(product.category.id) : '',
       stockQuantity: String(product.stockQuantity ?? 0),
@@ -326,6 +524,14 @@ export class ProductsComponent implements OnInit, OnDestroy {
       featured: product.featured ?? false,
     });
     this.editing.set(product);
+  }
+
+  /**
+   * Coerces a price/rate value (which the API returns as a number or Money string,
+   * and may be null/undefined) to the string the string-typed form controls expect.
+   */
+  private toFormString(value: number | string | null | undefined): string {
+    return value === null || value === undefined ? '' : String(value);
   }
 
   closeForm(): void {
@@ -340,17 +546,29 @@ export class ProductsComponent implements OnInit, OnDestroy {
     }
     if (this.form.invalid) {
       this.form.markAllAsTouched();
+      // Surface the tab holding the first invalid control so errors aren't hidden.
+      const basicsInvalid = ['name', 'sku'].some((n) => !!this.form.get(n)?.invalid);
+      const pricingInvalid = ['mrp', 'salePrice', 'minimumRate', 'costPrice', 'hsnCode', 'gstRate', 'wtMl'].some(
+        (n) => !!this.form.get(n)?.invalid,
+      );
+      this.formTab.set(basicsInvalid ? 'basics' : pricingInvalid ? 'pricing' : 'inventory');
       return;
     }
     const raw = this.form.getRawValue();
+    // Coerce to string before trimming: the price/rate controls are string-typed,
+    // but a patched edit value could be a number — String(...).trim() is safe for both.
+    const s = (v: unknown): string => (v === null || v === undefined ? '' : String(v)).trim();
     const request: ProductRequest = {
-      sku: raw.sku.trim(),
-      name: raw.name.trim(),
-      description: raw.description.trim() || undefined,
-      mrp: raw.mrp.trim(),
-      salePrice: raw.salePrice.trim(),
-      hsnCode: raw.hsnCode.trim() || undefined,
-      gstRate: raw.gstRate.trim() || null,
+      sku: s(raw.sku),
+      name: s(raw.name),
+      description: s(raw.description) || undefined,
+      mrp: s(raw.mrp),
+      salePrice: s(raw.salePrice),
+      minimumRate: s(raw.minimumRate) || null,
+      costPrice: s(raw.costPrice) || null,
+      hsnCode: s(raw.hsnCode) || undefined,
+      gstRate: s(raw.gstRate) || null,
+      wtMl: s(raw.wtMl) || null,
       visibility: raw.visibility,
       categoryId: raw.categoryId ? Number(raw.categoryId) : null,
       stockQuantity: raw.stockQuantity ? Number(raw.stockQuantity) : 0,
@@ -379,6 +597,48 @@ export class ProductsComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Per-row kebab actions mirroring the original Edit / Hide-Publish buttons. */
+  rowActions(product: Product): RowAction[] {
+    const published = product.visibility === ProductVisibility.PUBLISHED;
+    return [
+      { key: 'edit', label: 'Edit', icon: 'ti-edit' },
+      {
+        key: 'toggle',
+        label: published ? 'Hide' : 'Publish',
+        icon: published ? 'ti-eye-off' : 'ti-eye',
+        variant: 'primary',
+        disabled: this.togglingId() !== null,
+      },
+    ];
+  }
+
+  /** Dispatches a kebab action for the given product row. */
+  onRowAction(key: string, product: Product): void {
+    if (key === 'edit') {
+      this.openEdit(product);
+    } else if (key === 'toggle') {
+      this.toggleVisibility(product);
+    }
+  }
+
+  /** Per-row kebab actions for the categories sub-table (Edit / Deactivate). */
+  categoryActions(category: Category): RowAction[] {
+    const actions: RowAction[] = [{ key: 'edit', label: 'Edit', icon: 'ti-edit' }];
+    if (category.active) {
+      actions.push({ key: 'deactivate', label: 'Deactivate', icon: 'ti-eye-off', variant: 'danger' });
+    }
+    return actions;
+  }
+
+  /** Dispatches a kebab action for the given category row. */
+  onCategoryAction(key: string, category: Category): void {
+    if (key === 'edit') {
+      this.editCategory(category);
+    } else if (key === 'deactivate') {
+      this.deactivateCategory(category);
+    }
+  }
+
   // --- Quick publish/hide toggle -----------------------------------------
 
   toggleVisibility(product: Product): void {
@@ -395,8 +655,11 @@ export class ProductsComponent implements OnInit, OnDestroy {
       description: product.description ?? undefined,
       mrp: product.mrp,
       salePrice: product.salePrice,
+      minimumRate: product.minimumRate ?? null,
+      costPrice: product.costPrice ?? null,
       hsnCode: product.hsnCode ?? undefined,
       gstRate: product.gstRate ?? null,
+      wtMl: product.wtMl ?? null,
       visibility: next,
       categoryId: product.category?.id ?? null,
       stockQuantity: product.stockQuantity ?? 0,

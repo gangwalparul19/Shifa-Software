@@ -1,8 +1,9 @@
 package com.shifa.oms.courier;
 
+import com.shifa.oms.order.Actor;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
-import com.shifa.oms.order.OrderStatusHistory;
+import com.shifa.oms.order.OrderWorkflowService;
 import com.shifa.oms.order.domain.Money;
 import com.shifa.oms.reconciliation.ReceivableEntity;
 import com.shifa.oms.reconciliation.ReceivableRepository;
@@ -11,13 +12,8 @@ import com.shifa.oms.reconciliation.domain.ReceivableType;
 import com.shifa.oms.reconciliation.domain.SettlementProcessor;
 import com.shifa.oms.reconciliation.domain.SettlementResult;
 import com.shifa.oms.notification.NotificationContext;
-import com.shifa.oms.notification.NotificationEvent;
-import com.shifa.oms.notification.WhatsAppNotificationPublisher;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.statemachine.OrderStatus;
-import com.shifa.oms.statemachine.OrderStatusLifecycle;
-import com.shifa.oms.statemachine.OrderStatusStateMachine;
-import com.shifa.oms.statemachine.StatusHistoryEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -37,10 +33,13 @@ import java.util.Optional;
  * duplicate and out-of-order courier updates harmless. Delivery/RTO/loss carry
  * their settlement effects:
  * <ul>
- *   <li><b>Delivered</b>: {@code →Delivered}, then {@code →Closed} (prepaid) or
- *       {@code →COD_Collected} with a COD receivable (Req 16.1, 16.2);</li>
+ *   <li><b>Delivered</b>: prepaid → {@code →Closed} (nothing owed); COD →
+ *       {@code →Delivered} with the COD STILL OUTSTANDING and a COD receivable
+ *       recorded — the courier collected the cash but hasn't remitted it, so the
+ *       order is settled (→ {@code COD_Collected}) only when the remittance is
+ *       imported (Req 16.1, 16.2; courier-COD-settlement feature);</li>
  *   <li><b>RTO</b>: {@code →RTO}, COD cancelled, outstanding 0 (Req 16.3);</li>
- *   <li><b>Courier_Lost</b>: {@code →Courier_Lost}, a claim receivable for the
+ *   <li><b>Redispatch</b>: {@code →Redispatch}, a claim receivable for the
  *       net amount, outstanding 0, and a claim-filing admin notification
  *       (Req 17.2, 17.3, 17.4).</li>
  * </ul>
@@ -57,8 +56,7 @@ public class CourierStatusApplier {
     private final CourierCompanyRepository courierCompanyRepository;
     private final ReceivableRepository receivableRepository;
     private final OutboxEventPublisher outboxEventPublisher;
-    private final WhatsAppNotificationPublisher whatsAppNotificationPublisher;
-    private final OrderStatusStateMachine stateMachine = new OrderStatusStateMachine();
+    private final OrderWorkflowService orderWorkflowService;
     private final SettlementProcessor settlementProcessor = new SettlementProcessor();
 
     public CourierStatusApplier(OrderRepository orderRepository,
@@ -66,13 +64,13 @@ public class CourierStatusApplier {
                                 CourierCompanyRepository courierCompanyRepository,
                                 ReceivableRepository receivableRepository,
                                 OutboxEventPublisher outboxEventPublisher,
-                                WhatsAppNotificationPublisher whatsAppNotificationPublisher) {
+                                OrderWorkflowService orderWorkflowService) {
         this.orderRepository = orderRepository;
         this.courierRecordRepository = courierRecordRepository;
         this.courierCompanyRepository = courierCompanyRepository;
         this.receivableRepository = receivableRepository;
         this.outboxEventPublisher = outboxEventPublisher;
-        this.whatsAppNotificationPublisher = whatsAppNotificationPublisher;
+        this.orderWorkflowService = orderWorkflowService;
     }
 
     /**
@@ -116,68 +114,113 @@ public class CourierStatusApplier {
             return Optional.empty();
         }
 
+        // Build the courier-enriched WhatsApp context once (courier company, AWB,
+        // tracking link, ETA) and hand it to the workflow so the matrix's customer
+        // WhatsApp notification carries the full dispatch tracking payload. The
+        // matrix (wired into OrderWorkflowService) is now the single source that
+        // enqueues customer/staff notifications — this applier no longer enqueues
+        // WhatsApp directly, avoiding a double-enqueue (Req 14.1, 14.2).
+        NotificationContext courierContext = buildContext(order, record);
+
         switch (target) {
-            case DELIVERED -> applyDelivered(order, record);
-            case RTO -> applyRto(order);
-            case COURIER_LOST -> applyCourierLost(order, record);
-            default -> transition(order, target); // Dispatched / In_Transit / Out_For_Delivery
+            case DELIVERED -> applyDelivered(order, record, courierContext);
+            case RTO -> applyRto(order, courierContext);
+            case REDISPATCH -> applyRedispatch(order, record, courierContext);
+            case CUSTOMER_REJECTED, DELIVERY_FAILED -> applyFailedOutcome(order, target, courierContext);
+            // Dispatched / In_Transit / Out_For_Delivery
+            default -> transition(order, target, courierContext);
         }
 
         OrderEntity saved = orderRepository.save(order);
         outboxEventPublisher.publishOrderStatusChanged(
                 saved.getId(), saved.getOrderCode(), saved.getOrderStatus().name());
-        // Enqueue the customer WhatsApp notification for this lifecycle event, keyed
-        // off the mapped courier status (so Delivered notifies even though the order
-        // auto-settles to Closed/COD_Collected) — sent out-of-band by the drainer
-        // (Req 14.1, 14.2). The event row commits with the status change.
-        enqueueWhatsAppNotification(saved, record, target);
         return Optional.of(saved.getOrderStatus());
     }
 
-    private void enqueueWhatsAppNotification(OrderEntity order, CourierRecord record, OrderStatus mapped) {
-        NotificationEvent.fromOrderStatus(mapped).ifPresent(event -> {
-            String courierName = null;
-            String trackingUrl = null;
-            if (record.getCourierCompanyId() != null) {
-                CourierCompany company = courierCompanyRepository.findById(record.getCourierCompanyId())
-                        .orElse(null);
-                if (company != null) {
-                    courierName = company.getName();
-                    trackingUrl = company.trackingUrl(record.getAwb());
-                }
+    /** Resolves the courier-tracking WhatsApp context for the customer notifications. */
+    private NotificationContext buildContext(OrderEntity order, CourierRecord record) {
+        String courierName = null;
+        String trackingUrl = null;
+        if (record.getCourierCompanyId() != null) {
+            CourierCompany company = courierCompanyRepository.findById(record.getCourierCompanyId())
+                    .orElse(null);
+            if (company != null) {
+                courierName = company.getName();
+                trackingUrl = company.trackingUrl(record.getAwb());
             }
-            NotificationContext context = new NotificationContext(
-                    order.getOrderCode(),
-                    order.getCustomerMobile(),
-                    courierName,
-                    record.getAwb(),
-                    trackingUrl,
-                    record.getEstimatedDelivery(),
-                    order.getPaymentStatus(),
-                    order.getCodAmount());
-            whatsAppNotificationPublisher.enqueue(order.getId(), event, context);
-        });
+        }
+        return new NotificationContext(
+                order.getOrderCode(),
+                order.getCustomerMobile(),
+                courierName,
+                record.getAwb(),
+                trackingUrl,
+                record.getEstimatedDelivery(),
+                order.getPaymentStatus(),
+                order.getCodAmount());
     }
 
-    private void applyDelivered(OrderEntity order, CourierRecord record) {
-        transition(order, OrderStatus.DELIVERED);
+    /**
+     * Applies the Delivered outcome from the courier (courier-COD-settlement
+     * feature). The settlement here is deliberately split by payment type:
+     *
+     * <ul>
+     *   <li><b>Fully paid (prepaid):</b> nothing is owed, so the order auto-advances
+     *       {@code Delivered → Closed} (via the pure {@link SettlementProcessor},
+     *       which returns {@code CLOSED}) and the outstanding is cleared.</li>
+     *   <li><b>COD:</b> the courier collected the cash at the door but has NOT yet
+     *       remitted it to us — so the order stays at {@code DELIVERED} with the COD
+     *       amount STILL OUTSTANDING (money owed to us by the courier). A
+     *       {@code COD_RECEIVABLE} is recorded for that amount, but the order is NOT
+     *       auto-advanced to {@code COD_Collected} and the cash is NOT booked to the
+     *       ledger yet. Both of those happen only when the courier's remittance is
+     *       imported and the receivable is settled (see
+     *       {@code RemittanceRowProcessor}). This keeps "Delivered but settlement
+     *       pending" visible on the dashboards/reconciliation.</li>
+     * </ul>
+     */
+    private void applyDelivered(OrderEntity order, CourierRecord record, NotificationContext ctx) {
+        transition(order, OrderStatus.DELIVERED, ctx);
         SettlementResult result = settlementProcessor.onDelivered(view(order, record));
-        transition(order, result.newStatus());
-        order.setCustomerOutstanding(BigDecimal.ZERO);
-        result.receivable().ifPresent(r -> recordReceivable(
-                order, record, ReceivableType.COD_RECEIVABLE, order.getCodAmount()));
+        if (result.receivable().isPresent()) {
+            // COD: record the courier's COD receivable (money owed to us) but LEAVE
+            // the order at Delivered with the COD still outstanding — the remittance
+            // import settles it (→ COD_Collected, zero outstanding, book the cash).
+            recordReceivable(order, record, ReceivableType.COD_RECEIVABLE, order.getCodAmount());
+            // customerOutstanding intentionally NOT zeroed, status NOT advanced,
+            // delivery ledger post NOT published — all deferred to settlement.
+        } else {
+            // Prepaid: nothing to collect, close the order and clear any outstanding.
+            transition(order, result.newStatus(), ctx);
+            order.setCustomerOutstanding(BigDecimal.ZERO);
+        }
     }
 
-    private void applyRto(OrderEntity order) {
-        transition(order, OrderStatus.RTO);
+    private void applyRto(OrderEntity order, NotificationContext ctx) {
+        transition(order, OrderStatus.RTO, ctx);
         // Cancel the COD amount and clear the customer outstanding (Req 16.3).
         order.applyAmounts(order.getTotalAmount(), order.getAmountReceived(),
                 order.getRemainingAmount(), BigDecimal.ZERO, order.getPaymentStatus());
         order.setCustomerOutstanding(BigDecimal.ZERO);
     }
 
-    private void applyCourierLost(OrderEntity order, CourierRecord record) {
-        transition(order, OrderStatus.COURIER_LOST);
+    /**
+     * Applies a terminal delivery-failure outcome — {@code CUSTOMER_REJECTED}
+     * (customer refused at the door, Req 11.1) or {@code DELIVERY_FAILED} (a
+     * failed attempt, Req 11.2). Unlike {@code Delivered}/{@code Redispatch}
+     * these carry no settlement receivable: nothing was delivered or collected,
+     * so — consistent with the RTO handling — the customer outstanding is cleared
+     * to zero. The transition itself fires the matrix notification for the entered
+     * status (ADMIN/salesperson/accountant in-app) through
+     * {@link OrderWorkflowService}.
+     */
+    private void applyFailedOutcome(OrderEntity order, OrderStatus target, NotificationContext ctx) {
+        transition(order, target, ctx);
+        order.setCustomerOutstanding(BigDecimal.ZERO);
+    }
+
+    private void applyRedispatch(OrderEntity order, CourierRecord record, NotificationContext ctx) {
+        transition(order, OrderStatus.REDISPATCH, ctx);
         order.setCustomerOutstanding(BigDecimal.ZERO);
         ReceivableEntity claim = recordReceivable(
                 order, record, ReceivableType.CLAIM_RECEIVABLE, order.getTotalAmount());
@@ -209,11 +252,12 @@ public class CourierStatusApplier {
                 Money.of(order.getCodAmount()));
     }
 
-    private void transition(OrderEntity order, OrderStatus target) {
-        OrderStatusLifecycle lifecycle = new OrderStatusLifecycle(order.getOrderStatus());
-        StatusHistoryEntry entry = stateMachine.transition(lifecycle, target, ACTOR, SOURCE);
-        order.setOrderStatus(entry.toStatus());
-        order.addStatusHistory(new OrderStatusHistory(
-                entry.fromStatus(), entry.toStatus(), entry.actor(), entry.source()));
+    private void transition(OrderEntity order, OrderStatus target, NotificationContext ctx) {
+        // Centralized courier-driven transition as the automatic SYSTEM actor
+        // (Req 15.5). Legality is pre-checked in applyMapped, so this only ever
+        // applies legal, SYSTEM-authorized edges. The matrix notifications for the
+        // entered status are enqueued by OrderWorkflowService using the supplied
+        // courier context for the WhatsApp customer message.
+        orderWorkflowService.applyTransition(order, target, Actor.system(ACTOR, SOURCE), ctx);
     }
 }

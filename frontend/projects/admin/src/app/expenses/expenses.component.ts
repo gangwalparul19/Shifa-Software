@@ -1,6 +1,6 @@
-import { DatePipe } from '@angular/common';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
 import { ApiError, SortState } from 'core';
@@ -11,6 +11,7 @@ import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { SortableHeaderComponent } from '../shared/sortable-header.component';
+import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { toggleSort, sortParam } from '../shared/sort.util';
@@ -32,12 +33,13 @@ const TABLE_KEY = 'expenses';
   selector: 'admin-expenses',
   imports: [
     ReactiveFormsModule,
-    DatePipe,
+    IstDatePipe,
     PageHeaderComponent,
     StatePanelComponent,
     DensityToggleComponent,
     PaginationComponent,
     SortableHeaderComponent,
+    RowActionsMenuComponent,
   ],
   templateUrl: './expenses.component.html',
   styleUrl: './expenses.component.css',
@@ -52,9 +54,14 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   protected readonly loadError = signal<string | null>(null);
   protected readonly deletingId = signal<number | null>(null);
 
+  /** Sum of the amounts on the current page (summary tile). */
+  protected readonly pageTotal = computed(() =>
+    this.expenses().reduce((sum, e) => sum + (Number.isFinite(e.amount) ? e.amount : 0), 0),
+  );
+
   // --- Paging + sort ------------------------------------------------------
   protected readonly page = signal(0);
-  protected readonly size = signal(readPageSize(TABLE_KEY, 20));
+  protected readonly size = signal(readPageSize(TABLE_KEY, 10));
   protected readonly totalPages = signal(0);
   protected readonly totalElements = signal(0);
   protected readonly sort = signal<SortState>({ field: 'incurredOn', dir: 'desc' });
@@ -65,6 +72,21 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     from: new FormControl<string>('', { nonNullable: true }),
     to: new FormControl<string>('', { nonNullable: true }),
   });
+
+  /** Whether the collapsible advanced-filter panel (date range) is open. */
+  protected readonly filtersOpen = signal(false);
+  /** Number of active advanced (date-range) filters, for the toggle badge. */
+  protected readonly activeFilterCount = signal(0);
+
+  /** Show/hide the advanced-filter panel. */
+  toggleFilters(): void {
+    this.filtersOpen.update((open) => !open);
+  }
+
+  private updateActiveFilterCount(): void {
+    const f = this.filters.getRawValue();
+    this.activeFilterCount.set([f.from, f.to].filter((v) => !!v).length);
+  }
 
   // --- Add form -----------------------------------------------------------
   protected readonly creating = signal(false);
@@ -93,7 +115,11 @@ export class ExpensesComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.load();
-    this.filters.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => this.resetAndLoad());
+    this.filters.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => {
+      this.updateActiveFilterCount();
+      this.resetAndLoad();
+    });
+    this.updateActiveFilterCount();
   }
 
   ngOnDestroy(): void {
@@ -214,6 +240,26 @@ export class ExpensesComponent implements OnInit, OnDestroy {
         this.formError.set(this.describeError(err));
       },
     });
+  }
+
+  /** Per-row kebab actions mirroring the original Delete button. */
+  rowActions(expense: ExpenseResponse): RowAction[] {
+    return [
+      {
+        key: 'delete',
+        label: 'Delete',
+        icon: 'ti-trash',
+        variant: 'danger',
+        disabled: this.deletingId() !== null,
+      },
+    ];
+  }
+
+  /** Dispatches a kebab action for the given expense row. */
+  onRowAction(key: string, expense: ExpenseResponse): void {
+    if (key === 'delete') {
+      this.remove(expense);
+    }
   }
 
   // --- Delete -------------------------------------------------------------

@@ -3,7 +3,10 @@ package com.shifa.oms.reconciliation;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -38,4 +41,22 @@ public interface ReceivableRepository extends JpaRepository<ReceivableEntity, Lo
      * reconciliation ledger.
      */
     List<ReceivableEntity> findByCreatedAtBetween(java.time.LocalDateTime from, java.time.LocalDateTime to);
+
+    /**
+     * Total {@code amount} of receivables of a type, split by settlement status,
+     * computed in SQL (backed by the {@code (type, settled)} index from V71)
+     * instead of loading every row and summing in Java. Dashboards use this for
+     * the outstanding-vs-settled COD / claim figures. Returns 0 when no rows
+     * match (never null).
+     */
+    @Query("SELECT COALESCE(SUM(r.amount), 0) FROM ReceivableEntity r "
+            + "WHERE r.type = :type AND r.settled = :settled")
+    BigDecimal sumAmountByTypeAndSettled(@Param("type") ReceivableType type,
+                                         @Param("settled") boolean settled);
+
+    /** Count of unsettled receivables of a type (dashboard activity cards). */
+    long countByTypeAndSettledFalse(ReceivableType type);
+
+    /** Removes every receivable for an order — used by the admin hard-delete of an order. */
+    void deleteByOrderId(Long orderId);
 }

@@ -2,8 +2,10 @@ package com.shifa.oms.product;
 
 import com.shifa.oms.common.DuplicateResourceException;
 import com.shifa.oms.common.ResourceNotFoundException;
+import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.product.dto.ProductRequest;
 import com.shifa.oms.product.dto.ProductResponse;
+import com.shifa.oms.product.dto.ProductSalesStatsResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -30,6 +32,10 @@ public class ProductService {
     /** Stable error code for a duplicate-SKU conflict (409). */
     static final String DUPLICATE_SKU_CODE = "DUPLICATE_SKU";
 
+    /** The GST rates the catalog permits (percent): 0, 5, 18 (Req 1.3). */
+    private static final List<BigDecimal> ALLOWED_GST_RATES =
+            List.of(new BigDecimal("0"), new BigDecimal("5"), new BigDecimal("18"));
+
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
 
@@ -41,12 +47,23 @@ public class ProductService {
     @Nullable
     private final ProductRatingLookup ratingLookup;
 
+    /**
+     * Optional lookup of a product's current-month sales stats (revenue + order
+     * count), supplied by the order module. Injected by Spring when present; may
+     * be {@code null} so the product module works in isolation and unit tests
+     * need not provide it (stats then read as zero).
+     */
+    @Nullable
+    private final ProductSalesLookup salesLookup;
+
     public ProductService(ProductRepository productRepository,
                           CategoryRepository categoryRepository,
-                          @Nullable ProductRatingLookup ratingLookup) {
+                          @Nullable ProductRatingLookup ratingLookup,
+                          @Nullable ProductSalesLookup salesLookup) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
         this.ratingLookup = ratingLookup;
+        this.salesLookup = salesLookup;
     }
 
     /**
@@ -57,6 +74,7 @@ public class ProductService {
         if (productRepository.existsBySku(request.sku())) {
             throw duplicateSku(request.sku());
         }
+        validatePricingAndTax(request);
         Product product = new Product(
                 request.sku(),
                 request.name(),
@@ -64,8 +82,12 @@ public class ProductService {
                 request.mrp(),
                 request.salePrice(),
                 request.visibility());
+        product.setMinimumRate(request.minimumRate());
+        product.setCostPrice(request.costPrice());
         product.setHsnCode(normalizeHsn(request.hsnCode()));
         product.setGstRate(request.gstRate());
+        product.setWtMl(normalizeWtMl(request.wtMl()));
+        product.setUqc(normalizeUqc(request.uqc()));
         applyCatalogFields(product, request);
         return ProductResponse.from(productRepository.save(product));
     }
@@ -85,14 +107,19 @@ public class ProductService {
                 && productRepository.existsBySku(request.sku())) {
             throw duplicateSku(request.sku());
         }
+        validatePricingAndTax(request);
 
         product.setSku(request.sku());
         product.setName(request.name());
         product.setDescription(request.description());
         product.setMrp(request.mrp());
         product.setSalePrice(request.salePrice());
+        product.setMinimumRate(request.minimumRate());
+        product.setCostPrice(request.costPrice());
         product.setHsnCode(normalizeHsn(request.hsnCode()));
         product.setGstRate(request.gstRate());
+        product.setWtMl(normalizeWtMl(request.wtMl()));
+        product.setUqc(normalizeUqc(request.uqc()));
         product.setVisibility(request.visibility());
         applyCatalogFields(product, request);
         return ProductResponse.from(productRepository.save(product));
@@ -127,6 +154,57 @@ public class ProductService {
         }
         String trimmed = hsnCode.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /** Trims the optional Wt/ml descriptor to {@code null} when blank. */
+    private String normalizeWtMl(String wtMl) {
+        if (wtMl == null) {
+            return null;
+        }
+        String trimmed = wtMl.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /**
+     * Trims the optional UQC to {@code null} when blank so it stays truly
+     * optional; the {@code NOS} default is applied at GSTR-1 report time
+     * ({@code Uqc.resolve}), not stored here (gst-filing-compliance Req 3.2).
+     */
+    private String normalizeUqc(String uqc) {
+        if (uqc == null) {
+            return null;
+        }
+        String trimmed = uqc.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /**
+     * Enforces the price band ordering {@code minimumRate ≤ salePrice ≤ mrp} and
+     * the allowed GST-rate set {0, 5, 18} when a rate is present
+     * (product-catalog-pricing-gst Req 1.2, 1.3). Throws {@link ValidationException}
+     * (HTTP 400) on violation. A null minimumRate is allowed (no floor set).
+     */
+    private void validatePricingAndTax(ProductRequest request) {
+        BigDecimal mrp = request.mrp();
+        BigDecimal salePrice = request.salePrice();
+        BigDecimal minimum = request.minimumRate();
+        if (salePrice != null && mrp != null && salePrice.compareTo(mrp) > 0) {
+            throw new ValidationException(
+                    "The auto-fetch (sale) price must not exceed the MRP.");
+        }
+        if (minimum != null) {
+            if (salePrice != null && minimum.compareTo(salePrice) > 0) {
+                throw new ValidationException(
+                        "The minimum rate must not exceed the auto-fetch (sale) price.");
+            }
+            if (mrp != null && minimum.compareTo(mrp) > 0) {
+                throw new ValidationException("The minimum rate must not exceed the MRP.");
+            }
+        }
+        BigDecimal gstRate = request.gstRate();
+        if (gstRate != null && !ALLOWED_GST_RATES.stream().anyMatch(r -> r.compareTo(gstRate) == 0)) {
+            throw new ValidationException("The GST rate must be one of 0, 5, or 18 percent.");
+        }
     }
 
     /**
@@ -201,6 +279,24 @@ public class ProductService {
         return ProductResponse.from(product);
     }
 
+    /**
+     * Read-only per-product sales stats for the product-detail "Sales Overview":
+     * revenue and distinct order count for the CURRENT calendar month, excluding
+     * non-revenue (REJECTED/CANCELLED) orders. The product must exist (else a
+     * 404). When the sales lookup is absent (product module in isolation) the
+     * stats read as zero rather than failing.
+     */
+    @Transactional(readOnly = true)
+    public ProductSalesStatsResponse salesStats(Long id) {
+        if (!productRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Product " + id + " does not exist.");
+        }
+        if (salesLookup == null) {
+            return ProductSalesStatsResponse.ZERO;
+        }
+        return salesLookup.statsFor(id);
+    }
+
     /** The published catalog (Req 1.1, 1.6 — empty when no products published). */
     @Transactional(readOnly = true)
     public List<ProductResponse> catalog() {
@@ -220,6 +316,27 @@ public class ProductService {
         }
         return withRatings(
                 productRepository.searchPublished(ProductVisibility.PUBLISHED, query.trim()));
+    }
+
+    /**
+     * Published products for the given ids, in the SAME order as {@code ids}
+     * (so a ranked id list — e.g. best-sellers or co-occurrence — keeps its
+     * order). Hidden/missing ids are dropped. Used by the order-entry
+     * "favorites" and "frequently bought together" suggestions.
+     */
+    @Transactional(readOnly = true)
+    public List<ProductResponse> byIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        java.util.Map<Long, Product> byId = productRepository.findAllById(ids).stream()
+                .filter(p -> p.getVisibility() == ProductVisibility.PUBLISHED)
+                .collect(java.util.stream.Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
+        List<Product> ordered = ids.stream()
+                .map(byId::get)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        return withRatings(ordered);
     }
 
     /**

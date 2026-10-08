@@ -14,11 +14,13 @@ import com.shifa.oms.order.dto.CreateOrderRequest;
 import com.shifa.oms.order.dto.DuplicateCheckResponse;
 import com.shifa.oms.order.dto.LineItemRequest;
 import com.shifa.oms.order.dto.OrderResponse;
+import com.shifa.oms.order.dto.UpdateOrderRequest;
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
 import com.shifa.oms.platform.storage.StorageService;
 import com.shifa.oms.product.Product;
+import com.shifa.oms.product.ProductImage;
 import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.product.ProductVisibility;
 import com.shifa.oms.settings.AppSettings;
@@ -27,6 +29,7 @@ import com.shifa.oms.statemachine.OrderStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -40,8 +43,10 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -71,6 +76,10 @@ class OrderServiceTest {
     private AppSettingsRepository appSettingsRepository;
     @Mock
     private com.shifa.oms.inventory.StockMovementRepository stockMovementRepository;
+    @Mock
+    private com.shifa.oms.product.ProductImageRepository productImageRepository;
+    @Mock
+    private com.shifa.oms.auth.UserRepository userRepository;
 
     private OrderService service;
 
@@ -105,7 +114,8 @@ class OrderServiceTest {
                 storageService,
                 new SalespersonScopeResolver(),
                 trackingService,
-                stockService);
+                stockService,
+                productImageRepository);
         // Order code generation asks the repo whether a candidate is taken.
         lenient().when(orderRepository.existsByOrderCode(anyString())).thenReturn(false);
         lenient().when(orderRepository.save(any(OrderEntity.class)))
@@ -113,15 +123,150 @@ class OrderServiceTest {
     }
 
     private Product product(long id, String salePrice) {
+        BigDecimal sp = new BigDecimal(salePrice);
+        // MRP is the price-band ceiling; keep it >= sale price so the default
+        // (auto-fetch) rate is within band for these pricing/rounding tests.
         Product p = new Product("SKU-" + id, "Product " + id, "d",
-                new BigDecimal("999.00"), new BigDecimal(salePrice), ProductVisibility.PUBLISHED);
+                sp.max(new BigDecimal("999.00")), sp, ProductVisibility.PUBLISHED);
+        // Give the product its persistent id so line items carry a product id (as in
+        // production) — the same-day duplicate guard keys off product-id overlap.
+        ReflectionTestUtils.setField(p, "id", id);
         return p;
     }
 
     private CreateOrderRequest orderRequest(List<LineItemRequest> items,
                                             BigDecimal amountReceived, String screenshotKey) {
+        // Lead source is now a required order-entry field (Req 4.1); these existing
+        // payment/creation edge-case tests use WHATSAPP with no note/email.
         return new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
-                "Pune", "Maharashtra", "411001", items, amountReceived, screenshotKey);
+                "Pune", "Maharashtra", "411001", items, amountReceived, screenshotKey,
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, null, null);
+    }
+
+    // --- Order total round-off to nearest rupee (product-audit §4.6) --------
+
+    @Test
+    void salespersonOrderRoundsTotalUpToNearestRupee() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "2679.99")));
+        // Min-upfront policy: a partial payment (≥ ₹100) + screenshot is now required.
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("100.00"), "payments/x.jpg");
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.totalAmount()).isEqualByComparingTo("2680.00");
+        // 2680 total − 100 paid = 2580 to collect on delivery.
+        assertThat(response.codAmount()).isEqualByComparingTo("2580.00");
+    }
+
+    @Test
+    void salespersonOrderRoundsTotalDownToNearestRupee() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "100.49")));
+        // Total rounds to ₹100; pay it in full (min-upfront policy — no ₹0 orders).
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("100.00"), "payments/x.jpg");
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.totalAmount()).isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void salespersonFullPaymentOfRoundedDownTotalIsFullyPaidNotExceeding() {
+        // Price 100.49 rounds down to 100.00; a customer who paid the pre-round
+        // 100.49 must classify as FULLY_PAID (the 0.49 overage is absorbed), not rejected.
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "100.49")));
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("100.49"), "payments/x.jpg");
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.totalAmount()).isEqualByComparingTo("100.00");
+        assertThat(response.paymentStatus()).isEqualTo(PaymentStatus.FULLY_PAID);
+        assertThat(response.codAmount()).isEqualByComparingTo("0.00");
+    }
+
+    // --- Payment verification layer (product-audit §4.4) --------------------
+
+    @Test
+    void prepaidOrderStartsPaymentVerificationPending() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "100.00")));
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("100.00"), "payments/x.jpg");
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.paymentVerificationStatus())
+                .isEqualTo(com.shifa.oms.order.PaymentVerificationStatus.PENDING);
+    }
+
+    @Test
+    void zeroPaymentOrderIsRejectedByMinimumUpfrontPolicy() {
+        // Client policy: no COD/₹0 orders — at least ₹100 (or the full total when
+        // under ₹100) must be collected upfront. A ₹0 order is rejected at entry.
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 2, null)), BigDecimal.ZERO, null);
+
+        assertThatThrownBy(() -> service.createSalespersonOrder(request, salesperson))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("collected upfront");
+    }
+
+    @Test
+    void partialPaymentBelowHundredIsRejectedByMinimumUpfrontPolicy() {
+        // total 240, pays only ₹50 → below the ₹100 minimum → rejected.
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 2, null)), new BigDecimal("50.00"), "payments/x.jpg");
+
+        assertThatThrownBy(() -> service.createSalespersonOrder(request, salesperson))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("collected upfront");
+    }
+
+    @Test
+    void smallOrderUnderHundredMustBePaidInFull() {
+        // total 80 (< ₹100): the floor is the full total, so ₹80 is accepted…
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "80.00")));
+        CreateOrderRequest ok = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("80.00"), "payments/x.jpg");
+        OrderResponse response = service.createSalespersonOrder(ok, salesperson);
+        assertThat(response.paymentStatus()).isEqualTo(PaymentStatus.FULLY_PAID);
+
+        // …but ₹50 on an ₹80 order (partial, below the full total) is rejected.
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "80.00")));
+        CreateOrderRequest low = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("50.00"), "payments/x.jpg");
+        assertThatThrownBy(() -> service.createSalespersonOrder(low, salesperson))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("collected upfront");
+    }
+
+    // --- Alternate contact number (product-audit §4.5) ----------------------
+
+    @Test
+    void salespersonOrderPersistsAlternateMobileWhenProvided() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
+                "Pune", "Maharashtra", "411001",
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("100.00"), "payments/x.jpg",
+                LeadSource.WHATSAPP, null, null, null, "9800011122", null, null, null, null, null, null, null);
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.alternateMobile()).isEqualTo("9800011122");
+    }
+
+    @Test
+    void salespersonOrderLeavesAlternateMobileNullWhenOmitted() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("100.00"), "payments/x.jpg");
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.alternateMobile()).isNull();
     }
 
     // --- Zero-total guard ---------------------------------------------------
@@ -155,9 +300,11 @@ class OrderServiceTest {
 
     @Test
     void salespersonOrderRequiresScreenshotWhenAmountReceived() {
+        // total = 200 (qty 2), pay ₹100 (≥ ₹100 min so it passes the upfront rule)
+        // but attach NO screenshot → the screenshot-required rule must reject it.
         when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "100.00")));
         CreateOrderRequest request = orderRequest(
-                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("50.00"), null);
+                List.of(new LineItemRequest(1L, 2, null)), new BigDecimal("100.00"), null);
 
         assertThatThrownBy(() -> service.createSalespersonOrder(request, salesperson))
                 .isInstanceOf(ValidationException.class)
@@ -167,17 +314,20 @@ class OrderServiceTest {
     // --- Successful creation & classification ------------------------------
 
     @Test
-    void salespersonCodOrderStartsPendingApprovalAsCod() {
+    void salespersonOrderStartsPendingApprovalWithBalanceOnDelivery() {
+        // Under the min-upfront policy the smallest valid order pays ≥ ₹100 upfront;
+        // the remainder is collected on delivery (PARTIALLY_PAID), and the order
+        // still starts in Pending_Admin_Approval.
         when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
         CreateOrderRequest request = orderRequest(
-                List.of(new LineItemRequest(1L, 2, null)), BigDecimal.ZERO, null);
+                List.of(new LineItemRequest(1L, 2, null)), new BigDecimal("100.00"), "payments/x.jpg");
 
         OrderResponse response = service.createSalespersonOrder(request, salesperson);
 
         assertThat(response.orderStatus()).isEqualTo(OrderStatus.PENDING_ADMIN_APPROVAL);
-        assertThat(response.paymentStatus()).isEqualTo(PaymentStatus.COD);
+        assertThat(response.paymentStatus()).isEqualTo(PaymentStatus.PARTIALLY_PAID);
         assertThat(response.totalAmount()).isEqualByComparingTo("240.00");
-        assertThat(response.codAmount()).isEqualByComparingTo("240.00");
+        assertThat(response.codAmount()).isEqualByComparingTo("140.00");
         assertThat(response.source()).isEqualTo(OrderSource.SALESPERSON);
         assertThat(response.items()).hasSize(1);
         assertThat(response.orderCode()).startsWith("SHR-");
@@ -186,17 +336,17 @@ class OrderServiceTest {
     @Test
     void salespersonPartiallyPaidOrderUsesEditedRateAndScreenshot() {
         when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "100.00")));
-        // Override rate to 200; qty 1 → total 200, received 50 → partially paid, cod 150.
+        // Override rate to 200; qty 1 → total 200, received 100 (≥ ₹100 min) → partially paid, cod 100.
         CreateOrderRequest request = orderRequest(
                 List.of(new LineItemRequest(1L, 1, new BigDecimal("200.00"))),
-                new BigDecimal("50.00"), "payments/proof.jpg");
+                new BigDecimal("100.00"), "payments/proof.jpg");
 
         OrderResponse response = service.createSalespersonOrder(request, salesperson);
 
         assertThat(response.paymentStatus()).isEqualTo(PaymentStatus.PARTIALLY_PAID);
         assertThat(response.totalAmount()).isEqualByComparingTo("200.00");
-        assertThat(response.remainingAmount()).isEqualByComparingTo("150.00");
-        assertThat(response.codAmount()).isEqualByComparingTo("150.00");
+        assertThat(response.remainingAmount()).isEqualByComparingTo("100.00");
+        assertThat(response.codAmount()).isEqualByComparingTo("100.00");
         assertThat(response.paymentScreenshotAvailable()).isTrue();
     }
 
@@ -209,7 +359,7 @@ class OrderServiceTest {
         product.setGstRate(new BigDecimal("12.00"));
         when(productRepository.findById(1L)).thenReturn(Optional.of(product));
         CreateOrderRequest request = orderRequest(
-                List.of(new LineItemRequest(1L, 2, null)), BigDecimal.ZERO, null);
+                List.of(new LineItemRequest(1L, 2, null)), new BigDecimal("100.00"), "payments/x.jpg");
 
         OrderResponse response = service.createSalespersonOrder(request, salesperson);
 
@@ -253,6 +403,220 @@ class OrderServiceTest {
         assertThat(response.priorOrderCount()).isZero();
     }
 
+    // --- Same-day duplicate detection (one order per customer per day) ------
+
+    @Test
+    void duplicateCheckFlagsSameDayOrderAndNamesTheOtherSalesperson() {
+        // An active order for this mobile already exists today, placed by user 5.
+        OrderEntity existingToday = persistedOrder(1L);
+        when(orderRepository.findActiveByCustomerMobileInWindow(
+                anyString(), any(), any())).thenReturn(List.of(existingToday));
+
+        // A DIFFERENT salesperson (id 7) checks the same mobile.
+        AuthPrincipal other = new AuthPrincipal(7L, "sales2", Role.SALESPERSON);
+        DuplicateCheckResponse response = service.duplicateCheck("9812345678", other);
+
+        assertThat(response.hasTodayOrder()).isTrue();
+        assertThat(response.todayOrderCode()).isEqualTo("SHR-000123");
+        assertThat(response.todayCreatedByMe()).isFalse();
+    }
+
+    @Test
+    void duplicateCheckMarksTodayOrderAsMineWhenSameSalesperson() {
+        OrderEntity existingToday = persistedOrder(1L); // created_by = 5L
+        when(orderRepository.findActiveByCustomerMobileInWindow(
+                anyString(), any(), any())).thenReturn(List.of(existingToday));
+
+        // The SAME salesperson (id 5) who placed today's order checks the mobile.
+        DuplicateCheckResponse response = service.duplicateCheck("9812345678", salesperson);
+
+        assertThat(response.hasTodayOrder()).isTrue();
+        assertThat(response.todayCreatedByMe()).isTrue();
+    }
+
+    @Test
+    void createSalespersonOrderRejectsSameDayDuplicateOfSameProduct() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        // Today's order for this customer already includes product 1 — the new order
+        // repeats product 1, so it's a real duplicate → rejected.
+        when(orderRepository.findActiveByCustomerMobileInWindow(
+                anyString(), any(), any())).thenReturn(List.of(todayOrderWithProduct(1L, "PetKam")));
+
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg");
+
+        assertThatThrownBy(() -> service.createSalespersonOrder(request, salesperson))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("already has an order today");
+    }
+
+    @Test
+    void createSalespersonOrderAllowsSameDayOrderWithDifferentProducts() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        // Today's order for this customer is for product 2; the new order is for
+        // product 1 (different item) → allowed (a customer may order different items
+        // multiple times a day).
+        when(orderRepository.findActiveByCustomerMobileInWindow(
+                anyString(), any(), any())).thenReturn(List.of(todayOrderWithProduct(2L, "Face Cream")));
+
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg");
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.orderStatus()).isEqualTo(OrderStatus.PENDING_ADMIN_APPROVAL);
+    }
+
+    @Test
+    void createSalespersonOrderAllowsWhenNoActiveOrderToday() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        // No active order today (default Mockito empty list) → creation proceeds.
+        CreateOrderRequest request = orderRequest(
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg");
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        assertThat(response.orderStatus()).isEqualTo(OrderStatus.PENDING_ADMIN_APPROVAL);
+    }
+
+    // --- Place on behalf of (ADMIN attributes an order to a salesperson) ----
+
+    /** A service whose staff directory (UserRepository) is wired, for on-behalf tests. */
+    private OrderService serviceWithUsers() {
+        TrackingService trackingService = new TrackingService(
+                orderRepository, courierRecordRepository, courierCompanyRepository);
+        com.shifa.oms.settings.SettingsService settingsService =
+                new com.shifa.oms.settings.SettingsService(appSettingsRepository);
+        com.shifa.oms.inventory.StockService stockService = new com.shifa.oms.inventory.StockService(
+                productRepository, stockMovementRepository,
+                new OutboxEventPublisher(outboxEventRepository), settingsService);
+        return new OrderService(
+                orderRepository, productRepository, new OrderCodeGenerator(), storageService,
+                new SalespersonScopeResolver(), trackingService, stockService, productImageRepository,
+                null, null, null, userRepository, null, null);
+    }
+
+    /** Builds an active user of the given role for the staff-directory lookup. */
+    private com.shifa.oms.auth.User staffUser(long id, String username, Role role) {
+        com.shifa.oms.auth.User u =
+                new com.shifa.oms.auth.User(username, "hash", role, "Full " + username, true);
+        ReflectionTestUtils.setField(u, "id", id);
+        return u;
+    }
+
+    @Test
+    void adminCanPlaceOrderOnBehalfOfSalesperson() {
+        OrderService svc = serviceWithUsers();
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        when(userRepository.findById(7L))
+                .thenReturn(Optional.of(staffUser(7L, "sales7", Role.SALESPERSON)));
+
+        CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
+                "Pune", "Maharashtra", "411001",
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg",
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 7L, null);
+
+        svc.createSalespersonOrder(request, admin);
+
+        // created_by is attributed to the chosen salesperson (id 7), not the admin.
+        ArgumentCaptor<OrderEntity> captor = ArgumentCaptor.forClass(OrderEntity.class);
+        verify(orderRepository).save(captor.capture());
+        assertThat(captor.getValue().getCreatedBy()).isEqualTo(7L);
+    }
+
+    @Test
+    void adminCanPlaceOrderOnBehalfOfTeamLead() {
+        OrderService svc = serviceWithUsers();
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        when(userRepository.findById(9L))
+                .thenReturn(Optional.of(staffUser(9L, "lead9", Role.TEAM_LEAD)));
+
+        CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
+                "Pune", "Maharashtra", "411001",
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg",
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 9L, null);
+
+        svc.createSalespersonOrder(request, admin);
+
+        ArgumentCaptor<OrderEntity> captor = ArgumentCaptor.forClass(OrderEntity.class);
+        verify(orderRepository).save(captor.capture());
+        assertThat(captor.getValue().getCreatedBy()).isEqualTo(9L);
+    }
+
+    @Test
+    void nonAdminCannotPlaceOrderOnBehalfOfAnother() {
+        OrderService svc = serviceWithUsers();
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+
+        // A salesperson tries to attribute the order to someone else → rejected.
+        CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
+                "Pune", "Maharashtra", "411001",
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg",
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 7L, null);
+
+        assertThatThrownBy(() -> svc.createSalespersonOrder(request, salesperson))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Only an admin");
+    }
+
+    @Test
+    void adminCannotPlaceOrderOnBehalfOfNonSalesperson() {
+        OrderService svc = serviceWithUsers();
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        when(userRepository.findById(3L))
+                .thenReturn(Optional.of(staffUser(3L, "acct", Role.ACCOUNTANT)));
+
+        CreateOrderRequest request = new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
+                "Pune", "Maharashtra", "411001",
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("120.00"), "payments/x.jpg",
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, 3L, null);
+
+        assertThatThrownBy(() -> svc.createSalespersonOrder(request, admin))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("salesperson or team lead");
+    }
+
+    // --- India vs Outside India (destination) -------------------------------
+
+    @Test
+    void internationalOrderStoresCountryAndFreeTextAddressWithoutCityStatePincode() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        // Outside-India order: city/state/postalCode blank, full address in addressLine,
+        // destination country set. The domestic city/state/pincode rule must NOT apply.
+        CreateOrderRequest request = new CreateOrderRequest(
+                "John", "9812345678", "742 Evergreen Terrace, Springfield, OR 97403",
+                "", "", "", List.of(new LineItemRequest(1L, 1, null)),
+                new BigDecimal("120.00"), "payments/x.jpg", LeadSource.WHATSAPP,
+                null, null, null, null, null, null, null, null, null, null, "United States");
+
+        OrderResponse response = service.createSalespersonOrder(request, salesperson);
+
+        ArgumentCaptor<OrderEntity> captor = ArgumentCaptor.forClass(OrderEntity.class);
+        verify(orderRepository).save(captor.capture());
+        OrderEntity saved = captor.getValue();
+        assertThat(saved.getCountry()).isEqualTo("United States");
+        assertThat(saved.getAddressLine()).contains("Springfield");
+        assertThat(saved.getCity()).isEmpty();
+        assertThat(saved.getState()).isEmpty();
+        assertThat(saved.getPostalCode()).isEmpty();
+        assertThat(response.country()).isEqualTo("United States");
+    }
+
+    @Test
+    void domesticOrderStillRequiresCityStateAndPincode() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+        // India (country null) with a blank city/state/pincode → rejected.
+        CreateOrderRequest request = new CreateOrderRequest(
+                "Asha", "9812345678", "12 MG Road",
+                "", "", "", List.of(new LineItemRequest(1L, 1, null)),
+                new BigDecimal("120.00"), "payments/x.jpg", LeadSource.WHATSAPP,
+                null, null, null, null, null, null, null, null, null, null, null);
+
+        assertThatThrownBy(() -> service.createSalespersonOrder(request, salesperson))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("within India");
+    }
+
     // --- Order-detail shipment fields (AWB / courier tracking) --------------
 
     /** Builds a minimal persisted-style order with the given id for detail lookups. */
@@ -263,6 +627,17 @@ class OrderServiceTest {
                 new BigDecimal("240.00"), PaymentStatus.COD);
         order.setOrderStatus(OrderStatus.COURIER_ASSIGNED);
         ReflectionTestUtils.setField(order, "id", id);
+        return order;
+    }
+
+    /** An active order placed today carrying a single line item for the given product. */
+    private OrderEntity todayOrderWithProduct(long productId, String productName) {
+        OrderEntity order = new OrderEntity("SHR-000123", OrderSource.SALESPERSON, 5L,
+                "Asha", "9812345678", "12 MG Road", "Pune", "Maharashtra", "411001");
+        order.setOrderStatus(OrderStatus.PENDING_ADMIN_APPROVAL);
+        order.addLineItem(new OrderLineItem(productId, productName, 1,
+                new BigDecimal("120.00"), new BigDecimal("120.00")));
+        ReflectionTestUtils.setField(order, "id", 1L);
         return order;
     }
 
@@ -298,5 +673,188 @@ class OrderServiceTest {
         assertThat(response.courierName()).isNull();
         assertThat(response.trackingUrl()).isNull();
         assertThat(response.estimatedDelivery()).isNull();
+    }
+
+    // --- Order-detail line-item image key (item 1) --------------------------
+
+    @Test
+    void orderDetailPopulatesLineItemImageKeyFromPrimaryPublishedImage() {
+        OrderEntity order = persistedOrder(9L);
+        order.addLineItem(new OrderLineItem(
+                42L, "Ashwagandha", 2, new BigDecimal("120.00"), new BigDecimal("240.00")));
+        when(orderRepository.findById(9L)).thenReturn(Optional.of(order));
+        when(courierRecordRepository.findByOrderId(9L)).thenReturn(Optional.empty());
+        // Repo returns published images ordered by (productId, sortOrder); the
+        // first per product is its primary image.
+        when(productImageRepository.findPublishedByProductIds(anyCollection()))
+                .thenReturn(List.of(new ProductImage(42L, "products/ashwagandha.jpg", true, 0)));
+
+        OrderResponse response = service.getOrder(9L, admin);
+
+        assertThat(response.items()).hasSize(1);
+        assertThat(response.items().get(0).imageKey()).isEqualTo("products/ashwagandha.jpg");
+    }
+
+    @Test
+    void orderDetailLineItemImageKeyIsNullWhenProductHasNoPublishedImage() {
+        OrderEntity order = persistedOrder(10L);
+        order.addLineItem(new OrderLineItem(
+                43L, "Neem", 1, new BigDecimal("50.00"), new BigDecimal("50.00")));
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+        when(courierRecordRepository.findByOrderId(10L)).thenReturn(Optional.empty());
+        when(productImageRepository.findPublishedByProductIds(anyCollection()))
+                .thenReturn(List.of());
+
+        OrderResponse response = service.getOrder(10L, admin);
+
+        assertThat(response.items()).hasSize(1);
+        assertThat(response.items().get(0).imageKey()).isNull();
+    }
+
+    // --- Order-detail discount amount (item 2) ------------------------------
+
+    @Test
+    void orderDetailExposesDiscountAmountWhenApplied() {
+        OrderEntity order = persistedOrder(11L);
+        order.applyDiscount("SAVE40", new BigDecimal("40.00"));
+        when(orderRepository.findById(11L)).thenReturn(Optional.of(order));
+        when(courierRecordRepository.findByOrderId(11L)).thenReturn(Optional.empty());
+
+        OrderResponse response = service.getOrder(11L, admin);
+
+        assertThat(response.discountAmount()).isEqualByComparingTo("40.00");
+    }
+
+    @Test
+    void orderDetailDiscountAmountDefaultsToZero() {
+        OrderEntity order = persistedOrder(12L);
+        when(orderRepository.findById(12L)).thenReturn(Optional.of(order));
+        when(courierRecordRepository.findByOrderId(12L)).thenReturn(Optional.empty());
+
+        OrderResponse response = service.getOrder(12L, admin);
+
+        assertThat(response.discountAmount()).isEqualByComparingTo("0.00");
+    }
+
+    // --- Admin edit-order (edit-order feature) ------------------------------
+
+    /** Builds an editable (PENDING_ADMIN_APPROVAL) order with one line for product 1. */
+    private OrderEntity editableOrder(long id, OrderStatus status, int quantity, String rate) {
+        OrderEntity order = new OrderEntity("SHR-000200", OrderSource.SALESPERSON, 5L,
+                "Asha", "9812345678", "12 MG Road", "Pune", "Maharashtra", "411001");
+        BigDecimal r = new BigDecimal(rate);
+        BigDecimal lineTotal = r.multiply(BigDecimal.valueOf(quantity));
+        order.addLineItem(new OrderLineItem(1L, "Product 1", quantity, r, lineTotal));
+        order.applyAmounts(lineTotal, BigDecimal.ZERO, lineTotal, lineTotal, PaymentStatus.COD);
+        order.setLeadSource(LeadSource.WHATSAPP);
+        order.setOrderStatus(status);
+        ReflectionTestUtils.setField(order, "id", id);
+        return order;
+    }
+
+    private UpdateOrderRequest updateRequest(List<LineItemRequest> items) {
+        return new UpdateOrderRequest("Asha Corrected", "9812345678", null, null,
+                "12 MG Road", "Pune", "Maharashtra", "411001",
+                items, LeadSource.WHATSAPP, null, null, null, null, null,
+                null, null, null);
+    }
+
+    @Test
+    void updateOrderRepricesItemsAndOverwritesCustomerDetails() {
+        OrderEntity order = editableOrder(20L, OrderStatus.PENDING_ADMIN_APPROVAL, 1, "100.00");
+        when(orderRepository.findById(20L)).thenReturn(Optional.of(order));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "100.00")));
+
+        UpdateOrderRequest request = updateRequest(List.of(new LineItemRequest(1L, 3, null)));
+
+        OrderResponse response = service.updateOrder(20L, request, admin);
+
+        assertThat(response.customerName()).isEqualTo("Asha Corrected");
+        assertThat(response.totalAmount()).isEqualByComparingTo("300.00");
+        assertThat(response.items()).hasSize(1);
+        assertThat(response.items().get(0).quantity()).isEqualTo(3);
+    }
+
+    @Test
+    void updateOrderRejectedOncePastEditableStatuses() {
+        OrderEntity order = editableOrder(21L, OrderStatus.LABEL_GENERATED, 1, "100.00");
+        when(orderRepository.findById(21L)).thenReturn(Optional.of(order));
+
+        UpdateOrderRequest request = updateRequest(List.of(new LineItemRequest(1L, 1, null)));
+
+        assertThatThrownBy(() -> service.updateOrder(21L, request, admin))
+                .isInstanceOf(OrderNotEditableException.class);
+        // Left completely unchanged.
+        assertThat(order.getCustomerName()).isEqualTo("Asha");
+        verify(productRepository, org.mockito.Mockito.never()).findById(any());
+    }
+
+    @Test
+    void updateOrderAllowedWhileApproved() {
+        OrderEntity order = editableOrder(22L, OrderStatus.APPROVED, 1, "100.00");
+        when(orderRepository.findById(22L)).thenReturn(Optional.of(order));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "150.00")));
+
+        UpdateOrderRequest request = updateRequest(List.of(new LineItemRequest(1L, 1, null)));
+
+        OrderResponse response = service.updateOrder(22L, request, admin);
+
+        assertThat(response.orderStatus()).isEqualTo(OrderStatus.APPROVED);
+        assertThat(response.totalAmount()).isEqualByComparingTo("150.00");
+    }
+
+    @Test
+    void updateOrderRejectsInvalidBuyerGstin() {
+        OrderEntity order = editableOrder(23L, OrderStatus.PENDING_ADMIN_APPROVAL, 1, "100.00");
+        when(orderRepository.findById(23L)).thenReturn(Optional.of(order));
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "100.00")));
+
+        UpdateOrderRequest request = new UpdateOrderRequest("Asha Corrected", "9812345678", null, null,
+                "12 MG Road", "Pune", "Maharashtra", "411001",
+                List.of(new LineItemRequest(1L, 1, null)), LeadSource.WHATSAPP, null, null,
+                "NOT-A-GSTIN", null, null,
+                null, null, null);
+
+        assertThatThrownBy(() -> service.updateOrder(23L, request, admin))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("GSTIN");
+    }
+
+    @Test
+    void updateOrderReconcilesTrackedStockForQuantityIncrease() {
+        // Original order had 2 units of a tracked product; edit bumps to 5, so the
+        // ledger must consume 3 more units.
+        OrderEntity order = editableOrder(24L, OrderStatus.PENDING_ADMIN_APPROVAL, 2, "50.00");
+        when(orderRepository.findById(24L)).thenReturn(Optional.of(order));
+        Product tracked = product(1L, "50.00");
+        tracked.setTrackInventory(true);
+        tracked.setStockQuantity(10);
+        ReflectionTestUtils.setField(tracked, "id", 1L);
+        when(productRepository.findById(1L)).thenReturn(Optional.of(tracked));
+
+        UpdateOrderRequest request = updateRequest(List.of(new LineItemRequest(1L, 5, null)));
+
+        service.updateOrder(24L, request, admin);
+
+        // 10 on-hand − 3 additional consumed = 7.
+        assertThat(tracked.getStockQuantity()).isEqualTo(7);
+    }
+
+    @Test
+    void updateOrderReturnsTrackedStockForQuantityDecrease() {
+        OrderEntity order = editableOrder(25L, OrderStatus.PENDING_ADMIN_APPROVAL, 5, "50.00");
+        when(orderRepository.findById(25L)).thenReturn(Optional.of(order));
+        Product tracked = product(1L, "50.00");
+        tracked.setTrackInventory(true);
+        tracked.setStockQuantity(3);
+        ReflectionTestUtils.setField(tracked, "id", 1L);
+        when(productRepository.findById(1L)).thenReturn(Optional.of(tracked));
+
+        UpdateOrderRequest request = updateRequest(List.of(new LineItemRequest(1L, 2, null)));
+
+        service.updateOrder(25L, request, admin);
+
+        // 3 on-hand + 3 returned (5 old - 2 new) = 6.
+        assertThat(tracked.getStockQuantity()).isEqualTo(6);
     }
 }

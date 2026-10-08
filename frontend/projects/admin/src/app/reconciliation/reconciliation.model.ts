@@ -17,6 +17,8 @@ export interface ReceivableRow {
   settled: boolean;
   settledDate?: string;
   createdAt?: string;
+  /** Name of the salesperson who punched the order (created_by → display name). */
+  salespersonName?: string | null;
 }
 
 /**
@@ -45,6 +47,8 @@ export interface UnsettledCod {
   awb: string | null;
   amount: Money;
   createdAt?: string;
+  /** Name of the salesperson who punched the order (created_by → display name). */
+  salespersonName?: string | null;
 }
 
 /** A single order within a prepaid/COD segregation group (Req 18.4). */
@@ -64,4 +68,42 @@ export interface Segregation {
   cod: SegregatedOrder[];
   prepaidTotal: Money;
   codTotal: Money;
+}
+
+/** One COD aging bucket (backend {@code CodAgingResponse.Bucket}). */
+export interface CodAgingBucket {
+  label: string;
+  minDays: number;
+  maxDays: number | null;
+  count: number;
+  amount: Money;
+}
+
+/**
+ * COD aging summary (backend {@code CodAgingResponse}, cod-aging enhancement):
+ * unsettled COD grouped into aging buckets plus a courier-SLA flag for money
+ * owed beyond the expected payout window.
+ */
+export interface CodAging {
+  buckets: CodAgingBucket[];
+  totalOutstanding: Money;
+  slaDays: number;
+  overSlaCount: number;
+  overSlaAmount: Money;
+}
+
+/**
+ * One-tap collectible summary (backend {@code CollectibleSummaryResponse},
+ * ENHANCEMENT 1.4): what the courier still owes (unsettled COD + over-SLA chase)
+ * vs what customers still owe directly, plus pending claims.
+ */
+export interface CollectibleSummary {
+  codPendingFromCourier: Money;
+  codOverSlaCount: number;
+  codOverSlaAmount: Money;
+  slaDays: number;
+  customerOutstanding: Money;
+  pendingClaims: number;
+  pendingClaimsAmount: Money;
+  totalCollectible: Money;
 }

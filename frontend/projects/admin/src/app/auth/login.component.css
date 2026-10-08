@@ -1,0 +1,40 @@
+/* Login — scoped refinements over the global .shifa-auth shell to match the
+   shipped mockup design language: rounded ~12px branded card with soft shadow,
+   Shifa green accents, rounded inputs, ≥44px touch targets, solid-green
+   full-width Sign in. Component-scoped selectors win over the global defaults. */
+
+.shifa-auth__card .card {
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 12px 34px rgba(15, 51, 36, 0.14);
+}
+
+.shifa-auth__card .card-body {
+  padding: 1.5rem 1.4rem;
+}
+
+/* Rounded inputs with a comfortable touch height and green focus ring. */
+.shifa-auth .form-control {
+  border-radius: 10px;
+  min-height: 46px;
+}
+.shifa-auth .form-control:focus {
+  border-color: var(--shifa-green-400, #4e9670);
+  box-shadow: 0 0 0 0.2rem rgba(31, 93, 63, 0.18);
+}
+.shifa-auth .input-icon-addon {
+  color: var(--shifa-green-600, #1f5d3f);
+}
+
+.shifa-auth .form-label {
+  font-weight: 600;
+  color: #45524b;
+}
+
+/* Solid-green, full-width Sign in with a comfortable target. */
+.shifa-auth .form-footer .btn-primary {
+  min-height: 48px;
+  font-weight: 600;
+  font-size: 1rem;
+  border-radius: 10px;
+}

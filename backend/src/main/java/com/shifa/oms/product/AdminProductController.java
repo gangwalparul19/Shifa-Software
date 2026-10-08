@@ -4,6 +4,7 @@ import com.shifa.oms.common.PageRequests;
 import com.shifa.oms.common.PageResponse;
 import com.shifa.oms.product.dto.ProductRequest;
 import com.shifa.oms.product.dto.ProductResponse;
+import com.shifa.oms.product.dto.ProductSalesStatsResponse;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -25,13 +26,16 @@ import java.util.Map;
 /**
  * Admin product CRUD (Req 6.1, 6.2, 6.3, 6.4).
  *
- * <p>Restricted to the {@code ADMIN} role via method security; unauthenticated
- * callers get 401 and non-admins 403 (rendered as the standard error envelope).
- * A duplicate SKU is rejected with a 409 duplicate-SKU error.
+ * <p>Authorization is applied at the METHOD level (no class-level rule) so the
+ * matrix is explicit per endpoint: the READ endpoints (list, paged list, single
+ * detail) allow {@code hasAnyRole('ADMIN','SALESPERSON')}, giving a salesperson
+ * read-only catalog access (their bottom-nav Products tab), while the mutations
+ * (create/update) require {@code hasRole('ADMIN')}. Unauthenticated callers get
+ * 401 and non-admins attempting a write get 403 (rendered as the standard error
+ * envelope). A duplicate SKU is rejected with a 409 duplicate-SKU error.
  */
 @RestController
 @RequestMapping("/api/admin/products")
-@PreAuthorize("hasRole('ADMIN')")
 public class AdminProductController {
 
     /** Whitelist of API sort fields → JPA properties for the products table. */
@@ -60,6 +64,7 @@ public class AdminProductController {
      * existing callers; the Wave 2 paged table uses {@link #page} instead.
      */
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN','SALESPERSON')")
     public List<ProductResponse> list() {
         return productService.adminList();
     }
@@ -78,6 +83,7 @@ public class AdminProductController {
      * @param sort       {@code field,dir} — one of name/sku/salePrice/mrp/stockQuantity/createdAt
      */
     @GetMapping("/page")
+    @PreAuthorize("hasAnyRole('ADMIN','SALESPERSON')")
     public PageResponse<ProductResponse> page(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String category,
@@ -93,19 +99,35 @@ public class AdminProductController {
 
     /** Returns a single product for editing, regardless of visibility (Req 6.3). */
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','SALESPERSON')")
     public ProductResponse get(@PathVariable Long id) {
         return productService.adminDetail(id);
     }
 
-    /** Creates a product (Req 6.1, 6.2). */
+    /**
+     * Read-only per-product sales stats for the product-detail "Sales Overview"
+     * card: revenue and distinct order count for the CURRENT calendar month,
+     * excluding non-revenue (REJECTED/CANCELLED) orders. Read access consistent
+     * with the other product read endpoints ({@code hasAnyRole('ADMIN',
+     * 'SALESPERSON')}); an unknown product id yields 404.
+     */
+    @GetMapping("/{id}/stats")
+    @PreAuthorize("hasAnyRole('ADMIN','SALESPERSON')")
+    public ProductSalesStatsResponse stats(@PathVariable Long id) {
+        return productService.salesStats(id);
+    }
+
+    /** Creates a product (Req 6.1, 6.2). ADMIN-only. */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('ADMIN')")
     public ProductResponse create(@Valid @RequestBody ProductRequest request) {
         return productService.create(request);
     }
 
-    /** Updates a product, including its visibility flag (Req 6.3, 6.4). */
+    /** Updates a product, including its visibility flag (Req 6.3, 6.4). ADMIN-only. */
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ProductResponse update(@PathVariable Long id, @Valid @RequestBody ProductRequest request) {
         return productService.update(id, request);
     }

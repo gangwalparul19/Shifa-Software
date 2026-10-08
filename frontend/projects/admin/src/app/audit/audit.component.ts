@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
@@ -12,6 +12,7 @@ import { PaginationComponent } from '../shared/pagination.component';
 import { SortableHeaderComponent } from '../shared/sortable-header.component';
 import { toggleSort, sortParam } from '../shared/sort.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
+import { AuditFieldChange, hasAuditDiff, parseAuditDiff } from './audit-diff.util';
 
 /** Sort fields the backend accepts for the audit log. */
 const SORT_FIELDS = new Set(['createdAt', 'action', 'entityType', 'actorUsername']);
@@ -28,7 +29,7 @@ const TABLE_KEY = 'audit';
   selector: 'admin-audit',
   imports: [
     ReactiveFormsModule,
-    DatePipe,
+    IstDatePipe,
     PageHeaderComponent,
     StatePanelComponent,
     DensityToggleComponent,
@@ -50,7 +51,7 @@ export class AuditComponent implements OnInit, OnDestroy {
 
   // --- Paging + sort ------------------------------------------------------
   protected readonly page = signal(0);
-  protected readonly size = signal(readPageSize(TABLE_KEY, 20));
+  protected readonly size = signal(readPageSize(TABLE_KEY, 10));
   protected readonly totalPages = signal(0);
   protected readonly totalElements = signal(0);
   protected readonly sort = signal<SortState>({ field: 'createdAt', dir: 'desc' });
@@ -163,5 +164,34 @@ export class AuditComponent implements OnInit, OnDestroy {
       .replaceAll('_', ' ')
       .toLowerCase()
       .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  // --- Before/after diff viewer (audit-diff-viewer enhancement) -----------
+
+  /** Row ids currently expanded to show their structured field diff. */
+  private readonly expanded = signal<Set<number>>(new Set());
+
+  /** Whether this entry's summary carries a structured old→new field diff. */
+  hasDiff(entry: AuditEntry): boolean {
+    return hasAuditDiff(entry.summary);
+  }
+
+  /** The parsed field changes for an entry (empty when none). */
+  diffOf(entry: AuditEntry): AuditFieldChange[] {
+    return parseAuditDiff(entry.summary);
+  }
+
+  isExpanded(entry: AuditEntry): boolean {
+    return this.expanded().has(entry.id);
+  }
+
+  toggleDiff(entry: AuditEntry): void {
+    const next = new Set(this.expanded());
+    if (next.has(entry.id)) {
+      next.delete(entry.id);
+    } else {
+      next.add(entry.id);
+    }
+    this.expanded.set(next);
   }
 }

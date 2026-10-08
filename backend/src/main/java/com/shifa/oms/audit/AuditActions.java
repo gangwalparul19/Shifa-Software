@@ -17,12 +17,43 @@ public final class AuditActions {
 
     public static final String ORDER_APPROVED = "ORDER_APPROVED";
     public static final String ORDER_REJECTED = "ORDER_REJECTED";
+    /** An admin cancelled an order (order-cancellation feature), with a mandatory note. */
+    public static final String ORDER_CANCELLED = "ORDER_CANCELLED";
+    /** An admin corrected the order's customer/address/items/discount/notes (edit-order feature). */
+    public static final String ORDER_UPDATED = "ORDER_UPDATED";
+
+    /** An admin soft-deleted an order (set active=false) — delete-order feature. */
+    public static final String ORDER_DELETED = "ORDER_DELETED";
+
+    /** An admin restored a previously soft-deleted order (set active=true). */
+    public static final String ORDER_RESTORED = "ORDER_RESTORED";
+    /** A packer/admin manually marked an order RTO by scanning its label (label redesign feature). */
+    public static final String ORDER_MARKED_RTO = "ORDER_MARKED_RTO";
+    /** A user exported the (filtered, scoped) orders list to CSV/Excel (list-export enhancement). */
+    public static final String ORDERS_EXPORTED = "ORDERS_EXPORTED";
+    /** Payment authenticity verification decisions (product-audit §4.4). */
+    public static final String PAYMENT_VERIFIED = "PAYMENT_VERIFIED";
+    public static final String PAYMENT_REJECTED = "PAYMENT_REJECTED";
+    /** Generic per-transition audit written by the central OrderWorkflowService (Req 15.1, 15.5). */
+    public static final String ORDER_STATUS_CHANGED = "ORDER_STATUS_CHANGED";
 
     public static final String USER_CREATED = "USER_CREATED";
     public static final String USER_UPDATED = "USER_UPDATED";
     public static final String USER_PASSWORD_RESET = "USER_PASSWORD_RESET";
+    /** A user changed their own password (self-service, incl. the forced change after a reset). */
+    public static final String USER_PASSWORD_CHANGED = "USER_PASSWORD_CHANGED";
     public static final String USER_ACTIVATED = "USER_ACTIVATED";
     public static final String USER_DEACTIVATED = "USER_DEACTIVATED";
+
+    // Staff onboarding profiles + ID verification.
+    public static final String STAFF_PROFILE_UPDATED = "STAFF_PROFILE_UPDATED";
+    public static final String STAFF_ID_PROOF_UPLOADED = "STAFF_ID_PROOF_UPLOADED";
+    public static final String STAFF_PROFILE_IMAGE_UPLOADED = "STAFF_PROFILE_IMAGE_UPLOADED";
+    public static final String STAFF_PROFILE_CHANGE_REQUESTED = "STAFF_PROFILE_CHANGE_REQUESTED";
+    public static final String STAFF_PROFILE_CHANGE_APPROVED = "STAFF_PROFILE_CHANGE_APPROVED";
+    public static final String STAFF_PROFILE_CHANGE_REJECTED = "STAFF_PROFILE_CHANGE_REJECTED";
+    public static final String STAFF_VERIFIED = "STAFF_VERIFIED";
+    public static final String STAFF_VERIFICATION_REJECTED = "STAFF_VERIFICATION_REJECTED";
 
     public static final String SETTINGS_UPDATED = "SETTINGS_UPDATED";
 
@@ -42,6 +73,9 @@ public final class AuditActions {
     // Bulk product CSV import ("operations depth" Feature 2).
     public static final String PRODUCTS_IMPORTED = "PRODUCTS_IMPORTED";
 
+    // Courier COD remittance CSV import & auto-match (enhancement).
+    public static final String COD_REMITTANCE_IMPORTED = "COD_REMITTANCE_IMPORTED";
+
     // Procurement: suppliers + purchase orders (Feature C2).
     public static final String SUPPLIER_CREATED = "SUPPLIER_CREATED";
     public static final String PO_CREATED = "PO_CREATED";
@@ -52,9 +86,70 @@ public final class AuditActions {
     public static final String EXPENSE_ADDED = "EXPENSE_ADDED";
     public static final String EXPENSE_DELETED = "EXPENSE_DELETED";
 
+    // Lead management & sales pipeline (Lead Management feature).
+    public static final String LEAD_CAPTURED = "LEAD_CAPTURED";
+    public static final String LEAD_STATUS_CHANGED = "LEAD_STATUS_CHANGED";
+    public static final String LEAD_FOLLOW_UP_SET = "LEAD_FOLLOW_UP_SET";
+    public static final String LEAD_CONVERTED = "LEAD_CONVERTED";
+
+    /** A nightly/on-demand statistical-insights computation run (statistical-insights-engine). */
+    public static final String INSIGHTS_COMPUTED = "INSIGHTS_COMPUTED";
+
+    // Customer records & internal CRM depth (FEATURE-ROADMAP §1).
+    public static final String CUSTOMER_NOTE_ADDED = "CUSTOMER_NOTE_ADDED";
+    public static final String CUSTOMER_TAG_ADDED = "CUSTOMER_TAG_ADDED";
+    public static final String CUSTOMER_TAG_REMOVED = "CUSTOMER_TAG_REMOVED";
+
+    // Staff announcement banners (FEATURE-ROADMAP §8.4).
+    public static final String ANNOUNCEMENT_CREATED = "ANNOUNCEMENT_CREATED";
+    public static final String ANNOUNCEMENT_UPDATED = "ANNOUNCEMENT_UPDATED";
+    public static final String ANNOUNCEMENT_DELETED = "ANNOUNCEMENT_DELETED";
+
+    // Sales targets & incentives (FEATURE-ROADMAP §6.1).
+    public static final String SALES_TARGET_SET = "SALES_TARGET_SET";
+
+    // QuikShipX courier integration.
+    /** An order was published to QuikShipX (create-order → their Pending section). */
+    public static final String QUIKSHIPX_PUBLISHED = "QUIKSHIPX_PUBLISHED";
+    /** An order's QuikShipX status was mirrored to Confirmed on admin approval. */
+    public static final String QUIKSHIPX_CONFIRMED = "QUIKSHIPX_CONFIRMED";
+    /** A QuikShipX tracking id (AWB) + label were allotted for an order. */
+    public static final String QUIKSHIPX_TRACKING_ALLOTTED = "QUIKSHIPX_TRACKING_ALLOTTED";
+    /** A QuikShipX shipment cancellation was requested so the courier aborts pickup (order-cancellation feature). */
+    public static final String QUIKSHIPX_CANCELLED = "QUIKSHIPX_CANCELLED";
+    /** An admin manually attached a courier name + AWB to an order (assign-courier-early enhancement). */
+    public static final String COURIER_MANUALLY_ASSIGNED = "COURIER_MANUALLY_ASSIGNED";
+
+    // Customizable WhatsApp message templates (V44).
+    public static final String WHATSAPP_TEMPLATE_CREATED = "WHATSAPP_TEMPLATE_CREATED";
+    public static final String WHATSAPP_TEMPLATE_UPDATED = "WHATSAPP_TEMPLATE_UPDATED";
+    public static final String WHATSAPP_TEMPLATE_DELETED = "WHATSAPP_TEMPLATE_DELETED";
+
+    /** A portal-ready GSTR-1 return export (CSV bundle / portal JSON) — GST filing compliance (Req 13.3). */
+    public static final String GSTR1_EXPORTED = "GSTR1_EXPORTED";
+
+    // GST returns & filing lifecycle (gst-returns-filing, Reqs 1.3, 1.4, 2.4, 10.2).
+    /** A return period/type was marked prepared (NOT_STARTED → PREPARED). */
+    public static final String GST_RETURN_PREPARED = "GST_RETURN_PREPARED";
+    /** A return period/type was filed (PREPARED → FILED) with an immutable snapshot captured. */
+    public static final String GST_RETURN_FILED = "GST_RETURN_FILED";
+    /** A filed return period/type was reopened by an ADMIN/CA (FILED → PREPARED), prior snapshot retained. */
+    public static final String GST_RETURN_REOPENED = "GST_RETURN_REOPENED";
+    /** A post-filing correction was detected against a Filed_Period and routed/held (Reqs 3.1–3.8, 10.2). */
+    public static final String GST_AMENDMENT_DETECTED = "GST_AMENDMENT_DETECTED";
+    /** A CA created, edited, or resolved a return amendment (manual-review resolution) — Reqs 3.5, 3.7. */
+    public static final String GST_AMENDMENT_REVIEWED = "GST_AMENDMENT_REVIEWED";
+
+    // General Ledger / double-entry vouchers (general-ledger-accounting, Req 15.1, 15.2).
+    /** A double-entry voucher was posted to the General Ledger (Req 15.1). */
+    public static final String VOUCHER_POSTED = "VOUCHER_POSTED";
+    /** A posted voucher was reversed by a balancing reversing voucher (Req 15.2). */
+    public static final String VOUCHER_REVERSED = "VOUCHER_REVERSED";
+
     // --- Entity types -------------------------------------------------------
 
     public static final String ENTITY_ORDER = "ORDER";
+    public static final String ENTITY_RECEIVABLE = "RECEIVABLE";
     public static final String ENTITY_USER = "USER";
     public static final String ENTITY_SETTINGS = "SETTINGS";
     public static final String ENTITY_PRODUCT = "PRODUCT";
@@ -63,4 +158,14 @@ public final class AuditActions {
     public static final String ENTITY_SUPPLIER = "SUPPLIER";
     public static final String ENTITY_PURCHASE_ORDER = "PURCHASE_ORDER";
     public static final String ENTITY_EXPENSE = "EXPENSE";
+    public static final String ENTITY_LEAD = "LEAD";
+    public static final String ENTITY_INSIGHT = "INSIGHT";
+    public static final String ENTITY_CUSTOMER = "CUSTOMER";
+    public static final String ENTITY_ANNOUNCEMENT = "ANNOUNCEMENT";
+    public static final String ENTITY_SALES_TARGET = "SALES_TARGET";
+    public static final String ENTITY_WHATSAPP_TEMPLATE = "WHATSAPP_TEMPLATE";
+    /** GST filing/return artifacts (e.g. a GSTR-1 export) — GST filing compliance. */
+    public static final String ENTITY_GST = "GST";
+    /** A General Ledger double-entry voucher (general-ledger-accounting). */
+    public static final String ENTITY_VOUCHER = "VOUCHER";
 }

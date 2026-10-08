@@ -1,10 +1,15 @@
 package com.shifa.oms.common;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.persistence.OptimisticLockException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
@@ -13,6 +18,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.io.IOException;
 import java.util.List;
@@ -29,6 +35,12 @@ import java.util.Locale;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    private final ObjectMapper objectMapper;
+
+    public GlobalExceptionHandler(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     /** Any domain/application exception carrying its own status and code. */
     @ExceptionHandler(ApiException.class)
@@ -82,28 +94,78 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(body);
     }
 
-    /** Authenticated user lacks the required authority. */
-    @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
+    /**
+     * An uploaded file (e.g. a payment screenshot) exceeded the configured
+     * multipart size limit. Render a clear 413 instead of the generic 500 so the
+     * user knows to attach a smaller image.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSize(MaxUploadSizeExceededException ex,
+                                                             HttpServletRequest request) {
         ErrorResponse body = ErrorResponse.of(
-                HttpStatus.FORBIDDEN.value(),
-                HttpStatus.FORBIDDEN.getReasonPhrase(),
-                "FORBIDDEN",
-                "You are not authorized to perform this action.",
+                HttpStatus.PAYLOAD_TOO_LARGE.value(),
+                HttpStatus.PAYLOAD_TOO_LARGE.getReasonPhrase(),
+                "UPLOAD_TOO_LARGE",
+                "The uploaded file is too large. Please attach a smaller screenshot.",
                 request.getRequestURI());
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(body);
     }
 
-    /** Unauthenticated access to a protected endpoint. */
-    @ExceptionHandler(AuthenticationException.class)
-    public ResponseEntity<ErrorResponse> handleAuthentication(AuthenticationException ex, HttpServletRequest request) {
+    /**
+     * A concurrent update is a recoverable conflict, not a server failure. This
+     * is especially common when an admin, packer, and courier update the same
+     * order close together; the client should refresh the order and ask again.
+     */
+    @ExceptionHandler({ObjectOptimisticLockingFailureException.class, OptimisticLockException.class})
+    public ResponseEntity<ErrorResponse> handleOptimisticLock(Exception ex, HttpServletRequest request) {
         ErrorResponse body = ErrorResponse.of(
-                HttpStatus.UNAUTHORIZED.value(),
-                HttpStatus.UNAUTHORIZED.getReasonPhrase(),
-                "UNAUTHENTICATED",
-                "Authentication is required to access this resource.",
+                HttpStatus.CONFLICT.value(),
+                HttpStatus.CONFLICT.getReasonPhrase(),
+                "CONCURRENT_UPDATE",
+                "This record changed elsewhere. Refresh it and try again.",
                 request.getRequestURI());
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    /**
+     * Authenticated user lacks the required authority. Written straight to the
+     * response as JSON (bypassing content negotiation) so a 403 on a NON-JSON
+     * request — e.g. the {@code text/event-stream} admin SSE feed or a binary
+     * PDF/image endpoint — renders cleanly instead of failing with
+     * "No acceptable representation".
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public void handleAccessDenied(AccessDeniedException ex, HttpServletRequest request,
+                                   HttpServletResponse response) throws IOException {
+        writeJsonError(response, request, HttpStatus.FORBIDDEN, "FORBIDDEN",
+                "You are not authorized to perform this action.");
+    }
+
+    /** Unauthenticated access to a protected endpoint (JSON, negotiation-free). */
+    @ExceptionHandler(AuthenticationException.class)
+    public void handleAuthentication(AuthenticationException ex, HttpServletRequest request,
+                                     HttpServletResponse response) throws IOException {
+        writeJsonError(response, request, HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED",
+                "Authentication is required to access this resource.");
+    }
+
+    /**
+     * Serialises an {@link ErrorResponse} directly to the servlet response as
+     * JSON with the given status. Bypasses Spring's {@code Accept}-header content
+     * negotiation, which would otherwise throw {@code HttpMediaTypeNotAcceptableException}
+     * when the failing request only accepts a non-JSON type (SSE, PDF, image).
+     */
+    private void writeJsonError(HttpServletResponse response, HttpServletRequest request,
+                                HttpStatus status, String code, String message) throws IOException {
+        if (response.isCommitted()) {
+            return;
+        }
+        response.setStatus(status.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
+        ErrorResponse body = ErrorResponse.of(
+                status.value(), status.getReasonPhrase(), code, message, request.getRequestURI());
+        objectMapper.writeValue(response.getWriter(), body);
     }
 
     /**

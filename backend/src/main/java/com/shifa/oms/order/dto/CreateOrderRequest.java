@@ -1,8 +1,10 @@
 package com.shifa.oms.order.dto;
 
+import com.shifa.oms.order.LeadSource;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -21,6 +23,13 @@ import java.util.List;
  * screenshot (two-step upload via {@code POST /api/orders/payment-screenshots})
  * and is mandatory when {@code amountReceived > 0} (Req 7.6) — that rule is
  * enforced in the service so the specific message can be returned.
+ *
+ * <p>Order entry also captures the lead's origin channel (Req 4.1-4.5, design
+ * §3.1, §6.1): a required {@code leadSource} drawn from the {@link LeadSource}
+ * set, an optional {@code leadSourceNote} (≤200 chars, only meaningful for
+ * {@link LeadSource#OTHER}), and an optional {@code customerEmail} used for
+ * milestone emails. These persist distinctly from the order-record provenance
+ * (Order_Source); membership/presence/note-length are re-checked in the service.
  */
 public record CreateOrderRequest(
         @NotBlank(message = "customerName is required")
@@ -35,16 +44,19 @@ public record CreateOrderRequest(
         @Size(max = 250, message = "addressLine must be at most 250 characters")
         String addressLine,
 
-        @NotBlank(message = "city is required")
+        // city/state/postalCode are required for a DOMESTIC (India) order but
+        // OPTIONAL for an international order (India/Outside India entry, V67), so
+        // the presence rule is enforced in the service based on `country` — here we
+        // only bound the length/format when a value IS supplied. The postalCode
+        // pattern matches empty-or-6-digits (@Pattern treats null as valid), the
+        // same "optional field" trick used by alternateMobile.
         @Size(max = 100, message = "city must be at most 100 characters")
         String city,
 
-        @NotBlank(message = "state is required")
         @Size(max = 100, message = "state must be at most 100 characters")
         String state,
 
-        @NotBlank(message = "postalCode is required")
-        @Pattern(regexp = "\\d{6}", message = "postalCode must be exactly 6 digits")
+        @Pattern(regexp = "(\\d{6})?", message = "postalCode must be exactly 6 digits")
         String postalCode,
 
         @NotEmpty(message = "at least one line item is required")
@@ -56,6 +68,76 @@ public record CreateOrderRequest(
         @Digits(integer = 10, fraction = 2, message = "amountReceived must be a DECIMAL(12,2) value")
         BigDecimal amountReceived,
 
-        String paymentScreenshotKey
+        String paymentScreenshotKey,
+
+        @NotNull(message = "leadSource is required")
+        LeadSource leadSource,
+
+        @Size(max = 200, message = "leadSourceNote must be at most 200 characters")
+        String leadSourceNote,
+
+        @Email(message = "customerEmail must be a valid email address")
+        @Size(max = 150, message = "customerEmail must be at most 150 characters")
+        String customerEmail,
+
+        @Size(max = 1000, message = "notes must be at most 1000 characters")
+        String notes,
+
+        // Optional alternate contact number (product-audit §4.5). Null/blank is
+        // allowed; when provided it must be exactly 10 digits. The pattern matches
+        // an empty string or 10 digits, and @Pattern treats null as valid, so the
+        // field stays optional whether the client omits it or sends "".
+        @Pattern(regexp = "(\\d{10})?", message = "alternateMobile must be exactly 10 digits")
+        String alternateMobile,
+
+        // Optional order-level discount (product-catalog-pricing-gst Req 6): type is
+        // "FLAT" or "PERCENT" (null/blank = none), value is the entered amount/percent.
+        // Bounds are validated during pricing so the specific message is returned.
+        @Pattern(regexp = "(?i)(FLAT|PERCENT)?", message = "discountType must be FLAT or PERCENT")
+        String discountType,
+
+        @DecimalMin(value = "0.00", message = "discountValue must not be negative")
+        @Digits(integer = 10, fraction = 2, message = "discountValue must be a DECIMAL(12,2) value")
+        BigDecimal discountValue,
+
+        // Optional buyer GSTIN for GSTR-1 supply classification (gst-filing-compliance
+        // Req 1.1). Null/blank is allowed (the buyer is an unregistered person);
+        // format validation is applied on the write path in OrderService (Req 1.3).
+        @Size(max = 15, message = "buyerGstin must be at most 15 characters")
+        String buyerGstin,
+
+        // Optional per-order delivery method: "QUIKSHIPX" (default when null/blank)
+        // or "IN_HOUSE" to skip the QuikShipX courier integration entirely and have
+        // Shifa's own team deliver the order. Case-insensitive.
+        @Pattern(regexp = "(?i)(QUIKSHIPX|IN_HOUSE)?", message = "deliveryMethod must be QUIKSHIPX or IN_HOUSE")
+        String deliveryMethod,
+
+        // Additional payment proofs beyond the first (V65). An order may have several
+        // — a part payment plus the balance, a UPI receipt plus a bank confirmation,
+        // or two screenshots because the transaction did not fit one screen. Each
+        // entry is a storage key from a prior POST /api/orders/payment-screenshots.
+        //
+        // Null/empty keeps the historical single-proof behaviour. The effective set
+        // is paymentScreenshotKey followed by these, de-duplicated, order preserved;
+        // the first becomes the primary proof mirrored onto the legacy column, so
+        // sending only paymentScreenshotKey behaves exactly as before.
+        @Size(max = 10, message = "at most 10 payment screenshots may be attached to an order")
+        List<@Size(max = 512, message = "a payment screenshot key must be at most 512 characters") String>
+                paymentScreenshotKeys,
+
+        // Optional "place on behalf of" attribution (admin only): when an ADMIN
+        // punches an order for a salesperson/team lead, this is that user's id and
+        // the order's created_by is set to them (so it shows in their scoped lists
+        // and counts toward their performance). Ignored/omitted for a self order.
+        // ONLY an ADMIN may set it, and the target must be an active SALESPERSON or
+        // TEAM_LEAD — both enforced in the service (a non-admin sending it is rejected).
+        Long onBehalfOfUserId,
+
+        // Destination country for an international order (India/Outside India entry,
+        // V67). Null/blank or "India" = a domestic order (city/state/6-digit pincode
+        // required). Any other value = an international order: the full address is in
+        // addressLine and city/state/postalCode may be blank.
+        @Size(max = 60, message = "country must be at most 60 characters")
+        String country
 ) {
 }

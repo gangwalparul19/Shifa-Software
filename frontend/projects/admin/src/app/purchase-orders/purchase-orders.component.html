@@ -76,7 +76,78 @@
     [message]="hasFilters() ? 'No purchase orders match your filters.' : 'Create a purchase order to restock from a supplier.'"
   />
 } @else {
-  <div class="card">
+  <!-- Summary KPI tiles for the purchase orders on screen: green icon chip +
+       big value + label, three per row on phones (mirrors the order screens). -->
+  <div class="row row-cards g-2 g-md-3 mb-3 stagger shifa-po-kpis">
+    <div class="col-4">
+      <div class="card card-hover stat-accent" style="--accent: #d6820a; --accent-soft: #fdf0d5">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Ordered</div>
+            <div class="h1 m-0">{{ orderedCount() }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #d6820a; --accent-soft: #fdf0d5"><i class="ti ti-clipboard-list"></i></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-4">
+      <div class="card card-hover stat-accent" style="--accent: #206bc4; --accent-soft: #e7f0fb">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Partial</div>
+            <div class="h1 m-0">{{ partialCount() }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #206bc4; --accent-soft: #e7f0fb"><i class="ti ti-package"></i></span>
+        </div>
+      </div>
+    </div>
+    <div class="col-4">
+      <div class="card card-hover stat-accent" style="--accent: #1f5d3f; --accent-soft: #e4f2ea">
+        <div class="card-body d-flex align-items-center justify-content-between">
+          <div>
+            <div class="subheader">Received</div>
+            <div class="h1 m-0">{{ receivedCount() }}</div>
+          </div>
+          <span class="stat-icon" style="--accent: #1f5d3f; --accent-soft: #e4f2ea"><i class="ti ti-package-import"></i></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile (<768px): purchase-order cards — PO number, supplier, status pill,
+       total and date, with the Receive / Cancel / View actions preserved. -->
+  <div class="shifa-po-cards d-md-none">
+    @for (po of pos(); track po.id) {
+      <div class="shifa-po" (click)="openDetail(po)" role="button" [attr.aria-label]="'View ' + po.poNumber">
+        <div class="shifa-po__r1">
+          <span class="shifa-po__num">{{ po.poNumber }}</span>
+          <span class="badge" [attr.data-group]="statusTone(po.status)">{{ statusLabel(po.status) }}</span>
+        </div>
+        <div class="shifa-po__supplier">{{ supplierName(po.supplierId) }}</div>
+        <div class="shifa-po__r2">
+          <span class="shifa-po__meta"><i class="ti ti-calendar me-1"></i>{{ po.createdAt | istDate: 'dd MMM yyyy' }}</span>
+          <span class="shifa-po__meta"><i class="ti ti-box me-1"></i>{{ po.itemCount }} item{{ po.itemCount === 1 ? '' : 's' }}</span>
+          <span class="shifa-po__total">{{ money(po.totalAmount) }}</span>
+        </div>
+        @if (rowActions(po).length) {
+          <div class="shifa-po__actions" (click)="$event.stopPropagation()">
+            <admin-row-actions [actions]="rowActions(po)" ariaLabel="Purchase order actions" (select)="onRowAction($event, po)" />
+          </div>
+        }
+      </div>
+    }
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+
+  <!-- Desktop table (≥768px) -->
+  <div class="card d-none d-md-block">
     <div class="table-responsive">
       <table class="table table-vcenter card-table table-hover">
         <thead>
@@ -93,33 +164,20 @@
         </thead>
         <tbody>
           @for (po of pos(); track po.id) {
-            <tr class="clickable" (click)="openDetail(po)">
+            <tr class="shifa-rowlink" (click)="openDetail(po)">
               <td class="fw-medium">{{ po.poNumber }}</td>
               <td>{{ supplierName(po.supplierId) }}</td>
               <td><span class="badge" [attr.data-group]="statusTone(po.status)">{{ statusLabel(po.status) }}</span></td>
               <td class="text-end">{{ po.itemCount }}</td>
               <td class="text-end fw-medium">{{ money(po.totalAmount) }}</td>
-              <td class="text-secondary">{{ po.createdAt | date: 'dd MMM, HH:mm' }}</td>
-              <td class="text-secondary">{{ po.receivedAt ? (po.receivedAt | date: 'dd MMM, HH:mm') : '—' }}</td>
-              <td class="text-end">
-                <div class="btn-list justify-content-end flex-nowrap" (click)="$event.stopPropagation()">
-                  @if (isReceivable(po.status)) {
-                    <button type="button" class="btn btn-sm btn-outline-primary" (click)="startReceive(po)">
-                      <i class="ti ti-package-import me-1"></i> Receive
-                    </button>
-                  }
-                  @if (isCancellable(po.status)) {
-                    <button
-                      type="button"
-                      class="btn btn-sm btn-outline-danger"
-                      (click)="cancel(po)"
-                      [disabled]="cancellingId() !== null"
-                    >
-                      Cancel
-                    </button>
-                  }
-                  <button type="button" class="btn btn-sm btn-outline-secondary" (click)="openDetail(po)">View</button>
-                </div>
+              <td class="text-secondary">{{ po.createdAt | istDate: 'dd MMM, HH:mm' }}</td>
+              <td class="text-secondary">{{ po.receivedAt ? (po.receivedAt | istDate: 'dd MMM, HH:mm') : '—' }}</td>
+              <td class="text-end" (click)="$event.stopPropagation()">
+                @if (rowActions(po).length) {
+                  <admin-row-actions [actions]="rowActions(po)" ariaLabel="Purchase order actions" (select)="onRowAction($event, po)" />
+                } @else {
+                  <span class="text-secondary small">—</span>
+                }
               </td>
             </tr>
           }
@@ -162,9 +220,9 @@
       <div class="shifa-drawer__body">
         <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
           <span class="badge" [attr.data-group]="statusTone(po.status)">{{ statusLabel(po.status) }}</span>
-          <span class="text-secondary">Created {{ po.createdAt | date: 'dd MMM yyyy, HH:mm' }}</span>
+          <span class="text-secondary">Created {{ po.createdAt | istDate }}</span>
           @if (po.receivedAt) {
-            <span class="text-secondary">· Received {{ po.receivedAt | date: 'dd MMM yyyy, HH:mm' }}</span>
+            <span class="text-secondary">· Received {{ po.receivedAt | istDate }}</span>
           }
         </div>
 

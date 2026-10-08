@@ -1,12 +1,13 @@
-import { DatePipe } from '@angular/common';
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { IstDatePipe } from '../shared/ist-date.pipe';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormControl } from '@angular/forms';
 import { ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { Money, SortState } from 'core';
 import { CustomersService } from './customers.service';
-import { CustomerDetail, CustomerSummary } from './customers.model';
+import { CustomerProfile, CustomerSummary, riskLabel, riskPillClass } from './customers.model';
+import { ToastService } from '../shared/toast.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
@@ -15,6 +16,8 @@ import { SortableHeaderComponent } from '../shared/sortable-header.component';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
 import { toggleSort, sortParam } from '../shared/sort.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
+import { WHATSAPP_TEMPLATES, openWhatsApp, renderTemplate, whatsAppMessage } from '../shared/whatsapp.util';
+import { WhatsappTemplate, WhatsappTemplatesService } from '../whatsapp/whatsapp-templates.service';
 
 /** Sort fields the backend accepts for the admin customers listing. */
 const SORT_FIELDS = new Set(['totalSpent', 'orderCount', 'lastOrderAt', 'firstOrderAt', 'mobile']);
@@ -33,7 +36,7 @@ const TABLE_KEY = 'customers';
   imports: [
     ReactiveFormsModule,
     RouterLink,
-    DatePipe,
+    IstDatePipe,
     PageHeaderComponent,
     StatePanelComponent,
     DensityToggleComponent,
@@ -46,6 +49,80 @@ const TABLE_KEY = 'customers';
 })
 export class CustomersComponent implements OnInit, OnDestroy {
   private readonly service = inject(CustomersService);
+  private readonly toasts = inject(ToastService);
+  private readonly waTemplates = inject(WhatsappTemplatesService);
+
+  // Expose risk badge helpers to the template.
+  protected readonly riskPillClass = riskPillClass;
+  protected readonly riskLabel = riskLabel;
+
+  /**
+   * One-tap WhatsApp templates for the Customer 360 drawer. Loaded from the
+   * server-managed set (V44); falls back to the built-in defaults.
+   */
+  protected readonly whatsappTemplates = signal<WhatsappTemplate[] | typeof WHATSAPP_TEMPLATES>(
+    WHATSAPP_TEMPLATES,
+  );
+
+  /** Loads the active server-managed WhatsApp templates (non-fatal on error). */
+  private loadWhatsappTemplates(): void {
+    this.waTemplates.active().subscribe({
+      next: (list) => {
+        if (list && list.length > 0) {
+          this.whatsappTemplates.set(list);
+        }
+      },
+      error: () => {
+        /* keep built-in defaults */
+      },
+    });
+  }
+
+  /**
+   * The most recent order id to reorder from (first history row that carries an
+   * id; the list is newest-first). Null when none is available.
+   */
+  lastReorderableId(profile: CustomerProfile): number | null {
+    return profile.orders.find((o) => o.orderId != null)?.orderId ?? null;
+  }
+
+  /** Opens WhatsApp for a customer directly from a list row. */
+  sendWhatsAppSummary(customer: CustomerSummary, event?: Event): void {
+    event?.stopPropagation();
+    const message = whatsAppMessage('followup', {
+      customerName: customer.name,
+      total: customer.totalSpent,
+    });
+    if (!openWhatsApp(customer.mobile, message)) {
+      this.toasts.error('No valid mobile number to message on WhatsApp.');
+    }
+  }
+
+  /** Prevents a row action from opening the full drawer as well. */
+  stopRowClick(event: Event): void {
+    event.stopPropagation();
+  }
+
+  /** Opens the caller's phone app directly from a customer list row. */
+  callCustomer(mobile: string, event?: Event): void {
+    event?.stopPropagation();
+    window.location.href = `tel:${mobile}`;
+  }
+
+  /** Opens WhatsApp for the open customer with a pre-filled template message. */
+  sendWhatsApp(profile: CustomerProfile, key: string): void {
+    const ctx = {
+      customerName: profile.summary.name,
+      total: profile.summary.totalSpent,
+      remaining: profile.metrics.outstanding,
+    };
+    const tpl = this.whatsappTemplates().find((t) => t.key === key);
+    const message = tpl ? renderTemplate(tpl.body, ctx) : whatsAppMessage(key, ctx);
+    const ok = openWhatsApp(profile.summary.mobile, message);
+    if (!ok) {
+      this.toasts.error('No valid mobile number to message on WhatsApp.');
+    }
+  }
 
   protected readonly customers = signal<CustomerSummary[]>([]);
   protected readonly loading = signal(true);
@@ -53,7 +130,7 @@ export class CustomersComponent implements OnInit, OnDestroy {
 
   // --- Paging + sort ------------------------------------------------------
   protected readonly page = signal(0);
-  protected readonly size = signal(readPageSize(TABLE_KEY, 20));
+  protected readonly size = signal(readPageSize(TABLE_KEY, 10));
   protected readonly totalPages = signal(0);
   protected readonly totalElements = signal(0);
   protected readonly sort = signal<SortState>({ field: 'totalSpent', dir: 'desc' });
@@ -61,15 +138,39 @@ export class CustomersComponent implements OnInit, OnDestroy {
   // --- Filters ------------------------------------------------------------
   protected readonly search = new FormControl<string>('', { nonNullable: true });
 
-  // --- Detail drawer ------------------------------------------------------
-  protected readonly selectedDetail = signal<CustomerDetail | null>(null);
+  // --- Detail drawer (Customer 360) ---------------------------------------
+  protected readonly selectedProfile = signal<CustomerProfile | null>(null);
+  /**
+   * Active tab in the Customer 360 drawer so its (long) content is split into
+   * Overview / CRM / Orders tabs instead of one long scroll.
+   */
+  protected readonly custTab = signal<'overview' | 'crm' | 'orders'>('overview');
   protected readonly detailLoading = signal(false);
   protected readonly detailError = signal<string | null>(null);
+
+  // --- Tag + note editing in the drawer -----------------------------------
+  protected readonly newTag = new FormControl<string>('', { nonNullable: true });
+  protected readonly savingTag = signal(false);
+  protected readonly newNote = new FormControl<string>('', { nonNullable: true });
+  protected readonly savingNote = signal(false);
+
+  // --- Order-history paging inside the drawer (the history can grow long) --
+  protected readonly historyPage = signal(0);
+  protected readonly historySize = signal(8);
+  protected readonly historyTotalPages = computed(() =>
+    Math.max(1, Math.ceil((this.selectedProfile()?.orders.length ?? 0) / this.historySize())),
+  );
+  protected readonly historyPageItems = computed(() => {
+    const orders = this.selectedProfile()?.orders ?? [];
+    const start = this.historyPage() * this.historySize();
+    return orders.slice(start, start + this.historySize());
+  });
 
   private readonly destroy$ = new Subject<void>();
 
   ngOnInit(): void {
     this.load();
+    this.loadWhatsappTemplates();
     this.search.valueChanges
       .pipe(debounceTime(300), distinctUntilChanged(), takeUntil(this.destroy$))
       .subscribe(() => this.resetAndLoad());
@@ -139,15 +240,34 @@ export class CustomersComponent implements OnInit, OnDestroy {
     return `₹${value}`;
   }
 
+  /**
+   * Two-letter initials for the customer avatar chip (we have no customer
+   * photos, so the mobile list uses an initials chip like the order drawer).
+   */
+  customerInitials(name: string | null | undefined): string {
+    const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) {
+      return '?';
+    }
+    if (parts.length === 1) {
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+
   // --- Detail drawer ------------------------------------------------------
 
   openDetail(customer: CustomerSummary): void {
     this.detailLoading.set(true);
     this.detailError.set(null);
-    this.selectedDetail.set(null);
-    this.service.detail(customer.mobile).subscribe({
-      next: (detail) => {
-        this.selectedDetail.set(detail);
+    this.custTab.set('overview');
+    this.selectedProfile.set(null);
+    this.historyPage.set(0);
+    this.newTag.reset('');
+    this.newNote.reset('');
+    this.service.profile(customer.mobile).subscribe({
+      next: (profile) => {
+        this.selectedProfile.set(profile);
         this.detailLoading.set(false);
       },
       error: () => {
@@ -157,8 +277,87 @@ export class CustomersComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** The mobile of the customer currently open in the drawer, or null. */
+  private currentMobile(): string | null {
+    return this.selectedProfile()?.summary.mobile ?? null;
+  }
+
+  addTag(): void {
+    const mobile = this.currentMobile();
+    const tag = this.newTag.value.trim();
+    if (!mobile || !tag || this.savingTag()) {
+      return;
+    }
+    this.savingTag.set(true);
+    this.service.addTag(mobile, tag).subscribe({
+      next: (tags) => {
+        this.patchProfile({ tags });
+        this.newTag.reset('');
+        this.savingTag.set(false);
+      },
+      error: () => {
+        this.toasts.error('Could not add the tag.');
+        this.savingTag.set(false);
+      },
+    });
+  }
+
+  removeTag(tag: string): void {
+    const mobile = this.currentMobile();
+    if (!mobile) {
+      return;
+    }
+    this.service.removeTag(mobile, tag).subscribe({
+      next: (tags) => this.patchProfile({ tags }),
+      error: () => this.toasts.error('Could not remove the tag.'),
+    });
+  }
+
+  addNote(): void {
+    const mobile = this.currentMobile();
+    const note = this.newNote.value.trim();
+    if (!mobile || !note || this.savingNote()) {
+      return;
+    }
+    this.savingNote.set(true);
+    this.service.addNote(mobile, note).subscribe({
+      next: (notes) => {
+        this.patchProfile({ notes });
+        this.newNote.reset('');
+        this.savingNote.set(false);
+        this.toasts.success('Note added');
+      },
+      error: () => {
+        this.toasts.error('Could not add the note.');
+        this.savingNote.set(false);
+      },
+    });
+  }
+
+  /** Immutably patches fields of the open profile signal. */
+  private patchProfile(patch: Partial<CustomerProfile>): void {
+    const current = this.selectedProfile();
+    if (current) {
+      this.selectedProfile.set({ ...current, ...patch });
+    }
+  }
+
+  /** Percentage (0–100) for a 0..1 rate, rounded. */
+  pct(rate: number): number {
+    return Math.round((rate ?? 0) * 100);
+  }
+
+  goToHistoryPage(page: number): void {
+    this.historyPage.set(page);
+  }
+
+  setHistorySize(size: number): void {
+    this.historySize.set(size);
+    this.historyPage.set(0);
+  }
+
   closeDetail(): void {
-    this.selectedDetail.set(null);
+    this.selectedProfile.set(null);
     this.detailError.set(null);
   }
 }

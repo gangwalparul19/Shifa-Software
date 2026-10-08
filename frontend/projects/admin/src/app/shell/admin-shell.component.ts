@@ -1,5 +1,5 @@
-import { Component, HostListener, computed, inject, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { Component, HostListener, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import {
   NavigationEnd,
   Router,
@@ -8,13 +8,93 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { filter, map, startWith } from 'rxjs';
-import { AuthService, Role } from 'core';
+import { AuthEventsService, AuthService, Role } from 'core';
 import { AdminEventsService } from '../dashboard/admin-events.service';
+import { AdminNotification } from '../dashboard/dashboard.model';
 import { routeFade } from '../shared/animations';
 import { ConfirmService } from '../shared/confirm.service';
+import { PwaService } from '../shared/pwa.service';
+import { AnnouncementsService } from '../announcements/announcements.service';
+import {
+  Announcement,
+  announcementAlertClass,
+  announcementIcon,
+} from '../announcements/announcements.model';
 import { ToastsComponent } from '../shared/toasts.component';
+import { ToastService } from '../shared/toast.service';
+import { roleLabel } from '../shared/role-label';
 import { GlobalSearchComponent } from './global-search.component';
 import { NotificationBellComponent } from '../notifications/notification-bell.component';
+import { GuidedTourComponent } from '../shared/guided-tour.component';
+import { GuidedTourService, TourStep } from '../shared/guided-tour.service';
+
+/** The first-run tour's id (localStorage key namespace) + its steps. */
+const MAIN_TOUR_ID = 'main-shell-v1';
+const MAIN_TOUR_STEPS: TourStep[] = [
+  {
+    selector: '[data-tour="hamburger"]',
+    title: 'Menu',
+    body: 'Tap here any time to see every page you can access, grouped by area.',
+    placement: 'bottom',
+  },
+  {
+    selector: '[data-tour="global-search"]',
+    title: 'Quick search',
+    body: 'Find any order, product, or customer instantly. On a keyboard, press Ctrl+K (or Cmd+K) from anywhere.',
+    placement: 'bottom',
+  },
+  {
+    selector: '[data-tour="notif-bell"]',
+    title: 'Notifications',
+    body: 'Alerts addressed to you — new orders, approvals needed, follow-ups due — show up here.',
+    placement: 'bottom',
+  },
+  {
+    selector: '[data-tour="bottom-tabs"]',
+    title: 'Your main tabs',
+    body: 'The four screens you use most are always one tap away here.',
+    placement: 'top',
+  },
+];
+
+/**
+ * Role-specific closing step appended to the generic tour, so each operational
+ * role is told what their actual daily job is (the generic tour only covers the
+ * shell chrome). Keyed by role; roles without an entry just get the generic tour.
+ * The tour id is namespaced per role so a role sees its tailored tour once.
+ */
+const ROLE_TOUR_STEP: Partial<Record<Role, TourStep>> = {
+  [Role.PACKING_USER]: {
+    selector: '[data-tour="bottom-tabs"]',
+    title: 'Your packing day',
+    body: 'Open Packing: print each label, Mark packed, then Hand over. QuikShip pickups and in-house deliveries track in their own sections below the queues.',
+    placement: 'top',
+  },
+  [Role.PAYMENT_VERIFIER]: {
+    selector: '[data-tour="bottom-tabs"]',
+    title: 'Verifying payments',
+    body: 'Payments is your home. Open each screenshot, check it matches the amount, then Verify or Reject with a note — this flags the order for the admin.',
+    placement: 'top',
+  },
+  [Role.ACCOUNTANT]: {
+    selector: '[data-tour="bottom-tabs"]',
+    title: 'Collections & books',
+    body: 'Reconcile settles collected COD and chases the courier for pending remittance; Reports and Expenses keep the books. Tap a dashboard tile to jump straight in.',
+    placement: 'top',
+  },
+  [Role.SALESPERSON]: {
+    selector: '[data-tour="bottom-tabs"]',
+    title: 'Your sales day',
+    body: 'Punch New Orders, track them in Orders, work your Leads and follow-ups, and watch your rank on the Leaderboard. Your dashboard shows today at a glance.',
+    placement: 'top',
+  },
+  [Role.TEAM_LEAD]: {
+    selector: '[data-tour="bottom-tabs"]',
+    title: 'Your team at a glance',
+    body: "Your dashboard and Orders show your whole team's orders; Performance ranks your salespeople and shows which lead sources convert best.",
+    placement: 'top',
+  },
+};
 
 /** A single navigable link (either standalone or a child inside a group). */
 interface NavLink {
@@ -34,8 +114,8 @@ interface NavLink {
   roles?: Role[];
 }
 
-/** A collapsible group of related links rendered as a dropdown (desktop) or a
- *  labelled section (mobile). Group visibility follows its children's roles. */
+/** A collapsible group of related links rendered as a labelled section in the
+ *  hamburger drawer. Group visibility follows its children's roles. */
 interface NavGroup {
   kind: 'group';
   label: string;
@@ -46,16 +126,34 @@ interface NavGroup {
 /** A top-level navigation entry: either a standalone link or a group. */
 type NavEntry = NavLink | NavGroup;
 
+/** One destination on the persistent bottom tab bar (Req 2). */
+interface BottomTab {
+  label: string;
+  path: string;
+  icon: string;
+}
+
 /**
- * Authenticated admin chrome, rebuilt on the Tabler design system: a branded
- * vertical sidebar (Shifa leaf mark + grouped navigation with Tabler icons), a
- * sticky top navbar showing the current page title/breadcrumb, a live SSE
- * status pill, and a user dropdown (name, role, logout). The sidebar collapses
- * to an Angular-driven off-canvas drawer on small screens with a smooth slide +
- * backdrop fade. The routed view animates in via {@link routeFade}.
+ * Authenticated admin chrome, rebuilt mobile-first on the Tabler design system.
+ * The shell is three pieces (Req 1):
+ *
+ * <ul>
+ *   <li><b>Top app bar</b> — a hamburger trigger (left), the current screen
+ *       title, and the account/notification cluster (global search, live SSE
+ *       pill, per-user notification bell, user dropdown + sign out) on the
+ *       right.</li>
+ *   <li><b>Bottom tab bar</b> — a persistent, role-aware bar carrying exactly
+ *       four most-used destinations for the signed-in user's role (Req 2).</li>
+ *   <li><b>Hamburger menu</b> — an Angular-driven off-canvas drawer (overlay +
+ *       Escape-close) listing the full navigation the role can access, grouped,
+ *       including the Shifa Dashboard and lower-frequency admin pages
+ *       (Req 3).</li>
+ * </ul>
  *
  * <p>All behaviour is signal/Angular-driven (no Bootstrap JS dependency) to stay
- * robust and CSP-friendly. Data wiring (auth session, SSE feed) is unchanged.
+ * robust and CSP-friendly. Data wiring (auth session, SSE feed) is unchanged and
+ * every existing destination remains reachable via the bottom bar or the drawer
+ * (Req 13).
  */
 @Component({
   selector: 'admin-shell',
@@ -66,6 +164,7 @@ type NavEntry = NavLink | NavGroup;
     ToastsComponent,
     GlobalSearchComponent,
     NotificationBellComponent,
+    GuidedTourComponent,
   ],
   templateUrl: './admin-shell.component.html',
   styleUrl: './admin-shell.component.css',
@@ -74,27 +173,291 @@ type NavEntry = NavLink | NavGroup;
 export class AdminShellComponent {
   protected readonly auth = inject(AuthService);
   protected readonly events = inject(AdminEventsService);
+  protected readonly pwa = inject(PwaService);
+  /** Human-readable role label for the user chip/menus (never the raw enum). */
+  protected readonly roleLabel = roleLabel;
+  private readonly announcementsService = inject(AnnouncementsService);
+  private readonly authEvents = inject(AuthEventsService);
   private readonly router = inject(Router);
   private readonly confirm = inject(ConfirmService);
+  private readonly toasts = inject(ToastService);
 
-  /** Whether the current user is an ADMIN (gates the notifications bell). */
-  protected readonly isAdmin = computed(() => this.auth.session()?.role === Role.ADMIN);
+  /** The global search bar, for the Ctrl/Cmd+K shortcut (enhancement: global quick-search). */
+  private readonly globalSearch = viewChild(GlobalSearchComponent);
+  /** First-run guided tour (enhancement: "First-run guided tour + contextual help tooltips"). */
+  private readonly tour = inject(GuidedTourService);
 
-  /** Whether the off-canvas sidebar is open (mobile only). */
-  protected readonly sidebarOpen = signal(false);
-  /** Whether the top-bar user dropdown is open. */
-  protected readonly userMenuOpen = signal(false);
-  /** Label of the currently open desktop nav group, or null when none is open. */
-  protected readonly openGroup = signal<string | null>(null);
+  /** Newest awaiting-approval nudge already surfaced as a toast (dedupes the effect). */
+  private lastApprovalNudgeTs = 0;
+  private approvalNudgeInitialised = false;
+
+  // --- Staff announcement banners (FEATURE-ROADMAP §8.4) ------------------
+  private static readonly DISMISSED_KEY = 'shifa.dismissedAnnouncements.v1';
+  private readonly announcements = signal<Announcement[]>([]);
+  private readonly dismissed = signal<Set<number>>(this.loadDismissed());
+  /** Active announcements the current user has not dismissed. */
+  protected readonly visibleAnnouncements = computed(() =>
+    this.announcements().filter((a) => !this.dismissed().has(a.id)),
+  );
+  protected readonly annAlertClass = announcementAlertClass;
+  protected readonly annIcon = announcementIcon;
+
+  // --- Install app help (FEATURE-ROADMAP §8.1) ---------------------------
+  /** Whether the "how to install" instructions overlay is open. */
+  protected readonly installHelpOpen = signal(false);
 
   /**
-   * Top-level navigation model. Twelve flat items are grouped into five
-   * top-level entries (Dashboard, Orders, Catalog, Reports, Settings). Each
-   * child keeps its own {@link NavLink.adminOnly} flag so role gating is
-   * evaluated per-child (Req 5.4).
+   * Install action: fire the native prompt when the browser has offered one,
+   * otherwise show platform-specific instructions (iOS Safari never fires the
+   * prompt, and it only appears on HTTPS with the service worker active).
+   */
+  installApp(): void {
+    if (this.pwa.installable()) {
+      void this.pwa.promptInstall();
+    } else {
+      this.installHelpOpen.set(true);
+    }
+  }
+
+  closeInstallHelp(): void {
+    this.installHelpOpen.set(false);
+  }
+
+  constructor() {
+    // The shell only mounts for authenticated staff (staffGuard), so it is safe
+    // to fetch the active announcements immediately for the banner.
+    if (this.auth.session()) {
+      this.announcementsService.active().subscribe({
+        next: (rows) => this.announcements.set(rows),
+        error: () => {
+          /* non-fatal — no banner */
+        },
+      });
+    }
+
+    // Open the real-time admin stream app-wide (idempotent; no-ops when the user
+    // is not an ADMIN or EventSource is unavailable) so new-order approval nudges
+    // reach admins on any screen, not just the dashboard/orders/approval pages.
+    this.events.connect();
+
+    // Session-end safety net: the auth interceptor now silently refreshes an
+    // expired access token, so a normal API 401 is recovered transparently. It
+    // only emits `unauthorized` when the refresh ALSO fails (refresh token gone
+    // or expired) — i.e. the session is genuinely over. In that case, route the
+    // user to login instead of leaving them stranded on a page with failing
+    // requests (the bug where a mid-form 401 showed "Authentication is required"
+    // inline with no way forward).
+    this.authEvents.events.pipe(takeUntilDestroyed()).subscribe((event) => {
+      if (event.kind === 'unauthorized' && !this.router.url.startsWith('/login')) {
+        this.toasts.error('Your session has expired. Please sign in again.');
+        void this.router.navigateByUrl('/login');
+      }
+    });
+
+    // First-run guided tour: only ever auto-starts once per browser (tracked in
+    // localStorage), and only for a signed-in user. A short delay lets the shell
+    // (bottom tabs, bell, etc.) finish its first render before spotlighting it.
+    if (this.auth.session()) {
+      const { id, steps } = this.roleTour();
+      setTimeout(() => this.tour.startIfUnseen(id, steps), 600);
+    }
+
+    // Real-time "new order needs approval" toast for admins: when a fresh
+    // ORDER_AWAITING_APPROVAL arrives on the SSE feed, surface a clickable toast
+    // that routes to the approval queue. Only reacts to events newer than the
+    // first snapshot, so opening the app doesn't replay a burst of old nudges.
+    effect(() => {
+      const pending = this.events
+        .notifications()
+        .filter((n) => n.type === 'ORDER_AWAITING_APPROVAL');
+      const newest = pending.length ? pending[0] : null;
+      const newestTs = newest ? newest.receivedAt.getTime() : 0;
+      if (!this.approvalNudgeInitialised) {
+        this.approvalNudgeInitialised = true;
+        this.lastApprovalNudgeTs = newestTs;
+        return;
+      }
+      if (newest && newestTs > this.lastApprovalNudgeTs) {
+        this.lastApprovalNudgeTs = newestTs;
+        untracked(() => this.surfaceApprovalNudge(newest));
+      }
+    });
+
+    // Keep the desktop sidebar's active section expanded: whenever the route
+    // changes, ensure the group that owns the current page is open (other groups
+    // stay as the user left them). Depends only on the URL (untracked writes).
+    effect(() => {
+      const url = this.currentUrl().split('?')[0];
+      const label = this.groupLabelForUrl(url);
+      if (!label) {
+        return;
+      }
+      untracked(() => {
+        if (!this.sidebarOpenGroups().has(label)) {
+          const next = new Set(this.sidebarOpenGroups());
+          next.add(label);
+          this.sidebarOpenGroups.set(next);
+        }
+      });
+    });
+  }
+
+  /**
+   * Surfaces a clickable "new order needs approval" toast and plays a short
+   * chime, so an admin anywhere in the app is nudged to review a freshly punched
+   * order. The action navigates to the approval queue (deep-linked to the order
+   * when its id is known).
+   */
+  private surfaceApprovalNudge(note: AdminNotification): void {
+    const label = note.orderCode ? `Order ${note.orderCode} needs approval` : 'New order needs approval';
+    this.toasts.notify('info', label, {
+      label: 'Review',
+      run: () => {
+        const extras = note.orderCode ? { queryParams: { q: note.orderCode } } : {};
+        void this.router.navigate(['/approval-queue'], extras);
+      },
+    });
+    this.playChime();
+  }
+
+  /** Plays a brief, unobtrusive two-tone chime via the Web Audio API (best-effort). */
+  private playChime(): void {
+    try {
+      const Ctx =
+        (window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext })
+          .AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) {
+        return;
+      }
+      const ctx = new Ctx();
+      const now = ctx.currentTime;
+      [880, 1174].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        const start = now + i * 0.16;
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.14, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.15);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.16);
+      });
+      setTimeout(() => ctx.close().catch(() => undefined), 600);
+    } catch {
+      /* audio blocked/unavailable — the toast is enough */
+    }
+  }
+
+  /** Dismisses an announcement banner for this user (remembered locally). */
+  dismissAnnouncement(id: number): void {
+    const next = new Set(this.dismissed());
+    next.add(id);
+    this.dismissed.set(next);
+    try {
+      localStorage.setItem(AdminShellComponent.DISMISSED_KEY, JSON.stringify([...next]));
+    } catch {
+      /* storage unavailable — non-fatal */
+    }
+  }
+
+  private loadDismissed(): Set<number> {
+    try {
+      const raw = localStorage.getItem(AdminShellComponent.DISMISSED_KEY);
+      return raw ? new Set<number>(JSON.parse(raw) as number[]) : new Set<number>();
+    } catch {
+      return new Set<number>();
+    }
+  }
+
+  /** Whether the off-canvas hamburger navigation drawer is open. */
+  protected readonly menuOpen = signal(false);
+  /** Whether the top-bar user dropdown is open. */
+  protected readonly userMenuOpen = signal(false);
+
+  /** Nav groups currently expanded in the drawer (all collapsed by default). */
+  private readonly openGroups = signal<Set<string>>(new Set());
+
+  /** Whether a nav group is expanded. */
+  isGroupOpen(label: string): boolean {
+    return this.openGroups().has(label);
+  }
+
+  /** Expands/collapses a nav group (accordion-style, collapsed by default). */
+  toggleGroup(label: string): void {
+    const next = new Set(this.openGroups());
+    if (next.has(label)) {
+      next.delete(label);
+    } else {
+      next.add(label);
+    }
+    this.openGroups.set(next);
+  }
+
+  /**
+   * Desktop sidebar group open-state (separate from the drawer's {@link openGroups}
+   * so the persistent rail keeps its own expansion). Collapsed by default; the
+   * group containing the active route is auto-expanded (see the constructor
+   * effect) so the user always sees where they are without expanding everything.
+   */
+  private readonly sidebarOpenGroups = signal<Set<string>>(new Set());
+
+  /** Whether a sidebar nav group is expanded. */
+  isSidebarGroupOpen(label: string): boolean {
+    return this.sidebarOpenGroups().has(label);
+  }
+
+  /** Expands/collapses a sidebar nav group (accordion; collapsed by default). */
+  toggleSidebarGroup(label: string): void {
+    const next = new Set(this.sidebarOpenGroups());
+    if (next.has(label)) {
+      next.delete(label);
+    } else {
+      next.add(label);
+    }
+    this.sidebarOpenGroups.set(next);
+  }
+
+  /** The group label whose child matches the given URL, or null for a standalone/link. */
+  private groupLabelForUrl(url: string): string | null {
+    const full = `/${url.replace(/^\//, '')}`;
+    for (const entry of this.allNav) {
+      if (entry.kind !== 'group') {
+        continue;
+      }
+      if (entry.children.some((c) => full === c.path || full.startsWith(`${c.path}/`))) {
+        return entry.label;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Full navigation model used by the hamburger drawer (Req 3). Standalone
+   * links plus grouped sections; each child keeps its own {@link NavLink.adminOnly}
+   * / {@link NavLink.roles} gating so role visibility is evaluated per-child.
+   * This is the same grouped structure the drawer renders, so every authorised
+   * destination — including the ones duplicated on the bottom bar and the
+   * lower-frequency admin pages — stays reachable (Req 13.1).
    */
   private readonly allNav: NavEntry[] = [
-    { kind: 'link', label: 'Dashboard', path: '/dashboard', icon: 'ti-layout-dashboard' },
+    // Req 4/5 split: /dashboard is the DETAILED, role-aware dashboard reached
+    // from the hamburger. The lighter Home summary is a later pass.
+    // TODO(mobile-ui-redesign Req 4): add a lightweight Home summary landing
+    // view and (optionally) redirect post-login there instead of /dashboard.
+    {
+      kind: 'link',
+      label: 'Shifa Dashboard',
+      path: '/dashboard',
+      icon: 'ti-layout-dashboard',
+      // CA, Payment Verifier and Packing_User are redirected away from /dashboard
+      // to their own home (GST / Payments / Packing), so the generic dashboard
+      // link would dead-end for them — show it only to the roles whose home
+      // actually IS /dashboard.
+      roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON, Role.TEAM_LEAD],
+    },
     {
       kind: 'group',
       label: 'Orders',
@@ -105,34 +468,152 @@ export class AdminShellComponent {
           label: 'New Order',
           path: '/orders/new',
           icon: 'ti-plus',
-          roles: [Role.SALESPERSON, Role.ADMIN],
+          roles: [Role.SALESPERSON, Role.ADMIN, Role.TEAM_LEAD],
         },
-        { kind: 'link', label: 'Approval Queue', path: '/approval-queue', icon: 'ti-checklist' },
-        { kind: 'link', label: 'Orders', path: '/orders', icon: 'ti-receipt' },
-        { kind: 'link', label: 'Packing', path: '/packing', icon: 'ti-package' },
-        { kind: 'link', label: 'Reconciliation', path: '/reconciliation', icon: 'ti-cash-register' },
+        { kind: 'link', label: 'Approval Queue', path: '/approval-queue', icon: 'ti-checklist', adminOnly: true },
+        { kind: 'link', label: 'Exception Center', path: '/exceptions', icon: 'ti-alert-triangle', adminOnly: true },
+        {
+          kind: 'link',
+          label: 'Payments',
+          path: '/payments',
+          icon: 'ti-shield-check',
+          roles: [Role.ADMIN, Role.PAYMENT_VERIFIER],
+        },
+        {
+          kind: 'link',
+          label: 'Orders',
+          path: '/orders',
+          icon: 'ti-receipt',
+          // All-orders view; every staff role may reach it (route = staffGuard;
+          // the backend scopes a salesperson to their own orders). Packing_User
+          // and Payment_Verifier also have an Orders bottom tab, so the drawer
+          // link is listed for them too to keep the drawer and tab bar in sync.
+          roles: [
+            Role.ADMIN,
+            Role.ACCOUNTANT,
+            Role.SALESPERSON,
+            Role.TEAM_LEAD,
+            Role.PACKING_USER,
+            Role.PAYMENT_VERIFIER,
+          ],
+        },
+        { kind: 'link', label: 'Cancel Order', path: '/order-cancellation', icon: 'ti-ban', adminOnly: true },
+        { kind: 'link', label: 'Deleted orders', path: '/deleted-orders', icon: 'ti-trash', adminOnly: true },
+        {
+          kind: 'link',
+          label: 'Packing',
+          path: '/packing',
+          icon: 'ti-package',
+          roles: [Role.ADMIN, Role.PACKING_USER],
+        },
+        {
+          kind: 'link',
+          label: 'Pick-list',
+          path: '/packing/pick-list',
+          icon: 'ti-clipboard-list',
+          // Daily pick-list / packing manifest. A packer bottom tab too; add the
+          // drawer link so it isn't reachable only from the bottom bar.
+          roles: [Role.ADMIN, Role.PACKING_USER],
+        },
+        {
+          kind: 'link',
+          label: 'Mark RTO',
+          path: '/packing/rto',
+          icon: 'ti-rotate-2',
+          roles: [Role.ADMIN, Role.PACKING_USER],
+        },
+        {
+          kind: 'link',
+          label: 'Reconciliation',
+          path: '/reconciliation',
+          icon: 'ti-cash-register',
+          // CA has read access (route accountantGuard + backend admit CA), matching
+          // the Expenses / P&L / Accounting finance links.
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
         {
           kind: 'link',
           label: 'Returns',
           path: '/returns',
           icon: 'ti-arrow-back-up',
-          roles: [Role.ADMIN, Role.ACCOUNTANT],
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
         },
       ],
     },
     {
-      kind: 'link',
-      label: 'Customers',
-      path: '/customers',
+      // CRM: leads pipeline, customers, and the salesperson directory/360.
+      kind: 'group',
+      label: 'CRM',
       icon: 'ti-users',
-      roles: [Role.ADMIN, Role.ACCOUNTANT],
+      children: [
+        {
+          kind: 'link',
+          label: 'Leads',
+          path: '/leads',
+          icon: 'ti-user-plus',
+          roles: [Role.SALESPERSON, Role.ADMIN],
+        },
+        {
+          kind: 'link',
+          label: 'Due follow-ups',
+          path: '/leads/follow-ups',
+          icon: 'ti-calendar-event',
+          roles: [Role.SALESPERSON, Role.ADMIN],
+        },
+        {
+          kind: 'link',
+          label: 'Customers',
+          path: '/customers',
+          icon: 'ti-users',
+          // Salesperson sees Customers too, scoped by the backend to their own
+          // orders' customers (Req 5.4, 5.5); admin/accountant see everyone.
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON],
+        },
+        {
+          // Sales leaderboard + streak (light gamification), salesperson-facing.
+          kind: 'link',
+          label: 'Leaderboard',
+          path: '/leaderboard',
+          icon: 'ti-trophy',
+          roles: [Role.ADMIN, Role.SALESPERSON],
+        },
+        {
+          // Salesperson 360 — directory + performance leaderboard (ADMIN only).
+          kind: 'link',
+          label: 'Salespeople',
+          path: '/salespeople',
+          icon: 'ti-id-badge-2',
+          adminOnly: true,
+        },
+        {
+          kind: 'link',
+          label: 'Team-wise Sales',
+          path: '/teams-overview',
+          icon: 'ti-chart-bar',
+          adminOnly: true,
+        },
+        {
+          kind: 'link',
+          label: 'Teams',
+          path: '/team',
+          icon: 'ti-users-group',
+          adminOnly: true,
+        },
+      ],
     },
     {
       kind: 'group',
       label: 'Catalog',
       icon: 'ti-building-store',
       children: [
-        { kind: 'link', label: 'Products', path: '/products', icon: 'ti-leaf' },
+        {
+          kind: 'link',
+          label: 'Products',
+          path: '/products',
+          icon: 'ti-leaf',
+          // Read-only for salespeople (mutations hidden + backend ADMIN-guarded).
+          roles: [Role.ADMIN, Role.SALESPERSON],
+        },
         { kind: 'link', label: 'Inventory', path: '/inventory', icon: 'ti-packages', adminOnly: true },
       ],
     },
@@ -145,32 +626,240 @@ export class AdminShellComponent {
         { kind: 'link', label: 'Purchase Orders', path: '/purchase-orders', icon: 'ti-clipboard-list', adminOnly: true },
       ],
     },
-    { kind: 'link', label: 'Reports', path: '/reports', icon: 'ti-chart-histogram' },
+    {
+      // Analytics & reporting (FEATURE-ROADMAP §6, statistical-insights-engine).
+      kind: 'group',
+      label: 'Analytics & Reports',
+      icon: 'ti-chart-histogram',
+      children: [
+        {
+          kind: 'link',
+          label: 'Reports',
+          path: '/reports',
+          icon: 'ti-chart-histogram',
+          // Salesperson sees their own sales/product/customer reports (scoped +
+          // money/operations blocked server-side).
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'GST & Accounting',
+          path: '/ca/gst',
+          icon: 'ti-receipt-tax',
+          roles: [Role.ADMIN, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'GST Filing',
+          path: '/ca/gst/filing',
+          icon: 'ti-file-invoice',
+          roles: [Role.ADMIN, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'GST Reconciliation',
+          path: '/ca/gst/reconciliation',
+          icon: 'ti-scale',
+          roles: [Role.ADMIN, Role.CA],
+        },
+        { kind: 'link', label: 'Analytics', path: '/analytics', icon: 'ti-chart-dots', adminOnly: true },
+        { kind: 'link', label: 'Delivery Partners', path: '/delivery-partners', icon: 'ti-truck-delivery', adminOnly: true },
+        { kind: 'link', label: 'Shopify Sync', path: '/shopify-sync', icon: 'ti-brand-shopify', adminOnly: true },
+        { kind: 'link', label: 'Insights', path: '/insights', icon: 'ti-bulb', adminOnly: true },
+        {
+          kind: 'link',
+          label: 'Team Performance',
+          path: '/team-performance',
+          icon: 'ti-chart-arrows',
+          roles: [Role.ADMIN, Role.TEAM_LEAD],
+        },
+      ],
+    },
     {
       kind: 'group',
       label: 'Finance',
       icon: 'ti-report-money',
       children: [
-        { kind: 'link', label: 'Expenses', path: '/expenses', icon: 'ti-cash', roles: [Role.ADMIN, Role.ACCOUNTANT] },
-        { kind: 'link', label: 'Profit & Loss', path: '/finance/pnl', icon: 'ti-chart-pie', roles: [Role.ADMIN, Role.ACCOUNTANT] },
+        { kind: 'link', label: 'Expenses', path: '/expenses', icon: 'ti-cash', roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA] },
+        { kind: 'link', label: 'Profit & Loss', path: '/finance/pnl', icon: 'ti-chart-pie', roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA] },
+      ],
+    },
+    {
+      // General Ledger / accounting module (general-ledger-accounting, Req 16).
+      // Every link is gated to the finance roles (ADMIN/ACCOUNTANT/CA) matching
+      // the route's accountingGuard; CA is read-only server-side.
+      kind: 'group',
+      label: 'Accounting',
+      icon: 'ti-book',
+      children: [
+        {
+          kind: 'link',
+          label: 'Chart of Accounts',
+          path: '/accounting/chart-of-accounts',
+          icon: 'ti-sitemap',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'Voucher Entry',
+          path: '/accounting/vouchers/new',
+          icon: 'ti-file-invoice',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'Day Book',
+          path: '/accounting/day-book',
+          icon: 'ti-book-2',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'Trial Balance',
+          path: '/accounting/trial-balance',
+          icon: 'ti-scale',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'Ledger Statement',
+          path: '/accounting/ledger-statement',
+          icon: 'ti-list-details',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'Balance Sheet',
+          path: '/accounting/balance-sheet',
+          icon: 'ti-scale-outline',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'Profit & Loss',
+          path: '/accounting/profit-and-loss',
+          icon: 'ti-report-money',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'Cash Flow',
+          path: '/accounting/cash-flow',
+          icon: 'ti-cash-banknote',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
       ],
     },
     {
       kind: 'group',
-      label: 'Settings',
+      label: 'Account & Settings',
       icon: 'ti-settings',
       children: [
+        { kind: 'link', label: 'My Profile', path: '/my-profile', icon: 'ti-user-circle' },
         { kind: 'link', label: 'Users', path: '/users', icon: 'ti-users', adminOnly: true },
+        { kind: 'link', label: 'Profile approvals', path: '/profile-approvals', icon: 'ti-user-check', adminOnly: true },
         { kind: 'link', label: 'Settings', path: '/settings', icon: 'ti-settings', adminOnly: true },
+        { kind: 'link', label: 'Notifications', path: '/notifications', icon: 'ti-bell', adminOnly: true },
+        { kind: 'link', label: 'Announcements', path: '/announcements', icon: 'ti-speakerphone', adminOnly: true },
+        {
+          kind: 'link',
+          label: 'WhatsApp templates',
+          path: '/whatsapp-templates',
+          icon: 'ti-brand-whatsapp',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.TEAM_LEAD],
+        },
         { kind: 'link', label: 'Audit Log', path: '/audit', icon: 'ti-history', adminOnly: true },
+        { kind: 'link', label: 'Backups', path: '/backups', icon: 'ti-database', adminOnly: true },
       ],
     },
   ];
 
   /**
-   * Navigation entries visible to the current user. Group children are filtered
-   * by role first; a group with no visible children is dropped entirely, while a
-   * standalone admin-only link is hidden for non-admins.
+   * Exactly-four most-used destinations per role for the bottom tab bar (Req 2).
+   * These are the role's authorised primary tasks; the full navigation (and any
+   * destination not listed here) remains reachable from the hamburger drawer.
+   */
+  private readonly bottomTabsByRole: Record<Role, BottomTab[]> = {
+    // Req 2.2
+    [Role.SALESPERSON]: [
+      { label: 'New Order', path: '/orders/new', icon: 'ti-plus' },
+      { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
+      { label: 'Customers', path: '/customers', icon: 'ti-users' },
+      { label: 'Products', path: '/products', icon: 'ti-leaf' },
+    ],
+    // Packing: the four real destinations a packer uses. Packing (scan + the
+    // Orders-to-Pack / Awaiting Handover / status sections), the daily Pick-list,
+    // Mark RTO (returned parcels), and the all-orders view. The old
+    // Handover/Dispatch tabs were removed — both were dead links to /packing and
+    // their wording predated the packing-workflow redesign.
+    [Role.PACKING_USER]: [
+      { label: 'Packing', path: '/packing', icon: 'ti-barcode' },
+      { label: 'Pick-list', path: '/packing/pick-list', icon: 'ti-clipboard-list' },
+      { label: 'Mark RTO', path: '/packing/rto', icon: 'ti-rotate-2' },
+      { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
+    ],
+    // Req 2.4
+    [Role.ACCOUNTANT]: [
+      { label: 'Reconcile', path: '/reconciliation', icon: 'ti-cash-register' },
+      { label: 'Reports', path: '/reports', icon: 'ti-chart-histogram' },
+      { label: 'Expenses', path: '/expenses', icon: 'ti-cash' },
+      { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
+    ],
+    // Req 2.5
+    [Role.ADMIN]: [
+      { label: 'Approvals', path: '/approval-queue', icon: 'ti-checklist' },
+      { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
+      { label: 'Products', path: '/products', icon: 'ti-leaf' },
+      { label: 'Reports', path: '/reports', icon: 'ti-chart-histogram' },
+    ],
+    // Payment Verifier (product-audit §4.4): the payment queue is their home.
+    [Role.PAYMENT_VERIFIER]: [
+      { label: 'Payments', path: '/payments', icon: 'ti-shield-check' },
+      { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
+      { label: 'My Profile', path: '/my-profile', icon: 'ti-user-circle' },
+    ],
+    // CA (Chartered Accountant): the GST dashboard is their home; plus reports,
+    // finance, and their profile.
+    [Role.CA]: [
+      { label: 'GST', path: '/ca/gst', icon: 'ti-receipt-tax' },
+      { label: 'Reports', path: '/reports', icon: 'ti-chart-histogram' },
+      { label: 'Finance', path: '/finance/pnl', icon: 'ti-cash' },
+      { label: 'My Profile', path: '/my-profile', icon: 'ti-user-circle' },
+    ],
+    // Team Lead: read-only oversight — Dashboard, team-scoped Orders, and the
+    // team Performance rollup are their day-to-day, plus their own profile.
+    [Role.TEAM_LEAD]: [
+      { label: 'Dashboard', path: '/dashboard', icon: 'ti-layout-dashboard' },
+      { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
+      { label: 'Performance', path: '/team-performance', icon: 'ti-chart-arrows' },
+      { label: 'My Profile', path: '/my-profile', icon: 'ti-user-circle' },
+    ],
+    // Customers never reach the staff shell; no bottom bar.
+    [Role.CUSTOMER]: [],
+  };
+
+  /**
+   * Whether to show the global quick-search (orders/products/customers). Hidden
+   * for the PAYMENT_VERIFIER role, which is restricted to the payments screen +
+   * view-only orders — the cross-entity search (and its backend endpoint) is out
+   * of scope for that role.
+   */
+  protected readonly showGlobalSearch = computed<boolean>(() => {
+    const role = this.auth.session()?.role ?? null;
+    return role !== Role.PAYMENT_VERIFIER;
+  });
+
+  /** The four bottom-bar destinations for the signed-in user's role (Req 2.1). */
+  protected readonly bottomTabs = computed<BottomTab[]>(() => {
+    const role = this.auth.session()?.role ?? null;
+    return role ? (this.bottomTabsByRole[role] ?? []) : [];
+  });
+
+  /**
+   * Navigation entries visible to the current user for the hamburger drawer.
+   * Group children are filtered by role first; a group with no visible children
+   * is dropped entirely, while a standalone admin-only link is hidden for
+   * non-admins.
    */
   protected readonly navEntries = computed<NavEntry[]>(() => {
     const role = this.auth.session()?.role ?? null;
@@ -199,7 +888,7 @@ export class AdminShellComponent {
     return result;
   });
 
-  /** Current router URL (without query string), tracked for active-group state. */
+  /** Current router URL (without query string), tracked for active-tab state. */
   private readonly currentUrl = toSignal(
     this.router.events.pipe(
       filter((e): e is NavigationEnd => e instanceof NavigationEnd),
@@ -211,6 +900,24 @@ export class AdminShellComponent {
 
   /** The current page title, derived from the active route for the top bar. */
   protected readonly pageTitle = computed(() => this.titleForUrl(this.currentUrl()));
+
+  /**
+   * The path of the bottom tab that best matches the current URL. The longest
+   * matching prefix wins so that, for a SALESPERSON, visiting /orders/new
+   * highlights "New Order" rather than the broader "Orders" tab (Req 2.6).
+   */
+  protected readonly activeTabPath = computed<string | null>(() => {
+    const url = this.currentUrl().split('?')[0];
+    let best: string | null = null;
+    for (const tab of this.bottomTabs()) {
+      if (url === tab.path || url.startsWith(`${tab.path}/`)) {
+        if (best === null || tab.path.length > best.length) {
+          best = tab.path;
+        }
+      }
+    }
+    return best;
+  });
 
   /** Live connection state label for the top-bar SSE indicator. */
   protected readonly liveLabel = computed(() => {
@@ -237,46 +944,39 @@ export class AdminShellComponent {
     return links;
   }
 
-  /**
-   * Titles for routes reachable without a nav link (e.g. Notifications, opened
-   * from the top-bar bell). Keeps {@link titleForUrl} resolving them for the
-   * breadcrumb/top-bar even though they are absent from {@link allNav}.
-   */
-  private readonly extraTitles: Record<string, string> = {
-    '/notifications': 'Notifications',
-  };
-
   private titleForUrl(url: string): string {
     const path = url.split('?')[0].replace(/^\//, '');
     const match = this.allLinks().find((i) => i.path === `/${path}`);
-    return match?.label ?? this.extraTitles[`/${path}`] ?? 'Dashboard';
+    return match?.label ?? 'Dashboard';
   }
 
-  /** True when any of the group's child routes is the active route. */
-  isGroupActive(group: NavGroup): boolean {
-    const url = this.currentUrl().split('?')[0];
-    return group.children.some(
-      (child) => url === child.path || url.startsWith(`${child.path}/`),
-    );
+  /**
+   * The nav GROUP label that owns the current route (e.g. "Accounting",
+   * "Analytics & Reports"), shown as a small eyebrow above the page title so
+   * users don't lose their place in the deeper areas. Empty for standalone
+   * links / unmatched routes.
+   */
+  protected readonly pageContext = computed<string | null>(() => {
+    const path = this.currentUrl().split('?')[0];
+    for (const entry of this.allNav) {
+      if (entry.kind !== 'group') {
+        continue;
+      }
+      if (entry.children.some((c) => path === c.path || path.startsWith(`${c.path}/`))) {
+        return entry.label;
+      }
+    }
+    return null;
+  });
+
+  toggleMenu(): void {
+    this.menuOpen.update((open) => !open);
   }
 
-  /** Toggles a desktop dropdown group; only one group is open at a time. */
-  toggleGroup(label: string): void {
-    this.openGroup.update((open) => (open === label ? null : label));
-  }
-
-  /** Closes any open desktop dropdown group. */
-  closeGroups(): void {
-    this.openGroup.set(null);
-  }
-
-  toggleSidebar(): void {
-    this.sidebarOpen.update((open) => !open);
-  }
-
-  closeSidebar(): void {
-    this.sidebarOpen.set(false);
-    this.closeGroups();
+  closeMenu(): void {
+    this.menuOpen.set(false);
+    // Reset groups so the drawer always opens with everything collapsed.
+    this.openGroups.set(new Set());
   }
 
   toggleUserMenu(): void {
@@ -287,17 +987,65 @@ export class AdminShellComponent {
     this.userMenuOpen.set(false);
   }
 
-  /** Escape closes any open dropdown / user menu / mobile nav for keyboard users. */
+  /**
+   * Builds the guided tour for the current user: the generic shell steps plus a
+   * role-specific closing step explaining that role's daily job. The id is
+   * namespaced per role so each role auto-sees its tailored tour exactly once.
+   */
+  private roleTour(): { id: string; steps: TourStep[] } {
+    const role = this.auth.session()?.role ?? null;
+    const roleStep = role ? ROLE_TOUR_STEP[role] : undefined;
+    if (!roleStep) {
+      return { id: MAIN_TOUR_ID, steps: MAIN_TOUR_STEPS };
+    }
+    // Replace the generic closing "bottom tabs" step with the role-specific one.
+    const steps = [...MAIN_TOUR_STEPS.slice(0, -1), roleStep];
+    return { id: `${MAIN_TOUR_ID}-${role}`, steps };
+  }
+
+  /** Whether the desktop sidebar is collapsed to an icon-only rail (~60px). */
+  protected readonly sidebarCollapsed = signal(
+    typeof localStorage !== 'undefined' && localStorage.getItem('shifa:sidebar-collapsed') === '1',
+  );
+
+  /** Toggle the sidebar between full-width and collapsed icon-only rail. */
+  toggleSidebarCollapsed(): void {
+    this.sidebarCollapsed.update((v) => !v);
+    try {
+      localStorage.setItem('shifa:sidebar-collapsed', this.sidebarCollapsed() ? '1' : '0');
+    } catch {
+      /* ignore storage errors (private mode) */
+    }
+  }
+
+  /** Replays the guided tour on demand from the account menu. */
+  replayTour(): void {
+    const { id, steps } = this.roleTour();
+    this.tour.start(id, steps);
+  }
+
+  /** Escape closes the user menu or the hamburger drawer for keyboard users. */
   @HostListener('document:keydown.escape')
   onEscape(): void {
-    if (this.openGroup()) {
-      this.closeGroups();
-    }
     if (this.userMenuOpen()) {
       this.closeUserMenu();
     }
-    if (this.sidebarOpen()) {
-      this.closeSidebar();
+    if (this.menuOpen()) {
+      this.closeMenu();
+    }
+  }
+
+  /**
+   * Global quick-search shortcut (enhancement): Ctrl+K (or Cmd+K on Mac) jumps
+   * straight to the search bar from anywhere in the app, mirroring the common
+   * "command palette" convention. Prevents the browser's own Ctrl+K (address
+   * bar search in some browsers) so it reliably focuses our search instead.
+   */
+  @HostListener('document:keydown', ['$event'])
+  onGlobalKeydown(event: KeyboardEvent): void {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      this.globalSearch()?.focusSearch();
     }
   }
 

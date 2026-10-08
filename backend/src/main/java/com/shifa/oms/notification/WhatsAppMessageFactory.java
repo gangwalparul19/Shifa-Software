@@ -17,7 +17,7 @@ import java.util.List;
  *   <li><b>Dispatched</b>: order id, courier company, AWB, tracking link,
  *       estimated delivery, and — only when the order is COD or Partially_Paid —
  *       the COD amount (Req 14.1);</li>
- *   <li><b>Out_For_Delivery / Delivered / RTO / Courier_Lost</b>: order id plus a
+ *   <li><b>Out_For_Delivery / Delivered / RTO / Redispatch</b>: order id plus a
  *       status label reflecting the new state (Req 14.2).</li>
  * </ul>
  * Every message it returns references a template registered in the registry
@@ -85,10 +85,12 @@ public class WhatsAppMessageFactory {
     /** Human-readable status label reflecting the new state (Req 14.2). */
     private String statusLabel(NotificationEvent event) {
         return switch (event) {
+            case APPROVED -> "Approved";
+            case PACKED -> "Packed";
             case OUT_FOR_DELIVERY -> "Out for delivery";
             case DELIVERED -> "Delivered";
             case RTO -> "Returned to origin";
-            case COURIER_LOST -> "Lost in transit";
+            case REDISPATCH -> "Redispatch";
             case DISPATCHED -> "Dispatched";
             case ORDER_CONFIRMED -> "Order confirmed";
         };

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shifa OMS — Hosting & Cost Guide</title>
+<style>
+  :root{
+    --green:#1F5D3F; --green-2:#1F7A4D; --green-dark:#0f3d27; --gold:#C8A24A;
+    --bg:#eef2ee; --card:#ffffff; --text:#22332b; --muted:#6b7b72; --line:#e2e8e4;
+    --shadow:0 6px 24px rgba(15,61,39,.10);
+    --blue:#2f6fb0; --amber:#b6862c; --red:#b0432f;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55;font-size:14px;}
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px 30px;}
+
+  header.brand{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;
+    padding:24px;text-align:center;position:relative;overflow:hidden;}
+  header.brand::after{content:"🌿";position:absolute;right:14px;bottom:-24px;font-size:150px;opacity:.10;}
+  header.brand .leaf{font-size:30px;}
+  header.brand h1{margin:6px 0 2px;font-size:26px;letter-spacing:.3px;}
+  header.brand p{margin:0;color:#dceee2;font-size:14px;}
+  .rule{height:4px;background:var(--gold);}
+  .badge{display:inline-block;background:var(--gold);color:#3a2c05;font-weight:800;
+    font-size:12px;letter-spacing:1px;border-radius:999px;padding:5px 16px;margin-top:12px;}
+
+  .intro{background:#fff;border-left:4px solid var(--green);border-radius:10px;
+    padding:12px 16px;margin:16px 0;box-shadow:var(--shadow);font-size:13.5px;}
+
+  h2{color:var(--green-dark);font-size:19px;margin:24px 0 8px;display:flex;align-items:center;gap:8px;}
+  h2 .n{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;
+    background:var(--green);color:#fff;border-radius:50%;font-size:13px;font-weight:800;}
+  h3{color:var(--green-dark);font-size:15px;margin:14px 0 4px;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 18px;
+    margin:8px 0;box-shadow:var(--shadow);}
+
+  /* Architecture flow */
+  .flow{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;margin:6px 0;}
+  .node{flex:1;min-width:150px;background:#f5faf6;border:1px solid var(--line);border-radius:12px;
+    padding:12px 14px;text-align:center;}
+  .node .ico{font-size:26px;}
+  .node .t{font-weight:700;color:var(--green-dark);margin-top:4px;font-size:14px;}
+  .node .d{font-size:12px;color:var(--muted);margin-top:2px;}
+  .arrow{display:flex;align-items:center;color:var(--green);font-size:22px;font-weight:800;}
+  @media(max-width:720px){.arrow{transform:rotate(90deg);width:100%;justify-content:center;}}
+
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13.5px;}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top;}
+  thead th{background:var(--green);color:#fff;font-weight:600;border-bottom:none;}
+  thead th:first-child{border-radius:8px 0 0 0;}
+  thead th:last-child{border-radius:0 8px 0 0;}
+  td.num,th.num{text-align:right;white-space:nowrap;}
+  tbody tr:nth-child(even){background:#fafcfa;}
+  .pill{display:inline-block;font-size:11px;font-weight:800;border-radius:999px;padding:2px 9px;}
+  .pill.free{background:#e6f4ec;color:var(--green-dark);}
+  .pill.low{background:#eef4fb;color:var(--blue);}
+  .pill.mid{background:#fbf3e2;color:var(--amber);}
+  .pill.high{background:#fbeae6;color:var(--red);}
+  .rec-row{background:#e6f4ec !important;}
+  .rec-row td{font-weight:600;}
+
+  /* Interactive calculator */
+  .calc{background:linear-gradient(135deg,#ffffff,#f3f9f4);border:1px solid var(--line);
+    border-radius:16px;padding:18px 20px;box-shadow:var(--shadow);}
+  .calc .val{font-size:34px;font-weight:800;color:var(--green-dark);}
+  .calc input[type=range]{width:100%;accent-color:var(--green);height:6px;margin:10px 0 4px;}
+  .calc .scale{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);}
+  .result{margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  @media(max-width:640px){.result{grid-template-columns:1fr;}}
+  .result .box{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff;}
+  .result .box .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;}
+  .result .box .v{font-size:16px;font-weight:700;color:var(--green-dark);margin-top:3px;}
+  .result .box .v small{font-weight:500;color:var(--muted);font-size:12px;}
+  #costBig{font-size:24px;}
+
+  .notes{list-style:none;margin:6px 0 0;padding:0;}
+  .notes li{position:relative;padding:6px 0 6px 26px;font-size:13.5px;border-bottom:1px dashed var(--line);}
+  .notes li:last-child{border-bottom:none;}
+  .notes li .ic{position:absolute;left:0;top:6px;color:var(--green);font-size:15px;}
+  .notes li strong{color:var(--green-dark);}
+
+  .ladder{list-style:none;margin:0;padding:0;counter-reset:step;}
+  .ladder li{position:relative;padding:10px 0 10px 44px;border-bottom:1px solid var(--line);font-size:13.5px;}
+  .ladder li:last-child{border-bottom:none;}
+  .ladder li::before{counter-increment:step;content:counter(step);position:absolute;left:0;top:9px;
+    width:28px;height:28px;background:var(--green);color:#fff;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;}
+  .ladder li b{color:var(--green-dark);}
+
+  .callout{border-radius:12px;padding:12px 16px;margin:10px 0;font-size:13.5px;}
+  .callout.good{background:#e6f4ec;border-left:4px solid var(--green);}
+  .callout.warn{background:#fbf3e2;border-left:4px solid var(--amber);}
+
+  footer{text-align:center;color:var(--muted);font-size:11.5px;margin-top:20px;padding:14px;
+    border-top:1px solid var(--line);background:linear-gradient(to bottom,#ffffff,#f8f9fa);}
+  footer b{color:var(--green-dark);}
+  .disclaim{font-size:11.5px;color:var(--muted);margin-top:4px;}
+</style>
+</head>
+<body>
+
+<header class="brand">
+  <div class="leaf">🌿</div>
+  <h1>Shifa OMS — Hosting &amp; Cost Guide</h1>
+  <p>How the system runs, how many users it supports, and what it costs each month</p>
+  <span class="badge">☁ INFRASTRUCTURE &amp; SCALING</span>
+</header>
+<div class="rule"></div>
+
+<div class="wrap">
+
+  <div class="intro">
+    This guide explains — in plain language — <strong>how your Order Management System runs on a server</strong>,
+    <strong>how many people can use it at once</strong>, and <strong>exactly what you would pay per month</strong>
+    as your team grows. You can start completely free, and scale up only when you actually need to.
+    All rupee figures are <strong>indicative estimates</strong> (cloud prices change and depend on region &amp; provider).
+  </div>
+
+  <!-- 1. HOW IT WORKS -->
+  <h2><span class="n">1</span> How it works</h2>
+  <div class="card">
+    <p style="margin:2px 0 10px;">Your application has three moving parts that all live on one cloud server (a "VM" — a computer you rent in a data centre). A user's browser talks to it over the internet:</p>
+    <div class="flow">
+      <div class="node"><div class="ico">🧑‍💻</div><div class="t">Users' browsers</div><div class="d">Staff, salespeople, packers on phone/PC</div></div>
+      <div class="arrow">→</div>
+      <div class="node"><div class="ico">🌐</div><div class="t">Web server (Nginx)</div><div class="d">Serves the admin app + routes API calls, adds HTTPS</div></div>
+      <div class="arrow">→</div>
+      <div class="node"><div class="ico">⚙️</div><div class="t">App (Java / Spring Boot)</div><div class="d">The brain — orders, workflow, reports</div></div>
+      <div class="arrow">→</div>
+      <div class="node"><div class="ico">🗄️</div><div class="t">Database (MySQL)</div><div class="d">Stores every order, customer, lead, invoice</div></div>
+    </div>
+    <p style="margin:10px 0 2px;font-size:13px;color:var(--muted);">
+      Uploaded files (invoices, labels, payment screenshots, ID proofs) are kept in <strong>object storage</strong> —
+      a separate, cheap, virtually unlimited "file cupboard" that grows on demand and is easy to back up.
+    </p>
+  </div>
+
+  <div class="callout good">
+    <strong>The key idea about "concurrent users":</strong> 100 people <em>logged in</em> is <em>not</em> 100 requests
+    happening at the same instant. In a dashboard like this, people spend most of their time reading and typing.
+    At any moment only a handful are actually clicking. So a modest server serves a surprisingly large team comfortably.
+  </div>
+
+  <!-- 2. CALCULATOR -->
+  <h2><span class="n">2</span> Pick your team size → see the plan &amp; cost</h2>
+  <div class="calc">
+    <div class="k" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;">People using the system at the same time</div>
+    <div class="val"><span id="userVal">100</span> <small style="font-size:16px;color:var(--muted);font-weight:600;">concurrent users</small></div>
+    <input type="range" id="userSlider" min="10" max="1000" step="10" value="100" />
+    <div class="scale"><span>10</span><span>250</span><span>500</span><span>750</span><span>1000</span></div>
+
+    <div class="result">
+      <div class="box"><div class="k">Recommended plan</div><div class="v" id="planName">—</div></div>
+      <div class="box"><div class="k">Server size</div><div class="v" id="serverSize">—</div></div>
+      <div class="box"><div class="k">Database (MySQL)</div><div class="v" id="dbSize">—</div></div>
+      <div class="box"><div class="k">Estimated cost / month</div><div class="v" id="costBig">—</div></div>
+    </div>
+    <p class="disclaim" id="calcNote">—</p>
+  </div>
+
+  <!-- 3. SERVER SIZE TIERS -->
+  <h2><span class="n">3</span> Server sizes &amp; what each one handles</h2>
+  <div class="card" style="padding:6px 12px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Plan</th>
+          <th>Server (CPU / RAM)</th>
+          <th class="num">Concurrent users</th>
+          <th class="num">Cost / month</th>
+          <th>Best for</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="rec-row">
+          <td><b>Free Start</b><br><span class="pill free">FREE</span></td>
+          <td>OCI Always Free<br>4 CPU / 24 GB (Arm)</td>
+          <td class="num">up to ~100</td>
+          <td class="num"><b>₹0</b></td>
+          <td>Launch &amp; run the whole business at no cost</td>
+        </tr>
+        <tr>
+          <td><b>Comfort</b><br><span class="pill low">SMALL</span></td>
+          <td>4 CPU / 24 GB<br>+ daily backups</td>
+          <td class="num">100 – 250</td>
+          <td class="num">₹1,500 – ₹2,500</td>
+          <td>Peace-of-mind backups &amp; a bit more headroom</td>
+        </tr>
+        <tr>
+          <td><b>Growth</b><br><span class="pill mid">MEDIUM</span></td>
+          <td>8 CPU / 32 GB<br>App &amp; DB still together</td>
+          <td class="num">250 – 500</td>
+          <td class="num">₹6,000 – ₹9,000</td>
+          <td>Busier teams, heavier reporting</td>
+        </tr>
+        <tr>
+          <td><b>Scale</b><br><span class="pill high">LARGE</span></td>
+          <td>App server + <b>separate</b> managed DB<br>(each 8 CPU / 32 GB)</td>
+          <td class="num">500 – 1000+</td>
+          <td class="num">₹18,000 – ₹30,000</td>
+          <td>Large workforce, high reliability</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="disclaim">Ranges assume normal dashboard usage. Heavy simultaneous report generation for everyone at once would shift these numbers down; light order-entry usage shifts them up.</p>
+  </div>
+
+  <!-- 4. WHAT TO INCREASE, WHEN -->
+  <h2><span class="n">4</span> What needs to increase as you grow</h2>
+  <div class="card">
+    <p style="margin:2px 0 8px;">You don't upgrade everything at once. Things get raised in this order, as the team grows:</p>
+    <ol class="ladder">
+      <li><b>Nothing (0 – 100 users):</b> the free server already handles this. We just fine-tune settings — database connection pool, memory limits, gzip compression.</li>
+      <li><b>Add backups (any size):</b> the first real spend — automatic daily database + file backups so nothing is ever lost. Small, worth it early.</li>
+      <li><b>More RAM &amp; CPU (100 – 300 users):</b> give the app and database more memory so data stays fast in memory. This is a single "resize the server" step — no code changes.</li>
+      <li><b>Separate the database (300 – 500 users):</b> move MySQL onto its own machine so a heavy report can't slow down order entry.</li>
+      <li><b>Add a second app server + load balancer (500 – 1000+):</b> two copies of the app share the load, and if one restarts the site stays up. This is the "always-on, large-team" setup.</li>
+      <li><b>Bigger object storage (any time):</b> file storage grows automatically and is billed only for what you use — no upfront jump.</li>
+    </ol>
+  </div>
+
+  <!-- 5. MYSQL -->
+  <h2><span class="n">5</span> The database (MySQL) — how it scales</h2>
+  <div class="card" style="padding:6px 12px;">
+    <table>
+      <thead>
+        <tr><th>Stage</th><th>Setup</th><th class="num">Handles</th><th class="num">Extra cost / month</th></tr>
+      </thead>
+      <tbody>
+        <tr class="rec-row"><td>Start</td><td>MySQL on the same server as the app</td><td class="num">up to ~300 users</td><td class="num"><b>₹0</b> (included)</td></tr>
+        <tr><td>Grow</td><td>Same server, more RAM for the database cache</td><td class="num">300 – 500</td><td class="num">included in server upgrade</td></tr>
+        <tr><td>Scale</td><td>Managed MySQL on its own machine (auto-backup, auto-patch)</td><td class="num">500 – 1000+</td><td class="num">₹8,000 – ₹15,000</td></tr>
+      </tbody>
+    </table>
+    <ul class="notes">
+      <li><span class="ic">💡</span> For your size, MySQL <strong>on the same server is completely fine</strong> for a long time. Giving it enough memory to hold your data (the "buffer pool") is what keeps it fast — not a separate machine.</li>
+      <li><span class="ic">💡</span> A separate/managed database is a <strong>reliability</strong> upgrade (auto-backups, failover) as much as a speed one — worth it only when the business depends on zero downtime.</li>
+    </ul>
+  </div>
+
+  <!-- 6. STORAGE -->
+  <h2><span class="n">6</span> Storage — the "unlimited files" question</h2>
+  <div class="card">
+    <p style="margin:2px 0 10px;">Two kinds of storage matter, and they cost very differently:</p>
+    <div class="flow">
+      <div class="node" style="text-align:left;">
+        <div class="t">🗃️ Database storage</div>
+        <div class="d">Orders, customers, leads, invoices as data rows. Grows slowly — even years of orders stay small (a few GB). Effectively a non-issue on your plan.</div>
+      </div>
+      <div class="node" style="text-align:left;">
+        <div class="t">📦 Object storage (files)</div>
+        <div class="d">Invoice PDFs, shipping labels, payment screenshots, staff ID photos. This is where "space" is used. It grows on demand — you never pre-buy a fixed amount.</div>
+      </div>
+    </div>
+    <div class="callout warn" style="margin-top:12px;">
+      <strong>About "unlimited storage" hosting offers:</strong> those are shared PHP website plans (for WordPress-type
+      sites) and <em>cannot run your Java application</em> at all. Their "unlimited" also comes with fair-use limits.
+      For your app, the right pattern is <strong>pay-only-for-what-you-use object storage</strong>, which is genuinely
+      cheap and scales without limit.
+    </div>
+    <table>
+      <thead><tr><th>Files stored</th><th class="num">Roughly equals</th><th class="num">Cost / month</th></tr></thead>
+      <tbody>
+        <tr class="rec-row"><td>First 10 GB</td><td class="num">~10,000+ invoices/labels</td><td class="num"><b>Free</b></td></tr>
+        <tr><td>50 GB</td><td class="num">years of documents + screenshots</td><td class="num">~₹90 – ₹110</td></tr>
+        <tr><td>200 GB</td><td class="num">very large archive</td><td class="num">~₹350 – ₹450</td></tr>
+        <tr><td>1 TB (1000 GB)</td><td class="num">effectively "unlimited" for this app</td><td class="num">~₹1,800 – ₹2,200</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 7. RECOMMENDATION -->
+  <h2><span class="n">7</span> Our recommendation for you</h2>
+  <div class="card">
+    <ul class="notes">
+      <li><span class="ic">✅</span> <strong>Start on the free Oracle Cloud server (4 CPU / 24 GB).</strong> It comfortably runs the whole business for your stated <strong>100 concurrent users</strong> at <strong>₹0/month</strong>.</li>
+      <li><span class="ic">✅</span> <strong>Add automatic daily backups early</strong> (a few hundred rupees) — the one thing worth paying for from day one, so business data is never at risk.</li>
+      <li><span class="ic">📈</span> <strong>Only upgrade when you feel it.</strong> Growing past ~250–300 active users is a simple "resize the server" step, with no changes to the software.</li>
+      <li><span class="ic">📦</span> <strong>Keep files in object storage.</strong> It's the true "unlimited storage" answer — cheap, safe, and grows on its own (first 10 GB free).</li>
+      <li><span class="ic">🛡️</span> <strong>Single server = one tradeoff:</strong> if it restarts, the site is briefly down. That's fine for internal use; the "Scale" plan (two app servers) removes even that when the business needs always-on.</li>
+    </ul>
+    <div class="callout good" style="margin-top:12px;">
+      <strong>Bottom line:</strong> for 100 concurrent users you can launch at <strong>₹0/month</strong>. A safe, comfortable
+      setup with backups is roughly <strong>₹1,500 – ₹2,500/month</strong>. You would only reach ₹6,000+ once you're
+      serving several hundred simultaneous users — a very good problem to have.
+    </div>
+  </div>
+
+  <footer>
+    <b>Shifa OMS</b> — Hosting &amp; Cost Guide · Prepared by Weblithic<br>
+    <span class="disclaim">Figures are indicative estimates in INR and exclude GST. Actual cost depends on cloud provider, region, and real usage. We'll confirm exact pricing at deployment.</span>
+  </footer>
+
+</div>
+
+<script>
+  var tiers = [
+    { max: 100,  plan: "Free Start",  pill:"free", server: "4 CPU / 24 GB (free tier)",              db: "On same server (included)",      cost: "₹0",              note: "Runs completely free on Oracle Cloud Always Free. We recommend adding daily backups (~₹300–₹500) for safety." },
+    { max: 250,  plan: "Comfort",     pill:"low",  server: "4 CPU / 24 GB + daily backups",          db: "On same server (included)",      cost: "₹1,500 – ₹2,500", note: "Same power as free, with automatic backups and a little more headroom for peace of mind." },
+    { max: 500,  plan: "Growth",      pill:"mid",  server: "8 CPU / 32 GB",                           db: "On same server, more memory",    cost: "₹6,000 – ₹9,000", note: "Bigger server for busier teams and heavier reporting. Still one machine — a simple resize, no code changes." },
+    { max: 1000, plan: "Scale",       pill:"high", server: "App server + separate managed DB",        db: "Managed MySQL on its own machine",cost: "₹18,000 – ₹30,000", note: "Two-part setup for large teams: app and database on separate machines, plus always-on reliability." }
+  ];
+
+  var slider = document.getElementById('userSlider');
+  function pick(n){ for (var i=0;i<tiers.length;i++){ if (n <= tiers[i].max) return tiers[i]; } return tiers[tiers.length-1]; }
+  function fmt(n){ return n; }
+  function update(){
+    var n = parseInt(slider.value, 10);
+    document.getElementById('userVal').textContent = n;
+    var t = pick(n);
+    document.getElementById('planName').textContent = t.plan;
+    document.getElementById('serverSize').textContent = t.server;
+    document.getElementById('dbSize').textContent = t.db;
+    document.getElementById('costBig').textContent = t.cost;
+    document.getElementById('calcNote').textContent = t.note;
+  }
+  slider.addEventListener('input', update);
+  update();
+</script>
+
+</body>
+</html>

@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * template use. For any order reaching Dispatched, the outgoing message
  * parameters include the order id, courier name, AWB, tracking link, ETA, and the
  * COD_Amount if and only if the order is COD or Partially_Paid; for
- * Out_For_Delivery / Delivered / RTO / Courier_Lost the message reflects that
+ * Out_For_Delivery / Delivered / RTO / Redispatch the message reflects that
  * status; and every message references a registered pre-approved template.
  *
  * **Validates: Requirements 14.1, 14.2, 14.3**
@@ -137,6 +137,6 @@ class WhatsAppNotificationContentPropertyTest {
                 NotificationEvent.OUT_FOR_DELIVERY,
                 NotificationEvent.DELIVERED,
                 NotificationEvent.RTO,
-                NotificationEvent.COURIER_LOST);
+                NotificationEvent.REDISPATCH);
     }
 }

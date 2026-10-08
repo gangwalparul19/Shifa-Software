@@ -1,6 +1,7 @@
 package com.shifa.oms.mail.template;
 
 import com.shifa.oms.mail.DigestOrder;
+import com.shifa.oms.mail.report.DailyReport;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -122,5 +123,56 @@ public final class EmailModels {
             int excluded = orders.size() - sales;
             return new Digest(day, sales, total, prepaidCount, prepaid, codCount, cod, excluded);
         }
+    }
+
+    /**
+     * Consolidated daily report email model (admin/internal). A thin wrapper over
+     * the pre-computed {@link DailyReport} so the renderer stays a pure function
+     * of plain data (Consolidated Daily Report feature). The aggregation itself
+     * lives in {@link DailyReport#build}.
+     *
+     * @param report    the fully-computed consolidated report for a single day
+     * @param attention an optional owner "needs attention" snapshot rendered as a
+     *                  summary block at the top of the email (ENHANCEMENT 1.1);
+     *                  {@code null} to omit it (keeps old callers/tests working)
+     */
+    public record ConsolidatedReport(DailyReport report, OwnerAttention attention) {
+
+        /** Backwards-compatible: a report with no owner attention block. */
+        public ConsolidatedReport(DailyReport report) {
+            this(report, null);
+        }
+    }
+
+    /**
+     * Owner "needs attention" summary rendered at the top of the daily report
+     * email (ENHANCEMENT 1.1). Plain primitives (no cross-module types) so the
+     * renderer stays a pure function; {@link com.shifa.oms.mail.report.DailyReportService}
+     * maps the dashboard owner snapshot into this.
+     *
+     * @param ordersToday        orders punched today
+     * @param revenueToday       amount received today
+     * @param approvalsWaiting   orders awaiting admin approval
+     * @param paymentsPending    orders awaiting payment verification
+     * @param failedDeliveries   orders needing a retry/RTO decision
+     * @param codToCollect       unsettled COD still to collect
+     * @param codOverSla         unsettled COD past the courier SLA (count)
+     * @param pendingClaims      courier loss claims to file/settle
+     * @param stuckShipments     orders QuikShipX rejected (need re-routing)
+     * @param topSalespersonName today's top salesperson by revenue (may be null)
+     * @param attentionTotal     total actionable items
+     */
+    public record OwnerAttention(
+            long ordersToday,
+            BigDecimal revenueToday,
+            long approvalsWaiting,
+            long paymentsPending,
+            long failedDeliveries,
+            BigDecimal codToCollect,
+            long codOverSla,
+            long pendingClaims,
+            long stuckShipments,
+            String topSalespersonName,
+            long attentionTotal) {
     }
 }

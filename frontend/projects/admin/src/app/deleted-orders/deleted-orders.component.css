@@ -1,0 +1,32 @@
+:host {
+  display: block;
+}
+
+.shifa-del__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.85rem;
+}
+
+.shifa-del__card {
+  background: #fff;
+  border: 1px solid rgba(15, 51, 36, 0.08);
+  border-radius: 12px;
+  padding: 0.85rem 0.9rem;
+  box-shadow: 0 1px 3px rgba(15, 51, 36, 0.06);
+}
+
+.shifa-del__code {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.shifa-del__cust {
+  color: #1c2b24;
+  font-weight: 600;
+}
+
+.min-w-0 {
+  min-width: 0;
+}
