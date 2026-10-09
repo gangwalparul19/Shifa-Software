@@ -44,10 +44,20 @@ import java.util.List;
 public class SecurityConfig {
 
     /**
+     * Primary allowed CORS origin(s) for this deployment (comma-separated).
+     * Defaults to the Shifa production domain so the prod build is unchanged; a
+     * per-client / demo deployment overrides {@code app.security.cors.origins}
+     * (env {@code CORS_ORIGINS}) with its own domain. localhost/127.0.0.1 are
+     * always allowed for dev regardless of this value.
+     */
+    @Value("${app.security.cors.origins:https://shifa.weblithic.online}")
+    private List<String> corsOrigins;
+
+    /**
      * Extra CORS allowed origins (comma-separated), appended to the built-in
-     * localhost + production origins. Lets a non-prod box (e.g. the demo at
-     * {@code https://shifa-demo.weblithic.online}) permit its own domain via
-     * {@code app.security.cors.extra-origins} without changing the prod default.
+     * localhost + {@link #corsOrigins primary} origins. Lets a box permit an
+     * additional domain (e.g. a demo at {@code https://shifa-demo.weblithic.online})
+     * without changing the primary origin.
      */
     @Value("${app.security.cors.extra-origins:}")
     private List<String> extraCorsOrigins;
@@ -67,8 +77,14 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         List<String> origins = new ArrayList<>(List.of(
-                "http://localhost:*", "http://127.0.0.1:*",
-                "https://shifa.weblithic.online"));
+                "http://localhost:*", "http://127.0.0.1:*"));
+        if (corsOrigins != null) {
+            for (String o : corsOrigins) {
+                if (o != null && !o.isBlank()) {
+                    origins.add(o.trim());
+                }
+            }
+        }
         if (extraCorsOrigins != null) {
             for (String o : extraCorsOrigins) {
                 if (o != null && !o.isBlank()) {

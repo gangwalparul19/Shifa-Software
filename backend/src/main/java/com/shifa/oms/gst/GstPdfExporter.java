@@ -53,7 +53,7 @@ public class GstPdfExporter {
             PdfWriter.getInstance(doc, out);
             doc.open();
 
-            doc.add(new Paragraph(nn(r.seller().legalName(), "Shifa Herbal Remedies"), COMPANY));
+            doc.add(new Paragraph(nn(r.seller().legalName(), "GST Report"), COMPANY));
             doc.add(meta("GST Report (Outward Supplies)"));
             doc.add(meta("GSTIN: " + nn(r.seller().gstin(), "—")
                     + "    State: " + nn(r.seller().state(), "—")

@@ -7,8 +7,8 @@
   @if (auth.session()) {
     <aside class="shifa-sidebar d-print-none" [class.is-collapsed]="sidebarCollapsed()" aria-label="Primary navigation">
       <div class="shifa-sidebar__brand">
-        <a routerLink="/dashboard" class="shifa-brand shifa-sidebar__brandlink" aria-label="Shifa Herbal Remedies">
-          <img src="/logo.png" alt="Shifa Herbal Remedies" class="shifa-brand__logo" />
+        <a routerLink="/dashboard" class="shifa-brand shifa-sidebar__brandlink" [attr.aria-label]="brand">
+          <img src="/logo.png" [alt]="brand" class="shifa-brand__logo" />
         </a>
         <button
           type="button"
@@ -126,8 +126,8 @@
           type="button"
           class="btn btn-sm btn-outline-primary shifa-install-btn"
           (click)="installApp()"
-          title="Install Shifa OMS as an app"
-          aria-label="Install Shifa OMS as an app"
+          [title]="'Install ' + appName + ' as an app'"
+          [attr.aria-label]="'Install ' + appName + ' as an app'"
         >
           <i class="ti ti-download me-1" aria-hidden="true"></i>
           <span class="d-none d-sm-inline">Install app</span>
@@ -222,7 +222,7 @@
         @if (pwa.updateReady()) {
           <div class="alert alert-info d-flex align-items-center shifa-app-banner" role="status">
             <i class="ti ti-rocket me-2"></i>
-            <div class="flex-fill">A new version of Shifa OMS is ready.</div>
+            <div class="flex-fill">A new version of {{ appName }} is ready.</div>
             <button type="button" class="btn btn-sm btn-info ms-2" (click)="pwa.applyUpdate()">
               Update now
             </button>
@@ -278,8 +278,8 @@
     aria-label="Navigation menu"
   >
     <div class="shifa-drawer__head">
-      <a routerLink="/dashboard" class="shifa-brand" aria-label="Shifa Herbal Remedies" (click)="closeMenu()">
-        <img src="/logo.png" alt="Shifa Herbal Remedies" class="shifa-brand__logo" />
+      <a routerLink="/dashboard" class="shifa-brand" [attr.aria-label]="brand" (click)="closeMenu()">
+        <img src="/logo.png" [alt]="brand" class="shifa-brand__logo" />
       </a>
       <button type="button" class="btn btn-icon" (click)="closeMenu()" aria-label="Close menu">
         <i class="ti ti-x" aria-hidden="true"></i>
@@ -368,10 +368,10 @@
 <!-- ===================== Install-app instructions (FEATURE-ROADMAP §8.1) ===================== -->
 @if (installHelpOpen()) {
   <div class="shifa-overlay" (click)="closeInstallHelp()"></div>
-  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-modal="true" aria-label="Install Shifa OMS">
+  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-modal="true" [attr.aria-label]="'Install ' + appName">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-device-mobile-down me-2"></i>Install Shifa OMS</h3>
+        <h3 class="card-title mb-0"><i class="ti ti-device-mobile-down me-2"></i>Install {{ appName }}</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeInstallHelp()" aria-label="Close">
             <i class="ti ti-x"></i>
@@ -380,7 +380,7 @@
       </div>
       <div class="card-body">
         <p class="text-secondary small mb-3">
-          Add Shifa OMS to your home screen to open it like a native app — full screen, faster, and it
+          Add {{ appName }} to your home screen to open it like a native app — full screen, faster, and it
           keeps working on patchy networks.
         </p>
 

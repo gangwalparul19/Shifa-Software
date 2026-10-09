@@ -23,6 +23,7 @@ import {
 import { ToastsComponent } from '../shared/toasts.component';
 import { ToastService } from '../shared/toast.service';
 import { roleLabel } from '../shared/role-label';
+import { BRAND } from '../shared/brand';
 import { GlobalSearchComponent } from './global-search.component';
 import { NotificationBellComponent } from '../notifications/notification-bell.component';
 import { GuidedTourComponent } from '../shared/guided-tour.component';
@@ -174,6 +175,10 @@ export class AdminShellComponent {
   protected readonly auth = inject(AuthService);
   protected readonly events = inject(AdminEventsService);
   protected readonly pwa = inject(PwaService);
+  /** White-label brand name (bare) for logo alt / brand aria-labels. */
+  protected readonly brand = BRAND.name;
+  /** White-label app name shown in install prompts / update banner. */
+  protected readonly appName = BRAND.name + ' OMS';
   /** Human-readable role label for the user chip/menus (never the raw enum). */
   protected readonly roleLabel = roleLabel;
   private readonly announcementsService = inject(AnnouncementsService);
@@ -449,7 +454,7 @@ export class AdminShellComponent {
     // view and (optionally) redirect post-login there instead of /dashboard.
     {
       kind: 'link',
-      label: 'Shifa Dashboard',
+      label: 'Dashboard',
       path: '/dashboard',
       icon: 'ti-layout-dashboard',
       // CA, Payment Verifier and Packing_User are redirected away from /dashboard

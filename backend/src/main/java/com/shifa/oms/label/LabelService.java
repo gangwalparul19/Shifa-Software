@@ -202,7 +202,7 @@ public class LabelService {
         try {
             com.shifa.oms.settings.AppSettings s = settingsService.getSettings();
             String brand = s.getLegalName() != null && !s.getLegalName().isBlank()
-                    ? s.getLegalName() : "Shifa Herbal Remedies";
+                    ? s.getLegalName() : "Your Company";
             String pickup = joinNonBlank(", ", s.getAddressLine(), s.getCity(), s.getState());
             // Seller GST No + header address so the label header mirrors the invoice
             // (brand + address + GST No under it). Shown only when GST is enabled.

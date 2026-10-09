@@ -63,10 +63,14 @@ public class InvoicePdfRenderer {
     private static final String UNICODE_FONT_RESOURCE = "/fonts/InvoiceUnicode.ttf";
     private static final char RUPEE = '\u20B9';
 
-    /** Static company placeholders for the plain invoice — safe to make configurable later. */
-    private static final String COMPANY_NAME = "Shifa Herbal Remedies";
-    private static final String COMPANY_CONTACT =
-            "Shop 14, Herbal Market, Pune, Maharashtra 411001  |  +91 9302590767  |  care@shifaherbal.example";
+    /**
+     * Neutral company placeholders for the PLAIN (non-GST) invoice, used only
+     * when GST is disabled and no seller legal name is available. The GST tax
+     * invoice uses the configured seller identity from app_settings. Kept
+     * generic so no client's name is ever hard-coded in output.
+     */
+    private static final String COMPANY_NAME = "Your Company";
+    private static final String COMPANY_CONTACT = "";
 
     // --- Embedded Unicode font (loaded once) --------------------------------
 

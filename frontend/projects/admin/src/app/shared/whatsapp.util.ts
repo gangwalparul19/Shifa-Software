@@ -1,3 +1,5 @@
+import { BRAND as BRAND_CONFIG } from './brand';
+
 /**
  * Click-to-WhatsApp helpers. Opens the WhatsApp chat for a customer with a
  * pre-filled message via a `wa.me` deep link — works from the browser and the
@@ -75,7 +77,8 @@ export interface WhatsAppContext {
   brand?: string;
 }
 
-const BRAND = 'Shifa Herbal Remedies';
+/** Brand name used as the default {brand} token in WhatsApp message templates. */
+const BRAND = BRAND_CONFIG.name;
 
 function firstName(name: string | null | undefined): string {
   const n = (name ?? '').trim().split(/\s+/)[0];

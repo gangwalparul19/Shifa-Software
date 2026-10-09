@@ -155,8 +155,10 @@ public class DailyDigestJob {
 
         int excluded = orders.size() - sales.size();
 
+        String brandName = (mailProperties != null && mailProperties.brand() != null)
+                ? mailProperties.brand().brandName() : "Your Company";
         StringBuilder sb = new StringBuilder();
-        sb.append("Shifa Herbal Remedies — daily sales digest\n");
+        sb.append(brandName).append(" — daily sales digest\n");
         sb.append("Date: ").append(day.format(DAY)).append("\n\n");
 
         if (sales.isEmpty()) {

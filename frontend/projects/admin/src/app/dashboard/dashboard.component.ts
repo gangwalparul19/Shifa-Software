@@ -12,6 +12,7 @@ import { MyDay, MyDayService, ReorderDueCustomer, WinBackCustomer } from './my-d
 import { TeamPerformance, TeamPerformanceService } from '../team/team-performance.service';
 import { openWhatsApp, whatsAppMessage } from '../shared/whatsapp.util';
 import { humanizeStatus } from '../shared/status-badge.component';
+import { BRAND } from '../shared/brand';
 import { ORDER_STATUS_GROUPS } from '../orders/order-status-groups';
 import { ChannelMarginReport, OwnerSnapshot, RoleDashboardSummary } from './dashboard.model';
 
@@ -99,6 +100,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly events = inject(AdminEventsService);
   protected readonly auth = inject(AuthService);
+
+  /** White-label brand name shown in the dashboard hero copy. */
+  protected readonly brand = BRAND.name;
 
   /** The signed-in user's role, driving which card set the dashboard renders (Req 3.1). */
   protected readonly role = computed<Role | null>(() => this.auth.session()?.role ?? null);

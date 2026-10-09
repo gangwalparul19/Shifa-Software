@@ -20,6 +20,7 @@ export type LeadSource =
   | 'WHATSAPP'
   | 'INSTAGRAM'
   | 'FACEBOOK'
+  | 'GOOGLE'
   | 'OFFLINE'
   | 'SHOPIFY_UPSELL'
   | 'SHOPIFY_ABANDONMENT_SALE'
@@ -35,6 +36,7 @@ export const LEAD_SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
   { value: 'WHATSAPP', label: 'WhatsApp' },
   { value: 'INSTAGRAM', label: 'Instagram' },
   { value: 'FACEBOOK', label: 'Facebook' },
+  { value: 'GOOGLE', label: 'Google' },
   { value: 'OFFLINE', label: 'Offline' },
   { value: 'SHOPIFY_UPSELL', label: 'Shopify Upsell'},
   { value: 'SHOPIFY_ABANDONMENT_SALE', label: 'Shopify Abandonment Sale'},

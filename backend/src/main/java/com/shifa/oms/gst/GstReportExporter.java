@@ -17,9 +17,12 @@ public final class GstReportExporter {
 
     public static String toCsv(GstReportResponse r) {
         StringBuilder sb = new StringBuilder();
-        // Header: seller identity + period.
-        line(sb, "Shifa Herbal Remedies — GST Report");
-        line(sb, "Legal name", nn(r.seller().legalName()));
+        // Header: seller identity + period. Title uses the configured seller
+        // legal name (app_settings) so it reflects the actual business, not a
+        // hard-coded brand.
+        String sellerName = nn(r.seller().legalName());
+        line(sb, (sellerName.isBlank() ? "" : sellerName + " — ") + "GST Report");
+        line(sb, "Legal name", sellerName);
         line(sb, "GSTIN", nn(r.seller().gstin()));
         line(sb, "State", nn(r.seller().state()), "State code", nn(r.seller().stateCode()));
         line(sb, "Period from", String.valueOf(r.from()), "to", String.valueOf(r.to()));

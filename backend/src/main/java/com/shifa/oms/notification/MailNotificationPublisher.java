@@ -1,6 +1,7 @@
 package com.shifa.oms.notification;
 
 import com.shifa.oms.mail.MailMessage;
+import com.shifa.oms.platform.brand.BrandProperties;
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import org.slf4j.Logger;
@@ -32,9 +33,18 @@ public class MailNotificationPublisher {
     private static final Logger log = LoggerFactory.getLogger(MailNotificationPublisher.class);
 
     private final OutboxEventPublisher outboxEventPublisher;
+    private final String brandName;
 
+    /** Test-friendly constructor: uses the Shifa-default brand sign-off. */
     public MailNotificationPublisher(OutboxEventPublisher outboxEventPublisher) {
+        this(outboxEventPublisher, BrandProperties.defaults());
+    }
+
+    /** Spring-wired constructor: the email sign-off brand comes from app.brand.*. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public MailNotificationPublisher(OutboxEventPublisher outboxEventPublisher, BrandProperties brand) {
         this.outboxEventPublisher = outboxEventPublisher;
+        this.brandName = brand.name();
     }
 
     /**
@@ -94,7 +104,7 @@ public class MailNotificationPublisher {
             }
         }
         String body = greeting + "\n\n" + line
-                + "\n\nWarm regards,\nShifa Herbal Remedies";
+                + "\n\nWarm regards,\n" + brandName;
         return MailMessage.text(to, subject, body);
     }
 

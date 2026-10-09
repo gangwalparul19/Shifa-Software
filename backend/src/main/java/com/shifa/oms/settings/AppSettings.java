@@ -38,7 +38,7 @@ public class AppSettings {
     private String gstin;
 
     @Column(name = "legal_name", nullable = false, length = 200)
-    private String legalName = "Shifa Herbal Remedies";
+    private String legalName = "Your Company";
 
     @Column(name = "address_line", length = 250)
     private String addressLine;
@@ -189,10 +189,10 @@ public class AppSettings {
         AppSettings settings = new AppSettings();
         settings.id = SINGLETON_ID;
         settings.gstEnabled = false;
-        settings.legalName = "Shifa Herbal Remedies";
+        settings.legalName = "Your Company";
         settings.gstRatePercent = new BigDecimal("5.00");
         settings.pricesIncludeGst = true;
-        settings.invoiceNumberPrefix = "SHR/";
+        settings.invoiceNumberPrefix = "INV/";
         settings.gstSlabs = "0,5,12,18,28";
         return settings;
     }

@@ -206,7 +206,7 @@
         {{ greeting() }}@if (auth.displayName(); as name) {, {{ name }}}
       </h2>
       <p class="shifa-hero__sub m-0">
-        {{ isTeamLead() ? "Here's how your team is performing across Shifa Herbal Remedies." : "Here's your work at a glance across Shifa Herbal Remedies." }}
+        {{ isTeamLead() ? "Here's how your team is performing across " + brand + "." : "Here's your work at a glance across " + brand + "." }}
       </p>
     </div>
   </div>

@@ -9,6 +9,7 @@ import {
   passwordPolicyValidator,
   passwordsMatchValidator,
 } from '../shared/password-policy';
+import { BRAND } from '../shared/brand';
 
 /**
  * Forced / self-service "set a new password" screen. Shown after an admin
@@ -33,6 +34,7 @@ export class ChangePasswordComponent {
 
   protected readonly error = signal<string | null>(null);
   protected readonly submitting = signal(false);
+  protected readonly brand = BRAND.name;
   protected readonly requirements = PASSWORD_REQUIREMENTS;
 
   /** Whether this is a forced change (admin reset) vs a voluntary one. */

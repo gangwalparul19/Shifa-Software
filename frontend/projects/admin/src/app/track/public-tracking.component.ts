@@ -1,6 +1,7 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { ApiClient } from 'core';
+import { BRAND } from '../shared/brand';
 
 /** One step on the customer tracking timeline. */
 interface TrackStep {
@@ -36,8 +37,8 @@ interface PublicTracking {
     <div class="pt-wrap">
       <div class="pt-card">
         <div class="pt-brand">
-          <img src="/logo.png" alt="Shifa Herbal Remedies" class="pt-logo" />
-          <div class="pt-brandname">Shifa Herbal Remedies</div>
+          <img src="/logo.png" [alt]="brand" class="pt-logo" />
+          <div class="pt-brandname">{{ brand }}</div>
         </div>
 
         @if (loading()) {
@@ -77,7 +78,7 @@ interface PublicTracking {
           }
         }
 
-        <div class="pt-foot pt-muted">Thank you for choosing Shifa Herbal Remedies.</div>
+        <div class="pt-foot pt-muted">Thank you for choosing {{ brand }}.</div>
       </div>
     </div>
   `,
@@ -158,6 +159,9 @@ interface PublicTracking {
 export class PublicTrackingComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly api = inject(ApiClient);
+
+  /** White-label brand name shown in the header + footer. */
+  protected readonly brand = BRAND.name;
 
   protected readonly loading = signal(true);
   protected readonly error = signal(false);

@@ -1,6 +1,7 @@
 package com.shifa.oms.settings;
 
 import com.shifa.oms.common.ValidationException;
+import com.shifa.oms.platform.brand.BrandProperties;
 import com.shifa.oms.settings.dto.SettingsRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,19 +35,39 @@ public class SettingsService {
     private static final java.math.BigDecimal MAX_GST_SLAB = new java.math.BigDecimal("28");
 
     private final AppSettingsRepository repository;
+    private final BrandProperties brand;
 
+    /** Test-friendly constructor: uses the Shifa-default brand (no app.brand.* needed). */
     public SettingsService(AppSettingsRepository repository) {
+        this(repository, BrandProperties.defaults());
+    }
+
+    /** Spring-wired constructor: the fresh-row brand name comes from app.brand.*. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public SettingsService(AppSettingsRepository repository, BrandProperties brand) {
         this.repository = repository;
+        this.brand = brand;
     }
 
     /**
      * Loads the single settings row, creating and persisting a defaults row
-     * (GST disabled) if none exists yet.
+     * (GST disabled) if none exists yet. A newly-created row is stamped with the
+     * configured white-label brand name ({@code app.brand.name}) so a fresh
+     * deployment shows the client's brand on invoices/labels/reports until an
+     * admin fills in the full seller details in Settings.
      */
     @Transactional
     public AppSettings getSettings() {
         return repository.findById(AppSettings.SINGLETON_ID)
-                .orElseGet(() -> repository.save(AppSettings.defaults()));
+                .orElseGet(() -> repository.save(freshDefaults()));
+    }
+
+    private AppSettings freshDefaults() {
+        AppSettings settings = AppSettings.defaults();
+        if (brand != null && brand.name() != null && !brand.name().isBlank()) {
+            settings.setLegalName(brand.name());
+        }
+        return settings;
     }
 
     /**

@@ -15,6 +15,7 @@ import { StatusBadgeComponent } from '../shared/status-badge.component';
 import { ToastService } from '../shared/toast.service';
 import { CameraScannerComponent } from './camera-scanner.component';
 import { openWhatsApp } from '../shared/whatsapp.util';
+import { BRAND } from '../shared/brand';
 
 /** How a single RTO scan resolved, for the in-session log. */
 type RtoOutcome = 'marked' | 'not-eligible' | 'not-recognized' | 'error';
@@ -173,7 +174,7 @@ export class RtoComponent implements OnInit {
    */
   messageCustomer(order: ScannedOrderSummary): void {
     const message =
-      `Hi! ☘ This is Shifa Herbal Remedies.\n\n` +
+      `Hi! ☘ This is ${BRAND.name}.\n\n` +
       `Your order ${order.orderCode} could not be delivered and is on its way back to us. ` +
       `We would love to get it to you — please reply here to arrange redelivery or a refund. ❤`;
     const ok = openWhatsApp(order.customerMobile, message);

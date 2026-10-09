@@ -90,6 +90,24 @@ app:
       secret: ${JWT_SECRET:change-me-local-development-secret-change-me-please}
       access-token-ttl: PT15M
       refresh-token-ttl: P7D
+  # ---------------------------------------------------------------------------
+  # White-label brand surface (app.brand.*). Every value defaults to the Shifa
+  # Herbal Remedies identity so the existing prod build is byte-for-byte
+  # unchanged. A reseller points a NEW client at this software by overriding
+  # these env vars (per-client env file) — no code fork. The seller's legal
+  # name / address / GSTIN that appear on invoices + labels are separate RUNTIME
+  # data in the app_settings table (edited in Settings), not here; app.brand.*
+  # covers the chrome: order-code prefix and the fallback brand name used when
+  # app_settings carries none.
+  # ---------------------------------------------------------------------------
+  brand:
+    # Human-readable brand/store name. Used as the fallback brand on PDFs,
+    # labels, GST reports and emails when app_settings.legal_name is blank.
+    name: ${BRAND_NAME:Shifa Herbal Remedies}
+    # Prefix stamped on every generated order code (e.g. SHR-20260101-A1B2).
+    # Keep it short + uppercase. A per-client/demo deployment sets its own
+    # (e.g. DEMO-) so order codes never collide across deployments.
+    order-code-prefix: ${BRAND_ORDER_CODE_PREFIX:SHR-}
   oci:
     object-storage:
       region: ${OCI_REGION:ap-mumbai-1}

@@ -1,7 +1,7 @@
 {
-  "name": "Shifa OMS",
-  "short_name": "Shifa OMS",
-  "description": "Shifa Herbal Remedies — Order Management dashboard for staff.",
+  "name": "Weblithic OMS",
+  "short_name": "Weblithic OMS",
+  "description": "Order Management dashboard for staff.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

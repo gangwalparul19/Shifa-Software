@@ -22,8 +22,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class OrderConfirmationNotifier {
 
-    /** Fallback store name when settings carry no legal/brand name (mirrors the storefront config). */
-    static final String DEFAULT_STORE_NAME = "Shifa Herbal Remedies";
+    /** Neutral fallback store name used only when app_settings carries no legal/brand name. */
+    static final String DEFAULT_STORE_NAME = "Your Company";
 
     private final WhatsAppNotificationPublisher notificationPublisher;
     private final SettingsService settingsService;

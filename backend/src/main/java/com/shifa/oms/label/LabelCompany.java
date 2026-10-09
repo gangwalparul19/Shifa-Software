@@ -24,6 +24,6 @@ public record LabelCompany(String brandName, String sellerName, String pickupRet
 
     /** A safe default (brand only) used when no settings are available (e.g. in tests). */
     public static LabelCompany defaults() {
-        return new LabelCompany("Shifa Herbal Remedies", null, null, null, null);
+        return new LabelCompany("Your Company", null, null, null, null);
     }
 }

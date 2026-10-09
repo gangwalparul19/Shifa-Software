@@ -249,7 +249,7 @@ public class LabelPdfRenderer {
         main.setWidthPercentage(100);
         main.getDefaultCell().setBorder(Rectangle.NO_BORDER);
 
-        String brand = nz(content.sellerName(), "Shifa Herbal Remedies");
+        String brand = nz(content.sellerName(), "Your Company");
 
         // 1) Seller header (letterhead) — brand + address + GST No under it, logo on
         // the right. Mirrors the invoice header so the label reads as the same doc.

@@ -76,9 +76,9 @@ public class PdfReportExporter {
     private static final Font KPI_VALUE_FONT = new Font(Font.HELVETICA, 13, Font.BOLD, DARK_GREEN);
     private static final Font KPI_SECTION_FONT = new Font(Font.HELVETICA, 9, Font.BOLD, BRAND_GREEN);
 
-    private static final String DEFAULT_COMPANY_NAME = "Shifa Herbal Remedies";
-    private static final String TAGLINE = "Pure Herbal Wellness, Naturally";
-    private static final String DEFAULT_PHONE = "+91 9302590767";
+    private static final String DEFAULT_COMPANY_NAME = "Your Company";
+    private static final String TAGLINE = "";
+    private static final String DEFAULT_PHONE = "";
     private static final String CREDIT_LINE =
             "Designed & Developed by Weblithic — https://www.weblithic.com/";
     private static final DateTimeFormatter TIMESTAMP =
@@ -288,7 +288,9 @@ public class PdfReportExporter {
         brandCell.setPadding(8f);
         brandCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
         brandCell.addElement(new Paragraph(companyName, COMPANY_FONT));
-        brandCell.addElement(new Paragraph(TAGLINE, TAGLINE_FONT));
+        if (TAGLINE != null && !TAGLINE.isBlank()) {
+            brandCell.addElement(new Paragraph(TAGLINE, TAGLINE_FONT));
+        }
         band.addCell(brandCell);
 
         document.add(band);
@@ -329,11 +331,20 @@ public class PdfReportExporter {
             }
         }
 
-        StringBuilder contact = new StringBuilder(phone);
-        if (email != null) {
-            contact.append("  |  ").append(email);
+        StringBuilder contact = new StringBuilder();
+        if (phone != null && !phone.isBlank()) {
+            contact.append(phone);
         }
-        contact.append("  |  Generated: ").append(LocalDateTime.now().format(TIMESTAMP));
+        if (email != null) {
+            if (contact.length() > 0) {
+                contact.append("  |  ");
+            }
+            contact.append(email);
+        }
+        if (contact.length() > 0) {
+            contact.append("  |  ");
+        }
+        contact.append("Generated: ").append(LocalDateTime.now().format(TIMESTAMP));
 
         // Gold divider rule above the footer.
         PdfPTable divider = new PdfPTable(1);

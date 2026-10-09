@@ -30,6 +30,12 @@ public enum LeadSource {
     WHATSAPP,
     INSTAGRAM,
     FACEBOOK,
+    // GOOGLE is an original lead channel still present in persisted/seeded data
+    // (V27). It was dropped from this enum at one point, which caused Hibernate
+    // @Enumerated(STRING) to throw "No enum constant ...LeadSource.GOOGLE" and
+    // 500 any order list that included such a row. Kept here so historical
+    // "Google" leads map correctly instead of being rewritten to OTHER.
+    GOOGLE,
     OFFLINE,
     SHOPIFY_UPSELL,
     SHOPIFY_ABANDONMENT_SALE,

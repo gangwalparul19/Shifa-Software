@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from 'core';
+import { BRAND } from '../shared/brand';
 
 /**
  * Admin/staff login. Authenticates via the shared {@link AuthService} and
@@ -22,6 +23,7 @@ export class LoginComponent {
 
   protected readonly error = signal<string | null>(null);
   protected readonly submitting = signal(false);
+  protected readonly brand = BRAND.name;
 
   protected readonly form = this.fb.nonNullable.group({
     username: ['', Validators.required],

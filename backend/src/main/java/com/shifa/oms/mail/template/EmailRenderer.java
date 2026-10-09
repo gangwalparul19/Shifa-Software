@@ -220,7 +220,7 @@ public class EmailRenderer {
                 null);
 
         StringBuilder text = new StringBuilder();
-        text.append("Shifa Herbal Remedies — daily sales digest\n");
+        text.append(brand.brandName()).append(" — daily sales digest\n");
         text.append("Date: ").append(dayLabel).append("\n\n");
         text.append("Orders: ").append(m.orderCount()).append("\n");
         text.append("Total sales: ").append(money(m.totalSales())).append("\n");
@@ -332,7 +332,7 @@ public class EmailRenderer {
 
         // ---- Plain-text fallback.
         StringBuilder text = new StringBuilder();
-        text.append("Shifa Herbal Remedies — consolidated daily report\n");
+        text.append(brand.brandName()).append(" — consolidated daily report\n");
         text.append("Date: ").append(dayLabel).append("\n\n");
         text.append("SUMMARY\n");
         text.append("  Orders (excl. rejected/cancelled): ").append(o.orderCount()).append("\n");
