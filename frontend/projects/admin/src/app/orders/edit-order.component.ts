@@ -81,6 +81,14 @@ export class EditOrderComponent implements OnInit {
 
   protected readonly leadSourceOptions = LEAD_SOURCE_OPTIONS;
 
+  // --- India vs Outside India (destination) --------------------------------
+  /** Order destination: 'india' (structured address) or 'outside' (free text). */
+  protected readonly destination = signal<'india' | 'outside'>('india');
+  /** Whether the order ships outside India (drives the address layout + payload). */
+  protected readonly isInternational = computed(() => this.destination() === 'outside');
+  /** The destination country name for an international order (free text). */
+  protected readonly countryName = signal<string>('');
+
   protected readonly form = this.fb.nonNullable.group({
     customerName: ['', [Validators.required, Validators.maxLength(100)]],
     customerMobile: ['', [Validators.required, Validators.pattern(/^\d{10}$/)]],
@@ -155,15 +163,31 @@ export class EditOrderComponent implements OnInit {
           customerName: o.customerName ?? '',
           customerMobile: o.customerMobile ?? '',
           alternateMobile: o.alternateMobile ?? '',
+          customerEmail: o.customerEmail ?? '',
           addressLine: o.addressLine ?? '',
           city: o.city ?? '',
           state: o.state ?? '',
           postalCode: o.postalCode ?? '',
+          // Pre-select the existing lead source + its note so the required dropdown
+          // isn't empty on load (an empty value would block Save with a validation
+          // error even when nothing about the lead source was changed).
+          leadSource: (o.leadSource ?? '') as '' | LeadSource,
+          leadSourceNote: o.leadSourceNote ?? '',
           buyerGstin: o.buyerGstin ?? '',
           notes: o.notes ?? '',
           discountType: (o.discountType ?? '') as '' | OrderDiscountType,
           discountValue: o.discountValue != null ? Number(o.discountValue) : 0,
         });
+        // Initialise the destination from the loaded order: a non-blank country
+        // (other than India) means this is an Outside-India order — switch the
+        // form to the free-text layout so editing it doesn't force India fields.
+        const country = (o.country ?? '').trim();
+        if (country && country.toLowerCase() !== 'india') {
+          this.countryName.set(country);
+          this.setDestination('outside');
+        } else {
+          this.setDestination('india');
+        }
         const arr = this.items;
         while (arr.length) {
           arr.removeAt(0);
@@ -212,6 +236,46 @@ export class EditOrderComponent implements OnInit {
       next: (rows) => this.states.set(rows),
       error: () => this.states.set([]),
     });
+  }
+
+  // --- India vs Outside India ----------------------------------------------
+
+  /**
+   * Switches the order destination between India (structured city/state/pincode)
+   * and Outside India (a single free-text address). For an international order the
+   * structured controls are cleared, de-validated and disabled so they don't block
+   * the form; switching back to India restores their required validators. Mirrors
+   * the New Order form.
+   */
+  setDestination(dest: 'india' | 'outside'): void {
+    this.destination.set(dest);
+    const city = this.form.controls.city;
+    const state = this.form.controls.state;
+    const postalCode = this.form.controls.postalCode;
+    if (dest === 'outside') {
+      for (const c of [city, state, postalCode]) {
+        c.clearValidators();
+        c.setValue('');
+        c.updateValueAndValidity();
+        c.disable();
+      }
+    } else {
+      city.enable();
+      state.enable();
+      postalCode.enable();
+      city.setValidators([Validators.required, Validators.maxLength(100)]);
+      state.setValidators([Validators.required, Validators.maxLength(100)]);
+      postalCode.setValidators([Validators.required, Validators.pattern(/^\d{6}$/)]);
+      for (const c of [city, state, postalCode]) {
+        c.updateValueAndValidity();
+      }
+      this.countryName.set('');
+    }
+  }
+
+  /** Captures the destination country name for an international order. */
+  onCountryChange(value: string): void {
+    this.countryName.set(value ?? '');
   }
 
   // --- Line items ------------------------------------------------------------
@@ -393,6 +457,11 @@ export class EditOrderComponent implements OnInit {
       this.toasts.error('Please fix the highlighted fields before saving.');
       return;
     }
+    // An Outside-India order needs the destination country named.
+    if (this.isInternational() && !this.countryName().trim()) {
+      this.toasts.error('Enter the destination country for an order outside India.');
+      return;
+    }
 
     const id = this.orderId();
     if (id === null) {
@@ -426,6 +495,8 @@ export class EditOrderComponent implements OnInit {
       city: this.form.controls.city.value.trim(),
       state: this.form.controls.state.value.trim(),
       postalCode: this.form.controls.postalCode.value.trim(),
+      // Destination country: only sent for an Outside-India order (domestic = India).
+      ...(this.isInternational() ? { country: this.countryName().trim() } : {}),
       items: raw.items.map<CreateOrderLineItem>((it) => ({
         productId: it.productId as number,
         quantity: it.quantity,

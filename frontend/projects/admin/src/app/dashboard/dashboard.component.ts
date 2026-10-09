@@ -3,6 +3,7 @@ import { Router, RouterLink } from '@angular/router';
 import { AuthService, Role } from 'core';
 import { AdminEventsService } from './admin-events.service';
 import { AdminChannelOverviewComponent } from './admin-channel-overview.component';
+import { DeliveryPartnerOverviewComponent } from './delivery-partner-overview.component';
 import { TeamsOverviewWidgetComponent } from './teams-overview-widget.component';
 import { CountUpDirective } from '../shared/count-up.directive';
 import { PageHeaderComponent } from '../shared/page-header.component';
@@ -82,6 +83,7 @@ const DEFAULT_STAGE_STYLE = { accent: '#868e96', accentSoft: '#f1f3f5', icon: 't
   selector: 'admin-dashboard',
   imports: [
     AdminChannelOverviewComponent,
+    DeliveryPartnerOverviewComponent,
     TeamsOverviewWidgetComponent,
     CountUpDirective,
     PageHeaderComponent,

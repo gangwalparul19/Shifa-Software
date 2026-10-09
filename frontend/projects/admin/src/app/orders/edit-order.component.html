@@ -173,14 +173,62 @@
             }
           </div>
 
+          <!-- Destination: India (structured address) vs Outside India (free text). -->
+          <div class="col-12">
+            <label class="form-label">Delivery destination</label>
+            <div class="btn-group w-100 mb-1" role="group" aria-label="Delivery destination">
+              <button
+                type="button"
+                class="btn"
+                [class.btn-success]="!isInternational()"
+                [class.btn-outline-secondary]="isInternational()"
+                (click)="setDestination('india')"
+              >
+                <i class="ti ti-map-pin me-1"></i>India
+              </button>
+              <button
+                type="button"
+                class="btn"
+                [class.btn-success]="isInternational()"
+                [class.btn-outline-secondary]="!isInternational()"
+                (click)="setDestination('outside')"
+              >
+                <i class="ti ti-world me-1"></i>Outside India
+              </button>
+            </div>
+          </div>
+
+          @if (isInternational()) {
+            <!-- Outside India: destination country + a single free-text address. -->
+            <div class="col-12">
+              <label class="form-label required" for="country">Country</label>
+              <input
+                id="country"
+                type="text"
+                class="form-control"
+                maxlength="60"
+                autocomplete="off"
+                placeholder="e.g. United States, UAE, UK"
+                [value]="countryName()"
+                (input)="onCountryChange($any($event.target).value)"
+                [class.is-invalid]="submitAttempted() && isInternational() && !countryName().trim()"
+              />
+              @if (submitAttempted() && isInternational() && !countryName().trim()) {
+                <div class="invalid-feedback d-block">A destination country is required.</div>
+              }
+            </div>
+          }
+
           <!-- Delivery address -->
           <div class="col-12">
-            <label class="form-label required" for="addressLine">Delivery address</label>
+            <label class="form-label required" for="addressLine">
+              {{ isInternational() ? 'Full delivery address' : 'Delivery address' }}
+            </label>
             <textarea
               id="addressLine"
               class="form-control"
               formControlName="addressLine"
-              rows="2"
+              [rows]="isInternational() ? 3 : 2"
               maxlength="250"
               autocomplete="off"
               [class.is-invalid]="invalid('addressLine')"
@@ -190,6 +238,8 @@
             }
           </div>
 
+          <!-- City / State / Pincode shown only for a domestic (India) order. -->
+          @if (!isInternational()) {
           <div class="col-7">
             <label class="form-label required" for="city">City</label>
             <input
@@ -234,6 +284,7 @@
               <div class="text-danger small mt-1">A state is required.</div>
             }
           </div>
+          }
         </div>
       </div>
     </section>

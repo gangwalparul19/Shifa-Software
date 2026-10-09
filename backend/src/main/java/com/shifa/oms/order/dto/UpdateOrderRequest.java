@@ -47,16 +47,18 @@ public record UpdateOrderRequest(
         @Size(max = 250, message = "addressLine must be at most 250 characters")
         String addressLine,
 
-        @NotBlank(message = "city is required")
+        // city/state/postalCode are required for a DOMESTIC (India) order but
+        // OPTIONAL for an international order (India/Outside India entry, V67),
+        // exactly like CreateOrderRequest: the presence rule is enforced in the
+        // service based on `country`; here we only bound length/format when a
+        // value IS supplied (the postalCode pattern matches empty-or-6-digits).
         @Size(max = 100, message = "city must be at most 100 characters")
         String city,
 
-        @NotBlank(message = "state is required")
         @Size(max = 100, message = "state must be at most 100 characters")
         String state,
 
-        @NotBlank(message = "postalCode is required")
-        @Pattern(regexp = "\\d{6}", message = "postalCode must be exactly 6 digits")
+        @Pattern(regexp = "(\\d{6})?", message = "postalCode must be exactly 6 digits")
         String postalCode,
 
         @NotEmpty(message = "at least one line item is required")
@@ -103,6 +105,14 @@ public record UpdateOrderRequest(
         // when a new paymentScreenshotKey is also supplied.
         @Size(max = 10, message = "at most 10 payment screenshots may be attached to an order")
         List<@Size(max = 512, message = "a payment screenshot key must be at most 512 characters") String>
-                paymentScreenshotKeys
+                paymentScreenshotKeys,
+
+        // Destination country for an international order (India/Outside India entry,
+        // V67). Null/blank or "India" = a domestic order (city/state/6-digit pincode
+        // required). Any other value = an international order: the full address is in
+        // addressLine and city/state/postalCode may be blank. Appended last to keep
+        // the positional constructor stable for existing callers.
+        @Size(max = 60, message = "country must be at most 60 characters")
+        String country
 ) {
 }

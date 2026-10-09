@@ -255,7 +255,7 @@ class OrderServiceStoreTest {
         UpdateOrderRequest req = new UpdateOrderRequest(
                 "Asha", "9812345678", null, null, "12 MG Road", "Pune", "Maharashtra", "411001",
                 List.of(new LineItemRequest(1L, 1, null)), LeadSource.WHATSAPP, null, null, null, null, null,
-                new BigDecimal("500.00"), "payments/new-proof.jpg", null);
+                new BigDecimal("500.00"), "payments/new-proof.jpg", null, null);
 
         OrderResponse res = service.resubmit(50L, req, admin);
 
@@ -285,7 +285,7 @@ class OrderServiceStoreTest {
         UpdateOrderRequest req = new UpdateOrderRequest(
                 "Asha Fixed", "9812345678", null, null, "12 MG Road", "Pune", "Maharashtra", "411001",
                 List.of(new LineItemRequest(1L, 1, null)), LeadSource.WHATSAPP, null, null, null, null, null,
-                null, null, null);
+                null, null, null, null);
 
         OrderResponse res = service.resubmit(51L, req, admin);
 
