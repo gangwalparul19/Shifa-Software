@@ -14,6 +14,16 @@ export type SseStatus = 'connecting' | 'open' | 'closed';
 const MAX_FEED = 50;
 
 /**
+ * Proactively recycle the SSE stream with a fresh access token on this cadence,
+ * staying ahead of the ~15-min access-token TTL embedded in the stream URL so the
+ * connection never dies with a stale token.
+ */
+const STREAM_RECYCLE_MS = 10 * 60 * 1000;
+
+/** Backoff before reconnecting after a stream error (token refresh happens on the API). */
+const RECONNECT_DELAY_MS = 3000;
+
+/**
  * Subscribes to the admin dashboard's Server-Sent Events stream
  * ({@code GET /api/admin/events}) and exposes its events as Angular signals
  * (Req 11.2, 13.3, 17.4, 19.5, 19.6).
@@ -39,6 +49,12 @@ export class AdminEventsService {
   private readonly auth = inject(AuthService);
 
   private source: EventSource | null = null;
+  /** Pending reconnect timer (token-expiry recovery); null when none scheduled. */
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Whether the caller wants the stream up (so an error-driven reconnect is allowed). */
+  private wantConnected = false;
+  /** Proactive refresh timer: recycles the stream with a fresh token before expiry. */
+  private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   /** The latest live stats snapshot, or {@code null} until the first push. */
   readonly liveStats = signal<LiveStats | null>(null);
@@ -77,8 +93,22 @@ export class AdminEventsService {
     ) {
       return;
     }
+    this.wantConnected = true;
+    this.open();
+    // Proactively recycle the stream with a fresh token before the ~15-min access
+    // token embedded in the URL expires (the native EventSource would otherwise
+    // auto-reconnect with the STALE token and silently stop delivering events).
+    // The bell's 60s poll + auth interceptor keep tokens.getAccessToken() fresh.
+    if (!this.refreshTimer) {
+      this.refreshTimer = setInterval(() => this.recycle(), STREAM_RECYCLE_MS);
+    }
+  }
+
+  /** (Re)opens the EventSource with the CURRENT token. Internal to connect/reconnect. */
+  private open(): void {
     const token = this.tokens.getAccessToken();
     if (!token) {
+      this.status.set('closed');
       return;
     }
     const url = `${this.api.url('/api/admin/events')}?access_token=${encodeURIComponent(token)}`;
@@ -88,8 +118,12 @@ export class AdminEventsService {
 
     es.onopen = () => this.status.set('open');
     es.onerror = () => {
-      // EventSource retries automatically; reflect the transient drop in the UI.
-      this.status.set(this.source ? 'connecting' : 'closed');
+      // A drop is most often the embedded access token having expired. The native
+      // EventSource would retry the SAME (stale-token) URL forever, so take over:
+      // tear this one down and reconnect with a freshly-read token after a short
+      // backoff. Only while the caller still wants the stream up.
+      this.status.set('connecting');
+      this.scheduleReconnect();
     };
 
     es.addEventListener('LIVE_STATS', (e) => this.liveStats.set(this.parse<LiveStats>(e)));
@@ -106,8 +140,43 @@ export class AdminEventsService {
     this.listenNotification(es, 'NOTIFICATION');
   }
 
+  /** Tears down the current stream and reconnects with a fresh token (debounced). */
+  private scheduleReconnect(): void {
+    if (!this.wantConnected || this.reconnectTimer) {
+      return;
+    }
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.wantConnected) {
+        return;
+      }
+      this.recycle();
+    }, RECONNECT_DELAY_MS);
+  }
+
+  /** Closes any live stream and immediately re-opens with the current token. */
+  private recycle(): void {
+    if (!this.wantConnected) {
+      return;
+    }
+    if (this.source) {
+      this.source.close();
+      this.source = null;
+    }
+    this.open();
+  }
+
   /** Closes the stream and resets state. */
   disconnect(): void {
+    this.wantConnected = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
     if (this.source) {
       this.source.close();
       this.source = null;

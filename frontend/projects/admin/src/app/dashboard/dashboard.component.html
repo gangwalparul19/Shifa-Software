@@ -189,8 +189,9 @@
 <!-- Channel-aware admin dashboard: Portal / Shopify / All (see admin-channel-overview). -->
 <admin-channel-overview [insights]="summary()?.admin?.insights ?? null" />
 
-<!-- Orders by delivery partner (QuikShipX / In-house / POS) now lives on its own
-     sidebar page at /delivery-partners (Analytics & Reports). -->
+<!-- Orders by delivery partner (QuikShipX / In-house / POS) — shown at the end of
+     the admin dashboard (also available as its own page at /delivery-partners). -->
+<admin-delivery-partner-overview />
 
 } @else {
 

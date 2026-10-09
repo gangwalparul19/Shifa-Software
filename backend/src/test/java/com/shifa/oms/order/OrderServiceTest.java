@@ -756,7 +756,7 @@ class OrderServiceTest {
         return new UpdateOrderRequest("Asha Corrected", "9812345678", null, null,
                 "12 MG Road", "Pune", "Maharashtra", "411001",
                 items, LeadSource.WHATSAPP, null, null, null, null, null,
-                null, null, null);
+                null, null, null, null);
     }
 
     @Test
@@ -813,7 +813,7 @@ class OrderServiceTest {
                 "12 MG Road", "Pune", "Maharashtra", "411001",
                 List.of(new LineItemRequest(1L, 1, null)), LeadSource.WHATSAPP, null, null,
                 "NOT-A-GSTIN", null, null,
-                null, null, null);
+                null, null, null, null);
 
         assertThatThrownBy(() -> service.updateOrder(23L, request, admin))
                 .isInstanceOf(ValidationException.class)

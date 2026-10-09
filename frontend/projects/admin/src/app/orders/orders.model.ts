@@ -20,9 +20,14 @@ export type LeadSource =
   | 'WHATSAPP'
   | 'INSTAGRAM'
   | 'FACEBOOK'
-  | 'GOOGLE'
   | 'OFFLINE'
+  | 'SHOPIFY_UPSELL'
+  | 'SHOPIFY_ABANDONMENT_SALE'
+  | 'INBOUND_CALLS'
+  | 'REPEAT_CUSTOMER'
+  | 'REFERRAL'
   | 'OTHER'
+  | 'SHOPIFY'
   | 'COUNTER_SALE';
 
 /** The selectable lead-source options for the New Order picker (Req 4.1). */
@@ -30,11 +35,14 @@ export const LEAD_SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
   { value: 'WHATSAPP', label: 'WhatsApp' },
   { value: 'INSTAGRAM', label: 'Instagram' },
   { value: 'FACEBOOK', label: 'Facebook' },
-  { value: 'GOOGLE', label: 'Google' },
   { value: 'OFFLINE', label: 'Offline' },
+  { value: 'SHOPIFY_UPSELL', label: 'Shopify Upsell'},
+  { value: 'SHOPIFY_ABANDONMENT_SALE', label: 'Shopify Abandonment Sale'},
+  { value: 'INBOUND_CALLS', label: 'Inbound Calls'},
+  { value: 'REPEAT_CUSTOMER', label: 'Repeat Customer'},
+  { value: 'REFERRAL', label: 'Referral'},
   { value: 'OTHER', label: 'Other' },
-  // Walk-in / in-shop sale — no delivery partner is ever involved (the
-  // backend forces deliveryMethod=IN_HOUSE for this lead source).
+  { value: 'SHOPIFY', label: 'Shopify' },
   { value: 'COUNTER_SALE', label: 'Counter Sale' },
 ];
 
@@ -201,6 +209,12 @@ export interface UpdateOrderRequest {
   amountReceived?: number;
   paymentScreenshotKey?: string;
   paymentScreenshotKeys?: string[];
+  /**
+   * Destination country for an international (Outside India) order. Omitted for a
+   * domestic (India) order — the default. When set, city/state/postalCode may be
+   * blank and the full address is in {@link addressLine} (mirrors the backend).
+   */
+  country?: string;
 }
 
 /** Per-order delivery method (mirrors the backend {@code DeliveryMethod} enum). */

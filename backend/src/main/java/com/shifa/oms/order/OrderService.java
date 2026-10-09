@@ -895,14 +895,22 @@ public class OrderService {
         // enough stock to cover an increase.
         reconcileStockForEdit(previousQuantities, priced, order.getOrderCode(), actorUserId);
 
+        // Resolve the address for the order's destination (India vs Outside India,
+        // V67): an international order (country set & != India) keeps the free-text
+        // addressLine with empty city/state/postalCode; a domestic order requires
+        // the structured city/state/6-digit pincode. Same rule as order creation.
+        ResolvedAddress addr = resolveAddress(request.addressLine(), request.city(),
+                request.state(), request.postalCode(), request.country());
+
         order.setCustomerName(request.customerName());
         order.setCustomerMobile(request.customerMobile());
         order.setAlternateMobile(trimToNull(request.alternateMobile()));
         order.setCustomerEmail(request.customerEmail());
-        order.setAddressLine(request.addressLine());
-        order.setCity(request.city());
-        order.setState(request.state());
-        order.setPostalCode(request.postalCode());
+        order.setAddressLine(addr.addressLine());
+        order.setCity(addr.city());
+        order.setState(addr.state());
+        order.setPostalCode(addr.postalCode());
+        order.setCountry(addr.country());
         order.setLeadSource(request.leadSource());
         order.setLeadSourceNote(request.leadSourceNote());
         order.setNotes(trimToNull(request.notes()));
@@ -1717,11 +1725,22 @@ public class OrderService {
      * stored empty (the full address lives in {@code addressLine}).
      */
     private ResolvedAddress resolveAddress(CreateOrderRequest request) {
-        String addressLine = trimToNull(request.addressLine());
+        return resolveAddress(request.addressLine(), request.city(), request.state(),
+                request.postalCode(), request.country());
+    }
+
+    /**
+     * Field-level overload of {@link #resolveAddress(CreateOrderRequest)} so the
+     * edit path ({@link UpdateOrderRequest}) applies the identical India/Outside
+     * India rule. See that method for the semantics.
+     */
+    private ResolvedAddress resolveAddress(String rawAddressLine, String rawCity, String rawState,
+                                           String rawPostalCode, String rawCountry) {
+        String addressLine = trimToNull(rawAddressLine);
         if (addressLine == null) {
             throw new ValidationException("A delivery address is required.");
         }
-        String country = trimToNull(request.country());
+        String country = trimToNull(rawCountry);
         boolean international = country != null && !country.equalsIgnoreCase("India");
         if (international) {
             // Structured parts are meaningless for an international address; store
@@ -1729,9 +1748,9 @@ public class OrderService {
             return new ResolvedAddress(addressLine, "", "", "", country);
         }
         // Domestic (India): the structured address is required.
-        String city = trimToNull(request.city());
-        String state = trimToNull(request.state());
-        String postalCode = trimToNull(request.postalCode());
+        String city = trimToNull(rawCity);
+        String state = trimToNull(rawState);
+        String postalCode = trimToNull(rawPostalCode);
         if (city == null || state == null || postalCode == null) {
             throw new ValidationException(
                     "City, state and a 6-digit pincode are required for an order within India.");

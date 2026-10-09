@@ -19,6 +19,7 @@ import {
   DELIVERY_METHOD_OPTIONS,
   DeliveryMethod,
   FAILED_DELIVERY_STATUSES,
+  LEAD_SOURCE_OPTIONS,
   MANUAL_DELIVERY_STAGE_OPTIONS,
   MANUAL_NEXT_STAGES,
   MANUAL_PACKING_STAGES,
@@ -652,6 +653,14 @@ export class OrdersComponent implements OnInit, OnDestroy {
       default:
         return 'ti-circle';
     }
+  }
+
+  /** Human label for the lead-source channel (e.g. "Shopify Abandonment Sale"). */
+  leadSourceLabel(leadSource: string | null | undefined): string {
+    if (!leadSource) {
+      return '—';
+    }
+    return LEAD_SOURCE_OPTIONS.find((o) => o.value === leadSource)?.label ?? leadSource;
   }
 
   /**
