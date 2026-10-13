@@ -370,11 +370,11 @@ public class OrderService {
         // persisted regardless, so nothing is lost when no admin is online.
         // (No-op once the order was auto-approved — it guards on PENDING status.)
         publishAwaitingApproval(saved);
-        // QuikShipX (create-on-punch): enqueue the shipment publication in this same
-        // transaction so the order appears in QuikShipX's Pending section once the
-        // drainer delivers it. Off unless the integration is enabled; the outbox row
-        // commits atomically with the order, so a slow/unavailable QuikShipX never
-        // blocks or fails the punch.
+        // QuikShipX (publish-on-approval, NOT on punch): a plain salesperson punch
+        // leaves the order PENDING_ADMIN_APPROVAL, so this is a no-op — the order is
+        // sent to QuikShipX only when it is approved (so the courier always receives
+        // the final, edited details). The only case this fires at punch time is an
+        // auto-approved order (maybeAutoApprove already moved it to APPROVED above).
         publishToQuikShipX(saved);
         return OrderResponse.from(saved);
     }
@@ -647,15 +647,30 @@ public class OrderService {
                     OrderStatus.RTO, OrderStatus.REDISPATCH);
 
     /**
-     * Enqueues the QuikShipX create-order event for a new order when the
-     * integration is enabled AND the order is not flagged for in-house delivery
-     * (no-op otherwise). An {@code IN_HOUSE} order never gets an
+     * Enqueues the QuikShipX create-and-confirm events for an order ONLY once it is
+     * APPROVED, when the integration is enabled AND the order is not flagged for
+     * in-house delivery (no-op otherwise).
+     *
+     * <p>This is the fix for the stale-data incident: an order used to be published
+     * to QuikShipX on punch (while still {@code PENDING_ADMIN_APPROVAL} and freely
+     * editable), so later salesperson/admin edits never reached the courier. It is
+     * now published only at approval, by which point the order details are final.
+     * A plain salesperson punch leaves the order {@code PENDING_ADMIN_APPROVAL}, so
+     * nothing is sent here; the manual approve path ({@link AdminOrderService#approve})
+     * publishes it, and an auto-approved order ({@link #maybeAutoApprove}) is already
+     * {@code APPROVED} when it reaches here, so it publishes too.
+     *
+     * <p>CREATE and CONFIRM are enqueued together (CONFIRM chains to ALLOT); the
+     * drainer runs CREATE→CONFIRM→ALLOT and CONFIRM/ALLOT retry safely until CREATE
+     * has landed the shipper order id. An {@code IN_HOUSE} order never gets an
      * {@code OrderShipment} row and is invisible to the whole QuikShipX pipeline.
      */
     private void publishToQuikShipX(OrderEntity order) {
         if (outboxEventPublisher != null && quikShipXProperties != null
-                && quikShipXProperties.isEnabled() && !order.isInHouseDelivery()) {
+                && quikShipXProperties.isEnabled() && !order.isInHouseDelivery()
+                && order.getOrderStatus() == OrderStatus.APPROVED) {
             outboxEventPublisher.publishQuikShipXCreate(order.getId(), order.getOrderCode());
+            outboxEventPublisher.publishQuikShipXConfirm(order.getId(), order.getOrderCode());
         }
     }
 
@@ -670,14 +685,19 @@ public class OrderService {
     // --- Admin edit-order (correct salesperson-entered details) ------------
 
     /**
-     * Statuses in which an order may still be edited by an admin: only before
-     * physical fulfilment begins — a printed label / QuikShipX payload / packed
-     * box already reflects the original details from {@link OrderStatus#LABEL_GENERATED}
-     * onward, so editing is restricted to the two earliest statuses (edit-order
-     * feature).
+     * Statuses in which an order may still be edited by an admin: ONLY while it is
+     * still {@code PENDING_ADMIN_APPROVAL}.
+     *
+     * <p>This window was narrowed (from also allowing {@code APPROVED}) as part of
+     * the QuikShipX stale-data fix: an order is now published to QuikShipX at
+     * approval, so once it is {@code APPROVED} the courier already holds its
+     * details and a later edit here would re-introduce the exact desync we are
+     * closing (QuikShipX has no update API). An admin that needs to change an
+     * already-approved order must cancel it and create a corrected one. Editing is
+     * therefore restricted to before approval, matching {@link #OWN_EDITABLE_STATUSES}.
      */
     private static final java.util.Set<OrderStatus> EDITABLE_STATUSES =
-            java.util.EnumSet.of(OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.APPROVED);
+            java.util.EnumSet.of(OrderStatus.PENDING_ADMIN_APPROVAL);
 
     /**
      * Admin edit-order (Req: "As an Admin I should be able to update the order

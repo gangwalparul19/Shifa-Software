@@ -256,9 +256,10 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   /**
    * Whether the "Edit" action is offered for the given order (own-pending-edit
-   * feature). An ADMIN may edit while PENDING or APPROVED; a SALESPERSON/TEAM_LEAD
-   * may edit only while PENDING (their own order — the backend enforces ownership
-   * + status, so this is just the affordance gate).
+   * feature). Editing is allowed ONLY while the order is still PENDING approval,
+   * for an ADMIN or the creating SALESPERSON/TEAM_LEAD. Once an order is approved
+   * it has been published to QuikShipX, so it can no longer be edited here (the
+   * QuikShipX stale-data fix — the backend enforces the same PENDING-only window).
    */
   canEdit(order: OrderDetail | null | undefined): boolean {
     if (!order) {
@@ -268,15 +269,9 @@ export class OrdersComponent implements OnInit, OnDestroy {
     if (order.source === 'SHOPIFY') {
       return false;
     }
-    if (this.auth.hasAnyRole(Role.ADMIN)) {
-      return (
-        order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL ||
-        order.orderStatus === OrderStatus.APPROVED
-      );
-    }
     return (
       order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL &&
-      this.auth.hasAnyRole(Role.SALESPERSON, Role.TEAM_LEAD)
+      this.auth.hasAnyRole(Role.ADMIN, Role.SALESPERSON, Role.TEAM_LEAD)
     );
   }
 
@@ -1952,25 +1947,6 @@ export class OrdersComponent implements OnInit, OnDestroy {
     return (
       !!order &&
       order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL &&
-      this.auth.hasAnyRole(Role.ADMIN)
-    );
-  }
-
-  /**
-   * Whether the acting role may edit this order's details (edit-order
-   * feature). Admin only, and only while the order hasn't moved past the
-   * editable statuses (mirrors the server-side {@code OrderNotEditableException}
-   * guard, so this is a UI convenience — the server enforces it regardless).
-   */
-  canEditOrder(order: OrderDetail | null): boolean {
-    // A Shopify order is managed automatically from the store — never editable here.
-    if (order?.source === 'SHOPIFY') {
-      return false;
-    }
-    return (
-      !!order &&
-      (order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL ||
-        order.orderStatus === OrderStatus.APPROVED) &&
       this.auth.hasAnyRole(Role.ADMIN)
     );
   }

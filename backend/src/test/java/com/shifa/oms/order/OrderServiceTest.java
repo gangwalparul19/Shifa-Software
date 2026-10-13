@@ -790,17 +790,19 @@ class OrderServiceTest {
     }
 
     @Test
-    void updateOrderAllowedWhileApproved() {
+    void updateOrderRejectedOnceApproved() {
+        // QuikShipX stale-data fix (#4a): an APPROVED order has already been
+        // published to QuikShipX, so it is no longer editable — editing is now
+        // restricted to PENDING_ADMIN_APPROVAL only. The order is left unchanged.
         OrderEntity order = editableOrder(22L, OrderStatus.APPROVED, 1, "100.00");
         when(orderRepository.findById(22L)).thenReturn(Optional.of(order));
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "150.00")));
 
         UpdateOrderRequest request = updateRequest(List.of(new LineItemRequest(1L, 1, null)));
 
-        OrderResponse response = service.updateOrder(22L, request, admin);
-
-        assertThat(response.orderStatus()).isEqualTo(OrderStatus.APPROVED);
-        assertThat(response.totalAmount()).isEqualByComparingTo("150.00");
+        assertThatThrownBy(() -> service.updateOrder(22L, request, admin))
+                .isInstanceOf(OrderNotEditableException.class);
+        assertThat(order.getCustomerName()).isEqualTo("Asha");
+        verify(productRepository, org.mockito.Mockito.never()).findById(any());
     }
 
     @Test

@@ -30,9 +30,9 @@ import {
  * quantity/rate), lead source, buyer GSTIN, order-level discount, and the order
  * note. Payment fields (amount received / screenshot) are intentionally not
  * editable here — payment stays governed by the existing payment-verification
- * flow. Only reachable while the order is still {@code Pending_Admin_Approval}
- * or {@code Approved}; the server rejects the edit with a 409 once fulfilment
- * has begun (label generated / packed / dispatched, etc.), which this page
+ * flow. Only reachable while the order is still {@code Pending_Admin_Approval};
+ * the server rejects the edit with a 409 once the order is approved (it has been
+ * published to QuikShipX by then) or fulfilment has begun, which this page
  * surfaces as an error and a link back to the order.
  *
  * <p>Reuses the same product/state typeaheads and price-band validation as the
@@ -156,9 +156,10 @@ export class EditOrderComponent implements OnInit {
       next: (o) => {
         this.orderCode.set(o.orderCode);
         this.orderStatus.set(o.orderStatus);
-        this.notEditable.set(
-          o.orderStatus !== 'PENDING_ADMIN_APPROVAL' && o.orderStatus !== 'APPROVED',
-        );
+        // Editable only while still awaiting approval: once approved the order
+        // has been sent to QuikShipX and can no longer be edited (QuikShipX
+        // stale-data fix — the server enforces the same PENDING-only window).
+        this.notEditable.set(o.orderStatus !== 'PENDING_ADMIN_APPROVAL');
         this.form.patchValue({
           customerName: o.customerName ?? '',
           customerMobile: o.customerMobile ?? '',
@@ -512,9 +513,9 @@ export class EditOrderComponent implements OnInit {
     };
 
     this.submitting.set(true);
-    // An admin edits via the admin endpoint (can also edit an APPROVED order);
-    // the creating salesperson / team lead edits their OWN order via the
-    // own-order endpoint (PENDING only). The server enforces both in either case.
+    // An admin edits via the admin endpoint; the creating salesperson / team
+    // lead edits their OWN order via the own-order endpoint. Both are now
+    // PENDING-approval only (QuikShipX stale-data fix) — the server enforces it.
     const save$ = this.auth.hasAnyRole(Role.ADMIN)
       ? this.orders.updateOrder(id, payload)
       : this.orders.updateOwnOrder(id, payload);

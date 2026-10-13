@@ -406,11 +406,16 @@ public class AdminOrderService {
         // event row commits atomically with the approval; a downstream posting failure can never
         // roll back or alter this order (additive — no change to existing behaviour/return value).
         outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_ORDER, saved.getId());
-        // QuikShipX (confirm-on-approve): enqueue a Confirmed status mirror in this
-        // same transaction when the integration is enabled AND the order is not
-        // flagged for in-house delivery (no-op otherwise) — an in-house order never
-        // touches the QuikShipX pipeline.
+        // QuikShipX (create-and-confirm ON APPROVAL): the order is published to
+        // QuikShipX here, at approval — NOT on punch — so the courier always
+        // receives the final, edited order details (fix for the stale-data
+        // incident). CREATE is enqueued first (lands the shipper order id), then
+        // CONFIRM (which chains to ALLOT); CONFIRM/ALLOT retry safely until CREATE
+        // has completed. Enqueued in this same transaction when the integration is
+        // enabled AND the order is not in-house (an in-house order never touches the
+        // QuikShipX pipeline).
         if (quikShipXProperties != null && quikShipXProperties.isEnabled() && !saved.isInHouseDelivery()) {
+            outboxEventPublisher.publishQuikShipXCreate(saved.getId(), saved.getOrderCode());
             outboxEventPublisher.publishQuikShipXConfirm(saved.getId(), saved.getOrderCode());
         }
         return OrderResponse.from(saved);
