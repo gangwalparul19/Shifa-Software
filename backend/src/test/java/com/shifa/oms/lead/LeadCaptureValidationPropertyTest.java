@@ -66,7 +66,8 @@ class LeadCaptureValidationPropertyTest {
         boolean expectValid = nameOk && sourceOk && noteOk && mobileOk;
 
         CreateLeadRequest request = new CreateLeadRequest(
-                c.name(), c.source(), c.sourceNote(), c.mobile(), null, null, null);
+                c.name(), c.source(), c.sourceNote(), c.mobile(), null, null, null, null,
+                null, null, null, null);
 
         if (expectValid) {
             LeadResponse response = service.capture(request, ACTOR);

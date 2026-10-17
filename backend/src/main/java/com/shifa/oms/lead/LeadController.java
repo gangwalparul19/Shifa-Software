@@ -2,6 +2,9 @@ package com.shifa.oms.lead;
 
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.CurrentUserService;
+import com.shifa.oms.lead.dto.AssignLeadRequest;
+import com.shifa.oms.lead.dto.BulkAssignLeadRequest;
+import com.shifa.oms.lead.dto.BulkAssignResult;
 import com.shifa.oms.lead.dto.CreateLeadRequest;
 import com.shifa.oms.lead.dto.FollowUpRequest;
 import com.shifa.oms.lead.dto.LeadConvertRequest;
@@ -12,11 +15,15 @@ import com.shifa.oms.lead.dto.LeadReports.PipelineReport;
 import com.shifa.oms.lead.dto.LeadResponse;
 import com.shifa.oms.lead.dto.LeadStatusChangeRequest;
 import com.shifa.oms.lead.dto.LeadSummaryResponse;
+import com.shifa.oms.lead.dto.LeadTagAssignRequest;
+import com.shifa.oms.lead.dto.LeadTagResponse;
 import com.shifa.oms.order.LeadSource;
+import com.shifa.oms.order.dto.AssignableCreatorResponse;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -72,14 +79,18 @@ public class LeadController {
         return leadService.capture(request, actor);
     }
 
-    /** Scoped lead list with optional name/mobile search and status/source filters (Req 3.4). */
+    /**
+     * Scoped lead list with optional name/mobile search, status/source filters
+     * (Req 3.4), and an admin-created filter (CRM expansion Req 3.3).
+     */
     @GetMapping
     public List<LeadSummaryResponse> list(
             @RequestParam(name = "q", required = false) String q,
             @RequestParam(name = "status", required = false) LeadStatus status,
-            @RequestParam(name = "source", required = false) LeadSource source) {
+            @RequestParam(name = "source", required = false) LeadSource source,
+            @RequestParam(name = "createdByAdmin", required = false) Boolean createdByAdmin) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
-        return leadService.list(q, status, source, actor);
+        return leadService.list(q, status, source, createdByAdmin, actor);
     }
 
     /** Active-lead pipeline counts per {@link LeadStatus} (Req 3.3), scoped. */
@@ -112,12 +123,68 @@ public class LeadController {
                 id, request.toStatus(), request.lostReason(), request.lostReasonNote(), actor);
     }
 
-    /** Set or clear the follow-up date (Req 5.1). */
+    /** Set or clear the follow-up date and optional time (Req 5.1, CRM expansion Req 6). */
     @PutMapping("/{id}/follow-up")
     public LeadResponse setFollowUp(@PathVariable Long id,
                                     @Valid @RequestBody FollowUpRequest request) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
-        return leadService.setFollowUp(id, request.followUpDate(), actor);
+        return leadService.setFollowUp(id, request.followUpDate(), request.followUpTime(), actor);
+    }
+
+    // --- Assignment (CRM expansion Req 1; ADMIN/TEAM_LEAD only) -------------
+
+    /** Assign/reassign a lead to a user or team (Req 1.2, 1.3, 1.5, 1.6). */
+    @PutMapping("/{id}/assign")
+    @PreAuthorize("hasAnyRole('ADMIN','TEAM_LEAD')")
+    public LeadResponse assign(@PathVariable Long id,
+                               @Valid @RequestBody AssignLeadRequest request) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        boolean roundRobin = Boolean.TRUE.equals(request.roundRobin());
+        return leadService.assign(id, request.toUserId(), roundRobin, actor);
+    }
+
+    /** Bulk reassign the selected leads with a per-lead result (Req 1.4). */
+    @PostMapping("/bulk-assign")
+    @PreAuthorize("hasAnyRole('ADMIN','TEAM_LEAD')")
+    public BulkAssignResult bulkAssign(@Valid @RequestBody BulkAssignLeadRequest request) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return leadService.bulkAssign(request.ids(), request.toUserId(), actor);
+    }
+
+    /**
+     * The users the caller may assign leads to (CRM expansion, Req 1): ADMIN sees
+     * all active salespeople + team leads; a TEAM_LEAD sees only their own team.
+     * Backs the assignee dropdown so it is populated for both roles (the admin
+     * users endpoint is ADMIN-only and left the picker empty for a team lead).
+     */
+    @GetMapping("/assignable-users")
+    @PreAuthorize("hasAnyRole('ADMIN','TEAM_LEAD')")
+    public List<AssignableCreatorResponse> assignableUsers() {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return leadService.assignableUsers(actor);
+    }
+
+    // --- Tags & call dispositions (CRM expansion Req 4, 5.1) ----------------
+
+    /** The active managed tag vocabulary (Req 4). Any lead role. */
+    @GetMapping("/tags")
+    public List<LeadTagResponse> tags() {
+        return leadService.listTags();
+    }
+
+    /** Add a tag to a lead, idempotently; allowed on terminal leads (Req 4, 5.1). */
+    @PostMapping("/{id}/tags")
+    public LeadResponse addTag(@PathVariable Long id,
+                               @Valid @RequestBody LeadTagAssignRequest request) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return leadService.addTag(id, request.tagId(), actor);
+    }
+
+    /** Remove a tag from a lead; allowed on terminal leads (Req 4, 5.1). */
+    @DeleteMapping("/{id}/tags/{tagId}")
+    public LeadResponse removeTag(@PathVariable Long id, @PathVariable Long tagId) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return leadService.removeTag(id, tagId, actor);
     }
 
     /** Edit capture fields while the lead is non-terminal (Req 3.6); 409 when terminal. */

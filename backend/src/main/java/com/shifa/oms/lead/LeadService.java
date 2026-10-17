@@ -1,12 +1,17 @@
 package com.shifa.oms.lead;
 
+import com.shifa.oms.adminnotification.StaffNotificationDispatcher;
 import com.shifa.oms.audit.AuditActions;
 import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.auth.AuthPrincipal;
+import com.shifa.oms.auth.Role;
 import com.shifa.oms.auth.SalespersonScopeResolver;
+import com.shifa.oms.auth.User;
+import com.shifa.oms.auth.UserRepository;
 import com.shifa.oms.common.IllegalLeadTransitionException;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.common.ValidationException;
+import com.shifa.oms.lead.dto.BulkAssignResult;
 import com.shifa.oms.lead.dto.CreateLeadRequest;
 import com.shifa.oms.lead.dto.LeadConvertRequest;
 import com.shifa.oms.lead.dto.LeadReports.BySourceReport;
@@ -15,18 +20,25 @@ import com.shifa.oms.lead.dto.LeadReports.LostReasonReport;
 import com.shifa.oms.lead.dto.LeadReports.PipelineReport;
 import com.shifa.oms.lead.dto.LeadResponse;
 import com.shifa.oms.lead.dto.LeadSummaryResponse;
+import com.shifa.oms.lead.dto.LeadTagResponse;
 import com.shifa.oms.order.LeadSource;
 import com.shifa.oms.order.OrderService;
+import com.shifa.oms.order.dto.AssignableCreatorResponse;
 import com.shifa.oms.order.dto.CreateOrderRequest;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.reporting.domain.DateRange;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -66,10 +78,17 @@ public class LeadService {
     /** Pure, stateless lead-report aggregator (design &sect;Reporting). */
     private static final LeadReportAggregator REPORTS = new LeadReportAggregator();
 
+    /** The default follow-up time-of-day when none is given (Req 6.1); 09:00 IST. */
+    private static final LocalTime DEFAULT_FOLLOW_UP_TIME = LocalTime.of(9, 0);
+
     private final LeadRepository leadRepository;
     private final SalespersonScopeResolver scopeResolver;
     private final AuditService auditService;
     private final OrderService orderService;
+    private final LeadTagRepository tagRepository;
+    private final LeadTagAssignmentRepository tagAssignmentRepository;
+    private final UserRepository userRepository;
+    private final StaffNotificationDispatcher notificationDispatcher;
     private final Clock clock;
 
     /**
@@ -83,20 +102,41 @@ public class LeadService {
     public LeadService(LeadRepository leadRepository,
                        SalespersonScopeResolver scopeResolver,
                        AuditService auditService,
-                       OrderService orderService) {
-        this(leadRepository, scopeResolver, auditService, orderService, Clock.systemDefaultZone());
+                       OrderService orderService,
+                       LeadTagRepository tagRepository,
+                       LeadTagAssignmentRepository tagAssignmentRepository,
+                       UserRepository userRepository,
+                       StaffNotificationDispatcher notificationDispatcher) {
+        this(leadRepository, scopeResolver, auditService, orderService, tagRepository,
+                tagAssignmentRepository, userRepository, notificationDispatcher,
+                Clock.systemDefaultZone());
     }
 
-    /** Test constructor with an injected clock (deterministic due-follow-up "today"). */
+    /**
+     * Test constructor with an injected clock (deterministic due-follow-up
+     * "today"). The CRM-expansion collaborators ({@code tagRepository},
+     * {@code tagAssignmentRepository}, {@code userRepository},
+     * {@code notificationDispatcher}) are nullable — the tag/assign features are
+     * no-ops when a dependency is absent, so tests that only exercise the shipped
+     * capture/transition/report flows can pass {@code null} for them.
+     */
     public LeadService(LeadRepository leadRepository,
                        SalespersonScopeResolver scopeResolver,
                        AuditService auditService,
                        OrderService orderService,
+                       LeadTagRepository tagRepository,
+                       LeadTagAssignmentRepository tagAssignmentRepository,
+                       UserRepository userRepository,
+                       StaffNotificationDispatcher notificationDispatcher,
                        Clock clock) {
         this.leadRepository = Objects.requireNonNull(leadRepository, "leadRepository");
         this.scopeResolver = Objects.requireNonNull(scopeResolver, "scopeResolver");
         this.auditService = Objects.requireNonNull(auditService, "auditService");
         this.orderService = Objects.requireNonNull(orderService, "orderService");
+        this.tagRepository = tagRepository;
+        this.tagAssignmentRepository = tagAssignmentRepository;
+        this.userRepository = userRepository;
+        this.notificationDispatcher = notificationDispatcher;
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -137,13 +177,22 @@ public class LeadService {
         lead.setLeadSourceNote(blankToNull(request.leadSourceNote()));
         lead.setNote(blankToNull(request.note()));
         lead.setFollowUpDate(request.followUpDate());
+        lead.setFollowUpTime(resolveFollowUpTime(request.followUpDate(), request.followUpTime()));
+        // CRM expansion Req 7: optional shipping address (pre-fills conversion).
+        lead.setAddressLine(blankToNull(request.addressLine()));
+        lead.setCity(blankToNull(request.city()));
+        lead.setState(blankToNull(request.state()));
+        lead.setPostalCode(blankToNull(request.postalCode()));
+        // CRM expansion: track the creator + the "Lead by Admin" marker (Req 3.1).
+        lead.setCreatedByUserId(actor.userId());
+        lead.setCreatedByAdmin(actor.role() == Role.ADMIN);
         // Creation history row: null from-status → initial NEW status (Req 2.1, 7.5).
         lead.addStatusHistory(new LeadStatusHistory(null, LeadStatus.INITIAL, actor.username()));
 
         LeadEntity saved = leadRepository.save(lead);
         auditService.record(AuditActions.LEAD_CAPTURED, AuditActions.ENTITY_LEAD, idOf(saved),
                 "Lead captured for " + name.trim() + " via " + source);
-        return LeadResponse.from(saved);
+        return LeadResponse.from(saved, tagsOf(saved.getId()));
     }
 
     // --- Transition (Req 2) -------------------------------------------------
@@ -194,28 +243,34 @@ public class LeadService {
         LeadEntity saved = leadRepository.save(lead);
         auditService.record(AuditActions.LEAD_STATUS_CHANGED, AuditActions.ENTITY_LEAD, idOf(saved),
                 "Lead " + id + " " + from + " \u2192 " + toStatus + " by " + actor.username());
-        return LeadResponse.from(saved);
+        return LeadResponse.from(saved, tagsOf(saved.getId()));
     }
 
-    // --- Follow-up (Req 5.1) ------------------------------------------------
+    // --- Follow-up (Req 5.1, CRM expansion Req 6) ---------------------------
 
     /**
-     * Sets or clears a lead's follow-up date (Req 5.1, 5.5). A {@code null} date
-     * clears it; setting/updating the date re-arms the reminder by clearing the
-     * "last reminded" marker so the lead can be reminded again on its new due day.
+     * Sets or clears a lead's follow-up date and optional time (Req 5.1, 5.5; CRM
+     * expansion Req 6). A {@code null} date clears both; setting/updating the date
+     * re-arms the reminder by clearing the "last reminded" marker so the lead can
+     * be reminded again on its new due moment. A {@code null} time with a non-null
+     * date falls back to the configured default time-of-day (Req 6.1), preserving
+     * today's date-only behaviour.
      */
     @Transactional
-    public LeadResponse setFollowUp(Long id, LocalDate followUpDate, AuthPrincipal actor) {
+    public LeadResponse setFollowUp(Long id, LocalDate followUpDate, LocalTime followUpTime,
+                                    AuthPrincipal actor) {
         Objects.requireNonNull(actor, "actor");
         LeadEntity lead = loadScoped(id, actor);
         lead.setFollowUpDate(followUpDate);
+        lead.setFollowUpTime(resolveFollowUpTime(followUpDate, followUpTime));
         lead.setRemindedOn(null);
         LeadEntity saved = leadRepository.save(lead);
         auditService.record(AuditActions.LEAD_FOLLOW_UP_SET, AuditActions.ENTITY_LEAD, idOf(saved),
                 followUpDate == null
                         ? "Lead " + id + " follow-up cleared"
-                        : "Lead " + id + " follow-up set to " + followUpDate);
-        return LeadResponse.from(saved);
+                        : "Lead " + id + " follow-up set to " + followUpDate
+                                + (saved.getFollowUpTime() != null ? " " + saved.getFollowUpTime() : ""));
+        return LeadResponse.from(saved, tagsOf(saved.getId()));
     }
 
     // --- Edit (Req 3.6) -----------------------------------------------------
@@ -260,16 +315,22 @@ public class LeadService {
         lead.setCustomerMobile(mobile);
         lead.setCustomerEmail(blankToNull(request.customerEmail()));
         lead.setNote(blankToNull(request.note()));
+        // CRM expansion Req 7: optional shipping address, editable while non-terminal.
+        lead.setAddressLine(blankToNull(request.addressLine()));
+        lead.setCity(blankToNull(request.city()));
+        lead.setState(blankToNull(request.state()));
+        lead.setPostalCode(blankToNull(request.postalCode()));
         if (request.followUpDate() != null && !request.followUpDate().equals(lead.getFollowUpDate())) {
             // Re-arm the reminder when the follow-up date changes (mirrors setFollowUp).
             lead.setRemindedOn(null);
         }
         lead.setFollowUpDate(request.followUpDate());
+        lead.setFollowUpTime(resolveFollowUpTime(request.followUpDate(), request.followUpTime()));
 
         LeadEntity saved = leadRepository.save(lead);
         auditService.record(AuditActions.LEAD_STATUS_CHANGED, AuditActions.ENTITY_LEAD, idOf(saved),
                 "Lead " + id + " capture fields edited by " + actor.username());
-        return LeadResponse.from(saved);
+        return LeadResponse.from(saved, tagsOf(saved.getId()));
     }
 
     // --- Convert (Req 4) ----------------------------------------------------
@@ -339,7 +400,242 @@ public class LeadService {
         auditService.record(AuditActions.LEAD_CONVERTED, AuditActions.ENTITY_LEAD, idOf(saved),
                 "Lead " + id + " converted to order " + order.id() + " (" + order.orderCode()
                         + ") by " + actor.username());
-        return LeadResponse.from(saved);
+        return LeadResponse.from(saved, tagsOf(saved.getId()));
+    }
+
+    // --- Assignment (CRM expansion Req 1) ----------------------------------
+
+    /**
+     * Assigns / reassigns a lead to {@code toUserId} (Req 1.2, 1.3, 1.5, 1.6).
+     * Only an ADMIN or a TEAM_LEAD may assign — a SALESPERSON is rejected with a
+     * 403 ({@link AccessDeniedException}). The lead's {@link LeadEntity#ownerUserId}
+     * (assignee) and {@link LeadEntity#assignedAt} are updated while
+     * {@link LeadEntity#createdByUserId} (the original creator) is preserved
+     * (Req 1.1). The change is audited and the new assignee is notified (Req 1.6).
+     *
+     * <p>Team round-robin (Req 1.3): when {@code roundRobin} is true and
+     * {@code toUserId} is a {@link Role#TEAM_LEAD}, the lead is distributed to the
+     * team member with the fewest currently-open leads (tie-break by lowest user
+     * id for determinism) rather than to the lead themselves; an empty team falls
+     * back to the team lead. When {@code roundRobin} is false the lead is assigned
+     * to {@code toUserId} directly (today's behaviour).
+     */
+    @Transactional
+    public LeadResponse assign(Long id, Long toUserId, boolean roundRobin, AuthPrincipal actor) {
+        Objects.requireNonNull(actor, "actor");
+        requireAssigner(actor);
+        if (toUserId == null) {
+            throw new ValidationException("toUserId is required.");
+        }
+        LeadEntity lead = leadRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Lead " + id + " does not exist."));
+        Long resolved = resolveAssignee(toUserId, roundRobin);
+        reassign(lead, resolved, actor);
+        LeadEntity saved = leadRepository.save(lead);
+        return LeadResponse.from(saved, tagsOf(saved.getId()));
+    }
+
+    /**
+     * Resolves the actual assignee for a single assign (Req 1.3). With
+     * round-robin off, or when the team round-robin cannot be resolved (no
+     * {@code UserRepository}, {@code toUserId} is not a team lead, or the team is
+     * empty), the given {@code toUserId} is used directly. Otherwise the
+     * least-loaded team member (fewest open leads, tie-break by id) is chosen.
+     */
+    private Long resolveAssignee(Long toUserId, boolean roundRobin) {
+        if (!roundRobin || userRepository == null) {
+            return toUserId;
+        }
+        User target = userRepository.findById(toUserId).orElse(null);
+        if (target == null || target.getRole() != Role.TEAM_LEAD) {
+            return toUserId; // only a team lead fans out round-robin
+        }
+        List<Long> memberIds = userRepository.findByTeamLeadIdOrderByFullNameAsc(toUserId).stream()
+                .filter(User::isActive)
+                .map(User::getId)
+                .toList();
+        if (memberIds.isEmpty()) {
+            return toUserId; // no members → keep the lead with the team lead
+        }
+        Map<Long, Long> openByOwner = new LinkedHashMap<>();
+        for (LeadRepository.OpenLeadCount row : leadRepository.countOpenLeadsByOwner(memberIds)) {
+            openByOwner.put(row.getOwnerId(), row.getCnt());
+        }
+        return chooseRoundRobinMember(memberIds, openByOwner);
+    }
+
+    /**
+     * Pure round-robin member selection (CRM expansion, Req 1.3): returns the
+     * member id with the fewest currently-open leads, breaking ties by the lowest
+     * user id so the choice is deterministic. {@code openCountByOwner} maps an
+     * owner id to its open-lead count; a member absent from the map counts as 0.
+     * Expects a non-empty {@code memberIds}.
+     */
+    static Long chooseRoundRobinMember(List<Long> memberIds, Map<Long, Long> openCountByOwner) {
+        Long best = null;
+        long bestCount = Long.MAX_VALUE;
+        for (Long memberId : memberIds) {
+            if (memberId == null) {
+                continue;
+            }
+            long open = openCountByOwner == null ? 0L
+                    : openCountByOwner.getOrDefault(memberId, 0L);
+            if (open < bestCount || (open == bestCount && (best == null || memberId < best))) {
+                best = memberId;
+                bestCount = open;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Bulk reassigns the selected leads to {@code toUserId} in a single action,
+     * reporting per-lead success/failure (Req 1.4). ADMIN/TEAM_LEAD only. A lead
+     * that does not exist is skipped with a reason; the rest still reassign.
+     */
+    @Transactional
+    public BulkAssignResult bulkAssign(List<Long> ids, Long toUserId, AuthPrincipal actor) {
+        Objects.requireNonNull(actor, "actor");
+        requireAssigner(actor);
+        if (toUserId == null) {
+            throw new ValidationException("toUserId is required.");
+        }
+        BulkAssignResult.Builder result = new BulkAssignResult.Builder();
+        if (ids == null || ids.isEmpty()) {
+            return result.build();
+        }
+        for (Long id : ids) {
+            if (id == null) {
+                continue;
+            }
+            Optional<LeadEntity> found = leadRepository.findById(id);
+            if (found.isEmpty()) {
+                result.skipped(id, "Lead does not exist.");
+                continue;
+            }
+            LeadEntity lead = found.get();
+            reassign(lead, toUserId, actor);
+            leadRepository.save(lead);
+            result.succeeded(id);
+        }
+        return result.build();
+    }
+
+    /** Applies the reassignment to a loaded lead: set owner + assigned_at, audit, notify. */
+    private void reassign(LeadEntity lead, Long toUserId, AuthPrincipal actor) {
+        Long from = lead.getOwnerUserId();
+        lead.setOwnerUserId(toUserId);
+        lead.setAssignedAt(LocalDateTime.now(clock));
+        auditService.record(AuditActions.LEAD_ASSIGNED, AuditActions.ENTITY_LEAD, idOf(lead),
+                "Lead " + lead.getId() + " assigned from " + from + " to " + toUserId
+                        + " by " + actor.username());
+        if (notificationDispatcher != null && !Objects.equals(from, toUserId)) {
+            notificationDispatcher.dispatchToUser(
+                    "LEAD_ASSIGNED",
+                    "New lead assigned",
+                    "Lead \"" + lead.getCustomerName() + "\" was assigned to you.",
+                    "info", null, null, null, toUserId);
+        }
+    }
+
+    /**
+     * The users the caller may assign leads to (CRM expansion, Req 1), backing
+     * the assignee picker so it works for a TEAM_LEAD (whose scope is just their
+     * own team) as well as an ADMIN. ADMIN sees all active team leads + active
+     * salespeople (team leads first, then salespeople); a TEAM_LEAD sees their
+     * own active team members plus themselves. Returns empty when the staff
+     * directory is unavailable. ADMIN/TEAM_LEAD only.
+     */
+    @Transactional(readOnly = true)
+    public List<AssignableCreatorResponse> assignableUsers(AuthPrincipal actor) {
+        Objects.requireNonNull(actor, "actor");
+        requireAssigner(actor);
+        if (userRepository == null) {
+            return List.of();
+        }
+        if (actor.role() == Role.TEAM_LEAD) {
+            List<AssignableCreatorResponse> result = new ArrayList<>();
+            userRepository.findById(actor.userId())
+                    .filter(User::isActive)
+                    .ifPresent(self -> result.add(AssignableCreatorResponse.from(self)));
+            userRepository.findByTeamLeadIdOrderByFullNameAsc(actor.userId()).stream()
+                    .filter(User::isActive)
+                    .map(AssignableCreatorResponse::from)
+                    .forEach(result::add);
+            return result;
+        }
+        // ADMIN: all active team leads first, then all active salespeople.
+        List<User> users = new ArrayList<>();
+        users.addAll(userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.TEAM_LEAD));
+        users.addAll(userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.SALESPERSON));
+        return users.stream()
+                .filter(User::isActive)
+                .map(AssignableCreatorResponse::from)
+                .toList();
+    }
+
+    /** Only ADMIN / TEAM_LEAD may assign leads (Req 1.5): a SALESPERSON gets 403. */
+    private static void requireAssigner(AuthPrincipal actor) {
+        if (actor.role() != Role.ADMIN && actor.role() != Role.TEAM_LEAD) {
+            throw new AccessDeniedException("Only an admin or team lead may assign leads.");
+        }
+    }
+
+    // --- Tags & call dispositions (CRM expansion Req 4, 5.1) ----------------
+
+    /** The active managed tag vocabulary, in display order (Req 4). */
+    @Transactional(readOnly = true)
+    public List<LeadTagResponse> listTags() {
+        if (tagRepository == null) {
+            return List.of();
+        }
+        return tagRepository.findByActiveTrueOrderBySortOrderAscIdAsc().stream()
+                .map(LeadTagResponse::from)
+                .toList();
+    }
+
+    /**
+     * Adds a tag to a lead, idempotently (Req 4.1, 4.4). Allowed on terminal
+     * WON/LOST leads too (Req 5.1) — tagging never loads/mutates the lead
+     * aggregate, only the join row. Salesperson-scoped: a salesperson may tag only
+     * their own lead (404 otherwise). Audited.
+     */
+    @Transactional
+    public LeadResponse addTag(Long leadId, Long tagId, AuthPrincipal actor) {
+        Objects.requireNonNull(actor, "actor");
+        requireTagSupport();
+        LeadEntity lead = loadScoped(leadId, actor);
+        LeadTag tag = tagRepository.findById(tagId)
+                .orElseThrow(() -> new ResourceNotFoundException("Tag " + tagId + " does not exist."));
+        if (!tagAssignmentRepository.existsByLeadIdAndTagId(leadId, tagId)) {
+            tagAssignmentRepository.save(new LeadTagAssignment(leadId, tagId, actor.userId()));
+            auditService.record(AuditActions.LEAD_TAG_ADDED, AuditActions.ENTITY_LEAD, idOf(lead),
+                    "Lead " + leadId + " tagged \"" + tag.getName() + "\" by " + actor.username());
+        }
+        return LeadResponse.from(lead, tagsOf(leadId));
+    }
+
+    /**
+     * Removes a tag from a lead (Req 4.4, 5.1). Allowed on terminal leads too.
+     * Salesperson-scoped. Audited only when a row was actually removed.
+     */
+    @Transactional
+    public LeadResponse removeTag(Long leadId, Long tagId, AuthPrincipal actor) {
+        Objects.requireNonNull(actor, "actor");
+        requireTagSupport();
+        LeadEntity lead = loadScoped(leadId, actor);
+        int removed = tagAssignmentRepository.deleteByLeadIdAndTagId(leadId, tagId);
+        if (removed > 0) {
+            auditService.record(AuditActions.LEAD_TAG_REMOVED, AuditActions.ENTITY_LEAD, idOf(lead),
+                    "Lead " + leadId + " tag " + tagId + " removed by " + actor.username());
+        }
+        return LeadResponse.from(lead, tagsOf(leadId));
+    }
+
+    private void requireTagSupport() {
+        if (tagRepository == null || tagAssignmentRepository == null) {
+            throw new IllegalStateException("Lead tag support is not configured.");
+        }
     }
 
     // --- Scoped reads (Req 3) ----------------------------------------------
@@ -351,20 +647,25 @@ public class LeadService {
      */
     @Transactional(readOnly = true)
     public List<LeadSummaryResponse> list(String q, LeadStatus status, LeadSource source,
-                                          AuthPrincipal actor) {
+                                          Boolean createdByAdmin, AuthPrincipal actor) {
         Long ownerUserId = scopeResolver.creatorConstraint(actor).orElse(null);
         String term = (q == null || q.isBlank()) ? null : q.trim();
         String statusName = status == null ? null : status.name();
         String sourceName = source == null ? null : source.name();
-        return leadRepository.search(ownerUserId, term, statusName, sourceName).stream()
-                .map(LeadSummaryResponse::from)
+        List<LeadEntity> leads =
+                leadRepository.search(ownerUserId, term, statusName, sourceName, createdByAdmin);
+        Map<Long, List<String>> tagNames = tagNamesForLeads(leads);
+        return leads.stream()
+                .map(lead -> LeadSummaryResponse.from(
+                        lead, tagNames.getOrDefault(lead.getId(), List.of())))
                 .toList();
     }
 
-    /** Scoped lead detail incl. status history (Req 3.5); 404 when out of scope (Req 3.1). */
+    /** Scoped lead detail incl. status history + tags (Req 3.5); 404 when out of scope (Req 3.1). */
     @Transactional(readOnly = true)
     public LeadResponse detail(Long id, AuthPrincipal actor) {
-        return LeadResponse.from(loadScoped(id, actor));
+        LeadEntity lead = loadScoped(id, actor);
+        return LeadResponse.from(lead, tagsOf(lead.getId()));
     }
 
     /**
@@ -457,6 +758,70 @@ public class LeadService {
     }
 
     // --- Internal helpers ---------------------------------------------------
+
+    /**
+     * Resolves the stored follow-up time (Req 6.1): a cleared date clears the time
+     * too; a non-null date with a null time falls back to the configured default
+     * time-of-day so existing date-only leads keep today's behaviour.
+     */
+    private static LocalTime resolveFollowUpTime(LocalDate date, LocalTime time) {
+        if (date == null) {
+            return null;
+        }
+        return time != null ? time : DEFAULT_FOLLOW_UP_TIME;
+    }
+
+    /** The tag definitions currently applied to a lead (empty when unconfigured). */
+    private List<LeadTagResponse> tagsOf(Long leadId) {
+        if (leadId == null || tagRepository == null || tagAssignmentRepository == null) {
+            return List.of();
+        }
+        List<LeadTagAssignment> assignments = tagAssignmentRepository.findByLeadId(leadId);
+        if (assignments.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, LeadTag> byId = new LinkedHashMap<>();
+        for (LeadTag tag : tagRepository.findAllById(
+                assignments.stream().map(LeadTagAssignment::getTagId).toList())) {
+            byId.put(tag.getId(), tag);
+        }
+        List<LeadTagResponse> tags = new ArrayList<>();
+        for (LeadTagAssignment a : assignments) {
+            LeadTag tag = byId.get(a.getTagId());
+            if (tag != null) {
+                tags.add(LeadTagResponse.from(tag));
+            }
+        }
+        return tags;
+    }
+
+    /** Batch-loads the tag names per lead for a result list (one query, no N+1). */
+    private Map<Long, List<String>> tagNamesForLeads(List<LeadEntity> leads) {
+        if (leads.isEmpty() || tagRepository == null || tagAssignmentRepository == null) {
+            return Map.of();
+        }
+        List<Long> leadIds = leads.stream().map(LeadEntity::getId).filter(Objects::nonNull).toList();
+        if (leadIds.isEmpty()) {
+            return Map.of();
+        }
+        List<LeadTagAssignment> assignments = tagAssignmentRepository.findByLeadIdIn(leadIds);
+        if (assignments.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, String> nameById = new LinkedHashMap<>();
+        for (LeadTag tag : tagRepository.findAllById(
+                assignments.stream().map(LeadTagAssignment::getTagId).distinct().toList())) {
+            nameById.put(tag.getId(), tag.getName());
+        }
+        Map<Long, List<String>> result = new LinkedHashMap<>();
+        for (LeadTagAssignment a : assignments) {
+            String name = nameById.get(a.getTagId());
+            if (name != null) {
+                result.computeIfAbsent(a.getLeadId(), k -> new ArrayList<>()).add(name);
+            }
+        }
+        return result;
+    }
 
     /** Loads a lead, enforcing salesperson scoping (Req 3.1) with a 404 when out of scope. */
     private LeadEntity loadScoped(Long id, AuthPrincipal actor) {

@@ -73,12 +73,14 @@ public interface LeadRepository extends JpaRepository<LeadEntity, Long> {
                  OR l.customer_mobile      LIKE CONCAT('%', :term, '%') )
               AND (:status IS NULL OR l.status = :status)
               AND (:source IS NULL OR l.lead_source = :source)
+              AND (:createdByAdmin IS NULL OR l.created_by_admin = :createdByAdmin)
             ORDER BY l.created_at DESC
             """, nativeQuery = true)
     List<LeadEntity> search(@Param("ownerUserId") Long ownerUserId,
                             @Param("term") String term,
                             @Param("status") String status,
-                            @Param("source") String source);
+                            @Param("source") String source,
+                            @Param("createdByAdmin") Boolean createdByAdmin);
 
     /**
      * The acting user's non-terminal leads whose {@code follow_up_date} is on or
@@ -136,5 +138,30 @@ public interface LeadRepository extends JpaRepository<LeadEntity, Long> {
         String getStatus();
 
         long getCount();
+    }
+
+    /**
+     * The number of currently-open (non-terminal: NOT WON/LOST) leads owned by
+     * each of the given users — the load signal the team round-robin assignment
+     * uses to pick the least-loaded member (CRM expansion, Req 1.3). Owners with
+     * zero open leads do not appear; the caller treats a missing owner as 0.
+     */
+    @Query("""
+            SELECT l.ownerUserId AS ownerId, COUNT(l) AS cnt
+            FROM LeadEntity l
+            WHERE l.ownerUserId IN :ownerIds
+              AND l.status NOT IN (com.shifa.oms.lead.LeadStatus.WON, com.shifa.oms.lead.LeadStatus.LOST)
+            GROUP BY l.ownerUserId
+            """)
+    List<OpenLeadCount> countOpenLeadsByOwner(@Param("ownerIds") java.util.Collection<Long> ownerIds);
+
+    /**
+     * Projection over {@link #countOpenLeadsByOwner(java.util.Collection)}: an
+     * owner user id and their current open-lead count.
+     */
+    interface OpenLeadCount {
+        Long getOwnerId();
+
+        long getCnt();
     }
 }

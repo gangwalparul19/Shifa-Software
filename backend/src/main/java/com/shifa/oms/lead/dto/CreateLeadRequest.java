@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 
 /**
  * Lead-capture payload for {@code POST /api/leads} (Requirement 1, design
@@ -41,6 +42,22 @@ public record CreateLeadRequest(
         @Size(max = 1000, message = "note must be at most 1000 characters")
         String note,
 
-        LocalDate followUpDate
+        LocalDate followUpDate,
+
+        /** Optional follow-up time-of-day (CRM expansion, Req 6); null uses the default. */
+        LocalTime followUpTime,
+
+        /** Optional shipping address (CRM expansion, Req 7); pre-fills conversion. */
+        @Size(max = 250, message = "addressLine must be at most 250 characters")
+        String addressLine,
+
+        @Size(max = 100, message = "city must be at most 100 characters")
+        String city,
+
+        @Size(max = 100, message = "state must be at most 100 characters")
+        String state,
+
+        @Pattern(regexp = "(\\d{6})?", message = "postalCode must be a 6-digit PIN")
+        String postalCode
 ) {
 }

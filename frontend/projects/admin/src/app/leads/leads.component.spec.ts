@@ -27,6 +27,8 @@ const LEADS: LeadSummary[] = [
     leadSource: 'WHATSAPP',
     status: 'NEW',
     ownerUserId: 5,
+    createdByAdmin: false,
+    tags: [],
     createdAt: '2024-06-01T10:00:00',
   },
   {
@@ -35,6 +37,8 @@ const LEADS: LeadSummary[] = [
     leadSource: 'INSTAGRAM',
     status: 'QUOTED',
     ownerUserId: 5,
+    createdByAdmin: true,
+    tags: ['DND'],
     createdAt: '2024-06-02T10:00:00',
   },
 ];
@@ -46,6 +50,8 @@ const DETAIL: LeadDetail = {
   leadSource: 'WHATSAPP',
   status: 'NEW',
   ownerUserId: 5,
+  createdByAdmin: false,
+  tags: [],
   statusHistory: [{ fromStatus: null, toStatus: 'NEW', actor: 'sales1', changedAt: '2024-06-01T10:00:00' }],
 };
 
@@ -58,6 +64,12 @@ class LeadsServiceStub {
   }
   detail() {
     return of(DETAIL);
+  }
+  listTags() {
+    return of([]);
+  }
+  assignableUsers() {
+    return of([]);
   }
 }
 

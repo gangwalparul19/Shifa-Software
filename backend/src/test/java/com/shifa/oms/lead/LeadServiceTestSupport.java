@@ -94,11 +94,13 @@ final class LeadServiceTestSupport {
         });
 
         lenient().when(repo.search(nullable(Long.class), nullable(String.class),
-                nullable(String.class), nullable(String.class))).thenAnswer(inv -> {
+                nullable(String.class), nullable(String.class), nullable(Boolean.class)))
+                .thenAnswer(inv -> {
             Long owner = inv.getArgument(0);
             String term = inv.getArgument(1);
             String status = inv.getArgument(2);
             String source = inv.getArgument(3);
+            Boolean createdByAdmin = inv.getArgument(4);
             List<LeadEntity> result = new ArrayList<>();
             for (LeadEntity l : scoped(store, owner)) {
                 if (term != null) {
@@ -114,6 +116,9 @@ final class LeadServiceTestSupport {
                     continue;
                 }
                 if (source != null && !source.equals(l.getLeadSource().name())) {
+                    continue;
+                }
+                if (createdByAdmin != null && createdByAdmin != l.isCreatedByAdmin()) {
                     continue;
                 }
                 result.add(l);
@@ -140,7 +145,7 @@ final class LeadServiceTestSupport {
     /** A real {@link LeadService} over the in-memory repo and a recording audit. */
     static LeadService service(LeadRepository repo, AtomicInteger auditCount, Clock clock) {
         return new LeadService(repo, new SalespersonScopeResolver(), recordingAudit(auditCount),
-                new NoOpOrderService(), clock);
+                new NoOpOrderService(), null, null, null, null, clock);
     }
 
     /**
@@ -152,7 +157,7 @@ final class LeadServiceTestSupport {
     static LeadService service(LeadRepository repo, AtomicInteger auditCount,
                                com.shifa.oms.order.OrderService orderService, Clock clock) {
         return new LeadService(repo, new SalespersonScopeResolver(), recordingAudit(auditCount),
-                orderService, clock);
+                orderService, null, null, null, null, clock);
     }
 
     /** A no-op {@link com.shifa.oms.order.OrderService} for tests that never convert. */

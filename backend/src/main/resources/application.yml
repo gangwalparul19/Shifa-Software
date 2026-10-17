@@ -251,6 +251,11 @@ app:
       # Follow-up reminder job schedule (design §Follow-up Reminders). Default
       # daily at 09:00; each due lead is reminded at most once per due day.
       cron: ${LEAD_REMINDER_CRON:0 0 9 * * *}
+  crm:
+    lead-import:
+      # Maximum data rows accepted in a single bulk lead upload (CRM expansion
+      # Req 2.4); an oversized file is rejected with a clear 400.
+      max-rows: ${CRM_LEAD_IMPORT_MAX_ROWS:2000}
   insights:
     # Statistical insights engine (statistical-insights-engine, design §Config).
     # Nightly computation schedule (default daily 02:00) + the tunable thresholds

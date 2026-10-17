@@ -2,16 +2,20 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
 import {
+  AssignableUser,
+  BulkAssignResult,
   BySourceReport,
   ConversionReport,
   CreateLeadRequest,
   FollowUpRequest,
   LeadConvertRequest,
   LeadDetail,
+  LeadImportResult,
   LeadListQuery,
   LeadStatus,
   LeadStatusChangeRequest,
   LeadSummary,
+  LeadTag,
   LostReasonReport,
   PipelineReport,
 } from './leads.model';
@@ -43,6 +47,9 @@ export class LeadsService {
     }
     if (query.source) {
       params['source'] = query.source;
+    }
+    if (query.createdByAdmin != null) {
+      params['createdByAdmin'] = String(query.createdByAdmin);
     }
     return this.api.get<LeadSummary[]>(
       '/api/leads',
@@ -83,6 +90,53 @@ export class LeadsService {
   /** Convert a lead into an order and mark it WON (Req 4); 409 if already terminal. */
   convert(id: number, payload: LeadConvertRequest): Observable<LeadDetail> {
     return this.api.post<LeadDetail>(`/api/leads/${id}/convert`, payload);
+  }
+
+  // --- Assignment (CRM expansion Req 1; ADMIN/TEAM_LEAD) ------------------
+
+  /** Assign/reassign a lead to a user or team (Req 1); 403 for a salesperson. */
+  assign(id: number, toUserId: number, roundRobin = false): Observable<LeadDetail> {
+    return this.api.put<LeadDetail>(`/api/leads/${id}/assign`, { toUserId, roundRobin });
+  }
+
+  /** Bulk reassign the selected leads to one user, per-lead result (Req 1.4). */
+  bulkAssign(ids: number[], toUserId: number): Observable<BulkAssignResult> {
+    return this.api.post<BulkAssignResult>('/api/leads/bulk-assign', { ids, toUserId });
+  }
+
+  /**
+   * The users the caller may assign leads to (Req 1): ADMIN gets all active
+   * salespeople + team leads, a TEAM_LEAD gets only their own team. Backs the
+   * assignee dropdown for both roles (the admin users endpoint is ADMIN-only).
+   */
+  assignableUsers(): Observable<AssignableUser[]> {
+    return this.api.get<AssignableUser[]>('/api/leads/assignable-users');
+  }
+
+  // --- Tags & call dispositions (CRM expansion Req 4) ---------------------
+
+  /** The active managed tag vocabulary (Req 4). */
+  listTags(): Observable<LeadTag[]> {
+    return this.api.get<LeadTag[]>('/api/leads/tags');
+  }
+
+  /** Add a tag to a lead (idempotent; allowed on terminal leads) (Req 4, 5.1). */
+  addTag(id: number, tagId: number): Observable<LeadDetail> {
+    return this.api.post<LeadDetail>(`/api/leads/${id}/tags`, { tagId });
+  }
+
+  /** Remove a tag from a lead (allowed on terminal leads) (Req 4, 5.1). */
+  removeTag(id: number, tagId: number): Observable<LeadDetail> {
+    return this.api.delete<LeadDetail>(`/api/leads/${id}/tags/${tagId}`);
+  }
+
+  // --- Bulk upload (CRM expansion Req 2; ADMIN) ---------------------------
+
+  /** Upload a CSV/Excel file of leads; returns a created/skipped summary (Req 2). */
+  importLeads(file: File): Observable<LeadImportResult> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.api.post<LeadImportResult>('/api/admin/leads/import', form);
   }
 
   // --- Reports (Req 6) ----------------------------------------------------

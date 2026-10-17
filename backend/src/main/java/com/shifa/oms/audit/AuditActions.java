@@ -91,6 +91,14 @@ public final class AuditActions {
     public static final String LEAD_STATUS_CHANGED = "LEAD_STATUS_CHANGED";
     public static final String LEAD_FOLLOW_UP_SET = "LEAD_FOLLOW_UP_SET";
     public static final String LEAD_CONVERTED = "LEAD_CONVERTED";
+    /** A lead was (re)assigned to a different owner (CRM expansion Req 1). */
+    public static final String LEAD_ASSIGNED = "LEAD_ASSIGNED";
+    /** A tag/call-disposition was added to a lead (CRM expansion Req 4). */
+    public static final String LEAD_TAG_ADDED = "LEAD_TAG_ADDED";
+    /** A tag/call-disposition was removed from a lead (CRM expansion Req 4). */
+    public static final String LEAD_TAG_REMOVED = "LEAD_TAG_REMOVED";
+    /** A batch of leads was bulk-imported from a CSV/Excel upload (CRM expansion Req 2). */
+    public static final String LEAD_IMPORTED = "LEAD_IMPORTED";
 
     /** A nightly/on-demand statistical-insights computation run (statistical-insights-engine). */
     public static final String INSIGHTS_COMPUTED = "INSIGHTS_COMPUTED";

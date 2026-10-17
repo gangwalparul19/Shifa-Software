@@ -62,13 +62,13 @@ class LeadScopingPropertyTest {
         AuthPrincipal admin = new AuthPrincipal(99L, "admin", Role.ADMIN);
 
         // --- Salesperson list: exactly their own leads.
-        List<LeadSummaryResponse> visible = service.list(null, null, null, salesperson);
+        List<LeadSummaryResponse> visible = service.list(null, null, null, null, salesperson);
         assertThat(visible).allMatch(l -> l.ownerUserId() == salespersonId);
         long expectedOwn = store.stream().filter(l -> l.getOwnerUserId() == salespersonId).count();
         assertThat(visible).hasSize((int) expectedOwn);
 
         // --- Admin list: unscoped (every lead).
-        assertThat(service.list(null, null, null, admin)).hasSize(store.size());
+        assertThat(service.list(null, null, null, null, admin)).hasSize(store.size());
 
         // --- Detail scoping: own = ok; out-of-scope id = 404.
         for (LeadEntity lead : store) {

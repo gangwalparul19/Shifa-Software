@@ -59,6 +59,13 @@ export interface CreateLeadRequest {
   customerEmail?: string;
   note?: string;
   followUpDate?: string | null;
+  /** Optional follow-up time-of-day (CRM expansion, Req 6), {@code HH:mm}. */
+  followUpTime?: string | null;
+  /** Optional shipping address (CRM expansion, Req 7); pre-fills conversion. */
+  addressLine?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
 }
 
 /** One status-history row on the lead detail trail (backend {@code StatusHistoryEntry}). */
@@ -85,11 +92,34 @@ export interface LeadDetail {
   lostReasonNote?: string | null;
   note?: string | null;
   followUpDate?: string | null;
+  /** Optional follow-up time-of-day (CRM expansion, Req 6), {@code HH:mm[:ss]}. */
+  followUpTime?: string | null;
   ownerUserId: number;
+  /** The original creator (preserved across reassignment, Req 1.1). */
+  createdByUserId?: number | null;
+  /** Whether an admin created/uploaded the lead — "Lead by Admin" (Req 3). */
+  createdByAdmin: boolean;
+  /** When the current assignee was set (Req 1.2). */
+  assignedAt?: string | null;
+  /** Optional shipping address captured with the lead (CRM expansion, Req 7). */
+  addressLine?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
   convertedOrderId?: number | null;
   createdAt?: string;
   updatedAt?: string;
+  /** Tags applied to the lead (CRM expansion, Req 4). */
+  tags: LeadTag[];
   statusHistory: LeadStatusHistoryEntry[];
+}
+
+/** A managed Lead_Tag definition (backend {@code LeadTagResponse}). */
+export interface LeadTag {
+  id: number;
+  name: string;
+  color?: string | null;
+  kind: string;
 }
 
 /**
@@ -103,9 +133,71 @@ export interface LeadSummary {
   leadSource: LeadSource;
   status: LeadStatus;
   followUpDate?: string | null;
+  /** Optional follow-up time-of-day (CRM expansion, Req 6). */
+  followUpTime?: string | null;
   ownerUserId: number;
+  /** Whether an admin created/uploaded the lead — "Lead by Admin" (Req 3). */
+  createdByAdmin: boolean;
+  /** When the current assignee was set (Req 1.2). */
+  assignedAt?: string | null;
   convertedOrderId?: number | null;
   createdAt?: string;
+  /** Lightweight list of applied tag names (CRM expansion, Req 4). */
+  tags: string[];
+}
+
+/** Assign/reassign payload for `PUT /api/leads/{id}/assign` (Req 1). */
+export interface AssignLeadRequest {
+  toUserId: number;
+  roundRobin?: boolean;
+}
+
+/** Bulk assign payload for `POST /api/leads/bulk-assign` (Req 1.4). */
+export interface BulkAssignLeadRequest {
+  ids: number[];
+  toUserId: number;
+}
+
+/**
+ * One user the caller may assign leads to, from
+ * {@code GET /api/leads/assignable-users} (mirrors the backend
+ * {@code AssignableCreatorResponse}). ADMIN gets all active salespeople + team
+ * leads; a TEAM_LEAD gets only their own team (so the picker is populated for
+ * both roles, unlike the ADMIN-only users endpoint).
+ */
+export interface AssignableUser {
+  id: number;
+  name: string;
+  role: string;
+}
+
+/** One skipped lead in a bulk-assign result. */
+export interface BulkAssignSkipped {
+  id: number;
+  reason: string;
+}
+
+/** Per-lead result of a bulk reassignment (Req 1.4). */
+export interface BulkAssignResult {
+  succeeded: number[];
+  skipped: BulkAssignSkipped[];
+}
+
+/** One skipped row in a bulk lead import. */
+export interface LeadImportSkipped {
+  row: number;
+  reason: string;
+}
+
+/** Result of a bulk lead upload (Req 2). */
+export interface LeadImportResult {
+  created: number;
+  skipped: LeadImportSkipped[];
+}
+
+/** Add-tag payload for `POST /api/leads/{id}/tags` (Req 4). */
+export interface LeadTagAssignRequest {
+  tagId: number;
 }
 
 /** Advance-status payload for {@code POST /api/leads/{id}/status} (backend {@code LeadStatusChangeRequest}). */
@@ -118,6 +210,8 @@ export interface LeadStatusChangeRequest {
 /** Set/clear follow-up payload for {@code PUT /api/leads/{id}/follow-up}. */
 export interface FollowUpRequest {
   followUpDate: string | null;
+  /** Optional follow-up time-of-day (CRM expansion, Req 6), {@code HH:mm}. */
+  followUpTime?: string | null;
 }
 
 /**
@@ -151,6 +245,8 @@ export interface LeadListQuery {
   q?: string | null;
   status?: LeadStatus | null;
   source?: LeadSource | null;
+  /** Admin-created filter (CRM expansion, Req 3.3): true = Lead by Admin only. */
+  createdByAdmin?: boolean | null;
 }
 
 // --- Reports (Req 6) -------------------------------------------------------

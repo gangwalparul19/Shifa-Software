@@ -8,13 +8,15 @@ import com.shifa.oms.order.LeadSource;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 
 /**
  * Full lead detail returned by {@code POST /api/leads} and
  * {@code GET /api/leads/{id}} (Req 3.5, design &sect;API). Carries the capture
- * fields, current status + lost reason, follow-up date, owner, the linked order
- * (when WON), and the ordered status history.
+ * fields, current status + lost reason, follow-up date/time, creator/assignee,
+ * the admin-created marker, the linked order (when WON), the applied tags, and
+ * the ordered status history.
  */
 public record LeadResponse(
         Long id,
@@ -28,10 +30,19 @@ public record LeadResponse(
         String lostReasonNote,
         String note,
         LocalDate followUpDate,
+        LocalTime followUpTime,
         Long ownerUserId,
+        Long createdByUserId,
+        boolean createdByAdmin,
+        LocalDateTime assignedAt,
+        String addressLine,
+        String city,
+        String state,
+        String postalCode,
         Long convertedOrderId,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
+        List<LeadTagResponse> tags,
         List<StatusHistoryEntry> statusHistory
 ) {
 
@@ -48,7 +59,13 @@ public record LeadResponse(
         }
     }
 
+    /** Full detail with no tags loaded (back-compat for callers without a tag view). */
     public static LeadResponse from(LeadEntity lead) {
+        return from(lead, List.of());
+    }
+
+    /** Full detail including the lead's applied tags (CRM expansion, Req 4). */
+    public static LeadResponse from(LeadEntity lead, List<LeadTagResponse> tags) {
         List<StatusHistoryEntry> history = lead.getStatusHistory().stream()
                 .map(StatusHistoryEntry::from)
                 .toList();
@@ -64,10 +81,19 @@ public record LeadResponse(
                 lead.getLostReasonNote(),
                 lead.getNote(),
                 lead.getFollowUpDate(),
+                lead.getFollowUpTime(),
                 lead.getOwnerUserId(),
+                lead.getCreatedByUserId(),
+                lead.isCreatedByAdmin(),
+                lead.getAssignedAt(),
+                lead.getAddressLine(),
+                lead.getCity(),
+                lead.getState(),
+                lead.getPostalCode(),
                 lead.getConvertedOrderId(),
                 lead.getCreatedAt(),
                 lead.getUpdatedAt(),
+                tags == null ? List.of() : tags,
                 history);
     }
 }

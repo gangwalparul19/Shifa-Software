@@ -22,7 +22,49 @@
       </button>
     </div>
   }
+  @if (isAdmin()) {
+    <div class="col-auto">
+      <label class="btn btn-outline-secondary w-100 mb-0" [class.disabled]="importBusy()">
+        @if (importBusy()) {
+          <span class="spinner-border spinner-border-sm me-1"></span>
+        } @else {
+          <i class="ti ti-upload me-1"></i>
+        }
+        Import
+        <input type="file" class="d-none" accept=".csv,.xlsx,.xls"
+          (change)="onImportFile($event)" [disabled]="importBusy()" />
+      </label>
+    </div>
+  }
 </div>
+
+<!-- Import result / error summary (mirrors the remittance-import UX) -->
+@if (importError()) {
+  <div class="alert alert-danger d-flex justify-content-between align-items-start mb-3" role="alert">
+    <span><i class="ti ti-alert-triangle me-2"></i>{{ importError() }}</span>
+    <button type="button" class="btn-close" (click)="dismissImportResult()" aria-label="Dismiss"></button>
+  </div>
+} @else if (importResult(); as result) {
+  <div class="alert alert-info mb-3" role="alert">
+    <div class="d-flex justify-content-between align-items-start">
+      <div>
+        <i class="ti ti-file-check me-2"></i>
+        Imported <strong>{{ result.created }}</strong> lead(s).
+        @if (result.skipped.length) {
+          <span class="text-secondary"> {{ result.skipped.length }} row(s) skipped.</span>
+        }
+      </div>
+      <button type="button" class="btn-close" (click)="dismissImportResult()" aria-label="Dismiss"></button>
+    </div>
+    @if (result.skipped.length) {
+      <ul class="small mb-0 mt-2">
+        @for (s of result.skipped; track s.row) {
+          <li>Row {{ s.row }}: {{ s.reason }}</li>
+        }
+      </ul>
+    }
+  </div>
+}
 
 <!-- Search + source filter -->
 <div class="card mb-3">
@@ -85,8 +127,44 @@
         </div>
       </div>
     </div>
+
+    <!-- Admin-created + tag filters (CRM expansion Req 3.3, 4.5) -->
+    <div class="row g-2 align-items-center mt-1">
+      <div class="col-auto">
+        <select class="form-select form-select-sm" [formControl]="adminFilter" aria-label="Created by">
+          <option value="">All leads</option>
+          <option value="true">Lead by Admin</option>
+          <option value="false">User-captured</option>
+        </select>
+      </div>
+      @if (allTags().length) {
+        <div class="col">
+          <div class="shifa-tagfilter">
+            @for (t of allTags(); track t.id) {
+              <button type="button" class="shifa-tagchip" [class.is-active]="tagFilter() === t.name"
+                (click)="setTagFilter(t.name)">
+                {{ t.name }}
+              </button>
+            }
+          </div>
+        </div>
+      }
+    </div>
   </div>
 </div>
+
+<!-- Bulk-assign bar (ADMIN/TEAM_LEAD; shows when a selection exists) -->
+@if (canAssign() && selectionCount() > 0) {
+  <div class="card mb-3 shifa-bulkbar">
+    <div class="card-body py-2 d-flex align-items-center gap-2 flex-wrap">
+      <span class="fw-medium">{{ selectionCount() }} selected</span>
+      <button type="button" class="btn btn-sm btn-primary" (click)="openBulkAssign()">
+        <i class="ti ti-user-share me-1"></i> Assign {{ selectionCount() }}
+      </button>
+      <button type="button" class="btn btn-sm btn-link text-secondary" (click)="clearSelection()">Clear</button>
+    </div>
+  </div>
+}
 
 <!-- Status filter tabs with per-stage counts (Req 3.3, 3.4) -->
 <div class="shifa-status-tabs mb-3" role="tablist" aria-label="Filter leads by stage">
@@ -129,25 +207,44 @@
 } @else {
   <div class="shifa-lead-cards">
     @for (lead of pageItems(); track lead.id) {
-      <button type="button" class="shifa-lc" (click)="openDetail(lead)">
-        <div class="shifa-lc__r1">
-          <span class="shifa-lc__name">{{ lead.customerName }}</span>
-          <span class="shifa-lc__pill" [class]="pillClass(lead.status)">{{ statusLabels[lead.status] }}</span>
-        </div>
-        <div class="shifa-lc__r2">
-          <span class="shifa-lc__meta">
-            <i class="ti {{ sourceIcon(lead.leadSource) }} me-1"></i>{{ sourceLabel(lead.leadSource) }}
-            @if (lead.customerMobile) {
-              · {{ lead.customerMobile }}
-            }
-          </span>
-          @if (lead.followUpDate) {
-            <span class="shifa-lc__followup">
-              <i class="ti ti-calendar-event me-1"></i>{{ lead.followUpDate | istDate: 'dd MMM' }}
+      <div class="shifa-lc-wrap">
+        @if (canAssign()) {
+          <label class="shifa-lc-check" (click)="$event.stopPropagation()">
+            <input type="checkbox" [checked]="isSelected(lead.id)" (change)="toggleSelected(lead.id, $event)"
+              [attr.aria-label]="'Select ' + lead.customerName" />
+          </label>
+        }
+        <button type="button" class="shifa-lc" (click)="openDetail(lead)">
+          <div class="shifa-lc__r1">
+            <span class="shifa-lc__name">{{ lead.customerName }}</span>
+            <span class="shifa-lc__pill" [class]="pillClass(lead.status)">{{ statusLabels[lead.status] }}</span>
+          </div>
+          <div class="shifa-lc__r2">
+            <span class="shifa-lc__meta">
+              <i class="ti {{ sourceIcon(lead.leadSource) }} me-1"></i>{{ sourceLabel(lead.leadSource) }}
+              @if (lead.customerMobile) {
+                · {{ lead.customerMobile }}
+              }
             </span>
+            @if (lead.followUpDate) {
+              <span class="shifa-lc__followup">
+                <i class="ti ti-calendar-event me-1"></i>{{ lead.followUpDate | istDate: 'dd MMM' }}
+                @if (lead.followUpTime) { · {{ lead.followUpTime.slice(0, 5) }} }
+              </span>
+            }
+          </div>
+          @if (lead.createdByAdmin || (lead.tags && lead.tags.length)) {
+            <div class="shifa-lc__chips">
+              @if (lead.createdByAdmin) {
+                <span class="shifa-lc__admin"><i class="ti ti-shield-check me-1"></i>Lead by Admin</span>
+              }
+              @for (t of lead.tags; track t) {
+                <span class="shifa-lc__tag">{{ t }}</span>
+              }
+            </div>
           }
-        </div>
-      </button>
+        </button>
+      </div>
     }
   </div>
   <admin-pagination
@@ -261,9 +358,45 @@
             placeholder="What does the customer want?"></textarea>
         </div>
 
+        <div class="row g-2 mb-3">
+          <div class="col-7">
+            <label class="form-label">Follow-up date <span class="text-secondary">(optional)</span></label>
+            <input type="date" class="form-control" formControlName="followUpDate" />
+          </div>
+          <div class="col-5">
+            <label class="form-label">Time <span class="text-secondary">(optional)</span></label>
+            <input type="time" class="form-control" formControlName="followUpTime" />
+          </div>
+        </div>
+
+        <!-- Shipping address (optional; pre-fills lead-to-order conversion; Req 7) -->
         <div class="mb-3">
-          <label class="form-label">Follow-up date <span class="text-secondary">(optional)</span></label>
-          <input type="date" class="form-control" formControlName="followUpDate" />
+          <label class="form-label">Address <span class="text-secondary">(optional)</span></label>
+          <input type="text" class="form-control" formControlName="addressLine" maxlength="250"
+            placeholder="House / street / area" autocomplete="off" />
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-5">
+            <label class="form-label">Pincode <span class="text-secondary">(optional)</span></label>
+            <input type="text" inputmode="numeric" class="form-control" formControlName="postalCode"
+              maxlength="6" placeholder="6-digit PIN" autocomplete="off"
+              [class.is-invalid]="leadForm.controls.postalCode.touched && leadForm.controls.postalCode.invalid" />
+            @if (pincodeLooking()) {
+              <div class="form-hint small mt-1"><span class="spinner-border spinner-border-sm me-1"></span>Looking up…</div>
+            } @else if (detectedLocation()) {
+              <div class="form-hint small mt-1 text-success">Detected: {{ detectedLocation() }}</div>
+            }
+          </div>
+          <div class="col-7">
+            <label class="form-label">City <span class="text-secondary">(optional)</span></label>
+            <input type="text" class="form-control" formControlName="city" maxlength="100"
+              placeholder="City" autocomplete="off" />
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">State <span class="text-secondary">(optional)</span></label>
+          <input type="text" class="form-control" formControlName="state" maxlength="100"
+            placeholder="State" autocomplete="off" />
         </div>
 
         <div class="d-flex justify-content-end gap-2 pt-1">
@@ -332,6 +465,76 @@
           }
         </div>
 
+        @if (lead.createdByAdmin) {
+          <div class="shifa-ld__section">
+            <span class="shifa-lc__admin"><i class="ti ti-shield-check me-1"></i>Lead by Admin</span>
+          </div>
+        }
+
+        <!-- Shipping address (when captured; pre-fills conversion; Req 7) -->
+        @if (lead.addressLine || lead.city || lead.state || lead.postalCode) {
+          <div class="shifa-ld__section">
+            <div class="shifa-ld__label mb-1">Address</div>
+            <div class="shifa-ld__card">
+              <div class="shifa-ld__value">
+                @if (lead.addressLine) { {{ lead.addressLine }}<br /> }
+                <span class="shifa-ld__muted">{{ cityStateLine(lead) }}</span>
+              </div>
+            </div>
+          </div>
+        }
+
+        <!-- Assignee + reassign (ADMIN/TEAM_LEAD; Req 1) -->
+        <div class="shifa-ld__section">
+          <div class="shifa-ld__label mb-1">Assigned to</div>
+          <div class="shifa-ld__card d-flex align-items-center justify-content-between gap-2">
+            <div class="shifa-ld__value">
+              {{ ownerName(lead.ownerUserId) }}
+              @if (lead.assignedAt) {
+                <span class="shifa-ld__muted d-block">since {{ lead.assignedAt | istDate: 'dd MMM yyyy · HH:mm' }}</span>
+              }
+            </div>
+            @if (canAssign()) {
+              <button type="button" class="btn btn-sm btn-outline-primary" (click)="openAssign(lead.id)" [disabled]="detailBusy()">
+                <i class="ti ti-user-share me-1"></i> Reassign
+              </button>
+            }
+          </div>
+        </div>
+
+        <!-- Tags / call dispositions (add/remove, allowed on terminal leads; Req 4, 5.1) -->
+        <div class="shifa-ld__section">
+          <div class="shifa-ld__label mb-1">Tags</div>
+          <div class="shifa-ld__card">
+            <div class="shifa-ld__tags mb-2">
+              @for (t of lead.tags; track t.id) {
+                <span class="shifa-ld__tag">
+                  {{ t.name }}
+                  <button type="button" class="shifa-ld__tagx" (click)="removeTagFromLead(t.id)"
+                    [disabled]="detailBusy()" aria-label="Remove tag"><i class="ti ti-x"></i></button>
+                </span>
+              }
+              @if (!lead.tags.length) {
+                <span class="shifa-ld__muted">No tags.</span>
+              }
+            </div>
+            @if (availableTagsFor(lead).length) {
+              <div class="d-flex gap-2">
+                <select class="form-select form-select-sm" [formControl]="tagToAdd" aria-label="Add tag">
+                  <option value="">Add a tag…</option>
+                  @for (t of availableTagsFor(lead); track t.id) {
+                    <option [value]="t.id">{{ t.name }}</option>
+                  }
+                </select>
+                <button type="button" class="btn btn-sm btn-primary" (click)="addTagToLead()"
+                  [disabled]="detailBusy() || !tagToAdd.value">
+                  <i class="ti ti-plus"></i>
+                </button>
+              </div>
+            }
+          </div>
+        </div>
+
         @if (lead.note) {
           <div class="shifa-ld__section">
             <div class="shifa-ld__label mb-1">Note</div>
@@ -367,6 +570,8 @@
             <div class="shifa-ld__card">
               <div class="d-flex gap-2 align-items-center flex-wrap">
                 <input type="date" class="form-control shifa-ld__date" [formControl]="followUpControl" />
+                <input type="time" class="form-control shifa-ld__date" [formControl]="followUpTimeControl"
+                  [disabled]="!followUpControl.value" aria-label="Follow-up time" />
                 <button type="button" class="btn btn-primary" (click)="saveFollowUp()" [disabled]="detailBusy()">
                   <i class="ti ti-check me-1"></i> Save
                 </button>
@@ -381,7 +586,9 @@
         } @else if (lead.followUpDate) {
           <div class="shifa-ld__section">
             <div class="shifa-ld__label mb-1">Follow-up date</div>
-            <div class="shifa-ld__card"><div class="shifa-ld__value">{{ lead.followUpDate | istDate: 'dd MMM yyyy' }}</div></div>
+            <div class="shifa-ld__card"><div class="shifa-ld__value">
+              {{ lead.followUpDate | istDate: 'dd MMM yyyy' }}@if (lead.followUpTime) { · {{ lead.followUpTime.slice(0, 5) }} }
+            </div></div>
           </div>
         }
 
@@ -483,6 +690,50 @@
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===================== Assign / reassign modal ===================== -->
+@if (assignOpen()) {
+  <div class="shifa-overlay" (click)="closeAssign()"></div>
+  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Assign lead">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0"><i class="ti ti-user-share me-2"></i>
+          {{ assignLeadId() ? 'Reassign lead' : 'Assign ' + selectionCount() + ' leads' }}
+        </h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeAssign()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label required">Assign to</label>
+          <select class="form-select" [formControl]="assignUserControl">
+            <option value="">Select a user…</option>
+            @for (u of assignableUsers(); track u.id) {
+              <option [value]="u.id">{{ u.name }} ({{ u.role === 'TEAM_LEAD' ? 'Team Lead' : 'Salesperson' }})</option>
+            }
+          </select>
+          @if (!assignableUsers().length) {
+            <div class="text-secondary small mt-1">No assignable users available.</div>
+          }
+        </div>
+        <div class="d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-link text-secondary" (click)="closeAssign()">Cancel</button>
+          <button type="button" class="btn btn-primary" (click)="submitAssign()"
+            [disabled]="assignBusy() || !assignUserControl.value">
+            @if (assignBusy()) {
+              <span class="spinner-border spinner-border-sm me-2"></span> Assigning…
+            } @else {
+              <i class="ti ti-check me-1"></i> Assign
+            }
+          </button>
+        </div>
       </div>
     </div>
   </div>

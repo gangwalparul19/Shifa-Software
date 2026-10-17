@@ -138,6 +138,48 @@ class LeadEndpointRoleGuardIntegrationTest {
         assertRoleMatrix(get("/api/leads/reports/conversion"), LEAD_ROLES);
     }
 
+    @Test
+    void tagsListIsSalespersonOrAdmin() throws Exception {
+        assertRoleMatrix(get("/api/leads/tags"), LEAD_ROLES);
+    }
+
+    @Test
+    void addTagIsSalespersonOrAdmin() throws Exception {
+        assertRoleMatrix(post("/api/leads/5/tags")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"tagId\":1}"), LEAD_ROLES);
+    }
+
+    /** Assign is ADMIN/TEAM_LEAD only — a SALESPERSON is rejected by the method guard. */
+    @Test
+    void assignIsAdminOrTeamLead() throws Exception {
+        var request = put("/api/leads/5/assign")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"toUserId\":2}");
+        mvc.perform(request.with(authFor(Role.ADMIN))).andExpect(status().is2xxSuccessful());
+        mvc.perform(request.with(authFor(Role.TEAM_LEAD))).andExpect(status().is2xxSuccessful());
+        mvc.perform(request.with(authFor(Role.SALESPERSON))).andExpect(status().isForbidden());
+        mvc.perform(request.with(authFor(Role.PACKING_USER))).andExpect(status().isForbidden());
+    }
+
+    /** Bulk assign is ADMIN/TEAM_LEAD only. */
+    @Test
+    void bulkAssignIsAdminOrTeamLead() throws Exception {
+        var request = post("/api/leads/bulk-assign")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"ids\":[5],\"toUserId\":2}");
+        mvc.perform(request.with(authFor(Role.ADMIN))).andExpect(status().is2xxSuccessful());
+        mvc.perform(request.with(authFor(Role.TEAM_LEAD))).andExpect(status().is2xxSuccessful());
+        mvc.perform(request.with(authFor(Role.SALESPERSON))).andExpect(status().isForbidden());
+    }
+
+    /** The assignee picker endpoint is ADMIN/TEAM_LEAD only. */
+    @Test
+    void assignableUsersIsAdminOrTeamLead() throws Exception {
+        var request = get("/api/leads/assignable-users");
+        mvc.perform(request.with(authFor(Role.ADMIN))).andExpect(status().is2xxSuccessful());
+        mvc.perform(request.with(authFor(Role.TEAM_LEAD))).andExpect(status().is2xxSuccessful());
+        mvc.perform(request.with(authFor(Role.SALESPERSON))).andExpect(status().isForbidden());
+        mvc.perform(request.with(authFor(Role.PACKING_USER))).andExpect(status().isForbidden());
+    }
+
     /** Convert returns the lead marked WON with the created order linked (Req 4.2, 4.3). */
     @Test
     void convertLinksAWonOrder() throws Exception {
@@ -199,7 +241,8 @@ class LeadEndpointRoleGuardIntegrationTest {
     static class StubLeadService extends LeadService {
         StubLeadService() {
             super(mock(LeadRepository.class), new SalespersonScopeResolver(),
-                    new AuditService(null, new CurrentUserService()), new NoOpOrderService());
+                    new AuditService(null, new CurrentUserService()), new NoOpOrderService(),
+                    null, null, null, null);
         }
 
         private static LeadResponse sample(LeadStatus status, Long convertedOrderId) {
@@ -216,7 +259,7 @@ class LeadEndpointRoleGuardIntegrationTest {
 
         @Override
         public List<LeadSummaryResponse> list(String q, LeadStatus status, LeadSource source,
-                                              AuthPrincipal actor) {
+                                              Boolean createdByAdmin, AuthPrincipal actor) {
             return List.of();
         }
 
@@ -242,7 +285,8 @@ class LeadEndpointRoleGuardIntegrationTest {
         }
 
         @Override
-        public LeadResponse setFollowUp(Long id, LocalDate followUpDate, AuthPrincipal actor) {
+        public LeadResponse setFollowUp(Long id, LocalDate followUpDate,
+                                        java.time.LocalTime followUpTime, AuthPrincipal actor) {
             return sample(LeadStatus.NEW, null);
         }
 
@@ -255,6 +299,38 @@ class LeadEndpointRoleGuardIntegrationTest {
         public LeadResponse convert(Long id, LeadConvertRequest request, AuthPrincipal actor) {
             // A linked, WON lead: the converted order id is set on success (Req 4.2, 4.3).
             return sample(LeadStatus.WON, 9001L);
+        }
+
+        @Override
+        public LeadResponse assign(Long id, Long toUserId, boolean roundRobin, AuthPrincipal actor) {
+            return sample(LeadStatus.NEW, null);
+        }
+
+        @Override
+        public com.shifa.oms.lead.dto.BulkAssignResult bulkAssign(
+                List<Long> ids, Long toUserId, AuthPrincipal actor) {
+            return new com.shifa.oms.lead.dto.BulkAssignResult(List.of(), List.of());
+        }
+
+        @Override
+        public List<com.shifa.oms.order.dto.AssignableCreatorResponse> assignableUsers(
+                AuthPrincipal actor) {
+            return List.of();
+        }
+
+        @Override
+        public List<com.shifa.oms.lead.dto.LeadTagResponse> listTags() {
+            return List.of();
+        }
+
+        @Override
+        public LeadResponse addTag(Long leadId, Long tagId, AuthPrincipal actor) {
+            return sample(LeadStatus.NEW, null);
+        }
+
+        @Override
+        public LeadResponse removeTag(Long leadId, Long tagId, AuthPrincipal actor) {
+            return sample(LeadStatus.NEW, null);
         }
 
         @Override

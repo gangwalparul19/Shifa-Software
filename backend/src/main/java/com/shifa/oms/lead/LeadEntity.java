@@ -17,6 +17,7 @@ import jakarta.persistence.Table;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -80,6 +81,51 @@ public class LeadEntity {
 
     @Column(name = "owner_user_id", nullable = false)
     private Long ownerUserId;
+
+    /**
+     * The original creator of the lead (CRM expansion, design &sect;1.1). Kept
+     * separate from {@link #ownerUserId} (the current assignee) so a reassignment
+     * never loses who created the lead (Req 1.1). Backfilled to the owner for
+     * leads that predate this column.
+     */
+    @Column(name = "created_by_user_id")
+    private Long createdByUserId;
+
+    /**
+     * Whether an ADMIN created/uploaded this lead — the permanent "Lead by Admin"
+     * marker (Req 3). Defaults to {@code false} (user-captured).
+     */
+    @Column(name = "created_by_admin", nullable = false)
+    private boolean createdByAdmin;
+
+    /**
+     * Optional time-of-day for the follow-up (Req 6). {@code null} means the
+     * configured default time-of-day applies, preserving today's date-only
+     * behaviour for existing leads.
+     */
+    @Column(name = "follow_up_time")
+    private LocalTime followUpTime;
+
+    /** When the current assignee ({@link #ownerUserId}) was set (Req 1.2). */
+    @Column(name = "assigned_at")
+    private LocalDateTime assignedAt;
+
+    /**
+     * Optional shipping address captured with the lead (CRM expansion, Req 7).
+     * Kept nullable so existing leads are unaffected; when present it pre-fills
+     * the lead-to-order conversion so the salesperson need not re-type it.
+     */
+    @Column(name = "address_line", length = 250)
+    private String addressLine;
+
+    @Column(name = "city", length = 100)
+    private String city;
+
+    @Column(name = "state", length = 100)
+    private String state;
+
+    @Column(name = "postal_code", length = 10)
+    private String postalCode;
 
     @Column(name = "converted_order_id")
     private Long convertedOrderId;
@@ -209,6 +255,70 @@ public class LeadEntity {
 
     public void setOwnerUserId(Long ownerUserId) {
         this.ownerUserId = ownerUserId;
+    }
+
+    public Long getCreatedByUserId() {
+        return createdByUserId;
+    }
+
+    public void setCreatedByUserId(Long createdByUserId) {
+        this.createdByUserId = createdByUserId;
+    }
+
+    public boolean isCreatedByAdmin() {
+        return createdByAdmin;
+    }
+
+    public void setCreatedByAdmin(boolean createdByAdmin) {
+        this.createdByAdmin = createdByAdmin;
+    }
+
+    public LocalTime getFollowUpTime() {
+        return followUpTime;
+    }
+
+    public void setFollowUpTime(LocalTime followUpTime) {
+        this.followUpTime = followUpTime;
+    }
+
+    public LocalDateTime getAssignedAt() {
+        return assignedAt;
+    }
+
+    public void setAssignedAt(LocalDateTime assignedAt) {
+        this.assignedAt = assignedAt;
+    }
+
+    public String getAddressLine() {
+        return addressLine;
+    }
+
+    public void setAddressLine(String addressLine) {
+        this.addressLine = addressLine;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
+    }
+
+    public String getState() {
+        return state;
+    }
+
+    public void setState(String state) {
+        this.state = state;
+    }
+
+    public String getPostalCode() {
+        return postalCode;
+    }
+
+    public void setPostalCode(String postalCode) {
+        this.postalCode = postalCode;
     }
 
     public Long getConvertedOrderId() {

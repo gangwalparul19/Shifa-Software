@@ -886,6 +886,22 @@ export class NewOrderComponent implements OnInit, OnDestroy {
           leadSource: lead.leadSource,
           leadSourceNote: lead.leadSourceNote ?? '',
         });
+        // CRM expansion Req 7: pre-fill the shipping address from the lead when it
+        // captured one (remains fully editable, unlike the locked identity fields)
+        // so the salesperson doesn't re-type it. The convert endpoint still
+        // requires + validates the address on submit.
+        if (lead.addressLine) {
+          this.form.controls.addressLine.setValue(lead.addressLine);
+        }
+        if (lead.city) {
+          this.form.controls.city.setValue(lead.city);
+        }
+        if (lead.state) {
+          this.form.controls.state.setValue(lead.state);
+        }
+        if (lead.postalCode) {
+          this.form.controls.postalCode.setValue(lead.postalCode);
+        }
         // The customer identity + source are forced from the lead on the server;
         // lock them so they can't be re-pointed at a different customer.
         this.form.controls.customerName.disable();
