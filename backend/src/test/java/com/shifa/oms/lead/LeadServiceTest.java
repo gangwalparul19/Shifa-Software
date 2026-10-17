@@ -342,7 +342,7 @@ class LeadServiceTest {
 
             this.service = new LeadService(leadRepo, new SalespersonScopeResolver(), audit,
                     new LeadServiceTestSupport.NoOpOrderService(), tagRepo, assignRepo, userRepo,
-                    dispatcher, CLOCK);
+                    dispatcher, null, null, CLOCK);
         }
 
         /** Registers a user id as a TEAM_LEAD resolvable via findById. */

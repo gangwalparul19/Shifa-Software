@@ -176,6 +176,34 @@ public class OutboxEvent {
      */
     public static final String EVENT_LEAD_FOLLOW_UP_DUE = "LEAD_FOLLOW_UP_DUE";
 
+    /** Aggregate type discriminator for task-scoped events (CRM expansion Req 8). */
+    public static final String AGGREGATE_TASK = "TASK";
+
+    /** Aggregate type discriminator for meeting-scoped events (CRM expansion Req 9). */
+    public static final String AGGREGATE_MEETING = "MEETING";
+
+    /**
+     * Event type emitted by the {@code TaskReminderJob} when an open task is due,
+     * so an in-app reminder is delivered to the task owner (CRM expansion Req
+     * 8.4, 15.2). Aggregate {@link #AGGREGATE_TASK} with the task id.
+     */
+    public static final String EVENT_TASK_DUE = "TASK_DUE";
+
+    /**
+     * Event type emitted by the {@code MeetingReminderJob} when a scheduled
+     * meeting is upcoming, so an in-app reminder is delivered to the meeting
+     * owner (CRM expansion Req 9.3, 15.2). Aggregate {@link #AGGREGATE_MEETING}.
+     */
+    public static final String EVENT_MEETING_UPCOMING = "MEETING_UPCOMING";
+
+    /**
+     * Event type emitted by the {@code MissedFollowUpJob} when a due, reminded
+     * lead follow-up received no action within the grace window, so the assignee
+     * is notified and the team lead/admin escalated (CRM expansion Req 10.4,
+     * 15.2). Aggregate {@link #AGGREGATE_LEAD} with the lead id.
+     */
+    public static final String EVENT_LEAD_FOLLOW_UP_MISSED = "LEAD_FOLLOW_UP_MISSED";
+
     /**
      * Event type emitted when a stock decrement drives a tracked product into the
      * low-stock (or out-of-stock) band, so the admin is notified to restock.

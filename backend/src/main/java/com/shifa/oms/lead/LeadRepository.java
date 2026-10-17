@@ -118,6 +118,56 @@ public interface LeadRepository extends JpaRepository<LeadEntity, Long> {
     List<LeadEntity> findDueForReminder(@Param("today") LocalDate today);
 
     /**
+     * Candidate leads for the missed-follow-up evaluation (CRM expansion Phase 2,
+     * Req 10.2): non-terminal leads that have a follow-up date, were already
+     * reminded on or before {@code remindedCutoff} (so the grace window has
+     * elapsed), and are not yet marked missed. The job then checks each against
+     * {@code crm_activities} ("acted on since the reminder?") before stamping.
+     */
+    @Query(value = """
+            SELECT l.* FROM leads l
+            WHERE l.follow_up_date IS NOT NULL
+              AND l.status NOT IN ('WON','LOST')
+              AND l.reminded_on IS NOT NULL
+              AND l.reminded_on <= :remindedCutoff
+              AND l.follow_up_missed_at IS NULL
+            ORDER BY l.follow_up_date ASC, l.id ASC
+            """, nativeQuery = true)
+    List<LeadEntity> findMissedCandidates(@Param("remindedCutoff") LocalDate remindedCutoff);
+
+    /**
+     * The acting user's missed follow-ups (CRM expansion Phase 2, Req 10.3):
+     * leads with {@code follow_up_missed_at} set that are still non-terminal,
+     * scoped by owner, most-recently-missed first. {@code null} {@code ownerUserId}
+     * = unscoped (admin).
+     */
+    @Query(value = """
+            SELECT l.* FROM leads l
+            WHERE (:ownerUserId IS NULL OR l.owner_user_id = :ownerUserId)
+              AND l.follow_up_missed_at IS NOT NULL
+              AND l.status NOT IN ('WON','LOST')
+            ORDER BY l.follow_up_missed_at DESC
+            """, nativeQuery = true)
+    List<LeadEntity> findMissedFollowUps(@Param("ownerUserId") Long ownerUserId);
+
+    /**
+     * Non-terminal leads whose follow-up date is in the future (after
+     * {@code today}), scoped by owner, soonest first — the "upcoming" bucket of
+     * the follow-up health monitor (CRM expansion Phase 2, Req 10.3).
+     */
+    @Query(value = """
+            SELECT l.* FROM leads l
+            WHERE (:ownerUserId IS NULL OR l.owner_user_id = :ownerUserId)
+              AND l.follow_up_date IS NOT NULL
+              AND l.follow_up_date > :today
+              AND l.status NOT IN ('WON','LOST')
+              AND l.follow_up_missed_at IS NULL
+            ORDER BY l.follow_up_date ASC
+            """, nativeQuery = true)
+    List<LeadEntity> findUpcomingFollowUps(@Param("ownerUserId") Long ownerUserId,
+                                           @Param("today") LocalDate today);
+
+    /**
      * Active-lead counts grouped by {@link LeadStatus} for the pipeline board /
      * snapshot (Req 3.3, 6.3), scoped by owner. Terminal (WON/LOST) leads are
      * excluded — the pipeline shows only leads still in play.

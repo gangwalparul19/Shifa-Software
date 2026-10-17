@@ -151,6 +151,7 @@ class LeadReportConversionPropertyTest {
                 .map(d -> LocalDate.parse("2024-01-01").plusDays(d))
                 .injectNull(0.05);
         return Combinators.combine(sources, statuses, reasons, owners, dates)
-                .as(LeadReportRecord::new);
+                .as((source, status, reason, owner, date) ->
+                        new LeadReportRecord(source, status, reason, owner, date, null, null));
     }
 }

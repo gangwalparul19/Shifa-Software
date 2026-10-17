@@ -19,6 +19,7 @@ import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { LEAD_SOURCE_OPTIONS, LeadSource } from '../orders/orders.model';
 import { LeadsService } from './leads.service';
+import { ActivityEntry, activityMeta } from '../shared/activity.model';
 import {
   AssignableUser,
   CreateLeadRequest,
@@ -231,6 +232,10 @@ export class LeadsComponent implements OnInit, OnDestroy {
   protected readonly selectedDetail = signal<LeadDetail | null>(null);
   protected readonly detailLoading = signal(false);
   protected readonly detailError = signal<string | null>(null);
+
+  /** The open lead's activity timeline (CRM expansion Req 11.2). */
+  protected readonly activity = signal<ActivityEntry[]>([]);
+  protected readonly activityMeta = activityMeta;
   protected readonly detailBusy = signal(false);
 
   // --- Mark-lost modal ----------------------------------------------------
@@ -734,6 +739,7 @@ export class LeadsComponent implements OnInit, OnDestroy {
     this.detailLoading.set(true);
     this.detailError.set(null);
     this.selectedDetail.set(null);
+    this.activity.set([]);
     this.service.detail(id).subscribe({
       next: (detail) => {
         this.selectedDetail.set(detail);
@@ -745,6 +751,11 @@ export class LeadsComponent implements OnInit, OnDestroy {
         this.detailError.set('Could not load this lead.');
         this.detailLoading.set(false);
       },
+    });
+    // Activity timeline (best-effort; non-fatal if it fails).
+    this.service.activity(id).subscribe({
+      next: (rows) => this.activity.set(rows),
+      error: () => this.activity.set([]),
     });
   }
 

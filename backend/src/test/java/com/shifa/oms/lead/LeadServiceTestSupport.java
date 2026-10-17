@@ -145,7 +145,7 @@ final class LeadServiceTestSupport {
     /** A real {@link LeadService} over the in-memory repo and a recording audit. */
     static LeadService service(LeadRepository repo, AtomicInteger auditCount, Clock clock) {
         return new LeadService(repo, new SalespersonScopeResolver(), recordingAudit(auditCount),
-                new NoOpOrderService(), null, null, null, null, clock);
+                new NoOpOrderService(), null, null, null, null, null, null, clock);
     }
 
     /**
@@ -157,7 +157,7 @@ final class LeadServiceTestSupport {
     static LeadService service(LeadRepository repo, AtomicInteger auditCount,
                                com.shifa.oms.order.OrderService orderService, Clock clock) {
         return new LeadService(repo, new SalespersonScopeResolver(), recordingAudit(auditCount),
-                orderService, null, null, null, null, clock);
+                orderService, null, null, null, null, null, null, clock);
     }
 
     /** A no-op {@link com.shifa.oms.order.OrderService} for tests that never convert. */

@@ -56,4 +56,36 @@ public final class LeadReports {
     /** The lost-reasons report (Req 6.4): LOST-lead counts grouped by {@link LostReason}. */
     public record LostReasonReport(List<LostReasonCount> rows, long total) {
     }
+
+    // --- CRM expansion Phase 2 (Req 13): by-stage / by-user / by-team -------
+
+    /**
+     * One stage-report row (CRM expansion Req 13.1): a {@link LeadStatus} stage
+     * and the number of in-range leads currently in it.
+     */
+    public record StageCount(LeadStatus stage, long count) {
+    }
+
+    /** The by-stage report (Req 13.1): in-range lead counts grouped by stage. */
+    public record ByStageReport(List<StageCount> rows, long total) {
+    }
+
+    /**
+     * One user/team report row (CRM expansion Req 13.2): a grouping key (owner id
+     * / team-lead id, or a display label), the in-range lead count, the number
+     * that reached {@code WON}, {@code conversionRate = won / leads}, and the
+     * revenue of the converted leads in the group.
+     */
+    public record GroupPerformanceRow(
+            String key,
+            String label,
+            long leads,
+            long won,
+            BigDecimal conversionRate,
+            BigDecimal convertedRevenue) {
+    }
+
+    /** The by-user / by-team report (Req 13.2): grouped performance rows. */
+    public record GroupPerformanceReport(List<GroupPerformanceRow> rows, long total) {
+    }
 }

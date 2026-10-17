@@ -483,4 +483,53 @@ public class OutboxEventPublisher {
         return publish(OutboxEvent.AGGREGATE_LEAD, leadId,
                 OutboxEvent.EVENT_LEAD_FOLLOW_UP_DUE, payload);
     }
+
+    /**
+     * Enqueues a {@code TASK_DUE} event for an open task whose due moment has
+     * arrived, so an in-app reminder is delivered to the task owner (CRM
+     * expansion Req 8.4). Task-scoped ({@link OutboxEvent#AGGREGATE_TASK}); the
+     * returned event's id is used as the de-dup {@code sourceEventId} of the
+     * staff notification it drives.
+     */
+    public OutboxEvent publishTaskDue(Long taskId, String title, Long ownerUserId, String dueAt) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("taskId", taskId);
+        payload.put("title", title);
+        payload.put("ownerUserId", ownerUserId);
+        payload.put("dueAt", dueAt);
+        return publish(OutboxEvent.AGGREGATE_TASK, taskId, OutboxEvent.EVENT_TASK_DUE, payload);
+    }
+
+    /**
+     * Enqueues a {@code MEETING_UPCOMING} event for a scheduled meeting that is
+     * about to start, so an in-app reminder is delivered to the meeting owner
+     * (CRM expansion Req 9.3). Meeting-scoped ({@link OutboxEvent#AGGREGATE_MEETING}).
+     */
+    public OutboxEvent publishMeetingUpcoming(Long meetingId, String title, Long ownerUserId,
+                                              String startAt) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("meetingId", meetingId);
+        payload.put("title", title);
+        payload.put("ownerUserId", ownerUserId);
+        payload.put("startAt", startAt);
+        return publish(OutboxEvent.AGGREGATE_MEETING, meetingId,
+                OutboxEvent.EVENT_MEETING_UPCOMING, payload);
+    }
+
+    /**
+     * Enqueues a {@code LEAD_FOLLOW_UP_MISSED} event for a due, reminded lead
+     * follow-up that received no action within the grace window (CRM expansion
+     * Req 10.4), so the assignee is notified and the team lead/admin escalated.
+     * Lead-scoped ({@link OutboxEvent#AGGREGATE_LEAD}).
+     */
+    public OutboxEvent publishLeadFollowUpMissed(Long leadId, String customerName,
+                                                 Long ownerUserId, String followUpDate) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("leadId", leadId);
+        payload.put("customerName", customerName);
+        payload.put("ownerUserId", ownerUserId);
+        payload.put("followUpDate", followUpDate);
+        return publish(OutboxEvent.AGGREGATE_LEAD, leadId,
+                OutboxEvent.EVENT_LEAD_FOLLOW_UP_MISSED, payload);
+    }
 }

@@ -23,13 +23,24 @@ public record LeadReportRecord(
         LeadStatus status,
         LostReason lostReason,
         Long ownerUserId,
-        LocalDate createdDate) {
+        LocalDate createdDate,
+        Long convertedOrderId,
+        java.math.BigDecimal convertedRevenue) {
 
-    /** Projects a persisted {@link LeadEntity} to its report record. */
+    /** Projects a persisted {@link LeadEntity} to its report record (no revenue). */
     public static LeadReportRecord from(LeadEntity lead) {
+        return from(lead, null);
+    }
+
+    /**
+     * Projects a persisted {@link LeadEntity} to its report record, carrying the
+     * resolved converted-order revenue (CRM expansion Req 13.2; nullable when the
+     * lead is unconverted or revenue is unavailable).
+     */
+    public static LeadReportRecord from(LeadEntity lead, java.math.BigDecimal convertedRevenue) {
         LocalDate created = lead.getCreatedAt() == null ? null : lead.getCreatedAt().toLocalDate();
         return new LeadReportRecord(
                 lead.getLeadSource(), lead.getStatus(), lead.getLostReason(),
-                lead.getOwnerUserId(), created);
+                lead.getOwnerUserId(), created, lead.getConvertedOrderId(), convertedRevenue);
     }
 }

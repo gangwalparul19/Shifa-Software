@@ -1,0 +1,137 @@
+<admin-page-header
+  title="CRM cockpit"
+  subtitle="Leads, follow-ups, targets, and team performance — at a glance."
+  [breadcrumbs]="[{ label: 'CRM cockpit' }]"
+>
+  <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
+    <i class="ti ti-refresh"></i>
+  </button>
+</admin-page-header>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" skeleton="cards" loadingLabel="Loading CRM overview…" />
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="load()" />
+} @else if (overview(); as data) {
+  <!-- Follow-up health -->
+  <div class="row row-cards mb-3">
+    <div class="col-6 col-md-3">
+      <a class="card card-link" routerLink="/leads/follow-ups">
+        <div class="card-body">
+          <div class="shifa-kpi__label">Upcoming follow-ups</div>
+          <div class="shifa-kpi__value">{{ data.followUpHealth.upcomingCount }}</div>
+        </div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="card card-link" routerLink="/leads/follow-ups">
+        <div class="card-body">
+          <div class="shifa-kpi__label">Due / overdue</div>
+          <div class="shifa-kpi__value text-warning">{{ data.followUpHealth.dueCount }}</div>
+        </div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="card card-link" routerLink="/leads">
+        <div class="card-body">
+          <div class="shifa-kpi__label">Missed</div>
+          <div class="shifa-kpi__value text-danger">{{ data.followUpHealth.missedCount }}</div>
+        </div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a class="card card-link" routerLink="/leads">
+        <div class="card-body">
+          <div class="shifa-kpi__label">Leads in pipeline</div>
+          <div class="shifa-kpi__value">{{ pipelineTotal() }}</div>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <!-- Pipeline by stage -->
+  <div class="card mb-3">
+    <div class="card-header">
+      <h3 class="card-title">Lead pipeline</h3>
+      <div class="card-actions"><a class="btn btn-sm btn-outline-primary" routerLink="/leads">View leads</a></div>
+    </div>
+    <div class="card-body">
+      <div class="row g-2">
+        @for (stage of stageOrder; track stage) {
+          <div class="col">
+            <div class="shifa-stage">
+              <div class="shifa-stage__count">{{ stageCount(stage) }}</div>
+              <div class="shifa-stage__label">{{ stageLabels[stage] }}</div>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+
+  <div class="row row-cards">
+    <!-- Targets -->
+    <div class="col-12 col-lg-6">
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title">Monthly targets</h3>
+          <div class="card-actions"><a class="btn btn-sm btn-outline-primary" routerLink="/analytics">View all</a></div>
+        </div>
+        <div class="table-responsive">
+          <table class="table card-table">
+            <thead>
+              <tr><th>Salesperson</th><th class="text-end">Target</th><th class="text-end">Achieved</th><th class="text-end">%</th></tr>
+            </thead>
+            <tbody>
+              @for (t of topTargets(); track t.salespersonId) {
+                <tr>
+                  <td>{{ t.salespersonName }}</td>
+                  <td class="text-end">{{ t.targetAmount ? (t.targetAmount | currency: 'INR') : '—' }}</td>
+                  <td class="text-end">{{ t.achieved | currency: 'INR' }}</td>
+                  <td class="text-end">
+                    @if (t.attainmentPct != null) {
+                      <span [class.text-success]="t.targetMet">{{ t.attainmentPct }}%</span>
+                    } @else { — }
+                  </td>
+                </tr>
+              } @empty {
+                <tr><td colspan="4" class="text-secondary text-center">No targets set.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Performance leaderboard -->
+    <div class="col-12 col-lg-6">
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="card-title">Performance (this month)</h3>
+          <div class="card-actions"><a class="btn btn-sm btn-outline-primary" routerLink="/team-performance">Team 360</a></div>
+        </div>
+        <div class="table-responsive">
+          <table class="table card-table">
+            <thead>
+              <tr><th>Salesperson</th><th class="text-end">Orders</th><th class="text-end">Revenue</th><th class="text-end">Due</th></tr>
+            </thead>
+            <tbody>
+              @for (p of topPerformers(); track p.id) {
+                <tr>
+                  <td>{{ p.fullName }}</td>
+                  <td class="text-end">{{ p.ordersThisMonth }}</td>
+                  <td class="text-end">{{ p.revenueThisMonth | currency: 'INR' }}</td>
+                  <td class="text-end">
+                    @if (p.dueFollowUps > 0) { <span class="text-warning">{{ p.dueFollowUps }}</span> } @else { 0 }
+                  </td>
+                </tr>
+              } @empty {
+                <tr><td colspan="4" class="text-secondary text-center">No data yet.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+}

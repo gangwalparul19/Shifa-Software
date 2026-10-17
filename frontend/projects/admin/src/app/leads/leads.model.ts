@@ -322,3 +322,42 @@ export function leadMoney(value: Money | number | undefined | null): string {
   }
   return `₹${value}`;
 }
+
+// --- CRM expansion Phase 2 (Req 10, 13): follow-up health + group reports ---
+
+/** The cross-user follow-up health view (Req 10.3). */
+export interface FollowUpHealth {
+  upcomingCount: number;
+  dueCount: number;
+  missedCount: number;
+  due: LeadSummary[];
+  missed: LeadSummary[];
+}
+
+/** One by-stage report row (Req 13.1). */
+export interface StageCount {
+  stage: LeadStatus;
+  count: number;
+}
+
+/** The by-stage report (Req 13.1). */
+export interface ByStageReport {
+  rows: StageCount[];
+  total: number;
+}
+
+/** One by-user / by-team performance row (Req 13.2). */
+export interface GroupPerformanceRow {
+  key: string;
+  label: string;
+  leads: number;
+  won: number;
+  conversionRate: string;
+  convertedRevenue: string;
+}
+
+/** The by-user / by-team performance report (Req 13.2). */
+export interface GroupPerformanceReport {
+  rows: GroupPerformanceRow[];
+  total: number;
+}

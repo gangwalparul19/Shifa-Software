@@ -107,11 +107,25 @@ public class LeadController {
         return leadService.dueFollowUps(actor);
     }
 
+    /** The acting user's missed follow-ups (CRM expansion Req 10.3), scoped. */
+    @GetMapping("/follow-ups/missed")
+    public List<LeadSummaryResponse> missedFollowUps() {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return leadService.missedFollowUps(actor);
+    }
+
     /** Scoped lead detail incl. status history (Req 3.5); 404 when out of scope. */
     @GetMapping("/{id}")
     public LeadResponse detail(@PathVariable Long id) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return leadService.detail(id, actor);
+    }
+
+    /** A lead's unified activity timeline, newest first (CRM expansion Req 11.2). */
+    @GetMapping("/{id}/activity")
+    public List<com.shifa.oms.activity.dto.ActivityResponse> activity(@PathVariable Long id) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return leadService.leadActivity(id, actor);
     }
 
     /** Advance status / mark LOST (Req 2.2-2.7); 409 on illegal/terminal. */
@@ -243,5 +257,38 @@ public class LeadController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return leadService.reportLostReasons(from, to, actor);
+    }
+
+    /** Leads-by-stage report over an optional window (CRM expansion Req 13.1). */
+    @GetMapping("/reports/by-stage")
+    public com.shifa.oms.lead.dto.LeadReports.ByStageReport reportByStage(
+            @RequestParam(name = "from", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(name = "to", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return leadService.reportByStage(from, to, actor);
+    }
+
+    /** Leads-by-user (assignee) performance report over an optional window (Req 13.2). */
+    @GetMapping("/reports/by-user")
+    public com.shifa.oms.lead.dto.LeadReports.GroupPerformanceReport reportByUser(
+            @RequestParam(name = "from", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(name = "to", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return leadService.reportByUser(from, to, actor);
+    }
+
+    /** Leads-by-team performance report over an optional window (Req 13.2). */
+    @GetMapping("/reports/by-team")
+    public com.shifa.oms.lead.dto.LeadReports.GroupPerformanceReport reportByTeam(
+            @RequestParam(name = "from", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(name = "to", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        return leadService.reportByTeam(from, to, actor);
     }
 }

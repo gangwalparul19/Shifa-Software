@@ -3,8 +3,11 @@ package com.shifa.oms.performance;
 import com.shifa.oms.performance.dto.SalespersonPerformanceDetail;
 import com.shifa.oms.performance.dto.SalespersonPerformanceSummary;
 import com.shifa.oms.performance.dto.SalesTargetRow;
+import com.shifa.oms.performance.dto.SetPeriodTargetRequest;
 import com.shifa.oms.performance.dto.SetSalesTargetRequest;
+import com.shifa.oms.performance.dto.SetTeamTargetRequest;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -61,5 +65,31 @@ public class SalespersonPerformanceController {
     public SalesTargetRow setTarget(@Valid @RequestBody SetSalesTargetRequest request) {
         return salesTargetService.setTarget(
                 request.salespersonId(), request.month(), request.targetAmount(), request.incentivePct());
+    }
+
+    // --- CRM expansion Phase 2 (Req 12): weekly + team targets --------------
+
+    /** Weekly per-salesperson target vs achievement for a week (default current week). */
+    @GetMapping("/targets/weekly")
+    public List<SalesTargetRow> weeklyTargets(
+            @RequestParam(name = "week", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate week) {
+        return salesTargetService.listWeekly(week);
+    }
+
+    /** Set/update a per-salesperson WEEK or MONTH target (+ optional conversion goal). */
+    @PutMapping("/targets/period")
+    public SalesTargetRow setPeriodTarget(@Valid @RequestBody SetPeriodTargetRequest request) {
+        return salesTargetService.setSalespersonTarget(
+                request.salespersonId(), request.periodType(), request.anchor(),
+                request.targetAmount(), request.incentivePct(), request.conversionTarget());
+    }
+
+    /** Set/update a TEAM target (keyed by the team lead) for a WEEK or MONTH period. */
+    @PutMapping("/targets/team")
+    public SalesTargetRow setTeamTarget(@Valid @RequestBody SetTeamTargetRequest request) {
+        return salesTargetService.setTeamTarget(
+                request.teamLeadId(), request.periodType(), request.anchor(),
+                request.targetAmount(), request.conversionTarget());
     }
 }

@@ -561,6 +561,30 @@ export class AdminShellComponent {
           roles: [Role.SALESPERSON, Role.ADMIN],
         },
         {
+          // CRM tasks (CRM expansion Req 8) — SALESPERSON / TEAM_LEAD / ADMIN.
+          kind: 'link',
+          label: 'Tasks',
+          path: '/tasks',
+          icon: 'ti-checkbox',
+          roles: [Role.SALESPERSON, Role.TEAM_LEAD, Role.ADMIN],
+        },
+        {
+          // CRM meetings (CRM expansion Req 9) — SALESPERSON / TEAM_LEAD / ADMIN.
+          kind: 'link',
+          label: 'Meetings',
+          path: '/meetings',
+          icon: 'ti-calendar-event',
+          roles: [Role.SALESPERSON, Role.TEAM_LEAD, Role.ADMIN],
+        },
+        {
+          // Unified CRM cockpit (CRM expansion Req 14) — ADMIN only.
+          kind: 'link',
+          label: 'CRM cockpit',
+          path: '/crm-dashboard',
+          icon: 'ti-layout-dashboard',
+          adminOnly: true,
+        },
+        {
           kind: 'link',
           label: 'Customers',
           path: '/customers',

@@ -1,5 +1,7 @@
 package com.shifa.oms.lead;
 
+import com.shifa.oms.activity.ActivityService;
+import com.shifa.oms.activity.ActivityTypes;
 import com.shifa.oms.adminnotification.StaffNotificationDispatcher;
 import com.shifa.oms.audit.AuditActions;
 import com.shifa.oms.audit.AuditService;
@@ -22,6 +24,8 @@ import com.shifa.oms.lead.dto.LeadResponse;
 import com.shifa.oms.lead.dto.LeadSummaryResponse;
 import com.shifa.oms.lead.dto.LeadTagResponse;
 import com.shifa.oms.order.LeadSource;
+import com.shifa.oms.order.OrderEntity;
+import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderService;
 import com.shifa.oms.order.dto.AssignableCreatorResponse;
 import com.shifa.oms.order.dto.CreateOrderRequest;
@@ -89,6 +93,8 @@ public class LeadService {
     private final LeadTagAssignmentRepository tagAssignmentRepository;
     private final UserRepository userRepository;
     private final StaffNotificationDispatcher notificationDispatcher;
+    private final ActivityService activityService;
+    private final OrderRepository orderRepository;
     private final Clock clock;
 
     /**
@@ -106,10 +112,12 @@ public class LeadService {
                        LeadTagRepository tagRepository,
                        LeadTagAssignmentRepository tagAssignmentRepository,
                        UserRepository userRepository,
-                       StaffNotificationDispatcher notificationDispatcher) {
+                       StaffNotificationDispatcher notificationDispatcher,
+                       ActivityService activityService,
+                       OrderRepository orderRepository) {
         this(leadRepository, scopeResolver, auditService, orderService, tagRepository,
-                tagAssignmentRepository, userRepository, notificationDispatcher,
-                Clock.systemDefaultZone());
+                tagAssignmentRepository, userRepository, notificationDispatcher, activityService,
+                orderRepository, Clock.systemDefaultZone());
     }
 
     /**
@@ -128,6 +136,8 @@ public class LeadService {
                        LeadTagAssignmentRepository tagAssignmentRepository,
                        UserRepository userRepository,
                        StaffNotificationDispatcher notificationDispatcher,
+                       ActivityService activityService,
+                       OrderRepository orderRepository,
                        Clock clock) {
         this.leadRepository = Objects.requireNonNull(leadRepository, "leadRepository");
         this.scopeResolver = Objects.requireNonNull(scopeResolver, "scopeResolver");
@@ -137,7 +147,18 @@ public class LeadService {
         this.tagAssignmentRepository = tagAssignmentRepository;
         this.userRepository = userRepository;
         this.notificationDispatcher = notificationDispatcher;
+        this.activityService = activityService;
+        this.orderRepository = orderRepository;
         this.clock = Objects.requireNonNull(clock, "clock");
+    }
+
+    /** Records a lead activity when the (nullable) activity log is configured. */
+    private void recordActivity(String type, LeadEntity lead, AuthPrincipal actor,
+                                String summary, String detail) {
+        if (activityService == null || lead == null) {
+            return;
+        }
+        activityService.record(type, lead.getId(), lead.getCustomerMobile(), actor, summary, detail);
     }
 
     // --- Capture (Req 1) ----------------------------------------------------
@@ -243,6 +264,9 @@ public class LeadService {
         LeadEntity saved = leadRepository.save(lead);
         auditService.record(AuditActions.LEAD_STATUS_CHANGED, AuditActions.ENTITY_LEAD, idOf(saved),
                 "Lead " + id + " " + from + " \u2192 " + toStatus + " by " + actor.username());
+        recordActivity(ActivityTypes.STAGE_CHANGE, saved, actor,
+                "Stage " + from + " \u2192 " + toStatus,
+                toStatus == LeadStatus.LOST && lostReason != null ? "Lost: " + lostReason : null);
         return LeadResponse.from(saved, tagsOf(saved.getId()));
     }
 
@@ -264,12 +288,18 @@ public class LeadService {
         lead.setFollowUpDate(followUpDate);
         lead.setFollowUpTime(resolveFollowUpTime(followUpDate, followUpTime));
         lead.setRemindedOn(null);
+        lead.setFollowUpMissedAt(null); // rescheduling clears any prior Missed state (Req 10)
         LeadEntity saved = leadRepository.save(lead);
         auditService.record(AuditActions.LEAD_FOLLOW_UP_SET, AuditActions.ENTITY_LEAD, idOf(saved),
                 followUpDate == null
                         ? "Lead " + id + " follow-up cleared"
                         : "Lead " + id + " follow-up set to " + followUpDate
                                 + (saved.getFollowUpTime() != null ? " " + saved.getFollowUpTime() : ""));
+        recordActivity(ActivityTypes.FOLLOW_UP_SET, saved, actor,
+                followUpDate == null ? "Follow-up cleared"
+                        : "Follow-up set to " + followUpDate
+                                + (saved.getFollowUpTime() != null ? " " + saved.getFollowUpTime() : ""),
+                null);
         return LeadResponse.from(saved, tagsOf(saved.getId()));
     }
 
@@ -323,6 +353,7 @@ public class LeadService {
         if (request.followUpDate() != null && !request.followUpDate().equals(lead.getFollowUpDate())) {
             // Re-arm the reminder when the follow-up date changes (mirrors setFollowUp).
             lead.setRemindedOn(null);
+            lead.setFollowUpMissedAt(null);
         }
         lead.setFollowUpDate(request.followUpDate());
         lead.setFollowUpTime(resolveFollowUpTime(request.followUpDate(), request.followUpTime()));
@@ -529,6 +560,8 @@ public class LeadService {
         auditService.record(AuditActions.LEAD_ASSIGNED, AuditActions.ENTITY_LEAD, idOf(lead),
                 "Lead " + lead.getId() + " assigned from " + from + " to " + toUserId
                         + " by " + actor.username());
+        recordActivity(ActivityTypes.ASSIGNED, lead, actor,
+                "Assigned to user " + toUserId, "from " + from + " by " + actor.username());
         if (notificationDispatcher != null && !Objects.equals(from, toUserId)) {
             notificationDispatcher.dispatchToUser(
                     "LEAD_ASSIGNED",
@@ -611,6 +644,8 @@ public class LeadService {
             tagAssignmentRepository.save(new LeadTagAssignment(leadId, tagId, actor.userId()));
             auditService.record(AuditActions.LEAD_TAG_ADDED, AuditActions.ENTITY_LEAD, idOf(lead),
                     "Lead " + leadId + " tagged \"" + tag.getName() + "\" by " + actor.username());
+            recordActivity(ActivityTypes.TAG_ADDED, lead, actor,
+                    "Tagged \"" + tag.getName() + "\"", null);
         }
         return LeadResponse.from(lead, tagsOf(leadId));
     }
@@ -628,6 +663,8 @@ public class LeadService {
         if (removed > 0) {
             auditService.record(AuditActions.LEAD_TAG_REMOVED, AuditActions.ENTITY_LEAD, idOf(lead),
                     "Lead " + leadId + " tag " + tagId + " removed by " + actor.username());
+            recordActivity(ActivityTypes.TAG_REMOVED, lead, actor,
+                    "Removed tag " + tagId, null);
         }
         return LeadResponse.from(lead, tagsOf(leadId));
     }
@@ -669,6 +706,18 @@ public class LeadService {
     }
 
     /**
+     * A lead's unified activity timeline (CRM expansion Phase 2, Task 9; Req
+     * 11.2), newest-first. Enforces salesperson scoping via {@link #loadScoped}
+     * (a salesperson may read only their own lead's timeline; out-of-scope =
+     * 404). Returns empty when the activity log is unconfigured.
+     */
+    @Transactional(readOnly = true)
+    public List<com.shifa.oms.activity.dto.ActivityResponse> leadActivity(Long id, AuthPrincipal actor) {
+        loadScoped(id, actor); // authorise
+        return activityService == null ? List.of() : activityService.timelineForLead(id);
+    }
+
+    /**
      * Active-lead pipeline counts per {@link LeadStatus} (Req 3.3, 6.3), scoped by
      * owner. The active stages (NEW/CONTACTED/QUOTED) are always present (0 when
      * empty) for a stable board; terminal statuses are excluded.
@@ -697,6 +746,41 @@ public class LeadService {
         return leadRepository.findDueFollowUps(ownerUserId, today).stream()
                 .map(LeadSummaryResponse::from)
                 .toList();
+    }
+
+    /**
+     * The acting user's missed follow-ups (CRM expansion Phase 2, Req 10.3):
+     * non-terminal leads with {@code follow_up_missed_at} set, scoped by owner,
+     * most-recently-missed first.
+     */
+    @Transactional(readOnly = true)
+    public List<LeadSummaryResponse> missedFollowUps(AuthPrincipal actor) {
+        Long ownerUserId = scopeResolver.creatorConstraint(actor).orElse(null);
+        return leadRepository.findMissedFollowUps(ownerUserId).stream()
+                .map(LeadSummaryResponse::from)
+                .toList();
+    }
+
+    /**
+     * The cross-user follow-up health monitor (CRM expansion Phase 2, Req 10.3):
+     * upcoming / due / missed counts + the due and missed lists. Scoped by owner
+     * (an admin sees all; a salesperson their own), so the same method backs both
+     * the assignee view and the admin monitor.
+     */
+    @Transactional(readOnly = true)
+    public com.shifa.oms.lead.dto.FollowUpHealthResponse followUpHealth(AuthPrincipal actor) {
+        Long ownerUserId = scopeResolver.creatorConstraint(actor).orElse(null);
+        LocalDate today = LocalDate.now(clock);
+        List<LeadEntity> upcoming = leadRepository.findUpcomingFollowUps(ownerUserId, today);
+        List<LeadEntity> missed = leadRepository.findMissedFollowUps(ownerUserId);
+        // Due = due on/before today and not already marked missed.
+        List<LeadEntity> due = leadRepository.findDueFollowUps(ownerUserId, today).stream()
+                .filter(l -> l.getFollowUpMissedAt() == null)
+                .toList();
+        return new com.shifa.oms.lead.dto.FollowUpHealthResponse(
+                upcoming.size(), due.size(), missed.size(),
+                due.stream().map(LeadSummaryResponse::from).toList(),
+                missed.stream().map(LeadSummaryResponse::from).toList());
     }
 
     // --- Reports (Req 6) ----------------------------------------------------
@@ -741,6 +825,137 @@ public class LeadService {
         return leadRepository.findAllScoped(ownerUserId).stream()
                 .map(LeadReportRecord::from)
                 .toList();
+    }
+
+    // --- Group reports (CRM expansion Phase 2, Req 13) ----------------------
+
+    /** Leads grouped by stage over an optional window (Req 13.1), scoped. */
+    @Transactional(readOnly = true)
+    public com.shifa.oms.lead.dto.LeadReports.ByStageReport reportByStage(
+            LocalDate from, LocalDate to, AuthPrincipal actor) {
+        return REPORTS.byStage(scopedRecords(actor), DateRange.of(from, to));
+    }
+
+    /**
+     * Leads grouped by assignee (user) with conversion + converted revenue over an
+     * optional window (Req 13.2), scoped. Resolves owner display names + per-lead
+     * converted revenue.
+     */
+    @Transactional(readOnly = true)
+    public com.shifa.oms.lead.dto.LeadReports.GroupPerformanceReport reportByUser(
+            LocalDate from, LocalDate to, AuthPrincipal actor) {
+        List<LeadEntity> leads = scopedLeads(actor);
+        List<LeadReportRecord> records = recordsWithRevenue(leads);
+        Map<String, String> labels = ownerLabels(leads);
+        return REPORTS.byUser(records, DateRange.of(from, to), labels);
+    }
+
+    /**
+     * Leads grouped by team with conversion + converted revenue over an optional
+     * window (Req 13.2), scoped. The team key is the assignee's team-lead id (via
+     * {@code users.team_lead_id}); a team lead's own leads group under their own id.
+     */
+    @Transactional(readOnly = true)
+    public com.shifa.oms.lead.dto.LeadReports.GroupPerformanceReport reportByTeam(
+            LocalDate from, LocalDate to, AuthPrincipal actor) {
+        List<LeadEntity> leads = scopedLeads(actor);
+        List<LeadReportRecord> records = recordsWithRevenue(leads);
+        Map<Long, String> ownerToTeam = ownerToTeamKey(leads);
+        Map<String, String> labels = teamLabels(ownerToTeam.values());
+        return REPORTS.byTeam(records, DateRange.of(from, to), ownerToTeam, labels);
+    }
+
+    private List<LeadEntity> scopedLeads(AuthPrincipal actor) {
+        Long ownerUserId = scopeResolver.creatorConstraint(actor).orElse(null);
+        return leadRepository.findAllScoped(ownerUserId);
+    }
+
+    /** Projects leads to records, resolving converted-order revenue in one batch. */
+    private List<LeadReportRecord> recordsWithRevenue(List<LeadEntity> leads) {
+        Map<Long, java.math.BigDecimal> revenueByOrderId = convertedOrderRevenue(leads);
+        return leads.stream()
+                .map(lead -> LeadReportRecord.from(lead,
+                        lead.getConvertedOrderId() == null ? null
+                                : revenueByOrderId.get(lead.getConvertedOrderId())))
+                .toList();
+    }
+
+    /** Batch-loads the order totals for the converted orders referenced by the leads. */
+    private Map<Long, java.math.BigDecimal> convertedOrderRevenue(List<LeadEntity> leads) {
+        if (orderRepository == null) {
+            return Map.of();
+        }
+        List<Long> orderIds = leads.stream()
+                .map(LeadEntity::getConvertedOrderId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (orderIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, java.math.BigDecimal> byId = new LinkedHashMap<>();
+        for (OrderEntity order : orderRepository.findAllById(orderIds)) {
+            byId.put(order.getId(),
+                    order.getTotalAmount() == null ? java.math.BigDecimal.ZERO : order.getTotalAmount());
+        }
+        return byId;
+    }
+
+    /** owner id (as string) → display name for the by-user report. */
+    private Map<String, String> ownerLabels(List<LeadEntity> leads) {
+        if (userRepository == null) {
+            return Map.of();
+        }
+        List<Long> ownerIds = leads.stream()
+                .map(LeadEntity::getOwnerUserId).filter(Objects::nonNull).distinct().toList();
+        Map<String, String> labels = new LinkedHashMap<>();
+        for (User u : userRepository.findAllById(ownerIds)) {
+            labels.put(Long.toString(u.getId()),
+                    u.getFullName() == null || u.getFullName().isBlank() ? u.getUsername() : u.getFullName());
+        }
+        return labels;
+    }
+
+    /** owner id → team key (team-lead id as string; a team lead maps to their own id). */
+    private Map<Long, String> ownerToTeamKey(List<LeadEntity> leads) {
+        if (userRepository == null) {
+            return Map.of();
+        }
+        List<Long> ownerIds = leads.stream()
+                .map(LeadEntity::getOwnerUserId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, String> map = new LinkedHashMap<>();
+        for (User u : userRepository.findAllById(ownerIds)) {
+            Long teamKey = u.getRole() == Role.TEAM_LEAD ? u.getId()
+                    : (u.getTeamLeadId() != null ? u.getTeamLeadId() : null);
+            if (teamKey != null) {
+                map.put(u.getId(), Long.toString(teamKey));
+            }
+        }
+        return map;
+    }
+
+    /** team key (team-lead id as string) → display name for the by-team report. */
+    private Map<String, String> teamLabels(java.util.Collection<String> teamKeys) {
+        if (userRepository == null) {
+            return Map.of();
+        }
+        List<Long> ids = teamKeys.stream().distinct()
+                .map(k -> {
+                    try {
+                        return Long.valueOf(k);
+                    } catch (NumberFormatException e) {
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .toList();
+        Map<String, String> labels = new LinkedHashMap<>();
+        for (User u : userRepository.findAllById(ids)) {
+            labels.put(Long.toString(u.getId()), "Team "
+                    + (u.getFullName() == null || u.getFullName().isBlank() ? u.getUsername()
+                            : u.getFullName()));
+        }
+        return labels;
     }
 
     /**

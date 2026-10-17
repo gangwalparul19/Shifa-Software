@@ -79,6 +79,15 @@ public class LeadEntity {
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
+    /**
+     * When a due, reminded follow-up was marked Missed because it received no
+     * action within the grace window (CRM expansion Phase 2, Req 10). {@code null}
+     * = not missed (either acted on, or not yet evaluated). Cleared when the
+     * follow-up is rescheduled.
+     */
+    @Column(name = "follow_up_missed_at")
+    private LocalDateTime followUpMissedAt;
+
     @Column(name = "owner_user_id", nullable = false)
     private Long ownerUserId;
 
@@ -247,6 +256,14 @@ public class LeadEntity {
 
     public void setRemindedOn(LocalDate remindedOn) {
         this.remindedOn = remindedOn;
+    }
+
+    public LocalDateTime getFollowUpMissedAt() {
+        return followUpMissedAt;
+    }
+
+    public void setFollowUpMissedAt(LocalDateTime followUpMissedAt) {
+        this.followUpMissedAt = followUpMissedAt;
     }
 
     public Long getOwnerUserId() {

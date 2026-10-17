@@ -617,6 +617,29 @@
           </div>
         </div>
 
+        <!-- Activity timeline (CRM expansion Req 11.2) -->
+        @if (activity().length > 0) {
+          <div class="shifa-ld__section">
+            <div class="shifa-ld__label mb-2">Activity timeline</div>
+            <div class="shifa-ld__card">
+              @for (a of activity(); track a.id) {
+                <div class="shifa-ld__hist">
+                  <span class="shifa-ld__histdot is-blue"><i class="ti {{ activityMeta(a.activityType).icon }}"></i></span>
+                  <div class="shifa-ld__hist-main">
+                    <div class="shifa-ld__hist-line">
+                      <strong>{{ activityMeta(a.activityType).label }}</strong> — {{ a.summary }}
+                    </div>
+                    @if (a.detail) { <div class="shifa-ld__muted">{{ a.detail }}</div> }
+                    <div class="shifa-ld__muted">
+                      {{ a.actorName || 'System' }} · {{ a.createdAt ? (a.createdAt | istDate: 'dd MMM yyyy · HH:mm') : '' }}
+                    </div>
+                  </div>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
         <!-- Actions -->
         @if (canManage() && isActive(lead)) {
           @if (nextStage(lead.status); as target) {

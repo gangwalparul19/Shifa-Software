@@ -4,10 +4,13 @@ import { ApiClient } from 'core';
 import {
   AssignableUser,
   BulkAssignResult,
+  ByStageReport,
   BySourceReport,
   ConversionReport,
   CreateLeadRequest,
+  FollowUpHealth,
   FollowUpRequest,
+  GroupPerformanceReport,
   LeadConvertRequest,
   LeadDetail,
   LeadImportResult,
@@ -19,6 +22,7 @@ import {
   LostReasonReport,
   PipelineReport,
 } from './leads.model';
+import { ActivityEntry } from '../shared/activity.model';
 
 /**
  * Data access for the Lead Management / sales-pipeline API (`/api/leads`,
@@ -65,6 +69,21 @@ export class LeadsService {
   /** The acting user's due follow-ups: non-terminal leads due on/before today (Req 5.2). */
   dueFollowUps(): Observable<LeadSummary[]> {
     return this.api.get<LeadSummary[]>('/api/leads/follow-ups/due');
+  }
+
+  /** The acting user's missed follow-ups (CRM expansion Req 10.3), scoped. */
+  missedFollowUps(): Observable<LeadSummary[]> {
+    return this.api.get<LeadSummary[]>('/api/leads/follow-ups/missed');
+  }
+
+  /** Admin cross-user follow-up health: upcoming / due / missed (Req 10.3). */
+  followUpHealth(): Observable<FollowUpHealth> {
+    return this.api.get<FollowUpHealth>('/api/admin/leads/follow-up-health');
+  }
+
+  /** A lead's unified activity timeline, newest first (Req 11.2). */
+  activity(id: number): Observable<ActivityEntry[]> {
+    return this.api.get<ActivityEntry[]>(`/api/leads/${id}/activity`);
   }
 
   /** Scoped lead detail incl. status history (Req 3.5); 404 when out of scope. */
@@ -163,6 +182,27 @@ export class LeadsService {
   /** Lost-reasons report over an optional window (Req 6.4). */
   reportLostReasons(from?: string | null, to?: string | null): Observable<LostReasonReport> {
     return this.api.get<LostReasonReport>('/api/leads/reports/lost-reasons', {
+      params: this.rangeParams(from, to),
+    });
+  }
+
+  /** Leads-by-stage report over an optional window (CRM expansion Req 13.1). */
+  reportByStage(from?: string | null, to?: string | null): Observable<ByStageReport> {
+    return this.api.get<ByStageReport>('/api/leads/reports/by-stage', {
+      params: this.rangeParams(from, to),
+    });
+  }
+
+  /** Leads-by-user (assignee) performance report over an optional window (Req 13.2). */
+  reportByUser(from?: string | null, to?: string | null): Observable<GroupPerformanceReport> {
+    return this.api.get<GroupPerformanceReport>('/api/leads/reports/by-user', {
+      params: this.rangeParams(from, to),
+    });
+  }
+
+  /** Leads-by-team performance report over an optional window (Req 13.2). */
+  reportByTeam(from?: string | null, to?: string | null): Observable<GroupPerformanceReport> {
+    return this.api.get<GroupPerformanceReport>('/api/leads/reports/by-team', {
       params: this.rangeParams(from, to),
     });
   }

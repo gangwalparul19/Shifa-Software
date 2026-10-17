@@ -85,8 +85,12 @@ public class SalesTargetService {
             }
         }
         Map<Long, SalesTarget> targetById = new HashMap<>();
-        for (SalesTarget t : targetRepository.findByPeriodMonth(firstDay)) {
-            targetById.put(t.getSalespersonId(), t);
+        // Only per-salesperson MONTH targets (exclude new week/team rows).
+        for (SalesTarget t : targetRepository.findByPeriodTypeAndPeriodMonth(
+                TargetPeriodType.MONTH, firstDay)) {
+            if (t.getSalespersonId() != null) {
+                targetById.put(t.getSalespersonId(), t);
+            }
         }
 
         List<SalesTargetRow> rows = new ArrayList<>();
@@ -141,8 +145,8 @@ public class SalesTargetService {
         }
         YearMonth ym = parseMonth(month);
         LocalDate firstDay = ym.atDay(1);
-        SalesTarget target = targetRepository.findBySalespersonIdAndPeriodMonth(salespersonId, firstDay)
-                .orElse(null);
+        SalesTarget target = targetRepository.findBySalespersonIdAndPeriodTypeAndPeriodMonth(
+                salespersonId, TargetPeriodType.MONTH, firstDay).orElse(null);
         if (target == null) {
             target = new SalesTarget(salespersonId, firstDay, targetAmount, incentivePct);
         } else {
@@ -159,6 +163,187 @@ public class SalesTargetService {
                 .filter(r -> r.salespersonId().equals(salespersonId))
                 .findFirst()
                 .orElseGet(() -> row(u, ym, savedTarget, BigDecimal.ZERO, 0));
+    }
+
+    // --- CRM expansion Phase 2 (Req 12): weekly + team + conversion targets -
+
+    /**
+     * Pure attainment percentage (CRM expansion Phase 2, Req 12.2):
+     * {@code achieved / target * 100} to one decimal, or {@code null} when there
+     * is no positive target. Exposed static so the property/unit test asserts the
+     * exact formula for both week and month.
+     */
+    public static Double attainmentPct(BigDecimal achieved, BigDecimal target) {
+        if (target == null || target.signum() <= 0) {
+            return null;
+        }
+        BigDecimal a = achieved == null ? BigDecimal.ZERO : achieved;
+        return a.multiply(BigDecimal.valueOf(100))
+                .divide(target, 1, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    /** The Monday of the ISO week containing {@code date} — the WEEK period anchor. */
+    public static LocalDate weekAnchor(LocalDate date) {
+        return date.with(java.time.temporal.TemporalAdjusters.previousOrSame(
+                java.time.DayOfWeek.MONDAY));
+    }
+
+    /**
+     * Upserts a per-salesperson target for a period (WEEK or MONTH) with an
+     * optional incentive % and conversion goal (Req 12.1). {@code anchor} is any
+     * date in the period; it is normalised to the period anchor (first-of-month
+     * for MONTH, that week's Monday for WEEK).
+     */
+    @Transactional
+    public SalesTargetRow setSalespersonTarget(Long salespersonId, TargetPeriodType periodType,
+                                               LocalDate anchor, BigDecimal targetAmount,
+                                               BigDecimal incentivePct, BigDecimal conversionTarget) {
+        User u = userRepository.findById(salespersonId)
+                .orElseThrow(() -> new ResourceNotFoundException("User " + salespersonId + " does not exist."));
+        if (u.getRole() != Role.SALESPERSON && u.getRole() != Role.TEAM_LEAD) {
+            throw new ValidationException("Targets can only be set for a salesperson or team lead.");
+        }
+        TargetPeriodType type = periodType == null ? TargetPeriodType.MONTH : periodType;
+        LocalDate periodAnchor = normalizeAnchor(type, anchor);
+        SalesTarget target = targetRepository
+                .findBySalespersonIdAndPeriodTypeAndPeriodMonth(salespersonId, type, periodAnchor)
+                .orElseGet(() -> new SalesTarget(
+                        salespersonId, null, type, periodAnchor, targetAmount, incentivePct, conversionTarget));
+        target.setTargetAmount(targetAmount);
+        target.setIncentivePct(incentivePct);
+        target.setConversionTarget(conversionTarget);
+        targetRepository.save(target);
+        auditService.record(AuditActions.SALES_TARGET_SET, AuditActions.ENTITY_SALES_TARGET,
+                String.valueOf(salespersonId),
+                "Set " + type + " target " + targetAmount + " for " + u.getUsername()
+                        + " (" + periodAnchor + ")");
+        return attainmentRow(salespersonId, u.getFullName() == null || u.getFullName().isBlank()
+                ? u.getUsername() : u.getFullName(), type, periodAnchor, target);
+    }
+
+    /**
+     * Upserts a TEAM target (keyed by the team lead) for a period (Req 12.1).
+     */
+    @Transactional
+    public SalesTargetRow setTeamTarget(Long teamLeadId, TargetPeriodType periodType, LocalDate anchor,
+                                        BigDecimal targetAmount, BigDecimal conversionTarget) {
+        User u = userRepository.findById(teamLeadId)
+                .orElseThrow(() -> new ResourceNotFoundException("User " + teamLeadId + " does not exist."));
+        if (u.getRole() != Role.TEAM_LEAD) {
+            throw new ValidationException("Team targets can only be set for a team lead.");
+        }
+        TargetPeriodType type = periodType == null ? TargetPeriodType.MONTH : periodType;
+        LocalDate periodAnchor = normalizeAnchor(type, anchor);
+        SalesTarget target = targetRepository
+                .findByTeamLeadIdAndPeriodTypeAndPeriodMonth(teamLeadId, type, periodAnchor)
+                .orElseGet(() -> new SalesTarget(
+                        null, teamLeadId, type, periodAnchor, targetAmount, null, conversionTarget));
+        target.setTargetAmount(targetAmount);
+        target.setConversionTarget(conversionTarget);
+        targetRepository.save(target);
+        auditService.record(AuditActions.SALES_TARGET_SET, AuditActions.ENTITY_SALES_TARGET,
+                String.valueOf(teamLeadId),
+                "Set " + type + " TEAM target " + targetAmount + " for team of " + u.getUsername()
+                        + " (" + periodAnchor + ")");
+        return attainmentRow(teamLeadId, "Team: " + (u.getFullName() == null || u.getFullName().isBlank()
+                ? u.getUsername() : u.getFullName()), type, periodAnchor, target);
+    }
+
+    /**
+     * Per-salesperson WEEK target vs achievement for the week containing
+     * {@code anchor} (default current week), best attainment first (Req 12.2, 12.3).
+     */
+    @Transactional(readOnly = true)
+    public List<SalesTargetRow> listWeekly(LocalDate anchor) {
+        LocalDate weekStart = weekAnchor(anchor == null ? LocalDate.now(clock) : anchor);
+        LocalDateTime from = weekStart.atStartOfDay();
+        LocalDateTime to = weekStart.plusWeeks(1).atStartOfDay();
+
+        Map<Long, BigDecimal> revenueById = new HashMap<>();
+        Map<Long, Long> ordersById = new HashMap<>();
+        for (OrderRepository.SalespersonRevenueRow r : orderRepository.salespersonRevenueBetween(from, to)) {
+            if (r.getSalespersonId() != null) {
+                revenueById.put(r.getSalespersonId(), nz(r.getRevenue()));
+                ordersById.put(r.getSalespersonId(), r.getOrderCount());
+            }
+        }
+        Map<Long, SalesTarget> targetById = new HashMap<>();
+        for (SalesTarget t : targetRepository.findByPeriodTypeAndPeriodMonth(
+                TargetPeriodType.WEEK, weekStart)) {
+            if (t.getSalespersonId() != null) {
+                targetById.put(t.getSalespersonId(), t);
+            }
+        }
+        List<SalesTargetRow> rows = new ArrayList<>();
+        for (User u : userRepository.findByRoleInOrderByCreatedAtDescIdDesc(
+                List.of(Role.SALESPERSON, Role.TEAM_LEAD))) {
+            SalesTarget t = targetById.get(u.getId());
+            BigDecimal achieved = revenueById.getOrDefault(u.getId(), BigDecimal.ZERO);
+            rows.add(weeklyRow(u, weekStart, t, achieved,
+                    ordersById.getOrDefault(u.getId(), 0L)));
+        }
+        rows.sort(Comparator
+                .comparing((SalesTargetRow r) -> r.attainmentPct() == null ? -1.0 : r.attainmentPct())
+                .reversed()
+                .thenComparing(r -> r.achieved() == null ? BigDecimal.ZERO : r.achieved(),
+                        Comparator.reverseOrder()));
+        return rows;
+    }
+
+    private SalesTargetRow attainmentRow(Long id, String name, TargetPeriodType type,
+                                         LocalDate anchor, SalesTarget target) {
+        LocalDateTime from;
+        LocalDateTime to;
+        String label;
+        if (type == TargetPeriodType.WEEK) {
+            from = anchor.atStartOfDay();
+            to = anchor.plusWeeks(1).atStartOfDay();
+            label = "W/" + anchor;
+        } else {
+            YearMonth ym = YearMonth.from(anchor);
+            from = ym.atDay(1).atStartOfDay();
+            to = ym.plusMonths(1).atDay(1).atStartOfDay();
+            label = ym.format(MONTH_FMT);
+        }
+        BigDecimal achieved = BigDecimal.ZERO;
+        long orders = 0;
+        for (OrderRepository.SalespersonRevenueRow r : orderRepository.salespersonRevenueBetween(from, to)) {
+            if (id.equals(r.getSalespersonId())) {
+                achieved = nz(r.getRevenue());
+                orders = r.getOrderCount();
+            }
+        }
+        return attainmentRowOf(id, name, label, target, achieved, orders);
+    }
+
+    private static SalesTargetRow weeklyRow(User u, LocalDate weekStart, SalesTarget target,
+                                            BigDecimal achieved, long orderCount) {
+        return attainmentRowOf(u.getId(),
+                u.getFullName() == null || u.getFullName().isBlank() ? u.getUsername() : u.getFullName(),
+                "W/" + weekStart, target, achieved, orderCount);
+    }
+
+    private static SalesTargetRow attainmentRowOf(Long id, String name, String label,
+                                                  SalesTarget target, BigDecimal achieved,
+                                                  long orderCount) {
+        BigDecimal targetAmount = target == null ? null : target.getTargetAmount();
+        BigDecimal incentivePct = target == null ? null : target.getIncentivePct();
+        Double attainment = attainmentPct(achieved, targetAmount);
+        boolean met = targetAmount != null && targetAmount.signum() > 0
+                && achieved.compareTo(targetAmount) >= 0;
+        BigDecimal incentiveAmount = BigDecimal.ZERO.setScale(2);
+        if (met && incentivePct != null && incentivePct.signum() > 0) {
+            incentiveAmount = achieved.multiply(incentivePct)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        }
+        return new SalesTargetRow(id, name, true, label, targetAmount,
+                achieved.setScale(2, RoundingMode.HALF_UP), orderCount,
+                attainment, incentivePct, incentiveAmount, met);
+    }
+
+    private static LocalDate normalizeAnchor(TargetPeriodType type, LocalDate anchor) {
+        LocalDate d = anchor == null ? LocalDate.now() : anchor;
+        return type == TargetPeriodType.WEEK ? weekAnchor(d) : d.withDayOfMonth(1);
     }
 
     private YearMonth parseMonth(String month) {

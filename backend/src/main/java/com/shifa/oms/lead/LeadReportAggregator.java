@@ -1,13 +1,17 @@
 package com.shifa.oms.lead;
 
+import com.shifa.oms.lead.dto.LeadReports.ByStageReport;
 import com.shifa.oms.lead.dto.LeadReports.BySourceReport;
 import com.shifa.oms.lead.dto.LeadReports.ConversionReport;
 import com.shifa.oms.lead.dto.LeadReports.ConversionRow;
+import com.shifa.oms.lead.dto.LeadReports.GroupPerformanceReport;
+import com.shifa.oms.lead.dto.LeadReports.GroupPerformanceRow;
 import com.shifa.oms.lead.dto.LeadReports.LostReasonCount;
 import com.shifa.oms.lead.dto.LeadReports.LostReasonReport;
 import com.shifa.oms.lead.dto.LeadReports.PipelineCount;
 import com.shifa.oms.lead.dto.LeadReports.PipelineReport;
 import com.shifa.oms.lead.dto.LeadReports.SourceCount;
+import com.shifa.oms.lead.dto.LeadReports.StageCount;
 import com.shifa.oms.order.LeadSource;
 import com.shifa.oms.reporting.domain.DateRange;
 
@@ -142,6 +146,94 @@ public class LeadReportAggregator {
         rows.sort(Comparator.comparingLong(LostReasonCount::count).reversed()
                 .thenComparing(r -> r.reason().name()));
         return new LostReasonReport(rows, total);
+    }
+
+    // --- CRM expansion Phase 2 (Req 13): by-stage / by-user / by-team -------
+
+    /**
+     * In-range leads grouped by current {@link LeadStatus} stage (CRM expansion
+     * Req 13.1), ordered by lifecycle (NEW…LOST). Unlike {@link #pipeline}, this
+     * covers ALL stages (incl. terminal WON/LOST) and is date-windowed.
+     */
+    public ByStageReport byStage(List<LeadReportRecord> leads, DateRange window) {
+        Map<LeadStatus, Long> counts = new java.util.EnumMap<>(LeadStatus.class);
+        long total = 0;
+        for (LeadReportRecord l : within(leads, window)) {
+            if (l.status() != null) {
+                counts.merge(l.status(), 1L, Long::sum);
+                total++;
+            }
+        }
+        List<StageCount> rows = new ArrayList<>();
+        for (LeadStatus stage : LeadStatus.values()) { // lifecycle (declaration) order
+            long c = counts.getOrDefault(stage, 0L);
+            if (c > 0) {
+                rows.add(new StageCount(stage, c));
+            }
+        }
+        return new ByStageReport(rows, total);
+    }
+
+    /**
+     * In-range leads grouped by assignee (owner user id) with conversion + the
+     * converted-lead revenue (CRM expansion Req 13.2), ordered by descending lead
+     * count then key. {@code labels} maps an owner id (as string) to a display
+     * name; a missing/{@code null} owner is reported under {@link #UNSPECIFIED_OWNER}.
+     */
+    public GroupPerformanceReport byUser(List<LeadReportRecord> leads, DateRange window,
+                                         Map<String, String> labels) {
+        return grouped(within(leads, window),
+                l -> l.ownerUserId() == null ? UNSPECIFIED_OWNER : Long.toString(l.ownerUserId()),
+                labels);
+    }
+
+    /**
+     * In-range leads grouped by TEAM with conversion + converted revenue (CRM
+     * expansion Req 13.2). {@code ownerToTeam} maps an owner id to its team key
+     * (e.g. the team-lead id as string); owners without a team fall under
+     * {@link #UNSPECIFIED_OWNER}. {@code labels} maps a team key to a display name.
+     */
+    public GroupPerformanceReport byTeam(List<LeadReportRecord> leads, DateRange window,
+                                         Map<Long, String> ownerToTeam, Map<String, String> labels) {
+        return grouped(within(leads, window),
+                l -> {
+                    String team = l.ownerUserId() == null ? null : ownerToTeam.get(l.ownerUserId());
+                    return team == null ? UNSPECIFIED_OWNER : team;
+                },
+                labels);
+    }
+
+    /** Shared grouping for the by-user / by-team performance reports. */
+    private GroupPerformanceReport grouped(List<LeadReportRecord> inRange,
+                                           java.util.function.Function<LeadReportRecord, String> keyOf,
+                                           Map<String, String> labels) {
+        // key -> [leads, won], and key -> converted revenue.
+        Map<String, long[]> counts = new LinkedHashMap<>();
+        Map<String, BigDecimal> revenue = new LinkedHashMap<>();
+        long total = 0;
+        for (LeadReportRecord l : inRange) {
+            String key = keyOf.apply(l);
+            long[] cell = counts.computeIfAbsent(key, k -> new long[2]);
+            cell[0]++;
+            total++;
+            if (l.status() == LeadStatus.WON) {
+                cell[1]++;
+                BigDecimal rev = l.convertedRevenue() == null ? BigDecimal.ZERO : l.convertedRevenue();
+                revenue.merge(key, rev, BigDecimal::add);
+            }
+        }
+        List<GroupPerformanceRow> rows = new ArrayList<>();
+        for (Map.Entry<String, long[]> e : counts.entrySet()) {
+            long groupLeads = e.getValue()[0];
+            long won = e.getValue()[1];
+            String label = labels == null ? e.getKey() : labels.getOrDefault(e.getKey(), e.getKey());
+            rows.add(new GroupPerformanceRow(e.getKey(), label, groupLeads, won,
+                    conversionRate(won, groupLeads),
+                    revenue.getOrDefault(e.getKey(), BigDecimal.ZERO)));
+        }
+        rows.sort(Comparator.comparingLong(GroupPerformanceRow::leads).reversed()
+                .thenComparing(GroupPerformanceRow::key));
+        return new GroupPerformanceReport(rows, total);
     }
 
     /**

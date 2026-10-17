@@ -25,6 +25,32 @@ export interface SetSalesTargetRequest {
   incentivePct: number | null;
 }
 
+/** Target horizon (CRM expansion Phase 2, Req 12). */
+export type TargetPeriodType = 'WEEK' | 'MONTH';
+
+/**
+ * Upsert payload for a per-salesperson WEEK or MONTH target with an optional
+ * incentive + conversion goal (CRM expansion Req 12). {@code anchor} is any date
+ * in the period (ISO yyyy-MM-dd).
+ */
+export interface SetPeriodTargetRequest {
+  salespersonId: number;
+  periodType: TargetPeriodType;
+  anchor: string;
+  targetAmount: number;
+  incentivePct?: number | null;
+  conversionTarget?: number | null;
+}
+
+/** Upsert payload for a TEAM target keyed by the team lead (CRM expansion Req 12). */
+export interface SetTeamTargetRequest {
+  teamLeadId: number;
+  periodType: TargetPeriodType;
+  anchor: string;
+  targetAmount: number;
+  conversionTarget?: number | null;
+}
+
 // --- §6.3 Cohort / retention ---------------------------------------------
 
 export interface ReorderBucket {

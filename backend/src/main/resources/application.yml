@@ -256,6 +256,24 @@ app:
       # Maximum data rows accepted in a single bulk lead upload (CRM expansion
       # Req 2.4); an oversized file is rejected with a clear 400.
       max-rows: ${CRM_LEAD_IMPORT_MAX_ROWS:2000}
+    # CRM expansion Phase 2 (Req 8, 9, 10, 15): task/meeting reminders + missed
+    # follow-up evaluation. All best-effort on the existing outbox+notification rails.
+    task:
+      reminder:
+        # Task due-reminder schedule (default every 15 min); idempotent per due day.
+        cron: ${CRM_TASK_REMINDER_CRON:0 0/15 * * * *}
+    meeting:
+      reminder:
+        # Upcoming-meeting reminder schedule (default every 15 min).
+        cron: ${CRM_MEETING_REMINDER_CRON:0 0/15 * * * *}
+        # Minutes ahead of now a SCHEDULED meeting is considered "upcoming".
+        lookahead-minutes: ${CRM_MEETING_LOOKAHEAD_MINUTES:60}
+    followup:
+      # Hours after a reminder that an un-acted follow-up becomes Missed (Req 10.2).
+      grace-hours: ${CRM_FOLLOWUP_GRACE_HOURS:24}
+      missed:
+        # Missed-follow-up evaluation schedule (default daily 09:30, after the 09:00 reminder).
+        cron: ${CRM_FOLLOWUP_MISSED_CRON:0 30 9 * * *}
   insights:
     # Statistical insights engine (statistical-insights-engine, design §Config).
     # Nightly computation schedule (default daily 02:00) + the tunable thresholds

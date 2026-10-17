@@ -58,6 +58,9 @@ import { BalanceSheetComponent } from './ledger/balance-sheet.component';
 import { ProfitAndLossComponent } from './ledger/profit-and-loss.component';
 import { CashFlowComponent } from './ledger/cash-flow.component';
 import { ExceptionsComponent } from './exceptions/exceptions.component';
+import { TasksComponent } from './tasks/tasks.component';
+import { MeetingsComponent } from './meetings/meetings.component';
+import { CrmDashboardComponent } from './crm-dashboard/crm-dashboard.component';
 
 const LOGIN_PATH = '/login';
 const FORBIDDEN_PATH = '/forbidden';
@@ -269,6 +272,25 @@ export const routes: Routes = [
         path: 'leads',
         component: LeadsComponent,
         canActivate: [salespersonGuard],
+      },
+      {
+        // CRM tasks (SALESPERSON + TEAM_LEAD + ADMIN, CRM expansion Req 8). The
+        // backend scopes own / team / all.
+        path: 'tasks',
+        component: TasksComponent,
+        canActivate: [orderEntryGuard],
+      },
+      {
+        // CRM meetings (SALESPERSON + TEAM_LEAD + ADMIN, CRM expansion Req 9).
+        path: 'meetings',
+        component: MeetingsComponent,
+        canActivate: [orderEntryGuard],
+      },
+      {
+        // Unified CRM cockpit (ADMIN only, CRM expansion Req 14).
+        path: 'crm-dashboard',
+        component: CrmDashboardComponent,
+        canActivate: [adminOnlyGuard],
       },
       {
         path: 'exceptions',

@@ -6,7 +6,9 @@ import {
   ForecastReport,
   RetentionReport,
   SalesTargetRow,
+  SetPeriodTargetRequest,
   SetSalesTargetRequest,
+  SetTeamTargetRequest,
 } from './analytics.model';
 
 /**
@@ -26,6 +28,22 @@ export class AnalyticsService {
   /** Set/update a salesperson's monthly target + optional incentive; §6.1. */
   setTarget(request: SetSalesTargetRequest): Observable<SalesTargetRow> {
     return this.api.put<SalesTargetRow>('/api/admin/salespeople/targets', request);
+  }
+
+  /** Weekly per-salesperson targets vs achievement (CRM expansion Req 12). */
+  weeklyTargets(week?: string): Observable<SalesTargetRow[]> {
+    const params = week ? { params: { week } } : undefined;
+    return this.api.get<SalesTargetRow[]>('/api/admin/salespeople/targets/weekly', params);
+  }
+
+  /** Set/update a per-salesperson WEEK or MONTH target (CRM expansion Req 12). */
+  setPeriodTarget(request: SetPeriodTargetRequest): Observable<SalesTargetRow> {
+    return this.api.put<SalesTargetRow>('/api/admin/salespeople/targets/period', request);
+  }
+
+  /** Set/update a TEAM target keyed by the team lead (CRM expansion Req 12). */
+  setTeamTarget(request: SetTeamTargetRequest): Observable<SalesTargetRow> {
+    return this.api.put<SalesTargetRow>('/api/admin/salespeople/targets/team', request);
   }
 
   /** Cohort / retention analysis over the last {@code months} cohorts; §6.3. */

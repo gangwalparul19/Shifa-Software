@@ -116,6 +116,16 @@ class LeadEndpointRoleGuardIntegrationTest {
     }
 
     @Test
+    void leadActivityIsSalespersonOrAdmin() throws Exception {
+        assertRoleMatrix(get("/api/leads/5/activity"), LEAD_ROLES);
+    }
+
+    @Test
+    void missedFollowUpsIsSalespersonOrAdmin() throws Exception {
+        assertRoleMatrix(get("/api/leads/follow-ups/missed"), LEAD_ROLES);
+    }
+
+    @Test
     void statusChangeIsSalespersonOrAdmin() throws Exception {
         assertRoleMatrix(post("/api/leads/5/status")
                 .contentType(MediaType.APPLICATION_JSON).content(STATUS_JSON), LEAD_ROLES);
@@ -136,6 +146,13 @@ class LeadEndpointRoleGuardIntegrationTest {
     @Test
     void reportsAreSalespersonOrAdmin() throws Exception {
         assertRoleMatrix(get("/api/leads/reports/conversion"), LEAD_ROLES);
+    }
+
+    @Test
+    void groupReportsAreSalespersonOrAdmin() throws Exception {
+        assertRoleMatrix(get("/api/leads/reports/by-stage"), LEAD_ROLES);
+        assertRoleMatrix(get("/api/leads/reports/by-user"), LEAD_ROLES);
+        assertRoleMatrix(get("/api/leads/reports/by-team"), LEAD_ROLES);
     }
 
     @Test
@@ -242,7 +259,7 @@ class LeadEndpointRoleGuardIntegrationTest {
         StubLeadService() {
             super(mock(LeadRepository.class), new SalespersonScopeResolver(),
                     new AuditService(null, new CurrentUserService()), new NoOpOrderService(),
-                    null, null, null, null);
+                    null, null, null, null, null, null);
         }
 
         private static LeadResponse sample(LeadStatus status, Long convertedOrderId) {
@@ -274,8 +291,19 @@ class LeadEndpointRoleGuardIntegrationTest {
         }
 
         @Override
+        public List<LeadSummaryResponse> missedFollowUps(AuthPrincipal actor) {
+            return List.of();
+        }
+
+        @Override
         public LeadResponse detail(Long id, AuthPrincipal actor) {
             return sample(LeadStatus.NEW, null);
+        }
+
+        @Override
+        public List<com.shifa.oms.activity.dto.ActivityResponse> leadActivity(
+                Long id, AuthPrincipal actor) {
+            return List.of();
         }
 
         @Override
@@ -337,6 +365,24 @@ class LeadEndpointRoleGuardIntegrationTest {
         public com.shifa.oms.lead.dto.LeadReports.ConversionReport reportConversion(
                 LocalDate from, LocalDate to, AuthPrincipal actor) {
             return new com.shifa.oms.lead.dto.LeadReports.ConversionReport(List.of(), List.of());
+        }
+
+        @Override
+        public com.shifa.oms.lead.dto.LeadReports.ByStageReport reportByStage(
+                LocalDate from, LocalDate to, AuthPrincipal actor) {
+            return new com.shifa.oms.lead.dto.LeadReports.ByStageReport(List.of(), 0);
+        }
+
+        @Override
+        public com.shifa.oms.lead.dto.LeadReports.GroupPerformanceReport reportByUser(
+                LocalDate from, LocalDate to, AuthPrincipal actor) {
+            return new com.shifa.oms.lead.dto.LeadReports.GroupPerformanceReport(List.of(), 0);
+        }
+
+        @Override
+        public com.shifa.oms.lead.dto.LeadReports.GroupPerformanceReport reportByTeam(
+                LocalDate from, LocalDate to, AuthPrincipal actor) {
+            return new com.shifa.oms.lead.dto.LeadReports.GroupPerformanceReport(List.of(), 0);
         }
     }
 
