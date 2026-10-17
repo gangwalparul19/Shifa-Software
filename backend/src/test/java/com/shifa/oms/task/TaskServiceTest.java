@@ -5,6 +5,7 @@ import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.Role;
 import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.common.ResourceNotFoundException;
+import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.task.dto.CreateTaskRequest;
 import com.shifa.oms.task.dto.TaskResponse;
 import org.junit.jupiter.api.Test;
@@ -66,10 +67,58 @@ class TaskServiceTest {
         TaskResponse created = service.create(new CreateTaskRequest(
                 "Follow up", null, null, null, null, null, null), sales);
 
-        TaskResponse done = service.complete(created.id(), sales);
+        TaskResponse done = service.complete(created.id(), null, sales);
 
         assertThat(done.status()).isEqualTo(TaskStatus.DONE);
         assertThat(done.completedAt()).isEqualTo(LocalDateTime.now(CLOCK));
+    }
+
+    @Test
+    void completeStoresTheCompletionNoteAndRecordsActivity() {
+        List<TaskEntity> store = new ArrayList<>();
+        int[] activity = {0};
+        TaskService service = new TaskService(repo(store), new SalespersonScopeResolver(),
+                countingActivity(activity), CLOCK);
+        TaskResponse created = service.create(new CreateTaskRequest(
+                "Follow up", null, 5L, null, null, null, null), sales);
+
+        TaskResponse done = service.complete(created.id(), "  Customer confirmed order  ", sales);
+
+        assertThat(done.status()).isEqualTo(TaskStatus.DONE);
+        assertThat(done.completionNote()).isEqualTo("Customer confirmed order"); // trimmed
+        // TASK_CREATED + TASK_DONE (both have a lead link).
+        assertThat(activity[0]).isEqualTo(2);
+    }
+
+    @Test
+    void cancelSetsCancelledWithReasonAndTimeAndRecordsActivity() {
+        List<TaskEntity> store = new ArrayList<>();
+        int[] activity = {0};
+        TaskService service = new TaskService(repo(store), new SalespersonScopeResolver(),
+                countingActivity(activity), CLOCK);
+        TaskResponse created = service.create(new CreateTaskRequest(
+                "Chase quote", null, 5L, null, null, null, null), sales);
+
+        TaskResponse cancelled = service.cancel(created.id(), "Customer went cold", sales);
+
+        assertThat(cancelled.status()).isEqualTo(TaskStatus.CANCELLED);
+        assertThat(cancelled.cancelReason()).isEqualTo("Customer went cold");
+        assertThat(cancelled.cancelledAt()).isEqualTo(LocalDateTime.now(CLOCK));
+        // TASK_CREATED + TASK_CANCELLED (both have a lead link).
+        assertThat(activity[0]).isEqualTo(2);
+    }
+
+    @Test
+    void cancelOfACompletedTaskIsRejected() {
+        List<TaskEntity> store = new ArrayList<>();
+        TaskService service = new TaskService(repo(store), new SalespersonScopeResolver(),
+                null, CLOCK);
+        TaskResponse created = service.create(new CreateTaskRequest(
+                "Done then cancel?", null, null, null, null, null, null), sales);
+        service.complete(created.id(), null, sales);
+
+        assertThatThrownBy(() -> service.cancel(created.id(), "too late", sales))
+                .isInstanceOf(ValidationException.class);
     }
 
     @Test
@@ -82,7 +131,7 @@ class TaskServiceTest {
                 "Owned by 99", null, null, null, null, null, 99L), admin);
 
         TaskService salesService = new TaskService(repo(store), resolver, null, CLOCK);
-        assertThatThrownBy(() -> salesService.complete(other.id(), sales))
+        assertThatThrownBy(() -> salesService.complete(other.id(), null, sales))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 

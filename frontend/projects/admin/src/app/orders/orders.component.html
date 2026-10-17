@@ -373,7 +373,9 @@
           </span>
         </div>
         <div class="shifa-oc__r3 d-flex align-items-center flex-wrap gap-1">
-          @if (courierPartner(order) === 'IN_HOUSE') {
+          @if (courierPartner(order) === 'STORE_PICKUP') {
+            <span class="badge bg-purple-lt"><i class="ti ti-building-store me-1"></i>Store pickup</span>
+          } @else if (courierPartner(order) === 'IN_HOUSE') {
             <span class="badge bg-teal-lt"><i class="ti ti-home me-1"></i>In-House</span>
           } @else {
             <admin-channel-logo [quikShip]="true" />
@@ -479,7 +481,9 @@
               <td class="text-end d-none d-xl-table-cell">{{ money(order.codAmount) }}</td>
               <td class="d-none d-xl-table-cell"><admin-status-badge [status]="order.paymentStatus" kind="payment" /></td>
               <td class="d-none d-md-table-cell" data-label="Courier Partner">
-                @if (courierPartner(order) === 'IN_HOUSE') {
+                @if (courierPartner(order) === 'STORE_PICKUP') {
+                  <span class="badge bg-purple-lt"><i class="ti ti-building-store me-1"></i>Store pickup</span>
+                } @else if (courierPartner(order) === 'IN_HOUSE') {
                   <span class="badge bg-teal-lt"><i class="ti ti-home me-1"></i>In-House</span>
                 } @else {
                   <admin-channel-logo [quikShip]="true" />
@@ -1007,11 +1011,25 @@
         }
 
         @if (detailTab() === 'details') {
-        <!-- Shipment / delivery (non-QuikShip orders; QuikShipX orders use their own
-             card below). Always shown so an in-house order — which has no courier
-             partner and no AWB — still states its delivery partner as "In-House"
-             plus who is carrying it, instead of the card disappearing entirely. -->
-        @if (!order.quikShipXStatus) {
+        <!-- Store pickup (POS): handed over at the counter — no delivery partner,
+             no shipment/courier/in-house card and no "mark delivered" controls. -->
+        @if (isStorePickup(order)) {
+          <div class="shifa-od__section">
+            <div class="shifa-od__label mb-2">Fulfilment</div>
+            <div class="shifa-od__card">
+              <div class="shifa-od__totline">
+                <span><i class="ti ti-building-store me-1"></i>Store pickup</span>
+                <span class="text-secondary">Handed over at the counter — no delivery</span>
+              </div>
+            </div>
+          </div>
+        }
+        <!-- Shipment / delivery (non-QuikShip, non-store-pickup orders; QuikShipX
+             orders use their own card below). Always shown so an in-house order —
+             which has no courier partner and no AWB — still states its delivery
+             partner as "In-House" plus who is carrying it, instead of the card
+             disappearing entirely. -->
+        @if (!order.quikShipXStatus && !isStorePickup(order)) {
           <div class="shifa-od__section">
             <div class="shifa-od__label mb-2">{{ isInHouse(order) ? 'Ishika Enterprise delivery' : 'Shipment' }}</div>
             <div class="shifa-od__card">
@@ -1168,7 +1186,7 @@
              in-house order: it never touches the QuikShipX pipeline, so offering
              "Publish to QuikShipX" there is misleading. Still shown if the order
              somehow already HAS QuikShipX data, so nothing is ever hidden from view. -->
-        @if (order.quikShipXStatus || (canManageQuikShip() && !isInHouse(order))) {
+        @if (order.quikShipXStatus || (canManageQuikShip() && !isInHouse(order) && !isStorePickup(order))) {
           <div class="shifa-od__section">
             <div class="shifa-od__label mb-2 d-flex align-items-center gap-2">
               <admin-channel-logo class="ch-md" [quikShip]="true" [label]="true" />

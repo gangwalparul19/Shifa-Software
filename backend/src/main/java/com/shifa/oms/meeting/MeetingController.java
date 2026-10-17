@@ -2,6 +2,8 @@ package com.shifa.oms.meeting;
 
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.CurrentUserService;
+import com.shifa.oms.meeting.dto.CancelMeetingRequest;
+import com.shifa.oms.meeting.dto.MeetingNoShowRequest;
 import com.shifa.oms.meeting.dto.MeetingOutcomeRequest;
 import com.shifa.oms.meeting.dto.MeetingResponse;
 import com.shifa.oms.meeting.dto.ScheduleMeetingRequest;
@@ -62,11 +64,22 @@ public class MeetingController {
         return meetingService.reschedule(id, request, actor);
     }
 
-    /** Cancel an owned meeting (Req 9.2). */
+    /** Cancel an owned meeting, optionally with a reason (Req 9.2). */
     @PostMapping("/{id}/cancel")
-    public MeetingResponse cancel(@PathVariable Long id) {
+    public MeetingResponse cancel(@PathVariable Long id,
+                                  @Valid @RequestBody(required = false) CancelMeetingRequest request) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
-        return meetingService.cancel(id, actor);
+        String reason = request == null ? null : request.reason();
+        return meetingService.cancel(id, reason, actor);
+    }
+
+    /** Mark an owned meeting as a no-show ("didn't happen"), optionally with a note (Req 9.2). */
+    @PostMapping("/{id}/no-show")
+    public MeetingResponse markNoShow(@PathVariable Long id,
+                                      @Valid @RequestBody(required = false) MeetingNoShowRequest request) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        String note = request == null ? null : request.note();
+        return meetingService.markNoShow(id, note, actor);
     }
 
     /** Record an outcome for an owned meeting, marking it DONE (Req 9.2). */

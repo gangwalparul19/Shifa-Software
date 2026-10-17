@@ -67,6 +67,7 @@ class OrderServiceStoreTest {
     @Mock private com.shifa.oms.inventory.StockMovementRepository stockMovementRepository;
     @Mock private com.shifa.oms.product.ProductImageRepository productImageRepository;
     @Mock private AuditEventRepository auditEventRepository;
+    @Mock private com.shifa.oms.reconciliation.ReceivableRepository receivableRepository;
 
     private OrderService service;
 
@@ -94,8 +95,14 @@ class OrderServiceStoreTest {
                 orderRepository, productRepository, new OrderCodeGenerator(), storageService,
                 new SalespersonScopeResolver(), trackingService, stockService, productImageRepository,
                 new OutboxEventPublisher(outboxEventRepository), null, null, null,
-                workflow, null, null, null);
+                workflow, null, null, null, receivableRepository);
         lenient().when(orderRepository.existsByOrderCode(anyString())).thenReturn(false);
+        // A partial counter sale records a COD receivable when closed out (no
+        // pre-existing one). Lenient so fully-paid tests that never settle COD pass.
+        lenient().when(receivableRepository.findByOrderIdAndType(any(), any()))
+                .thenReturn(java.util.List.of());
+        lenient().when(receivableRepository.save(any()))
+                .thenAnswer(inv -> inv.getArgument(0));
         lenient().when(orderRepository.save(any(OrderEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
     }
@@ -133,7 +140,8 @@ class OrderServiceStoreTest {
         OrderResponse res = service.createStoreOrder(request, admin);
 
         assertThat(res.source()).isEqualTo(OrderSource.STORE);
-        assertThat(res.deliveryMethod()).isEqualTo(DeliveryMethod.IN_HOUSE);
+        // A counter sale is a store pickup — no delivery partner (not in-house, not courier).
+        assertThat(res.deliveryMethod()).isEqualTo(DeliveryMethod.STORE_PICKUP);
         assertThat(res.paymentStatus()).isEqualTo(PaymentStatus.FULLY_PAID);
         assertThat(res.totalAmount()).isEqualByComparingTo("500.00");
         // Fully-paid walks all the way to a completed, closed sale.
@@ -156,7 +164,7 @@ class OrderServiceStoreTest {
     }
 
     @Test
-    void partialStoreOrderStaysApprovedWithTheBalanceTracked() {
+    void partialStoreOrderIsClosedToCodCollectedWithTheBalanceTrackedAsAReceivable() {
         when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "1000.00")));
         // 1000 total, only 400 paid at the counter.
         StoreOrderRequest request = storeRequest(
@@ -165,10 +173,21 @@ class OrderServiceStoreTest {
 
         OrderResponse res = service.createStoreOrder(request, admin);
 
+        assertThat(res.source()).isEqualTo(OrderSource.STORE);
+        assertThat(res.deliveryMethod()).isEqualTo(DeliveryMethod.STORE_PICKUP);
         assertThat(res.paymentStatus()).isEqualTo(PaymentStatus.PARTIALLY_PAID);
-        // Partial → stop at APPROVED, balance tracked as outstanding.
-        assertThat(res.orderStatus()).isEqualTo(OrderStatus.APPROVED);
-        assertThat(res.customerOutstanding()).isEqualByComparingTo("600.00");
+        // Partial → walked all the way to a TERMINAL delivered state (NOT left
+        // pre-terminal / in any queue): the goods were handed over at the counter.
+        assertThat(res.orderStatus()).isEqualTo(OrderStatus.COD_COLLECTED);
+        // The balance moves off customer_outstanding onto a COD receivable (exactly
+        // as an in-house COD delivery settles).
+        assertThat(res.customerOutstanding()).isEqualByComparingTo("0.00");
+        org.mockito.ArgumentCaptor<com.shifa.oms.reconciliation.ReceivableEntity> captor =
+                org.mockito.ArgumentCaptor.forClass(com.shifa.oms.reconciliation.ReceivableEntity.class);
+        org.mockito.Mockito.verify(receivableRepository).save(captor.capture());
+        assertThat(captor.getValue().getAmount()).isEqualByComparingTo("600.00");
+        assertThat(captor.getValue().getType())
+                .isEqualTo(com.shifa.oms.reconciliation.domain.ReceivableType.COD_RECEIVABLE);
     }
 
     @Test

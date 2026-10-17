@@ -94,4 +94,25 @@ class DeliveryPartnerServiceTest {
         assertThat(res.total().orderCount()).isEqualTo(5);
         assertThat(res.total().revenue()).isEqualByComparingTo("2050.00");
     }
+
+    @Test
+    void storePickupDeliveryMethodIsBucketedAsPos() {
+        // A STORE_PICKUP order is unambiguously POS, even if (hypothetically) its
+        // source were not STORE — the delivery method alone decides.
+        OrderEntity pickup = order(DeliveryMethod.STORE_PICKUP, OrderSource.STORE,
+                OrderStatus.CLOSED, "400.00", "0.00");
+        // It must NOT be mistaken for a courier order (usesCourier() is false).
+        assertThat(pickup.usesCourier()).isFalse();
+        assertThat(pickup.isStorePickup()).isTrue();
+        assertThat(pickup.isInHouseDelivery()).isFalse();
+
+        when(orderRepository.findAll()).thenReturn(List.of(pickup));
+
+        DeliveryPartnerSummaryResponse res = service().summary(null, null);
+
+        assertThat(res.pos().orderCount()).isEqualTo(1);
+        assertThat(res.pos().revenue()).isEqualByComparingTo("400.00");
+        assertThat(res.quikShipX().orderCount()).isZero();
+        assertThat(res.inHouse().orderCount()).isZero();
+    }
 }

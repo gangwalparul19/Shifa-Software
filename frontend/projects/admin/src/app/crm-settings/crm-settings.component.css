@@ -1,0 +1,131 @@
+.crm-tabs {
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.crm-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.crm-inline .form-control,
+.crm-inline .form-select {
+  flex: 1 1 10rem;
+  min-width: 8rem;
+}
+
+.crm-color {
+  flex: 0 1 10rem;
+}
+
+.crm-ph-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.crm-ph-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.crm-stages {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.crm-stage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.25rem;
+  border-bottom: 1px solid var(--tblr-border-color, #e6e7e9);
+  flex-wrap: wrap;
+}
+
+.crm-stage.is-retired {
+  opacity: 0.6;
+}
+
+.crm-stage__name {
+  font-weight: 500;
+}
+
+.crm-stage__actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.crm-stage-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.crm-stage-form .form-control {
+  flex: 1 1 10rem;
+  min-width: 8rem;
+}
+
+.crm-entry-check {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.crm-chiplist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.crm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  border-radius: 999px;
+  background: var(--tblr-bg-surface-secondary, #f6f7f9);
+  font-size: 0.85rem;
+}
+
+.crm-chip.is-retired {
+  opacity: 0.55;
+}
+
+.crm-chip__kind {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--tblr-secondary, #6c7a91);
+}
+
+.crm-chip__btn {
+  border: 0;
+  background: transparent;
+  color: var(--tblr-primary, #1f5d3f);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0 0.25rem;
+}
+
+.crm-defaults {
+  max-width: 28rem;
+}
+
+@media (min-width: 768px) {
+  .crm-defaults {
+    max-width: 32rem;
+  }
+}

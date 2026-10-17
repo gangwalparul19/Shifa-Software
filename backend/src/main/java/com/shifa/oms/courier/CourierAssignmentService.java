@@ -83,14 +83,15 @@ public class CourierAssignmentService {
             return;
         }
 
-        if (order.isInHouseDelivery()) {
-            // In-house delivery has no courier partner at all, so there is no AWB
-            // to request: Shifa's own team carries the parcel and staff advance the
-            // status by hand (ManualDeliveryService). Without this guard the
-            // courier client would mint a meaningless AWB for an in-house order
-            // and it would surface on the order/label as if a courier had one
+        if (!order.usesCourier()) {
+            // A non-courier order (in-house or store-pickup / POS) has no courier
+            // partner at all, so there is no AWB to request: Shifa's own team
+            // carries the parcel (or it was handed over at the counter) and staff
+            // advance the status by hand (ManualDeliveryService). Without this
+            // guard the courier client would mint a meaningless AWB and it would
+            // surface on the order/label as if a courier had one
             // (in-house-delivery feature).
-            log.debug("Skipping courier assignment for in-house order {}", order.getOrderCode());
+            log.debug("Skipping courier assignment for non-courier order {}", order.getOrderCode());
             return;
         }
 

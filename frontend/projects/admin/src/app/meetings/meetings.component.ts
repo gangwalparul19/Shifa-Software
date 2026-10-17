@@ -14,6 +14,7 @@ import {
   MeetingStatus,
   meetingModeLabel,
   meetingStatusClass,
+  meetingStatusLabel,
 } from './meeting.model';
 
 /**
@@ -41,6 +42,7 @@ export class MeetingsComponent implements OnInit {
   protected readonly modes = MEETING_MODES;
   protected readonly modeLabel = meetingModeLabel;
   protected readonly statusClass = meetingStatusClass;
+  protected readonly statusLabel = meetingStatusLabel;
 
   protected readonly meetings = signal<Meeting[]>([]);
   protected readonly loading = signal(true);
@@ -51,9 +53,10 @@ export class MeetingsComponent implements OnInit {
   protected readonly drawerOpen = signal(false);
   protected readonly editingId = signal<number | null>(null);
 
-  // Outcome prompt.
-  protected readonly outcomeFor = signal<Meeting | null>(null);
-  protected readonly outcomeText = signal('');
+  // Inline close-out prompt (record outcome / no-show / cancel).
+  protected readonly promptKind = signal<'outcome' | 'no-show' | 'cancel' | null>(null);
+  protected readonly promptFor = signal<Meeting | null>(null);
+  protected readonly promptText = signal('');
 
   protected readonly form = this.fb.group({
     title: ['', [Validators.required, Validators.maxLength(200)]],
@@ -168,44 +171,79 @@ export class MeetingsComponent implements OnInit {
     });
   }
 
-  cancel(meeting: Meeting, event: Event): void {
-    event.stopPropagation();
-    this.service.cancel(meeting.id).subscribe({
-      next: () => {
-        this.toasts.success('Meeting cancelled.');
-        this.load();
-      },
-      error: () => this.toasts.error('Could not cancel the meeting.'),
-    });
-  }
-
   startOutcome(meeting: Meeting, event: Event): void {
     event.stopPropagation();
-    this.outcomeFor.set(meeting);
-    this.outcomeText.set('');
+    this.openPrompt('outcome', meeting);
   }
 
-  cancelOutcome(): void {
-    this.outcomeFor.set(null);
+  startNoShow(meeting: Meeting, event: Event): void {
+    event.stopPropagation();
+    this.openPrompt('no-show', meeting);
   }
 
-  saveOutcome(): void {
-    const meeting = this.outcomeFor();
-    const text = this.outcomeText().trim();
-    if (!meeting || !text) {
+  startCancel(meeting: Meeting, event: Event): void {
+    event.stopPropagation();
+    this.openPrompt('cancel', meeting);
+  }
+
+  private openPrompt(kind: 'outcome' | 'no-show' | 'cancel', meeting: Meeting): void {
+    this.promptKind.set(kind);
+    this.promptFor.set(meeting);
+    this.promptText.set('');
+  }
+
+  closePrompt(): void {
+    this.promptKind.set(null);
+    this.promptFor.set(null);
+    this.promptText.set('');
+  }
+
+  onPromptInput(event: Event): void {
+    this.promptText.set((event.target as HTMLTextAreaElement).value);
+  }
+
+  savePrompt(): void {
+    const meeting = this.promptFor();
+    const kind = this.promptKind();
+    if (!meeting || !kind) {
       return;
     }
-    this.service.recordOutcome(meeting.id, { outcome: text }).subscribe({
+    const text = this.promptText().trim();
+    // Only the outcome note is mandatory; no-show / cancel notes are optional.
+    if (kind === 'outcome' && !text) {
+      return;
+    }
+    const note = text || null;
+    this.saving.set(true);
+    const req =
+      kind === 'outcome'
+        ? this.service.recordOutcome(meeting.id, { outcome: text })
+        : kind === 'no-show'
+          ? this.service.markNoShow(meeting.id, note)
+          : this.service.cancel(meeting.id, note);
+    req.subscribe({
       next: () => {
-        this.outcomeFor.set(null);
-        this.toasts.success('Meeting outcome recorded.');
+        this.saving.set(false);
+        this.closePrompt();
+        this.toasts.success(
+          kind === 'outcome'
+            ? 'Meeting outcome recorded.'
+            : kind === 'no-show'
+              ? 'Marked as no-show.'
+              : 'Meeting cancelled.',
+        );
         this.load();
       },
-      error: () => this.toasts.error('Could not record the outcome.'),
+      error: () => {
+        this.saving.set(false);
+        this.toasts.error(
+          kind === 'outcome'
+            ? 'Could not record the outcome.'
+            : kind === 'no-show'
+              ? 'Could not mark the meeting as no-show.'
+              : 'Could not cancel the meeting.',
+        );
+      },
     });
-  }
-
-  onOutcomeInput(event: Event): void {
-    this.outcomeText.set((event.target as HTMLTextAreaElement).value);
   }
 }

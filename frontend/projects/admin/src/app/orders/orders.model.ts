@@ -217,8 +217,13 @@ export interface UpdateOrderRequest {
   country?: string;
 }
 
-/** Per-order delivery method (mirrors the backend {@code DeliveryMethod} enum). */
-export type DeliveryMethod = 'QUIKSHIPX' | 'IN_HOUSE';
+/**
+ * Per-order delivery method (mirrors the backend {@code DeliveryMethod} enum).
+ * {@code STORE_PICKUP} is an in-shop / counter (POS) sale handed over at the
+ * store — no delivery partner at all; set server-side only (never chosen via the
+ * approve picker), so it is not in {@link DELIVERY_METHOD_OPTIONS}.
+ */
+export type DeliveryMethod = 'QUIKSHIPX' | 'IN_HOUSE' | 'STORE_PICKUP';
 
 /**
  * The delivery stages a human may set on an IN_HOUSE order via
@@ -410,7 +415,7 @@ export interface OrderSummary {
    * How the order is fulfilled (QUIKSHIPX / IN_HOUSE). Drives the "Courier
    * Partner" column on the Orders list.
    */
-  deliveryMethod?: 'QUIKSHIPX' | 'IN_HOUSE' | string | null;
+  deliveryMethod?: 'QUIKSHIPX' | 'IN_HOUSE' | 'STORE_PICKUP' | string | null;
   /**
    * The originating Shopify order id (for a Shopify-imported order; null
    * otherwise), shown in the salesperson column for a Shopify order.

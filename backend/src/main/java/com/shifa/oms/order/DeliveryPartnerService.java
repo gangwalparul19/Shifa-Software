@@ -30,7 +30,8 @@ import java.util.Set;
  * rules, status-group breakdown) but partitions by delivery partner rather than
  * origin channel. Each order lands in exactly one partner:
  * <ul>
- *   <li>{@code deliveryMethod == QUIKSHIPX} → QuikShipX;</li>
+ *   <li>{@code deliveryMethod == STORE_PICKUP} → POS;</li>
+ *   <li>else {@code deliveryMethod == QUIKSHIPX} → QuikShipX;</li>
  *   <li>else {@code source == STORE} → POS;</li>
  *   <li>else → in-house.</li>
  * </ul>
@@ -144,10 +145,14 @@ public class DeliveryPartnerService {
     }
 
     /**
-     * The partner an order belongs to: QuikShipX (courier) wins first; otherwise a
-     * store (POS) sale; otherwise in-house.
+     * The partner an order belongs to. A {@code STORE_PICKUP} order is
+     * unambiguously POS; a {@code QUIKSHIPX} order is the courier; a legacy store
+     * (POS) order (by source) is POS; everything else is in-house.
      */
     private static Partner partnerOf(OrderEntity order) {
+        if (order.getDeliveryMethod() == DeliveryMethod.STORE_PICKUP) {
+            return Partner.POS;
+        }
         if (order.getDeliveryMethod() == DeliveryMethod.QUIKSHIPX) {
             return Partner.QUIKSHIPX;
         }

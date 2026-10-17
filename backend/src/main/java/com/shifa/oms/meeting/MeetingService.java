@@ -14,6 +14,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -83,15 +84,40 @@ public class MeetingService {
         return MeetingResponse.from(saved);
     }
 
-    /** Cancels an owned meeting (Req 9.2). */
+    /** Cancels an owned meeting, optionally capturing a reason (Req 9.2). */
     @Transactional
-    public MeetingResponse cancel(Long id, AuthPrincipal actor) {
+    public MeetingResponse cancel(Long id, String reason, AuthPrincipal actor) {
         Objects.requireNonNull(actor, "actor");
         MeetingEntity meeting = loadScoped(id, actor);
+        String cancelReason = blankToNull(reason);
         meeting.setStatus(MeetingStatus.CANCELLED);
+        if (cancelReason != null) {
+            meeting.setOutcome(cancelReason);
+        }
+        meeting.setClosedAt(LocalDateTime.now());
         MeetingEntity saved = meetingRepository.save(meeting);
         recordActivity(ActivityTypes.MEETING_CANCELLED, saved, actor,
-                "Meeting cancelled: " + saved.getTitle());
+                "Meeting cancelled: " + saved.getTitle(), cancelReason);
+        return MeetingResponse.from(saved);
+    }
+
+    /**
+     * Marks an owned meeting as a no-show ("didn't happen"), capturing an
+     * optional note in {@code outcome} (Req 9.2).
+     */
+    @Transactional
+    public MeetingResponse markNoShow(Long id, String note, AuthPrincipal actor) {
+        Objects.requireNonNull(actor, "actor");
+        MeetingEntity meeting = loadScoped(id, actor);
+        String noShowNote = blankToNull(note);
+        meeting.setStatus(MeetingStatus.NO_SHOW);
+        if (noShowNote != null) {
+            meeting.setOutcome(noShowNote);
+        }
+        meeting.setClosedAt(LocalDateTime.now());
+        MeetingEntity saved = meetingRepository.save(meeting);
+        recordActivity(ActivityTypes.MEETING_NO_SHOW, saved, actor,
+                "Meeting didn't happen: " + saved.getTitle(), noShowNote);
         return MeetingResponse.from(saved);
     }
 
@@ -106,6 +132,7 @@ public class MeetingService {
         MeetingEntity meeting = loadScoped(id, actor);
         meeting.setOutcome(request.outcome().trim());
         meeting.setStatus(MeetingStatus.DONE);
+        meeting.setClosedAt(LocalDateTime.now());
         MeetingEntity saved = meetingRepository.save(meeting);
         recordActivity(ActivityTypes.MEETING_OUTCOME, saved, actor,
                 "Meeting outcome: " + saved.getTitle(), request.outcome().trim());

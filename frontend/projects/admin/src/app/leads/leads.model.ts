@@ -112,6 +112,9 @@ export interface LeadDetail {
   /** Tags applied to the lead (CRM expansion, Req 4). */
   tags: LeadTag[];
   statusHistory: LeadStatusHistoryEntry[];
+  /** Configurable pipeline/stage overlay (CRM expansion Phase 3, Req 16/17). */
+  pipelineId?: number | null;
+  stageId?: number | null;
 }
 
 /** A managed Lead_Tag definition (backend {@code LeadTagResponse}). */

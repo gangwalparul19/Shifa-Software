@@ -35,8 +35,12 @@ export class MeetingsService {
     return this.api.put<Meeting>(`/api/meetings/${id}`, payload);
   }
 
-  cancel(id: number): Observable<Meeting> {
-    return this.api.post<Meeting>(`/api/meetings/${id}/cancel`, {});
+  cancel(id: number, reason?: string | null): Observable<Meeting> {
+    return this.api.post<Meeting>(`/api/meetings/${id}/cancel`, { reason: reason ?? null });
+  }
+
+  markNoShow(id: number, note?: string | null): Observable<Meeting> {
+    return this.api.post<Meeting>(`/api/meetings/${id}/no-show`, { note: note ?? null });
   }
 
   recordOutcome(id: number, payload: MeetingOutcomeRequest): Observable<Meeting> {

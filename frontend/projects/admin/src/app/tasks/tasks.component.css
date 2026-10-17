@@ -105,3 +105,13 @@
   gap: 0.5rem;
   margin-top: 0.5rem;
 }
+
+/* Inline close-out prompt (complete / cancel) — shared pattern with meetings. */
+.shifa-outcome {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, 94vw);
+  z-index: 1041;
+}

@@ -531,6 +531,9 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * per the client's request).
    */
   courierDisplayName(order: OrderDetail): string {
+    if (this.isStorePickup(order)) {
+      return 'Store pickup (POS)';
+    }
     if (order.courierName) {
       return order.courierName;
     }
@@ -540,6 +543,15 @@ export class OrdersComponent implements OnInit, OnDestroy {
   /** Whether this order is fulfilled by Shifa's own team (no courier partner, no AWB). */
   isInHouse(order: OrderDetail | null): boolean {
     return !!order && order.deliveryMethod === 'IN_HOUSE';
+  }
+
+  /**
+   * Whether this order is an in-shop / counter (POS) pickup — handed over at the
+   * store with no delivery partner at all. Such an order is created already
+   * closed and must show no courier / in-house fulfilment card.
+   */
+  isStorePickup(order: OrderDetail | null): boolean {
+    return !!order && order.deliveryMethod === 'STORE_PICKUP';
   }
 
   // --- Source / courier-partner / tracking (Orders list columns) -----------
@@ -659,17 +671,28 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * The courier partner for a list row: 'IN_HOUSE' when the order is delivered
-   * by Shifa's own team, else 'QUIKSHIPX' (the default). A future Blue Dart
-   * value would surface here once the backend models it.
+   * The courier partner for a list row: 'STORE_PICKUP' for an in-shop (POS)
+   * counter sale (no delivery partner), 'IN_HOUSE' when delivered by Shifa's own
+   * team, else 'QUIKSHIPX' (the default). A future Blue Dart value would surface
+   * here once the backend models it.
    */
-  courierPartner(order: OrderSummary): 'IN_HOUSE' | 'QUIKSHIPX' {
+  courierPartner(order: OrderSummary): 'IN_HOUSE' | 'QUIKSHIPX' | 'STORE_PICKUP' {
+    if (order.deliveryMethod === 'STORE_PICKUP') {
+      return 'STORE_PICKUP';
+    }
     return order.deliveryMethod === 'IN_HOUSE' ? 'IN_HOUSE' : 'QUIKSHIPX';
   }
 
   /** Human label for the courier partner column. */
   courierPartnerLabel(order: OrderSummary): string {
-    return this.courierPartner(order) === 'IN_HOUSE' ? 'In-House' : 'QuikShip';
+    switch (this.courierPartner(order)) {
+      case 'STORE_PICKUP':
+        return 'Store pickup';
+      case 'IN_HOUSE':
+        return 'In-House';
+      default:
+        return 'QuikShip';
+    }
   }
 
   /**
@@ -857,7 +880,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * mirrors the same picker on the Approval Queue page so it's available from
    * the Orders page too.
    */
-  protected readonly deliveryMethod = signal<DeliveryMethod>('IN_HOUSE');
+  protected readonly deliveryMethod = signal<'QUIKSHIPX' | 'IN_HOUSE'>('IN_HOUSE');
   protected readonly deliveryMethodOptions = DELIVERY_METHOD_OPTIONS;
 
   setDeliveryMethod(value: string): void {
@@ -1578,7 +1601,10 @@ export class OrdersComponent implements OnInit, OnDestroy {
       next: (detail) => {
         this.selectedDetail.set(detail);
         this.detailLoading.set(false);
-        this.deliveryMethod.set(detail.deliveryMethod ?? 'IN_HOUSE');
+        // The picker only offers QUIKSHIPX / IN_HOUSE; a STORE_PICKUP (POS) order
+        // is created already closed and is never edited here, so coerce any
+        // non-QuikShipX value to IN_HOUSE for the picker default.
+        this.deliveryMethod.set(detail.deliveryMethod === 'QUIKSHIPX' ? 'QUIKSHIPX' : 'IN_HOUSE');
         // Pre-fill the in-house vehicle field with whatever is already recorded.
         this.manualVehicle.set(detail.vehicleNumber ?? '');
         this.loadScreenshot(detail);
@@ -2204,7 +2230,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * recover with the retry action. In-house orders never go through QuikShipX.
    */
   needsTrackingId(order: OrderDetail | null): boolean {
-    return !!order && !!order.quikShipXStatus && !order.quikShipXLabelUrl && !this.isInHouse(order);
+    return !!order && !!order.quikShipXStatus && !order.quikShipXLabelUrl
+      && !this.isInHouse(order) && !this.isStorePickup(order);
   }
 
   /** Opens the QuikShipX-hosted courier label PDF in a new tab (when allotted). */

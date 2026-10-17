@@ -76,8 +76,46 @@ class MeetingServiceTest {
                 admin);
 
         MeetingService salesService = new MeetingService(repo(store), resolver, null);
-        assertThatThrownBy(() -> salesService.cancel(other.id(), sales))
+        assertThatThrownBy(() -> salesService.cancel(other.id(), null, sales))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void cancelStoresTheReasonAndRecordsActivity() {
+        List<MeetingEntity> store = new ArrayList<>();
+        int[] activity = {0};
+        MeetingService service = new MeetingService(repo(store), new SalespersonScopeResolver(),
+                countingActivity(activity));
+        MeetingResponse m = service.schedule(new ScheduleMeetingRequest(
+                "Demo", 5L, "9876543210", LocalDateTime.now().plusHours(2),
+                MeetingMode.VIDEO, "Zoom", "intro", null), sales);
+
+        MeetingResponse cancelled = service.cancel(m.id(), "Customer postponed", sales);
+
+        assertThat(cancelled.status()).isEqualTo(MeetingStatus.CANCELLED);
+        assertThat(cancelled.outcome()).isEqualTo("Customer postponed");
+        assertThat(cancelled.closedAt()).isNotNull();
+        // MEETING_SCHEDULED + MEETING_CANCELLED (both have a lead link).
+        assertThat(activity[0]).isEqualTo(2);
+    }
+
+    @Test
+    void markNoShowSetsNoShowWithNoteAndRecordsActivity() {
+        List<MeetingEntity> store = new ArrayList<>();
+        int[] activity = {0};
+        MeetingService service = new MeetingService(repo(store), new SalespersonScopeResolver(),
+                countingActivity(activity));
+        MeetingResponse m = service.schedule(new ScheduleMeetingRequest(
+                "Demo", 5L, "9876543210", LocalDateTime.now().plusHours(2),
+                MeetingMode.VIDEO, "Zoom", "intro", null), sales);
+
+        MeetingResponse noShow = service.markNoShow(m.id(), "Customer didn't turn up", sales);
+
+        assertThat(noShow.status()).isEqualTo(MeetingStatus.NO_SHOW);
+        assertThat(noShow.outcome()).isEqualTo("Customer didn't turn up");
+        assertThat(noShow.closedAt()).isNotNull();
+        // MEETING_SCHEDULED + MEETING_NO_SHOW (both have a lead link).
+        assertThat(activity[0]).isEqualTo(2);
     }
 
     // --- harness ------------------------------------------------------------

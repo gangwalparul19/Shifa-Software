@@ -62,6 +62,8 @@ import { TasksComponent } from './tasks/tasks.component';
 import { MeetingsComponent } from './meetings/meetings.component';
 import { CrmDashboardComponent } from './crm-dashboard/crm-dashboard.component';
 
+import { CrmSettingsComponent } from './crm-settings/crm-settings.component';
+
 const LOGIN_PATH = '/login';
 const FORBIDDEN_PATH = '/forbidden';
 
@@ -407,6 +409,13 @@ export const routes: Routes = [
         // Company + GST configuration (ADMIN only, Req 5.4).
         path: 'settings',
         component: SettingsComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
+        // CRM configuration: pipelines, stages, tags, sources, defaults,
+        // permissions (ADMIN only, crm-expansion Phase 3, Req 16–19).
+        path: 'crm-settings',
+        component: CrmSettingsComponent,
         canActivate: [adminOnlyGuard],
       },
       {

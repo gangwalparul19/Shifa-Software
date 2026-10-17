@@ -202,7 +202,10 @@ public class PackingService {
         List<OrderEntity> quikShip = new java.util.ArrayList<>();
         List<OrderEntity> inHouse = new java.util.ArrayList<>();
         for (OrderEntity o : inFlight) {
-            (o.isInHouseDelivery() ? inHouse : quikShip).add(o);
+            // Only true courier orders (QuikShipX) go to the QuikShip bucket; any
+            // non-courier order (IN_HOUSE and the never-reached STORE_PICKUP) goes
+            // to the manual in-house section.
+            (o.usesCourier() ? quikShip : inHouse).add(o);
         }
 
         // Batch-resolve salesperson (created_by) names once across every list.
@@ -243,7 +246,7 @@ public class PackingService {
         List<OrderEntity> labelGenerated =
                 orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.LABEL_GENERATED);
         List<OrderEntity> orders = labelGenerated.stream()
-                .filter(o -> !o.isInHouseDelivery())
+                .filter(OrderEntity::usesCourier)
                 .toList();
         Map<Long, com.shifa.oms.quikshipx.OrderShipment> shipments = shipmentsByOrderId(orders);
 
@@ -612,12 +615,12 @@ public class PackingService {
         // shows up in the auto "QuickShip Status" section. An IN-HOUSE order has no
         // courier partner, so it stays HANDED_TO_DELIVERY and the team advances it
         // manually from the "In-House Deliveries" section.
-        if (!saved.isInHouseDelivery()) {
+        if (saved.usesCourier()) {
             outboxEventPublisher.publishCourierAssign(saved.getId(), saved.getOrderCode());
             log.debug("Order {} handed over + courier assignment enqueued by {}",
                     saved.getOrderCode(), actor.username());
         } else {
-            log.debug("Order {} handed to in-house delivery by {}", saved.getOrderCode(), actor.username());
+            log.debug("Order {} handed to in-house/store delivery by {}", saved.getOrderCode(), actor.username());
         }
         return OrderResponse.from(saved);
     }

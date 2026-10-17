@@ -54,9 +54,14 @@ public class MissedFollowUpJob {
     private final OutboxEventPublisher outboxEventPublisher;
     private final StaffNotificationDispatcher staffNotificationDispatcher;
     private final UserRepository userRepository;
+    private final com.shifa.oms.crmsettings.CrmSettingsService crmSettingsService;
     private final Clock clock;
 
-    /** Hours after the reminder that an un-acted follow-up becomes Missed. */
+    /**
+     * Default hours after the reminder that an un-acted follow-up becomes Missed
+     * (CRM expansion Phase 3, Req 18.3): the admin-managed {@code crm_settings}
+     * value takes precedence when present; this {@code @Value} stays the fallback.
+     */
     @Value("${app.crm.followup.grace-hours:24}")
     private long graceHours = 24;
 
@@ -66,18 +71,33 @@ public class MissedFollowUpJob {
                              ActivityService activityService,
                              OutboxEventPublisher outboxEventPublisher,
                              StaffNotificationDispatcher staffNotificationDispatcher,
-                             UserRepository userRepository) {
+                             UserRepository userRepository,
+                             com.shifa.oms.crmsettings.CrmSettingsService crmSettingsService) {
         this(leadRepository, activityRepository, activityService, outboxEventPublisher,
-                staffNotificationDispatcher, userRepository, Clock.systemDefaultZone());
+                staffNotificationDispatcher, userRepository, crmSettingsService,
+                Clock.systemDefaultZone());
     }
 
-    /** Test constructor with a fixed clock. */
+    /** Test constructor with a fixed clock. {@code crmSettingsService} is nullable. */
     public MissedFollowUpJob(LeadRepository leadRepository,
                              ActivityRepository activityRepository,
                              ActivityService activityService,
                              OutboxEventPublisher outboxEventPublisher,
                              StaffNotificationDispatcher staffNotificationDispatcher,
                              UserRepository userRepository,
+                             Clock clock) {
+        this(leadRepository, activityRepository, activityService, outboxEventPublisher,
+                staffNotificationDispatcher, userRepository, null, clock);
+    }
+
+    /** Full constructor (CRM settings + fixed clock). */
+    public MissedFollowUpJob(LeadRepository leadRepository,
+                             ActivityRepository activityRepository,
+                             ActivityService activityService,
+                             OutboxEventPublisher outboxEventPublisher,
+                             StaffNotificationDispatcher staffNotificationDispatcher,
+                             UserRepository userRepository,
+                             com.shifa.oms.crmsettings.CrmSettingsService crmSettingsService,
                              Clock clock) {
         this.leadRepository = Objects.requireNonNull(leadRepository, "leadRepository");
         this.activityRepository = Objects.requireNonNull(activityRepository, "activityRepository");
@@ -87,7 +107,26 @@ public class MissedFollowUpJob {
         this.staffNotificationDispatcher =
                 Objects.requireNonNull(staffNotificationDispatcher, "staffNotificationDispatcher");
         this.userRepository = userRepository;
+        this.crmSettingsService = crmSettingsService;
         this.clock = Objects.requireNonNull(clock, "clock");
+    }
+
+    /**
+     * The effective grace window: the admin-managed {@code crm_settings} value
+     * when present and positive, else the {@code @Value} fallback (Req 18.3).
+     */
+    private long effectiveGraceHours() {
+        if (crmSettingsService != null) {
+            try {
+                Integer configured = crmSettingsService.missedGraceHours().orElse(null);
+                if (configured != null && configured > 0) {
+                    return configured;
+                }
+            } catch (RuntimeException e) {
+                log.debug("CRM settings grace-hours lookup failed; using fallback: {}", e.getMessage());
+            }
+        }
+        return graceHours;
     }
 
     /** Test seam for the default grace window. */
@@ -113,7 +152,7 @@ public class MissedFollowUpJob {
     @Transactional
     public int markMissedFollowUps() {
         LocalDateTime now = LocalDateTime.now(clock);
-        LocalDateTime graceCutoff = now.minusHours(graceHours);
+        LocalDateTime graceCutoff = now.minusHours(effectiveGraceHours());
         // A lead qualifies only if it was reminded on or before the grace cutoff's
         // date (the reminder fired at least graceHours ago).
         LocalDate remindedCutoff = graceCutoff.toLocalDate();

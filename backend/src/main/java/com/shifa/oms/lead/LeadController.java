@@ -149,7 +149,7 @@ public class LeadController {
 
     /** Assign/reassign a lead to a user or team (Req 1.2, 1.3, 1.5, 1.6). */
     @PutMapping("/{id}/assign")
-    @PreAuthorize("hasAnyRole('ADMIN','TEAM_LEAD')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEAM_LEAD') or @perms.has(authentication,'ASSIGN_LEADS')")
     public LeadResponse assign(@PathVariable Long id,
                                @Valid @RequestBody AssignLeadRequest request) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
@@ -159,7 +159,7 @@ public class LeadController {
 
     /** Bulk reassign the selected leads with a per-lead result (Req 1.4). */
     @PostMapping("/bulk-assign")
-    @PreAuthorize("hasAnyRole('ADMIN','TEAM_LEAD')")
+    @PreAuthorize("hasAnyRole('ADMIN','TEAM_LEAD') or @perms.has(authentication,'ASSIGN_LEADS')")
     public BulkAssignResult bulkAssign(@Valid @RequestBody BulkAssignLeadRequest request) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return leadService.bulkAssign(request.ids(), request.toUserId(), actor);

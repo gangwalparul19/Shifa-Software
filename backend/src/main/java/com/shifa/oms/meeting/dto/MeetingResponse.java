@@ -19,12 +19,13 @@ public record MeetingResponse(
         String notes,
         MeetingStatus status,
         String outcome,
+        LocalDateTime closedAt,
         LocalDateTime createdAt) {
 
     public static MeetingResponse from(MeetingEntity m) {
         return new MeetingResponse(
                 m.getId(), m.getOwnerUserId(), m.getTitle(), m.getLeadId(), m.getCustomerMobile(),
                 m.getStartAt(), m.getMode(), m.getLocation(), m.getNotes(), m.getStatus(),
-                m.getOutcome(), m.getCreatedAt());
+                m.getOutcome(), m.getClosedAt(), m.getCreatedAt());
     }
 }

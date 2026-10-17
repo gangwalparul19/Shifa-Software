@@ -52,6 +52,11 @@ export class TasksComponent implements OnInit {
   protected readonly drawerOpen = signal(false);
   protected readonly editingId = signal<number | null>(null);
 
+  // Inline close-out prompt (complete / cancel), mirroring the meetings outcome prompt.
+  protected readonly promptKind = signal<'complete' | 'cancel' | null>(null);
+  protected readonly promptFor = signal<Task | null>(null);
+  protected readonly promptText = signal('');
+
   protected readonly form = this.fb.group({
     title: ['', [Validators.required, Validators.maxLength(200)]],
     description: ['', [Validators.maxLength(1000)]],
@@ -175,14 +180,55 @@ export class TasksComponent implements OnInit {
     });
   }
 
-  complete(task: Task, event: Event): void {
+  startComplete(task: Task, event: Event): void {
     event.stopPropagation();
-    this.service.complete(task.id).subscribe({
+    this.promptKind.set('complete');
+    this.promptFor.set(task);
+    this.promptText.set('');
+  }
+
+  startCancel(task: Task, event: Event): void {
+    event.stopPropagation();
+    this.promptKind.set('cancel');
+    this.promptFor.set(task);
+    this.promptText.set('');
+  }
+
+  closePrompt(): void {
+    this.promptKind.set(null);
+    this.promptFor.set(null);
+    this.promptText.set('');
+  }
+
+  onPromptInput(event: Event): void {
+    this.promptText.set((event.target as HTMLTextAreaElement).value);
+  }
+
+  savePrompt(): void {
+    const task = this.promptFor();
+    const kind = this.promptKind();
+    if (!task || !kind) {
+      return;
+    }
+    const text = this.promptText().trim() || null;
+    this.saving.set(true);
+    const req =
+      kind === 'complete'
+        ? this.service.complete(task.id, text)
+        : this.service.cancel(task.id, text);
+    req.subscribe({
       next: () => {
-        this.toasts.success('Task completed.');
+        this.saving.set(false);
+        this.closePrompt();
+        this.toasts.success(kind === 'complete' ? 'Task completed.' : 'Task cancelled.');
         this.load();
       },
-      error: () => this.toasts.error('Could not complete the task.'),
+      error: () => {
+        this.saving.set(false);
+        this.toasts.error(
+          kind === 'complete' ? 'Could not complete the task.' : 'Could not cancel the task.',
+        );
+      },
     });
   }
 }

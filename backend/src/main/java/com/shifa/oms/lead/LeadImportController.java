@@ -42,6 +42,7 @@ public class LeadImportController {
      * alias (name/mobile/email/source/note/assignee/tags/followUpDate).
      */
     @PostMapping(path = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN') or @perms.has(authentication,'BULK_UPLOAD')")
     public LeadImportResult importLeads(@RequestParam("file") MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new ValidationException("A CSV or Excel file is required.");

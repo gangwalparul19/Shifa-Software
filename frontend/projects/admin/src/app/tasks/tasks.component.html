@@ -14,6 +14,7 @@
 <div class="shifa-formtabs mb-3">
   <button type="button" class="shifa-formtab" [class.is-active]="statusFilter() === 'OPEN'" (click)="setFilter('OPEN')">Open</button>
   <button type="button" class="shifa-formtab" [class.is-active]="statusFilter() === 'DONE'" (click)="setFilter('DONE')">Done</button>
+  <button type="button" class="shifa-formtab" [class.is-active]="statusFilter() === 'CANCELLED'" (click)="setFilter('CANCELLED')">Cancelled</button>
   <button type="button" class="shifa-formtab" [class.is-active]="statusFilter() === null" (click)="setFilter(null)">All</button>
 </div>
 
@@ -59,10 +60,19 @@
             </span>
           }
         </div>
+        @if (task.status === 'DONE' && task.completionNote) {
+          <div class="shifa-task__desc"><strong>Completion note:</strong> {{ task.completionNote }}</div>
+        }
+        @if (task.status === 'CANCELLED' && task.cancelReason) {
+          <div class="shifa-task__desc"><strong>Cancel reason:</strong> {{ task.cancelReason }}</div>
+        }
         @if (task.status === 'OPEN') {
           <div class="shifa-task__actions">
-            <button type="button" class="btn btn-sm btn-outline-success" (click)="complete(task, $event)">
+            <button type="button" class="btn btn-sm btn-outline-success" (click)="startComplete(task, $event)">
               <i class="ti ti-circle-check me-1"></i>Complete
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger" (click)="startCancel(task, $event)">
+              <i class="ti ti-circle-x me-1"></i>Cancel
             </button>
           </div>
         }
@@ -77,6 +87,38 @@
     (pageChange)="goToPage($event)"
     (sizeChange)="setSize($event)"
   />
+}
+
+@if (promptFor()) {
+  <div class="shifa-drawer-backdrop" (click)="closePrompt()"></div>
+  <div class="shifa-outcome card">
+    <div class="card-body">
+      <h3 class="mb-2">{{ promptKind() === 'complete' ? 'Complete task' : 'Cancel task' }}</h3>
+      <p class="text-secondary mb-2">{{ promptFor()!.title }}</p>
+      <label class="form-label">
+        {{ promptKind() === 'complete' ? 'Completion note (optional)' : 'Reason (optional)' }}
+      </label>
+      <textarea
+        class="form-control mb-3"
+        rows="3"
+        maxlength="1000"
+        [placeholder]="promptKind() === 'complete' ? 'What was the outcome?' : 'Why is this task being cancelled?'"
+        [value]="promptText()"
+        (input)="onPromptInput($event)"
+      ></textarea>
+      <div class="d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-link" (click)="closePrompt()">Back</button>
+        <button
+          type="button"
+          [class]="promptKind() === 'complete' ? 'btn btn-success' : 'btn btn-danger'"
+          [disabled]="saving()"
+          (click)="savePrompt()"
+        >
+          {{ promptKind() === 'complete' ? 'Complete task' : 'Cancel task' }}
+        </button>
+      </div>
+    </div>
+  </div>
 }
 
 @if (drawerOpen()) {

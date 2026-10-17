@@ -13,6 +13,7 @@ import com.shifa.oms.auth.UserRepository;
 import com.shifa.oms.common.IllegalLeadTransitionException;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.common.ValidationException;
+import com.shifa.oms.crmsettings.CrmSettingsService;
 import com.shifa.oms.lead.dto.BulkAssignResult;
 import com.shifa.oms.lead.dto.CreateLeadRequest;
 import com.shifa.oms.lead.dto.LeadConvertRequest;
@@ -30,6 +31,10 @@ import com.shifa.oms.order.OrderService;
 import com.shifa.oms.order.dto.AssignableCreatorResponse;
 import com.shifa.oms.order.dto.CreateOrderRequest;
 import com.shifa.oms.order.dto.OrderResponse;
+import com.shifa.oms.permission.PermissionService;
+import com.shifa.oms.pipeline.Pipeline;
+import com.shifa.oms.pipeline.PipelineService;
+import com.shifa.oms.pipeline.PipelineStage;
 import com.shifa.oms.reporting.domain.DateRange;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
@@ -95,6 +100,9 @@ public class LeadService {
     private final StaffNotificationDispatcher notificationDispatcher;
     private final ActivityService activityService;
     private final OrderRepository orderRepository;
+    private final PipelineService pipelineService;
+    private final CrmSettingsService crmSettingsService;
+    private final PermissionService permissionService;
     private final Clock clock;
 
     /**
@@ -114,10 +122,14 @@ public class LeadService {
                        UserRepository userRepository,
                        StaffNotificationDispatcher notificationDispatcher,
                        ActivityService activityService,
-                       OrderRepository orderRepository) {
+                       OrderRepository orderRepository,
+                       PipelineService pipelineService,
+                       CrmSettingsService crmSettingsService,
+                       PermissionService permissionService) {
         this(leadRepository, scopeResolver, auditService, orderService, tagRepository,
                 tagAssignmentRepository, userRepository, notificationDispatcher, activityService,
-                orderRepository, Clock.systemDefaultZone());
+                orderRepository, pipelineService, crmSettingsService, permissionService,
+                Clock.systemDefaultZone());
     }
 
     /**
@@ -126,7 +138,10 @@ public class LeadService {
      * {@code tagAssignmentRepository}, {@code userRepository},
      * {@code notificationDispatcher}) are nullable — the tag/assign features are
      * no-ops when a dependency is absent, so tests that only exercise the shipped
-     * capture/transition/report flows can pass {@code null} for them.
+     * capture/transition/report flows can pass {@code null} for them. The CRM
+     * expansion Phase 3 {@code pipelineService} is likewise nullable — when null
+     * the pipeline/stage overlay is simply not maintained and the authoritative
+     * {@link LeadStatus} engine behaves exactly as today.
      */
     public LeadService(LeadRepository leadRepository,
                        SalespersonScopeResolver scopeResolver,
@@ -138,6 +153,9 @@ public class LeadService {
                        StaffNotificationDispatcher notificationDispatcher,
                        ActivityService activityService,
                        OrderRepository orderRepository,
+                       PipelineService pipelineService,
+                       CrmSettingsService crmSettingsService,
+                       PermissionService permissionService,
                        Clock clock) {
         this.leadRepository = Objects.requireNonNull(leadRepository, "leadRepository");
         this.scopeResolver = Objects.requireNonNull(scopeResolver, "scopeResolver");
@@ -149,6 +167,9 @@ public class LeadService {
         this.notificationDispatcher = notificationDispatcher;
         this.activityService = activityService;
         this.orderRepository = orderRepository;
+        this.pipelineService = pipelineService;
+        this.crmSettingsService = crmSettingsService;
+        this.permissionService = permissionService;
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -209,6 +230,9 @@ public class LeadService {
         lead.setCreatedByAdmin(actor.role() == Role.ADMIN);
         // Creation history row: null from-status → initial NEW status (Req 2.1, 7.5).
         lead.addStatusHistory(new LeadStatusHistory(null, LeadStatus.INITIAL, actor.username()));
+        // CRM expansion Phase 3: place the lead on the Default pipeline's entry stage
+        // (overlay kept in sync with the authoritative NEW status; no-op if unseeded).
+        assignDefaultPipelineEntry(lead);
 
         LeadEntity saved = leadRepository.save(lead);
         auditService.record(AuditActions.LEAD_CAPTURED, AuditActions.ENTITY_LEAD, idOf(saved),
@@ -260,6 +284,9 @@ public class LeadService {
 
         lead.setStatus(toStatus);
         lead.addStatusHistory(new LeadStatusHistory(from, toStatus, actor.username()));
+        // CRM expansion Phase 3: keep the Default-pipeline stage overlay in sync
+        // with the new authoritative status (no-op if unseeded / not Default).
+        syncDefaultStage(lead, toStatus);
 
         LeadEntity saved = leadRepository.save(lead);
         auditService.record(AuditActions.LEAD_STATUS_CHANGED, AuditActions.ENTITY_LEAD, idOf(saved),
@@ -426,6 +453,7 @@ public class LeadService {
         lead.setStatus(LeadStatus.WON);
         lead.setConvertedOrderId(order.id());
         lead.addStatusHistory(new LeadStatusHistory(from, LeadStatus.WON, actor.username()));
+        syncDefaultStage(lead, LeadStatus.WON);
 
         LeadEntity saved = leadRepository.save(lead);
         auditService.record(AuditActions.LEAD_CONVERTED, AuditActions.ENTITY_LEAD, idOf(saved),
@@ -607,11 +635,22 @@ public class LeadService {
                 .toList();
     }
 
-    /** Only ADMIN / TEAM_LEAD may assign leads (Req 1.5): a SALESPERSON gets 403. */
-    private static void requireAssigner(AuthPrincipal actor) {
-        if (actor.role() != Role.ADMIN && actor.role() != Role.TEAM_LEAD) {
-            throw new AccessDeniedException("Only an admin or team lead may assign leads.");
+    /**
+     * Only ADMIN / TEAM_LEAD may assign leads by default (Req 1.5): a SALESPERSON
+     * gets 403. CRM expansion Phase 3 (Req 19): a user explicitly granted the
+     * {@code ASSIGN_LEADS} permission also passes — the permission layer only ever
+     * <em>widens</em> this, and with the safe-default seed (ADMIN+TEAM_LEAD) it
+     * resolves to exactly today's role gate until an admin customizes it.
+     */
+    private void requireAssigner(AuthPrincipal actor) {
+        if (actor.role() == Role.ADMIN || actor.role() == Role.TEAM_LEAD) {
+            return;
         }
+        if (permissionService != null
+                && permissionService.has(actor, PermissionService.ASSIGN_LEADS)) {
+            return;
+        }
+        throw new AccessDeniedException("Only an admin or team lead may assign leads.");
     }
 
     // --- Tags & call dispositions (CRM expansion Req 4, 5.1) ----------------
@@ -975,15 +1014,77 @@ public class LeadService {
     // --- Internal helpers ---------------------------------------------------
 
     /**
-     * Resolves the stored follow-up time (Req 6.1): a cleared date clears the time
-     * too; a non-null date with a null time falls back to the configured default
-     * time-of-day so existing date-only leads keep today's behaviour.
+     * Places a freshly-captured lead on the Default pipeline's entry stage (CRM
+     * expansion Phase 3). Pure overlay — the {@code status} column remains
+     * authoritative; this only mirrors it into {@code pipeline_id}/{@code stage_id}.
+     * A no-op when {@link PipelineService} is absent (unit tests) or the overlay is
+     * unseeded, so today's enum-only behaviour is unchanged.
      */
-    private static LocalTime resolveFollowUpTime(LocalDate date, LocalTime time) {
+    private void assignDefaultPipelineEntry(LeadEntity lead) {
+        if (pipelineService == null) {
+            return;
+        }
+        Optional<Pipeline> pipeline = pipelineService.defaultPipeline();
+        if (pipeline.isEmpty()) {
+            return;
+        }
+        lead.setPipelineId(pipeline.get().getId());
+        pipelineService.defaultEntryStage().ifPresent(stage -> lead.setStageId(stage.getId()));
+    }
+
+    /**
+     * Keeps a Default-pipeline lead's stage overlay in sync with its new status
+     * (CRM expansion Phase 3). Only adjusts the stage when the lead is on the
+     * Default pipeline (or has no pipeline yet, pre-overlay); a lead on a custom
+     * pipeline is governed by its stage configuration and is left untouched here.
+     * A no-op when {@link PipelineService} is absent or the overlay is unseeded.
+     */
+    private void syncDefaultStage(LeadEntity lead, LeadStatus status) {
+        if (pipelineService == null || status == null) {
+            return;
+        }
+        if (lead.getPipelineId() != null && !pipelineService.isDefaultPipeline(lead.getPipelineId())) {
+            return; // custom pipeline — stage is governed by its own configuration
+        }
+        Optional<Pipeline> pipeline = pipelineService.defaultPipeline();
+        if (pipeline.isEmpty()) {
+            return;
+        }
+        lead.setPipelineId(pipeline.get().getId());
+        Optional<PipelineStage> stage = pipelineService.defaultStageForStatus(status);
+        stage.ifPresent(s -> lead.setStageId(s.getId()));
+    }
+
+    /**
+     * Resolves the stored follow-up time (Req 6.1; CRM expansion Phase 3, Req
+     * 18.3): a cleared date clears the time too; a non-null date with a null time
+     * falls back to the admin-managed {@code crm_settings} default time-of-day
+     * when configured, else the built-in {@link #DEFAULT_FOLLOW_UP_TIME} — so
+     * existing date-only leads keep today's behaviour.
+     */
+    private LocalTime resolveFollowUpTime(LocalDate date, LocalTime time) {
         if (date == null) {
             return null;
         }
-        return time != null ? time : DEFAULT_FOLLOW_UP_TIME;
+        if (time != null) {
+            return time;
+        }
+        return configuredFollowUpDefaultTime();
+    }
+
+    /** The admin-managed default follow-up time-of-day, else the built-in default. */
+    private LocalTime configuredFollowUpDefaultTime() {
+        if (crmSettingsService != null) {
+            try {
+                LocalTime configured = crmSettingsService.followUpDefaultTime().orElse(null);
+                if (configured != null) {
+                    return configured;
+                }
+            } catch (RuntimeException e) {
+                // Best-effort: fall back to the built-in default on any lookup failure.
+            }
+        }
+        return DEFAULT_FOLLOW_UP_TIME;
     }
 
     /** The tag definitions currently applied to a lead (empty when unconfigured). */

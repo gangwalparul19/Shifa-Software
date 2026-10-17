@@ -42,6 +42,14 @@ public class LeadTag {
     @Column(name = "sort_order", nullable = false)
     private int sortOrder;
 
+    /**
+     * Optional association of this tag with a pipeline stage (CRM expansion Phase
+     * 3, Req 18.1); nullable FK → {@code pipeline_stages} (migration V91). A tag
+     * with a {@code stageId} is intended to surface on leads in that stage.
+     */
+    @Column(name = "stage_id")
+    private Long stageId;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -98,6 +106,14 @@ public class LeadTag {
 
     public void setSortOrder(int sortOrder) {
         this.sortOrder = sortOrder;
+    }
+
+    public Long getStageId() {
+        return stageId;
+    }
+
+    public void setStageId(Long stageId) {
+        this.stageId = stageId;
     }
 
     public LocalDateTime getCreatedAt() {

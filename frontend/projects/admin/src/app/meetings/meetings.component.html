@@ -14,6 +14,8 @@
 <div class="shifa-formtabs mb-3">
   <button type="button" class="shifa-formtab" [class.is-active]="statusFilter() === 'SCHEDULED'" (click)="setFilter('SCHEDULED')">Scheduled</button>
   <button type="button" class="shifa-formtab" [class.is-active]="statusFilter() === 'DONE'" (click)="setFilter('DONE')">Done</button>
+  <button type="button" class="shifa-formtab" [class.is-active]="statusFilter() === 'NO_SHOW'" (click)="setFilter('NO_SHOW')">No-show</button>
+  <button type="button" class="shifa-formtab" [class.is-active]="statusFilter() === 'CANCELLED'" (click)="setFilter('CANCELLED')">Cancelled</button>
   <button type="button" class="shifa-formtab" [class.is-active]="statusFilter() === null" (click)="setFilter(null)">All</button>
 </div>
 
@@ -38,7 +40,7 @@
       <div class="shifa-task" (click)="openEdit(m)">
         <div class="shifa-task__r1">
           <span class="shifa-task__title">{{ m.title }}</span>
-          <span [class]="statusClass(m.status)">{{ m.status }}</span>
+          <span [class]="statusClass(m.status)">{{ statusLabel(m.status) }}</span>
         </div>
         <div class="shifa-task__r2">
           <span class="shifa-task__due"><i class="ti ti-clock me-1"></i>{{ m.startAt | istDate: 'dd MMM, HH:mm' }}</span>
@@ -46,14 +48,26 @@
           @if (m.location) { <span class="shifa-task__due"><i class="ti ti-map-pin me-1"></i>{{ m.location }}</span> }
         </div>
         @if (m.outcome) {
-          <div class="shifa-task__desc"><strong>Outcome:</strong> {{ m.outcome }}</div>
+          <div class="shifa-task__desc">
+            <strong>
+              @switch (m.status) {
+                @case ('NO_SHOW') { Didn't happen: }
+                @case ('CANCELLED') { Cancel reason: }
+                @default { Outcome: }
+              }
+            </strong>
+            {{ m.outcome }}
+          </div>
         }
         @if (m.status === 'SCHEDULED') {
           <div class="shifa-task__actions">
             <button type="button" class="btn btn-sm btn-outline-success" (click)="startOutcome(m, $event)">
               <i class="ti ti-calendar-check me-1"></i>Record outcome
             </button>
-            <button type="button" class="btn btn-sm btn-outline-danger" (click)="cancel(m, $event)">
+            <button type="button" class="btn btn-sm btn-outline-warning" (click)="startNoShow(m, $event)">
+              <i class="ti ti-user-x me-1"></i>Didn't happen
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger" (click)="startCancel(m, $event)">
               <i class="ti ti-calendar-off me-1"></i>Cancel
             </button>
           </div>
@@ -71,16 +85,59 @@
   />
 }
 
-@if (outcomeFor()) {
-  <div class="shifa-drawer-backdrop" (click)="cancelOutcome()"></div>
+@if (promptFor()) {
+  <div class="shifa-drawer-backdrop" (click)="closePrompt()"></div>
   <div class="shifa-outcome card">
     <div class="card-body">
-      <h3 class="mb-2">Record outcome</h3>
-      <p class="text-secondary mb-2">{{ outcomeFor()!.title }}</p>
-      <textarea class="form-control mb-3" rows="4" placeholder="What happened in this meeting?" [value]="outcomeText()" (input)="onOutcomeInput($event)"></textarea>
+      <h3 class="mb-2">
+        @switch (promptKind()) {
+          @case ('outcome') { Record outcome }
+          @case ('no-show') { Meeting didn't happen }
+          @case ('cancel') { Cancel meeting }
+        }
+      </h3>
+      <p class="text-secondary mb-2">{{ promptFor()!.title }}</p>
+      <label class="form-label">
+        @switch (promptKind()) {
+          @case ('outcome') { Outcome }
+          @case ('no-show') { Note (optional) }
+          @case ('cancel') { Reason (optional) }
+        }
+      </label>
+      <textarea
+        class="form-control mb-3"
+        rows="4"
+        maxlength="1000"
+        [placeholder]="
+          promptKind() === 'outcome'
+            ? 'What happened in this meeting?'
+            : promptKind() === 'no-show'
+              ? 'Why didn\'t it happen? (e.g. customer no-show)'
+              : 'Why is this meeting being cancelled?'
+        "
+        [value]="promptText()"
+        (input)="onPromptInput($event)"
+      ></textarea>
       <div class="d-flex justify-content-end gap-2">
-        <button type="button" class="btn btn-link" (click)="cancelOutcome()">Cancel</button>
-        <button type="button" class="btn btn-primary" [disabled]="!outcomeText().trim()" (click)="saveOutcome()">Save outcome</button>
+        <button type="button" class="btn btn-link" (click)="closePrompt()">Back</button>
+        <button
+          type="button"
+          [class]="
+            promptKind() === 'outcome'
+              ? 'btn btn-success'
+              : promptKind() === 'no-show'
+                ? 'btn btn-warning'
+                : 'btn btn-danger'
+          "
+          [disabled]="saving() || (promptKind() === 'outcome' && !promptText().trim())"
+          (click)="savePrompt()"
+        >
+          @switch (promptKind()) {
+            @case ('outcome') { Save outcome }
+            @case ('no-show') { Mark no-show }
+            @case ('cancel') { Cancel meeting }
+          }
+        </button>
       </div>
     </div>
   </div>

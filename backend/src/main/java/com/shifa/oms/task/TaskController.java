@@ -2,6 +2,8 @@ package com.shifa.oms.task;
 
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.CurrentUserService;
+import com.shifa.oms.task.dto.CancelTaskRequest;
+import com.shifa.oms.task.dto.CompleteTaskRequest;
 import com.shifa.oms.task.dto.CreateTaskRequest;
 import com.shifa.oms.task.dto.TaskResponse;
 import com.shifa.oms.task.dto.UpdateTaskRequest;
@@ -61,10 +63,21 @@ public class TaskController {
         return taskService.update(id, request, actor);
     }
 
-    /** Mark an owned task complete (Req 8.2). */
+    /** Mark an owned task complete, optionally with a completion note (Req 8.2). */
     @PostMapping("/{id}/complete")
-    public TaskResponse complete(@PathVariable Long id) {
+    public TaskResponse complete(@PathVariable Long id,
+                                 @Valid @RequestBody(required = false) CompleteTaskRequest request) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
-        return taskService.complete(id, actor);
+        String note = request == null ? null : request.note();
+        return taskService.complete(id, note, actor);
+    }
+
+    /** Cancel an owned task, optionally with a reason (Req 8.2). */
+    @PostMapping("/{id}/cancel")
+    public TaskResponse cancel(@PathVariable Long id,
+                               @Valid @RequestBody(required = false) CancelTaskRequest request) {
+        AuthPrincipal actor = currentUserService.requireCurrentUser();
+        String reason = request == null ? null : request.reason();
+        return taskService.cancel(id, reason, actor);
     }
 }

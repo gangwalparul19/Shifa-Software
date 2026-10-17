@@ -702,6 +702,23 @@ public class OrderEntity {
         return getDeliveryMethod() == DeliveryMethod.IN_HOUSE;
     }
 
+    /**
+     * Whether this order is fulfilled by a courier partner (QuikShipX) — the
+     * single source of truth for "goes to the courier". Both {@code IN_HOUSE} and
+     * {@code STORE_PICKUP} return {@code false}, so every QuikShipX-publish /
+     * courier-assign gate must use this rather than a negated
+     * {@link #isInHouseDelivery()} (which would wrongly treat a STORE_PICKUP order
+     * as a courier order).
+     */
+    public boolean usesCourier() {
+        return getDeliveryMethod() == DeliveryMethod.QUIKSHIPX;
+    }
+
+    /** Whether this order is an in-shop / counter (POS) pickup — no delivery partner at all. */
+    public boolean isStorePickup() {
+        return getDeliveryMethod() == DeliveryMethod.STORE_PICKUP;
+    }
+
     public LeadSource getLeadSource() {
         return leadSource;
     }

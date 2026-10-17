@@ -27,7 +27,11 @@ export class TasksService {
     return this.api.put<Task>(`/api/tasks/${id}`, payload);
   }
 
-  complete(id: number): Observable<Task> {
-    return this.api.post<Task>(`/api/tasks/${id}/complete`, {});
+  complete(id: number, note?: string | null): Observable<Task> {
+    return this.api.post<Task>(`/api/tasks/${id}/complete`, { note: note ?? null });
+  }
+
+  cancel(id: number, reason?: string | null): Observable<Task> {
+    return this.api.post<Task>(`/api/tasks/${id}/cancel`, { reason: reason ?? null });
   }
 }

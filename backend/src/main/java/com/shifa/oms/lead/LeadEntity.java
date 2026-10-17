@@ -139,6 +139,21 @@ public class LeadEntity {
     @Column(name = "converted_order_id")
     private Long convertedOrderId;
 
+    /**
+     * The configurable pipeline this lead is on (CRM expansion Phase 3, Task 17).
+     * Nullable; backfilled by V90 to the seeded Default pipeline for every
+     * existing lead. For a Default-pipeline lead the {@link #status} column stays
+     * the authoritative engine; {@link #pipelineId}/{@link #stageId} are a
+     * structured overlay kept in sync with the status. A lead on a CUSTOM
+     * pipeline is governed by its stage configuration instead.
+     */
+    @Column(name = "pipeline_id")
+    private Long pipelineId;
+
+    /** The configurable stage this lead is in within its {@link #pipelineId}. */
+    @Column(name = "stage_id")
+    private Long stageId;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -344,6 +359,22 @@ public class LeadEntity {
 
     public void setConvertedOrderId(Long convertedOrderId) {
         this.convertedOrderId = convertedOrderId;
+    }
+
+    public Long getPipelineId() {
+        return pipelineId;
+    }
+
+    public void setPipelineId(Long pipelineId) {
+        this.pipelineId = pipelineId;
+    }
+
+    public Long getStageId() {
+        return stageId;
+    }
+
+    public void setStageId(Long stageId) {
+        this.stageId = stageId;
     }
 
     public LocalDateTime getCreatedAt() {

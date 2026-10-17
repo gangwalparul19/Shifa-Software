@@ -783,6 +783,7 @@ export class AdminShellComponent {
         { kind: 'link', label: 'Users', path: '/users', icon: 'ti-users', adminOnly: true },
         { kind: 'link', label: 'Profile approvals', path: '/profile-approvals', icon: 'ti-user-check', adminOnly: true },
         { kind: 'link', label: 'Settings', path: '/settings', icon: 'ti-settings', adminOnly: true },
+        { kind: 'link', label: 'CRM settings', path: '/crm-settings', icon: 'ti-adjustments-cog', adminOnly: true },
         { kind: 'link', label: 'Notifications', path: '/notifications', icon: 'ti-bell', adminOnly: true },
         { kind: 'link', label: 'Announcements', path: '/announcements', icon: 'ti-speakerphone', adminOnly: true },
         {

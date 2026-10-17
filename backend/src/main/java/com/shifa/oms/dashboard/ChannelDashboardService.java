@@ -350,7 +350,7 @@ public class ChannelDashboardService {
                 }
                 OrderStatus s = o.getOrderStatus();
                 if (s == OrderStatus.PENDING_ADMIN_APPROVAL
-                        || (s == OrderStatus.LABEL_GENERATED && !o.isInHouseDelivery())) {
+                        || (s == OrderStatus.LABEL_GENERATED && o.usesCourier())) {
                     candidateIds.add(o.getId());
                 } else if (s == OrderStatus.COURIER_ASSIGNED) {
                     assigned.add(o.getId());

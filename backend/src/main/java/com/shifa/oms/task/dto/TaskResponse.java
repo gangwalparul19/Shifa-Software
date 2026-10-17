@@ -18,12 +18,16 @@ public record TaskResponse(
         TaskPriority priority,
         TaskStatus status,
         LocalDateTime completedAt,
+        String completionNote,
+        String cancelReason,
+        LocalDateTime cancelledAt,
         LocalDateTime createdAt) {
 
     public static TaskResponse from(TaskEntity t) {
         return new TaskResponse(
                 t.getId(), t.getOwnerUserId(), t.getTitle(), t.getDescription(),
                 t.getLeadId(), t.getCustomerMobile(), t.getDueAt(), t.getPriority(),
-                t.getStatus(), t.getCompletedAt(), t.getCreatedAt());
+                t.getStatus(), t.getCompletedAt(), t.getCompletionNote(),
+                t.getCancelReason(), t.getCancelledAt(), t.getCreatedAt());
     }
 }

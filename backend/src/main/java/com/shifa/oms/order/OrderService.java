@@ -130,9 +130,26 @@ public class OrderService {
      * Null under the legacy test constructor.
      */
     private final com.shifa.oms.label.LabelService labelService;
+    /**
+     * Receivables (nullable): used by the store-order fast-forward to record the
+     * COD receivable for a PARTIALLY-paid counter (STORE_PICKUP) sale when it is
+     * closed out, exactly as an in-house COD delivery does
+     * ({@code ManualDeliveryService}). Null under the legacy test constructors —
+     * the receivable is then skipped (the balance still rides on the order's
+     * {@code customer_outstanding} via the COD amount), so those unit tests are
+     * unaffected.
+     */
+    private final com.shifa.oms.reconciliation.ReceivableRepository receivableRepository;
 
     /** {@code vouchers.source_type} for a finalised sales order (matches AdminOrderService). */
     private static final String LEDGER_SOURCE_ORDER = "ORDER";
+    /**
+     * Ledger source key for COD cash collected on delivery (mirrors
+     * {@code ManualDeliveryService.LEDGER_SOURCE_ORDER_DELIVERY} /
+     * {@code SourceType.ORDER_DELIVERY}) — used when a partial counter sale is
+     * closed out so the COD cash is booked against Cash / Sundry Debtors.
+     */
+    private static final String LEDGER_SOURCE_ORDER_DELIVERY = "ORDER_DELIVERY";
 
     /** Actor label recorded on an auto-approval status-history / audit row. */
     private static final String SOURCE_AUTO_APPROVAL = "AUTO_APPROVAL";
@@ -173,7 +190,35 @@ public class OrderService {
         this(orderRepository, productRepository, orderCodeGenerator, storageService, scopeResolver,
                 trackingService, stockService, productImageRepository, outboxEventPublisher,
                 quikShipXProperties, orderShipmentRepository, userRepository, orderWorkflowService,
-                auditService, null, null);
+                auditService, null, null, null);
+    }
+
+    /**
+     * Pre-store-receivable constructor (kept for the 16-arg store-order test call
+     * site): delegates to the full constructor with no ReceivableRepository, so a
+     * partial counter sale is still closed out to {@code COD_Collected} with the
+     * balance on {@code customer_outstanding} but no persisted receivable row.
+     */
+    public OrderService(OrderRepository orderRepository,
+                        ProductRepository productRepository,
+                        OrderCodeGenerator orderCodeGenerator,
+                        StorageService storageService,
+                        SalespersonScopeResolver scopeResolver,
+                        TrackingService trackingService,
+                        StockService stockService,
+                        ProductImageRepository productImageRepository,
+                        OutboxEventPublisher outboxEventPublisher,
+                        QuikShipXProperties quikShipXProperties,
+                        OrderShipmentRepository orderShipmentRepository,
+                        com.shifa.oms.auth.UserRepository userRepository,
+                        OrderWorkflowService orderWorkflowService,
+                        AuditService auditService,
+                        com.shifa.oms.settings.SettingsService settingsService,
+                        com.shifa.oms.label.LabelService labelService) {
+        this(orderRepository, productRepository, orderCodeGenerator, storageService, scopeResolver,
+                trackingService, stockService, productImageRepository, outboxEventPublisher,
+                quikShipXProperties, orderShipmentRepository, userRepository, orderWorkflowService,
+                auditService, settingsService, labelService, null);
     }
 
     @Autowired
@@ -192,7 +237,8 @@ public class OrderService {
                         OrderWorkflowService orderWorkflowService,
                         AuditService auditService,
                         com.shifa.oms.settings.SettingsService settingsService,
-                        com.shifa.oms.label.LabelService labelService) {
+                        com.shifa.oms.label.LabelService labelService,
+                        com.shifa.oms.reconciliation.ReceivableRepository receivableRepository) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.orderCodeGenerator = orderCodeGenerator;
@@ -209,6 +255,7 @@ public class OrderService {
         this.auditService = auditService;
         this.settingsService = settingsService;
         this.labelService = labelService;
+        this.receivableRepository = receivableRepository;
     }
 
     // --- Creation: salesperson order entry (Req 7) --------------------------
@@ -393,13 +440,15 @@ public class OrderService {
      *   <li>line items may be ad-hoc (a consultation fee, a one-off charge) as well
      *       as catalogue products;</li>
      *   <li>the address is optional (a walk-in may give only name + phone);</li>
-     *   <li>it is tagged {@link OrderSource#STORE} so it shows as its own channel on
-     *       the dashboard.</li>
+     *   <li>it is tagged {@link OrderSource#STORE} with
+     *       {@link DeliveryMethod#STORE_PICKUP} (handed over at the counter — no
+     *       delivery partner, never enters a delivery/packing queue) so it shows as
+     *       its own channel on the dashboard.</li>
      * </ul>
-     * A fully-paid store order is auto-approved and walked to {@code CLOSED}
-     * immediately (the customer paid and left with the goods); a partial payment
-     * leaves it {@code APPROVED} with the balance tracked as the customer
-     * outstanding.
+     * A store order is a completed counter sale, so it is always walked to a
+     * terminal state immediately: fully paid → {@code CLOSED}; a partial payment →
+     * {@code COD_COLLECTED} (the balance is moved onto a COD receivable, exactly as
+     * an in-house COD delivery settles). It is NEVER left in a pre-terminal state.
      *
      * @param request the POS order payload
      * @param admin   the acting user (ADMIN, SALESPERSON or TEAM_LEAD); the order
@@ -444,9 +493,13 @@ public class OrderService {
                 trimToEmpty(request.state()),
                 trimToEmpty(request.postalCode()));
 
-        // Always a counter sale → in-house (no courier partner ever).
+        // Always a counter sale handed over at the store → STORE_PICKUP. This is
+        // neither a QuikShipX courier order nor an in-house delivery: there is NO
+        // delivery partner at all and the order must never enter a delivery /
+        // packing / dispatch queue. usesCourier() is false, so every QuikShipX /
+        // courier gate skips it.
         order.setLeadSource(LeadSource.COUNTER_SALE);
-        order.setDeliveryMethod(DeliveryMethod.IN_HOUSE);
+        order.setDeliveryMethod(DeliveryMethod.STORE_PICKUP);
         order.setCustomerEmail(request.customerEmail());
         order.setNotes(trimToNull(request.notes()));
         order.setAlternateMobile(trimToNull(request.alternateMobile()));
@@ -473,9 +526,9 @@ public class OrderService {
         reserveStock(priced, admin.userId(), order.getOrderCode());
 
         OrderEntity saved = orderRepository.save(order);
-        // Fast-forward past the approval queue: a counter sale is already decided.
-        // Fully paid → walk all the way to CLOSED; partial → leave at APPROVED with
-        // the balance tracked. Best-effort; never fails the sale.
+        // Fast-forward past the approval queue: a counter sale is already decided and
+        // handed over. Fully paid → CLOSED; partial → COD_COLLECTED (balance tracked
+        // as a COD receivable). Always terminal. Best-effort; never fails the sale.
         fastForwardStoreOrder(saved, calc);
         return OrderResponse.from(orderRepository.save(saved));
     }
@@ -486,13 +539,14 @@ public class OrderService {
      * {@link OrderWorkflowService}, so each hop records a history row:
      * <ul>
      *   <li>always: {@code PENDING_ADMIN_APPROVAL → APPROVED} (+ ledger post), so a
-     *       counter sale never waits for manual approval;</li>
-     *   <li>fully paid (no balance to collect): continue
-     *       {@code APPROVED → LABEL_GENERATED → PACKED → HANDED_TO_DELIVERY →
-     *       DELIVERED → CLOSED}, landing as a completed sale with nothing
-     *       outstanding;</li>
-     *   <li>partial: stop at {@code APPROVED} — the balance stays as the customer
-     *       outstanding so it is tracked as money owed.</li>
+     *       counter sale never waits for manual approval, then the full in-house
+     *       lifecycle {@code APPROVED → LABEL_GENERATED → PACKED →
+     *       HANDED_TO_DELIVERY → DELIVERED};</li>
+     *   <li>fully paid (no balance to collect): settle {@code DELIVERED → CLOSED},
+     *       landing as a completed sale with nothing outstanding;</li>
+     *   <li>partial: settle {@code DELIVERED → COD_COLLECTED} (terminal) and move
+     *       the balance onto a COD receivable (exactly as an in-house COD delivery
+     *       settles), so a STORE_PICKUP order is never left pre-terminal.</li>
      * </ul>
      * Requires the workflow + outbox collaborators (present under the Spring
      * constructor; null under the legacy test constructor, in which case this is a
@@ -510,18 +564,37 @@ public class OrderService {
             if (outboxEventPublisher != null) {
                 outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_ORDER, order.getId());
             }
+            // A STORE_PICKUP (counter) sale is handed over at the counter regardless
+            // of whether it was fully or partially paid — there is no delivery to
+            // make, so it must NEVER be left in a pre-terminal state. Walk the full
+            // in-house lifecycle to DELIVERED for BOTH cases, then settle:
+            //   fully paid → CLOSED (nothing outstanding);
+            //   partial    → COD_COLLECTED (the terminal "delivered, balance owed"
+            //                 state), moving the balance off customer_outstanding
+            //                 onto a COD receivable, exactly as an in-house COD
+            //                 delivery does (ManualDeliveryService#deliverAndSettle).
+            orderWorkflowService.applyTransition(order, OrderStatus.LABEL_GENERATED, actor);
+            orderWorkflowService.applyTransition(order, OrderStatus.PACKED, actor);
+            orderWorkflowService.applyTransition(order, OrderStatus.HANDED_TO_DELIVERY, actor);
+            orderWorkflowService.applyTransition(order, OrderStatus.DELIVERED, actor);
+
             boolean fullyPaid = calc.paymentStatus() != PaymentStatus.COD && calc.codAmount().isZero();
             if (fullyPaid) {
-                // Walk straight to a completed, closed sale (prepaid → CLOSED).
-                orderWorkflowService.applyTransition(order, OrderStatus.LABEL_GENERATED, actor);
-                orderWorkflowService.applyTransition(order, OrderStatus.PACKED, actor);
-                orderWorkflowService.applyTransition(order, OrderStatus.HANDED_TO_DELIVERY, actor);
-                orderWorkflowService.applyTransition(order, OrderStatus.DELIVERED, actor);
+                // Prepaid → CLOSED; the sales voucher already covers the cash, so no
+                // delivery-receipt ledger post and nothing outstanding.
                 orderWorkflowService.applyTransition(order, OrderStatus.CLOSED, actor);
                 order.setCustomerOutstanding(java.math.BigDecimal.ZERO);
-                // Book the counter cash to the ledger dated now (same source type as a
-                // normal delivery receipt would use for an in-house COD, but here it is
-                // a fully-paid sale so the sales voucher already covers it).
+            } else {
+                // Partial / COD balance → COD_COLLECTED (terminal). Record the COD
+                // receivable for the balance and book the counter cash to the ledger
+                // dated now, moving the balance off customer_outstanding, mirroring an
+                // in-house COD settlement. Best-effort: never fail the sale.
+                orderWorkflowService.applyTransition(order, OrderStatus.COD_COLLECTED, actor);
+                recordStoreCodReceivable(order);
+                order.setCustomerOutstanding(java.math.BigDecimal.ZERO);
+                if (outboxEventPublisher != null) {
+                    outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_ORDER_DELIVERY, order.getId());
+                }
             }
         } catch (RuntimeException e) {
             // A counter sale must never fail because a fast-forward hop was blocked;
@@ -529,6 +602,31 @@ public class OrderService {
             log.warn("Store-order fast-forward stopped early for {}: {}",
                     order.getOrderCode(), e.getMessage());
         }
+    }
+
+    /**
+     * Records the COD receivable for a partially-paid counter (STORE_PICKUP) sale
+     * being closed out, mirroring {@code ManualDeliveryService#recordReceivable}:
+     * idempotent (never a second COD receivable for the same order), and
+     * {@code courierCompanyId} is {@code null} (a counter sale has no courier).
+     * No-op when the receivables repo is not wired (unit tests) or the COD amount
+     * is not positive.
+     */
+    private void recordStoreCodReceivable(OrderEntity order) {
+        if (receivableRepository == null) {
+            return;
+        }
+        java.math.BigDecimal cod = order.getCodAmount();
+        if (cod == null || cod.signum() <= 0) {
+            return;
+        }
+        if (!receivableRepository.findByOrderIdAndType(
+                order.getId(), com.shifa.oms.reconciliation.domain.ReceivableType.COD_RECEIVABLE).isEmpty()) {
+            return;
+        }
+        receivableRepository.save(new com.shifa.oms.reconciliation.ReceivableEntity(
+                order.getId(), null,
+                com.shifa.oms.reconciliation.domain.ReceivableType.COD_RECEIVABLE, cod));
     }
 
     /** Trims to empty string (for optional NOT-NULL address columns on a counter sale). */
@@ -667,7 +765,7 @@ public class OrderService {
      */
     private void publishToQuikShipX(OrderEntity order) {
         if (outboxEventPublisher != null && quikShipXProperties != null
-                && quikShipXProperties.isEnabled() && !order.isInHouseDelivery()
+                && quikShipXProperties.isEnabled() && order.usesCourier()
                 && order.getOrderStatus() == OrderStatus.APPROVED) {
             outboxEventPublisher.publishQuikShipXCreate(order.getId(), order.getOrderCode());
             outboxEventPublisher.publishQuikShipXConfirm(order.getId(), order.getOrderCode());

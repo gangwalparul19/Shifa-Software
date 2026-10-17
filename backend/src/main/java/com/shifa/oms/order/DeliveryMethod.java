@@ -22,10 +22,27 @@ package com.shifa.oms.order;
  * straight to {@code COD_Collected}) via a single manual "Mark delivered" action
  * ({@code OrderController#markDelivered}) rather than the SYSTEM-only courier
  * webhook/poll progressions.
+ *
+ * <p><strong>Courier gating</strong>: only {@link #QUIKSHIPX} is a courier
+ * order. Every "publish to QuikShipX / assign courier" gate keys off
+ * {@code OrderEntity#usesCourier()} ({@code deliveryMethod == QUIKSHIPX}), so
+ * {@link #IN_HOUSE} and {@link #STORE_PICKUP} are both invisible to the QuikShipX
+ * pipeline. {@link OrderEntity#isInHouseDelivery()} remains {@code IN_HOUSE}-only
+ * (used by the manual in-house delivery flow), so it must <em>not</em> be used
+ * (negated) as an "is-courier" test.
  */
 public enum DeliveryMethod {
     /** Fulfilled via the QuikShipX courier integration (default). */
     QUIKSHIPX,
     /** Fulfilled by Shifa's own in-house/last-mile delivery — no courier partner. */
-    IN_HOUSE
+    IN_HOUSE,
+    /**
+     * An in-shop / counter (POS) sale handed over to the customer at the store —
+     * no delivery partner at all (neither QuikShipX nor in-house). A
+     * {@code STORE_PICKUP} order is paid &amp; collected at the counter and must
+     * NEVER enter any delivery / packing / dispatch queue; it is created already
+     * closed by {@code OrderService#createStoreOrder}. Set server-side only for
+     * POS orders — an admin cannot choose it via approve / update-delivery-method.
+     */
+    STORE_PICKUP
 }

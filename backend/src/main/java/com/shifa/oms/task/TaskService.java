@@ -116,17 +116,49 @@ public class TaskService {
         return TaskResponse.from(saved);
     }
 
-    /** Marks an owned task complete, recording the completion time (Req 8.2). */
+    /**
+     * Marks an owned task complete, recording the completion time and an
+     * optional completion note (Req 8.2). Cannot complete a CANCELLED task.
+     */
     @Transactional
-    public TaskResponse complete(Long id, AuthPrincipal actor) {
+    public TaskResponse complete(Long id, String note, AuthPrincipal actor) {
         Objects.requireNonNull(actor, "actor");
         TaskEntity task = loadScoped(id, actor);
+        if (task.getStatus() == TaskStatus.CANCELLED) {
+            throw new ValidationException("A cancelled task cannot be completed.");
+        }
+        String completionNote = blankToNull(note);
         if (task.getStatus() != TaskStatus.DONE) {
             task.setStatus(TaskStatus.DONE);
             task.setCompletedAt(LocalDateTime.now(clock));
         }
+        if (completionNote != null) {
+            task.setCompletionNote(completionNote);
+        }
         TaskEntity saved = taskRepository.save(task);
-        recordActivity(ActivityTypes.TASK_DONE, saved, actor, "Task completed: " + saved.getTitle());
+        recordActivity(ActivityTypes.TASK_DONE, saved, actor,
+                "Task completed: " + saved.getTitle(), completionNote);
+        return TaskResponse.from(saved);
+    }
+
+    /**
+     * Cancels an owned task with an optional reason (Req 8.2). A task that is
+     * already DONE cannot be cancelled.
+     */
+    @Transactional
+    public TaskResponse cancel(Long id, String reason, AuthPrincipal actor) {
+        Objects.requireNonNull(actor, "actor");
+        TaskEntity task = loadScoped(id, actor);
+        if (task.getStatus() == TaskStatus.DONE) {
+            throw new ValidationException("A completed task cannot be cancelled.");
+        }
+        String cancelReason = blankToNull(reason);
+        task.setStatus(TaskStatus.CANCELLED);
+        task.setCancelledAt(LocalDateTime.now(clock));
+        task.setCancelReason(cancelReason);
+        TaskEntity saved = taskRepository.save(task);
+        recordActivity(ActivityTypes.TASK_CANCELLED, saved, actor,
+                "Task cancelled: " + saved.getTitle(), cancelReason);
         return TaskResponse.from(saved);
     }
 
@@ -163,10 +195,15 @@ public class TaskService {
     }
 
     private void recordActivity(String type, TaskEntity task, AuthPrincipal actor, String summary) {
+        recordActivity(type, task, actor, summary, null);
+    }
+
+    private void recordActivity(String type, TaskEntity task, AuthPrincipal actor,
+                                String summary, String detail) {
         if (activityService == null || task.getLeadId() == null && task.getCustomerMobile() == null) {
             return;
         }
-        activityService.record(type, task.getLeadId(), task.getCustomerMobile(), actor, summary, null);
+        activityService.record(type, task.getLeadId(), task.getCustomerMobile(), actor, summary, detail);
     }
 
     private static String blankToNull(String value) {

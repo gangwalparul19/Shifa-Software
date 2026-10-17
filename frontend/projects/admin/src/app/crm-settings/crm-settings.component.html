@@ -1,0 +1,317 @@
+<admin-page-header
+  title="CRM settings"
+  subtitle="Pipelines, stages, tags, sources, defaults and permissions"
+  [breadcrumbs]="[{ label: 'CRM settings' }]"
+>
+</admin-page-header>
+
+<div class="shifa-formtabs crm-tabs" role="tablist">
+  <button type="button" class="shifa-formtab" [class.active]="tab() === 'pipelines'" (click)="setTab('pipelines')">
+    Pipelines
+  </button>
+  <button type="button" class="shifa-formtab" [class.active]="tab() === 'tags'" (click)="setTab('tags')">
+    Tags
+  </button>
+  <button type="button" class="shifa-formtab" [class.active]="tab() === 'sources'" (click)="setTab('sources')">
+    Sources
+  </button>
+  <button type="button" class="shifa-formtab" [class.active]="tab() === 'defaults'" (click)="setTab('defaults')">
+    Defaults
+  </button>
+  <button type="button" class="shifa-formtab" [class.active]="tab() === 'permissions'" (click)="setTab('permissions')">
+    Permissions
+  </button>
+</div>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading CRM configuration…"></admin-state-panel>
+} @else if (loadError()) {
+  <admin-state-panel variant="error" [card]="true" [message]="loadError()!" (retry)="loadAll()"></admin-state-panel>
+} @else {
+
+  <!-- PIPELINES -->
+  @if (tab() === 'pipelines') {
+    @if (canManage('MANAGE_PIPELINES')) {
+      <div class="card mb-3">
+        <div class="card-body">
+          <form [formGroup]="pipelineForm" (ngSubmit)="createPipeline()" class="crm-inline">
+            <input
+              type="text"
+              class="form-control"
+              placeholder="New pipeline name"
+              formControlName="name"
+              maxlength="80"
+            />
+            <button type="submit" class="btn btn-primary" [disabled]="saving()">
+              <i class="ti ti-plus me-1"></i> Add pipeline
+            </button>
+          </form>
+        </div>
+      </div>
+    }
+
+    @for (p of pipelines(); track p.id) {
+      <div class="card mb-3">
+        <div class="card-header crm-ph-head">
+          <div>
+            <strong>{{ p.name }}</strong>
+            @if (p.isDefault) { <span class="badge tone-green ms-2">Default</span> }
+            @if (!p.active) { <span class="badge tone-grey ms-2">Inactive</span> }
+          </div>
+          <div class="crm-ph-actions">
+            @if (canManage('MANAGE_PIPELINES') && !p.isDefault) {
+              <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="togglePipelineActive(p)">
+                {{ p.active ? 'Deactivate' : 'Activate' }}
+              </button>
+            }
+            <button type="button" class="btn btn-sm btn-outline-primary" (click)="toggleExpand(p.id)">
+              {{ expandedPipeline() === p.id ? 'Hide stages' : 'Stages (' + p.stages.length + ')' }}
+            </button>
+          </div>
+        </div>
+        @if (expandedPipeline() === p.id) {
+          <div class="card-body">
+            <ol class="crm-stages">
+              @for (s of p.stages; track s.id; let i = $index) {
+                <li class="crm-stage" [class.is-retired]="!s.active">
+                  <span class="crm-stage__name">
+                    {{ s.name }}
+                    @if (s.isEntry) { <span class="badge tone-blue ms-1">Entry</span> }
+                    @if (s.terminalKind) { <span class="badge tone-amber ms-1">{{ s.terminalKind }}</span> }
+                    @if (!s.active) { <span class="badge tone-grey ms-1">Retired</span> }
+                  </span>
+                  @if (canManage('MANAGE_PIPELINES')) {
+                    <span class="crm-stage__actions">
+                      <button type="button" class="btn btn-sm btn-icon" title="Move up" (click)="moveStage(p, i, -1)" [disabled]="i === 0">
+                        <i class="ti ti-chevron-up"></i>
+                      </button>
+                      <button type="button" class="btn btn-sm btn-icon" title="Move down" (click)="moveStage(p, i, 1)" [disabled]="i === p.stages.length - 1">
+                        <i class="ti ti-chevron-down"></i>
+                      </button>
+                      @if (!s.isEntry && s.active) {
+                        <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="makeEntry(p, s)">Set entry</button>
+                      }
+                      <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="toggleStageActive(p, s)">
+                        {{ s.active ? 'Retire' : 'Restore' }}
+                      </button>
+                    </span>
+                  }
+                </li>
+              }
+            </ol>
+
+            @if (canManage('MANAGE_PIPELINES')) {
+              <form [formGroup]="stageForm" (ngSubmit)="addStage(p)" class="crm-stage-form">
+                <input type="text" class="form-control" placeholder="New stage name" formControlName="name" maxlength="60" />
+                <select class="form-select" formControlName="terminalKind">
+                  <option value="">Active stage</option>
+                  <option value="WON">Terminal · Won</option>
+                  <option value="LOST">Terminal · Lost</option>
+                  <option value="CLOSED">Terminal · Closed</option>
+                </select>
+                <label class="form-check crm-entry-check">
+                  <input type="checkbox" class="form-check-input" formControlName="isEntry" />
+                  <span class="form-check-label">Entry</span>
+                </label>
+                <button type="submit" class="btn btn-primary" [disabled]="saving()">
+                  <i class="ti ti-plus me-1"></i> Add stage
+                </button>
+              </form>
+            }
+          </div>
+        }
+      </div>
+    }
+  }
+
+  <!-- TAGS -->
+  @if (tab() === 'tags') {
+    @if (canManage('MANAGE_TAGS')) {
+      <div class="card mb-3">
+        <div class="card-body">
+          <form [formGroup]="tagForm" (ngSubmit)="createTag()" class="crm-inline">
+            <input type="text" class="form-control" placeholder="New tag name" formControlName="name" maxlength="40" />
+            <input type="text" class="form-control crm-color" placeholder="Colour (optional)" formControlName="color" maxlength="16" />
+            <select class="form-select" formControlName="stageId">
+              <option [ngValue]="null">No stage</option>
+              @for (s of allStages(); track s.id) {
+                <option [ngValue]="s.id">{{ s.label }}</option>
+              }
+            </select>
+            <button type="submit" class="btn btn-primary" [disabled]="saving()">
+              <i class="ti ti-plus me-1"></i> Add tag
+            </button>
+          </form>
+        </div>
+      </div>
+    }
+    <div class="card">
+      <div class="card-body">
+        @if (tags().length === 0) {
+          <admin-state-panel variant="empty" title="No tags yet" icon="ti-tag"></admin-state-panel>
+        } @else {
+          <div class="crm-chiplist">
+            @for (t of tags(); track t.id) {
+              <span class="crm-chip" [class.is-retired]="!t.active">
+                {{ t.name }}
+                <span class="crm-chip__kind">{{ t.kind }}</span>
+                @if (!t.active) { <span class="badge tone-grey ms-1">Retired</span> }
+                @if (canManage('MANAGE_TAGS')) {
+                  <button type="button" class="crm-chip__btn" (click)="toggleTagActive(t)">
+                    {{ t.active ? 'Retire' : 'Restore' }}
+                  </button>
+                }
+              </span>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- SOURCES -->
+  @if (tab() === 'sources') {
+    @if (canManage('MANAGE_SOURCES')) {
+      <div class="card mb-3">
+        <div class="card-body">
+          <form [formGroup]="sourceForm" (ngSubmit)="createSource()" class="crm-inline">
+            <input type="text" class="form-control" placeholder="New source name" formControlName="name" maxlength="40" />
+            <button type="submit" class="btn btn-primary" [disabled]="saving()">
+              <i class="ti ti-plus me-1"></i> Add source
+            </button>
+          </form>
+        </div>
+      </div>
+    }
+    <div class="card">
+      <div class="card-body">
+        <div class="crm-chiplist">
+          @for (s of sources(); track s.id) {
+            <span class="crm-chip" [class.is-retired]="!s.active">
+              {{ s.name }}
+              @if (!s.active) { <span class="badge tone-grey ms-1">Inactive</span> }
+              @if (canManage('MANAGE_SOURCES')) {
+                <button type="button" class="crm-chip__btn" (click)="toggleSourceActive(s)">
+                  {{ s.active ? 'Deactivate' : 'Activate' }}
+                </button>
+              }
+            </span>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- DEFAULTS -->
+  @if (tab() === 'defaults') {
+    <div class="card">
+      <div class="card-body">
+        <form [formGroup]="defaultsForm" (ngSubmit)="saveDefaults()" class="crm-defaults">
+          <div class="mb-3">
+            <label class="form-label">Default follow-up time</label>
+            <input type="time" class="form-control" formControlName="followUpDefaultTime" />
+            <small class="form-hint">Used when a follow-up has a date but no time.</small>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Missed grace window (hours)</label>
+            <input type="number" class="form-control" formControlName="missedGraceHours" min="1" max="720" />
+            <small class="form-hint">Hours after a reminder before an un-acted follow-up is Missed.</small>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Default pipeline</label>
+            <select class="form-select" formControlName="defaultPipelineId">
+              <option [ngValue]="null">— none —</option>
+              @for (p of pipelines(); track p.id) {
+                <option [ngValue]="p.id">{{ p.name }}</option>
+              }
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Default team-assignment rule</label>
+            <select class="form-select" formControlName="defaultAssignmentRule">
+              <option value="DIRECT">Direct (assign to the team lead)</option>
+              <option value="ROUND_ROBIN">Round-robin (least-loaded member)</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary" [disabled]="saving()">Save CRM settings</button>
+        </form>
+      </div>
+    </div>
+  }
+
+  <!-- PERMISSIONS -->
+  @if (tab() === 'permissions') {
+    <div class="card mb-3">
+      <div class="card-body">
+        <p class="text-secondary mb-2">
+          Grant or revoke a CRM permission for a role (layered on top of the fixed base roles). Safe
+          defaults reproduce today's access; a grant only ever widens it.
+        </p>
+        <form [formGroup]="permForm" (ngSubmit)="grantPermission()" class="crm-inline">
+          <select class="form-select" formControlName="permission">
+            @for (d of permissionDefs(); track d) {
+              <option [value]="d">{{ d }}</option>
+            }
+          </select>
+          <select class="form-select" formControlName="role">
+            <option value="ADMIN">ADMIN</option>
+            <option value="TEAM_LEAD">TEAM_LEAD</option>
+            <option value="SALESPERSON">SALESPERSON</option>
+            <option value="ACCOUNTANT">ACCOUNTANT</option>
+            <option value="CA">CA</option>
+            <option value="PACKING_USER">PACKING_USER</option>
+            <option value="PAYMENT_VERIFIER">PAYMENT_VERIFIER</option>
+          </select>
+          <select class="form-select" formControlName="granted">
+            <option [ngValue]="true">Grant</option>
+            <option [ngValue]="false">Revoke</option>
+          </select>
+          <button type="submit" class="btn btn-primary" [disabled]="saving()">Apply</button>
+        </form>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        @if (permissions().length === 0) {
+          <admin-state-panel
+            variant="empty"
+            title="Only safe defaults are active"
+            message="No explicit grants — every role behaves exactly as today."
+            icon="ti-shield-lock"
+          ></admin-state-panel>
+        } @else {
+          <div class="table-responsive">
+            <table class="table card-table">
+              <thead>
+                <tr>
+                  <th>Permission</th>
+                  <th>Role / user</th>
+                  <th>Granted</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (p of permissions(); track p.id) {
+                  <tr>
+                    <td>{{ p.permission }}</td>
+                    <td>{{ p.role ?? ('user #' + p.userId) }}</td>
+                    <td>
+                      <span class="badge" [class.tone-green]="p.granted" [class.tone-red]="!p.granted">
+                        {{ p.granted ? 'Granted' : 'Revoked' }}
+                      </span>
+                    </td>
+                    <td class="text-end">
+                      <button type="button" class="btn btn-sm btn-ghost-danger" (click)="revokePermission(p)">
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </div>
+    </div>
+  }
+}

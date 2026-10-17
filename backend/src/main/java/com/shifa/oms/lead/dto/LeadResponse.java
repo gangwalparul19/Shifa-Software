@@ -43,7 +43,9 @@ public record LeadResponse(
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
         List<LeadTagResponse> tags,
-        List<StatusHistoryEntry> statusHistory
+        List<StatusHistoryEntry> statusHistory,
+        Long pipelineId,
+        Long stageId
 ) {
 
     /** One status-history row (from/to/actor/changed-at) for the detail trail. */
@@ -94,6 +96,8 @@ public record LeadResponse(
                 lead.getCreatedAt(),
                 lead.getUpdatedAt(),
                 tags == null ? List.of() : tags,
-                history);
+                history,
+                lead.getPipelineId(),
+                lead.getStageId());
     }
 }

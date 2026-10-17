@@ -10,6 +10,13 @@ ALTER TABLE sales_targets ADD COLUMN conversion_target DECIMAL(5,2)  NULL;   -- 
 -- relax salesperson_id to nullable. Existing per-salesperson rows are unaffected.
 ALTER TABLE sales_targets MODIFY COLUMN salesperson_id BIGINT NULL;
 
+-- The FK fk_sales_target_user (on salesperson_id) is currently backed by the
+-- unique index ux_sales_target (salesperson_id, period_month) — MySQL/InnoDB
+-- will NOT let us drop that index while the FK depends on it (error 1553).
+-- So first add a dedicated plain index on salesperson_id to back the FK, THEN
+-- drop the old unique, THEN add the new full-period unique key.
+ALTER TABLE sales_targets ADD INDEX ix_sales_targets_salesperson (salesperson_id);
+
 -- Relax the uniqueness from (salesperson_id, period_month) to the full period key
 -- (salesperson_id, team_lead_id, period_type, period_month). Existing monthly
 -- rows (period_type='MONTH', team_lead_id NULL) still satisfy the new key.

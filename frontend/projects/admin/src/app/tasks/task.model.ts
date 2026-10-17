@@ -14,6 +14,9 @@ export interface Task {
   priority: TaskPriority;
   status: TaskStatus;
   completedAt?: string | null;
+  completionNote?: string | null;
+  cancelReason?: string | null;
+  cancelledAt?: string | null;
   createdAt: string;
 }
 

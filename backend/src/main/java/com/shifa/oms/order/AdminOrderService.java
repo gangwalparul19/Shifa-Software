@@ -387,6 +387,15 @@ public class AdminOrderService {
         if (deliveryMethod != null && !deliveryMethod.isBlank()) {
             DeliveryMethod requested =
                     DeliveryMethod.valueOf(deliveryMethod.trim().toUpperCase(java.util.Locale.ROOT));
+            // Store (POS) orders are handed over at the counter — they have no
+            // delivery partner and are already closed. Never let an admin assign
+            // one a delivery partner at approval (defensive; a POS order never
+            // reaches the approval queue anyway).
+            if (order.getSource() == OrderSource.STORE
+                    || order.getDeliveryMethod() == DeliveryMethod.STORE_PICKUP) {
+                throw new com.shifa.oms.common.ValidationException(
+                        "This is a store (POS) order and cannot be assigned a delivery partner.");
+            }
             // Counter Sale (walk-in shop order) never goes through a delivery
             // partner — reject any attempt to override it to QuikShipX at
             // approval time rather than silently ignoring the admin's choice.
@@ -414,7 +423,7 @@ public class AdminOrderService {
         // has completed. Enqueued in this same transaction when the integration is
         // enabled AND the order is not in-house (an in-house order never touches the
         // QuikShipX pipeline).
-        if (quikShipXProperties != null && quikShipXProperties.isEnabled() && !saved.isInHouseDelivery()) {
+        if (quikShipXProperties != null && quikShipXProperties.isEnabled() && saved.usesCourier()) {
             outboxEventPublisher.publishQuikShipXCreate(saved.getId(), saved.getOrderCode());
             outboxEventPublisher.publishQuikShipXConfirm(saved.getId(), saved.getOrderCode());
         }

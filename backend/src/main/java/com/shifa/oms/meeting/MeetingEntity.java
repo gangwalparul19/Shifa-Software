@@ -59,6 +59,9 @@ public class MeetingEntity {
     @Column(name = "outcome", length = 1000)
     private String outcome;
 
+    @Column(name = "closed_at")
+    private LocalDateTime closedAt;
+
     @Column(name = "reminded_on")
     private LocalDate remindedOn;
 
@@ -161,6 +164,14 @@ public class MeetingEntity {
 
     public void setOutcome(String outcome) {
         this.outcome = outcome;
+    }
+
+    public LocalDateTime getClosedAt() {
+        return closedAt;
+    }
+
+    public void setClosedAt(LocalDateTime closedAt) {
+        this.closedAt = closedAt;
     }
 
     public LocalDate getRemindedOn() {

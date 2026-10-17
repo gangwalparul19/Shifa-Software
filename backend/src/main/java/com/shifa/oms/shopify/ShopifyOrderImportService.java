@@ -232,7 +232,7 @@ public class ShopifyOrderImportService {
      * that already has a shipment), so it is safe to call again during recovery.
      */
     private void publishToQuikShipX(OrderEntity order) {
-        if (quikShipXProperties != null && quikShipXProperties.isEnabled() && !order.isInHouseDelivery()) {
+        if (quikShipXProperties != null && quikShipXProperties.isEnabled() && order.usesCourier()) {
             outboxEventPublisher.publishQuikShipXCreate(order.getId(), order.getOrderCode());
             outboxEventPublisher.publishQuikShipXConfirm(order.getId(), order.getOrderCode());
         }
@@ -279,8 +279,8 @@ public class ShopifyOrderImportService {
                 OrderSource.SHOPIFY, OrderStatus.LABEL_GENERATED);
         java.util.Map<Long, OrderShipment> shipments = loadShipments(labelGenerated);
         for (OrderEntity order : labelGenerated) {
-            if (order.isInHouseDelivery()) {
-                continue; // In-house orders never go to QuikShipX — nothing to recover.
+            if (!order.usesCourier()) {
+                continue; // Non-courier orders never go to QuikShipX — nothing to recover.
             }
             OrderShipment ship = shipments.get(order.getId());
             if (ship != null && trimToNull(ship.getAwb()) != null) {
@@ -354,14 +354,15 @@ public class ShopifyOrderImportService {
         List<StuckOrder> out = new java.util.ArrayList<>();
         for (OrderEntity o : orders) {
             boolean inHouse = o.isInHouseDelivery();
+            boolean courier = o.usesCourier();
             OrderShipment ship = shipments.get(o.getId());
             String awb = ship != null ? trimToNull(ship.getAwb()) : null;
             String quikStatus = ship != null ? ship.getQuikShipXStatus() : null;
             boolean trackingAssigned = awb != null;
             boolean pending = o.getOrderStatus() == OrderStatus.PENDING_ADMIN_APPROVAL;
             // Recoverable = a recover run would push it forward: pending (auto-approve),
-            // or label-generated non-in-house with no tracking id yet (re-publish).
-            boolean recoverable = pending || (!inHouse && !trackingAssigned);
+            // or a label-generated courier order with no tracking id yet (re-publish).
+            boolean recoverable = pending || (courier && !trackingAssigned);
             // Waiting = still genuinely needs a tracking id (not yet allotted).
             boolean waiting = recoverable && !trackingAssigned;
             out.add(new StuckOrder(o.getId(), o.getOrderCode(), o.getCustomerName(), o.getCustomerMobile(),

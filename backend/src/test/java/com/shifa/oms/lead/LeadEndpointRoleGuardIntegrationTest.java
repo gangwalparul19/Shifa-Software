@@ -252,6 +252,18 @@ class LeadEndpointRoleGuardIntegrationTest {
         LeadService leadService() {
             return new StubLeadService();
         }
+
+        /**
+         * The SpEL bean referenced by {@code @PreAuthorize("... or @perms.has(...)")}
+         * on the assign/bulk-assign endpoints. Backed by an empty permission repo so
+         * it resolves purely against the safe defaults (ADMIN/TEAM_LEAD hold
+         * ASSIGN_LEADS) — reproducing today's role gate under test.
+         */
+        @Bean("perms")
+        com.shifa.oms.permission.PermissionService perms() {
+            return new com.shifa.oms.permission.PermissionService(
+                    mock(com.shifa.oms.permission.CrmPermissionRepository.class));
+        }
     }
 
     /** Canned lead results so a permitted call passes the guard and yields 2xx. */
@@ -259,7 +271,7 @@ class LeadEndpointRoleGuardIntegrationTest {
         StubLeadService() {
             super(mock(LeadRepository.class), new SalespersonScopeResolver(),
                     new AuditService(null, new CurrentUserService()), new NoOpOrderService(),
-                    null, null, null, null, null, null);
+                    null, null, null, null, null, null, null, null, null);
         }
 
         private static LeadResponse sample(LeadStatus status, Long convertedOrderId) {

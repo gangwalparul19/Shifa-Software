@@ -23,7 +23,7 @@ import {
   readSourceFilter,
   writeSourceFilter,
 } from '../shared/source-filter.util';
-import { DELIVERY_METHOD_OPTIONS, DeliveryMethod } from '../orders/orders.model';
+import { DELIVERY_METHOD_OPTIONS } from '../orders/orders.model';
 
 interface Toast {
   kind: 'ok' | 'error';
@@ -461,7 +461,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
    * open, defaulting to the order's own current value (in-house-delivery
    * feature: the admin decides/overrides the delivery partner at approval).
    */
-  protected readonly deliveryMethod = signal<DeliveryMethod>('IN_HOUSE');
+  protected readonly deliveryMethod = signal<'QUIKSHIPX' | 'IN_HOUSE'>('IN_HOUSE');
   protected readonly deliveryMethodOptions = DELIVERY_METHOD_OPTIONS;
 
   setDeliveryMethod(value: string): void {
@@ -604,7 +604,10 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
 
   openDetail(item: ApprovalQueueItem): void {
     this.selected.set(item);
-    this.deliveryMethod.set(item.deliveryMethod ?? 'IN_HOUSE');
+    // The approve picker only offers QUIKSHIPX / IN_HOUSE. A STORE_PICKUP (POS)
+    // order never reaches the approval queue (it is created already closed), so
+    // coerce any non-QuikShipX value to IN_HOUSE for the picker default.
+    this.deliveryMethod.set(item.deliveryMethod === 'QUIKSHIPX' ? 'QUIKSHIPX' : 'IN_HOUSE');
     this.loadScreenshot(item);
   }
 

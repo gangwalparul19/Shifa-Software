@@ -116,8 +116,8 @@ public class QuikShipXService {
         if (order == null) {
             throw new ResourceNotFoundException("Order " + orderId + " does not exist.");
         }
-        if (order.isInHouseDelivery()) {
-            return new RetryResult(false, "This order is flagged for in-house delivery (no QuikShipX).");
+        if (!order.usesCourier()) {
+            return new RetryResult(false, "This order is not a courier order (no QuikShipX).");
         }
 
         OrderShipment shipment = shipmentRepository.findByOrderId(orderId).orElse(null);
@@ -216,13 +216,14 @@ public class QuikShipXService {
     }
 
     /**
-     * Defensive check: whether the order is flagged for in-house delivery, so a
-     * stray/late CONFIRM or ALLOT outbox event never touches QuikShipX. A missing
-     * order is treated as not in-house (falls through to the caller's own
-     * not-found handling where applicable).
+     * Defensive check: whether the order is a courier (QuikShipX) order, so a
+     * stray/late CONFIRM or ALLOT outbox event never touches QuikShipX for a
+     * non-courier order (in-house or store-pickup). A missing order is treated as
+     * NOT a courier order (falls through to the caller's own not-found handling
+     * where applicable).
      */
-    private boolean isInHouseDelivery(Long orderId) {
-        return orderRepository.findById(orderId).map(OrderEntity::isInHouseDelivery).orElse(false);
+    private boolean usesCourier(Long orderId) {
+        return orderRepository.findById(orderId).map(OrderEntity::usesCourier).orElse(false);
     }
 
     /** Title-cases a raw status like "out for delivery" -> "Out For Delivery". */
@@ -276,10 +277,11 @@ public class QuikShipXService {
             log.warn("QuikShipX create skipped: order {} no longer exists", orderId);
             return;
         }
-        if (order.isInHouseDelivery()) {
-            // Defensive: a stray/late outbox row for an order flagged in-house after
-            // the enqueue site's own check — never publish it to QuikShipX.
-            log.debug("QuikShipX create skipped: order {} is flagged for in-house delivery", order.getOrderCode());
+        if (!order.usesCourier()) {
+            // Defensive: a stray/late outbox row for a non-courier order (in-house
+            // or store-pickup) after the enqueue site's own check — never publish
+            // it to QuikShipX.
+            log.debug("QuikShipX create skipped: order {} is not a courier order", order.getOrderCode());
             return;
         }
 
@@ -335,7 +337,7 @@ public class QuikShipXService {
      */
     @Transactional
     public void confirmForOrder(Long orderId) {
-        if (!properties.isEnabled() || isInHouseDelivery(orderId)) {
+        if (!properties.isEnabled() || !usesCourier(orderId)) {
             return;
         }
         OrderShipment shipment = shipmentRepository.findByOrderId(orderId).orElse(null);
@@ -368,7 +370,7 @@ public class QuikShipXService {
      */
     @Transactional
     public void allotForOrder(Long orderId) {
-        if (!properties.isEnabled() || isInHouseDelivery(orderId)) {
+        if (!properties.isEnabled() || !usesCourier(orderId)) {
             return;
         }
         OrderShipment shipment = shipmentRepository.findByOrderId(orderId).orElse(null);
@@ -511,8 +513,8 @@ public class QuikShipXService {
         if (!properties.isEnabled()) {
             return new CancelOutcome(false, false, "QuikShipX integration is disabled.");
         }
-        if (isInHouseDelivery(orderId)) {
-            return new CancelOutcome(false, false, "In-house delivery — no courier to cancel.");
+        if (!usesCourier(orderId)) {
+            return new CancelOutcome(false, false, "Not a courier order — no courier to cancel.");
         }
         OrderShipment shipment = shipmentRepository.findByOrderId(orderId).orElse(null);
         if (shipment == null) {
