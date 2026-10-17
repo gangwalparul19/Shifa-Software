@@ -1,11 +1,15 @@
 package com.shifa.oms.reporting.domain;
 
 import com.shifa.oms.reporting.domain.ReportRows.CountRow;
+import com.shifa.oms.reporting.domain.ReportRows.CountSalesRow;
 import com.shifa.oms.reporting.domain.ReportRows.DailyRow;
 import com.shifa.oms.reporting.domain.ReportRows.DeliveryOutcome;
 import com.shifa.oms.reporting.domain.ReportRows.MonthlyRow;
+import com.shifa.oms.reporting.domain.ReportRows.PaymentMethodRow;
 import com.shifa.oms.reporting.domain.ReportRows.ProductRow;
+import com.shifa.oms.reporting.domain.ReportRows.SalespersonSummaryRow;
 import com.shifa.oms.reporting.domain.ReportRows.StateRow;
+import com.shifa.oms.reporting.domain.ReportRows.WeeklyRow;
 
 import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
@@ -43,6 +47,22 @@ public class ReportTableBuilder {
             "AWB",
             "Order Date");
 
+    /**
+     * The columns of the per-salesperson summary report, in display order: the
+     * salesperson (id → name by the service), order count, total sales, amount
+     * received, average order value, delivered count, delivery success rate, and
+     * pending COD.
+     */
+    public static final List<String> SALESPERSON_SUMMARY_HEADERS = List.of(
+            "Salesperson",
+            "Orders",
+            "Total Sales",
+            "Amount Received",
+            "Avg Order Value",
+            "Delivered",
+            "Delivery Success %",
+            "Pending COD");
+
     private final ReportAggregator aggregator;
 
     public ReportTableBuilder() {
@@ -57,17 +77,20 @@ public class ReportTableBuilder {
     public TabularData build(ReportType type, List<OrderReportRecord> orders, DateRange window) {
         return switch (type) {
             case DAILY -> daily(orders, window);
+            case WEEKLY -> weekly(orders, window);
             case MONTHLY -> monthly(orders, window);
             case PRODUCT -> product(orders, window);
             case STATE -> state(orders, window);
             case CUSTOMER -> customer(orders, window);
             case SALESPERSON -> salesperson(orders, window);
+            case SALESPERSON_SUMMARY -> salespersonSummary(orders, window);
             case ORDERS_BY_LEAD_SOURCE -> countTable(
                     "Lead Source", aggregator.ordersByLeadSource(orders, window));
             case ORDERS_BY_STATUS -> countTable(
                     "Status", aggregator.ordersByStatus(orders, window));
-            case ORDERS_BY_SALESPERSON -> countTable(
-                    "Salesperson", aggregator.ordersBySalesperson(orders, window));
+            case ORDERS_BY_SALESPERSON -> countSalesTable(
+                    "Salesperson", aggregator.ordersBySalespersonWithSales(orders, window));
+            case ORDERS_BY_PAYMENT_METHOD -> paymentMethod(orders, window);
             case DELIVERY_OUTCOME -> deliveryOutcome(orders, window);
             case PAYMENTS -> payments(orders, window);
             case OUTSTANDING -> outstanding(orders, window);
@@ -235,6 +258,19 @@ public class ReportTableBuilder {
         return new TabularData(headers, rows);
     }
 
+    private TabularData weekly(List<OrderReportRecord> orders, DateRange window) {
+        List<String> headers = List.of("Week", "Week Starting", "Orders", "Total Sales");
+        List<List<String>> rows = new ArrayList<>();
+        for (WeeklyRow r : aggregator.weekly(orders, window)) {
+            rows.add(List.of(
+                    r.weekLabel(),
+                    r.weekStart().format(DATE),
+                    Long.toString(r.orderCount()),
+                    money(r.totalSales())));
+        }
+        return new TabularData(headers, rows);
+    }
+
     private TabularData monthly(List<OrderReportRecord> orders, DateRange window) {
         List<String> headers = List.of("Month", "Orders", "Total Sales");
         List<List<String>> rows = new ArrayList<>();
@@ -283,6 +319,29 @@ public class ReportTableBuilder {
         return new TabularData(SALESPERSON_HEADERS, rows);
     }
 
+    /**
+     * The per-salesperson summary table: one row per salesperson with orders,
+     * total sales, amount received, average order value, delivered count,
+     * delivery success rate, and pending COD. The first column carries the raw
+     * salesperson id (or {@code UNSPECIFIED}); the service remaps it to the
+     * display name, exactly as it does for the orders-by-salesperson report.
+     */
+    private TabularData salespersonSummary(List<OrderReportRecord> orders, DateRange window) {
+        List<List<String>> rows = new ArrayList<>();
+        for (SalespersonSummaryRow r : aggregator.salespersonSummary(orders, window)) {
+            rows.add(List.of(
+                    r.salespersonId() == null ? "UNSPECIFIED" : Long.toString(r.salespersonId()),
+                    Long.toString(r.orderCount()),
+                    money(r.totalSales()),
+                    money(r.amountReceived()),
+                    money(r.avgOrderValue()),
+                    Long.toString(r.deliveredCount()),
+                    money(r.deliverySuccessRate()),
+                    money(r.codPending())));
+        }
+        return new TabularData(SALESPERSON_SUMMARY_HEADERS, rows);
+    }
+
     /** A generic two-column grouped-count table ({@code keyLabel}, "Orders"). */
     private TabularData countTable(String keyLabel, List<CountRow> rows) {
         List<String> headers = List.of(keyLabel, "Orders");
@@ -291,6 +350,47 @@ public class ReportTableBuilder {
             cells.add(List.of(r.key(), Long.toString(r.orderCount())));
         }
         return new TabularData(headers, cells);
+    }
+
+    /** A grouped table carrying both the count and the revenue ({@code keyLabel}, "Orders", "Total Sales"). */
+    private TabularData countSalesTable(String keyLabel, List<CountSalesRow> rows) {
+        List<String> headers = List.of(keyLabel, "Orders", "Total Sales");
+        List<List<String>> cells = new ArrayList<>();
+        for (CountSalesRow r : rows) {
+            cells.add(List.of(r.key(), Long.toString(r.orderCount()), money(r.totalSales())));
+        }
+        return new TabularData(headers, cells);
+    }
+
+    /**
+     * The payment-method table: one row per payment status with the order count,
+     * total sales, and amount received. The raw enum name is humanised to the
+     * customer-facing wording the app uses elsewhere.
+     */
+    private TabularData paymentMethod(List<OrderReportRecord> orders, DateRange window) {
+        List<String> headers = List.of("Payment Method", "Orders", "Total Sales", "Amount Received");
+        List<List<String>> cells = new ArrayList<>();
+        for (PaymentMethodRow r : aggregator.ordersByPaymentMethod(orders, window)) {
+            cells.add(List.of(
+                    paymentMethodLabel(r.paymentStatus()),
+                    Long.toString(r.orderCount()),
+                    money(r.totalSales()),
+                    money(r.amountReceived())));
+        }
+        return new TabularData(headers, cells);
+    }
+
+    /** Humanises a payment-status enum name to the app's customer-facing wording. */
+    private static String paymentMethodLabel(String status) {
+        if (status == null) {
+            return "";
+        }
+        return switch (status) {
+            case "COD" -> "Pay on Delivery";
+            case "PARTIALLY_PAID" -> "Partially Paid";
+            case "FULLY_PAID" -> "Fully Paid";
+            default -> status;
+        };
     }
 
     /**

@@ -1,14 +1,17 @@
 /** The report views the backend can generate (Req 20.1, 20.3; + money/receivables). */
 export type ReportType =
   | 'daily'
+  | 'weekly'
   | 'monthly'
   | 'product'
   | 'state'
   | 'customer'
   | 'salesperson'
+  | 'salesperson-summary'
   | 'orders-by-lead-source'
   | 'orders-by-status'
   | 'orders-by-salesperson'
+  | 'orders-by-payment-method'
   | 'delivery-outcome'
   | 'payments'
   | 'outstanding'

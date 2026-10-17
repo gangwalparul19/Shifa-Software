@@ -5,29 +5,38 @@ package com.shifa.oms.reporting.domain;
  *
  * <ul>
  *   <li>{@link #DAILY} — one row per order date, with order count and total sales.</li>
+ *   <li>{@link #WEEKLY} — one row per ISO week, with order count and total sales.</li>
  *   <li>{@link #MONTHLY} — one row per calendar month.</li>
  *   <li>{@link #PRODUCT} — one row per product, with quantity sold and sales.</li>
  *   <li>{@link #STATE} — one row per destination state.</li>
  *   <li>{@link #SALESPERSON} — the detailed per-order report (Req 20.3), one row per
  *       order carrying every required column.</li>
+ *   <li>{@link #SALESPERSON_SUMMARY} — one row per salesperson with orders, total
+ *       sales, amount received, average order value, delivered count, delivery
+ *       success rate, and pending COD (the owner's performance-by-money view).</li>
  *   <li>{@link #ORDERS_BY_LEAD_SOURCE} — order counts grouped by {@code LeadSource}
  *       over the range, NULL bucketed as {@code UNSPECIFIED} (Req 16.1).</li>
  *   <li>{@link #ORDERS_BY_STATUS} — order counts grouped by {@code OrderStatus} (Req 16.2).</li>
  *   <li>{@link #ORDERS_BY_SALESPERSON} — order counts grouped by {@code createdBy} (Req 16.3).</li>
+ *   <li>{@link #ORDERS_BY_PAYMENT_METHOD} — orders, total sales, and amount received
+ *       grouped by payment status (pay-on-delivery / partially paid / fully paid).</li>
  *   <li>{@link #DELIVERY_OUTCOME} — delivered / customer-rejected / delivery-failed /
  *       cancelled counts plus the delivery success rate over the range (Req 16.4).</li>
  * </ul>
  */
 public enum ReportType {
     DAILY,
+    WEEKLY,
     MONTHLY,
     PRODUCT,
     STATE,
     CUSTOMER,
     SALESPERSON,
+    SALESPERSON_SUMMARY,
     ORDERS_BY_LEAD_SOURCE,
     ORDERS_BY_STATUS,
     ORDERS_BY_SALESPERSON,
+    ORDERS_BY_PAYMENT_METHOD,
     DELIVERY_OUTCOME,
 
     // --- Money / receivables (accountant) ---
@@ -79,16 +88,22 @@ public enum ReportType {
         }
         return switch (value.trim().toLowerCase()) {
             case "daily" -> DAILY;
+            case "weekly", "week" -> WEEKLY;
             case "monthly" -> MONTHLY;
             case "product", "product-wise", "productwise" -> PRODUCT;
             case "state", "state-wise", "statewise" -> STATE;
             case "customer", "customer-wise", "customerwise" -> CUSTOMER;
             case "salesperson", "salesperson-wise" -> SALESPERSON;
+            case "salesperson-summary", "salesperson_summary", "salesperson-performance" ->
+                    SALESPERSON_SUMMARY;
             case "orders-by-lead-source", "orders_by_lead_source", "lead-source", "leadsource" ->
                     ORDERS_BY_LEAD_SOURCE;
             case "orders-by-status", "orders_by_status", "by-status" -> ORDERS_BY_STATUS;
             case "orders-by-salesperson", "orders_by_salesperson", "by-salesperson" ->
                     ORDERS_BY_SALESPERSON;
+            case "orders-by-payment-method", "orders_by_payment_method", "payment-method",
+                    "by-payment", "payment-mode" ->
+                    ORDERS_BY_PAYMENT_METHOD;
             case "delivery-outcome", "delivery_outcome", "outcome" -> DELIVERY_OUTCOME;
             case "payments", "payment", "money" -> PAYMENTS;
             case "outstanding", "dues", "pending" -> OUTSTANDING;

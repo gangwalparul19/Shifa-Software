@@ -142,14 +142,17 @@ public class ReportController {
     private static String reportLabel(ReportType type) {
         return switch (type) {
             case DAILY -> "Daily Sales Report";
+            case WEEKLY -> "Weekly Sales Report";
             case MONTHLY -> "Monthly Sales Report";
             case PRODUCT -> "Product-wise Report";
             case STATE -> "State-wise Report";
             case CUSTOMER -> "Customer-wise Report";
             case SALESPERSON -> "Salesperson-wise Report";
+            case SALESPERSON_SUMMARY -> "Salesperson Summary Report";
             case ORDERS_BY_LEAD_SOURCE -> "Orders by Lead Source";
             case ORDERS_BY_STATUS -> "Orders by Status";
             case ORDERS_BY_SALESPERSON -> "Orders by Salesperson";
+            case ORDERS_BY_PAYMENT_METHOD -> "Orders by Payment Method";
             case DELIVERY_OUTCOME -> "Delivery Outcome Report";
             case PAYMENTS -> "Daily Payments Report";
             case OUTSTANDING -> "Outstanding Dues Report";

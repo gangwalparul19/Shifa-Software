@@ -201,13 +201,16 @@ public class ReportService {
     }
 
     /**
-     * For the orders-grouped-by-salesperson report, replaces the raw id in the
-     * first column with the resolved salesperson name (leaving {@code UNSPECIFIED}
-     * and any unresolved id as-is). Other report types are returned unchanged.
+     * For the reports whose first column is a salesperson id (orders-by-salesperson
+     * and the per-salesperson summary), replaces the raw id with the resolved
+     * salesperson name (leaving {@code UNSPECIFIED} and any unresolved id as-is).
+     * Other report types are returned unchanged.
      */
     private TabularData remapSalespersonColumn(ReportType type, TabularData table,
                                                Map<Long, String> names) {
-        if (type != ReportType.ORDERS_BY_SALESPERSON || table.rows().isEmpty()) {
+        boolean hasSalespersonKeyColumn = type == ReportType.ORDERS_BY_SALESPERSON
+                || type == ReportType.SALESPERSON_SUMMARY;
+        if (!hasSalespersonKeyColumn || table.rows().isEmpty()) {
             return table;
         }
         List<List<String>> rows = new ArrayList<>(table.rows().size());

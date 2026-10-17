@@ -86,24 +86,29 @@ public class PdfReportExporter {
 
     private final SettingsService settingsService;
     private final CompanyLogoService companyLogoService;
+    private final ReportChartRenderer chartRenderer;
 
     /**
      * Spring constructor: injects settings + logo services so the branded header
-     * can show the configured company name, contact, and logo.
+     * can show the configured company name, contact, and logo, plus the chart
+     * renderer so the PDF carries a bar graph above the detailed table.
      */
     @Autowired
-    public PdfReportExporter(SettingsService settingsService, CompanyLogoService companyLogoService) {
+    public PdfReportExporter(SettingsService settingsService, CompanyLogoService companyLogoService,
+                             ReportChartRenderer chartRenderer) {
         this.settingsService = settingsService;
         this.companyLogoService = companyLogoService;
+        this.chartRenderer = chartRenderer;
     }
 
     /**
      * No-arg constructor for direct/test instantiation: the branded header falls
-     * back to static defaults and no logo, and rendering never fails on missing
+     * back to static defaults and no logo, a bar chart is still rendered (the
+     * chart renderer has no dependencies), and rendering never fails on missing
      * services.
      */
     public PdfReportExporter() {
-        this(null, null);
+        this(null, null, new ReportChartRenderer());
     }
 
     /** Renders the table into PDF bytes with the given title (no subtitle/KPIs). */
@@ -135,6 +140,10 @@ public class PdfReportExporter {
             if (summary != null) {
                 writeKpis(document, summary);
             }
+
+            // Professional bar graph derived from the same table (additive, above the
+            // detailed rows). Omitted silently when no numeric series is chartable.
+            writeChart(document, title, table);
 
             List<List<String>> matrix = toMatrix(table);
             int columns = table.columnCount();
@@ -201,6 +210,38 @@ public class PdfReportExporter {
         performers.addCell(kpiCard("Top State", orDash(s.topState())));
         performers.addCell(kpiCard("Top Salesperson", topSalesperson(s)));
         document.add(performers);
+    }
+
+    /**
+     * Renders a bar-chart image of the report (if one can be derived) between the
+     * KPI band and the detailed table. The chart is a visual summary of the same
+     * table and is drawn full content-width; any failure to render leaves the PDF
+     * unchanged (the table is the source of truth, not the chart).
+     */
+    private void writeChart(Document document, String title, TabularData table) throws DocumentException {
+        if (chartRenderer == null) {
+            return;
+        }
+        byte[] png;
+        try {
+            png = chartRenderer.renderBarChart(title, table);
+        } catch (RuntimeException e) {
+            log.warn("Report chart rendering failed; exporting without a chart.");
+            return;
+        }
+        if (png == null || png.length == 0) {
+            return;
+        }
+        try {
+            Image chart = Image.getInstance(png);
+            chart.setAlignment(Element.ALIGN_CENTER);
+            // Fit the chart to the content width of landscape A4 (~790pt usable).
+            chart.scaleToFit(780, 300);
+            chart.setSpacingAfter(10f);
+            document.add(chart);
+        } catch (Exception e) {
+            log.warn("Failed to embed the report chart image; exporting without a chart.");
+        }
     }
 
     /** A single KPI "card" cell: small muted label above a bold green value. */

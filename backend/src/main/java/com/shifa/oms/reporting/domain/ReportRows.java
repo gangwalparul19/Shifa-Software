@@ -22,6 +22,53 @@ public final class ReportRows {
     public record MonthlyRow(YearMonth month, long orderCount, BigDecimal totalSales) {
     }
 
+    /**
+     * One row of the weekly report: the ISO week (its Monday start date and the
+     * {@code yyyy-Www} label), the order count, and total sales for that week.
+     * ISO-8601 weeks start on Monday; a week is attributed to the Monday of the
+     * week containing the order date, so the report reads as consecutive weeks.
+     */
+    public record WeeklyRow(LocalDate weekStart, String weekLabel, long orderCount, BigDecimal totalSales) {
+    }
+
+    /**
+     * One row of the per-salesperson summary report: the salesperson id, their
+     * order count and total sales over the window, amount actually received,
+     * average order value, delivered-order count, delivery success rate (%), and
+     * the COD amount still pending remittance from the courier. This is the
+     * owner's "which salesperson is performing, and by how much money" view —
+     * one row per salesperson (ids are resolved to names by the service).
+     */
+    public record SalespersonSummaryRow(
+            Long salespersonId,
+            long orderCount,
+            BigDecimal totalSales,
+            BigDecimal amountReceived,
+            BigDecimal avgOrderValue,
+            long deliveredCount,
+            BigDecimal deliverySuccessRate,
+            BigDecimal codPending) {
+    }
+
+    /**
+     * One row of a grouped-count report that ALSO carries the revenue for that
+     * group: a key label, the order count, and the total sales. Used by the
+     * orders-by-salesperson report so it shows amount alongside the count
+     * (the plain {@link CountRow} grouping is kept for the count-only reports).
+     */
+    public record CountSalesRow(String key, long orderCount, BigDecimal totalSales) {
+    }
+
+    /**
+     * One row of the payment-method report: a payment status (Pay on Delivery /
+     * Partially Paid / Fully Paid), the order count, the total sales, and the
+     * amount actually received for orders of that payment type — the owner's
+     * "how are customers paying, and how much has actually come in" view.
+     */
+    public record PaymentMethodRow(String paymentStatus, long orderCount,
+                                   BigDecimal totalSales, BigDecimal amountReceived) {
+    }
+
     /** One row of the product-wise report: product name, quantity sold, total sales (Req 20.1). */
     public record ProductRow(String productName, long quantity, BigDecimal totalSales) {
     }

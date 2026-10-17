@@ -101,15 +101,19 @@ export class ReportsComponent implements OnInit {
   protected readonly reportTypes: ReportTypeOption[] = [
     // Sales
     { value: 'daily', label: 'Daily sales', group: 'Sales' },
+    { value: 'weekly', label: 'Weekly sales', group: 'Sales' },
     { value: 'monthly', label: 'Monthly sales', group: 'Sales' },
     { value: 'product', label: 'Product-wise', group: 'Sales' },
     { value: 'state', label: 'State-wise', group: 'Sales' },
     { value: 'customer', label: 'Customer-wise', group: 'Sales' },
-    { value: 'salesperson', label: 'Salesperson (detailed)', group: 'Sales' },
+    // Salesperson performance
+    { value: 'salesperson-summary', label: 'Salesperson summary (per person)', group: 'Salesperson' },
+    { value: 'salesperson', label: 'Salesperson (detailed orders)', group: 'Salesperson' },
     // Orders
     { value: 'orders-by-status', label: 'Orders by status', group: 'Orders' },
     { value: 'orders-by-lead-source', label: 'Orders by lead source', group: 'Orders' },
-    { value: 'orders-by-salesperson', label: 'Orders by salesperson', group: 'Orders' },
+    { value: 'orders-by-salesperson', label: 'Orders by salesperson (with amount)', group: 'Orders' },
+    { value: 'orders-by-payment-method', label: 'Orders by payment method', group: 'Orders' },
     { value: 'delivery-outcome', label: 'Delivery outcome', group: 'Orders' },
     // Money & receivables (accountant)
     { value: 'payments', label: 'Payments (daily money)', group: 'Money & Receivables' },
@@ -169,6 +173,7 @@ export class ReportsComponent implements OnInit {
     { key: 'last7', label: 'Last 7 Days' },
     { key: 'last30', label: 'Last 30 Days' },
     { key: 'month', label: 'This Month' },
+    { key: 'all', label: 'All Time' },
     { key: 'custom', label: 'Custom' },
   ];
 
@@ -284,6 +289,7 @@ export class ReportsComponent implements OnInit {
       case 'products':
         return 'product';
       case 'customers':
+        // Customer-wise report (one row per customer: orders + total sales).
         return 'customer';
       case 'finance':
         // The accountant's most actionable view — the outstanding-dues chase list.
@@ -328,6 +334,11 @@ export class ReportsComponent implements OnInit {
     let from = '';
     let to = iso(today);
     switch (key) {
+      case 'all':
+        // Unbounded window — every order regardless of age (owner "see everything").
+        this.form.controls.from.setValue('');
+        this.form.controls.to.setValue('');
+        return;
       case 'today':
         from = iso(today);
         break;

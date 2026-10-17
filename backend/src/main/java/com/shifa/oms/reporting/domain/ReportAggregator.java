@@ -108,6 +108,109 @@ public class ReportAggregator {
     }
 
     /**
+     * Weekly report: one row per ISO-8601 week within the window, ascending. Each
+     * order is attributed to the Monday of the week containing its order date, so
+     * the rows read as consecutive weeks with a {@code yyyy-Www} label. Excludes
+     * the non-revenue statuses, like the daily/monthly views.
+     */
+    public List<ReportRows.WeeklyRow> weekly(List<OrderReportRecord> orders, DateRange window) {
+        Map<LocalDate, long[]> counts = new TreeMap<>();
+        Map<LocalDate, BigDecimal> sales = new TreeMap<>();
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
+            LocalDate weekStart = weekStart(o.orderDate());
+            counts.computeIfAbsent(weekStart, k -> new long[1])[0]++;
+            sales.merge(weekStart, o.totalAmount(), BigDecimal::add);
+        }
+        List<ReportRows.WeeklyRow> rows = new ArrayList<>();
+        for (Map.Entry<LocalDate, long[]> e : counts.entrySet()) {
+            rows.add(new ReportRows.WeeklyRow(
+                    e.getKey(), weekLabel(e.getKey()), e.getValue()[0], scale(sales.get(e.getKey()))));
+        }
+        return rows;
+    }
+
+    /** The Monday of the ISO week containing {@code date}. */
+    private static LocalDate weekStart(LocalDate date) {
+        return date.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+    }
+
+    /** The {@code yyyy-Www} ISO week label for the week starting on {@code weekStart}. */
+    private static String weekLabel(LocalDate weekStart) {
+        java.time.temporal.WeekFields iso = java.time.temporal.WeekFields.ISO;
+        int weekOfYear = weekStart.get(iso.weekOfWeekBasedYear());
+        int weekYear = weekStart.get(iso.weekBasedYear());
+        return String.format("%d-W%02d", weekYear, weekOfYear);
+    }
+
+    /**
+     * Per-salesperson summary: one row per salesperson over the window carrying
+     * their order count, total sales, amount received, average order value,
+     * delivered count, delivery success rate, and pending COD — the "which
+     * salesperson is performing, by money" view the owner asked for.
+     *
+     * <p>Sales/received/AOV/COD are computed over revenue orders (excludes
+     * rejected / payment-rejected / cancelled, matching the P&amp;L definition);
+     * the delivered count and success rate are computed over ALL windowed orders
+     * for that salesperson (so cancellations/failures correctly drag the rate
+     * down). Null-salesperson orders are bucketed under {@code UNSPECIFIED}
+     * ({@code salespersonId == null}). Ordered by total sales descending, then id.
+     */
+    public List<ReportRows.SalespersonSummaryRow> salespersonSummary(
+            List<OrderReportRecord> orders, DateRange window) {
+        // Revenue-side accumulators (orders, sales, received, cod-pending), keyed by id.
+        Map<Long, long[]> orderCounts = new LinkedHashMap<>();
+        Map<Long, BigDecimal> sales = new LinkedHashMap<>();
+        Map<Long, BigDecimal> received = new LinkedHashMap<>();
+        Map<Long, BigDecimal> codPending = new LinkedHashMap<>();
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
+            Long key = o.salespersonId();
+            orderCounts.computeIfAbsent(key, k -> new long[1])[0]++;
+            sales.merge(key, o.totalAmount(), BigDecimal::add);
+            received.merge(key, o.amountReceived(), BigDecimal::add);
+            if ("Pending".equalsIgnoreCase(o.codSettlementStatus())) {
+                codPending.merge(key, o.codAmount(), BigDecimal::add);
+            }
+        }
+        // Delivery outcome over ALL windowed orders (so failures drag the rate down).
+        Map<Long, long[]> delivered = new LinkedHashMap<>();
+        Map<Long, long[]> outcomeDenominator = new LinkedHashMap<>();
+        for (OrderReportRecord o : within(orders, window)) {
+            Long key = o.salespersonId();
+            OrderStatus s = o.orderStatus();
+            if (s == OrderStatus.DELIVERED) {
+                delivered.computeIfAbsent(key, k -> new long[1])[0]++;
+                outcomeDenominator.computeIfAbsent(key, k -> new long[1])[0]++;
+            } else if (s == OrderStatus.CUSTOMER_REJECTED || s == OrderStatus.DELIVERY_FAILED
+                    || s == OrderStatus.CANCELLED) {
+                outcomeDenominator.computeIfAbsent(key, k -> new long[1])[0]++;
+            }
+        }
+        List<ReportRows.SalespersonSummaryRow> rows = new ArrayList<>();
+        for (Map.Entry<Long, long[]> e : orderCounts.entrySet()) {
+            Long key = e.getKey();
+            long count = e.getValue()[0];
+            BigDecimal totalSales = scale(sales.getOrDefault(key, BigDecimal.ZERO));
+            BigDecimal rec = scale(received.getOrDefault(key, BigDecimal.ZERO));
+            BigDecimal aov = count == 0
+                    ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                    : totalSales.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP);
+            long deliveredCount = delivered.getOrDefault(key, new long[1])[0];
+            long denom = outcomeDenominator.getOrDefault(key, new long[1])[0];
+            BigDecimal successRate = denom == 0
+                    ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                    : BigDecimal.valueOf(deliveredCount)
+                            .multiply(BigDecimal.valueOf(100))
+                            .divide(BigDecimal.valueOf(denom), 2, RoundingMode.HALF_UP);
+            rows.add(new ReportRows.SalespersonSummaryRow(
+                    key, count, totalSales, rec, aov, deliveredCount, successRate,
+                    scale(codPending.getOrDefault(key, BigDecimal.ZERO))));
+        }
+        rows.sort(Comparator.comparing(ReportRows.SalespersonSummaryRow::totalSales).reversed()
+                .thenComparing(r -> r.salespersonId() == null ? Long.MAX_VALUE : r.salespersonId()));
+        return rows;
+    }
+
+    /**
      * Product-wise report: one row per product within the window, summing the
      * quantity sold and the sales it contributed (rate × quantity per line),
      * ordered by quantity descending then name (Req 20.1).
@@ -248,6 +351,71 @@ public class ReportAggregator {
             counts.computeIfAbsent(key, k -> new long[1])[0]++;
         }
         return toSortedCountRows(counts);
+    }
+
+    /**
+     * Orders grouped by salesperson ({@code createdBy}) over the window, carrying
+     * BOTH the order count AND the total sales revenue for each — so the
+     * orders-by-salesperson report can show amount alongside the count. The count
+     * covers every windowed order (so it matches {@link #ordersBySalesperson});
+     * the sales figure sums only revenue orders (excludes rejected /
+     * payment-rejected / cancelled), consistent with every other money figure.
+     * A {@code null} creator is bucketed as {@code UNSPECIFIED}. Ordered by sales
+     * descending, then key.
+     */
+    public List<ReportRows.CountSalesRow> ordersBySalespersonWithSales(
+            List<OrderReportRecord> orders, DateRange window) {
+        Map<String, long[]> counts = new LinkedHashMap<>();
+        Map<String, BigDecimal> sales = new LinkedHashMap<>();
+        for (OrderReportRecord o : within(orders, window)) {
+            String key = o.salespersonId() == null
+                    ? UNSPECIFIED_SALESPERSON : Long.toString(o.salespersonId());
+            counts.computeIfAbsent(key, k -> new long[1])[0]++;
+            if (!NON_REVENUE.contains(o.orderStatus())) {
+                sales.merge(key, o.totalAmount(), BigDecimal::add);
+            }
+        }
+        List<ReportRows.CountSalesRow> rows = new ArrayList<>();
+        for (Map.Entry<String, long[]> e : counts.entrySet()) {
+            rows.add(new ReportRows.CountSalesRow(
+                    e.getKey(), e.getValue()[0],
+                    scale(sales.getOrDefault(e.getKey(), BigDecimal.ZERO))));
+        }
+        rows.sort(Comparator.comparing(ReportRows.CountSalesRow::totalSales).reversed()
+                .thenComparing(ReportRows.CountSalesRow::key));
+        return rows;
+    }
+
+    /**
+     * Orders grouped by payment status (Pay on Delivery / Partially Paid / Fully
+     * Paid) over the window, with the order count, total sales, and amount
+     * actually received for each. Computed over revenue orders (excludes
+     * rejected / payment-rejected / cancelled), consistent with the other money
+     * figures. Ordered by total sales descending, then status name. The payment
+     * status is reported as the enum name; the display layer humanises it.
+     */
+    public List<ReportRows.PaymentMethodRow> ordersByPaymentMethod(
+            List<OrderReportRecord> orders, DateRange window) {
+        Map<String, long[]> counts = new LinkedHashMap<>();
+        Map<String, BigDecimal> sales = new LinkedHashMap<>();
+        Map<String, BigDecimal> received = new LinkedHashMap<>();
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
+            String key = o.paymentStatus() == null ? "UNSPECIFIED" : o.paymentStatus().name();
+            counts.computeIfAbsent(key, k -> new long[1])[0]++;
+            sales.merge(key, o.totalAmount(), BigDecimal::add);
+            received.merge(key, o.amountReceived(), BigDecimal::add);
+        }
+        List<ReportRows.PaymentMethodRow> rows = new ArrayList<>();
+        for (Map.Entry<String, long[]> e : counts.entrySet()) {
+            String key = e.getKey();
+            rows.add(new ReportRows.PaymentMethodRow(
+                    key, e.getValue()[0],
+                    scale(sales.getOrDefault(key, BigDecimal.ZERO)),
+                    scale(received.getOrDefault(key, BigDecimal.ZERO))));
+        }
+        rows.sort(Comparator.comparing(ReportRows.PaymentMethodRow::totalSales).reversed()
+                .thenComparing(ReportRows.PaymentMethodRow::paymentStatus));
+        return rows;
     }
 
     /**
