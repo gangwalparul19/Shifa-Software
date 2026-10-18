@@ -55,15 +55,21 @@ public class QuikShipXCourierClient implements CourierClient {
     private final QuikShipXClient client;
     private final OrderShipmentRepository shipmentRepository;
     private final ShipmentTrackingStore trackingStore;
+    private final com.shifa.oms.order.OrderRepository orderRepository;
+    private final com.shifa.oms.notification.ShipmentMilestoneNotifier milestoneNotifier;
     /** Fallback for orders never published to QuikShipX (in-house delivery). */
     private final MockCourierClient manualFallback;
 
     public QuikShipXCourierClient(QuikShipXClient client, OrderShipmentRepository shipmentRepository,
                                   ShipmentTrackingStore trackingStore,
+                                  com.shifa.oms.order.OrderRepository orderRepository,
+                                  com.shifa.oms.notification.ShipmentMilestoneNotifier milestoneNotifier,
                                   CourierProperties courierProperties) {
         this.client = client;
         this.shipmentRepository = shipmentRepository;
         this.trackingStore = trackingStore;
+        this.orderRepository = orderRepository;
+        this.milestoneNotifier = milestoneNotifier;
         this.manualFallback = new MockCourierClient(courierProperties);
     }
 
@@ -143,6 +149,10 @@ public class QuikShipXCourierClient implements CourierClient {
             // Persist the full scan timeline so the public /track-order page can
             // render the detailed courier timeline without a live call (Option B).
             trackingStore.replace(shipment.getOrderId(), track.scans());
+            // Notify the COD customer of any new shipment milestone (picked up /
+            // first vehicle-departed / out for delivery) — de-duplicated per order.
+            orderRepository.findById(shipment.getOrderId())
+                    .ifPresent(order -> milestoneNotifier.onScans(order, track.scans()));
         });
         return Optional.of(new CourierTrackingEvent(awb, rawStatus));
     }

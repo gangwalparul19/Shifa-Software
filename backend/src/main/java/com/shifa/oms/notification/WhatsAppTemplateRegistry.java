@@ -87,6 +87,16 @@ public class WhatsAppTemplateRegistry {
                 NotificationEvent.PACKED, "order_packed",
                 List.of(PARAM_ORDER_ID, PARAM_ORDER_STATUS)));
 
+        // Customer shipment milestones driven by the courier scan timeline
+        // (customer shipment notifications): picked up + first "vehicle departed".
+        // Order id + the status label; de-duplicated per order by the milestone notifier.
+        map.put(NotificationEvent.PICKED_UP, new WhatsAppTemplate(
+                NotificationEvent.PICKED_UP, "order_picked_up",
+                List.of(PARAM_ORDER_ID, PARAM_ORDER_STATUS)));
+        map.put(NotificationEvent.SHIPMENT_DEPARTED, new WhatsAppTemplate(
+                NotificationEvent.SHIPMENT_DEPARTED, "order_in_transit",
+                List.of(PARAM_ORDER_ID, PARAM_ORDER_STATUS)));
+
         // Status updates: order id + the new status label (Req 14.2).
         map.put(NotificationEvent.OUT_FOR_DELIVERY, new WhatsAppTemplate(
                 NotificationEvent.OUT_FOR_DELIVERY, "order_out_for_delivery",

@@ -38,7 +38,24 @@ public enum NotificationEvent {
     OUT_FOR_DELIVERY,
     DELIVERED,
     RTO,
-    REDISPATCH;
+    REDISPATCH,
+
+    /**
+     * Customer shipment milestone: the parcel has been <b>picked up</b> by the
+     * courier (from the courier scan timeline "Shipment picked up"). Scan-driven,
+     * not a status transition, so — like {@link #ORDER_CONFIRMED} — it is never
+     * returned by {@link #fromOrderStatus(OrderStatus)}; it is enqueued directly
+     * by the shipment-milestone notifier with per-order de-duplication.
+     */
+    PICKED_UP,
+
+    /**
+     * Customer shipment milestone: the parcel is <b>on the way</b> — fired on the
+     * FIRST "Vehicle Departed" courier scan only (there can be several). Scan-driven
+     * and de-duplicated per order, so it is never returned by
+     * {@link #fromOrderStatus(OrderStatus)}.
+     */
+    SHIPMENT_DEPARTED;
 
     /**
      * The notification event for a courier-driven order status, if that status

@@ -87,6 +87,8 @@ public class WhatsAppMessageFactory {
         return switch (event) {
             case APPROVED -> "Approved";
             case PACKED -> "Packed";
+            case PICKED_UP -> "Picked up";
+            case SHIPMENT_DEPARTED -> "On the way";
             case OUT_FOR_DELIVERY -> "Out for delivery";
             case DELIVERED -> "Delivered";
             case RTO -> "Returned to origin";

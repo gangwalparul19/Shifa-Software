@@ -60,6 +60,7 @@ public class QuikShipXService {
     private final OrderWorkflowService orderWorkflowService;
     private final com.shifa.oms.platform.outbox.OutboxEventRepository outboxEventRepository;
     private final ShipmentTrackingStore trackingStore;
+    private final com.shifa.oms.notification.ShipmentMilestoneNotifier milestoneNotifier;
 
     public QuikShipXService(QuikShipXProperties properties,
                             QuikShipXClient client,
@@ -74,7 +75,8 @@ public class QuikShipXService {
                             CourierCompanyRepository courierCompanyRepository,
                             OrderWorkflowService orderWorkflowService,
                             com.shifa.oms.platform.outbox.OutboxEventRepository outboxEventRepository,
-                            ShipmentTrackingStore trackingStore) {
+                            ShipmentTrackingStore trackingStore,
+                            com.shifa.oms.notification.ShipmentMilestoneNotifier milestoneNotifier) {
         this.properties = properties;
         this.client = client;
         this.payloadFactory = payloadFactory;
@@ -89,6 +91,7 @@ public class QuikShipXService {
         this.orderWorkflowService = orderWorkflowService;
         this.outboxEventRepository = outboxEventRepository;
         this.trackingStore = trackingStore;
+        this.milestoneNotifier = milestoneNotifier;
     }
 
     /** The outcome of a per-order QuikShipX retry: what the action did. */
@@ -206,6 +209,9 @@ public class QuikShipXService {
             // Persist the scan timeline so the public /track-order page can show the
             // detailed courier timeline with no live QuikShipX call (Option B).
             trackingStore.replace(orderId, r.scans());
+            // Notify the COD customer of any new shipment milestone (de-duplicated).
+            orderRepository.findById(orderId)
+                    .ifPresent(order -> milestoneNotifier.onScans(order, r.scans()));
             // Apply the mapped internal status transition (idempotent, SYSTEM). The
             // AWB comes from the shipment, or the track response when not yet stored.
             String resolvedAwb = haveAwb ? awb : r.awb();

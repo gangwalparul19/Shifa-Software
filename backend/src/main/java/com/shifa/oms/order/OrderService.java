@@ -140,6 +140,13 @@ public class OrderService {
      * unaffected.
      */
     private final com.shifa.oms.reconciliation.ReceivableRepository receivableRepository;
+    /**
+     * Customer shipment-milestone WhatsApp (nullable): fires the "order placed"
+     * COD message at creation (the scan-driven picked-up / departed / out-for-
+     * delivery milestones are fired from the courier scan path, not here). Null
+     * under the legacy test constructors — the message is then skipped.
+     */
+    private final com.shifa.oms.notification.ShipmentMilestoneNotifier milestoneNotifier;
 
     /** {@code vouchers.source_type} for a finalised sales order (matches AdminOrderService). */
     private static final String LEDGER_SOURCE_ORDER = "ORDER";
@@ -218,7 +225,36 @@ public class OrderService {
         this(orderRepository, productRepository, orderCodeGenerator, storageService, scopeResolver,
                 trackingService, stockService, productImageRepository, outboxEventPublisher,
                 quikShipXProperties, orderShipmentRepository, userRepository, orderWorkflowService,
-                auditService, settingsService, labelService, null);
+                auditService, settingsService, labelService, null, null);
+    }
+
+    /**
+     * Pre-milestone-notifier constructor (kept for the 17-arg store-order test
+     * call site): delegates to the full constructor with no
+     * {@link com.shifa.oms.notification.ShipmentMilestoneNotifier}, so the
+     * order-placed COD WhatsApp is skipped in those unit tests.
+     */
+    public OrderService(OrderRepository orderRepository,
+                        ProductRepository productRepository,
+                        OrderCodeGenerator orderCodeGenerator,
+                        StorageService storageService,
+                        SalespersonScopeResolver scopeResolver,
+                        TrackingService trackingService,
+                        StockService stockService,
+                        ProductImageRepository productImageRepository,
+                        OutboxEventPublisher outboxEventPublisher,
+                        QuikShipXProperties quikShipXProperties,
+                        OrderShipmentRepository orderShipmentRepository,
+                        com.shifa.oms.auth.UserRepository userRepository,
+                        OrderWorkflowService orderWorkflowService,
+                        AuditService auditService,
+                        com.shifa.oms.settings.SettingsService settingsService,
+                        com.shifa.oms.label.LabelService labelService,
+                        com.shifa.oms.reconciliation.ReceivableRepository receivableRepository) {
+        this(orderRepository, productRepository, orderCodeGenerator, storageService, scopeResolver,
+                trackingService, stockService, productImageRepository, outboxEventPublisher,
+                quikShipXProperties, orderShipmentRepository, userRepository, orderWorkflowService,
+                auditService, settingsService, labelService, receivableRepository, null);
     }
 
     @Autowired
@@ -238,7 +274,8 @@ public class OrderService {
                         AuditService auditService,
                         com.shifa.oms.settings.SettingsService settingsService,
                         com.shifa.oms.label.LabelService labelService,
-                        com.shifa.oms.reconciliation.ReceivableRepository receivableRepository) {
+                        com.shifa.oms.reconciliation.ReceivableRepository receivableRepository,
+                        com.shifa.oms.notification.ShipmentMilestoneNotifier milestoneNotifier) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.orderCodeGenerator = orderCodeGenerator;
@@ -256,6 +293,7 @@ public class OrderService {
         this.settingsService = settingsService;
         this.labelService = labelService;
         this.receivableRepository = receivableRepository;
+        this.milestoneNotifier = milestoneNotifier;
     }
 
     // --- Creation: salesperson order entry (Req 7) --------------------------
@@ -423,6 +461,12 @@ public class OrderService {
         // the final, edited details). The only case this fires at punch time is an
         // auto-approved order (maybeAutoApprove already moved it to APPROVED above).
         publishToQuikShipX(saved);
+        // Acknowledge a COD order to the customer over WhatsApp the moment it is
+        // punched (customer shipment notifications) — de-duped, and a no-op for
+        // non-COD orders and under the legacy test constructors (notifier null).
+        if (milestoneNotifier != null) {
+            milestoneNotifier.orderPlaced(saved);
+        }
         return OrderResponse.from(saved);
     }
 
