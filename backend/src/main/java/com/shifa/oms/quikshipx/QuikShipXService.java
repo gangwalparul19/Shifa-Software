@@ -59,6 +59,7 @@ public class QuikShipXService {
     private final CourierCompanyRepository courierCompanyRepository;
     private final OrderWorkflowService orderWorkflowService;
     private final com.shifa.oms.platform.outbox.OutboxEventRepository outboxEventRepository;
+    private final ShipmentTrackingStore trackingStore;
 
     public QuikShipXService(QuikShipXProperties properties,
                             QuikShipXClient client,
@@ -72,7 +73,8 @@ public class QuikShipXService {
                             CourierRecordRepository courierRecordRepository,
                             CourierCompanyRepository courierCompanyRepository,
                             OrderWorkflowService orderWorkflowService,
-                            com.shifa.oms.platform.outbox.OutboxEventRepository outboxEventRepository) {
+                            com.shifa.oms.platform.outbox.OutboxEventRepository outboxEventRepository,
+                            ShipmentTrackingStore trackingStore) {
         this.properties = properties;
         this.client = client;
         this.payloadFactory = payloadFactory;
@@ -86,6 +88,7 @@ public class QuikShipXService {
         this.courierCompanyRepository = courierCompanyRepository;
         this.orderWorkflowService = orderWorkflowService;
         this.outboxEventRepository = outboxEventRepository;
+        this.trackingStore = trackingStore;
     }
 
     /** The outcome of a per-order QuikShipX retry: what the action did. */
@@ -200,6 +203,9 @@ public class QuikShipXService {
             QuikShipXModels.TrackResult r = haveAwb ? client.trackOrder(awb) : client.trackOrderById(shipperOrderId);
             shipment.recordTracked(r.orderStatus(), titleCase(r.orderStatus()), java.time.LocalDateTime.now());
             shipmentRepository.save(shipment);
+            // Persist the scan timeline so the public /track-order page can show the
+            // detailed courier timeline with no live QuikShipX call (Option B).
+            trackingStore.replace(orderId, r.scans());
             // Apply the mapped internal status transition (idempotent, SYSTEM). The
             // AWB comes from the shipment, or the track response when not yet stored.
             String resolvedAwb = haveAwb ? awb : r.awb();

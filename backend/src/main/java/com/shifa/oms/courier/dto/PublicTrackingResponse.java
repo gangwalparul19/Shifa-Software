@@ -22,6 +22,7 @@ import java.util.List;
  * @param estimatedDelivery the estimated delivery date, or null
  * @param delivered        whether the order has been delivered/closed
  * @param timeline         ordered stage steps with a reached/pending flag
+ * @param events           the detailed courier scan timeline (newest first; may be empty)
  */
 public record PublicTrackingResponse(
         String orderCode,
@@ -33,7 +34,8 @@ public record PublicTrackingResponse(
         String trackingUrl,
         LocalDate estimatedDelivery,
         boolean delivered,
-        List<Step> timeline
+        List<Step> timeline,
+        List<Event> events
 ) {
 
     /**
@@ -43,5 +45,19 @@ public record PublicTrackingResponse(
      * @param reached whether the order has reached (or passed) this step
      */
     public record Step(String label, boolean reached) {
+    }
+
+    /**
+     * One detailed courier scan event, mirrored from QuikShipX's
+     * {@code shipment_scanning} and stored in {@code shipment_tracking_events}
+     * (Option B). Customer-safe: a status, the free-text movement instruction,
+     * the facility/location, and the scan timestamp — no money/ids.
+     *
+     * @param status       the scan status (e.g. "In Transit", "Delivered")
+     * @param instructions the movement instruction (e.g. "Out for delivery")
+     * @param location     the facility/location (e.g. "Indore_Dakachya_GW (Madhya Pradesh)")
+     * @param scanAt       the raw courier scan timestamp string
+     */
+    public record Event(String status, String instructions, String location, String scanAt) {
     }
 }

@@ -1,13 +1,18 @@
 package com.shifa.oms.courier;
 
+import com.shifa.oms.common.ApiException;
+import com.shifa.oms.courier.dto.TrackByMobileResponse;
 import com.shifa.oms.courier.dto.TrackingResponse;
 import com.shifa.oms.invoice.InvoiceService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -23,10 +28,14 @@ public class TrackingController {
 
     private final TrackingService trackingService;
     private final InvoiceService invoiceService;
+    private final PublicTrackingRateLimiter rateLimiter;
 
-    public TrackingController(TrackingService trackingService, InvoiceService invoiceService) {
+    public TrackingController(TrackingService trackingService,
+                              InvoiceService invoiceService,
+                              PublicTrackingRateLimiter rateLimiter) {
         this.trackingService = trackingService;
         this.invoiceService = invoiceService;
+        this.rateLimiter = rateLimiter;
     }
 
     /** Current status, AWB, and courier tracking link for an order (Req 13.4). */
@@ -45,6 +54,39 @@ public class TrackingController {
     @GetMapping("/t/{token}")
     public com.shifa.oms.courier.dto.PublicTrackingResponse trackByToken(@PathVariable String token) {
         return trackingService.trackByToken(token);
+    }
+
+    /**
+     * Public self-service lookup of a customer's orders by their registered
+     * mobile number, backing the {@code /track-order} page. Returns privacy-safe
+     * tracking cards (no money/address/mobile/id); the customer then opens one
+     * via {@link #trackByToken(String)}. Still public (under {@code /api/track/**}).
+     *
+     * <p>Rate-limited per client IP (anti-scraping): beyond the window a 429 is
+     * returned. An unknown/malformed mobile yields an empty list (not a 404), so
+     * nothing can be probed.
+     */
+    @GetMapping("/by-mobile")
+    public TrackByMobileResponse byMobile(@RequestParam String mobile, HttpServletRequest httpRequest) {
+        if (!rateLimiter.tryAcquire(clientIp(httpRequest))) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "RATE_LIMITED",
+                    "Too many lookups, please wait a few minutes.");
+        }
+        return trackingService.ordersByMobile(mobile);
+    }
+
+    /**
+     * Best-effort client IP. Behind Nginx the real client is the first entry of
+     * {@code X-Forwarded-For}; fall back to the socket address otherwise (mirrors
+     * {@code AuthController}).
+     */
+    private static String clientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            int comma = forwarded.indexOf(',');
+            return (comma > 0 ? forwarded.substring(0, comma) : forwarded).trim();
+        }
+        return request.getRemoteAddr();
     }
 
     /**

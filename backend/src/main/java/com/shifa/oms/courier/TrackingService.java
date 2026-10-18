@@ -3,6 +3,7 @@ package com.shifa.oms.courier;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.courier.dto.TrackingResponse;
 import com.shifa.oms.order.OrderEntity;
+import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,13 +21,32 @@ public class TrackingService {
     private final OrderRepository orderRepository;
     private final CourierRecordRepository courierRecordRepository;
     private final CourierCompanyRepository courierCompanyRepository;
+    private final com.shifa.oms.quikshipx.ShipmentTrackingEventRepository trackingEventRepository;
+    private final com.shifa.oms.settings.SettingsService settingsService;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public TrackingService(OrderRepository orderRepository,
                            CourierRecordRepository courierRecordRepository,
-                           CourierCompanyRepository courierCompanyRepository) {
+                           CourierCompanyRepository courierCompanyRepository,
+                           com.shifa.oms.quikshipx.ShipmentTrackingEventRepository trackingEventRepository,
+                           com.shifa.oms.settings.SettingsService settingsService) {
         this.orderRepository = orderRepository;
         this.courierRecordRepository = courierRecordRepository;
         this.courierCompanyRepository = courierCompanyRepository;
+        this.trackingEventRepository = trackingEventRepository;
+        this.settingsService = settingsService;
+    }
+
+    /**
+     * Legacy/test constructor without the stored tracking-event repository or
+     * settings — the detailed courier scan timeline is then empty and the brand
+     * name falls back to a default (the coarse stage timeline + shipment link
+     * still render). Spring always uses the full constructor above.
+     */
+    public TrackingService(OrderRepository orderRepository,
+                           CourierRecordRepository courierRecordRepository,
+                           CourierCompanyRepository courierCompanyRepository) {
+        this(orderRepository, courierRecordRepository, courierCompanyRepository, null, null);
     }
 
     /**
@@ -70,11 +90,6 @@ public class TrackingService {
                 com.shifa.oms.order.OrderStatusGroup.groupOf(status);
         ShipmentInfo shipment = shipmentFor(order.getId()).orElse(null);
 
-        boolean delivered = group == com.shifa.oms.order.OrderStatusGroup.DELIVERED;
-        boolean failed = group == com.shifa.oms.order.OrderStatusGroup.FAILED_RETURNED
-                || group == com.shifa.oms.order.OrderStatusGroup.CANCELLED
-                || group == com.shifa.oms.order.OrderStatusGroup.REJECTED;
-
         return new com.shifa.oms.courier.dto.PublicTrackingResponse(
                 order.getOrderCode(),
                 firstName(order.getCustomerName()),
@@ -84,8 +99,149 @@ public class TrackingService {
                 shipment != null ? shipment.courierName() : null,
                 shipment != null ? shipment.trackingUrl() : null,
                 shipment != null ? shipment.estimatedDelivery() : null,
-                delivered,
-                timeline(group, failed));
+                isDelivered(group),
+                timeline(group, isFailed(group)),
+                detailedEvents(order.getId()));
+    }
+
+    /**
+     * The detailed courier scan timeline for an order (newest first), read from
+     * the stored {@code shipment_tracking_events} (Option B) — no live QuikShipX
+     * call. Empty when none are stored yet, or when the lightweight/test
+     * constructor left the event repository unset.
+     */
+    private List<com.shifa.oms.courier.dto.PublicTrackingResponse.Event> detailedEvents(Long orderId) {
+        if (trackingEventRepository == null || orderId == null) {
+            return List.of();
+        }
+        return trackingEventRepository.findByOrderIdOrderBySortOrderAsc(orderId).stream()
+                .map(e -> new com.shifa.oms.courier.dto.PublicTrackingResponse.Event(
+                        e.getStatus(), e.getInstructions(), e.getLocation(), e.getScanAt()))
+                .toList();
+    }
+
+    /**
+     * The customer's orders for a registered mobile number, as privacy-safe
+     * tracking cards (public self-service tracking page {@code /track-order}).
+     *
+     * <p>Lets a customer (or an agent) look up all their orders by the mobile
+     * they registered with — no login — and pick one to see its live tracking,
+     * saving a WhatsApp notification. Deliberately minimal and privacy-safe: each
+     * card carries only what the tracking list needs (order code, opaque tracking
+     * token to open the detail, a short product summary, the friendly status/stage,
+     * and the placed-on date) — <em>no money, no address, no mobile echo, no
+     * internal id, no salesperson</em>. The status/stage/delivered flags use the
+     * same group→label mapping as {@link #trackByToken(String)} so a card and its
+     * detail page agree.
+     *
+     * <p>The mobile is normalised to exactly 10 digits (non-digits stripped). An
+     * unknown or malformed number returns an empty list rather than throwing — the
+     * page shows a clean "no orders found" state and nothing can be probed. The
+     * result is capped to the most recent {@link #MAX_MOBILE_CARDS} orders.
+     *
+     * @param mobile the raw mobile number the customer typed
+     * @return the privacy-safe tracking cards, newest first (possibly empty)
+     */
+    @Transactional(readOnly = true)
+    public com.shifa.oms.courier.dto.TrackByMobileResponse ordersByMobile(String mobile) {
+        String normalized = normalizeMobile(mobile);
+        if (normalized == null) {
+            return new com.shifa.oms.courier.dto.TrackByMobileResponse(brandName(), List.of());
+        }
+        List<com.shifa.oms.courier.dto.TrackByMobileResponse.OrderCard> cards =
+                orderRepository.findByCustomerMobileOrderByCreatedAtDesc(normalized).stream()
+                        .limit(MAX_MOBILE_CARDS)
+                        .map(TrackingService::toCard)
+                        .toList();
+        return new com.shifa.oms.courier.dto.TrackByMobileResponse(brandName(), cards);
+    }
+
+    /** Cap on the number of tracking cards returned for a mobile lookup. */
+    private static final int MAX_MOBILE_CARDS = 25;
+
+    /**
+     * Normalises a raw mobile to exactly 10 digits, or {@code null} if it does not
+     * reduce to exactly 10 digits after stripping non-digit characters.
+     */
+    private static String normalizeMobile(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String digits = raw.replaceAll("\\D", "");
+        return digits.length() == 10 ? digits : null;
+    }
+
+    /**
+     * The business/brand display name for the public tracking page, read from the
+     * company {@link com.shifa.oms.settings.AppSettings} (its {@code legalName}).
+     * Falls back to the default brand name when settings are unavailable (e.g. the
+     * lightweight/test constructor) or blank, so the page always has a name.
+     */
+    private String brandName() {
+        if (settingsService != null) {
+            try {
+                String name = settingsService.getSettings().getLegalName();
+                if (name != null && !name.isBlank()) {
+                    return name.trim();
+                }
+            } catch (RuntimeException ignored) {
+                // Fall through to the default below.
+            }
+        }
+        return "Shifa Herbal Remedies";
+    }
+
+    /** Maps one order to a privacy-safe tracking card for the by-mobile list. */
+    private static com.shifa.oms.courier.dto.TrackByMobileResponse.OrderCard toCard(OrderEntity order) {
+        com.shifa.oms.statemachine.OrderStatus status = order.getOrderStatus();
+        com.shifa.oms.order.OrderStatusGroup group =
+                com.shifa.oms.order.OrderStatusGroup.groupOf(status);
+        return new com.shifa.oms.courier.dto.TrackByMobileResponse.OrderCard(
+                order.getOrderCode(),
+                order.getTrackingToken(),
+                productSummary(order),
+                statusLabel(group, status),
+                group == null ? null : group.name(),
+                isDelivered(group),
+                order.getCreatedAt() == null ? null : order.getCreatedAt().toLocalDate());
+    }
+
+    /**
+     * A short "Amla Juice x2, Neem Caps x1" summary of the order's line items
+     * (first few items, length-capped), for the tracking card title. Never null.
+     */
+    private static String productSummary(OrderEntity order) {
+        List<OrderLineItem> lines = order.getLineItems();
+        if (lines == null || lines.isEmpty()) {
+            return "Your order";
+        }
+        int shown = Math.min(lines.size(), 3);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < shown; i++) {
+            OrderLineItem line = lines.get(i);
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append(line.getProductName()).append(" x").append(line.getQuantity());
+        }
+        if (lines.size() > shown) {
+            sb.append(" …");
+        }
+        String summary = sb.toString();
+        // Guard against an absurdly long single product name.
+        return summary.length() > 120 ? summary.substring(0, 119) + "…" : summary;
+    }
+
+    /** Whether the coarse group represents a successfully delivered/closed order. */
+    private static boolean isDelivered(com.shifa.oms.order.OrderStatusGroup group) {
+        return group == com.shifa.oms.order.OrderStatusGroup.DELIVERED;
+    }
+
+    /** Whether the coarse group represents a failed / returned / cancelled / rejected order. */
+    private static boolean isFailed(com.shifa.oms.order.OrderStatusGroup group) {
+        return group == com.shifa.oms.order.OrderStatusGroup.FAILED_RETURNED
+                || group == com.shifa.oms.order.OrderStatusGroup.CANCELLED
+                || group == com.shifa.oms.order.OrderStatusGroup.REJECTED;
     }
 
     /** A plain-English status for the customer, from the coarse lifecycle group. */

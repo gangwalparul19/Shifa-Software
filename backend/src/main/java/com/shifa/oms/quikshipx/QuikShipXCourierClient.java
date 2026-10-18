@@ -54,13 +54,16 @@ public class QuikShipXCourierClient implements CourierClient {
 
     private final QuikShipXClient client;
     private final OrderShipmentRepository shipmentRepository;
+    private final ShipmentTrackingStore trackingStore;
     /** Fallback for orders never published to QuikShipX (in-house delivery). */
     private final MockCourierClient manualFallback;
 
     public QuikShipXCourierClient(QuikShipXClient client, OrderShipmentRepository shipmentRepository,
+                                  ShipmentTrackingStore trackingStore,
                                   CourierProperties courierProperties) {
         this.client = client;
         this.shipmentRepository = shipmentRepository;
+        this.trackingStore = trackingStore;
         this.manualFallback = new MockCourierClient(courierProperties);
     }
 
@@ -137,6 +140,9 @@ public class QuikShipXCourierClient implements CourierClient {
         shipmentRepository.findByAwb(awb).ifPresent(shipment -> {
             shipment.recordTracked(rawStatus, titleCase(rawStatus), LocalDateTime.now());
             shipmentRepository.save(shipment);
+            // Persist the full scan timeline so the public /track-order page can
+            // render the detailed courier timeline without a live call (Option B).
+            trackingStore.replace(shipment.getOrderId(), track.scans());
         });
         return Optional.of(new CourierTrackingEvent(awb, rawStatus));
     }

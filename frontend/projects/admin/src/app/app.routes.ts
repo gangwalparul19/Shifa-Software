@@ -223,6 +223,14 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./track/public-tracking.component').then((m) => m.PublicTrackingComponent),
   },
+  // Public, unauthenticated self-service tracking by registered mobile number —
+  // lists the customer's orders, pick one to see its live tracking. Outside the
+  // admin shell/guards; lazy so it stays out of the main bundle.
+  {
+    path: 'track-order',
+    loadComponent: () =>
+      import('./track/track-order.component').then((m) => m.TrackOrderComponent),
+  },
   {
     path: '',
     component: AdminShellComponent,
