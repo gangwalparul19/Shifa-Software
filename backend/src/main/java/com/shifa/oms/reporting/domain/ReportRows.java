@@ -73,6 +73,16 @@ public final class ReportRows {
     public record ProductRow(String productName, long quantity, BigDecimal totalSales) {
     }
 
+    /**
+     * One row of the salesperson &times; product report (client request): the
+     * salesperson id (resolved to a name by the service), the product name, the
+     * total quantity that salesperson punched of that product, and the total
+     * sales it contributed over the window.
+     */
+    public record SalespersonProductRow(Long salespersonId, String productName,
+                                        long quantity, BigDecimal totalSales) {
+    }
+
     /** One row of the state-wise report: destination state, order count, total sales (Req 20.1). */
     public record StateRow(String state, long orderCount, BigDecimal totalSales) {
     }

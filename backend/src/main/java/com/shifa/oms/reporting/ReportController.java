@@ -149,6 +149,7 @@ public class ReportController {
             case CUSTOMER -> "Customer-wise Report";
             case SALESPERSON -> "Salesperson-wise Report";
             case SALESPERSON_SUMMARY -> "Salesperson Summary Report";
+            case SALESPERSON_PRODUCT -> "Salesperson \u00d7 Product Report";
             case ORDERS_BY_LEAD_SOURCE -> "Orders by Lead Source";
             case ORDERS_BY_STATUS -> "Orders by Status";
             case ORDERS_BY_SALESPERSON -> "Orders by Salesperson";

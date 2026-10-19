@@ -108,6 +108,7 @@ export class ReportsComponent implements OnInit {
     { value: 'customer', label: 'Customer-wise', group: 'Sales' },
     // Salesperson performance
     { value: 'salesperson-summary', label: 'Salesperson summary (per person)', group: 'Salesperson' },
+    { value: 'salesperson-product', label: 'Salesperson × product (qty & sales)', group: 'Salesperson' },
     { value: 'salesperson', label: 'Salesperson (detailed orders)', group: 'Salesperson' },
     // Orders
     { value: 'orders-by-status', label: 'Orders by status', group: 'Orders' },

@@ -8,6 +8,7 @@ export type ReportType =
   | 'customer'
   | 'salesperson'
   | 'salesperson-summary'
+  | 'salesperson-product'
   | 'orders-by-lead-source'
   | 'orders-by-status'
   | 'orders-by-salesperson'

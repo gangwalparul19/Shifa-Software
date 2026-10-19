@@ -84,6 +84,7 @@ public class ReportTableBuilder {
             case CUSTOMER -> customer(orders, window);
             case SALESPERSON -> salesperson(orders, window);
             case SALESPERSON_SUMMARY -> salespersonSummary(orders, window);
+            case SALESPERSON_PRODUCT -> salespersonProduct(orders, window);
             case ORDERS_BY_LEAD_SOURCE -> countTable(
                     "Lead Source", aggregator.ordersByLeadSource(orders, window));
             case ORDERS_BY_STATUS -> countTable(
@@ -340,6 +341,26 @@ public class ReportTableBuilder {
                     money(r.codPending())));
         }
         return new TabularData(SALESPERSON_SUMMARY_HEADERS, rows);
+    }
+
+    /**
+     * The salesperson &times; product table (client request): one row per
+     * (salesperson, product) with the quantity that salesperson punched of the
+     * product and the total sales it contributed. The first column carries the
+     * raw salesperson id (or {@code UNSPECIFIED}); the service remaps it to the
+     * display name, exactly as for the other salesperson-keyed reports.
+     */
+    private TabularData salespersonProduct(List<OrderReportRecord> orders, DateRange window) {
+        List<String> headers = List.of("Salesperson", "Product", "Quantity", "Total Sales");
+        List<List<String>> rows = new ArrayList<>();
+        for (ReportRows.SalespersonProductRow r : aggregator.salespersonProductWise(orders, window)) {
+            rows.add(List.of(
+                    r.salespersonId() == null ? "UNSPECIFIED" : Long.toString(r.salespersonId()),
+                    nullToEmpty(r.productName()),
+                    Long.toString(r.quantity()),
+                    money(r.totalSales())));
+        }
+        return new TabularData(headers, rows);
     }
 
     /** A generic two-column grouped-count table ({@code keyLabel}, "Orders"). */

@@ -36,6 +36,14 @@ public enum ReportType {
     ORDERS_BY_LEAD_SOURCE,
     ORDERS_BY_STATUS,
     ORDERS_BY_SALESPERSON,
+    /**
+     * Per-salesperson, per-product report (client request): one row per
+     * (salesperson, product) with the total quantity that salesperson punched of
+     * that product and the total sales it contributed, over the date window.
+     * Order-based and salesperson-scoped like the other sales reports, so a
+     * salesperson sees only their own products and admins see everyone's.
+     */
+    SALESPERSON_PRODUCT,
     ORDERS_BY_PAYMENT_METHOD,
     DELIVERY_OUTCOME,
 
@@ -101,6 +109,9 @@ public enum ReportType {
             case "orders-by-status", "orders_by_status", "by-status" -> ORDERS_BY_STATUS;
             case "orders-by-salesperson", "orders_by_salesperson", "by-salesperson" ->
                     ORDERS_BY_SALESPERSON;
+            case "salesperson-product", "salesperson_product", "orders-by-salesperson-product",
+                    "orders_by_salesperson_product", "salesperson-product-wise" ->
+                    SALESPERSON_PRODUCT;
             case "orders-by-payment-method", "orders_by_payment_method", "payment-method",
                     "by-payment", "payment-mode" ->
                     ORDERS_BY_PAYMENT_METHOD;

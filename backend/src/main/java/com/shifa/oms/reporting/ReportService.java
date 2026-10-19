@@ -209,7 +209,8 @@ public class ReportService {
     private TabularData remapSalespersonColumn(ReportType type, TabularData table,
                                                Map<Long, String> names) {
         boolean hasSalespersonKeyColumn = type == ReportType.ORDERS_BY_SALESPERSON
-                || type == ReportType.SALESPERSON_SUMMARY;
+                || type == ReportType.SALESPERSON_SUMMARY
+                || type == ReportType.SALESPERSON_PRODUCT;
         if (!hasSalespersonKeyColumn || table.rows().isEmpty()) {
             return table;
         }

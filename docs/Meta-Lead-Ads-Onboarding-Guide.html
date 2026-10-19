@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Meta Lead Ads → Shifa OMS — Integration & Onboarding Guide</title>
+<style>
+  :root {
+    --green: #1f5d3f;
+    --green-dark: #164029;
+    --green-soft: #eef4f0;
+    --green-soft2: #f4faf6;
+    --border: #e4e8e5;
+    --ink: #1a2b22;
+    --muted: #6b7280;
+    --amber: #a86a00;
+    --amber-soft: #fff6e6;
+    --red: #b4231f;
+    --red-soft: #fdecec;
+    --code-bg: #0f241b;
+    --code-ink: #d7f0e2;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    background: #f6f8f6;
+    line-height: 1.6;
+  }
+  a { color: var(--green); }
+
+  /* Header */
+  header.hero {
+    background: linear-gradient(120deg, #1f5d3f 0%, #2e7d55 100%);
+    color: #fff;
+    padding: 34px 24px;
+  }
+  .hero__wrap { max-width: 980px; margin: 0 auto; }
+  .hero__brand { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .hero__logo {
+    width: 42px; height: 42px; border-radius: 10px; background: #fff; color: var(--green);
+    display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 20px;
+    flex: none;
+  }
+  .hero h1 { margin: 0; font-size: 1.7rem; letter-spacing: -0.01em; }
+  .hero p { margin: 8px 0 0; opacity: 0.92; max-width: 70ch; }
+  .hero__meta { margin-top: 14px; font-size: 0.82rem; opacity: 0.85; }
+
+  /* Layout */
+  .layout { max-width: 1180px; margin: 0 auto; display: flex; gap: 28px; padding: 24px; align-items: flex-start; }
+  nav.toc {
+    position: sticky; top: 16px; flex: 0 0 240px; background: #fff; border: 1px solid var(--border);
+    border-radius: 14px; padding: 14px 14px; font-size: 0.86rem; max-height: calc(100vh - 32px); overflow: auto;
+  }
+  nav.toc h2 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 4px 6px 10px; }
+  nav.toc a { display: block; padding: 6px 10px; border-radius: 8px; color: var(--ink); text-decoration: none; }
+  nav.toc a:hover { background: var(--green-soft); color: var(--green); }
+  nav.toc a .n { color: var(--green); font-weight: 700; margin-right: 6px; }
+  main { flex: 1; min-width: 0; }
+
+  /* Cards / sections */
+  section.card {
+    background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px;
+    margin-bottom: 20px; scroll-margin-top: 16px;
+  }
+  .step-head { display: flex; align-items: center; gap: 12px; margin: 0 0 6px; }
+  .step-badge {
+    flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--green); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.95rem;
+  }
+  h2.step-title { margin: 0; font-size: 1.22rem; }
+  h3 { font-size: 1rem; margin: 20px 0 8px; color: var(--green-dark); }
+  p, li { font-size: 0.95rem; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+  .lead { color: var(--muted); margin-top: 2px; }
+
+  /* Flow diagram */
+  .flow { background: var(--green-soft2); border: 1px solid #d9ece1; border-radius: 12px; padding: 16px; margin: 14px 0; }
+  .flow ol { list-style: none; padding: 0; margin: 0; counter-reset: f; }
+  .flow li { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; }
+  .flow li::before {
+    counter-increment: f; content: counter(f); flex: none; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--green); color: #fff; font-size: 0.78rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; margin-top: 2px;
+  }
+
+  /* Code blocks */
+  pre {
+    background: var(--code-bg); color: var(--code-ink); border-radius: 12px; padding: 14px 16px;
+    overflow-x: auto; font-size: 0.84rem; position: relative; margin: 10px 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  pre code { white-space: pre; }
+  code.inline { background: var(--green-soft); color: var(--green-dark); padding: 1px 6px; border-radius: 5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.86em; }
+  .copybtn {
+    position: absolute; top: 8px; right: 8px; background: rgba(255,255,255,0.12); color: #fff; border: 0;
+    border-radius: 7px; padding: 4px 9px; font-size: 0.72rem; cursor: pointer;
+  }
+  .copybtn:hover { background: rgba(255,255,255,0.24); }
+
+  /* Callouts */
+  .callout { border-radius: 12px; padding: 12px 16px; margin: 14px 0; font-size: 0.9rem; border: 1px solid; }
+  .callout--tip { background: var(--green-soft2); border-color: #cfe3d7; }
+  .callout--warn { background: var(--amber-soft); border-color: #f0d9a8; color: #5c4208; }
+  .callout--danger { background: var(--red-soft); border-color: #f3c7c5; color: #7a1714; }
+  .callout b { display: inline-block; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.88rem; }
+  th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--green-soft); color: var(--green-dark); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  tbody tr:hover { background: #fafcfb; }
+
+  /* Ask-client box */
+  .askbox { background: #fff; border: 2px dashed var(--green); border-radius: 12px; padding: 16px 18px; margin: 12px 0; }
+  .askbox h4 { margin: 12px 0 4px; color: var(--green-dark); font-size: 0.95rem; }
+  .askbox h4:first-child { margin-top: 0; }
+
+  .pill { display: inline-block; background: var(--green-soft); color: var(--green-dark); border-radius: 999px;
+    padding: 2px 10px; font-size: 0.72rem; font-weight: 700; }
+
+  footer { max-width: 1180px; margin: 0 auto; padding: 10px 24px 40px; color: var(--muted); font-size: 0.82rem; }
+
+  @media (max-width: 860px) {
+    nav.toc { display: none; }
+    .layout { padding: 16px; }
+    .hero h1 { font-size: 1.4rem; }
+  }
+  @media print {
+    body { background: #fff; }
+    nav.toc, .copybtn { display: none; }
+    section.card { border: 1px solid #ccc; break-inside: avoid; box-shadow: none; }
+    header.hero { background: #1f5d3f !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero__wrap">
+    <div class="hero__brand">
+      <div class="hero__logo">S</div>
+      <div>
+        <div style="font-weight:700;">Shifa Herbal Remedies — OMS</div>
+        <div style="font-size:0.8rem;opacity:0.85;">Order Management System</div>
+      </div>
+    </div>
+    <h1>Meta Lead Ads → OMS: Integration &amp; Onboarding Guide</h1>
+    <p>A step-by-step playbook to connect your Facebook &amp; Instagram lead ads to the OMS portal via a secure
+       webhook — so every new lead lands in your portal automatically, de-duplicated and assigned to your team.
+       Written for a setup with <b>two Ads Manager accounts</b>.</p>
+    <div class="hero__meta">Audience: client + implementation team &nbsp;·&nbsp; Webhook endpoint:
+       <code class="inline" style="background:rgba(255,255,255,0.15);color:#fff;">https://shifa.weblithic.online/api/webhooks/meta/leads</code></div>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="toc">
+    <h2>Contents</h2>
+    <a href="#how"><span class="n">0</span>How it works</a>
+    <a href="#roles"><span class="n">·</span>Who does what</a>
+    <a href="#ask"><span class="n">1</span>What to ask the client</a>
+    <a href="#app"><span class="n">2</span>Create the Meta App</a>
+    <a href="#pages"><span class="n">3</span>List Pages &amp; IDs</a>
+    <a href="#tokens"><span class="n">4</span>Get the tokens</a>
+    <a href="#webhook"><span class="n">5</span>Point the webhook</a>
+    <a href="#subscribe"><span class="n">6</span>Subscribe each Page</a>
+    <a href="#store"><span class="n">7</span>Store in the OMS</a>
+    <a href="#test"><span class="n">8</span>Test (no ad spend)</a>
+    <a href="#golive"><span class="n">9</span>Go live / review</a>
+    <a href="#cheat"><span class="n">★</span>Graph call cheat-sheet</a>
+    <a href="#body"><span class="n">{}</span>Webhook body</a>
+    <a href="#fail"><span class="n">!</span>Common failures</a>
+    <a href="#twoadm"><span class="n">2×</span>Two Ads Managers</a>
+  </nav>
+
+  <main>
+
+  <!-- 0 -->
+  <section class="card" id="how">
+    <div class="step-head"><div class="step-badge">0</div><h2 class="step-title">The one thing to understand first</h2></div>
+    <p class="lead">It shapes every step below.</p>
+    <p><b>Lead webhooks are delivered per Facebook <u>Page</u>, not per Ads Manager account.</b> An Ads Manager
+       <em>runs</em> the campaigns, but a lead form is attached to a <b>Facebook Page</b>, and Meta sends the
+       notification to whichever Meta App that Page is <em>subscribed</em> to. So <span class="pill">2 Ads Managers</span>
+       really means <b>"the Pages behind those two Ads Managers."</b> Count the distinct Pages, not the ad accounts.</p>
+    <p>Also key: <b>the webhook does not contain the lead's details</b> — only a <code class="inline">leadgen_id</code>
+       + <code class="inline">page_id</code>. We then call the <b>Graph API</b> with that Page's <b>access token</b>
+       to fetch the real answers (name, phone, email). And <b>Meta deletes lead data after 90 days</b>, so retrieval
+       must be automatic — which the webhook makes it.</p>
+    <div class="flow">
+      <ol>
+        <li>A Facebook / Instagram lead form is submitted.</li>
+        <li>Meta sends a signed <code class="inline">POST</code> to <code class="inline">/api/webhooks/meta/leads</code> (carries <code class="inline">leadgen_id</code> + <code class="inline">page_id</code>).</li>
+        <li>OMS verifies the signature, then calls Graph <code class="inline">GET /{leadgen_id}?fields=field_data</code> with the Page token.</li>
+        <li>OMS creates a CRM lead (source Facebook / Instagram), de-dupes by mobile/email, assigns per rule, logs an activity.</li>
+        <li>The lead appears in your OMS <b>Leads</b> list — no manual typing.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- roles -->
+  <section class="card" id="roles">
+    <div class="step-head"><div class="step-badge">·</div><h2 class="step-title">Who does what</h2></div>
+    <ul>
+      <li><b>Client provides</b> the Meta assets (App, Pages, access) and clicks through <em>their</em> Business Manager — those assets belong to them.</li>
+      <li><b>We (implementation)</b> provide the OMS webhook + build, and drive the client through the Meta clicks on a screen-share and capture the tokens.</li>
+    </ul>
+    <div class="callout callout--tip"><b>Golden rule:</b>&nbsp; we never need the client's Facebook password. We need <b>roles/access</b> on the App and Pages, plus a few <b>tokens/IDs</b> — all collectable in one 30-minute screen-share.</div>
+  </section>
+
+  <!-- 1 -->
+  <section class="card" id="ask">
+    <div class="step-head"><div class="step-badge">1</div><h2 class="step-title">What to ask the client</h2></div>
+    <p class="lead">Copy-paste the box below to the client.</p>
+    <div class="askbox">
+      <p>To connect your Facebook/Instagram lead ads to your OMS, we need the following. Most of it we can collect
+         together on a short screen-share where you stay logged in to Facebook — we never need your password.</p>
+      <h4>1. Business Manager structure</h4>
+      <ul>
+        <li>Do both Ads Manager accounts sit under <b>one</b> Meta Business Manager, or <b>two separate</b> ones?</li>
+        <li>Business Manager ID(s) — business.facebook.com → Business Settings → Business Info.</li>
+      </ul>
+      <h4>2. The Facebook Pages running your lead ads <span class="pill">this is what matters</span></h4>
+      <ul>
+        <li>Every <b>Facebook Page</b> that runs lead-form ads, across both Ads Managers — Name + <b>Page ID</b>.</li>
+        <li>Any <b>Instagram</b> accounts linked to those Pages that also run lead forms.</li>
+      </ul>
+      <h4>3. Access for us (pick one)</h4>
+      <ul>
+        <li><b>Preferred:</b> add us as Admin/Developer on a Meta App you own (or let us create it under your Business and you approve), <b>and</b> give us an Admin/Lead-Access role on each Page — or create a <b>System User</b> in Business Settings and assign the Pages to it (most robust; we'll guide this).</li>
+        <li>Otherwise we do it together on a screen-share while you're logged in.</li>
+      </ul>
+      <h4>4. Your Meta App (if any)</h4>
+      <ul><li>App ID + App Secret (Settings → Basic). If none, we create one together.</li></ul>
+      <h4>5. Confirmations</h4>
+      <ul>
+        <li>OK to run <b>App Review</b> for lead-retrieval permissions (needed to go live).</li>
+        <li>How should new leads be <b>assigned</b> — to a Team Lead, or round-robin across a team?</li>
+        <li>Treat Instagram and Facebook as separate sources, or both as "Meta"?</li>
+      </ul>
+    </div>
+    <h3>Minimum set we must walk away with</h3>
+    <table>
+      <thead><tr><th>Item</th><th>Why</th><th>Where it comes from</th></tr></thead>
+      <tbody>
+        <tr><td>App ID + <b>App Secret</b></td><td>sign/verify the webhook; token exchange</td><td>App → Settings → Basic</td></tr>
+        <tr><td><b>Verify token</b> (we invent)</td><td>webhook handshake</td><td>we choose a random string</td></tr>
+        <tr><td>Every <b>Page ID</b> (both Ads Managers)</td><td>route + subscribe + fetch</td><td>Step 3</td></tr>
+        <tr><td><b>Token per Page</b> (or a System User token)</td><td>fetch the lead's data</td><td>Step 4</td></tr>
+        <tr><td>Business Manager ID(s)</td><td>needed for the System User path</td><td>Business Settings</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 2 -->
+  <section class="card" id="app">
+    <div class="step-head"><div class="step-badge">2</div><h2 class="step-title">Create / identify the Meta App</h2></div>
+    <ol>
+      <li>Go to <b>developers.facebook.com → My Apps → Create App</b> → type <b>Business</b> (or reuse a Business app). Name it e.g. "Shifa OMS Leads".</li>
+      <li><b>Settings → Basic:</b> copy <b>App ID</b>, click <b>Show</b> to copy <b>App Secret</b>. Share with us securely. The App Secret signs the webhook — keep it private.</li>
+      <li><b>Add Products:</b> <b>Webhooks</b> + <b>Facebook Login for Business</b> (and Marketing API if prompted).</li>
+      <li><span class="pill">Two-Business-Manager case</span> repeat for the second BM's app — we store both App Secrets.</li>
+    </ol>
+    <div class="callout callout--tip">Capture now: <code class="inline">APP_ID</code>, <code class="inline">APP_SECRET</code>. We invent <code class="inline">VERIFY_TOKEN</code> = a 32+ character random string and keep it.</div>
+  </section>
+
+  <!-- 3 -->
+  <section class="card" id="pages">
+    <div class="step-head"><div class="step-badge">3</div><h2 class="step-title">List the Pages and their IDs</h2></div>
+    <p>We only care about <b>Pages</b> — leads attach to Pages.</p>
+    <pre><button class="copybtn">Copy</button><code>GET https://graph.facebook.com/v21.0/me/accounts?access_token=USER_TOKEN
+# -> returns every Page the logged-in admin manages: { id (Page ID), name, access_token }</code></pre>
+    <p>Write down the <b>Page ID</b> of every page that runs lead ads across <b>both</b> Ads Managers. These Page IDs
+       are the join key the OMS uses to pick the right token when a lead arrives.</p>
+    <div class="callout callout--tip"><b>Two Ads Managers:</b> count distinct Pages, not ad accounts. If both Ads Managers advertise the <em>same</em> Pages, you still subscribe each Page only once.</div>
+  </section>
+
+  <!-- 4 -->
+  <section class="card" id="tokens">
+    <div class="step-head"><div class="step-badge">4</div><h2 class="step-title">Get the tokens <span style="font-size:0.8rem;color:var(--muted);font-weight:400;">(the part everyone trips on)</span></h2></div>
+    <p>Two routes. <b>Route A (System User)</b> is production-grade and durable — recommended.
+       <b>Route B (long-lived Page token)</b> is quick for a pilot. Do one of them <b>per Page</b>.</p>
+
+    <h3>Common first move — a short-lived User token (Graph API Explorer)</h3>
+    <ol>
+      <li><b>developers.facebook.com/tools/explorer</b> → pick the App (top-right).</li>
+      <li><b>Add Permissions:</b> <code class="inline">pages_show_list</code>, <code class="inline">pages_manage_metadata</code>, <code class="inline">pages_read_engagement</code>, <code class="inline">leads_retrieval</code>, <code class="inline">business_management</code>.</li>
+      <li><b>Generate Access Token</b> → client approves the dialog. You now hold a short-lived User token (1–2 hrs) — enough to do Steps 3–6 on the call.</li>
+    </ol>
+
+    <h3>Exchange for a long-lived User token (≈60 days)</h3>
+    <pre><button class="copybtn">Copy</button><code>GET https://graph.facebook.com/v21.0/oauth/access_token
+    ?grant_type=fb_exchange_token
+    &client_id=APP_ID
+    &client_secret=APP_SECRET
+    &fb_exchange_token=SHORT_LIVED_USER_TOKEN
+# -> access_token = long-lived USER token</code></pre>
+
+    <h3>Route A — System User token <span class="pill">recommended</span></h3>
+    <p>A System User belongs to the <b>Business</b>, not a person, so its token survives password changes / someone leaving.</p>
+    <ol>
+      <li><b>business.facebook.com → Business Settings → Users → System Users → Add</b> → create one (role Admin/Employee). Two separate Business Managers → one System User each.</li>
+      <li><b>Assign assets:</b> assign each lead-ad <b>Page</b> to the System User with Manage/Full access.</li>
+      <li><b>Generate token</b> for the System User with the same permissions; set no-expiry / 60-day per policy.</li>
+      <li>Call <code class="inline">GET /me/accounts</code> (or <code class="inline">GET /{page_id}?fields=access_token</code>) with it to get a <b>Page access token per Page</b> — these are what the OMS stores.</li>
+    </ol>
+
+    <h3>Route B — long-lived Page token (quick pilot)</h3>
+    <ol>
+      <li>With the long-lived <b>User</b> token: <code class="inline">GET /v21.0/me/accounts?access_token=LONG_LIVED_USER_TOKEN</code>.</li>
+      <li>For each Page, copy its <code class="inline">access_token</code>. A Page token from a long-lived user token has <b>no expiry of its own</b> — but dies if the admin revokes it / changes password / loses the Page role.</li>
+    </ol>
+
+    <div class="callout callout--warn"><b>Verify every token:</b> paste each into <b>developers.facebook.com/tools/debug/accesstoken/</b> and confirm it is a <b>Page</b> (or System User) token, lists the right <b>Page ID</b>, has <b>leads_retrieval</b>, and shows the expiry you expect.</div>
+    <div class="callout callout--tip"><b>Hand to us per Page:</b> <code class="inline">PAGE_ID → PAGE_ACCESS_TOKEN</code> (plus the System User token if Route A, so we can refresh later).</div>
+  </section>
+
+  <!-- 5 -->
+  <section class="card" id="webhook">
+    <div class="step-head"><div class="step-badge">5</div><h2 class="step-title">Point the webhook at the OMS</h2></div>
+    <ol>
+      <li>App Dashboard → <b>Webhooks</b> → object <b>Page</b> → <b>Subscribe to this object</b>.</li>
+      <li><b>Callback URL:</b> <code class="inline">https://shifa.weblithic.online/api/webhooks/meta/leads</code></li>
+      <li><b>Verify Token:</b> the <code class="inline">VERIFY_TOKEN</code> from Step 2 (must match the OMS config).</li>
+      <li><b>Verify and Save.</b> Meta GETs the callback with <code class="inline">hub.mode=subscribe&amp;hub.challenge=…&amp;hub.verify_token=…</code>; the OMS echoes the challenge when the token matches → subscription turns green. (Endpoint must be real HTTPS with a valid cert — ours is; Meta rejects self-signed.)</li>
+      <li>In the Page webhook fields, <b>tick <code class="inline">leadgen</code></b> (the Lead Ads event).</li>
+      <li><span class="pill">Two apps</span> repeat for the second app — same callback URL.</li>
+    </ol>
+  </section>
+
+  <!-- 6 -->
+  <section class="card" id="subscribe">
+    <div class="step-head"><div class="step-badge">6</div><h2 class="step-title">Subscribe EACH Page to the App</h2></div>
+    <div class="callout callout--danger"><b>Easy to miss:</b> ticking <code class="inline">leadgen</code> on the app is <b>not</b> enough — <b>every Page must be individually subscribed</b>, or that page's leads never arrive.</div>
+    <p>For each Page ID from Step 3 (with that Page's token):</p>
+    <pre><button class="copybtn">Copy</button><code>POST https://graph.facebook.com/v21.0/{PAGE_ID}/subscribed_apps
+     ?subscribed_fields=leadgen
+     &access_token={PAGE_ACCESS_TOKEN}
+# -> {"success": true}
+
+# confirm:
+GET https://graph.facebook.com/v21.0/{PAGE_ID}/subscribed_apps?access_token={PAGE_ACCESS_TOKEN}</code></pre>
+    <p>The OMS will also expose <code class="inline">POST /api/admin/meta/subscribe-page?pageId=</code> to do this from
+       inside the portal once the Page token is stored. Either way, do it <b>once per Page</b>.</p>
+  </section>
+
+  <!-- 7 -->
+  <section class="card" id="store">
+    <div class="step-head"><div class="step-badge">7</div><h2 class="step-title">Store everything in the OMS</h2></div>
+    <p>Give us these; we set them in the prod server environment (never committed to code):</p>
+    <pre><button class="copybtn">Copy</button><code>META_LEADS_ENABLED=true
+META_LEADS_VERIFY_TOKEN=&lt;the string from Step 2&gt;
+META_GRAPH_VERSION=v21.0
+
+# App 1 (Business Manager 1)
+META_APP1_ID=&lt;app id&gt;
+META_APP1_SECRET=&lt;app secret&gt;
+
+# App 2 (only if two separate Business Managers)
+META_APP2_ID=&lt;app id&gt;
+META_APP2_SECRET=&lt;app secret&gt;
+
+# Page tokens — one line per Page, across BOTH Ads Managers
+META_PAGE_TOKEN_&lt;PAGE_ID&gt;=&lt;page access token&gt;</code></pre>
+    <div class="callout callout--tip">Blank values <b>no-op safely</b> — a half-configured setup never breaks the rest of the OMS.</div>
+  </section>
+
+  <!-- 8 -->
+  <section class="card" id="test">
+    <div class="step-head"><div class="step-badge">8</div><h2 class="step-title">Test end-to-end — zero ad spend</h2></div>
+    <ol>
+      <li><b>developers.facebook.com/tools/lead-ads-testing</b> → pick the <b>Page</b> + a <b>lead form</b> → <b>Create Lead</b>.</li>
+      <li>Meta fires a real <code class="inline">leadgen</code> webhook → OMS verifies the signature → fetches the lead → <b>creates a CRM lead</b>, de-dupes, assigns, logs an activity.</li>
+      <li>Open the OMS <b>Leads</b> list → the test lead appears. Delete the test lead afterward.</li>
+      <li>Repeat for <b>one Page from each Ads Manager</b> so both are proven.</li>
+    </ol>
+  </section>
+
+  <!-- 9 -->
+  <section class="card" id="golive">
+    <div class="step-head"><div class="step-badge">9</div><h2 class="step-title">Go live / App Review</h2></div>
+    <ul>
+      <li>To receive leads from Pages not owned by the app's admins (real production), the app needs <b>Advanced Access</b> for <code class="inline">leads_retrieval</code> + the pages permissions via <b>App Review</b> (screencast + use-case). <b>Start this early</b> — it's the usual bottleneck.</li>
+      <li>Until approved, the Lead Ads Testing Tool and Pages/users with an app role work in <b>Development mode</b> — enough to validate the whole chain.</li>
+    </ul>
+  </section>
+
+  <!-- cheat -->
+  <section class="card" id="cheat">
+    <div class="step-head"><div class="step-badge">★</div><h2 class="step-title">The exact Graph calls, in order</h2></div>
+    <pre><button class="copybtn">Copy</button><code># 1. Short-lived user token: Graph API Explorer (UI) with the 5 permissions.
+
+# 2. Long-lived user token
+GET /v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=APP_ID&client_secret=APP_SECRET&fb_exchange_token=SHORT_USER_TOKEN
+
+# 3. Page tokens (one per page)
+GET /v21.0/me/accounts?access_token=LONG_USER_TOKEN            # -> [{id, name, access_token}, ...]
+
+# 4. Subscribe each page to the app
+POST /v21.0/{PAGE_ID}/subscribed_apps?subscribed_fields=leadgen&access_token=PAGE_TOKEN
+
+# 5. (When a webhook arrives) fetch the lead
+GET /v21.0/{LEADGEN_ID}?fields=field_data,created_time,ad_id,form_id,platform&access_token=PAGE_TOKEN
+#   field_data = [{name:"full_name",values:["..."]},{name:"phone_number",values:["..."]},{name:"email",...}]
+
+# 6. Verify any token: developers.facebook.com/tools/debug/accesstoken/</code></pre>
+  </section>
+
+  <!-- body -->
+  <section class="card" id="body">
+    <div class="step-head"><div class="step-badge">{}</div><h2 class="step-title">What the webhook body looks like</h2></div>
+    <pre><button class="copybtn">Copy</button><code>{
+  "object": "page",
+  "entry": [{
+    "id": "&lt;PAGE_ID&gt;",
+    "time": 1734567890,
+    "changes": [{
+      "field": "leadgen",
+      "value": {
+        "leadgen_id": "1234567890",
+        "page_id": "&lt;PAGE_ID&gt;",
+        "form_id": "9876543210",
+        "created_time": 1734567889,
+        "ad_id": "...", "adgroup_id": "..."
+      }
+    }]
+  }]
+}</code></pre>
+    <p>The OMS verifies <code class="inline">X-Hub-Signature-256</code> (hex HMAC-SHA256 of the <b>raw body</b>, keyed by
+       the matching App Secret), then for each <code class="inline">changes[].value</code> fetches the lead by
+       <code class="inline">leadgen_id</code> using the token stored for <code class="inline">page_id</code>.</p>
+  </section>
+
+  <!-- fail -->
+  <section class="card" id="fail">
+    <div class="step-head"><div class="step-badge">!</div><h2 class="step-title">Common failures &amp; how to spot them</h2></div>
+    <table>
+      <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td>"Verify and Save" fails</td><td>verify token mismatch / endpoint not HTTPS / wrong URL</td><td>match <code class="inline">META_LEADS_VERIFY_TOKEN</code>; confirm the GET handshake echoes <code class="inline">hub.challenge</code></td></tr>
+        <tr><td>Webhook arrives but no lead created</td><td>Graph fetch error "A user access token is required"</td><td>you used a <b>User</b> token, not a <b>Page/System-User</b> token for that <code class="inline">page_id</code> — store the Page token</td></tr>
+        <tr><td>Some Pages deliver, others don't</td><td>those Pages weren't individually subscribed (Step 6)</td><td><code class="inline">POST /{page_id}/subscribed_apps?subscribed_fields=leadgen</code> each</td></tr>
+        <tr><td>Worked in testing, dead in production</td><td>app still in Development mode</td><td>complete App Review / Advanced Access</td></tr>
+        <tr><td>Leads stopped after ~60 days (Route B)</td><td>user token behind the page token expired/revoked</td><td>re-mint via System User (Route A)</td></tr>
+        <tr><td>Signature always rejected</td><td>HMAC over parsed/re-serialized JSON, or base64 vs hex</td><td>HMAC the <b>raw bytes</b>; Meta is <b>hex</b> (not base64 like Shopify)</td></tr>
+        <tr><td>Lead older than 90 days can't be fetched</td><td>Meta's 90-day retention</td><td>irrelevant for live webhooks (we fetch immediately); only affects backfills</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- two ads managers -->
+  <section class="card" id="twoadm">
+    <div class="step-head"><div class="step-badge">2×</div><h2 class="step-title">Handling the TWO Ads Managers</h2></div>
+    <table>
+      <thead><tr><th>Situation</th><th>What to do</th></tr></thead>
+      <tbody>
+        <tr><td><b>Both Pages under ONE Business Manager / one app</b> (recommended)</td><td>One app, one App Secret, one verify token, one callback URL. Subscribe <b>every</b> Page (from both Ads Managers) to the app and store each Page's token. The OMS routes by <code class="inline">page_id</code> automatically.</td></tr>
+        <tr><td><b>Two separate Business Managers → two apps</b></td><td>Two app entries (two App Secrets). Same single callback URL; the OMS signature check tries each App Secret and <code class="inline">page_id</code> disambiguates. Store each Page's token regardless of app.</td></tr>
+        <tr><td><b>Both Ads Managers advertise the SAME Pages</b></td><td>Even simpler — subscribe each Page once; the driving ad account is captured as context on the Graph response if attribution is wanted.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout--tip"><b>Rule of thumb:</b> count the <b>distinct Facebook Pages</b> across both Ads Managers, not the Ads Managers. Each distinct Page needs (1) to be subscribed to our app for <code class="inline">leadgen</code>, and (2) a stored Page access token in the OMS.</div>
+  </section>
+
+  <section class="card">
+    <h2 class="step-title" style="margin-bottom:8px;">One-paragraph summary to send the client</h2>
+    <p>We'll connect your lead ads to your OMS via a secure webhook. On a short screen-share we'll (1) create/pick
+       a Meta App and copy its App ID + Secret, (2) list the Facebook Pages that run your lead ads across both Ads
+       Managers, (3) generate a durable access token for each Page (ideally via a Business "System User"),
+       (4) point Meta's webhook at <code class="inline">https://shifa.weblithic.online/api/webhooks/meta/leads</code>
+       and subscribe each Page to the <code class="inline">leadgen</code> event, and (5) fire a test lead with Meta's
+       free testing tool to confirm it lands in your portal. After that, every new Facebook/Instagram lead flows into
+       your OMS automatically, de-duplicated and assigned to your team — no manual re-typing.</p>
+  </section>
+
+  </main>
+</div>
+
+<footer>
+  Shifa Herbal Remedies — OMS · Meta Lead Ads integration guide. Meta/Graph steps paraphrased from Meta's official
+  developer documentation and verified against it; Graph versions and UI change over time, so re-check the live docs.
+  This document describes Requirement&nbsp;1 (Phase&nbsp;A) of the <code class="inline">crm-external-integrations</code>
+  spec — the receiving endpoint is to be built once the client supplies the app credentials and Page list.
+</footer>
+
+<script>
+  // One-click copy for every code block.
+  document.querySelectorAll('pre .copybtn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var code = btn.parentElement.querySelector('code');
+      var text = code ? code.innerText : '';
+      navigator.clipboard.writeText(text).then(function () {
+        var old = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(function () { btn.textContent = old; }, 1500);
+      });
+    });
+  });
+</script>
+</body>
+</html>

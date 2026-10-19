@@ -235,6 +235,51 @@ public class ReportAggregator {
     }
 
     /**
+     * Salesperson &times; product report (client request): one row per
+     * (salesperson, product) within the window, summing the quantity that
+     * salesperson punched of that product and the sales it contributed (rate
+     * &times; quantity per line). Excludes the non-revenue statuses (rejected /
+     * payment-rejected / cancelled), matching every other sales figure. A
+     * {@code null} salesperson is bucketed under {@code salespersonId == null}
+     * (reported as {@code UNSPECIFIED} by the table builder). Ordered by
+     * salesperson id (nulls last), then total sales descending, then product name.
+     */
+    public List<ReportRows.SalespersonProductRow> salespersonProductWise(
+            List<OrderReportRecord> orders, DateRange window) {
+        // Key = salespersonId + '\u0000' + productName (NUL can't occur in a name).
+        Map<String, long[]> qty = new LinkedHashMap<>();
+        Map<String, BigDecimal> sales = new LinkedHashMap<>();
+        Map<String, Long> keyToSalesperson = new LinkedHashMap<>();
+        Map<String, String> keyToProduct = new LinkedHashMap<>();
+        for (OrderReportRecord o : revenueWithin(orders, window)) {
+            Long sp = o.salespersonId();
+            for (OrderReportRecord.ProductLine line : o.products()) {
+                String product = line.productName() == null ? "" : line.productName();
+                String key = (sp == null ? "" : Long.toString(sp)) + '\u0000' + product;
+                qty.computeIfAbsent(key, k -> new long[1])[0] += line.quantity();
+                sales.merge(key, line.lineTotal(), BigDecimal::add);
+                keyToSalesperson.putIfAbsent(key, sp);
+                keyToProduct.putIfAbsent(key, product);
+            }
+        }
+        List<ReportRows.SalespersonProductRow> rows = new ArrayList<>();
+        for (Map.Entry<String, long[]> e : qty.entrySet()) {
+            String key = e.getKey();
+            rows.add(new ReportRows.SalespersonProductRow(
+                    keyToSalesperson.get(key),
+                    keyToProduct.get(key),
+                    e.getValue()[0],
+                    scale(sales.getOrDefault(key, BigDecimal.ZERO))));
+        }
+        rows.sort(Comparator
+                .comparing((ReportRows.SalespersonProductRow r) ->
+                        r.salespersonId() == null ? Long.MAX_VALUE : r.salespersonId())
+                .thenComparing(Comparator.comparing(ReportRows.SalespersonProductRow::totalSales).reversed())
+                .thenComparing(ReportRows.SalespersonProductRow::productName));
+        return rows;
+    }
+
+    /**
      * State-wise report: one row per destination state within the window, with
      * order count and total sales, ordered by sales descending then state name
      * (Req 20.1).
