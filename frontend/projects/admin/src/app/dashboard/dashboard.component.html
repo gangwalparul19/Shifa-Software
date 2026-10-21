@@ -58,9 +58,10 @@
   <div class="card anim-fade-up mb-3">
     <div class="card-body">
       <div class="d-flex align-items-center justify-content-between mb-2">
-        <h3 class="card-title m-0">Today at a glance</h3>
+        <h3 class="card-title m-0">Today’s activity</h3>
+        <span class="text-secondary small">IST · {{ os.date }}</span>
         <span class="badge" [class.bg-red-lt]="os.attentionTotal > 0" [class.bg-green-lt]="os.attentionTotal === 0">
-          {{ os.attentionTotal > 0 ? os.attentionTotal + ' need action' : 'All clear' }}
+          {{ os.attentionTotal > 0 ? os.attentionTotal + ' backlog signals' : 'No open backlog' }}
         </span>
       </div>
       <div class="row g-2 g-md-3">
@@ -73,14 +74,14 @@
         </div>
         <div class="col-6 col-md-3">
           <div class="p-2 rounded bg-green-lt h-100">
-            <div class="subheader text-truncate">Received today</div>
+            <div class="subheader text-truncate">Upfront received on today’s orders</div>
             <div class="h2 m-0">{{ inr(os.revenueToday) }}</div>
           </div>
         </div>
         <div class="col-6 col-md-3">
           <a routerLink="/reconciliation" class="p-2 rounded bg-yellow-lt h-100 d-block text-reset text-decoration-none">
-            <div class="subheader text-truncate">COD to collect</div>
-            <div class="h2 m-0">{{ inr(os.codToCollect) }}</div>
+            <div class="subheader text-truncate">COD due on today’s orders</div>
+            <div class="h2 m-0">{{ inr(os.codDueToday) }}</div>
             @if (os.codOverSla > 0) {
               <div class="small text-red">{{ os.codOverSla }} past SLA ({{ inr(os.codOverSlaAmount) }})</div>
             }
@@ -94,6 +95,15 @@
               <div class="small text-secondary">{{ inr(os.topSalespersonRevenue) }}</div>
             }
           </div>
+        </div>
+        <!-- Open backlog across all dates -->
+        <div class="col-12 mt-2"><div class="subheader fw-semibold">Open backlog · all dates</div></div>
+        <div class="col-6 col-md-3">
+          <a routerLink="/reconciliation" class="p-2 rounded bg-yellow-lt h-100 d-block text-reset text-decoration-none">
+            <div class="subheader text-truncate">Unsettled COD backlog</div>
+            <div class="h2 m-0">{{ inr(os.codToCollect) }}</div>
+            @if (os.codOverSla > 0) {<div class="small text-red">{{ os.codOverSla }} past SLA ({{ inr(os.codOverSlaAmount) }})</div>}
+          </a>
         </div>
         <!-- Actionable backlog -->
         <div class="col-6 col-md-3">

@@ -34,9 +34,17 @@ public class SettingsService {
     private static final java.math.BigDecimal MAX_GST_SLAB = new java.math.BigDecimal("28");
 
     private final AppSettingsRepository repository;
+    private final BankAccountRepository bankAccountRepository;
 
+    /** Legacy constructor retained for small unit fixtures. */
     public SettingsService(AppSettingsRepository repository) {
+        this(repository, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SettingsService(AppSettingsRepository repository, BankAccountRepository bankAccountRepository) {
         this.repository = repository;
+        this.bankAccountRepository = bankAccountRepository;
     }
 
     /**
@@ -78,6 +86,22 @@ public class SettingsService {
         }
         String gstSlabs = normaliseGstSlabs(request.gstSlabs());
 
+        // Shopify settlement configuration is separate from the Shopify webhook
+        // import switch. When enabled, an active destination account is required;
+        // payout import remains unassigned when tracking is disabled.
+        boolean shopifySettlementEnabled = Boolean.TRUE.equals(request.shopifySettlementEnabled());
+        Long shopifySettlementAccountId = request.shopifySettlementAccountId();
+        if (shopifySettlementEnabled && shopifySettlementAccountId == null) {
+            throw new ValidationException("A Shopify settlement bank account is required when tracking is enabled.");
+        }
+        if (shopifySettlementAccountId != null && bankAccountRepository != null) {
+            BankAccount account = bankAccountRepository.findById(shopifySettlementAccountId)
+                    .orElseThrow(() -> new ValidationException("The selected Shopify settlement account does not exist."));
+            if (!account.isActive()) {
+                throw new ValidationException("The selected Shopify settlement account is inactive.");
+            }
+        }
+
         AppSettings settings = getSettings();
         settings.setGstEnabled(gstEnabled);
         settings.setGstin(gstin);
@@ -115,6 +139,8 @@ public class SettingsService {
         // validation on the request.
         settings.setAutoApproveEnabled(Boolean.TRUE.equals(request.autoApproveEnabled()));
         settings.setAutoApproveMaxAmount(request.autoApproveMaxAmount());
+        settings.setShopifySettlementEnabled(shopifySettlementEnabled);
+        settings.setShopifySettlementAccountId(shopifySettlementAccountId);
         return repository.save(settings);
     }
 

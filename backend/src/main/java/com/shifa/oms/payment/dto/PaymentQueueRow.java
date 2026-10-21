@@ -35,7 +35,12 @@ public record PaymentQueueRow(
         java.util.List<DuplicateOrderRef> duplicateOrders,
         // Where the order originated (SALESPERSON / SHOPIFY / STORE / STOREFRONT),
         // so the queue can be filtered Portal (non-Shopify) vs Shopify.
-        com.shifa.oms.order.OrderSource source
+        com.shifa.oms.order.OrderSource source,
+        // Payment transaction metadata for reconciliation; account number is masked.
+        com.shifa.oms.order.PaymentMethod paymentMethod,
+        String paymentAccountName,
+        String paymentAccountMasked,
+        String paymentUtr
 ) {
 
     /**
@@ -71,6 +76,14 @@ public record PaymentQueueRow(
                 order.getCreatedAt(),
                 salespersonName,
                 duplicateOrders == null ? java.util.List.of() : duplicateOrders,
-                order.getSource());
+                order.getSource(),
+                firstPayment(order, p -> p.getPaymentMethod()),
+                firstPayment(order, p -> p.getBankAccountNameSnapshot()),
+                firstPayment(order, p -> p.getBankAccountMaskedSnapshot()),
+                firstPayment(order, p -> p.getUtr()));
     }
+
+    private static <T> T firstPayment(OrderEntity order, java.util.function.Function<com.shifa.oms.order.OrderPayment, T> fn) {
+        return order.getPayments().stream().findFirst().map(fn).orElse(null);
+}
 }

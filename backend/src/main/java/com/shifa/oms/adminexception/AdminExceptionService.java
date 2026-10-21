@@ -70,7 +70,11 @@ public class AdminExceptionService {
         List<OrderEntity> pendingApproval =
                 orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.PENDING_ADMIN_APPROVAL);
         List<OrderEntity> pendingPayment =
-                orderRepository.findByPaymentVerificationStatusOrderByCreatedAtDesc(PaymentVerificationStatus.PENDING);
+                orderRepository.findByPaymentVerificationStatusOrderByCreatedAtDesc(PaymentVerificationStatus.PENDING)
+                        .stream()
+                        .filter(order -> !Set.of(OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED)
+                                .contains(order.getOrderStatus()))
+                        .toList();
         List<OrderEntity> failedDelivery =
                 orderRepository.findByOrderStatusInOrderByCreatedAtDesc(FAILED_DELIVERY);
         List<ReceivableEntity> pendingClaims = receivableRepository

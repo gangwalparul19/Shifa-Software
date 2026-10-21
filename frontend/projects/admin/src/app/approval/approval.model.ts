@@ -55,6 +55,10 @@ export interface ApprovalQueueItem {
   duplicateOrderCodes?: string[];
   /** The order/packaging note the salesperson added (null when none). */
   notes?: string | null;
+  paymentMethod?: 'UPI_QR' | 'BANK_TRANSFER' | 'CASH' | 'SHOPIFY' | 'OTHER' | null;
+  paymentAccountName?: string | null;
+  paymentAccountMasked?: string | null;
+  paymentUtr?: string | null;
 }
 
 /** Payment verification state (mirrors the backend {@code PaymentVerificationStatus}). */

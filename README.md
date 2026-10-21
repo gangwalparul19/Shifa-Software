@@ -500,3 +500,18 @@ could not cover it because a pure-COD order never goes through payment verificat
   reconciliation module already tracks the courier receivable separately, so that leg is not modelled.
 - No migration. Covered by `DeliveryReceiptPostingTest` (delivery-date voucher asserted to differ from
   the order-entry date, redispatch uses the latest delivery, settlement-date fallback, prepaid rejected).
+
+### Bank accounts, UTR capture & Shopify settlement destination (V97)
+The Settings page now includes a **Bank Accounts** manager (Tabler bank icon) for active receiving and settlement accounts. Admins can configure UPI/QR, bank-transfer, Shopify-settlement, QuikShip-remittance, cash, and other account purposes; historical accounts are deactivated rather than deleted. The existing singleton invoice bank fields remain for invoice compatibility.
+
+Normal salesperson order entry now captures the payment method, receiving account, and UTR/reference alongside the required upfront payment screenshot. The backend validates active account selection and UTR for UPI/bank payments, snapshots masked account identity on the payment transaction, and exposes scoped payment metadata at `GET /api/orders/{id}/payments`; Payment Verification, Approval Queue, and Order Detail show the account/UTR without exposing storage keys or unrestricted account numbers. Lead conversion and rejected-order resubmission carry the same metadata.
+
+Shopify settlement tracking is configured separately from the existing Shopify webhook-import switch: Admin Settings can enable/disable settlement tracking and select the default Shopify settlement bank account. Shopify order import remains independent; actual T+1/T+2 payout reconciliation will use the configured destination when settlement batches are added. Migration **V97** adds the bank-account master, payment metadata columns, and Shopify settlement settings.
+
+### Settlement Center operational slice (V98)
+The new `/settlements` page adds the first operational reconciliation ledger for bank receipts, Shopify payouts, and QuikShip COD batches. Admin/Accountant can upload CSV/XLS/XLSX statements, preview deterministic matches, and post a batch; CA can inspect batches and lines read-only. Matching uses exact UTR, Shopify order ID, order code, or AWB references, and explicitly reports matched, mismatch, unmatched, ambiguous, duplicate-in-file, and invalid rows. Each batch keeps line-level allocations and suspense amounts, with pagination and a line-review drawer.
+
+V98 deliberately records settlement evidence and allocations without automatically changing existing COD receivables, order statuses, or General Ledger vouchers. The existing QuikShip `/api/recon/remittance/import` flow remains unchanged for its delivery catch-up and COD settlement side effects. Automatic voucher posting and reviewed receivable settlement will be implemented after the allocation rules are approved.
+
+### Dashboard KPI scope fix
+The admin dashboard now distinguishes **today’s activity** from **open backlog across all dates**. Orders today, upfront received on today’s orders, COD due on today’s orders, and top salesperson today are day-scoped using the IST business day. Unsettled COD, approvals, payment verification, failed deliveries, and stuck QuikShip shipments are backlog metrics and are labelled accordingly. Payment verification counts exclude terminal REJECTED/PAYMENT_REJECTED/CANCELLED rows, and stuck shipments are restricted to QuikShip orders. This prevents a day with zero new orders from misleadingly showing an all-time ₹10 lakh COD backlog as today’s collection requirement.

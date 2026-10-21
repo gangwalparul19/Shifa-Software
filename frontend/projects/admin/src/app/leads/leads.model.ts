@@ -1,5 +1,5 @@
 import { Money } from 'core';
-import { CreateOrderLineItem, LeadSource } from '../orders/orders.model';
+import { CreateOrderLineItem, LeadSource, PaymentMethod } from '../orders/orders.model';
 
 /**
  * Client-side models for the Lead Management / sales-pipeline feature, mirroring
@@ -232,6 +232,9 @@ export interface LeadConvertRequest {
   paymentScreenshotKey?: string;
   /** Additional payment-proof storage keys beyond the primary one (V65). */
   paymentScreenshotKeys?: string[];
+  paymentMethod?: PaymentMethod;
+  paymentAccountId?: number | null;
+  paymentUtr?: string | null;
   /** Optional free-text order note captured at conversion (≤1000 chars). */
   notes?: string;
   /** Optional order-level discount carried to the created order (Flat/Percent). */

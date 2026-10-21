@@ -1,0 +1,6 @@
+.settlement-import { border-top: 3px solid #1f5d3f; }
+.settlement-preview { padding: .75rem 1rem; border-radius: .6rem; background: #eef7f1; border: 1px solid #cfe7d7; }
+.settlement-row { cursor: pointer; }
+.settlement-row:hover { background: rgba(31,93,63,.05); }
+.settlement-drawer { position: fixed; inset: 0; z-index: 1050; background: rgba(0,0,0,.35); display: flex; justify-content: flex-end; }
+.settlement-drawer__panel { background: #fff; width: min(900px, 96vw); height: 100%; overflow: auto; padding: 1.25rem; box-shadow: -8px 0 24px rgba(0,0,0,.16); }

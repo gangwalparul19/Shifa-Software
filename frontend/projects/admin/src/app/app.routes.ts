@@ -16,6 +16,7 @@ import { ScanComponent } from './packing/scan.component';
 import { RtoComponent } from './packing/rto.component';
 import { PickListComponent } from './packing/pick-list.component';
 import { ReconciliationComponent } from './reconciliation/reconciliation.component';
+import { SettlementComponent } from './settlements/settlement.component';
 import { ReportsComponent } from './reports/reports.component';
 import { SettingsComponent } from './settings/settings.component';
 import { UsersComponent } from './users/users.component';
@@ -404,6 +405,11 @@ export const routes: Routes = [
       {
         path: 'reconciliation',
         component: ReconciliationComponent,
+        canActivate: [accountantGuard],
+      },
+      {
+        path: 'settlements',
+        component: SettlementComponent,
         canActivate: [accountantGuard],
       },
       {

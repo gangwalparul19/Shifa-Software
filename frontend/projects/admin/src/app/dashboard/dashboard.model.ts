@@ -94,6 +94,8 @@ export interface OwnerSnapshot {
   failedDeliveries: number;
   rtoCount: number;
   codToCollect: number;
+  /** COD due on orders created during the current business day. */
+  codDueToday: number;
   codOverSla: number;
   codOverSlaAmount: number;
   pendingClaims: number;

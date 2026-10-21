@@ -140,5 +140,28 @@ public record SettingsRequest(
          */
         @DecimalMin(value = "0.00", message = "autoApproveMaxAmount must not be negative")
         @Digits(integer = 10, fraction = 2, message = "autoApproveMaxAmount must be a DECIMAL(12,2) value")
-        BigDecimal autoApproveMaxAmount) {
+        BigDecimal autoApproveMaxAmount,
+
+        /** Whether Shopify payout settlement tracking is enabled. */
+        Boolean shopifySettlementEnabled,
+
+        /** Active bank-account master id expected to receive Shopify payouts. */
+        Long shopifySettlementAccountId) {
+
+    /** Backward-compatible constructor for settings callers created before V97. */
+    public SettingsRequest(Boolean gstEnabled, String gstin, String legalName, String addressLine,
+                           String city, String state, String stateCode, BigDecimal gstRatePercent,
+                           Boolean pricesIncludeGst, String invoiceFooterNote, String contactPhone,
+                           String contactEmail, Integer lowStockThreshold, String invoiceNumberPrefix,
+                           String invoiceTerms, String bankName, String bankAccountName,
+                           String bankAccountNumber, String bankIfsc, String bankBranch, String gstSlabs,
+                           BigDecimal aggregateTurnover, Integer gstReminderWindowDays,
+                           BigDecimal gstReconciliationTolerance, Boolean autoApproveEnabled,
+                           BigDecimal autoApproveMaxAmount) {
+        this(gstEnabled, gstin, legalName, addressLine, city, state, stateCode, gstRatePercent,
+                pricesIncludeGst, invoiceFooterNote, contactPhone, contactEmail, lowStockThreshold,
+                invoiceNumberPrefix, invoiceTerms, bankName, bankAccountName, bankAccountNumber,
+                bankIfsc, bankBranch, gstSlabs, aggregateTurnover, gstReminderWindowDays,
+                gstReconciliationTolerance, autoApproveEnabled, autoApproveMaxAmount, false, null);
+    }
 }

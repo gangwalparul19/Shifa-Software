@@ -111,6 +111,9 @@
               @if (row.salespersonName) {
                 <div class="text-secondary small"><i class="ti ti-user me-1"></i>{{ row.salespersonName }}</div>
               }
+              @if (row.paymentAccountName || row.paymentUtr) {
+                <div class="text-secondary small"><i class="ti ti-building-bank me-1"></i>{{ row.paymentAccountName || 'Account' }} · {{ row.paymentUtr || 'No UTR' }}</div>
+              }
             </div>
             <div class="text-end">
               <div class="fw-semibold" [title]="row.amountReceived | inr">{{ row.amountReceived | compactInr }}</div>
@@ -154,6 +157,7 @@
             <th>Duplicate of</th>
             <th>Customer</th>
             <th>Salesperson</th>
+            <th>Receiving account / UTR</th>
             <th class="text-end">Received</th>
             <th class="text-end">Total</th>
             <th>Received on</th>

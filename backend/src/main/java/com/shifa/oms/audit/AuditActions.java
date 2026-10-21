@@ -76,6 +76,10 @@ public final class AuditActions {
     // Courier COD remittance CSV import & auto-match (enhancement).
     public static final String COD_REMITTANCE_IMPORTED = "COD_REMITTANCE_IMPORTED";
 
+    // Settlement batch imports and suspense resolution (V98).
+    public static final String SETTLEMENT_BATCH_IMPORTED = "SETTLEMENT_BATCH_IMPORTED";
+    public static final String SETTLEMENT_SUSPENSE_RESOLVED = "SETTLEMENT_SUSPENSE_RESOLVED";
+
     // Procurement: suppliers + purchase orders (Feature C2).
     public static final String SUPPLIER_CREATED = "SUPPLIER_CREATED";
     public static final String PO_CREATED = "PO_CREATED";
@@ -176,4 +180,6 @@ public final class AuditActions {
     public static final String ENTITY_GST = "GST";
     /** A General Ledger double-entry voucher (general-ledger-accounting). */
     public static final String ENTITY_VOUCHER = "VOUCHER";
+    public static final String ENTITY_SETTLEMENT_BATCH = "SETTLEMENT_BATCH";
+    public static final String ENTITY_SETTLEMENT_LINE = "SETTLEMENT_LINE";
 }

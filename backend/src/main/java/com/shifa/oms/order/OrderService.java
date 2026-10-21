@@ -24,6 +24,7 @@ import com.shifa.oms.order.dto.CustomerPrefillResponse;
 import com.shifa.oms.order.dto.DuplicateCheckResponse;
 import com.shifa.oms.order.dto.LineItemRequest;
 import com.shifa.oms.order.dto.OrderResponse;
+import com.shifa.oms.order.dto.OrderPaymentResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.order.dto.PaymentScreenshotResponse;
 import com.shifa.oms.order.dto.StoreLineItemRequest;
@@ -147,6 +148,22 @@ public class OrderService {
      * under the legacy test constructors — the message is then skipped.
      */
     private final com.shifa.oms.notification.ShipmentMilestoneNotifier milestoneNotifier;
+
+    /** Optional bank-account master; setter injection preserves legacy test constructors. */
+    private com.shifa.oms.settings.BankAccountRepository bankAccountRepository;
+    /** Optional payment repository used to flag reused UTRs at capture time. */
+    private OrderPaymentRepository orderPaymentRepository;
+
+    /** Injected separately so historical unit constructors remain source-compatible. */
+    @Autowired(required = false)
+    void setBankAccountRepository(com.shifa.oms.settings.BankAccountRepository bankAccountRepository) {
+        this.bankAccountRepository = bankAccountRepository;
+    }
+
+    @Autowired(required = false)
+    void setOrderPaymentRepository(OrderPaymentRepository orderPaymentRepository) {
+        this.orderPaymentRepository = orderPaymentRepository;
+    }
 
     /** {@code vouchers.source_type} for a finalised sales order (matches AdminOrderService). */
     private static final String LEDGER_SOURCE_ORDER = "ORDER";
@@ -364,6 +381,9 @@ public class OrderService {
         }
         // Classify (also rejects amountReceived > total, Req 7.10).
         PaymentCalculation calc = PaymentCalculator.classify(total, received);
+        PaymentCapture paymentCapture = resolvePaymentCapture(
+                request.paymentMethod(), request.paymentAccountId(), request.paymentUtr(),
+                calc.amountReceived().toBigDecimal(), null);
 
         // "Place on behalf of" (admin only): when an ADMIN punches the order for a
         // salesperson/team lead, attribute the order to that user (created_by +
@@ -425,7 +445,7 @@ public class OrderService {
             order.markPaymentPendingVerification();
         }
 
-        populateAggregate(order, priced, calc, screenshotKeys,
+        populateAggregate(order, priced, calc, screenshotKeys, paymentCapture,
                 creator.username(), SOURCE_SALESPERSON);
 
         // Snapshot the order-level discount (type + raw value + resolved amount)
@@ -1100,6 +1120,11 @@ public class OrderService {
         // surface the fresh one), while older proofs stay in the list as history.
         // A new primary proof is also recorded on the payment row for consistency.
         List<String> newScreenshotKeys = editScreenshotKeys(request);
+        PaymentCapture paymentCapture = PaymentCapture.none();
+        if (request.paymentMethod() != null || request.paymentAccountId() != null || request.paymentUtr() != null) {
+            paymentCapture = resolvePaymentCapture(request.paymentMethod(), request.paymentAccountId(), request.paymentUtr(),
+                    calc.amountReceived().toBigDecimal(), order.getId());
+        }
         if (!newScreenshotKeys.isEmpty()) {
             for (int i = 0; i < newScreenshotKeys.size(); i++) {
                 String key = newScreenshotKeys.get(i);
@@ -1111,7 +1136,9 @@ public class OrderService {
             }
             if (!calc.amountReceived().isZero()) {
                 order.addPayment(new OrderPayment(
-                        calc.amountReceived().toBigDecimal(), newScreenshotKeys.get(0)));
+                        calc.amountReceived().toBigDecimal(), newScreenshotKeys.get(0),
+                        paymentCapture.method(), paymentCapture.accountId(), paymentCapture.accountName(),
+                        paymentCapture.accountMasked(), paymentCapture.utr()));
             }
             // The payment proof changed on this edit — a non-COD order's payment
             // must be re-verified against the new screenshot/amount. Re-mark it
@@ -1519,6 +1546,14 @@ public class OrderService {
         return byProduct;
     }
 
+    /** Lists payment transactions without exposing proof storage keys. */
+    @Transactional(readOnly = true)
+    public List<OrderPaymentResponse> listPayments(Long id, AuthPrincipal actor) {
+        return loadScoped(id, actor).getPayments().stream()
+                .map(OrderPaymentResponse::from)
+                .toList();
+    }
+
     /**
      * Loads the payment screenshot for an order (Req 21.2). The controller gates
      * this to ACCOUNTANT/ADMIN; here we resolve the stored object by the order's
@@ -1924,6 +1959,46 @@ public class OrderService {
         return new ResolvedAddress(addressLine, city, state, postalCode, null);
     }
 
+    /** Fills a payment transaction from an order-entry capture. */
+    private PaymentCapture resolvePaymentCapture(String methodRaw, Long accountId, String utrRaw,
+                                                 BigDecimal amount, Long currentOrderId) {
+        PaymentMethod method = PaymentMethod.from(methodRaw);
+        String utr = trimToNull(utrRaw);
+        if (bankAccountRepository == null) {
+            return new PaymentCapture(method, accountId, null, null, utr);
+        }
+        if (amount == null || amount.signum() <= 0) {
+            return new PaymentCapture(method, null, null, null, null);
+        }
+        if (method.requiresReceivingAccount()) {
+            if (accountId == null) {
+                throw new ValidationException("Select the bank/QR account that received the upfront payment.");
+            }
+            if (utr == null) {
+                throw new ValidationException("UTR/reference is required for UPI or bank-transfer payments.");
+            }
+        }
+        if (accountId == null) {
+            return new PaymentCapture(method, null, null, null, utr);
+        }
+        com.shifa.oms.settings.BankAccount account = bankAccountRepository.findById(accountId)
+                .orElseThrow(() -> new ValidationException("The selected receiving bank account does not exist."));
+        if (!account.isActive()) {
+            throw new ValidationException("The selected receiving bank account is inactive.");
+        }
+        if (utr != null && orderPaymentRepository != null
+                && orderPaymentRepository.countDuplicateUtr(account.getId(), utr, currentOrderId) > 0) {
+            throw new ValidationException("This UTR/reference is already recorded for the selected receiving account.");
+        }
+        return new PaymentCapture(method, account.getId(), account.getDisplayName(),
+                account.maskedAccountNumber(), utr);
+    }
+
+    private record PaymentCapture(PaymentMethod method, Long accountId, String accountName,
+                                  String accountMasked, String utr) {
+        static PaymentCapture none() { return new PaymentCapture(null, null, null, null, null); }
+    }
+
     /**
      * The ordered, de-duplicated set of payment proofs for a new order (V65): the
      * legacy single {@code paymentScreenshotKey} first (so it stays the primary
@@ -1977,6 +2052,13 @@ public class OrderService {
     private void populateAggregate(OrderEntity order, List<PricedLine> priced,
                                    PaymentCalculation calc, List<String> screenshotKeys,
                                    String actor, String source) {
+        populateAggregate(order, priced, calc, screenshotKeys, PaymentCapture.none(), actor, source);
+    }
+
+    /** Fills the aggregate and records the payment account/UTR snapshot when available. */
+    private void populateAggregate(OrderEntity order, List<PricedLine> priced,
+                                   PaymentCalculation calc, List<String> screenshotKeys,
+                                   PaymentCapture paymentCapture, String actor, String source) {
         for (PricedLine line : priced) {
             order.addLineItem(line.toEntity());
         }
@@ -2003,8 +2085,10 @@ public class OrderService {
         }
 
         if (!calc.amountReceived().isZero()) {
-            order.addPayment(
-                    new OrderPayment(calc.amountReceived().toBigDecimal(), primaryKey(screenshotKeys)));
+            order.addPayment(new OrderPayment(
+                    calc.amountReceived().toBigDecimal(), primaryKey(screenshotKeys),
+                    paymentCapture.method(), paymentCapture.accountId(), paymentCapture.accountName(),
+                    paymentCapture.accountMasked(), paymentCapture.utr()));
         }
 
         // Creation history row: null from-status → initial status (Req 8.2, 8.4).

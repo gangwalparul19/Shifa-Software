@@ -1,0 +1,44 @@
+<div class="shifa-bank-manager">
+  <div class="d-flex align-items-start justify-content-between gap-2 mb-3">
+    <div>
+      <h4 class="mb-1">Receiving accounts</h4>
+      <p class="text-secondary small mb-0">These accounts appear in the salesperson payment selector. Historical payments keep their account snapshot.</p>
+    </div>
+    @if (editingId() === null) {
+      <button type="button" class="btn btn-primary btn-sm" (click)="openCreate()"><i class="ti ti-plus me-1"></i>Add account</button>
+    }
+  </div>
+
+  @if (editingId() !== null || form.dirty) {
+    <div class="shifa-bank-manager__form mb-3">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <strong>{{ editingId() === null ? 'Add bank account' : 'Edit bank account' }}</strong>
+        <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="cancelEdit()">Cancel</button>
+      </div>
+      <div class="row g-2">
+        <div class="col-12 col-md-6"><label class="form-label required">Display name</label><input class="form-control" [formControl]="form.controls.displayName" placeholder="Shifa QR 1" /></div>
+        <div class="col-12 col-md-6"><label class="form-label required">Account purpose</label><select class="form-select" [formControl]="form.controls.accountType"><option value="" disabled>Select purpose</option>@for (type of accountTypes; track type.value) {<option [value]="type.value">{{ type.label }}</option>}</select></div>
+        <div class="col-6 col-md-4"><label class="form-label">Bank name</label><input class="form-control" [formControl]="form.controls.bankName" placeholder="HDFC Bank" /></div>
+        <div class="col-6 col-md-4"><label class="form-label">Account holder</label><input class="form-control" [formControl]="form.controls.accountHolderName" /></div>
+        <div class="col-6 col-md-4"><label class="form-label">Account number</label><input class="form-control shifa-mono" [formControl]="form.controls.accountNumber" /></div>
+        <div class="col-6 col-md-4"><label class="form-label">IFSC</label><input class="form-control shifa-mono text-uppercase" [formControl]="form.controls.ifsc" /></div>
+        <div class="col-6 col-md-4"><label class="form-label">Branch</label><input class="form-control" [formControl]="form.controls.branch" /></div>
+        <div class="col-6 col-md-4"><label class="form-label">UPI ID / VPA</label><input class="form-control shifa-mono" [formControl]="form.controls.upiId" placeholder="shifa@upi" /></div>
+        <div class="col-6"><label class="form-label">Sort order</label><input type="number" min="0" class="form-control" [formControl]="form.controls.sortOrder" /></div>
+        <div class="col-6 d-flex align-items-end gap-3 pb-2"><label class="form-check"><input class="form-check-input" type="checkbox" [formControl]="form.controls.active" /> <span class="form-check-label">Active</span></label><label class="form-check"><input class="form-check-input" type="checkbox" [formControl]="form.controls.defaultAccount" /> <span class="form-check-label">Default</span></label></div>
+        <div class="col-12"><label class="form-label">Internal note</label><textarea class="form-control" rows="2" [formControl]="form.controls.internalNote"></textarea></div>
+      </div>
+      <div class="text-end mt-3"><button type="button" class="btn btn-primary" (click)="save()" [disabled]="busy()">@if (busy()) {<span class="spinner-border spinner-border-sm me-1"></span>} Save account</button></div>
+    </div>
+  }
+
+  @if (loading()) { <div class="skeleton skeleton-line w-75"></div> }
+  @else if (accounts().length === 0) { <div class="text-secondary py-3">No receiving accounts configured yet.</div> }
+  @else {
+    <div class="table-responsive"><table class="table table-vcenter table-sm mb-0"><thead><tr><th>Account</th><th>Purpose</th><th>Details</th><th>Status</th><th class="text-end">Actions</th></tr></thead><tbody>
+      @for (account of accounts(); track account.id) {
+        <tr [class.text-secondary]="!account.active"><td><strong>{{ account.displayName }}</strong>@if (account.defaultAccount) {<span class="badge tone-green ms-1">Default</span>}</td><td>{{ typeLabel(account.accountType) }}</td><td>{{ account.bankName || '—' }} · {{ account.maskedAccountNumber || account.upiId || 'No identifier' }}</td><td><span class="badge" [class.tone-green]="account.active" [class.tone-grey]="!account.active">{{ account.active ? 'Active' : 'Inactive' }}</span></td><td class="text-end"><button type="button" class="btn btn-sm btn-ghost-secondary me-1" (click)="openEdit(account)"><i class="ti ti-edit"></i></button>@if (account.active) {<button type="button" class="btn btn-sm btn-ghost-danger" (click)="deactivate(account)"><i class="ti ti-ban"></i></button>}</td></tr>
+      }
+    </tbody></table></div>
+  }
+</div>

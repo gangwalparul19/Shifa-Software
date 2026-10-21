@@ -72,6 +72,14 @@ public class AppSettings {
     @Column(name = "shopify_sync_enabled", nullable = false)
     private boolean shopifySyncEnabled = false;
 
+    /** Whether Shopify payout settlement tracking is enabled (V97). */
+    @Column(name = "shopify_settlement_enabled", nullable = false)
+    private boolean shopifySettlementEnabled = false;
+
+    /** Default bank account expected to receive Shopify payouts (V97). */
+    @Column(name = "shopify_settlement_account_id")
+    private Long shopifySettlementAccountId;
+
     /**
      * Config-driven order auto-approval switch (V73; default OFF). When enabled,
      * a newly-punched order that is fully prepaid, at or below
@@ -283,6 +291,22 @@ public class AppSettings {
 
     public void setShopifySyncEnabled(boolean shopifySyncEnabled) {
         this.shopifySyncEnabled = shopifySyncEnabled;
+    }
+
+    public boolean isShopifySettlementEnabled() {
+        return shopifySettlementEnabled;
+    }
+
+    public void setShopifySettlementEnabled(boolean shopifySettlementEnabled) {
+        this.shopifySettlementEnabled = shopifySettlementEnabled;
+    }
+
+    public Long getShopifySettlementAccountId() {
+        return shopifySettlementAccountId;
+    }
+
+    public void setShopifySettlementAccountId(Long shopifySettlementAccountId) {
+        this.shopifySettlementAccountId = shopifySettlementAccountId;
     }
 
     public boolean isAutoApproveEnabled() {

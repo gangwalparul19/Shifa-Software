@@ -138,6 +138,30 @@ public record CreateOrderRequest(
         // required). Any other value = an international order: the full address is in
         // addressLine and city/state/postalCode may be blank.
         @Size(max = 60, message = "country must be at most 60 characters")
-        String country
+        String country,
+
+        /** Payment method for the upfront collection (UPI_QR/BANK_TRANSFER/CASH). */
+        @Size(max = 30, message = "paymentMethod must be at most 30 characters")
+        String paymentMethod,
+
+        /** Active receiving-account master id for UPI/bank payments. */
+        Long paymentAccountId,
+
+        /** Provider UTR/reference for the upfront payment. */
+        @Size(max = 80, message = "paymentUtr must be at most 80 characters")
+        String paymentUtr
 ) {
+    /** Backward-compatible constructor for callers created before V97. */
+    public CreateOrderRequest(String customerName, String customerMobile, String addressLine,
+                              String city, String state, String postalCode, List<LineItemRequest> items,
+                              BigDecimal amountReceived, String paymentScreenshotKey, LeadSource leadSource,
+                              String leadSourceNote, String customerEmail, String notes, String alternateMobile,
+                              String discountType, BigDecimal discountValue, String buyerGstin,
+                              String deliveryMethod, List<String> paymentScreenshotKeys,
+                              Long onBehalfOfUserId, String country) {
+        this(customerName, customerMobile, addressLine, city, state, postalCode, items, amountReceived,
+                paymentScreenshotKey, leadSource, leadSourceNote, customerEmail, notes, alternateMobile,
+                discountType, discountValue, buyerGstin, deliveryMethod, paymentScreenshotKeys,
+                onBehalfOfUserId, country, null, null, null);
+    }
 }

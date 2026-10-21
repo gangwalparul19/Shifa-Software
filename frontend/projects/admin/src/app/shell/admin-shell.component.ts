@@ -533,6 +533,13 @@ export class AdminShellComponent {
         },
         {
           kind: 'link',
+          label: 'Settlement Center',
+          path: '/settlements',
+          icon: 'ti-arrows-transfer-up',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+        {
+          kind: 'link',
           label: 'Returns',
           path: '/returns',
           icon: 'ti-arrow-back-up',

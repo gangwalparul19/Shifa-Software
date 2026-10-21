@@ -11,6 +11,7 @@ import {
   DuplicateCheckResponse,
   ManualStage,
   OrderDetail,
+  OrderPayment,
   OrderSummary,
   QuikShipPublishAck,
   PaymentScreenshot,
@@ -313,6 +314,11 @@ export class OrdersService {
   /** Full order detail with line items and payment tracking (Req 21.1). */
   detail(id: number): Observable<OrderDetail> {
     return this.api.get<OrderDetail>(`/api/orders/${id}`);
+  }
+
+  /** Payment transaction metadata, with account numbers already masked server-side. */
+  payments(id: number): Observable<OrderPayment[]> {
+    return this.api.get<OrderPayment[]>(`/api/orders/${id}/payments`);
   }
 
   /**

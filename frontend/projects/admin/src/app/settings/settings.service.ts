@@ -3,6 +3,57 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
 
+export type BankAccountType =
+  | 'UPI_QR'
+  | 'BANK_TRANSFER'
+  | 'SHOPIFY_SETTLEMENT'
+  | 'QUICSHIP_REMITTANCE'
+  | 'CASH'
+  | 'OTHER';
+
+export interface BankAccount {
+  id: number;
+  displayName: string;
+  accountType: BankAccountType;
+  bankName?: string | null;
+  accountHolderName?: string | null;
+  accountNumber?: string | null;
+  maskedAccountNumber?: string | null;
+  ifsc?: string | null;
+  branch?: string | null;
+  upiId?: string | null;
+  ledgerAccountId?: number | null;
+  active: boolean;
+  defaultAccount: boolean;
+  sortOrder: number;
+  internalNote?: string | null;
+}
+
+export interface PaymentAccountOption {
+  id: number;
+  displayName: string;
+  accountType: BankAccountType;
+  bankName?: string | null;
+  maskedAccountNumber?: string | null;
+  upiId?: string | null;
+}
+
+export interface BankAccountRequest {
+  displayName: string;
+  accountType: BankAccountType;
+  bankName?: string | null;
+  accountHolderName?: string | null;
+  accountNumber?: string | null;
+  ifsc?: string | null;
+  branch?: string | null;
+  upiId?: string | null;
+  ledgerAccountId?: number | null;
+  active: boolean;
+  defaultAccount: boolean;
+  sortOrder: number;
+  internalNote?: string | null;
+}
+
 /**
  * Company + GST settings, mirroring the backend {@code SettingsResponse} /
  * {@code SettingsRequest} ({@code GET}/{@code PUT} {@code /api/admin/settings}).
@@ -55,6 +106,10 @@ export interface AppSettings {
   autoApproveEnabled?: boolean;
   /** Max order total (₹) eligible for auto-approval; null/0 means nothing qualifies. */
   autoApproveMaxAmount?: string | null;
+  /** Whether Shopify payout settlement tracking is enabled. */
+  shopifySettlementEnabled?: boolean;
+  /** Active bank-account id expected to receive Shopify payouts. */
+  shopifySettlementAccountId?: number | null;
 }
 
 /**
@@ -102,5 +157,27 @@ export class SettingsService {
    */
   getLogo(): Observable<Blob> {
     return this.http.get(this.api.url('/api/admin/settings/logo'), { responseType: 'blob' });
+  }
+
+  /** ADMIN bank-account master list for the Settings page. */
+  bankAccounts(): Observable<BankAccount[]> {
+    return this.api.get<BankAccount[]>('/api/admin/settings/bank-accounts');
+  }
+
+  createBankAccount(request: BankAccountRequest): Observable<BankAccount> {
+    return this.api.post<BankAccount>('/api/admin/settings/bank-accounts', request);
+  }
+
+  updateBankAccount(id: number, request: BankAccountRequest): Observable<BankAccount> {
+    return this.api.put<BankAccount>(`/api/admin/settings/bank-accounts/${id}`, request);
+  }
+
+  deactivateBankAccount(id: number): Observable<BankAccount> {
+    return this.api.delete<BankAccount>(`/api/admin/settings/bank-accounts/${id}`);
+  }
+
+  /** Safe active accounts for the salesperson payment selector. */
+  activePaymentAccounts(): Observable<PaymentAccountOption[]> {
+    return this.api.get<PaymentAccountOption[]>('/api/payment-accounts');
   }
 }

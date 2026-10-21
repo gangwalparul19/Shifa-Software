@@ -1,7 +1,17 @@
 import { Money, OrderSource, OrderStatus, PaymentStatus, RejectReason } from 'core';
 
-/**
- * A single line in a new salesperson order (mirrors the backend
+export type PaymentMethod = 'UPI_QR' | 'BANK_TRANSFER' | 'CASH';
+
+export interface PaymentAccountOption {
+  id: number;
+  displayName: string;
+  accountType: 'UPI_QR' | 'BANK_TRANSFER' | 'SHOPIFY_SETTLEMENT' | 'QUICSHIP_REMITTANCE' | 'CASH' | 'OTHER';
+  bankName?: string | null;
+  maskedAccountNumber?: string | null;
+  upiId?: string | null;
+}
+
+/** A single line in a new salesperson order (mirrors the backend
  * {@code LineItemRequest}). {@code rate} is optional: when omitted the backend
  * uses the product's default sale price; when supplied it overrides that line.
  */
@@ -79,7 +89,10 @@ export interface CreateOrderRequest {
    * (V65), for orders with more than one proof — a part payment plus the balance,
    * a UPI receipt plus a bank confirmation, and so on. Omitted for a single proof.
    */
-  paymentScreenshotKeys?: string[];
+  /** Payment method/account metadata for reconciliation (V97). */
+  paymentMethod?: PaymentMethod;
+  paymentAccountId?: number | null;
+  paymentUtr?: string | null;
   leadSource: LeadSource;
   leadSourceNote?: string;
   /** Optional free-text order note captured at order entry (≤1000 chars). */
@@ -209,6 +222,9 @@ export interface UpdateOrderRequest {
   amountReceived?: number;
   paymentScreenshotKey?: string;
   paymentScreenshotKeys?: string[];
+  paymentMethod?: PaymentMethod;
+  paymentAccountId?: number | null;
+  paymentUtr?: string | null;
   /**
    * Destination country for an international (Outside India) order. Omitted for a
    * domestic (India) order — the default. When set, city/state/postalCode may be
@@ -329,6 +345,18 @@ export interface PaymentScreenshot {
   /** Whether this is the order's first proof (the one the legacy endpoint serves). */
   primary: boolean;
   createdAt?: string;
+}
+
+export interface OrderPayment {
+  id: number;
+  amountReceived: Money;
+  paymentMethod?: 'UPI_QR' | 'BANK_TRANSFER' | 'CASH' | 'SHOPIFY' | 'OTHER' | null;
+  bankAccountId?: number | null;
+  bankAccountName?: string | null;
+  bankAccountMasked?: string | null;
+  utr?: string | null;
+  capturedAt?: string | null;
+  hasScreenshot: boolean;
 }
 
 export interface ScreenshotUploadResponse {
