@@ -8,19 +8,16 @@ import java.util.EnumSet;
 import java.util.Set;
 
 /**
- * Read-only result of resolving an order-barcode scan on the RTO page (label
- * redesign feature): identifies the order and its current status, and reports
- * whether marking it RTO is currently a legal move — without changing the
- * order. The client must obtain the reason (+ optional note) and explicit
- * confirmation, then invoke {@code POST /api/packing/{id}/rto}; the final
- * request remains the source of truth for authorization and concurrent status
- * changes.
+ * Read-only result of resolving an order barcode/QR payload on the RTO page
+ * (label redesign feature): identifies the order and its current status, and
+ * reports whether marking it RTO is currently a legal move — without changing
+ * the order.
  *
- * <p>{@code scannedViaCourier}/{@code courierName}/{@code courierAwb} report
- * whether the scanned barcode was actually the delivery partner's own barcode
- * (single-barcode label feature) rather than our internal order code, so the
- * RTO page can show the packer "scanned via &lt;partner&gt; — AWB &lt;value&gt;"
- * as requested.
+ * <p>The client opens a review modal for an eligible scan, then submits
+ * {@code POST /api/packing/{id}/rto} after the operator adds optional comments
+ * and confirms. An ineligible result remains a read-only status message. The
+ * final request remains the source of truth for authorization and concurrent
+ * status changes.
  */
 public record RtoScanPreviewResponse(
         String message,
@@ -37,8 +34,8 @@ public record RtoScanPreviewResponse(
      * failed attempt is closed out by returning the parcel to origin).
      */
     private static final Set<OrderStatus> RTO_ELIGIBLE_STATUSES = EnumSet.of(
-            OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED,
-            OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY,
+            OrderStatus.HANDED_TO_DELIVERY, OrderStatus.COURIER_ASSIGNED,
+            OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY,
             OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED);
 
     /** Resolves a preview for a scan matched by our own order code (no courier barcode involved). */

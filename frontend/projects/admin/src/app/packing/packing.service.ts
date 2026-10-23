@@ -139,17 +139,18 @@ export class PackingService {
   }
 
   /**
-   * Resolve a scanned order-label barcode for the RTO page without mutating the
-   * order (label redesign feature). Reports whether marking it RTO is currently
-   * a legal move.
+   * Resolve a scanned returned-parcel barcode or QR payload for the RTO page
+   * without mutating the order. The page opens a review modal for the result;
+   * the operator adds optional comments and confirms before the guarded RTO
+   * endpoint is called.
    */
   rtoPreview(barcode: string): Observable<RtoScanPreviewResponse> {
     return this.api.post<RtoScanPreviewResponse>('/api/packing/rto-preview', { barcode });
   }
 
   /**
-   * Mark a scanned order RTO (returned to origin) with a required categorized
-   * reason and optional note, after explicit confirmation. A non-RTO-eligible
+   * Mark an eligible scanned order RTO (returned to origin) with the categorized
+   * reason and optional comments supplied by the review modal. A non-RTO-eligible
    * order surfaces as a 409 {@code HttpErrorResponse}.
    */
   markRto(id: number, reason: RtoReason, note?: string): Observable<OrderDetail> {

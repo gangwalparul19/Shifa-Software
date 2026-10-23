@@ -12,6 +12,13 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
 
 app:
+  security:
+    cors:
+      # The Angular HTTPS dev server is local-only. Override CORS_EXTRA_ORIGIN
+      # when the laptop's LAN address changes.
+      extra-origins:
+        - "https://localhost:4300"
+        - "${CORS_EXTRA_ORIGIN:https://192.168.1.104:4300}"
   backup:
     # Full path to the locally installed MySQL 8.0 mysqldump binary (not on PATH).
     mysqldump-path: "C:/Program Files/MySQL/MySQL Server 8.0/bin/mysqldump.exe"

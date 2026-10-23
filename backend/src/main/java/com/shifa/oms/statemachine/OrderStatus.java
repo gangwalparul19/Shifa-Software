@@ -95,7 +95,8 @@ public enum OrderStatus {
         // webhook will ever do it (in-house-delivery feature).
         table.put(HANDED_TO_DELIVERY, EnumSet.of(
                 COURIER_ASSIGNED, HANDED_TO_DELIVERY,
-                DISPATCHED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, CANCELLED));
+                DISPATCHED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED,
+                RTO, CANCELLED));
         // Pickup (Req 10.2) + forward courier progressions so a QuikShipX tracking
         // poll never stalls when an intermediate scan (e.g. picked-up) is skipped
         // between polls — all SYSTEM-driven.

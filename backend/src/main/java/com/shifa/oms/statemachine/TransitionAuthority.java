@@ -129,6 +129,10 @@ public final class TransitionAuthority {
         put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.COURIER_ASSIGNED, true,
                 Role.PACKING_USER, Role.ADMIN);
         put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.HANDED_TO_DELIVERY, true);
+        // A returned parcel can be scanned before asynchronous courier assignment
+        // reports Tracking ID Assigned; packer/admin may close it as RTO.
+        put(t, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.RTO, true,
+                Role.PACKING_USER, Role.ADMIN);
 
         // Manual "Mark Delivered" for in-house (non-QuikShipX) orders: ADMIN,
         // PACKING_USER, or the order's own SALESPERSON may mark it delivered

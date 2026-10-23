@@ -49,7 +49,7 @@ import { BarcodeFormat, DecodeHintType } from '@zxing/library';
           <video #video class="cam-video" muted playsinline></video>
           <div class="cam-reticle"></div>
         </div>
-        <p class="cam-hint">Point the camera at the barcode on the label.</p>
+        <p class="cam-hint">Hold the barcode inside the larger frame.</p>
       }
     </div>
   `,
@@ -109,8 +109,8 @@ import { BarcodeFormat, DecodeHintType } from '@zxing/library';
         position: absolute;
         left: 10%;
         right: 10%;
-        top: 38%;
-        bottom: 38%;
+        top: 28%;
+        bottom: 28%;
         border: 2px solid rgba(143, 211, 166, 0.9);
         border-radius: 10px;
         box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.25);

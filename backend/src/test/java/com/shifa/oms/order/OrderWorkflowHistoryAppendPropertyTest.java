@@ -130,6 +130,9 @@ class OrderWorkflowHistoryAppendPropertyTest {
                 Role.PACKING_USER, Role.ADMIN);
         addSystem(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.COURIER_ASSIGNED);
         addSystem(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.HANDED_TO_DELIVERY);
+        addStaff(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.RTO,
+                Role.PACKING_USER, Role.ADMIN);
+        addSystem(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.RTO);
         // Manual "Mark Delivered" for in-house orders (in-house-delivery feature).
         addStaff(cases, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.DELIVERED,
                 Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON);
