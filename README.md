@@ -500,3 +500,30 @@ could not cover it because a pure-COD order never goes through payment verificat
   reconciliation module already tracks the courier receivable separately, so that leg is not modelled.
 - No migration. Covered by `DeliveryReceiptPostingTest` (delivery-date voucher asserted to differ from
   the order-entry date, redispatch uses the latest delivery, settlement-date fallback, prepaid rejected).
+
+### RTO scan fix — scan review modal with comments before marking RTO (implemented locally, not deployed — 2026-10-22)
+The `/packing/rto` flow now opens a review modal after a barcode/QR scan resolves. The operator can add optional comments and explicitly click **Mark RTO**; an eligible order is not changed before confirmation. Ineligible orders show their current status without changing anything.
+
+The modal now presents labeled, read-only verification fields for order code, current status, customer name/mobile, order ID, scan source, and courier/AWB details when available. It also has an optional comments textarea limited to 500 characters. The existing guarded RTO endpoint receives `RtoReason.OTHER` plus the entered comments only after the operator verifies the details and clicks **Mark RTO**. The backend resolver accepts bare order codes/AWBs and common partner QR payloads, including URL query/fragment values, the final URL path segment, JSON-like key/value content, and `AWB:`/tracking/order fields. Manual RTO also clears `codAmount` and `customerOutstanding`, matching the courier-driven RTO path while preserving the invoice and payment amounts. No migration was added. Focused backend tests passed: **60/60** (`PackingServiceTest` + `EndpointRoleGuardIntegrationTest`); the admin build generated successfully with the existing shell CSS budget warning. This fix is **not deployed yet**.
+
+### Local HTTPS testing from a phone
+The Angular development server is configured for LAN HTTPS on `0.0.0.0:4300` and proxies `/api/**` to the local Spring Boot server at `http://localhost:8080`. This keeps mobile API calls same-origin and avoids mixed-content issues.
+
+Install [mkcert](https://github.com/FiloSottile/mkcert), then from `frontend` generate a certificate containing the laptop LAN IP and local names:
+```cmd
+mkcert -install
+mkdir .certs
+mkcert -cert-file ".certs\\shifa-local.pem" -key-file ".certs\\shifa-local-key.pem" 192.168.1.25 localhost 127.0.0.1 ::1
+```
+Replace `192.168.1.25` with the laptop's IPv4 address from `ipconfig`. Copy the mkcert root CA from `mkcert -CAROOT` to the phone and install/trust it, otherwise the browser may reject the certificate and block camera access. Start the backend normally, then start the frontend:
+```cmd
+npm --prefix "frontend" run start:admin
+```
+Open `https://<laptop-ip>:4300` on the phone. Do not use `localhost` on the phone. The `.certs` directory is ignored and must be regenerated on a new machine or after a certificate change.
+
+The local Spring Boot profile now permits the local HTTPS Angular origin (`https://localhost:4300` and the configured LAN origin, default `https://192.168.1.104:4300`) for CORS preflight/login requests. Set `CORS_EXTRA_ORIGIN` when the laptop LAN IP changes, then restart the backend.
+
+### RTO handover eligibility and larger mobile scanner (implemented locally, not deployed — 2026-10-23)
+Orders in `HANDED_TO_DELIVERY` are now eligible for the same RTO scan path as `COURIER_ASSIGNED`, `DISPATCHED`, `IN_TRANSIT`, and `OUT_FOR_DELIVERY`. The state machine and transition authority now allow `HANDED_TO_DELIVERY → RTO` for `PACKING_USER`/`ADMIN` (and the existing SYSTEM RTO behavior), so a parcel returned before the asynchronous courier assignment is also closable as Returned/RTO. Independent eligibility and transition tests were updated.
+
+The RTO mobile scan field now uses a full-width 4rem input and 3.5rem camera button. The camera overlay's barcode reticle is taller, giving Code 128/AWB labels a larger target. Focused backend tests passed **24/24**; the admin build completed with the existing shell CSS budget warning. No migration; not deployed.

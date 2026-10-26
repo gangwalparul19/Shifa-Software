@@ -23,12 +23,18 @@ import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.statemachine.OrderStatus;
 
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -38,9 +44,14 @@ import org.springframework.transaction.annotation.Transactional;
  * Packing application service (design: "Order / OMS Module" — packing scan;
  * Req 11).
  *
- * <p>A packing user scans an order's internal-label barcode (whose value is the
- * order's {@code order_code}). {@link #scan(String, String)} resolves that code
- * to an order and applies one of three outcomes:
+ * <p>A returned parcel can be scanned using our order code, a QuikShipX
+ * shipper order id/AWB, a generic courier AWB, or a partner QR payload that
+ * contains one of those values. Scanning resolves an order into a review
+ * modal; only an explicit confirmation marks it RTO. The backend records
+ * {@code OTHER} because the barcode cannot reliably identify the specific
+ * delivery-failure category. Ineligible scans are returned as a read-only
+ * status message.
+ *
  * <ul>
  *   <li><strong>Packed</strong> (Req 11.1): the order is in
  *       {@code Label_Generated}, so it transitions to {@code Packed} through the
@@ -75,8 +86,8 @@ public class PackingService {
      * closed out — and it raises the credit note that reverses the sale for GST.
      */
     private static final java.util.Set<OrderStatus> RTO_ELIGIBLE_STATUSES = java.util.EnumSet.of(
-            OrderStatus.COURIER_ASSIGNED, OrderStatus.DISPATCHED,
-            OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY,
+            OrderStatus.HANDED_TO_DELIVERY, OrderStatus.COURIER_ASSIGNED,
+            OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY,
             OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED);
 
     private final OrderRepository orderRepository;
@@ -459,52 +470,153 @@ public class PackingService {
      * </ol>
      * Only the first match wins; an unmatched code is {@code BARCODE_NOT_RECOGNIZED}.
      */
+    private static final Pattern QR_KEY_VALUE_PATTERN = Pattern.compile(
+            "(?i)(?:awb|waybill|tracking(?:id|_id)?|order(?:code|_code|id|_id)?|"
+                    + "shipper(?:order)?_?id|client(?:order)?_?id)[^A-Za-z0-9]+"
+                    + "([A-Za-z0-9][A-Za-z0-9_-]*)");
+    private static final Set<String> QR_QUERY_KEYS = Set.of(
+            "awb", "waybill", "tracking", "trackingid", "tracking_id",
+            "order", "ordercode", "order_code", "orderid", "order_id",
+            "shipperorderid", "shipper_order_id", "clientorderid", "client_order_id");
+
+    /**
+     * Resolves the raw value emitted by a handheld/camera scanner. Most labels
+     * contain the bare order code or AWB, but partner QR labels sometimes encode
+     * the same value in a URL, JSON payload, or a small {@code AWB: ...} string.
+     * Trying the extracted candidates keeps the RTO scan compatible with all of
+     * those label formats while preserving the existing exact-value precedence.
+     */
     private BarcodeMatch resolveBarcodeMatch(String barcode) {
-        String code = barcode == null ? "" : barcode.trim();
-        java.util.Optional<OrderEntity> byCode = orderRepository.findByOrderCode(code);
-        if (byCode.isPresent()) {
-            return BarcodeMatch.direct(byCode.get());
-        }
-        if (orderShipmentRepository != null && !code.isEmpty()) {
-            java.util.Optional<com.shifa.oms.quikshipx.OrderShipment> shipment =
-                    orderShipmentRepository.findByShipperOrderId(code)
-                            .or(() -> orderShipmentRepository.findByAwb(code));
-            if (shipment.isPresent()) {
-                java.util.Optional<OrderEntity> viaShipment =
-                        orderRepository.findById(shipment.get().getOrderId());
-                if (viaShipment.isPresent()) {
-                    String awb = shipment.get().getAwb() != null ? shipment.get().getAwb() : code;
-                    return BarcodeMatch.viaCourier(viaShipment.get(), "QuikShipX", awb);
-                }
+        List<String> candidates = barcodeCandidates(barcode);
+
+        // Prefer our own order code whenever the scan contains one. This keeps a
+        // QR payload containing both a URL and an order code deterministic.
+        for (String code : candidates) {
+            java.util.Optional<OrderEntity> byCode = orderRepository.findByOrderCode(code);
+            if (byCode.isPresent()) {
+                return BarcodeMatch.direct(byCode.get());
             }
         }
-        if (courierRecordRepository != null && !code.isEmpty()) {
-            java.util.Optional<com.shifa.oms.courier.CourierRecord> record =
-                    courierRecordRepository.findByAwb(code);
-            if (record.isPresent()) {
-                java.util.Optional<OrderEntity> viaRecord = orderRepository.findById(record.get().getOrderId());
-                if (viaRecord.isPresent()) {
-                    String name = null;
-                    if (courierCompanyRepository != null && record.get().getCourierCompanyId() != null) {
-                        name = courierCompanyRepository.findById(record.get().getCourierCompanyId())
-                                .map(com.shifa.oms.courier.CourierCompany::getName)
-                                .orElse(null);
+
+        for (String code : candidates) {
+            if (orderShipmentRepository != null && !code.isEmpty()) {
+                java.util.Optional<com.shifa.oms.quikshipx.OrderShipment> shipment =
+                        orderShipmentRepository.findByShipperOrderId(code)
+                                .or(() -> orderShipmentRepository.findByAwb(code));
+                if (shipment.isPresent()) {
+                    java.util.Optional<OrderEntity> viaShipment =
+                            orderRepository.findById(shipment.get().getOrderId());
+                    if (viaShipment.isPresent()) {
+                        String awb = shipment.get().getAwb() != null ? shipment.get().getAwb() : code;
+                        return BarcodeMatch.viaCourier(viaShipment.get(), "QuikShipX", awb);
                     }
-                    return BarcodeMatch.viaCourier(viaRecord.get(), name, code);
+                }
+            }
+
+            if (courierRecordRepository != null && !code.isEmpty()) {
+                java.util.Optional<com.shifa.oms.courier.CourierRecord> record =
+                        courierRecordRepository.findByAwb(code);
+                if (record.isPresent()) {
+                    java.util.Optional<OrderEntity> viaRecord =
+                            orderRepository.findById(record.get().getOrderId());
+                    if (viaRecord.isPresent()) {
+                        String name = null;
+                        if (courierCompanyRepository != null && record.get().getCourierCompanyId() != null) {
+                            name = courierCompanyRepository.findById(record.get().getCourierCompanyId())
+                                    .map(com.shifa.oms.courier.CourierCompany::getName)
+                                    .orElse(null);
+                        }
+                        return BarcodeMatch.viaCourier(viaRecord.get(), name, code);
+                    }
                 }
             }
         }
-        throw new BarcodeNotRecognizedException(code);
+        throw new BarcodeNotRecognizedException(barcode == null ? "" : barcode.trim());
+    }
+
+    private static List<String> barcodeCandidates(String rawBarcode) {
+        String raw = rawBarcode == null ? "" : rawBarcode.trim();
+        if (raw.isEmpty()) {
+            return List.of();
+        }
+
+        LinkedHashSet<String> candidates = new LinkedHashSet<>();
+        addBarcodeCandidate(candidates, raw);
+        String decoded = urlDecode(raw);
+        addBarcodeCandidate(candidates, decoded);
+
+        // Query values and the final path segment cover common partner QR URLs.
+        try {
+            URI uri = URI.create(decoded);
+            addUrlPartCandidates(candidates, uri.getQuery());
+            addUrlPartCandidates(candidates, uri.getFragment());
+            String path = uri.getPath();
+            if (path != null) {
+                String[] segments = path.split("/");
+                if (segments.length > 0) {
+                    addBarcodeCandidate(candidates, urlDecode(segments[segments.length - 1]));
+                }
+            }
+        } catch (IllegalArgumentException ignored) {
+            // A plain barcode is not necessarily a URI. The raw and key/value
+            // candidates below still cover it safely.
+        }
+
+        Matcher matcher = QR_KEY_VALUE_PATTERN.matcher(decoded);
+        while (matcher.find()) {
+            addBarcodeCandidate(candidates, matcher.group(1));
+        }
+        return List.copyOf(candidates);
+    }
+
+    private static void addUrlPartCandidates(Set<String> candidates, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        for (String part : value.split("[&#]")) {
+            int equals = part.indexOf('=');
+            if (equals < 0) {
+                continue;
+            }
+            String key = urlDecode(part.substring(0, equals)).trim().toLowerCase(java.util.Locale.ROOT);
+            if (QR_QUERY_KEYS.contains(key)) {
+                addBarcodeCandidate(candidates, urlDecode(part.substring(equals + 1)));
+            }
+        }
+    }
+
+    private static void addBarcodeCandidate(Set<String> candidates, String value) {
+        if (value == null) {
+            return;
+        }
+        String candidate = value.trim();
+        while (candidate.length() >= 2
+                && ((candidate.startsWith("\"") && candidate.endsWith("\""))
+                || (candidate.startsWith("'") && candidate.endsWith("'"))
+                || (candidate.startsWith("[") && candidate.endsWith("]")))) {
+            candidate = candidate.substring(1, candidate.length() - 1).trim();
+        }
+        if (!candidate.isEmpty()) {
+            candidates.add(candidate);
+        }
+    }
+
+    private static String urlDecode(String value) {
+        try {
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ignored) {
+            return value;
+        }
     }
 
     // --- Manual RTO marking (label redesign feature) -----------------------
 
     /**
      * Resolves a scanned order-label barcode for the RTO page without changing
-     * the order, reporting whether marking it RTO is currently a legal move
-     * (Req: manual RTO marking). Reuses the same barcode resolution as the
-     * packing scan ({@link #resolveBarcode(String)}) so either the courier
-     * barcode (AWB) or the order barcode on the redesigned label resolves.
+     * the order, reporting whether marking it RTO is currently a legal move.
+     * The frontend opens a review modal and only calls {@code /{id}/rto} after
+     * the operator adds optional comments and confirms. The preview remains
+     * read-only for status checks and for explaining why an order was skipped.
      *
      * @throws BarcodeNotRecognizedException when no order matches the barcode
      */
@@ -515,11 +627,11 @@ public class PackingService {
     }
 
     /**
-     * Marks an order RTO (returned to origin) after an explicit scan +
-     * confirmation on the RTO page, recording the categorized reason (+
-     * optional note) that a courier webhook/poll driven RTO does not capture.
-     * The final mutation deliberately rechecks the current state because a
-     * preview is not a reservation.
+     * Marks an eligible scanned order RTO (returned to origin), recording the
+     * categorized reason and optional note supplied by the scan flow. The final
+     * mutation deliberately rechecks the current state because a preview is not
+     * a reservation. Manual RTO also clears customer/on-delivery dues, matching
+     * the courier-driven RTO path.
      *
      * @param orderId the order to mark RTO
      * @param request the categorized reason + optional note
@@ -546,6 +658,14 @@ public class PackingService {
         // status + one history row → audit → matrix notification.
         orderWorkflowService.applyTransition(
                 order, OrderStatus.RTO, Actor.user(actor, SOURCE_PACKING));
+
+        // Match the courier-driven RTO path: the parcel is no longer collectible
+        // from the customer, so clear delivery dues while preserving the invoice,
+        // amount already received, remaining amount, and payment classification.
+        order.applyAmounts(order.getTotalAmount(), order.getAmountReceived(),
+                order.getRemainingAmount(), java.math.BigDecimal.ZERO, order.getPaymentStatus());
+        order.setCustomerOutstanding(java.math.BigDecimal.ZERO);
+
         OrderEntity saved = orderRepository.save(order);
 
         // Auto-raise a sales-return record for GST/CA reporting (client request:

@@ -1,6 +1,6 @@
 <admin-page-header
   title="Mark RTO"
-  subtitle="Scan a returned parcel's order barcode, choose a reason, and mark it returned to origin."
+  subtitle="Scan a returned parcel's barcode or QR code, add comments, and confirm it as RTO so it can be retried."
   [breadcrumbs]="[{ label: 'Packing', link: '/packing' }, { label: 'Mark RTO' }]"
 />
 
@@ -11,7 +11,7 @@
       <div class="pk-hero__top">
         <span class="pk-hero__icon"><i class="ti ti-rotate-2"></i></span>
         <div class="pk-hero__field">
-          <label class="form-label mb-1" for="rtoBarcode">Scan or type the order barcode</label>
+          <label class="form-label mb-1" for="rtoBarcode">Scan returned parcel barcode or QR code</label>
           <input
             #barcodeInput
             id="rtoBarcode"
@@ -31,18 +31,20 @@
           type="button"
           class="btn btn-primary btn-lg pk-hero__scan"
           (click)="openCamera()"
-          [disabled]="submitting() || pendingPreview() !== null"
+          [disabled]="submitting() || marking() || pendingPreview() !== null"
         >
           @if (submitting()) {
             <span class="spinner-border spinner-border-sm me-2"></span> Looking up order…
+          } @else if (marking()) {
+            <span class="spinner-border spinner-border-sm me-2"></span> Marking RTO…
           } @else {
-            <i class="ti ti-scan me-1"></i> Scan order
+            <i class="ti ti-scan me-1"></i> Scan & review RTO
           }
         </button>
       </div>
       <p class="text-secondary small m-0 mt-2">
         <i class="ti ti-info-circle me-1"></i>
-        Tap Scan order to use the camera. A handheld scanner or manual entry can use this field, then press Enter.
+        Tap Scan & review RTO to use the camera. A handheld scanner or manual entry can use this field, then press Enter. Add comments in the review modal before confirming the RTO mark.
       </p>
     </form>
   </div>
@@ -52,40 +54,58 @@
   <admin-camera-scanner (scanned)="onCameraScanned($event)" (closed)="closeCamera()" />
 }
 
-<!-- Confirmation modal: order details + required reason + optional note -->
+<!-- Scan review and RTO confirmation modal. Eligible scans wait here for comments and confirmation. -->
 @if (pendingPreview(); as preview) {
   <div class="pk-modal-backdrop" (click)="cancelPreview()">
     <div class="card pk-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="rtoPreviewTitle">
       <div class="card-header py-2">
-        <h3 id="rtoPreviewTitle" class="card-title mb-0"><i class="ti ti-rotate-2 me-2"></i>Mark RTO</h3>
+        <h3 id="rtoPreviewTitle" class="card-title mb-0">
+          <i class="ti ti-rotate-2 me-2"></i>{{ preview.eligible ? 'Review and mark RTO' : 'Cannot mark RTO' }}
+        </h3>
       </div>
       <div class="card-body">
-        <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
-          <div>
-            <div class="shifa-mono fw-bold">{{ preview.order.orderCode }}</div>
-            <div class="text-secondary small">Order #{{ preview.order.id }} · {{ preview.order.customerName }}</div>
-            <div class="text-secondary small d-flex align-items-center gap-2">
-              {{ preview.order.customerMobile }}
-              <button
-                type="button"
-                class="btn btn-sm btn-outline-success py-0 px-2"
-                (click)="messageCustomer(preview.order)"
-                title="Message the customer on WhatsApp"
-              >
-                <i class="ti ti-brand-whatsapp"></i>
-              </button>
+        <div class="alert alert-info py-2 mb-3">
+          <i class="ti ti-eye-check me-2"></i>
+          Verify the scanned order details before marking it RTO.
+        </div>
+
+        <div class="border rounded p-3 mb-3 bg-light">
+          <div class="row g-3">
+            <div class="col-6">
+              <div class="text-secondary small">Order code</div>
+              <div class="shifa-mono fw-bold">{{ preview.order.orderCode }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-secondary small">Current status</div>
+              <admin-status-badge [status]="preview.order.orderStatus" />
+            </div>
+            <div class="col-12">
+              <div class="text-secondary small">Customer</div>
+              <div class="fw-semibold">{{ preview.order.customerName }}</div>
+              <div class="text-secondary small">{{ preview.order.customerMobile }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-secondary small">Order ID</div>
+              <div class="shifa-mono">#{{ preview.order.id }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-secondary small">Scan source</div>
+              <div class="small">{{ preview.scannedViaCourier ? 'Courier label' : 'Order label' }}</div>
             </div>
           </div>
-          <admin-status-badge [status]="preview.order.orderStatus" />
         </div>
 
         @if (preview.scannedViaCourier) {
-          <div class="alert alert-info py-2 mb-3">
+          <div class="alert alert-secondary py-2 mb-3">
             <i class="ti ti-truck-delivery me-2"></i>
-            Scanned via {{ preview.courierName || 'the delivery partner' }}'s barcode
+            {{ preview.courierName || 'Delivery partner' }} barcode
             @if (preview.courierAwb) {
-              — AWB <span class="shifa-mono fw-medium">{{ preview.courierAwb }}</span>
+              · AWB <span class="shifa-mono fw-medium">{{ preview.courierAwb }}</span>
             }
+          </div>
+        } @else {
+          <div class="text-secondary small mb-3">
+            <i class="ti ti-barcode me-1"></i>Matched using the order barcode.
           </div>
         }
 
@@ -95,35 +115,20 @@
             {{ preview.message }}
           </div>
         } @else {
-          <form [formGroup]="reasonForm">
-            <div class="mb-3">
-              <label class="form-label required" for="rtoReason">Reason</label>
-              <select
-                id="rtoReason"
-                class="form-select"
-                formControlName="reason"
-                [class.is-invalid]="reasonForm.controls.reason.touched && reasonForm.controls.reason.invalid"
-              >
-                <option value="" disabled>Choose a reason…</option>
-                @for (opt of reasonOptions; track opt.value) {
-                  <option [value]="opt.value">{{ opt.label }}</option>
-                }
-              </select>
-              @if (reasonForm.controls.reason.touched && reasonForm.controls.reason.invalid) {
-                <div class="invalid-feedback">A reason is required.</div>
-              }
-            </div>
-            <div class="mb-1">
-              <label class="form-label" for="rtoNote">Notes <span class="text-secondary">(optional)</span></label>
-              <textarea
-                id="rtoNote"
-                class="form-control"
-                formControlName="note"
-                rows="2"
-                maxlength="500"
-                placeholder="Any extra detail…"
-              ></textarea>
-            </div>
+          <form [formGroup]="noteForm" (ngSubmit)="confirmMarkRto()">
+            <label class="form-label" for="rtoNote">Comments <span class="text-secondary">(optional)</span></label>
+            <textarea
+              id="rtoNote"
+              class="form-control"
+              formControlName="note"
+              rows="3"
+              maxlength="500"
+              placeholder="Add details about the returned parcel…"
+              [class.is-invalid]="noteForm.controls.note.touched && noteForm.controls.note.invalid"
+            ></textarea>
+            @if (noteForm.controls.note.touched && noteForm.controls.note.invalid) {
+              <div class="invalid-feedback">Comments must be at most 500 characters.</div>
+            }
           </form>
         }
       </div>
@@ -136,7 +141,7 @@
             @if (marking()) {
               <span class="spinner-border spinner-border-sm me-1"></span> Marking…
             } @else {
-              <i class="ti ti-check me-1"></i> Confirm RTO
+              <i class="ti ti-check me-1"></i> Mark RTO
             }
           </button>
         }

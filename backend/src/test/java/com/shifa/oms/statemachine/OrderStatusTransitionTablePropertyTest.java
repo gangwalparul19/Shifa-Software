@@ -82,7 +82,7 @@ class OrderStatusTransitionTablePropertyTest {
                 EnumSet.of(OrderStatus.COURIER_ASSIGNED, OrderStatus.HANDED_TO_DELIVERY,
                         OrderStatus.DISPATCHED, OrderStatus.IN_TRANSIT,
                         OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED,
-                        OrderStatus.CANCELLED));
+                        OrderStatus.RTO, OrderStatus.CANCELLED));
         t.put(OrderStatus.COURIER_ASSIGNED, EnumSet.of(OrderStatus.DISPATCHED,
                 OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.DELIVERED,
                 OrderStatus.RTO, OrderStatus.REDISPATCH, OrderStatus.CANCELLED));
