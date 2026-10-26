@@ -255,6 +255,16 @@ class PackingServiceTest {
     }
 
     @Test
+    void rtoPreviewReportsEligibleForHandedOverOrder() {
+        OrderEntity order = orderIn(OrderStatus.HANDED_TO_DELIVERY);
+        when(orderRepository.findByOrderCode("SHR-000123")).thenReturn(Optional.of(order));
+
+        RtoScanPreviewResponse preview = service.rtoPreview("SHR-000123");
+
+        assertThat(preview.eligible()).isTrue();
+    }
+
+    @Test
     void rtoPreviewReportsIneligibleForPendingOrder() {
         OrderEntity order = orderIn(OrderStatus.PENDING_ADMIN_APPROVAL);
         when(orderRepository.findByOrderCode("SHR-000123")).thenReturn(Optional.of(order));
@@ -270,6 +280,23 @@ class PackingServiceTest {
 
         assertThatThrownBy(() -> service.rtoPreview("NOPE-1"))
                 .isInstanceOf(BarcodeNotRecognizedException.class);
+    }
+
+    @Test
+    void markRtoFromHandedOverOrderTransitionsAndClearsDeliveryDue() {
+        OrderEntity order = orderIn(OrderStatus.HANDED_TO_DELIVERY);
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
+
+        OrderResponse response = service.markRto(
+                10L, new MarkRtoRequest(RtoReason.OTHER, "Parcel returned before courier pickup"), PACKER);
+
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.RTO);
+        assertThat(order.getCodAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(order.getCustomerOutstanding()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(response.orderStatus()).isEqualTo(OrderStatus.RTO);
+        assertThat(order.getStatusHistory()).hasSize(1);
+        assertThat(order.getStatusHistory().get(0).getFromStatus()).isEqualTo(OrderStatus.HANDED_TO_DELIVERY);
+        assertThat(order.getStatusHistory().get(0).getToStatus()).isEqualTo(OrderStatus.RTO);
     }
 
     @Test

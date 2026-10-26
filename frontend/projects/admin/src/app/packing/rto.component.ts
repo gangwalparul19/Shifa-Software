@@ -4,12 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { ApiError } from 'core';
 import { PackingService } from './packing.service';
-import {
-  RTO_REASON_OPTIONS,
-  RtoReason,
-  RtoScanPreviewResponse,
-  ScannedOrderSummary,
-} from './packing.model';
+import { RtoReason, RtoScanPreviewResponse, ScannedOrderSummary } from './packing.model';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
 import { ToastService } from '../shared/toast.service';
@@ -30,14 +25,11 @@ interface RtoLogEntry {
 /**
  * RTO (returned to origin) scan page (label redesign feature).
  *
- * <p>The order barcode printed on the redesigned internal label is always our
- * own order code — regardless of whether a courier/AWB was ever allotted — so
- * when a parcel physically comes back to the godown, the packer scans that
- * barcode here. The flow mirrors the packing "Scan & Move" preview/confirm
- * pattern: {@code POST /api/packing/rto-preview} resolves the barcode
- * read-only and reports whether marking it RTO is currently a legal move; only
- * on explicit confirmation with a REQUIRED categorized reason (+ optional
- * note) does {@code POST /api/packing/{id}/rto} actually mark the order.
+ * <p>Scanning a returned parcel opens a review modal. The operator can add
+ * comments and explicitly confirm the RTO mark; the backend records the
+ * catch-all {@code OTHER} reason because the barcode itself cannot reliably
+ * identify the delivery-failure category. An ineligible scan remains visible
+ * with the current status so the operator knows why it was not changed.
  */
 @Component({
   selector: 'admin-rto-scan',
@@ -58,14 +50,12 @@ export class RtoComponent implements OnInit {
 
   @ViewChild('barcodeInput') private barcodeInput?: ElementRef<HTMLInputElement>;
 
-  protected readonly reasonOptions = RTO_REASON_OPTIONS;
-
   protected readonly form = this.fb.nonNullable.group({
     barcode: ['', [Validators.required]],
   });
 
-  protected readonly reasonForm = this.fb.nonNullable.group({
-    reason: ['' as '' | RtoReason, [Validators.required]],
+  /** Details entered after scanning and before marking the order RTO. */
+  protected readonly noteForm = this.fb.nonNullable.group({
     note: ['', [Validators.maxLength(500)]],
   });
 
@@ -74,7 +64,7 @@ export class RtoComponent implements OnInit {
   protected readonly cameraOpen = signal(false);
   protected readonly log = signal<RtoLogEntry[]>([]);
 
-  /** A scanned order awaiting the packer's reason + explicit confirmation. */
+  /** A scanned order awaiting comments and explicit RTO confirmation. */
   protected readonly pendingPreview = signal<RtoScanPreviewResponse | null>(null);
 
   ngOnInit(): void {
@@ -83,7 +73,7 @@ export class RtoComponent implements OnInit {
 
   /** Resolves a typed or handheld-scanned barcode before any status mutation. */
   submit(): void {
-    if (this.submitting() || this.pendingPreview()) {
+    if (this.submitting() || this.marking() || this.pendingPreview()) {
       return;
     }
     const barcode = this.form.getRawValue().barcode.trim();
@@ -97,7 +87,10 @@ export class RtoComponent implements OnInit {
       next: (preview) => {
         this.submitting.set(false);
         this.pendingPreview.set(preview);
-        this.reasonForm.reset({ reason: '', note: '' });
+        this.noteForm.reset({ note: '' });
+        if (!preview.eligible) {
+          this.toasts.info(preview.message);
+        }
       },
       error: (err: HttpErrorResponse) => this.onPreviewError(barcode, err),
     });
@@ -106,36 +99,38 @@ export class RtoComponent implements OnInit {
   /** Cancels a scan preview without changing the order. */
   cancelPreview(): void {
     this.pendingPreview.set(null);
+    this.noteForm.reset({ note: '' });
     this.finish();
   }
 
-  /** Confirms marking the previewed order RTO with the chosen reason + note. */
+  /** Confirms marking the scanned order RTO after entering optional comments. */
   confirmMarkRto(): void {
     const preview = this.pendingPreview();
     if (!preview || !preview.eligible || this.marking()) {
       return;
     }
-    if (this.reasonForm.invalid) {
-      this.reasonForm.markAllAsTouched();
+    if (this.noteForm.invalid) {
+      this.noteForm.markAllAsTouched();
       return;
     }
-    const { reason, note } = this.reasonForm.getRawValue();
-    if (!reason) {
-      return;
-    }
+    this.markPreview(preview, 'OTHER', this.noteForm.getRawValue().note);
+  }
 
+  /** Applies the RTO transition after the operator confirms the scan. */
+  private markPreview(preview: RtoScanPreviewResponse, reason: RtoReason, note: string): void {
+    if (this.marking()) {
+      return;
+    }
     this.marking.set(true);
     this.service.markRto(preview.order.id, reason, note).subscribe({
       next: () => {
         this.marking.set(false);
         this.pendingPreview.set(null);
-        this.toasts.success(
-          `Order ${preview.order.orderCode} marked RTO. A sales return was recorded automatically.`,
-        );
+        this.toasts.success(`Order ${preview.order.orderCode} marked RTO. You can now retry it from Orders.`);
         this.appendLog({
           barcode: preview.order.orderCode,
           outcome: 'marked',
-          message: `Marked RTO (${this.reasonLabel(reason)}) — sales return recorded`,
+          message: 'Marked RTO — ready for a retry order',
           at: new Date(),
         });
         this.finish();
@@ -155,10 +150,6 @@ export class RtoComponent implements OnInit {
         this.finish();
       },
     });
-  }
-
-  reasonLabel(reason: RtoReason): string {
-    return this.reasonOptions.find((o) => o.value === reason)?.label ?? reason;
   }
 
   /** Opens the order detail (via the Orders page filtered to this order code). */
@@ -189,7 +180,7 @@ export class RtoComponent implements OnInit {
   // --- Camera scan ----------------------------------------------------------
 
   openCamera(): void {
-    if (!this.submitting() && !this.pendingPreview()) {
+    if (!this.submitting() && !this.marking() && !this.pendingPreview()) {
       this.cameraOpen.set(true);
     }
   }
@@ -234,6 +225,7 @@ export class RtoComponent implements OnInit {
 
   private finish(): void {
     this.form.reset({ barcode: '' });
+    this.noteForm.reset({ note: '' });
     this.focusInput();
   }
 

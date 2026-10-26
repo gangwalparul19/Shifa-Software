@@ -83,3 +83,28 @@
   margin: 0;
   box-shadow: 0 20px 60px rgba(15, 61, 39, 0.3);
 }
+
+@media (max-width: 767.98px) {
+  /* Give the returned-parcel scanner a full-width, one-handed target. */
+  .pk-hero__top {
+    display: block;
+  }
+  .pk-hero__icon {
+    display: none;
+  }
+  .pk-hero__field {
+    width: 100%;
+  }
+  .pk-hero .shifa-barcode {
+    width: 100%;
+    height: 4rem;
+    min-height: 4rem;
+    padding-inline: 1rem;
+    font-size: 1.35rem;
+  }
+  .pk-hero__btns .btn {
+    width: 100%;
+    min-height: 3.5rem;
+    font-size: 1.05rem;
+  }
+}

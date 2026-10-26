@@ -170,9 +170,10 @@ public class PackingController {
     }
 
     /**
-     * Resolves a scanned order-label barcode for the RTO page without changing
-     * the order (label redesign feature). Reports whether marking it RTO is
-     * currently a legal move so the UI can gate the reason form.
+     * Resolves a scanned returned-parcel barcode or QR payload for the RTO page
+     * without changing the order. The frontend opens a review modal, and only
+     * submits eligible results after the operator adds optional comments and
+     * confirms; ineligible results explain the current status without mutation.
      */
     @PostMapping("/rto-preview")
     @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")
@@ -181,10 +182,9 @@ public class PackingController {
     }
 
     /**
-     * Marks a scanned order RTO (returned to origin) with a required categorized
-     * reason and optional note, after explicit confirmation on the RTO page
-     * (label redesign feature). A non-RTO-eligible order yields 409
-     * {@code ORDER_NOT_RTO_ELIGIBLE}.
+     * Marks an eligible scanned order RTO (returned to origin) with the
+     * categorized reason and optional note supplied by the scan flow. A
+     * non-RTO-eligible order yields 409 {@code ORDER_NOT_RTO_ELIGIBLE}.
      */
     @PostMapping("/{id}/rto")
     @PreAuthorize("hasAnyRole('PACKING_USER','ADMIN')")

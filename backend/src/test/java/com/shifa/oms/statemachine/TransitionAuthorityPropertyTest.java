@@ -73,6 +73,8 @@ class TransitionAuthorityPropertyTest {
         r.add(rule(OrderStatus.HANDED_TO_DELIVERY, OrderStatus.COURIER_ASSIGNED, true,
                 Role.PACKING_USER, Role.ADMIN));
         r.add(rule(OrderStatus.HANDED_TO_DELIVERY, OrderStatus.HANDED_TO_DELIVERY, true));
+        r.add(rule(OrderStatus.HANDED_TO_DELIVERY, OrderStatus.RTO, true,
+                Role.PACKING_USER, Role.ADMIN));
         r.add(rule(OrderStatus.HANDED_TO_DELIVERY, OrderStatus.DELIVERED, false,
                 Role.ADMIN, Role.PACKING_USER, Role.SALESPERSON));
         // Manual in-house progression out of handover — staff only, no SYSTEM
