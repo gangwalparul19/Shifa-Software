@@ -18,6 +18,7 @@ import { InrPipe } from '../shared/inr.pipe';
 import { HelpTipComponent } from '../shared/help-tip.component';
 import { StatesService } from '../shared/states.service';
 import { PincodeService } from '../shared/pincode.service';
+import { SettingsService } from '../settings/settings.service';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { CatalogService } from './catalog.service';
@@ -37,6 +38,8 @@ import {
   StoreOrderLineItem,
   StoreOrderRequest,
   UpdateOrderRequest,
+  PaymentMethod,
+  PaymentAccountOption,
 } from './orders.model';
 
 /** The three phases the payment-screenshot upload can be in. */
@@ -106,6 +109,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly auth = inject(AuthService);
+  private readonly settings = inject(SettingsService);
 
   // --- Convert-from-lead mode (design §Convert Flow, Req 4) --------------
   /**
@@ -174,6 +178,14 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   /** Selectable delivery states for the state typeahead (from GET /api/states). */
   protected readonly states = signal<string[]>([]);
+
+  /** Active receiving accounts for online salesperson payments. */
+  protected readonly paymentAccounts = signal<PaymentAccountOption[]>([]);
+  protected readonly orderPaymentAccounts = computed(() =>
+    this.paymentAccounts().filter((account) =>
+      account.accountType === 'UPI_QR' || account.accountType === 'BANK_TRANSFER' || account.accountType === 'OTHER'),
+  );
+  protected readonly selectedPaymentMethod = signal<PaymentMethod>('UPI_QR');
 
   // --- Payment screenshot upload ------------------------------------------
   /**
@@ -286,6 +298,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private readonly model = signal<ReturnType<NewOrderComponent['snapshot']>>({
     items: [],
     amountReceived: 0,
+    paymentMethod: 'UPI_QR',
+    paymentAccountId: null,
+    paymentUtr: '',
     leadSource: '',
     discountType: '',
     discountValue: 0,
@@ -325,11 +340,25 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     ],
     items: this.fb.array([this.newItem()]),
     amountReceived: [0, [Validators.required, Validators.min(0)]],
+    paymentMethod: ['UPI_QR' as PaymentMethod, [Validators.required]],
+    paymentAccountId: this.fb.control<number | null>(null),
+    paymentUtr: ['', [Validators.maxLength(80)]],
     // Optional order-level discount (product-catalog-pricing-gst Req 6).
     discountType: ['' as '' | OrderDiscountType],
     discountValue: [0, [Validators.min(0)]],
     notes: ['', [Validators.maxLength(1000)]],
   });
+
+  /** Whether the selected online method needs an account and UTR. */
+  protected readonly paymentNeedsAccount = computed(() => {
+    const method = this.selectedPaymentMethod();
+    return method === 'UPI_QR' || method === 'BANK_TRANSFER';
+  });
+
+  protected paymentMetadataInvalid(): boolean {
+    return !this.posMode() && this.paymentNeedsAccount() &&
+      (this.form.controls.paymentAccountId.value == null || !this.form.controls.paymentUtr.value.trim());
+  }
 
   /** Whether the form is converting a lead (drives titles, locked fields, submit path). */
   protected readonly convertMode = computed(() => this.convertLeadId() !== null);
@@ -553,6 +582,11 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.loadProducts();
+    this.form.controls.paymentMethod.valueChanges.subscribe((method) => this.selectedPaymentMethod.set(method as PaymentMethod));
+    this.settings.activePaymentAccounts().subscribe({
+      next: (accounts) => this.paymentAccounts.set(accounts),
+      error: () => this.paymentAccounts.set([]),
+    });
     this.loadFavorites();
     this.loadStates();
 
@@ -1476,6 +1510,15 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     this.screenshots.set([]);
   }
 
+  protected paymentMethodChanged(): void {
+    const method = this.form.controls.paymentMethod.value as PaymentMethod;
+    this.selectedPaymentMethod.set(method);
+    if (!this.paymentNeedsAccount()) {
+      this.form.controls.paymentAccountId.setValue(null);
+      this.form.controls.paymentUtr.setValue('');
+    }
+  }
+
   /** Sets a payment amount using one-hand quick actions in the payment step. */
   setAmountReceived(amount: number): void {
     const total = this.orderTotalPaise() / 100;
@@ -1621,6 +1664,10 @@ export class NewOrderComponent implements OnInit, OnDestroy {
         this.submitAttempted.set(true);
         ok = false;
       }
+      if (this.paymentMetadataInvalid()) {
+        this.submitAttempted.set(true);
+        ok = false;
+      }
       if (this.screenshotRequired() && !this.screenshotKey()) {
         this.submitAttempted.set(true);
         ok = false;
@@ -1655,6 +1702,10 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       this.toasts.error(
         `At least ${this.formatMoney(this.minUpfrontPaise())} must be collected upfront (full or partial payment).`,
       );
+      return;
+    }
+    if (this.paymentMetadataInvalid()) {
+      this.toasts.error('Select the receiving account and enter the UTR/reference for this payment.');
       return;
     }
     if (this.screenshotRequired() && !this.screenshotKey()) {
@@ -1738,6 +1789,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
         ...(it.rate != null ? { rate: it.rate } : {}),
       })),
       amountReceived: raw.amountReceived,
+      paymentMethod: raw.paymentMethod as PaymentMethod,
+      ...(raw.paymentAccountId != null ? { paymentAccountId: raw.paymentAccountId } : {}),
+      ...(raw.paymentUtr.trim() ? { paymentUtr: raw.paymentUtr.trim().toUpperCase() } : {}),
       ...(this.screenshotKey() ? { paymentScreenshotKey: this.screenshotKey()! } : {}),
       // Additional payment proofs beyond the primary (V65), omitted when there is
       // only one so the payload stays identical to the pre-V65 shape.
@@ -1849,6 +1903,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       ...(this.screenshotKey()
         ? {
             amountReceived: raw.amountReceived,
+            paymentMethod: raw.paymentMethod as PaymentMethod,
+            ...(raw.paymentAccountId != null ? { paymentAccountId: raw.paymentAccountId } : {}),
+            ...(raw.paymentUtr.trim() ? { paymentUtr: raw.paymentUtr.trim().toUpperCase() } : {}),
             paymentScreenshotKey: this.screenshotKey()!,
             ...(this.extraScreenshotKeys().length > 0
               ? { paymentScreenshotKeys: this.extraScreenshotKeys() }
@@ -1904,6 +1961,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
         ...(it.rate != null ? { rate: it.rate } : {}),
       })),
       amountReceived: raw.amountReceived,
+      paymentMethod: raw.paymentMethod as PaymentMethod,
+      ...(raw.paymentAccountId != null ? { paymentAccountId: raw.paymentAccountId } : {}),
+      ...(raw.paymentUtr.trim() ? { paymentUtr: raw.paymentUtr.trim().toUpperCase() } : {}),
       ...(this.screenshotKey() ? { paymentScreenshotKey: this.screenshotKey()! } : {}),
       // Additional payment proofs beyond the primary (V65), omitted when there is
       // only one so the payload stays identical to the pre-V65 shape.
@@ -2070,6 +2130,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       gstRate: number | null;
     }[];
     amountReceived: number;
+    paymentMethod: PaymentMethod;
+    paymentAccountId: number | null;
+    paymentUtr: string;
     leadSource: '' | LeadSource;
     discountType: '' | OrderDiscountType;
     discountValue: number;
@@ -2085,6 +2148,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
         gstRate: it['gstRate'] === null || it['gstRate'] === undefined ? null : Number(it['gstRate']),
       })),
       amountReceived: Number(raw.amountReceived) || 0,
+      paymentMethod: raw.paymentMethod as PaymentMethod,
+      paymentAccountId: raw.paymentAccountId == null ? null : Number(raw.paymentAccountId),
+      paymentUtr: String(raw.paymentUtr ?? ''),
       leadSource: raw.leadSource,
       discountType: (raw.discountType ?? '') as '' | OrderDiscountType,
       discountValue: Number(raw.discountValue) || 0,

@@ -35,7 +35,9 @@ public record SettingsResponse(
         Integer gstReminderWindowDays,
         BigDecimal gstReconciliationTolerance,
         boolean autoApproveEnabled,
-        BigDecimal autoApproveMaxAmount) {
+        BigDecimal autoApproveMaxAmount,
+        boolean shopifySettlementEnabled,
+        Long shopifySettlementAccountId) {
 
     public static SettingsResponse from(AppSettings s) {
         return new SettingsResponse(
@@ -65,6 +67,8 @@ public record SettingsResponse(
                 s.getGstReminderWindowDays(),
                 s.getGstReconciliationTolerance(),
                 s.isAutoApproveEnabled(),
-                s.getAutoApproveMaxAmount());
+                s.getAutoApproveMaxAmount(),
+                s.isShopifySettlementEnabled(),
+                s.getShopifySettlementAccountId());
     }
 }

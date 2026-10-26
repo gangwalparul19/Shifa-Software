@@ -27,8 +27,12 @@ export interface PaymentQueueRow {
    * THAT order's screenshot (by orderId) and open its details (by orderCode).
    */
   duplicateOrders?: DuplicateOrderRef[];
-  /** Where the order originated (SALESPERSON / SHOPIFY / STORE / STOREFRONT). */
+  /** Where the order originated (SALESPERSON / SHOPIFY / STORE). */
   source?: string;
+  paymentMethod?: 'UPI_QR' | 'BANK_TRANSFER' | 'CASH' | 'SHOPIFY' | 'OTHER' | null;
+  paymentAccountName?: string | null;
+  paymentAccountMasked?: string | null;
+  paymentUtr?: string | null;
 }
 
 /** A reference to another order sharing this order's payment proof (V72). */

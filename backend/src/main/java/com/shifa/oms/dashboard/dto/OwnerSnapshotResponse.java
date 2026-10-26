@@ -33,7 +33,10 @@ public record OwnerSnapshotResponse(
         long paymentsPending,
         long failedDeliveries,
         long rtoCount,
+        /** All-date unsettled COD backlog / pending from courier. */
         BigDecimal codToCollect,
+        /** COD amount on active orders created in the current business day. */
+        BigDecimal codDueToday,
         long codOverSla,
         BigDecimal codOverSlaAmount,
         long pendingClaims,

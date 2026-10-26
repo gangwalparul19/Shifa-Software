@@ -26,6 +26,7 @@ import {
   ManualStage,
   OrderDetail,
   OrderDetailLine,
+  OrderPayment,
   OrderSummary,
   QuikShipTracking,
   RTO_REASON_LABELS,
@@ -872,6 +873,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   protected readonly detailLoading = signal(false);
   /** Existing returns for the open order (closes the loop between Returns and Orders). */
   protected readonly orderReturns = signal<ReturnResponse[]>([]);
+  protected readonly paymentTransactions = signal<OrderPayment[]>([]);
 
   /**
    * The delivery method picked in the detail drawer for the order awaiting
@@ -1592,6 +1594,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.selectedDetail.set(null);
     this.quikShipTracking.set(null);
     this.orderReturns.set([]);
+    this.paymentTransactions.set([]);
     // Reset the in-house manual status controls so nothing carries over between orders.
     this.manualStage.set('');
     this.manualVehicle.set('');
@@ -1609,6 +1612,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
         // Pre-fill the in-house vehicle field with whatever is already recorded.
         this.manualVehicle.set(detail.vehicleNumber ?? '');
         this.loadScreenshot(detail);
+        this.loadPaymentTransactions(detail.id);
         // Pull live courier tracking (status + timeline) when published to QuikShipX.
         this.loadTracking(detail, { silent: true });
         this.loadOrderReturns(detail.id);
@@ -1625,8 +1629,16 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.detailError.set(null);
     this.quikShipTracking.set(null);
     this.orderReturns.set([]);
+    this.paymentTransactions.set([]);
     this.revokeScreenshot();
     this.screenshotMissing.set(false);
+  }
+
+  private loadPaymentTransactions(orderId: number): void {
+    this.service.payments(orderId).subscribe({
+      next: (payments) => this.paymentTransactions.set(payments),
+      error: () => this.paymentTransactions.set([]),
+    });
   }
 
   /**

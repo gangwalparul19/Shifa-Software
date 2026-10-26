@@ -10,6 +10,7 @@ import com.shifa.oms.order.dto.CustomerPrefillResponse;
 import com.shifa.oms.order.dto.DuplicateCheckResponse;
 import com.shifa.oms.order.dto.MarkDeliveredRequest;
 import com.shifa.oms.order.dto.OrderResponse;
+import com.shifa.oms.order.dto.OrderPaymentResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.order.dto.PaymentScreenshotResponse;
 import com.shifa.oms.order.dto.ScreenshotUploadResponse;
@@ -295,6 +296,13 @@ public class OrderController {
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "inline; filename=\"" + invoice.filename() + "\"")
                 .body(invoice.content());
+    }
+
+    /** Safe payment transaction metadata, role-scoped like order detail. */
+    @GetMapping("/{id}/payments")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ACCOUNTANT','ADMIN','TEAM_LEAD','CA','PAYMENT_VERIFIER')")
+    public List<OrderPaymentResponse> payments(@PathVariable Long id) {
+        return orderService.listPayments(id, currentUserService.requireCurrentUser());
     }
 
     /**

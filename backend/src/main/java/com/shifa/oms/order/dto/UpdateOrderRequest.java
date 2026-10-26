@@ -113,6 +113,25 @@ public record UpdateOrderRequest(
         // addressLine and city/state/postalCode may be blank. Appended last to keep
         // the positional constructor stable for existing callers.
         @Size(max = 60, message = "country must be at most 60 characters")
-        String country
+        String country,
+
+        /** Optional payment correction metadata used by rejected-order resubmit. */
+        @Size(max = 30, message = "paymentMethod must be at most 30 characters")
+        String paymentMethod,
+        Long paymentAccountId,
+        @Size(max = 80, message = "paymentUtr must be at most 80 characters")
+        String paymentUtr
 ) {
+    /** Backward-compatible constructor for callers created before V97. */
+    public UpdateOrderRequest(String customerName, String customerMobile, String alternateMobile,
+                              String customerEmail, String addressLine, String city, String state,
+                              String postalCode, List<LineItemRequest> items, LeadSource leadSource,
+                              String leadSourceNote, String notes, String buyerGstin, String discountType,
+                              BigDecimal discountValue, BigDecimal amountReceived, String paymentScreenshotKey,
+                              List<String> paymentScreenshotKeys, String country) {
+        this(customerName, customerMobile, alternateMobile, customerEmail, addressLine, city, state,
+                postalCode, items, leadSource, leadSourceNote, notes, buyerGstin, discountType,
+                discountValue, amountReceived, paymentScreenshotKey, paymentScreenshotKeys, country,
+                null, null, null);
+    }
 }

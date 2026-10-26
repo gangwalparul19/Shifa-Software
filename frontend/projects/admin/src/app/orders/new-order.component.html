@@ -826,8 +826,36 @@
         }
       </div>
 
+      <div class="row g-2 mb-3">
+        <div class="col-12 col-md-5">
+          <label class="form-label required" for="paymentMethod">Payment method</label>
+          <select id="paymentMethod" class="form-select" formControlName="paymentMethod" (change)="paymentMethodChanged()">
+            <option value="UPI_QR">UPI / QR</option>
+            <option value="BANK_TRANSFER">Bank transfer</option>
+            <option value="CASH">Cash</option>
+          </select>
+        </div>
+        <div class="col-12 col-md-7">
+          <label class="form-label" [class.required]="paymentNeedsAccount()" for="paymentAccountId">Amount received in</label>
+          <select id="paymentAccountId" class="form-select" formControlName="paymentAccountId"
+            [class.is-invalid]="submitAttempted() && paymentMetadataInvalid()" [disabled]="!paymentNeedsAccount()">
+            <option [ngValue]="null">Select receiving account…</option>
+            @for (account of orderPaymentAccounts(); track account.id) {
+              <option [ngValue]="account.id">{{ account.displayName }} — {{ account.bankName || account.upiId || 'Account' }} {{ account.maskedAccountNumber || '' }}</option>
+            }
+          </select>
+          @if (paymentNeedsAccount() && orderPaymentAccounts().length === 0) {<div class="form-hint text-warning">No active receiving account is configured. Ask an admin to add one in Settings.</div>}
+        </div>
+        <div class="col-12">
+          <label class="form-label" [class.required]="paymentNeedsAccount()" for="paymentUtr">UTR / transaction reference</label>
+          <input id="paymentUtr" type="text" class="form-control shifa-mono text-uppercase" formControlName="paymentUtr"
+            maxlength="80" autocomplete="off" placeholder="Enter the UPI/bank reference" [disabled]="!paymentNeedsAccount()" />
+          @if (submitAttempted() && paymentMetadataInvalid()) {<div class="text-danger small mt-1">Select the account that received the money and enter its UTR/reference.</div>}
+        </div>
+      </div>
+
       <div>
-        <label class="form-label" [class.required]="screenshotRequired()">Payment screenshots</label>
+        <label class="form-label" [class.required]="screenshotRequired()" for="paymentScreenshots">Payment screenshots</label>
         @if (screenshotRequired()) {
           <div class="form-hint mb-2">
             Required because an amount was received. You can attach more than one — part

@@ -1,0 +1,28 @@
+import { Injectable, inject } from '@angular/core';
+import { Observable } from 'rxjs';
+import { ApiClient } from 'core';
+import { SettlementBatch, SettlementImportResponse, SettlementLine } from './settlement.model';
+
+@Injectable({ providedIn: 'root' })
+export class SettlementService {
+  private readonly api = inject(ApiClient);
+
+  batches(): Observable<SettlementBatch[]> {
+    return this.api.get<SettlementBatch[]>('/api/recon/settlements');
+  }
+
+  lines(batchId: number): Observable<SettlementLine[]> {
+    return this.api.get<SettlementLine[]>(`/api/recon/settlements/${batchId}/lines`);
+  }
+
+  importFile(file: File, source: string, dryRun: boolean, accountId?: number | null,
+             reference?: string | null, statementDate?: string | null): Observable<SettlementImportResponse> {
+    const form = new FormData();
+    form.append('file', file);
+    const params: Record<string, string | number | boolean> = { source, dryRun };
+    if (accountId != null) params['destinationAccountId'] = accountId;
+    if (reference?.trim()) params['externalReference'] = reference.trim();
+    if (statementDate) params['statementDate'] = statementDate;
+    return this.api.post<SettlementImportResponse>('/api/recon/settlements/import', form, { params });
+  }
+}

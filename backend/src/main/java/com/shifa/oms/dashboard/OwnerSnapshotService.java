@@ -20,8 +20,10 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Computes the owner's one-screen snapshot (ENHANCEMENT 1.1 / 1.2): today's
@@ -38,6 +40,8 @@ import java.util.Map;
 public class OwnerSnapshotService {
 
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Kolkata");
+    private static final Set<OrderStatus> CLOSED_FOR_VERIFICATION = EnumSet.of(
+            OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED);
 
     private final OrderRepository orderRepository;
     private final ReceivableRepository receivableRepository;
@@ -86,9 +90,14 @@ public class OwnerSnapshotService {
                 + status.getOrDefault(OrderStatus.DELIVERY_FAILED, 0L);
         long rto = status.getOrDefault(OrderStatus.RTO, 0L);
 
-        long paymentsPending = orderRepository.countByPaymentVerificationStatus(PaymentVerificationStatus.PENDING);
-        long stuckShipments = orderRepository.countByQuikShipXFailureReasonIsNotNull();
+        long paymentsPending = orderRepository.countByPaymentVerificationStatusAndOrderStatusNotIn(
+                PaymentVerificationStatus.PENDING, CLOSED_FOR_VERIFICATION);
+        long stuckShipments = orderRepository.countByQuikShipXFailureReasonIsNotNullAndDeliveryMethod(
+                com.shifa.oms.order.DeliveryMethod.QUIKSHIPX);
         long pendingClaims = receivableRepository.countByTypeAndSettledFalse(ReceivableType.CLAIM_RECEIVABLE);
+
+        // COD due on orders punched today is a today-scoped activity metric.
+        BigDecimal codDueToday = scale(orderRepository.sumCodBetween(dayStart, dayEnd));
 
         // COD to collect + over-SLA, reusing the aging service.
         CodAgingResponse aging = codAgingService.aging();
@@ -119,7 +128,7 @@ public class OwnerSnapshotService {
         return new OwnerSnapshotResponse(
                 today, ordersToday, revenueToday,
                 approvals, paymentsPending, failed, rto,
-                codToCollect, codOverSla, codOverSlaAmount,
+                codToCollect, codDueToday, codOverSla, codOverSlaAmount,
                 pendingClaims, stuckShipments,
                 topName, topRevenue, attentionTotal);
     }

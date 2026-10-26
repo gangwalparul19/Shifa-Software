@@ -81,6 +81,26 @@ public record LeadConvertRequest(
         // historical single-proof behaviour.
         @Size(max = 10, message = "at most 10 payment screenshots may be attached to an order")
         List<@Size(max = 512, message = "a payment screenshot key must be at most 512 characters") String>
-                paymentScreenshotKeys
+                paymentScreenshotKeys,
+
+        /** Payment method for the upfront collection (UPI_QR/BANK_TRANSFER/CASH). */
+        @Size(max = 30, message = "paymentMethod must be at most 30 characters")
+        String paymentMethod,
+
+        /** Active receiving-account master id for UPI/bank payments. */
+        Long paymentAccountId,
+
+        /** Provider UTR/reference for the upfront payment. */
+        @Size(max = 80, message = "paymentUtr must be at most 80 characters")
+        String paymentUtr
 ) {
+    /** Backward-compatible constructor for callers created before V97. */
+    public LeadConvertRequest(String addressLine, String city, String state, String postalCode,
+                              List<LineItemRequest> items, BigDecimal amountReceived,
+                              String paymentScreenshotKey, String notes, String discountType,
+                              BigDecimal discountValue, String deliveryMethod,
+                              List<String> paymentScreenshotKeys) {
+        this(addressLine, city, state, postalCode, items, amountReceived, paymentScreenshotKey, notes,
+                discountType, discountValue, deliveryMethod, paymentScreenshotKeys, null, null, null);
+    }
 }

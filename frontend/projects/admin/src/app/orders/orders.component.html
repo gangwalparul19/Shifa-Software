@@ -964,6 +964,17 @@
             <div class="shifa-od__totline"><span>Remaining</span><span>{{ money(order.remainingAmount) }}</span></div>
             <div class="shifa-od__totline"><span>To collect on delivery</span><span>{{ money(order.codAmount) }}</span></div>
           </div>
+          @if (paymentTransactions().length > 0) {
+            <div class="shifa-od__card mt-2">
+              <div class="shifa-od__label mb-2"><i class="ti ti-building-bank me-1"></i>Payment received</div>
+              @for (payment of paymentTransactions(); track payment.id) {
+                <div class="shifa-od__totline">
+                  <span>{{ payment.paymentMethod || 'Payment' }} · {{ payment.bankAccountName || 'Account not recorded' }}</span>
+                  <span class="text-end">{{ money(payment.amountReceived) }}<br />@if (payment.utr) {<small class="shifa-mono text-secondary">UTR {{ payment.utr }}</small>}</span>
+                </div>
+              }
+            </div>
+          }
         </div>
 
         <!-- (8b) Payment screenshot (admin/accountant) — proof for approve/reject -->

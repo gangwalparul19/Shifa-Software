@@ -13,7 +13,8 @@ import { DeliveryState, StatesService } from '../shared/states.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
-
+import { BankAccountManagerComponent } from './bank-account-manager.component';
+import { PaymentAccountOption } from './settings.service';
 /** Accepted logo image types and max size (mirrors the backend rule). */
 const LOGO_ACCEPTED_TYPES = ['image/png', 'image/jpeg'];
 const LOGO_MAX_BYTES = 1024 * 1024;
@@ -61,7 +62,7 @@ function gstSlabsValidator(control: AbstractControl): ValidationErrors | null {
  */
 @Component({
   selector: 'admin-settings',
-  imports: [ReactiveFormsModule, PageHeaderComponent],
+  imports: [ReactiveFormsModule, PageHeaderComponent, BankAccountManagerComponent],
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.css',
 })
@@ -108,6 +109,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
 
   // --- Delivery states (order-entry typeahead master list) ----------------
   protected readonly states = signal<DeliveryState[]>([]);
+  protected readonly paymentAccounts = signal<PaymentAccountOption[]>([]);
   protected readonly statesLoading = signal(true);
   protected readonly statesError = signal<string | null>(null);
   protected readonly stateBusyId = signal<number | 'new' | null>(null);
@@ -148,6 +150,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
     // --- Order auto-approval (V73, DEFAULT OFF) ----------------------------
     autoApproveEnabled: [false],
     autoApproveMaxAmount: ['', [Validators.pattern(/^\d{1,10}(\.\d{1,2})?$/)]],
+    shopifySettlementEnabled: [false],
+    shopifySettlementAccountId: [null as number | null],
   });
 
   ngOnInit(): void {
@@ -157,6 +161,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
     });
     this.load();
     this.loadStates();
+    this.service.activePaymentAccounts().subscribe({ next: (rows) => this.paymentAccounts.set(rows), error: () => this.paymentAccounts.set([]) });
   }
 
   ngOnDestroy(): void {
@@ -308,6 +313,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
           bankBranch: s.bankBranch ?? '',
           autoApproveEnabled: s.autoApproveEnabled ?? false,
           autoApproveMaxAmount: s.autoApproveMaxAmount != null ? String(s.autoApproveMaxAmount) : '',
+          shopifySettlementEnabled: s.shopifySettlementEnabled ?? false,
+          shopifySettlementAccountId: s.shopifySettlementAccountId ?? null,
         });
         this.applyGstinValidators(s.gstEnabled);
         this.loading.set(false);
@@ -353,6 +360,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
     bankBranch: 'bank',
     autoApproveEnabled: 'automation',
     autoApproveMaxAmount: 'automation',
+    shopifySettlementEnabled: 'bank',
+    shopifySettlementAccountId: 'bank',
   };
 
   save(): void {
@@ -407,6 +416,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
       bankBranch: str(raw.bankBranch) || null,
       autoApproveEnabled: raw.autoApproveEnabled,
       autoApproveMaxAmount: str(raw.autoApproveMaxAmount) || null,
+      shopifySettlementEnabled: raw.shopifySettlementEnabled,
+      shopifySettlementAccountId: raw.shopifySettlementAccountId,
     };
 
     this.saving.set(true);

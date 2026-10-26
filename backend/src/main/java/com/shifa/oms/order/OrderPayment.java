@@ -2,6 +2,8 @@ package com.shifa.oms.order;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -11,13 +13,9 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Order-level payment capture, mapped to the {@code payments} table (one per
- * order in v1). Records how much the customer paid at entry and the storage key
- * of the mandatory payment screenshot when money was received (Req 7.6, 7.11).
- *
- * <p>Owned by {@link OrderEntity} through a unidirectional {@code @OneToMany}
- * with an {@code order_id} join column. {@code captured_at} is filled by the DB
- * default, so it is not written on insert.
+ * One order payment transaction, mapped to {@code payments}. Legacy rows may
+ * have only amount/screenshot; new rows also preserve method, receiving-account
+ * snapshot, and UTR for reconciliation.
  */
 @Entity
 @Table(name = "payments")
@@ -33,6 +31,22 @@ public class OrderPayment {
     @Column(name = "screenshot_key", length = 512)
     private String screenshotKey;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_method", length = 30)
+    private PaymentMethod paymentMethod;
+
+    @Column(name = "bank_account_id")
+    private Long bankAccountId;
+
+    @Column(name = "bank_account_name_snapshot", length = 100)
+    private String bankAccountNameSnapshot;
+
+    @Column(name = "bank_account_masked_snapshot", length = 80)
+    private String bankAccountMaskedSnapshot;
+
+    @Column(name = "utr", length = 80)
+    private String utr;
+
     @Column(name = "captured_at", insertable = false, updatable = false)
     private LocalDateTime capturedAt;
 
@@ -41,23 +55,29 @@ public class OrderPayment {
     }
 
     public OrderPayment(BigDecimal amountReceived, String screenshotKey) {
+        this(amountReceived, screenshotKey, null, null, null, null, null);
+    }
+
+    public OrderPayment(BigDecimal amountReceived, String screenshotKey,
+                        PaymentMethod paymentMethod, Long bankAccountId,
+                        String bankAccountNameSnapshot, String bankAccountMaskedSnapshot,
+                        String utr) {
         this.amountReceived = amountReceived;
         this.screenshotKey = screenshotKey;
+        this.paymentMethod = paymentMethod;
+        this.bankAccountId = bankAccountId;
+        this.bankAccountNameSnapshot = bankAccountNameSnapshot;
+        this.bankAccountMaskedSnapshot = bankAccountMaskedSnapshot;
+        this.utr = utr;
     }
 
-    public Long getId() {
-        return id;
-    }
-
-    public BigDecimal getAmountReceived() {
-        return amountReceived;
-    }
-
-    public String getScreenshotKey() {
-        return screenshotKey;
-    }
-
-    public LocalDateTime getCapturedAt() {
-        return capturedAt;
-    }
+    public Long getId() { return id; }
+    public BigDecimal getAmountReceived() { return amountReceived; }
+    public String getScreenshotKey() { return screenshotKey; }
+    public PaymentMethod getPaymentMethod() { return paymentMethod; }
+    public Long getBankAccountId() { return bankAccountId; }
+    public String getBankAccountNameSnapshot() { return bankAccountNameSnapshot; }
+    public String getBankAccountMaskedSnapshot() { return bankAccountMaskedSnapshot; }
+    public String getUtr() { return utr; }
+    public LocalDateTime getCapturedAt() { return capturedAt; }
 }

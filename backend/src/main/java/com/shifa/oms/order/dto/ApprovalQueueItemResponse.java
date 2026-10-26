@@ -3,6 +3,7 @@ package com.shifa.oms.order.dto;
 import com.shifa.oms.order.DeliveryMethod;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
+import com.shifa.oms.order.OrderPayment;
 import com.shifa.oms.order.OrderSource;
 import com.shifa.oms.order.PaymentVerificationStatus;
 import com.shifa.oms.order.domain.PaymentStatus;
@@ -60,7 +61,12 @@ public record ApprovalQueueItemResponse(
         List<String> duplicateOrderCodes,
         // The order/packaging note (nullable) — surfaced so the admin sees
         // special instructions or context the salesperson attached to the order.
-        String notes
+        String notes,
+        // Payment transaction metadata for reconciliation; account number is masked.
+        com.shifa.oms.order.PaymentMethod paymentMethod,
+        String paymentAccountName,
+        String paymentAccountMasked,
+        String paymentUtr
 ) {
 
     /** A single order line in the review projection. */
@@ -119,6 +125,10 @@ public record ApprovalQueueItemResponse(
                 salespersonName,
                 order.getPaymentVerificationStatus(),
                 duplicateOrderCodes == null ? List.of() : duplicateOrderCodes,
-                order.getNotes());
+                order.getNotes(),
+                order.getPayments().stream().findFirst().map(OrderPayment::getPaymentMethod).orElse(null),
+                order.getPayments().stream().findFirst().map(OrderPayment::getBankAccountNameSnapshot).orElse(null),
+                order.getPayments().stream().findFirst().map(OrderPayment::getBankAccountMaskedSnapshot).orElse(null),
+                order.getPayments().stream().findFirst().map(OrderPayment::getUtr).orElse(null));
     }
 }

@@ -775,6 +775,26 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
 
     // --- Owner snapshot counts (perf: single COUNT each) --------------------
 
+    /** Current payment-verification backlog, excluding terminal orders. */
+    long countByPaymentVerificationStatusAndOrderStatusNotIn(
+            com.shifa.oms.order.PaymentVerificationStatus paymentVerificationStatus,
+            java.util.Collection<OrderStatus> statuses);
+
+    /** Current QuikShip failure backlog, explicitly limited to courier orders. */
+    long countByQuikShipXFailureReasonIsNotNullAndDeliveryMethod(
+            com.shifa.oms.order.DeliveryMethod deliveryMethod);
+
+    /** Sum of COD amounts on active, non-cancelled orders created in a window. */
+    @Query(value = """
+            SELECT COALESCE(SUM(o.cod_amount), 0)
+            FROM orders o
+            WHERE o.active = 1
+              AND o.created_at >= :dayStart AND o.created_at < :dayEnd
+              AND o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
+            """, nativeQuery = true)
+    java.math.BigDecimal sumCodBetween(@Param("dayStart") java.time.LocalDateTime dayStart,
+                                       @Param("dayEnd") java.time.LocalDateTime dayEnd);
+
     /** Count of orders in a given payment-verification state (owner snapshot / exception triage). */
     long countByPaymentVerificationStatus(com.shifa.oms.order.PaymentVerificationStatus status);
 
