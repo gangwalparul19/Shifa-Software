@@ -24,6 +24,25 @@ import { verificationBadgeClass } from '../shared/status-badge.component';
 /** The verification filter tabs, in display order. */
 type StatusFilter = 'ALL' | VerificationStatus;
 
+/** Period lens for the Performance drawer (sales & orders per day). */
+type PerfPeriod = 'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'OVERALL';
+
+/** One day's sales + orders within the selected period. */
+export interface PerfDayRow {
+  date: string;
+  orders: number;
+  revenue: number;
+}
+
+/** Aggregated totals for the selected period. */
+export interface PerfPeriodStats {
+  label: string;
+  orders: number;
+  /** Sales = sum of revenue EXCLUDING cancelled/rejected orders. */
+  sales: number;
+  days: PerfDayRow[];
+}
+
 /**
  * Admin-only "All salespeople" directory with onboarding profiles &amp; ID
  * verification.
@@ -66,6 +85,19 @@ export class SalespeopleComponent implements OnInit {
   /** The open salesperson's full 360 detail (loaded when the drawer opens). */
   protected readonly detail = signal<SalespersonPerformanceDetail | null>(null);
   protected readonly detailLoading = signal(false);
+
+  /** Performance period filter for the drawer (sales/orders per day). */
+  protected readonly perfPeriod = signal<PerfPeriod>('MONTH');
+  /** Period tabs rendered in the Performance drawer, in display order. */
+  protected readonly perfPeriodTabs: { key: PerfPeriod; label: string }[] = [
+    { key: 'TODAY', label: 'Today' },
+    { key: 'YESTERDAY', label: 'Yesterday' },
+    { key: 'WEEK', label: 'This Week' },
+    { key: 'MONTH', label: 'This Month' },
+    { key: 'OVERALL', label: 'Overall' },
+  ];
+  /** Trend window (days) fetched for the drawer — wide enough for "This Month". */
+  private readonly PERF_TREND_DAYS = 60;
 
   /** Verification filter tab. */
   protected readonly filter = signal<StatusFilter>('ALL');
@@ -271,8 +303,72 @@ export class SalespeopleComponent implements OnInit {
 
   /** The tallest daily order count in the trend, for bar scaling (min 1). */
   trendMax(): number {
-    const t = this.detail()?.trend ?? [];
-    return Math.max(1, ...t.map((p) => p.orders));
+    const days = this.periodStats()?.days ?? [];
+    return Math.max(1, ...days.map((p) => p.orders));
+  }
+
+  /**
+   * Orders + sales for the selected {@link perfPeriod}, derived from the daily
+   * trend series (which the backend already returns with per-day revenue that
+   * EXCLUDES cancelled/rejected orders). "Overall" uses the lifetime summary
+   * totals since the trend window is capped at 60 days.
+   */
+  protected readonly periodStats = computed<PerfPeriodStats | null>(() => {
+    const d = this.detail();
+    if (!d) {
+      return null;
+    }
+    const period = this.perfPeriod();
+    const label = this.perfPeriodTabs.find((t) => t.key === period)?.label ?? '';
+
+    if (period === 'OVERALL') {
+      // Lifetime: use the summary totals (trend is only the last 60 days).
+      return {
+        label,
+        orders: d.summary.ordersTotal,
+        sales: Number(d.summary.revenueTotal ?? 0),
+        days: [...d.trend]
+          .map((p) => ({ date: p.date, orders: p.orders, revenue: Number(p.revenue ?? 0) }))
+          .reverse(), // newest first for the breakdown list
+      };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const inPeriod = (dateStr: string): boolean => {
+      const dt = new Date(dateStr);
+      dt.setHours(0, 0, 0, 0);
+      const diffDays = Math.round((today.getTime() - dt.getTime()) / 86400000);
+      switch (period) {
+        case 'TODAY':
+          return diffDays === 0;
+        case 'YESTERDAY':
+          return diffDays === 1;
+        case 'WEEK': {
+          // Current week, Monday-start.
+          const dow = (today.getDay() + 6) % 7; // 0 = Monday
+          return diffDays >= 0 && diffDays <= dow;
+        }
+        case 'MONTH':
+          return dt.getMonth() === today.getMonth() && dt.getFullYear() === today.getFullYear();
+        default:
+          return false;
+      }
+    };
+
+    const days: PerfDayRow[] = d.trend
+      .filter((p) => inPeriod(p.date))
+      .map((p) => ({ date: p.date, orders: p.orders, revenue: Number(p.revenue ?? 0) }))
+      .reverse(); // newest first
+
+    const orders = days.reduce((sum, p) => sum + p.orders, 0);
+    const sales = days.reduce((sum, p) => sum + p.revenue, 0);
+    return { label, orders, sales, days };
+  });
+
+  /** Switch the Performance period lens (no re-fetch; derived from the trend). */
+  setPerfPeriod(period: PerfPeriod): void {
+    this.perfPeriod.set(period);
   }
 
   // --- Drawer -------------------------------------------------------------
@@ -280,13 +376,15 @@ export class SalespeopleComponent implements OnInit {
   open(member: StaffProfile): void {
     this.formError.set(null);
     this.drawerTab.set('performance');
+    this.perfPeriod.set('MONTH');
     this.selected.set(member);
     this.verifyNote.reset('');
     this.clearProfilePreview();
-    // Load the Salesperson 360 detail for the performance section.
+    // Load the Salesperson 360 detail for the performance section. Request a
+    // wide trend window so the period lens (Today..This Month) has daily data.
     this.detail.set(null);
     this.detailLoading.set(true);
-    this.service.performance(member.id).subscribe({
+    this.service.performance(member.id, this.PERF_TREND_DAYS).subscribe({
       next: (d) => {
         this.detail.set(d);
         this.detailLoading.set(false);

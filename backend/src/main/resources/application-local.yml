@@ -17,11 +17,15 @@ app:
       # The Angular HTTPS dev server is local-only. Override CORS_EXTRA_ORIGIN
       # when the laptop's LAN address changes.
       extra-origins:
-        - "https://localhost:4300"
-        - "${CORS_EXTRA_ORIGIN:https://192.168.1.104:4300}"
+        - "http://localhost:4300"
   backup:
     # Full path to the locally installed MySQL 8.0 mysqldump binary (not on PATH).
     mysqldump-path: "C:/Program Files/MySQL/MySQL Server 8.0/bin/mysqldump.exe"
+  courier:
+    # LOCAL ONLY: disable the 5-min CourierTrackingPoller so it doesn't keep
+    # polling QuikShip/courier status while testing other functionality.
+    # Defaults to true everywhere else (prod unaffected).
+    poll-enabled: false
 
 logging:
   level:

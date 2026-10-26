@@ -2,6 +2,7 @@ package com.shifa.oms.courier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -15,6 +16,7 @@ import java.util.List;
  * as webhook updates, and are therefore idempotent.
  */
 @Component
+@ConditionalOnProperty(name = "app.courier.poll-enabled", havingValue = "true", matchIfMissing = true)
 public class CourierTrackingPoller {
 
     private static final Logger log = LoggerFactory.getLogger(CourierTrackingPoller.class);
