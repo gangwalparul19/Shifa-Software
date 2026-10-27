@@ -1,12 +1,17 @@
 package com.shifa.oms.reconciliation;
 
+import com.shifa.oms.auth.AuthPrincipal;
+import com.shifa.oms.auth.CurrentUserService;
 import com.shifa.oms.common.PageRequests;
 import com.shifa.oms.common.PageResponse;
 import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
 import com.shifa.oms.reconciliation.dto.CourierSummaryResponse;
 import com.shifa.oms.reconciliation.dto.ReceivableResponse;
+import com.shifa.oms.reconciliation.dto.RemittanceBatchLineResponse;
+import com.shifa.oms.reconciliation.dto.RemittanceBatchResponse;
 import com.shifa.oms.reconciliation.dto.RemittanceImportResponse;
+import com.shifa.oms.reconciliation.dto.RemittanceReportSummaryResponse;
 import com.shifa.oms.reconciliation.dto.SegregationResponse;
 import com.shifa.oms.reconciliation.dto.SettleReceivableRequest;
 import com.shifa.oms.reconciliation.dto.UnsettledCodResponse;
@@ -70,14 +75,20 @@ public class ReconciliationController {
 
     private final ReconciliationService reconciliationService;
     private final RemittanceImportService remittanceImportService;
+    private final RemittanceReportService remittanceReportService;
     private final CodAgingService codAgingService;
+    private final CurrentUserService currentUserService;
 
     public ReconciliationController(ReconciliationService reconciliationService,
                                     RemittanceImportService remittanceImportService,
-                                    CodAgingService codAgingService) {
+                                    RemittanceReportService remittanceReportService,
+                                    CodAgingService codAgingService,
+                                    CurrentUserService currentUserService) {
         this.reconciliationService = reconciliationService;
         this.remittanceImportService = remittanceImportService;
+        this.remittanceReportService = remittanceReportService;
         this.codAgingService = codAgingService;
+        this.currentUserService = currentUserService;
     }
 
     /**
@@ -204,10 +215,55 @@ public class ReconciliationController {
             throw new ValidationException("A CSV file is required.");
         }
         try {
-            return remittanceImportService.importFile(file.getBytes(), file.getOriginalFilename(), dryRun);
+            Long userId = currentUserService.currentUser().map(AuthPrincipal::userId).orElse(null);
+            return remittanceImportService.importFile(file.getBytes(), file.getOriginalFilename(), dryRun, userId);
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to read the uploaded file.", e);
         }
+    }
+
+    /**
+     * Weekly COD settlement report KPIs (V99): totals over committed remittance
+     * imports in the window (defaults to the CURRENT week when both bounds are
+     * omitted) plus the courier COD still outstanding. Read-only — CA may view it.
+     *
+     * @param from inclusive import-date lower bound, ISO {@code yyyy-MM-dd} (optional)
+     * @param to   inclusive import-date upper bound, ISO {@code yyyy-MM-dd} (optional)
+     */
+    @GetMapping("/remittance/summary")
+    public RemittanceReportSummaryResponse remittanceSummary(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return remittanceReportService.summary(from, to);
+    }
+
+    /**
+     * Committed remittance import batches, optionally windowed by import date,
+     * newest first — the settlement report's batch listing. Read-only.
+     */
+    @GetMapping("/remittance/batches")
+    public List<RemittanceBatchResponse> remittanceBatches(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return remittanceReportService.batches(from, to);
+    }
+
+    /** Per-order lines of one committed remittance batch — the details report. Read-only. */
+    @GetMapping("/remittance/batches/{id}/lines")
+    public List<RemittanceBatchLineResponse> remittanceBatchLines(@PathVariable Long id) {
+        return remittanceReportService.lines(id);
+    }
+
+    /**
+     * Partially-settled COD orders with a shortfall still outstanding — the
+     * "chase next cycle" follow-up list (V99). A short courier remittance settles
+     * the remitted part and leaves the shortfall here; these are flagged settled so
+     * they do NOT appear on the unsettled-COD list, making this the only place they
+     * surface. Read-only.
+     */
+    @GetMapping("/remittance/partial")
+    public List<com.shifa.oms.reconciliation.dto.PartialSettlementResponse> partiallySettled() {
+        return remittanceReportService.partiallySettled();
     }
 }
 

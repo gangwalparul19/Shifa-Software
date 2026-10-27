@@ -48,6 +48,23 @@ public class RemittanceRowProcessor {
             OrderStatus.IN_TRANSIT, OrderStatus.OUT_FOR_DELIVERY, OrderStatus.HANDED_TO_DELIVERY);
 
     /**
+     * Statuses from which a COD order with no receivable yet can still be settled
+     * straight from the remittance sheet (the catch-up path): any pre-delivery
+     * status PLUS {@code DELIVERED} itself. A DELIVERED COD order with no receivable
+     * row is the common "No receivable" confusion — the courier remitted it and it
+     * clearly was delivered, so we settle it rather than flag it. A genuine
+     * {@code NO_RECEIVABLE} is reserved for prepaid orders (no COD to collect) and
+     * terminal non-collectible statuses (RTO / Cancelled / Rejected / etc.).
+     */
+    private static final java.util.Set<OrderStatus> COD_COLLECTIBLE_STATUSES;
+
+    static {
+        java.util.EnumSet<OrderStatus> collectible = java.util.EnumSet.copyOf(PRE_DELIVERY_STATUSES);
+        collectible.add(OrderStatus.DELIVERED);
+        COD_COLLECTIBLE_STATUSES = java.util.Collections.unmodifiableSet(collectible);
+    }
+
+    /**
      * Ledger auto-posting source key for the COD cash booked when the courier's
      * remittance is settled (mirrors {@code SourceType.ORDER_DELIVERY}; kept as a
      * literal so the reconciliation module does not depend on the ledger module).
@@ -95,29 +112,34 @@ public class RemittanceRowProcessor {
         if (amountRaw == null) {
             amountRaw = trimToNull(value(row, columns, "codamount"));
         }
+        String customerName = trimToNull(value(row, columns, "customername"));
         String remittedDateRaw = trimToNull(value(row, columns, "remitteddate"));
 
         if (awb == null && orderCode == null && clientOrderId == null) {
-            return errorRow(rowNumber, awb, orderCode,
+            return errorRow(rowNumber, awb, orderCode, clientOrderId, customerName,
                     "Row has neither a tracking id, order code, nor client order id.");
         }
         BigDecimal remittedAmount;
         try {
             remittedAmount = amountRaw == null ? null : new BigDecimal(amountRaw.replace(",", ""));
         } catch (NumberFormatException e) {
-            return errorRow(rowNumber, awb, orderCode, "Amount '" + amountRaw + "' is not a valid number.");
+            return errorRow(rowNumber, awb, orderCode, clientOrderId, customerName,
+                    "Amount '" + amountRaw + "' is not a valid number.");
         }
         if (remittedAmount == null) {
-            return errorRow(rowNumber, awb, orderCode, "Amount is required.");
+            return errorRow(rowNumber, awb, orderCode, clientOrderId, customerName, "Amount is required.");
         }
         LocalDate remittedDate = parseDate(remittedDateRaw);
+
+        RowContext ctx = new RowContext(rowNumber, awb, orderCode, clientOrderId, customerName,
+                remittedAmount, remittedDate, dryRun);
 
         OrderEntity order = resolveOrder(awb, orderCode, clientOrderId);
         if (order == null) {
             String detail = clientOrderId != null
                     ? "AWB '" + awb + "' / order code '" + orderCode + "' / client order id '" + clientOrderId + "'"
                     : "AWB '" + awb + "' / order code '" + orderCode + "'";
-            return new RemittanceRowResult(rowNumber, awb, orderCode, null, remittedAmount, null,
+            return ctx.result(null, null, BigDecimal.ZERO, BigDecimal.ZERO,
                     RemittanceRowResult.Status.ORDER_NOT_FOUND, "No order matches " + detail + ".");
         }
 
@@ -126,89 +148,147 @@ public class RemittanceRowProcessor {
         Optional<ReceivableEntity> unsettled = existing.stream().filter(r -> !r.isSettled()).findFirst();
 
         if (unsettled.isPresent()) {
-            return settleAgainstReceivable(rowNumber, awb, orderCode, order, unsettled.get(), remittedAmount,
-                    remittedDate, dryRun);
+            return settleAgainstReceivable(ctx, order, unsettled.get());
         }
         if (!existing.isEmpty()) {
-            return new RemittanceRowResult(rowNumber, awb, orderCode, order.getOrderCode(), remittedAmount,
-                    existing.get(0).getAmount(), RemittanceRowResult.Status.ALREADY_SETTLED,
-                    "Order " + order.getOrderCode() + " was already settled on "
-                            + existing.get(0).getSettledDate() + ".");
+            ReceivableEntity prior = existing.get(0);
+            return ctx.result(order, prior.getAmount(), BigDecimal.ZERO, BigDecimal.ZERO,
+                    RemittanceRowResult.Status.ALREADY_SETTLED,
+                    "Order " + order.getOrderCode() + " was already settled on " + prior.getSettledDate() + ".");
         }
-        if (PRE_DELIVERY_STATUSES.contains(order.getOrderStatus())) {
-            return deliverAndSettleFromRemittance(rowNumber, awb, orderCode, order, remittedAmount, remittedDate, dryRun);
+        // No COD receivable row exists yet. If the order is a COD order (positive COD
+        // amount) that is delivered or on its way, the remittance itself is proof the
+        // courier collected + paid it out — so create and settle a receivable now
+        // (the catch-up path), instead of the confusing "No receivable". This covers
+        // the common case of a DELIVERED COD order whose receivable was never created.
+        BigDecimal codAmount = order.getCodAmount();
+        boolean isCod = codAmount != null && codAmount.signum() > 0;
+        if (isCod && COD_COLLECTIBLE_STATUSES.contains(order.getOrderStatus())) {
+            return deliverAndSettleFromRemittance(ctx, order);
         }
-        return new RemittanceRowResult(rowNumber, awb, orderCode, order.getOrderCode(), remittedAmount, null,
-                RemittanceRowResult.Status.NO_RECEIVABLE,
-                "Order " + order.getOrderCode() + " (" + order.getOrderStatus()
-                        + ") has no COD receivable and is not awaiting delivery — review manually.");
+        // Genuine "nothing to settle" — spell out WHY so the accountant isn't puzzled
+        // by a matching amount: either the order is prepaid (no COD component) or it
+        // is in a terminal non-collectible state (RTO / Cancelled / Rejected / etc.).
+        String reason = !isCod
+                ? "Order " + order.getOrderCode() + " is a prepaid order (no COD to collect) — the remitted "
+                        + ctx.remittedAmount() + " does not correspond to any COD receivable. Review manually."
+                : "Order " + order.getOrderCode() + " is " + humanStatus(order.getOrderStatus())
+                        + " — a non-collectible state, so it has no COD receivable to settle. Review manually.";
+        return ctx.result(order, isCod ? codAmount : null, BigDecimal.ZERO, BigDecimal.ZERO,
+                RemittanceRowResult.Status.NO_RECEIVABLE, reason);
     }
 
-    private RemittanceRowResult settleAgainstReceivable(int rowNumber, String awb, String orderCode,
-                                                         OrderEntity order, ReceivableEntity receivable,
-                                                         BigDecimal remittedAmount, LocalDate remittedDate,
-                                                         boolean dryRun) {
+    private RemittanceRowResult settleAgainstReceivable(RowContext ctx, OrderEntity order,
+                                                        ReceivableEntity receivable) {
         BigDecimal expected = receivable.getAmount();
-        BigDecimal diff = expected.subtract(remittedAmount).abs();
+        BigDecimal remittedAmount = ctx.remittedAmount();
+        BigDecimal diff = remittedAmount.subtract(expected); // + = over-paid, - = short
+        BigDecimal shortfall = expected.subtract(remittedAmount);
+
+        // Over-paid beyond tolerance: never over-credit on a guess — flag for review.
         if (diff.compareTo(TOLERANCE) > 0) {
-            return new RemittanceRowResult(rowNumber, awb, orderCode, order.getOrderCode(), remittedAmount, expected,
+            return ctx.result(order, expected, BigDecimal.ZERO, BigDecimal.ZERO,
                     RemittanceRowResult.Status.MISMATCH,
-                    "Order " + order.getOrderCode() + " expected " + expected + " but remittance shows "
+                    "Order " + order.getOrderCode() + " expected " + expected + " but remittance OVER-paid "
                             + remittedAmount + " — review before settling manually.");
         }
-        if (!dryRun) {
-            receivable.settle(remittedDate != null ? remittedDate : LocalDate.now());
+
+        // Short-paid beyond tolerance: PARTIAL settle — credit the remitted amount,
+        // keep the shortfall outstanding. Within tolerance (|diff| <= 1): full settle.
+        boolean partial = shortfall.compareTo(TOLERANCE) > 0;
+        BigDecimal settledAmount = partial ? remittedAmount : expected;
+        BigDecimal outstandingShortfall = partial ? shortfall : BigDecimal.ZERO;
+
+        if (!ctx.dryRun()) {
+            if (partial) {
+                receivable.settlePartial(remittedAmount, ctx.settleDate());
+            } else {
+                receivable.settle(ctx.settleDate());
+            }
             receivableRepository.save(receivable);
             // Settling the courier's remittance is the moment the COD cash becomes
             // ours. If the order was left at DELIVERED with the COD outstanding (the
             // courier-COD-settlement flow — delivery no longer auto-settles), finish
-            // the lifecycle now: advance Delivered → COD_Collected, clear the
-            // customer outstanding, and book the cash to the ledger dated the
-            // delivery/settlement. Guarded by the legal transition so a prepaid /
+            // the lifecycle now: advance Delivered → COD_Collected, set the remaining
+            // customer outstanding to the shortfall (0 on a full settle), and book the
+            // cash to the ledger. Guarded by the legal transition so a prepaid /
             // already-closed order is untouched.
             if (order.getOrderStatus() == OrderStatus.DELIVERED
                     && order.getOrderStatus().canTransitionTo(OrderStatus.COD_COLLECTED)) {
                 orderWorkflowService.applyTransition(
                         order, OrderStatus.COD_COLLECTED, Actor.system("REMITTANCE_IMPORT", "RECONCILIATION"));
-                order.setCustomerOutstanding(BigDecimal.ZERO);
+                order.setCustomerOutstanding(outstandingShortfall);
                 orderRepository.save(order);
                 outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_ORDER_DELIVERY, order.getId());
             }
         }
-        return new RemittanceRowResult(rowNumber, awb, orderCode, order.getOrderCode(), remittedAmount, expected,
+
+        if (partial) {
+            return ctx.result(order, expected, settledAmount, outstandingShortfall,
+                    RemittanceRowResult.Status.PARTIALLY_SETTLED,
+                    (ctx.dryRun() ? "Would partially settle" : "Partially settled") + " order "
+                            + order.getOrderCode() + " for " + remittedAmount + " of " + expected
+                            + " — shortfall " + outstandingShortfall + " still outstanding.");
+        }
+        return ctx.result(order, expected, settledAmount, BigDecimal.ZERO,
                 RemittanceRowResult.Status.SETTLED,
-                (dryRun ? "Would settle" : "Settled") + " order " + order.getOrderCode() + " for " + remittedAmount + ".");
+                (ctx.dryRun() ? "Would settle" : "Settled") + " order " + order.getOrderCode()
+                        + " for " + remittedAmount + ".");
     }
 
-    private RemittanceRowResult deliverAndSettleFromRemittance(int rowNumber, String awb, String orderCode,
-                                                                OrderEntity order, BigDecimal remittedAmount,
-                                                                LocalDate remittedDate, boolean dryRun) {
-        if (dryRun) {
-            return new RemittanceRowResult(rowNumber, awb, orderCode, order.getOrderCode(), remittedAmount,
-                    order.getCodAmount(), RemittanceRowResult.Status.SETTLED,
-                    "Would mark " + order.getOrderCode() + " Delivered + COD Collected and settle "
-                            + remittedAmount + " (no delivery update was ever received for this order).");
+    private RemittanceRowResult deliverAndSettleFromRemittance(RowContext ctx, OrderEntity order) {
+        BigDecimal expected = order.getCodAmount();
+        BigDecimal remittedAmount = ctx.remittedAmount();
+        BigDecimal shortfall = expected.subtract(remittedAmount);
+        boolean over = remittedAmount.subtract(expected).compareTo(TOLERANCE) > 0;
+        boolean partial = !over && shortfall.compareTo(TOLERANCE) > 0;
+        BigDecimal settledAmount = partial ? remittedAmount : (over ? expected : expected);
+        BigDecimal outstandingShortfall = partial ? shortfall : BigDecimal.ZERO;
+        RemittanceRowResult.Status status = partial
+                ? RemittanceRowResult.Status.PARTIALLY_SETTLED
+                : RemittanceRowResult.Status.SETTLED;
+
+        // The order may be pre-delivery (needs the Delivered step first) or already
+        // Delivered (only the Delivered → COD_Collected settle step is left — the
+        // confusing "No receivable" case: delivered, but its COD receivable row was
+        // never created).
+        boolean alreadyDelivered = order.getOrderStatus() == OrderStatus.DELIVERED;
+        String deliveredPhrase = alreadyDelivered ? "COD Collected" : "Delivered + COD Collected";
+
+        if (ctx.dryRun()) {
+            return ctx.result(order, expected, settledAmount, outstandingShortfall, status,
+                    "Would mark " + order.getOrderCode() + " " + deliveredPhrase + " and "
+                            + (partial ? "partially settle " + remittedAmount + " of " + expected
+                                       : "settle " + remittedAmount)
+                            + " (its COD receivable was never created — settling it from this remittance).");
         }
         Actor actor = Actor.system("REMITTANCE_IMPORT", "RECONCILIATION");
-        orderWorkflowService.applyTransition(order, OrderStatus.DELIVERED, actor);
+        if (!alreadyDelivered) {
+            orderWorkflowService.applyTransition(order, OrderStatus.DELIVERED, actor);
+        }
         orderWorkflowService.applyTransition(order, OrderStatus.COD_COLLECTED, actor);
-        order.setCustomerOutstanding(BigDecimal.ZERO);
+        order.setCustomerOutstanding(outstandingShortfall);
         orderRepository.save(order);
 
         Long courierCompanyId = courierRecordRepository.findByOrderId(order.getId())
                 .map(CourierRecord::getCourierCompanyId).orElse(null);
         ReceivableEntity receivable = new ReceivableEntity(
-                order.getId(), courierCompanyId, ReceivableType.COD_RECEIVABLE, order.getCodAmount());
-        receivable.settle(remittedDate != null ? remittedDate : LocalDate.now());
+                order.getId(), courierCompanyId, ReceivableType.COD_RECEIVABLE, expected);
+        if (partial) {
+            receivable.settlePartial(remittedAmount, ctx.settleDate());
+        } else {
+            receivable.settle(ctx.settleDate());
+        }
         receivableRepository.save(receivable);
         // Book the COD cash to the ledger now that it's remitted (same source as the
         // settle-against-existing-receivable path above).
         outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_ORDER_DELIVERY, order.getId());
 
-        return new RemittanceRowResult(rowNumber, awb, orderCode, order.getOrderCode(), remittedAmount,
-                order.getCodAmount(), RemittanceRowResult.Status.SETTLED,
-                "Marked " + order.getOrderCode() + " Delivered + COD Collected and settled " + remittedAmount
-                        + " (no delivery update had been received for this order until now).");
+        return ctx.result(order, expected, settledAmount, outstandingShortfall, status,
+                "Marked " + order.getOrderCode() + " " + deliveredPhrase + " and "
+                        + (partial ? "partially settled " + remittedAmount + " of " + expected
+                                   : "settled " + remittedAmount)
+                        + " (its COD receivable had not been created until now).");
     }
 
     // --- Order resolution -----------------------------------------------------
@@ -257,11 +337,48 @@ public class RemittanceRowProcessor {
         return m.find() ? m.group(1) : null;
     }
 
+    /** A readable label for an order status in a review message (e.g. RTO → "returned (RTO)"). */
+    private static String humanStatus(OrderStatus status) {
+        return switch (status) {
+            case RTO -> "returned to origin (RTO)";
+            case REDISPATCH -> "lost/damaged in transit (Redispatch)";
+            case CANCELLED -> "cancelled";
+            case REJECTED -> "rejected";
+            case PAYMENT_REJECTED -> "payment rejected";
+            case CUSTOMER_REJECTED -> "refused by the customer";
+            case DELIVERY_FAILED -> "a failed delivery";
+            case CLOSED -> "closed (already settled as prepaid)";
+            default -> status.name();
+        };
+    }
+
     // --- Internal helpers ------------------------------------------------------
 
-    private static RemittanceRowResult errorRow(int rowNumber, String awb, String orderCode, String message) {
-        return new RemittanceRowResult(rowNumber, awb, orderCode, null, null, null,
-                RemittanceRowResult.Status.ERROR, message);
+    /**
+     * The parsed inputs for one row, so the (now richer) {@link RemittanceRowResult}
+     * is assembled in one place rather than threading a dozen args through each
+     * outcome path.
+     */
+    private record RowContext(int rowNumber, String awb, String orderCode, String clientOrderId,
+                              String customerName, BigDecimal remittedAmount, LocalDate remittedDate,
+                              boolean dryRun) {
+        LocalDate settleDate() {
+            return remittedDate != null ? remittedDate : LocalDate.now();
+        }
+
+        RemittanceRowResult result(OrderEntity order, BigDecimal expected, BigDecimal settledAmount,
+                                   BigDecimal shortfall, RemittanceRowResult.Status status, String message) {
+            return new RemittanceRowResult(rowNumber, awb, orderCode, clientOrderId, customerName,
+                    order != null ? order.getOrderCode() : null,
+                    order != null ? order.getId() : null,
+                    remittedAmount, expected, settledAmount, shortfall, remittedDate, status, message);
+        }
+    }
+
+    private static RemittanceRowResult errorRow(int rowNumber, String awb, String orderCode,
+                                                String clientOrderId, String customerName, String message) {
+        return new RemittanceRowResult(rowNumber, awb, orderCode, clientOrderId, customerName, null, null,
+                null, null, BigDecimal.ZERO, BigDecimal.ZERO, null, RemittanceRowResult.Status.ERROR, message);
     }
 
     private static LocalDate parseDate(String raw) {

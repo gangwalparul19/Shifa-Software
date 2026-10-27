@@ -17,6 +17,7 @@ import { RtoComponent } from './packing/rto.component';
 import { PickListComponent } from './packing/pick-list.component';
 import { ReconciliationComponent } from './reconciliation/reconciliation.component';
 import { SettlementComponent } from './settlements/settlement.component';
+import { RemittanceReportComponent } from './remittance-report/remittance-report.component';
 import { ReportsComponent } from './reports/reports.component';
 import { SettingsComponent } from './settings/settings.component';
 import { UsersComponent } from './users/users.component';
@@ -410,6 +411,13 @@ export const routes: Routes = [
       {
         path: 'settlements',
         component: SettlementComponent,
+        canActivate: [accountantGuard],
+      },
+      {
+        // Weekly COD settlement report: what the courier remitted + settled,
+        // partial payments, shortfalls, and what's still to collect (V99).
+        path: 'remittance-report',
+        component: RemittanceReportComponent,
         canActivate: [accountantGuard],
       },
       {

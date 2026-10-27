@@ -1,8 +1,12 @@
 package com.shifa.oms.order;
 
+import com.shifa.oms.courier.CourierRecord;
 import com.shifa.oms.order.domain.PaymentStatus;
+import com.shifa.oms.quikshipx.OrderShipment;
 import com.shifa.oms.statemachine.OrderStatus;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDate;
@@ -22,7 +26,8 @@ import java.util.Locale;
  * <p>Supported filters:
  * <ul>
  *   <li>{@code q} — case-insensitive substring over order code, customer name,
- *       or customer mobile;</li>
+ *       customer mobile, or the courier AWB / QuikShipX tracking id (matched via
+ *       correlated subqueries against {@code order_shipments}/{@code courier_records});</li>
  *   <li>{@code status} — exact order lifecycle status;</li>
  *   <li>{@code paymentStatus} — exact payment status;</li>
  *   <li>{@code from}/{@code to} — inclusive {@code created_at} date range.</li>
@@ -132,10 +137,21 @@ public final class OrderListSpecifications {
             }
             if (q != null && !q.isBlank()) {
                 String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
-                predicates.add(cb.or(
-                        cb.like(cb.lower(root.get("orderCode")), like),
-                        cb.like(cb.lower(root.get("customerName")), like),
-                        cb.like(cb.lower(root.get("customerMobile")), like)));
+                List<Predicate> any = new ArrayList<>();
+                any.add(cb.like(cb.lower(root.get("orderCode")), like));
+                any.add(cb.like(cb.lower(root.get("customerName")), like));
+                any.add(cb.like(cb.lower(root.get("customerMobile")), like));
+                // AWB / tracking id — searchable even though the AWB lives in a
+                // separate table (order_shipments for QuikShipX, courier_records
+                // for the legacy courier module). Correlated EXISTS subqueries keep
+                // OrderEntity free of a courier relationship. The QuikShipX
+                // shipper_order_id (the "Client Order ID" on remittance sheets) is
+                // matched too, so pasting either the AWB or the QuikShip id finds
+                // the order.
+                any.add(awbMatch(query, cb, root, like, OrderShipment.class, "awb"));
+                any.add(awbMatch(query, cb, root, like, OrderShipment.class, "shipperOrderId"));
+                any.add(awbMatch(query, cb, root, like, CourierRecord.class, "awb"));
+                predicates.add(cb.or(any.toArray(new Predicate[0])));
             }
             if (status != null) {
                 predicates.add(cb.equal(root.get("orderStatus"), status));
@@ -157,5 +173,25 @@ public final class OrderListSpecifications {
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    /**
+     * An {@code EXISTS} predicate: true when a row of {@code shipmentType} exists
+     * whose {@code orderId} equals this order's id and whose {@code field} matches
+     * the {@code like} pattern (case-insensitive). Used to make the AWB / tracking
+     * id searchable from the orders list without mapping a courier relationship
+     * onto {@link OrderEntity}.
+     */
+    private static <T> Predicate awbMatch(jakarta.persistence.criteria.CriteriaQuery<?> query,
+                                          jakarta.persistence.criteria.CriteriaBuilder cb,
+                                          Root<OrderEntity> root, String like,
+                                          Class<T> shipmentType, String field) {
+        Subquery<Long> sub = query.subquery(Long.class);
+        Root<T> shipment = sub.from(shipmentType);
+        sub.select(shipment.get("orderId"));
+        sub.where(cb.and(
+                cb.equal(shipment.get("orderId"), root.get("id")),
+                cb.like(cb.lower(shipment.get(field)), like)));
+        return cb.exists(sub);
     }
 }

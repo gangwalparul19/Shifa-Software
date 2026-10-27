@@ -74,7 +74,7 @@
             type="search"
             class="form-control"
             [formControl]="search"
-            placeholder="Search orders…"
+            placeholder="Search by order #, customer, mobile or AWB…"
             autocomplete="off"
             aria-label="Search orders"
           />
@@ -356,6 +356,15 @@
             @if (order.source === 'SHOPIFY') {
               <admin-channel-logo class="ms-1" [source]="order.source" />
             }
+            @if (settlementIcon(order); as si) {
+              <i class="ti {{ si.icon }} ms-1 shifa-settle-ico shifa-settle-ico--{{ si.tone }}"
+                 [title]="si.tooltip"></i>
+            }
+            @if (collectedOnDelivery(order)) {
+              <i class="ti ti-cash ms-1 shifa-collected-ico"
+                 title="Collected on Delivery"
+                 aria-label="Collected on Delivery"></i>
+            }
           </span>
           <span class="shifa-oc__amount">{{ money(order.totalAmount) }}</span>
         </div>
@@ -460,6 +469,15 @@
                 <button type="button" class="btn btn-link p-0 fw-medium" (click)="$event.stopPropagation(); openDetail(order)">
                   {{ order.orderCode }}
                 </button>
+                @if (settlementIcon(order); as si) {
+                  <i class="ti {{ si.icon }} ms-1 shifa-settle-ico shifa-settle-ico--{{ si.tone }}"
+                     [title]="si.tooltip"></i>
+                }
+                @if (collectedOnDelivery(order)) {
+                  <i class="ti ti-cash ms-1 shifa-collected-ico"
+                     title="Collected on Delivery"
+                     aria-label="Collected on Delivery"></i>
+                }
               </td>
               <td class="d-none d-md-table-cell" data-label="Source">
                 @if (order.source === 'SHOPIFY') {

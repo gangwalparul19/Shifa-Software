@@ -533,6 +533,14 @@ export class AdminShellComponent {
         },
         {
           kind: 'link',
+          label: 'Settlement Report',
+          path: '/remittance-report',
+          icon: 'ti-report-money',
+          // Weekly courier COD remittance report (what was settled + shortfalls).
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+        {
+          kind: 'link',
           label: 'Settlement Center',
           path: '/settlements',
           icon: 'ti-arrows-transfer-up',

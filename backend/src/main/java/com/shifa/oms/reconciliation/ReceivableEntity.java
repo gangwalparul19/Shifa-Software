@@ -50,6 +50,16 @@ public class ReceivableEntity {
     @Column(name = "settled", nullable = false)
     private boolean settled = false;
 
+    /**
+     * The amount actually settled against this receivable (V99). For a full
+     * settlement this equals {@link #amount}; for a partial remittance it is the
+     * remitted portion and {@code amount - settledAmount} is the shortfall that
+     * stays outstanding. {@code null} only for pre-V99 rows that were never
+     * touched after the migration backfill.
+     */
+    @Column(name = "settled_amount", precision = 12, scale = 2)
+    private BigDecimal settledAmount;
+
     @Column(name = "settled_date")
     private LocalDate settledDate;
 
@@ -78,8 +88,45 @@ public class ReceivableEntity {
             return false;
         }
         this.settled = true;
+        this.settledAmount = amount;
         this.settledDate = date;
         return true;
+    }
+
+    /**
+     * Records a partial COD settlement (V99): marks the receivable settled for the
+     * remitted amount while leaving {@code amount - settledAmount} as the shortfall
+     * still outstanding. The receivable is flagged {@code settled} (it has been
+     * remitted on) but the recorded {@code settledAmount} is clamped to
+     * {@code [0, amount]} so a short payout is never over-credited. Idempotent:
+     * a second call on an already-settled receivable is a no-op.
+     *
+     * @param remitted the amount actually received from the courier for this order
+     * @param date     the remittance/settlement date
+     * @return {@code true} if this call settled a previously-unsettled row
+     */
+    public boolean settlePartial(BigDecimal remitted, LocalDate date) {
+        if (settled) {
+            return false;
+        }
+        BigDecimal clamped = remitted == null ? BigDecimal.ZERO : remitted;
+        if (clamped.signum() < 0) {
+            clamped = BigDecimal.ZERO;
+        }
+        if (clamped.compareTo(amount) > 0) {
+            clamped = amount;
+        }
+        this.settled = true;
+        this.settledAmount = clamped;
+        this.settledDate = date;
+        return true;
+    }
+
+    /** The shortfall ({@code amount - settledAmount}, never negative) for a settled-partial row. */
+    public BigDecimal getShortfall() {
+        BigDecimal credited = settledAmount != null ? settledAmount : (settled ? amount : BigDecimal.ZERO);
+        BigDecimal diff = amount.subtract(credited);
+        return diff.signum() < 0 ? BigDecimal.ZERO : diff;
     }
 
     public Long getId() {
@@ -104,6 +151,10 @@ public class ReceivableEntity {
 
     public boolean isSettled() {
         return settled;
+    }
+
+    public BigDecimal getSettledAmount() {
+        return settledAmount;
     }
 
     public LocalDate getSettledDate() {

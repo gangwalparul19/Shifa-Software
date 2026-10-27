@@ -1,0 +1,377 @@
+<admin-page-header
+  title="Settlement Report"
+  subtitle="Weekly courier COD remittance — what has been settled, partial payments, and what's still to collect"
+  [breadcrumbs]="[{ label: 'Reconciliation', link: '/reconciliation' }, { label: 'Settlement Report' }]"
+>
+  <button type="button" class="btn btn-primary" (click)="goImport()">
+    <i class="ti ti-upload me-1"></i> Import remittance
+  </button>
+</admin-page-header>
+
+<!-- Period filter -->
+<div class="card rr-filter mb-3">
+  <div class="card-body d-flex flex-wrap align-items-end gap-2">
+    <div class="rr-presets btn-group" role="group" aria-label="Period">
+      <button type="button" class="btn btn-sm" [class.active]="preset() === 'this-week'"
+        (click)="applyPreset('this-week')">This week</button>
+      <button type="button" class="btn btn-sm" [class.active]="preset() === 'last-week'"
+        (click)="applyPreset('last-week')">Last week</button>
+      <button type="button" class="btn btn-sm" [class.active]="preset() === 'this-month'"
+        (click)="applyPreset('this-month')">This month</button>
+      <button type="button" class="btn btn-sm" [class.active]="preset() === 'last-month'"
+        (click)="applyPreset('last-month')">Last month</button>
+    </div>
+    <div class="ms-auto d-flex align-items-end gap-2">
+      <div>
+        <label class="form-label mb-1 small text-secondary">From</label>
+        <input type="date" class="form-control form-control-sm" [value]="from()" (change)="setFrom($event)" />
+      </div>
+      <div>
+        <label class="form-label mb-1 small text-secondary">To</label>
+        <input type="date" class="form-control form-control-sm" [value]="to()" (change)="setTo($event)" />
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-primary" (click)="applyCustom()">Apply</button>
+    </div>
+  </div>
+</div>
+
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading settlement report…" />
+} @else if (error()) {
+  <admin-state-panel variant="error" [card]="true" [message]="error()!" (retry)="load()" />
+} @else {
+
+  <!-- KPI cards for the selected period -->
+  @if (summary(); as s) {
+    <div class="row row-cards rr-kpis mb-3">
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card rr-kpi rr-kpi--green">
+          <div class="card-body">
+            <div class="rr-kpi__icon"><i class="ti ti-circle-check-filled"></i></div>
+            <div class="rr-kpi__value">{{ s.ordersSettled }}</div>
+            <div class="rr-kpi__label">Orders settled</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card rr-kpi rr-kpi--amber">
+          <div class="card-body">
+            <div class="rr-kpi__icon"><i class="ti ti-progress-alert"></i></div>
+            <div class="rr-kpi__value">{{ s.ordersPartiallySettled }}</div>
+            <div class="rr-kpi__label">Partially settled</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card rr-kpi rr-kpi--red">
+          <div class="card-body">
+            <div class="rr-kpi__icon"><i class="ti ti-alert-triangle"></i></div>
+            <div class="rr-kpi__value">{{ inr(s.totalShortfall) }}</div>
+            <div class="rr-kpi__label">Shortfall (partial)</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card rr-kpi rr-kpi--blue">
+          <div class="card-body">
+            <div class="rr-kpi__icon"><i class="ti ti-cash"></i></div>
+            <div class="rr-kpi__value">{{ inr(s.totalSettled) }}</div>
+            <div class="rr-kpi__label">Settled this period</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card rr-kpi rr-kpi--grey">
+          <div class="card-body">
+            <div class="rr-kpi__icon"><i class="ti ti-clock-dollar"></i></div>
+            <div class="rr-kpi__value">{{ inr(s.codStillOutstanding) }}</div>
+            <div class="rr-kpi__label">COD still to collect</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="text-secondary small rr-period">
+      Showing <strong>{{ presetLabel() }}</strong>
+      @if (s.from && s.to) { ({{ s.from | istDate: 'dd MMM yyyy' }} – {{ s.to | istDate: 'dd MMM yyyy' }}) }
+      · {{ s.batchCount }} import{{ s.batchCount === 1 ? '' : 's' }}
+      · {{ inr(s.totalRemitted) }} remitted
+      @if (s.ordersNeedingReview > 0) {
+        · <span class="text-danger">{{ s.ordersNeedingReview }} need review</span>
+      }
+    </p>
+  }
+
+  <!-- View toggle: committed imports vs the partial follow-up list -->
+  <div class="rr-viewtabs btn-group mb-3" role="tablist">
+    <button type="button" class="btn" [class.active]="view() === 'imports'"
+      role="tab" [attr.aria-selected]="view() === 'imports'" (click)="setView('imports')">
+      <i class="ti ti-file-invoice me-1"></i> Remittance imports
+    </button>
+    <button type="button" class="btn" [class.active]="view() === 'partial'"
+      role="tab" [attr.aria-selected]="view() === 'partial'" (click)="setView('partial')">
+      <i class="ti ti-progress-alert me-1"></i> Partial — follow up
+      @if (partials().length > 0) {
+        <span class="badge tone-amber ms-1">{{ partials().length }}</span>
+      }
+    </button>
+  </div>
+
+  @if (view() === 'imports') {
+  <!-- Imported batches -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Remittance imports</h3>
+    </div>
+    @if (batches().length === 0) {
+      <admin-state-panel variant="empty" icon="ti-file-off"
+        message="No remittance imports in this period. Use Import remittance to upload the courier's COD payout sheet." />
+    } @else {
+      <div class="table-responsive d-none d-md-block">
+        <table class="table card-table table-vcenter">
+          <thead>
+            <tr>
+              <th>Imported</th>
+              <th>File / batch</th>
+              <th>Remitted on</th>
+              <th class="text-center">Orders</th>
+              <th class="text-end">Remitted</th>
+              <th class="text-end">Settled</th>
+              <th class="text-end">Shortfall</th>
+              <th class="text-center">Review</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (b of pageItems(); track b.id) {
+              <tr class="rr-row" (click)="openBatch(b)">
+                <td>{{ b.importedAt | istDate: 'dd MMM yyyy, HH:mm' }}</td>
+                <td>
+                  <div class="rr-file">{{ b.originalFilename || 'Remittance import' }}</div>
+                  @if (b.externalReference) {
+                    <div class="small text-secondary">Batch {{ b.externalReference }}</div>
+                  }
+                </td>
+                <td>{{ b.remittedDate ? (b.remittedDate | istDate: 'dd MMM yyyy') : '—' }}</td>
+                <td class="text-center">
+                  <span class="badge tone-green me-1" title="Fully settled">{{ b.settledCount }}</span>
+                  @if (b.partialCount > 0) {
+                    <span class="badge tone-amber" title="Partially settled">{{ b.partialCount }}</span>
+                  }
+                </td>
+                <td class="text-end tabular">{{ inr(b.totalRemitted) }}</td>
+                <td class="text-end tabular">{{ inr(b.totalSettled) }}</td>
+                <td class="text-end tabular" [class.rr-short]="(+b.totalShortfall) > 0">
+                  {{ (+b.totalShortfall) > 0 ? inr(b.totalShortfall) : '—' }}
+                </td>
+                <td class="text-center">
+                  @if (b.mismatchCount + b.notFoundCount + b.noReceivableCount + b.errorCount > 0) {
+                    <span class="badge tone-red">{{ b.mismatchCount + b.notFoundCount + b.noReceivableCount + b.errorCount }}</span>
+                  } @else {
+                    <span class="text-secondary">—</span>
+                  }
+                </td>
+                <td class="text-end"><i class="ti ti-chevron-right text-secondary"></i></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Mobile cards -->
+      <div class="d-md-none">
+        @for (b of pageItems(); track b.id) {
+          <div class="rr-card" (click)="openBatch(b)">
+            <div class="d-flex justify-content-between">
+              <div class="rr-file">{{ b.originalFilename || 'Remittance import' }}</div>
+              <i class="ti ti-chevron-right text-secondary"></i>
+            </div>
+            <div class="small text-secondary mb-1">{{ b.importedAt | istDate: 'dd MMM yyyy, HH:mm' }}</div>
+            <div class="d-flex flex-wrap gap-2">
+              <span class="badge tone-green">{{ b.settledCount }} settled</span>
+              @if (b.partialCount > 0) { <span class="badge tone-amber">{{ b.partialCount }} partial</span> }
+              @if (b.mismatchCount + b.notFoundCount + b.noReceivableCount + b.errorCount > 0) {
+                <span class="badge tone-red">{{ b.mismatchCount + b.notFoundCount + b.noReceivableCount + b.errorCount }} review</span>
+              }
+            </div>
+            <div class="small mt-1">
+              Settled <strong>{{ inr(b.totalSettled) }}</strong>
+              @if ((+b.totalShortfall) > 0) {
+                · <span class="rr-short">Short {{ inr(b.totalShortfall) }}</span>
+              }
+            </div>
+          </div>
+        }
+      </div>
+
+      <div class="card-footer">
+        <admin-pagination
+          [page]="page()" [totalPages]="totalPages()" [totalElements]="batches().length"
+          [size]="pageSize()" (pageChange)="goPage($event)" (sizeChange)="setPageSize($event)" />
+      </div>
+    }
+  </div>
+  }
+
+  @if (view() === 'partial') {
+  <!-- Partial settlements to chase next cycle -->
+  <div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div>
+        <h3 class="card-title mb-0">Partially settled — follow up next cycle</h3>
+        <div class="small text-secondary">
+          These COD orders were short-paid by the courier. The remitted part is settled; the shortfall is still to collect.
+        </div>
+      </div>
+      @if (partials().length > 0) {
+        <button type="button" class="btn btn-sm btn-outline-secondary" (click)="exportPartials()">
+          <i class="ti ti-download me-1"></i> Export CSV
+        </button>
+      }
+    </div>
+    @if (partials().length === 0) {
+      <admin-state-panel variant="empty" icon="ti-circle-check"
+        message="No partial settlements outstanding. Every settled order was paid in full." />
+    } @else {
+      <div class="rr-partial-total">
+        Total shortfall to chase: <strong class="rr-short">{{ inr(partialShortfallTotal()) }}</strong>
+        across {{ partials().length }} order{{ partials().length === 1 ? '' : 's' }}.
+      </div>
+      <div class="table-responsive d-none d-md-block">
+        <table class="table card-table table-vcenter">
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Customer</th>
+              <th>Tracking ID</th>
+              <th class="text-end">Expected</th>
+              <th class="text-end">Settled so far</th>
+              <th class="text-end">Shortfall</th>
+              <th>Settled on</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (p of partials(); track p.receivableId) {
+              <tr class="rr-line--short">
+                <td>
+                  @if (p.orderCode) {
+                    <a [routerLink]="['/orders']" [queryParams]="{ q: p.orderCode }" class="rr-ordercode">{{ p.orderCode }}</a>
+                  } @else { <span class="text-secondary">—</span> }
+                </td>
+                <td>{{ p.customerName || '—' }}</td>
+                <td class="rr-awb">{{ p.awb || '—' }}</td>
+                <td class="text-end tabular">{{ inr(p.expectedAmount) }}</td>
+                <td class="text-end tabular">{{ inr(p.settledAmount) }}</td>
+                <td class="text-end tabular rr-short">{{ inr(p.shortfall) }}</td>
+                <td>{{ p.settledDate ? (p.settledDate | istDate: 'dd MMM yyyy') : '—' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <!-- Mobile cards -->
+      <div class="d-md-none">
+        @for (p of partials(); track p.receivableId) {
+          <div class="rr-card rr-line--short">
+            <div class="d-flex justify-content-between">
+              <a [routerLink]="['/orders']" [queryParams]="{ q: p.orderCode }" class="rr-ordercode">{{ p.orderCode || '—' }}</a>
+              <span class="rr-short">Short {{ inr(p.shortfall) }}</span>
+            </div>
+            <div class="small text-secondary">{{ p.customerName || '—' }} · {{ p.awb || '—' }}</div>
+            <div class="small">Settled {{ inr(p.settledAmount) }} of {{ inr(p.expectedAmount) }}
+              @if (p.settledDate) { · {{ p.settledDate | istDate: 'dd MMM yyyy' }} }
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+  }
+}
+
+<!-- Per-batch details drawer -->
+@if (selectedBatch(); as b) {
+  <div class="rr-drawer" (click)="closeBatch()">
+    <div class="rr-drawer__panel" (click)="$event.stopPropagation()">
+      <div class="d-flex align-items-start justify-content-between mb-2">
+        <div>
+          <h3 class="mb-0">Settled orders</h3>
+          <div class="small text-secondary">
+            {{ b.originalFilename || 'Remittance import' }}
+            @if (b.externalReference) { · Batch {{ b.externalReference }} }
+            · {{ b.importedAt | istDate: 'dd MMM yyyy, HH:mm' }}
+          </div>
+        </div>
+        <button type="button" class="btn-close" aria-label="Close" (click)="closeBatch()"></button>
+      </div>
+
+      <div class="d-flex flex-wrap gap-3 rr-drawer__totals mb-3">
+        <div><span class="text-secondary small d-block">Remitted</span><strong>{{ inr(b.totalRemitted) }}</strong></div>
+        <div><span class="text-secondary small d-block">Settled</span><strong>{{ inr(b.totalSettled) }}</strong></div>
+        <div><span class="text-secondary small d-block">Shortfall</span>
+          <strong [class.rr-short]="(+b.totalShortfall) > 0">{{ inr(b.totalShortfall) }}</strong></div>
+      </div>
+
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <label class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" [checked]="onlyActionable()"
+            (change)="onlyActionable.set(!onlyActionable())" />
+          <span class="form-check-label small">Only settled / needs review</span>
+        </label>
+        <button type="button" class="btn btn-sm btn-outline-secondary" (click)="exportLines()">
+          <i class="ti ti-download me-1"></i> Export CSV
+        </button>
+      </div>
+
+      @if (linesLoading()) {
+        <admin-state-panel variant="loading" loadingLabel="Loading orders…" />
+      } @else if (visibleLines().length === 0) {
+        <admin-state-panel variant="empty" icon="ti-list-check" message="No matching rows." />
+      } @else {
+        <div class="table-responsive">
+          <table class="table card-table table-vcenter rr-lines">
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th>Tracking / customer</th>
+                <th class="text-end">Expected</th>
+                <th class="text-end">Remitted</th>
+                <th class="text-end">Shortfall</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (l of visibleLines(); track l.id) {
+                <tr [class.rr-line--short]="l.status === 'PARTIALLY_SETTLED'"
+                    [class.rr-line--review]="isReview(l.status)">
+                  <td>
+                    @if (l.resolvedOrderCode) {
+                      <a [routerLink]="['/orders']" [queryParams]="{ q: l.resolvedOrderCode }"
+                         (click)="$event.stopPropagation()" class="rr-ordercode">{{ l.resolvedOrderCode }}</a>
+                    } @else {
+                      <span class="text-secondary">—</span>
+                    }
+                  </td>
+                  <td>
+                    <div class="rr-awb">{{ l.awb || l.clientOrderId || '—' }}</div>
+                    @if (l.customerName) { <div class="small text-secondary">{{ l.customerName }}</div> }
+                  </td>
+                  <td class="text-end tabular">{{ l.expectedAmount != null ? inr(l.expectedAmount) : '—' }}</td>
+                  <td class="text-end tabular">{{ l.remittedAmount != null ? inr(l.remittedAmount) : '—' }}</td>
+                  <td class="text-end tabular" [class.rr-short]="(+l.shortfallAmount) > 0">
+                    {{ (+l.shortfallAmount) > 0 ? inr(l.shortfallAmount) : '—' }}
+                  </td>
+                  <td>
+                    <span class="badge rr-statusbadge" [class]="statusTone(l.status)">
+                      <i class="ti {{ statusIcon(l.status) }} me-1"></i>{{ statusLabel(l.status) }}
+                    </span>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  </div>
+}

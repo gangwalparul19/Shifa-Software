@@ -449,6 +449,18 @@ export interface OrderSummary {
    * otherwise), shown in the salesperson column for a Shopify order.
    */
   shopifyOrderId?: string | null;
+  /**
+   * COD remittance-settlement state (V99): NONE (nothing settled), SETTLED (the
+   * courier remitted it in full) or PARTIAL (short-paid, a shortfall remains).
+   * Drives a settled/partial icon + tooltip on the Orders list.
+   */
+  codSettlementStatus?: 'NONE' | 'SETTLED' | 'PARTIAL' | null;
+  /** The amount the courier actually remitted + settled for this order's COD. */
+  codSettledAmount?: Money | null;
+  /** The shortfall still outstanding on a PARTIAL settlement. */
+  codSettledShortfall?: Money | null;
+  /** The date the courier remittance settled this order's COD. */
+  codSettledDate?: string | null;
 }
 
 /** A single line within a full order detail. */

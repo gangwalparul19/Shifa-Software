@@ -54,6 +54,7 @@ import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { WHATSAPP_TEMPLATES, openWhatsApp, renderTemplate, whatsAppMessage } from '../shared/whatsapp.util';
 import { relativeTime } from '../shared/time.util';
 import { IstDatePipe } from '../shared/ist-date.pipe';
+import { formatInr } from '../shared/inr.pipe';
 import { ChannelLogoComponent } from '../shared/channel-logo.component';
 import { WhatsappTemplate, WhatsappTemplatesService } from '../whatsapp/whatsapp-templates.service';
 import {
@@ -1582,6 +1583,55 @@ export class OrdersComponent implements OnInit, OnDestroy {
       return '₹0.00';
     }
     return `₹${value}`;
+  }
+
+  /**
+   * The COD remittance-settlement icon for an Orders-list row (V99), or null when
+   * nothing has been settled. SETTLED → a green check with a tooltip of the
+   * remitted amount + date; PARTIAL → an amber half-circle with the settled amount,
+   * the shortfall still to collect, and the date. Lets staff see at a glance which
+   * COD orders the courier has already paid out, and which are short.
+   */
+  settlementIcon(order: OrderSummary): { icon: string; tone: string; tooltip: string } | null {
+    const status = order.codSettlementStatus;
+    if (status !== 'SETTLED' && status !== 'PARTIAL') {
+      return null;
+    }
+    const when = order.codSettledDate ? ` on ${this.istDay(order.codSettledDate)}` : '';
+    const settled = formatInr(order.codSettledAmount, 0);
+    if (status === 'PARTIAL') {
+      const shortfall = formatInr(order.codSettledShortfall, 0);
+      return {
+        icon: 'ti-progress-alert',
+        tone: 'partial',
+        tooltip: `COD partially remitted by the courier${when}: ${settled} received, ${shortfall} shortfall still to collect.`,
+      };
+    }
+    return {
+      icon: 'ti-circle-check-filled',
+      tone: 'settled',
+      tooltip: `COD remitted by the courier${when}: ${settled} settled in full.`,
+    };
+  }
+
+  /**
+   * Whether the COD cash was collected from the customer on delivery
+   * (orderStatus === COD_COLLECTED). Drives a small green "cash collected" icon
+   * next to the order code on the Orders list so staff can spot collected-on-
+   * delivery orders at a glance without opening the drawer. Distinct from the
+   * V99 courier-remittance icon (settlementIcon), which is about the COURIER
+   * paying US out — this is about the customer paying the courier on delivery.
+   */
+  collectedOnDelivery(order: OrderSummary): boolean {
+    return order.orderStatus === OrderStatus.COD_COLLECTED;
+  }
+
+  /** Formats an ISO date as a short IST day for a tooltip (e.g. "13 Oct 2026"). */
+  private istDay(iso: string): string {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime())
+      ? iso
+      : d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' });
   }
 
   // --- Detail drawer ------------------------------------------------------

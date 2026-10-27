@@ -9,6 +9,9 @@ import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.order.dto.ApprovalQueueItemResponse;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
+import com.shifa.oms.reconciliation.ReceivableEntity;
+import com.shifa.oms.reconciliation.ReceivableRepository;
+import com.shifa.oms.reconciliation.domain.ReceivableType;
 import com.shifa.oms.audit.AuditActions;
 import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
@@ -95,12 +98,20 @@ public class AdminOrderService {
      */
     private final OrderPaymentScreenshotRepository screenshotRepository;
 
+    /**
+     * COD receivable lookup (nullable): resolves each order's COD settlement state
+     * (settled / partial + remitted amount + shortfall + date) so the Orders list
+     * can show a settled/partial icon with a tooltip (V99). Null under the legacy
+     * test constructor — the icon is then simply omitted.
+     */
+    private final ReceivableRepository receivableRepository;
+
     /** Legacy constructor (unit tests): no QuikShipX hooks / list enrichment / audit. */
     public AdminOrderService(OrderRepository orderRepository, LabelService labelService,
                              OrderWorkflowService orderWorkflowService,
                              OutboxEventPublisher outboxEventPublisher) {
         this(orderRepository, labelService, orderWorkflowService, outboxEventPublisher,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -112,7 +123,8 @@ public class AdminOrderService {
                              UserRepository userRepository,
                              QuikShipXService quikShipXService,
                              AuditService auditService,
-                             OrderPaymentScreenshotRepository screenshotRepository) {
+                             OrderPaymentScreenshotRepository screenshotRepository,
+                             ReceivableRepository receivableRepository) {
         this.orderRepository = orderRepository;
         this.labelService = labelService;
         this.orderWorkflowService = orderWorkflowService;
@@ -123,6 +135,7 @@ public class AdminOrderService {
         this.quikShipXService = quikShipXService;
         this.auditService = auditService;
         this.screenshotRepository = screenshotRepository;
+        this.receivableRepository = receivableRepository;
     }
 
     /**
@@ -233,7 +246,7 @@ public class AdminOrderService {
         Map<Long, String> names = resolveSalespersonNames(entities.getContent());
         Page<OrderSummaryResponse> page = entities.map(order -> OrderSummaryResponse.from(order)
                 .withSalesperson(order.getCreatedBy() == null ? null : names.get(order.getCreatedBy())));
-        return enrichWithQuikShipStatus(page);
+        return enrichWithSettlement(enrichWithQuikShipStatus(page));
     }
 
     /**
@@ -291,6 +304,51 @@ public class AdminOrderService {
             com.shifa.oms.quikshipx.OrderShipment s = byOrderId.get(row.id());
             return s == null ? row
                     : row.withQuikShip(s.getQuikShipXStatus(), s.getShipperOrderId(), s.getAwb());
+        });
+    }
+
+    /**
+     * Enriches each list row with its COD remittance-settlement state (V99) so the
+     * Orders page can show a settled/partial icon with a tooltip (what the courier
+     * remitted, when, and any shortfall). Batch-loads the COD receivables for the
+     * whole page — no N+1. For an order with a settled COD receivable: SETTLED when
+     * paid in full, PARTIAL when the recorded {@code settledAmount} is short of the
+     * {@code amount} (a shortfall remains). No-op when the receivable repo is
+     * unavailable (legacy ctor) or the page is empty.
+     */
+    private Page<OrderSummaryResponse> enrichWithSettlement(Page<OrderSummaryResponse> page) {
+        if (receivableRepository == null || page.isEmpty()) {
+            return page;
+        }
+        List<Long> ids = page.getContent().stream()
+                .map(OrderSummaryResponse::id)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (ids.isEmpty()) {
+            return page;
+        }
+        // Keep the most relevant COD receivable per order: a settled one wins over an
+        // unsettled one (an order should have a single COD receivable, but be safe).
+        Map<Long, ReceivableEntity> byOrderId = new java.util.HashMap<>();
+        for (ReceivableEntity r : receivableRepository.findByOrderIdInAndType(ids, ReceivableType.COD_RECEIVABLE)) {
+            byOrderId.merge(r.getOrderId(), r, (a, b) -> a.isSettled() ? a : b);
+        }
+        if (byOrderId.isEmpty()) {
+            return page;
+        }
+        return page.map(row -> {
+            ReceivableEntity r = byOrderId.get(row.id());
+            if (r == null || !r.isSettled()) {
+                return row;
+            }
+            java.math.BigDecimal shortfall = r.getShortfall();
+            boolean partial = shortfall != null && shortfall.signum() > 0;
+            java.math.BigDecimal settledAmount = r.getSettledAmount() != null
+                    ? r.getSettledAmount() : r.getAmount();
+            return row.withSettlement(
+                    partial ? OrderSummaryResponse.CodSettlementStatus.PARTIAL
+                            : OrderSummaryResponse.CodSettlementStatus.SETTLED,
+                    settledAmount, shortfall, r.getSettledDate());
         });
     }
 

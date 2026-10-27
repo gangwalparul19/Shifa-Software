@@ -626,6 +626,29 @@ button.shifa-qsx-awb__value:hover {
   color: #1f5d3f;
   text-decoration: underline;
 }
+/* COD remittance-settlement icon (V99) next to the order code on the Orders list. */
+.shifa-settle-ico {
+  font-size: 1rem;
+  vertical-align: baseline;
+  cursor: help;
+}
+.shifa-settle-ico--settled {
+  color: #1f5d3f;
+}
+.shifa-settle-ico--partial {
+  color: #b7791f;
+}
+
+/* "Collected on Delivery" marker (COD cash collected from the customer) next to
+   the order code on the Orders list. Green to read as a positive/settled state,
+   distinct from the remittance-settlement icon above. */
+.shifa-collected-ico {
+  font-size: 1rem;
+  vertical-align: baseline;
+  color: #1f5d3f;
+  cursor: help;
+}
+
 /* The small AWB track link on the Orders table/cards (Courier Partner column). */
 .btn-link.shifa-qsx-id {
   text-decoration: none;

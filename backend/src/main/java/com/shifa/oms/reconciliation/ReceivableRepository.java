@@ -23,6 +23,12 @@ public interface ReceivableRepository extends JpaRepository<ReceivableEntity, Lo
     /** Existing receivables of a type for an order (used to avoid duplicates on redelivery). */
     List<ReceivableEntity> findByOrderIdAndType(Long orderId, ReceivableType type);
 
+    /**
+     * Receivables of a type for a set of orders — batch-loads the Orders list's
+     * COD settlement icon (settled / partial) without an N+1 (V99).
+     */
+    List<ReceivableEntity> findByOrderIdInAndType(java.util.Collection<Long> orderIds, ReceivableType type);
+
     /** All receivables for a courier company. */
     List<ReceivableEntity> findByCourierCompanyId(Long courierCompanyId);
 
@@ -56,6 +62,19 @@ public interface ReceivableRepository extends JpaRepository<ReceivableEntity, Lo
 
     /** Count of unsettled receivables of a type (dashboard activity cards). */
     long countByTypeAndSettledFalse(ReceivableType type);
+
+    /**
+     * Partially-settled receivables of a type — settled rows whose recorded
+     * {@code settled_amount} is still short of the full {@code amount} (V99). These
+     * are the orders a short courier remittance left with a shortfall to chase next
+     * cycle; they are NOT on the unsettled list (they are flagged settled), so this
+     * is the only finder that surfaces them. Newest first.
+     */
+    @Query("SELECT r FROM ReceivableEntity r "
+            + "WHERE r.type = :type AND r.settled = true "
+            + "AND r.settledAmount IS NOT NULL AND r.settledAmount < r.amount "
+            + "ORDER BY r.settledDate DESC, r.id DESC")
+    List<ReceivableEntity> findPartiallySettled(@Param("type") ReceivableType type);
 
     /** Removes every receivable for an order — used by the admin hard-delete of an order. */
     void deleteByOrderId(Long orderId);

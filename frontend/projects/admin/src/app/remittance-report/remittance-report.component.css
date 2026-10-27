@@ -1,0 +1,50 @@
+.rr-filter { border-top: 3px solid #1f5d3f; }
+.rr-presets .btn { border: 1px solid #d7e3dc; background: #fff; color: #44584e; }
+.rr-presets .btn.active { background: #1f5d3f; border-color: #1f5d3f; color: #fff; }
+
+/* KPI cards */
+.rr-kpi { border: 1px solid #e6ece9; border-left-width: 4px; height: 100%; }
+.rr-kpi .card-body { padding: .85rem 1rem; }
+.rr-kpi__icon { font-size: 1.1rem; opacity: .8; }
+.rr-kpi__value { font-size: 1.45rem; font-weight: 700; line-height: 1.1; margin-top: .15rem; }
+.rr-kpi__label { font-size: .78rem; color: #6b7c74; }
+.rr-kpi--green { border-left-color: #1f5d3f; } .rr-kpi--green .rr-kpi__icon { color: #1f5d3f; }
+.rr-kpi--amber { border-left-color: #b7791f; } .rr-kpi--amber .rr-kpi__icon { color: #b7791f; }
+.rr-kpi--red   { border-left-color: #c0392b; } .rr-kpi--red .rr-kpi__icon   { color: #c0392b; }
+.rr-kpi--blue  { border-left-color: #2b6cb0; } .rr-kpi--blue .rr-kpi__icon  { color: #2b6cb0; }
+.rr-kpi--grey  { border-left-color: #64748b; } .rr-kpi--grey .rr-kpi__icon  { color: #64748b; }
+
+.rr-period { margin-top: -.25rem; }
+
+/* View toggle (imports vs partial follow-up) */
+.rr-viewtabs .btn { border: 1px solid #d7e3dc; background: #fff; color: #44584e; }
+.rr-viewtabs .btn.active { background: #1f5d3f; border-color: #1f5d3f; color: #fff; }
+.rr-partial-total { padding: .6rem 1rem; background: #fdf3e2; border-bottom: 1px solid #f0e2c6; font-size: .9rem; }
+
+/* Batch list */
+.rr-row { cursor: pointer; }
+.rr-row:hover { background: rgba(31, 93, 63, .05); }
+.rr-file { font-weight: 600; }
+.tabular { font-variant-numeric: tabular-nums; }
+.rr-short { color: #c0392b; font-weight: 600; }
+
+.rr-card { cursor: pointer; padding: .75rem 1rem; border-bottom: 1px solid #eef2f0; }
+.rr-card:hover { background: rgba(31, 93, 63, .04); }
+
+/* Drawer */
+.rr-drawer { position: fixed; inset: 0; z-index: 1050; background: rgba(0, 0, 0, .35); display: flex; justify-content: flex-end; }
+.rr-drawer__panel { background: #fff; width: min(960px, 96vw); height: 100%; overflow: auto; padding: 1.25rem; box-shadow: -8px 0 24px rgba(0, 0, 0, .16); }
+.rr-drawer__totals > div { min-width: 90px; }
+
+.rr-ordercode { font-weight: 600; }
+.rr-awb { font-variant-numeric: tabular-nums; }
+.rr-line--short { background: rgba(183, 121, 31, .07); }
+.rr-line--review { background: rgba(192, 57, 43, .06); }
+.rr-statusbadge { white-space: nowrap; }
+
+/* Brand status tones (align with the app-wide .badge tones) */
+.badge.tone-green { background: #e5f2ea; color: #1f5d3f; }
+.badge.tone-amber { background: #fdf3e2; color: #b7791f; }
+.badge.tone-red   { background: #fdecea; color: #c0392b; }
+.badge.tone-blue  { background: #e8f1fb; color: #2b6cb0; }
+.badge.tone-grey  { background: #eef1f0; color: #566; }

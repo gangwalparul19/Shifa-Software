@@ -48,8 +48,22 @@ public record OrderSummaryResponse(
         // The originating Shopify order id for a Shopify-imported order (null
         // otherwise), so the Orders list can show it in the salesperson column for
         // a Shopify order. Always populated from the entity.
-        String shopifyOrderId
+        String shopifyOrderId,
+        // --- COD remittance settlement (V99 Orders-list enrichment) -------------
+        // Whether the courier has remitted this order's COD: NONE (nothing settled),
+        // SETTLED (paid in full) or PARTIAL (short-paid, a shortfall remains). Drives
+        // a settled/partial icon + tooltip on the Orders list. Null/NONE when there
+        // is no settled COD receivable. Batch-loaded by the admin list read path.
+        CodSettlementStatus codSettlementStatus,
+        BigDecimal codSettledAmount,
+        BigDecimal codSettledShortfall,
+        java.time.LocalDate codSettledDate
 ) {
+
+    /** The courier-remittance settlement state of an order's COD, for the Orders-list icon. */
+    public enum CodSettlementStatus {
+        NONE, SETTLED, PARTIAL
+    }
 
     public static OrderSummaryResponse from(OrderEntity order) {
         return new OrderSummaryResponse(
@@ -68,7 +82,11 @@ public record OrderSummaryResponse(
                 null,
                 order.getSource(),
                 order.getDeliveryMethod(),
-                order.getShopifyOrderId());
+                order.getShopifyOrderId(),
+                CodSettlementStatus.NONE,
+                null,
+                null,
+                null);
     }
 
     /** Returns a copy carrying the QuikShipX mirror fields (Orders-list enrichment). */
@@ -77,7 +95,8 @@ public record OrderSummaryResponse(
         return new OrderSummaryResponse(id, orderCode, customerName, customerMobile, orderStatus,
                 paymentStatus, totalAmount, codAmount, createdAt,
                 quikShipXStatus, quikShipXOrderId, quikShipXAwb, salespersonName, source,
-                deliveryMethod, shopifyOrderId);
+                deliveryMethod, shopifyOrderId,
+                codSettlementStatus, codSettledAmount, codSettledShortfall, codSettledDate);
     }
 
     /** Returns a copy carrying the resolved salesperson name (Orders-list enrichment). */
@@ -85,6 +104,21 @@ public record OrderSummaryResponse(
         return new OrderSummaryResponse(id, orderCode, customerName, customerMobile, orderStatus,
                 paymentStatus, totalAmount, codAmount, createdAt,
                 quikShipXStatus, quikShipXOrderId, quikShipXAwb, salespersonName, source,
-                deliveryMethod, shopifyOrderId);
+                deliveryMethod, shopifyOrderId,
+                codSettlementStatus, codSettledAmount, codSettledShortfall, codSettledDate);
+    }
+
+    /**
+     * Returns a copy carrying the COD remittance-settlement fields (Orders-list
+     * enrichment): the settled/partial status, the amount the courier remitted,
+     * any shortfall still outstanding, and the settlement date.
+     */
+    public OrderSummaryResponse withSettlement(CodSettlementStatus status, BigDecimal settledAmount,
+                                               BigDecimal shortfall, java.time.LocalDate settledDate) {
+        return new OrderSummaryResponse(id, orderCode, customerName, customerMobile, orderStatus,
+                paymentStatus, totalAmount, codAmount, createdAt,
+                quikShipXStatus, quikShipXOrderId, quikShipXAwb, salespersonName, source,
+                deliveryMethod, shopifyOrderId,
+                status, settledAmount, shortfall, settledDate);
     }
 }

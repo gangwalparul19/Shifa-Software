@@ -1,6 +1,7 @@
 import { IstDatePipe } from '../shared/ist-date.pipe';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, FormControl, ReactiveFormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { Money, ReceivableType, SortState } from 'core';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -52,6 +53,7 @@ type SettledFilter = 'all' | 'unsettled' | 'settled';
   selector: 'admin-reconciliation',
   imports: [
     ReactiveFormsModule,
+    RouterLink,
     IstDatePipe,
     PageHeaderComponent,
     StatePanelComponent,
@@ -534,9 +536,13 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
       next: (res) => {
         this.remittanceResult.set(res);
         this.remittanceBusy.set(false);
+        const review = res.mismatched + res.notFound + res.noReceivable + res.errors;
         this.showToast(
           'ok',
-          `Remittance import complete: ${res.settled} settled, ${res.mismatched + res.notFound + res.errors} need review.`,
+          `Remittance import complete: ${res.settled} settled` +
+            (res.partiallySettled ? `, ${res.partiallySettled} partial` : '') +
+            (review ? `, ${review} need review` : '') +
+            '.',
         );
       },
       error: (err: HttpErrorResponse) => {
@@ -551,6 +557,8 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     switch (status) {
       case 'SETTLED':
         return 'done';
+      case 'PARTIALLY_SETTLED':
+        return 'pending';
       case 'ALREADY_SETTLED':
         return 'progress';
       case 'MISMATCH':
@@ -559,6 +567,28 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
         return 'bad';
       default:
         return 'neutral';
+    }
+  }
+
+  /** Friendly label for a per-row remittance status (avoids raw UPPER_SNAKE in the UI). */
+  remittanceStatusLabel(status: RemittanceRowStatus): string {
+    switch (status) {
+      case 'SETTLED':
+        return 'Settled';
+      case 'PARTIALLY_SETTLED':
+        return 'Partial';
+      case 'ALREADY_SETTLED':
+        return 'Already settled';
+      case 'MISMATCH':
+        return 'Mismatch';
+      case 'ORDER_NOT_FOUND':
+        return 'Not found';
+      case 'NO_RECEIVABLE':
+        return 'No receivable';
+      case 'ERROR':
+        return 'Error';
+      default:
+        return status;
     }
   }
 

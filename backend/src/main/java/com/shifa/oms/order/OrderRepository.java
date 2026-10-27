@@ -220,13 +220,16 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     @Query(value = """
             SELECT DISTINCT o.* FROM orders o
             LEFT JOIN courier_records cr ON cr.order_id = o.id
+            LEFT JOIN order_shipments os ON os.order_id = o.id
             WHERE o.active = 1
               AND (:createdBy IS NULL OR o.created_by = :createdBy)
               AND ( LOWER(o.customer_name)  LIKE CONCAT('%', LOWER(:term), '%')
                  OR o.customer_mobile       LIKE CONCAT('%', :term, '%')
                  OR LOWER(o.order_code)     LIKE CONCAT('%', LOWER(:term), '%')
                  OR CAST(o.id AS CHAR)      LIKE CONCAT('%', :term, '%')
-                 OR LOWER(cr.awb)           LIKE CONCAT('%', LOWER(:term), '%') )
+                 OR LOWER(cr.awb)           LIKE CONCAT('%', LOWER(:term), '%')
+                 OR LOWER(os.awb)           LIKE CONCAT('%', LOWER(:term), '%')
+                 OR LOWER(os.shipper_order_id) LIKE CONCAT('%', LOWER(:term), '%') )
             ORDER BY o.created_at DESC
             """, nativeQuery = true)
     List<OrderEntity> search(@Param("term") String term, @Param("createdBy") Long createdBy);
@@ -284,13 +287,16 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     @Query(value = """
             SELECT DISTINCT o.* FROM orders o
             LEFT JOIN courier_records cr ON cr.order_id = o.id
+            LEFT JOIN order_shipments os ON os.order_id = o.id
             WHERE o.active = 1
               AND o.created_by IN (:createdByIds)
               AND ( LOWER(o.customer_name)  LIKE CONCAT('%', LOWER(:term), '%')
                  OR o.customer_mobile       LIKE CONCAT('%', :term, '%')
                  OR LOWER(o.order_code)     LIKE CONCAT('%', LOWER(:term), '%')
                  OR CAST(o.id AS CHAR)      LIKE CONCAT('%', :term, '%')
-                 OR LOWER(cr.awb)           LIKE CONCAT('%', LOWER(:term), '%') )
+                 OR LOWER(cr.awb)           LIKE CONCAT('%', LOWER(:term), '%')
+                 OR LOWER(os.awb)           LIKE CONCAT('%', LOWER(:term), '%')
+                 OR LOWER(os.shipper_order_id) LIKE CONCAT('%', LOWER(:term), '%') )
             ORDER BY o.created_at DESC
             """, nativeQuery = true)
     List<OrderEntity> searchIn(@Param("term") String term,

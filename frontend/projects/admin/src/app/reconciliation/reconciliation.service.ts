@@ -13,20 +13,97 @@ import {
 /** The outcome classification for a single courier remittance row. */
 export type RemittanceRowStatus =
   | 'SETTLED'
+  | 'PARTIALLY_SETTLED'
   | 'MISMATCH'
   | 'ALREADY_SETTLED'
   | 'ORDER_NOT_FOUND'
   | 'NO_RECEIVABLE'
   | 'ERROR';
 
+/** A committed remittance import summary (backend {@code RemittanceBatchResponse}). */
+export interface RemittanceBatch {
+  id: number;
+  originalFilename?: string | null;
+  externalReference?: string | null;
+  remittedDate?: string | null;
+  importedAt?: string | null;
+  totalRows: number;
+  settledCount: number;
+  partialCount: number;
+  mismatchCount: number;
+  alreadySettledCount: number;
+  notFoundCount: number;
+  noReceivableCount: number;
+  errorCount: number;
+  totalRemitted: number | string;
+  totalSettled: number | string;
+  totalShortfall: number | string;
+}
+
+/** A per-order line within a committed remittance batch (backend {@code RemittanceBatchLineResponse}). */
+export interface RemittanceBatchLine {
+  id: number;
+  batchId?: number | null;
+  sourceRowNumber: number;
+  awb?: string | null;
+  clientOrderId?: string | null;
+  customerName?: string | null;
+  resolvedOrderId?: number | null;
+  resolvedOrderCode?: string | null;
+  expectedAmount?: number | string | null;
+  remittedAmount?: number | string | null;
+  settledAmount: number | string;
+  shortfallAmount: number | string;
+  remittedDate?: string | null;
+  status: RemittanceRowStatus;
+  message?: string | null;
+}
+
+/**
+ * A partially-settled COD order to chase next cycle (backend
+ * {@code PartialSettlementResponse}): the courier remittance was short, so part
+ * was settled and a shortfall stays outstanding.
+ */
+export interface PartialSettlement {
+  receivableId: number;
+  orderId: number;
+  orderCode?: string | null;
+  customerName?: string | null;
+  awb?: string | null;
+  expectedAmount: number | string;
+  settledAmount: number | string;
+  shortfall: number | string;
+  settledDate?: string | null;
+}
+
+/** KPI summary for the settlement report (backend {@code RemittanceReportSummaryResponse}). */
+export interface RemittanceReportSummary {
+  from?: string | null;
+  to?: string | null;
+  batchCount: number;
+  ordersSettled: number;
+  ordersPartiallySettled: number;
+  ordersNeedingReview: number;
+  totalRemitted: number | string;
+  totalSettled: number | string;
+  totalShortfall: number | string;
+  codStillOutstanding: number | string;
+}
+
 /** A single row's outcome in a courier COD remittance import (dry-run or real). */
 export interface RemittanceRowResult {
   rowNumber: number;
   awb?: string | null;
   orderCode?: string | null;
+  clientOrderId?: string | null;
+  customerName?: string | null;
   resolvedOrderCode?: string | null;
+  resolvedOrderId?: number | null;
   remittedAmount?: number | string | null;
   expectedAmount?: number | string | null;
+  settledAmount?: number | string | null;
+  shortfallAmount?: number | string | null;
+  remittedDate?: string | null;
   status: RemittanceRowStatus;
   message?: string | null;
 }
@@ -34,17 +111,23 @@ export interface RemittanceRowResult {
 /**
  * Result of a courier COD remittance CSV import
  * ({@code POST /api/recon/remittance/import}). When {@code dryRun} is true the
- * counts + rows describe what *would* happen (nothing settled).
+ * counts + rows describe what *would* happen (nothing settled); on a commit
+ * {@code batchId} is the persisted import's id.
  */
 export interface RemittanceImportResult {
   dryRun: boolean;
+  batchId?: number | null;
   totalRows: number;
   settled: number;
+  partiallySettled: number;
   mismatched: number;
   alreadySettled: number;
   notFound: number;
   noReceivable: number;
   errors: number;
+  totalRemitted: number | string;
+  totalSettled: number | string;
+  totalShortfall: number | string;
   rows: RemittanceRowResult[];
 }
 
@@ -186,5 +269,45 @@ export class ReconciliationService {
     return this.api.post<RemittanceImportResult>('/api/recon/remittance/import', form, {
       params: { dryRun },
     });
+  }
+
+  /**
+   * Weekly COD settlement report KPIs ({@code GET /api/recon/remittance/summary}).
+   * With no dates, the backend defaults to the current week.
+   */
+  remittanceSummary(from?: string | null, to?: string | null): Observable<RemittanceReportSummary> {
+    const params: Record<string, string> = {};
+    if (from) {
+      params['from'] = from;
+    }
+    if (to) {
+      params['to'] = to;
+    }
+    return this.api.get<RemittanceReportSummary>('/api/recon/remittance/summary', { params });
+  }
+
+  /** Committed remittance import batches, optionally windowed by import date. */
+  remittanceBatches(from?: string | null, to?: string | null): Observable<RemittanceBatch[]> {
+    const params: Record<string, string> = {};
+    if (from) {
+      params['from'] = from;
+    }
+    if (to) {
+      params['to'] = to;
+    }
+    return this.api.get<RemittanceBatch[]>('/api/recon/remittance/batches', { params });
+  }
+
+  /** Per-order lines of one committed remittance batch (the details report). */
+  remittanceBatchLines(batchId: number): Observable<RemittanceBatchLine[]> {
+    return this.api.get<RemittanceBatchLine[]>(`/api/recon/remittance/batches/${batchId}/lines`);
+  }
+
+  /**
+   * Partially-settled COD orders with a shortfall still outstanding — the
+   * "chase next cycle" list ({@code GET /api/recon/remittance/partial}).
+   */
+  partiallySettled(): Observable<PartialSettlement[]> {
+    return this.api.get<PartialSettlement[]>('/api/recon/remittance/partial');
   }
 }

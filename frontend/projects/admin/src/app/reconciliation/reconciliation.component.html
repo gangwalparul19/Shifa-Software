@@ -588,12 +588,15 @@
         </div>
 
         @if (remittancePreview() || remittanceResult(); as res) {
-          <div class="row row-cards g-2 mb-3">
+          <div class="row row-cards g-2 mb-2">
             <div class="col"><div class="card card-sm"><div class="card-body py-2">
               <div class="text-secondary small">Rows</div><div class="h3 mb-0">{{ res.totalRows }}</div>
             </div></div></div>
             <div class="col"><div class="card card-sm"><div class="card-body py-2">
               <div class="text-secondary small">Settled</div><div class="h3 mb-0 text-success">{{ res.settled }}</div>
+            </div></div></div>
+            <div class="col"><div class="card card-sm"><div class="card-body py-2">
+              <div class="text-secondary small">Partial</div><div class="h3 mb-0 text-warning">{{ res.partiallySettled }}</div>
             </div></div></div>
             <div class="col"><div class="card card-sm"><div class="card-body py-2">
               <div class="text-secondary small">Already settled</div><div class="h3 mb-0">{{ res.alreadySettled }}</div>
@@ -609,13 +612,25 @@
             </div></div></div>
           </div>
 
+          <div class="d-flex flex-wrap gap-3 mb-3 small">
+            <span>Remitted <strong>₹{{ res.totalRemitted }}</strong></span>
+            <span>Settled <strong class="text-success">₹{{ res.totalSettled }}</strong></span>
+            @if ((+res.totalShortfall) > 0) {
+              <span>Shortfall <strong class="text-danger">₹{{ res.totalShortfall }}</strong></span>
+            }
+          </div>
+
           @if (remittanceResult()) {
             <div class="alert alert-success" role="status">
               <i class="ti ti-circle-check me-2"></i>Import complete.
+              <a routerLink="/remittance-report" (click)="closeRemittanceImport()" class="alert-link ms-1">
+                View the settlement report →
+              </a>
             </div>
           } @else {
             <div class="text-secondary small mb-2">
-              Preview only — nothing has been settled yet. Review the rows below, then confirm.
+              Preview only — nothing has been settled yet. A short payment will be <strong>partially settled</strong>
+              (the shortfall stays outstanding). Review the rows below, then confirm.
             </div>
           }
 
@@ -627,18 +642,25 @@
                   <th>AWB / Order</th>
                   <th class="text-end">Remitted</th>
                   <th class="text-end">Expected</th>
+                  <th class="text-end">Shortfall</th>
                   <th>Status</th>
                   <th>Message</th>
                 </tr>
               </thead>
               <tbody>
                 @for (row of res.rows; track row.rowNumber) {
-                  <tr [class.table-danger]="row.status === 'ERROR'" [class.table-warning]="row.status === 'MISMATCH'">
+                  <tr [class.table-danger]="row.status === 'ERROR'"
+                      [class.table-warning]="row.status === 'MISMATCH' || row.status === 'PARTIALLY_SETTLED'">
                     <td class="text-secondary">{{ row.rowNumber }}</td>
                     <td><span class="shifa-mono">{{ row.resolvedOrderCode || row.orderCode || row.awb || '—' }}</span></td>
                     <td class="text-end">{{ remittanceMoney(row.remittedAmount) }}</td>
                     <td class="text-end">{{ row.expectedAmount != null ? remittanceMoney(row.expectedAmount) : '—' }}</td>
-                    <td><span class="badge" [attr.data-group]="remittanceRowTone(row.status)">{{ row.status }}</span></td>
+                    <td class="text-end">
+                      @if (row.shortfallAmount != null && (+row.shortfallAmount) > 0) {
+                        <span class="text-danger">{{ remittanceMoney(row.shortfallAmount) }}</span>
+                      } @else { — }
+                    </td>
+                    <td><span class="badge" [attr.data-group]="remittanceRowTone(row.status)">{{ remittanceStatusLabel(row.status) }}</span></td>
                     <td [class.text-danger]="row.status === 'ERROR'">{{ row.message || '—' }}</td>
                   </tr>
                 }

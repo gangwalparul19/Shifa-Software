@@ -95,7 +95,11 @@ class RemittanceImportServiceTest {
         RemittanceRowProcessor rowProcessor = new RemittanceRowProcessor(orderRepository,
                 courierRecordRepository, orderShipmentRepository, receivableRepository, workflowService,
                 outboxEventPublisher);
-        service = new RemittanceImportService(rowProcessor, auditService);
+        RemittanceBatchRepository batchRepository = mock(RemittanceBatchRepository.class);
+        RemittanceBatchLineRepository batchLineRepository = mock(RemittanceBatchLineRepository.class);
+        lenient().when(batchRepository.save(any(RemittanceBatch.class))).thenAnswer(inv -> inv.getArgument(0));
+        lenient().when(batchLineRepository.save(any(RemittanceBatchLine.class))).thenAnswer(inv -> inv.getArgument(0));
+        service = new RemittanceImportService(rowProcessor, auditService, batchRepository, batchLineRepository);
         lenient().when(receivableRepository.save(any(ReceivableEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
         lenient().when(orderShipmentRepository.findByAwb(any())).thenReturn(Optional.empty());
@@ -323,6 +327,8 @@ class RemittanceImportServiceTest {
     @Test
     void dryRunNeverAppliesTheDeliveredCatchUpTransition() {
         OrderEntity order = order(31L, "SHR-5006");
+        order.applyAmounts(new BigDecimal("200.00"), BigDecimal.ZERO, new BigDecimal("200.00"),
+                new BigDecimal("200.00"), com.shifa.oms.order.domain.PaymentStatus.COD);
         order.setOrderStatus(OrderStatus.HANDED_TO_DELIVERY);
         when(orderRepository.findByOrderCode("SHR-5006")).thenReturn(Optional.of(order));
         when(receivableRepository.findByOrderIdAndType(31L, ReceivableType.COD_RECEIVABLE))
@@ -338,8 +344,8 @@ class RemittanceImportServiceTest {
     }
 
     @Test
-    void reportsNoReceivableWhenOrderHasNoneAndIsNotAwaitingDelivery() {
-        // Prepaid/cancelled/etc. — no receivable AND not in a pre-delivery status.
+    void reportsNoReceivableForAPrepaidOrderWithNoCodComponent() {
+        // Prepaid order (codAmount defaults to 0) — genuinely nothing COD to settle.
         OrderEntity order = order(10L, "SHR-1001");
         order.setOrderStatus(OrderStatus.CLOSED);
         when(orderRepository.findByOrderCode("SHR-1001")).thenReturn(Optional.of(order));
@@ -351,6 +357,51 @@ class RemittanceImportServiceTest {
 
         assertThat(response.noReceivable()).isEqualTo(1);
         assertThat(response.rows().get(0).status()).isEqualTo(RemittanceRowResult.Status.NO_RECEIVABLE);
+        assertThat(response.rows().get(0).message()).contains("prepaid");
+    }
+
+    @Test
+    void reportsNoReceivableForATerminalNonCollectibleCodOrder() {
+        // A COD order that ended RTO/Cancelled etc. — has a COD amount but is not
+        // collectible, so it's reported (with a clear reason), never settled.
+        OrderEntity order = order(10L, "SHR-1001");
+        order.applyAmounts(new BigDecimal("500.00"), BigDecimal.ZERO, new BigDecimal("500.00"),
+                new BigDecimal("500.00"), com.shifa.oms.order.domain.PaymentStatus.COD);
+        order.setOrderStatus(OrderStatus.RTO);
+        when(orderRepository.findByOrderCode("SHR-1001")).thenReturn(Optional.of(order));
+        when(receivableRepository.findByOrderIdAndType(10L, ReceivableType.COD_RECEIVABLE))
+                .thenReturn(List.of());
+
+        RemittanceImportResponse response = service.importCsv(
+                csv("awb,orderCode,amount", ",SHR-1001,500.00"), false);
+
+        assertThat(response.noReceivable()).isEqualTo(1);
+        assertThat(response.rows().get(0).status()).isEqualTo(RemittanceRowResult.Status.NO_RECEIVABLE);
+        assertThat(response.rows().get(0).message()).contains("RTO");
+    }
+
+    @Test
+    void settlesADeliveredCodOrderThatHasNoReceivableYet() {
+        // The confusing "No receivable" case the client reported: the order is
+        // DELIVERED and its COD amount matches the remittance, but no COD receivable
+        // row was ever created. It must be settled (catch-up), not flagged.
+        OrderEntity order = order(10L, "SHR-1001");
+        order.applyAmounts(new BigDecimal("700.00"), BigDecimal.ZERO, new BigDecimal("700.00"),
+                new BigDecimal("700.00"), com.shifa.oms.order.domain.PaymentStatus.COD);
+        order.setCustomerOutstanding(new BigDecimal("700.00"));
+        order.setOrderStatus(OrderStatus.DELIVERED);
+        when(orderRepository.findByOrderCode("SHR-1001")).thenReturn(Optional.of(order));
+        when(receivableRepository.findByOrderIdAndType(10L, ReceivableType.COD_RECEIVABLE))
+                .thenReturn(List.of());
+
+        RemittanceImportResponse response = service.importCsv(
+                csv("awb,orderCode,amount", ",SHR-1001,700.00"), false);
+
+        assertThat(response.settled()).isEqualTo(1);
+        assertThat(response.rows().get(0).status()).isEqualTo(RemittanceRowResult.Status.SETTLED);
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.COD_COLLECTED);
+        assertThat(order.getCustomerOutstanding()).isEqualByComparingTo(BigDecimal.ZERO);
+        verify(receivableRepository).save(any(ReceivableEntity.class));
     }
 
     // --- Already-settled rows (duplicate/re-sent remittance) ------------------
@@ -371,10 +422,43 @@ class RemittanceImportServiceTest {
         assertThat(response.rows().get(0).status()).isEqualTo(RemittanceRowResult.Status.ALREADY_SETTLED);
     }
 
-    // --- Amount mismatch: reported, never auto-settled ----------------------
+    // --- Partial settlement (short remittance) + over-paid mismatch (V99) ----
 
     @Test
-    void reportsMismatchWithoutSettlingWhenAmountDiffersBeyondTolerance() {
+    void partiallySettlesWhenRemittanceIsShortOfTheExpectedAmount() {
+        // Expected ₹1000 but courier only remitted ₹800 → settle ₹800, keep ₹200
+        // outstanding as the shortfall; the row is PARTIALLY_SETTLED (flagged).
+        OrderEntity order = order(10L, "SHR-1001");
+        order.applyAmounts(new BigDecimal("1000.00"), BigDecimal.ZERO, new BigDecimal("1000.00"),
+                new BigDecimal("1000.00"), com.shifa.oms.order.domain.PaymentStatus.COD);
+        order.setCustomerOutstanding(new BigDecimal("1000.00"));
+        order.setOrderStatus(OrderStatus.DELIVERED);
+        when(courierRecordRepository.findByAwb("AWB123")).thenReturn(Optional.empty());
+        when(orderRepository.findByOrderCode("SHR-1001")).thenReturn(Optional.of(order));
+        ReceivableEntity receivable = codReceivable(1L, 10L, "1000.00");
+        when(receivableRepository.findByOrderIdAndType(10L, ReceivableType.COD_RECEIVABLE))
+                .thenReturn(List.of(receivable));
+
+        RemittanceImportResponse response = service.importCsv(
+                csv("awb,orderCode,amount", "AWB123,SHR-1001,800.00"), false);
+
+        assertThat(response.partiallySettled()).isEqualTo(1);
+        assertThat(response.settled()).isZero();
+        assertThat(response.rows().get(0).status()).isEqualTo(RemittanceRowResult.Status.PARTIALLY_SETTLED);
+        assertThat(response.rows().get(0).settledAmount()).isEqualByComparingTo("800.00");
+        assertThat(response.rows().get(0).shortfallAmount()).isEqualByComparingTo("200.00");
+        assertThat(response.totalSettled()).isEqualByComparingTo("800.00");
+        assertThat(response.totalShortfall()).isEqualByComparingTo("200.00");
+        assertThat(receivable.isSettled()).isTrue();
+        assertThat(receivable.getSettledAmount()).isEqualByComparingTo("800.00");
+        // The order advances to COD_Collected but keeps the ₹200 shortfall outstanding.
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.COD_COLLECTED);
+        assertThat(order.getCustomerOutstanding()).isEqualByComparingTo("200.00");
+    }
+
+    @Test
+    void reportsMismatchWithoutSettlingWhenRemittanceOverpaysBeyondTolerance() {
+        // Over-paid (₹550 for an expected ₹500) → never over-credit on a guess.
         OrderEntity order = order(10L, "SHR-1001");
         when(courierRecordRepository.findByAwb("AWB123")).thenReturn(Optional.empty());
         when(orderRepository.findByOrderCode("SHR-1001")).thenReturn(Optional.of(order));
@@ -383,7 +467,7 @@ class RemittanceImportServiceTest {
                 .thenReturn(List.of(receivable));
 
         RemittanceImportResponse response = service.importCsv(
-                csv("awb,orderCode,amount", "AWB123,SHR-1001,450.00"), false);
+                csv("awb,orderCode,amount", "AWB123,SHR-1001,550.00"), false);
 
         assertThat(response.mismatched()).isEqualTo(1);
         assertThat(response.rows().get(0).status()).isEqualTo(RemittanceRowResult.Status.MISMATCH);
