@@ -122,7 +122,7 @@ Modular monolith — one package per bounded context. Kept modules after the das
 | `procurement`     | Suppliers + purchase orders. `/api/admin/suppliers`, `/api/admin/purchase-orders` |
 | `returns`         | Order returns/refunds. `/api/admin/returns` |
 | `crm`             | Customer records derived from orders + **Customer 360**: list/detail (`/api/admin/customers`), profile/risk/tags/notes (`/{mobile}/profile`, `/{mobile}/risk`, `/{mobile}/notes`, `/{mobile}/tags`) |
-| `performance`     | **Salesperson 360 / performance owners**: leaderboard + per-owner performance detail + monthly sales targets. The owner directory includes ADMIN (shown as **Admin / Boss**), TEAM_LEAD, and SALESPERSON rows; admins stay outside team assignment. Complete XLSX/PDF exports support (`TODAY`, `YESTERDAY`, `WEEK`, `MONTH`, `OVERALL`) with selected-period orders/leads and owner-role labels. `/api/admin/salespeople/performance`, `/api/admin/salespeople/{id}/performance`, `/api/admin/salespeople/performance/export`, `/api/admin/salespeople/{id}/performance/export`, `/api/admin/salespeople/targets`. **Team-lead performance** (team KPIs + leaderboard + lead-source conversion): `GET /api/team/performance` (TEAM_LEAD+ADMIN) |
+| `performance`     | **Salesperson 360 / performance owners**: leaderboard + per-owner performance detail + monthly sales targets. The owner directory includes ADMIN (shown as **Admin**), TEAM_LEAD, and SALESPERSON rows; admins stay outside team assignment. Complete XLSX/PDF exports support (`TODAY`, `YESTERDAY`, `WEEK`, `MONTH`, `OVERALL`) with selected-period orders/leads and owner-role labels. `/api/admin/salespeople/performance`, `/api/admin/salespeople/{id}/performance`, `/api/admin/salespeople/performance/export`, `/api/admin/salespeople/{id}/performance/export`, `/api/admin/salespeople/targets`. **Team-lead performance** (team KPIs + leaderboard + lead-source conversion): `GET /api/team/performance` (TEAM_LEAD+ADMIN) |
 | `analytics`       | Customer **retention** cohorts + revenue/demand **forecast** for admin dashboards. `/api/admin/analytics/retention`, `/api/admin/analytics/forecast` |
 | `announcement`    | Staff announcement banners. `GET /api/announcements` (staff), admin CRUD `/api/admin/announcements` |
 | `push`            | Browser Web Push (VAPID, config-gated). `/api/notifications/push/{public-key,subscribe,unsubscribe}` |
@@ -202,7 +202,7 @@ Routing in `app.routes.ts`, shell/nav in `shell/admin-shell.component.ts`. Guard
 | `/reports` | Grouped report catalogue (Sales / Orders / Money & Receivables / **Operations**: expenses, purchase orders, returns, stock) — incl. a **Finance** tab: outstanding dues chase list, COD pending from courier, daily payments; Excel/PDF export | ADMIN+ACCOUNTANT |
 | `/analytics` | Sales targets, retention cohorts, revenue/demand forecast | ADMIN |
 | `/settings`, `/users` | Config + staff users | ADMIN |
-| `/salespeople` | Salesperson 360 performance-owner directory: onboarding/ID verification plus Admin / Boss, Team Lead, and Salesperson KPIs, sorting, per-owner performance drawers, and monthly targets. Admin owners stay outside team assignment. Team and individual XLSX/PDF exports support Overall, Today, Yesterday, This Week, and This Month; XLSX contains full selected-period details and PDF contains KPI cards, graphs/charts, and detail tables | ADMIN |
+| `/salespeople` | Salesperson 360 performance-owner directory: onboarding/ID verification plus Admin, Team Lead, and Salesperson KPIs, sorting, per-owner performance drawers, and monthly targets. Admin owners stay outside team assignment. Team and individual XLSX/PDF exports support Overall, Today, Yesterday, This Week, and This Month; XLSX contains full selected-period details and PDF contains KPI cards, graphs/charts, and detail tables | ADMIN |
 
 The shell hamburger nav groups links under **collapsible, collapsed-by-default named groups**
 (accordion): only "Shifa Dashboard" is standalone; the rest sit under **CRM** (Leads, Due follow-ups,
@@ -268,13 +268,13 @@ page no longer jumps to the bottom.
 - Dashboard tiles are user-configurable (show/hide, persisted in `localStorage`, 6.4).
 **Salesperson 360 / performance owners** (leaderboard + per-owner KPIs: orders, revenue, conversion, delivery success,
 target progress) lives on the `/salespeople` page so admins can track and compare team performance. The
-page includes Admin / Boss owners alongside Team Leads and Salespeople; admins remain outside team assignment.
+page includes Admin owners alongside Team Leads and Salespeople; admins remain outside team assignment.
 The directory and each salesperson's Performance drawer can export the selected period (`Overall`,
 `Today`, `Yesterday`, `This Week`, or `This Month`) as XLSX or PDF. XLSX uses separate Summary,
 Daily Activity, Orders, and Leads sheets and includes every matching order; PDF includes branded KPI
 cards, a daily sales chart, and the selected-period detail tables. Period boundaries are resolved
 server-side in Asia/Kolkata so exports do not depend on the administrator's browser timezone. Normal admin punches
-appear under the Admin / Boss owner; orders punched on behalf of a salesperson or Team Lead remain attributed
+appear under the Admin owner; orders punched on behalf of a salesperson or Team Lead remain attributed
 only to that selected owner.
 
 ### Salesperson/admin productivity and safety wave (no migration)
