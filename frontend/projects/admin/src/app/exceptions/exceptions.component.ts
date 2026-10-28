@@ -1,5 +1,5 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { IstDatePipe } from '../shared/ist-date.pipe';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ExceptionsService } from './exceptions.service';
@@ -10,6 +10,8 @@ import {
   EXCEPTION_CATEGORY_LABELS,
 } from './exceptions.model';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
 import {
@@ -24,15 +26,17 @@ import { humanizeStatus } from '../shared/status-badge.component';
 
 @Component({
   selector: 'admin-exceptions',
-  imports: [RouterLink, IstDatePipe, PageHeaderComponent, StatePanelComponent],
+  imports: [RouterLink, IstDatePipe, PageHeaderComponent, PaginationComponent, StatePanelComponent],
   templateUrl: './exceptions.component.html',
   styleUrl: './exceptions.component.css',
 })
 export class ExceptionsComponent implements OnInit {
   private readonly service = inject(ExceptionsService);
   private readonly toasts = inject(ToastService);
+  private readonly route = inject(ActivatedRoute);
 
   protected readonly response = signal<AdminExceptionResponse | null>(null);
+  protected readonly selectedCategory = signal<ExceptionCategory | null>(null);
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
 
@@ -42,12 +46,89 @@ export class ExceptionsComponent implements OnInit {
   setSourceFilter(mode: SourceFilterMode): void {
     this.sourceFilter.set(mode);
     writeSourceFilter('shifa:exceptions-source', mode);
+    this.page.set(0);
   }
 
   protected readonly categories = Object.keys(EXCEPTION_CATEGORY_LABELS) as ExceptionCategory[];
   protected readonly categoryLabels = EXCEPTION_CATEGORY_LABELS;
 
+  /** Rows matching the source filter, before the optional category lens. */
+  protected readonly sourceItems = computed<AdminExceptionItem[]>(() => {
+    const mode = this.sourceFilter();
+    return (this.response()?.items ?? []).filter((item) => matchesSourceMode(item.source, mode));
+  });
+
+  /** Rows currently shown after source + category filtering. */
+  protected readonly filteredItems = computed<AdminExceptionItem[]>(() => {
+    const category = this.selectedCategory();
+    return category
+      ? this.sourceItems().filter((item) => item.category === category)
+      : this.sourceItems();
+  });
+
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('exceptions', 10));
+  protected readonly totalElements = computed(() => this.filteredItems().length);
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil(this.totalElements() / this.size())),
+  );
+  protected readonly pageItems = computed<AdminExceptionItem[]>(() => {
+    const start = this.page() * this.size();
+    return this.filteredItems().slice(start, start + this.size());
+  });
+
+  /** Category counts remain visible for the current source, even when a category is selected. */
+  count(category: ExceptionCategory): number {
+    return this.sourceItems().filter((item) => item.category === category).length;
+  }
+
+  setCategory(category: ExceptionCategory | null): void {
+    this.selectedCategory.set(category);
+    this.page.set(0);
+  }
+
+  resetFilters(): void {
+    this.selectedCategory.set(null);
+    this.setSourceFilter('PORTAL');
+  }
+
+  goToPage(page: number): void {
+    this.page.set(page);
+  }
+
+  setSize(size: number): void {
+    this.size.set(size);
+    writePageSize('exceptions', size);
+    this.page.set(0);
+  }
+
+  /** Human-readable source label for order-backed exception rows. */
+  sourceLabel(source: string | null | undefined): string {
+    return source === 'SHOPIFY' ? 'Shopify' : source ? 'Portal' : 'Business-wide';
+  }
+
+  sourceBadgeClass(source: string | null | undefined): string {
+    return source === 'SHOPIFY' ? 'bg-green-lt text-green' : 'bg-secondary-lt text-secondary';
+  }
+
+  categoryLabel(category: string): string {
+    return this.categoryLabels[category as ExceptionCategory] ?? category;
+  }
+
   ngOnInit(): void {
+    const category = this.route.snapshot.queryParamMap.get('category') as ExceptionCategory | null;
+    if (category && this.categories.includes(category)) {
+      this.selectedCategory.set(category);
+    }
+    const source = this.route.snapshot.queryParamMap.get('source');
+    if (source === 'PORTAL' || source === 'SHOPIFY' || source === 'ALL') {
+      this.sourceFilter.set(source);
+      writeSourceFilter('shifa:exceptions-source', source);
+    } else if (category === 'QUIKSHIP') {
+      // QuikShip failures can come from both portal and Shopify orders. A
+      // dashboard drill-down must not inherit the page's Portal-only default.
+      this.sourceFilter.set('ALL');
+    }
     this.load();
   }
 
@@ -57,6 +138,7 @@ export class ExceptionsComponent implements OnInit {
     this.service.list().subscribe({
       next: (value) => {
         this.response.set(value);
+        this.page.set(0);
         this.loading.set(false);
       },
       error: (error: HttpErrorResponse) => {
@@ -68,22 +150,13 @@ export class ExceptionsComponent implements OnInit {
     });
   }
 
-  items(): AdminExceptionItem[] {
-    const all = this.response()?.items ?? [];
-    const mode = this.sourceFilter();
-    return all.filter((i) => matchesSourceMode(i.source, mode));
-  }
-
-  count(category: ExceptionCategory): number {
-    return this.items().filter((i) => i.category === category).length;
-  }
-
   categoryIcon(category: string): string {
     switch (category) {
       case 'APPROVAL': return 'ti-checklist';
       case 'PAYMENT': return 'ti-shield-check';
       case 'DELIVERY': return 'ti-truck-off';
       case 'CLAIM': return 'ti-file-alert';
+      case 'QUIKSHIP': return 'ti-truck-delivery';
       case 'INSIGHT': return 'ti-bulb';
       default: return 'ti-alert-triangle';
     }
@@ -112,6 +185,7 @@ export class ExceptionsComponent implements OnInit {
       case 'PAYMENT': return 'Review payment';
       case 'DELIVERY': return 'Open order';
       case 'CLAIM': return 'Open reconciliation';
+      case 'QUIKSHIP': return 'Open order';
       case 'INSIGHT': return 'Open insight';
       default: return 'Open';
     }

@@ -1,6 +1,7 @@
 package com.shifa.oms.auth;
 
 import com.shifa.oms.auth.dto.LoginRequest;
+import com.shifa.oms.auth.dto.MfaVerifyRequest;
 import com.shifa.oms.auth.dto.RefreshRequest;
 import com.shifa.oms.auth.dto.RegisterRequest;
 import com.shifa.oms.auth.dto.TokenResponse;
@@ -41,17 +42,20 @@ public class AuthService {
     private final JwtService jwtService;
     private final MailService mailService;
     private final EmailRenderer emailRenderer;
+    private final MfaService mfaService;
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        JwtService jwtService,
                        MailService mailService,
-                       EmailRenderer emailRenderer) {
+                       EmailRenderer emailRenderer,
+                       MfaService mfaService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.mailService = mailService;
         this.emailRenderer = emailRenderer;
+        this.mfaService = mfaService;
     }
 
     /**
@@ -111,14 +115,48 @@ public class AuthService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    @Transactional(readOnly = true)
-    public TokenResponse login(LoginRequest request) {
+    /**
+     * First login step: verify the username/password and the active flag, then
+     * either issue tokens immediately (no MFA) or return an MFA challenge the
+     * caller must complete. A single generic 401 is returned for a bad username
+     * or password so the endpoint does not reveal which usernames exist.
+     *
+     * <p>Not {@code readOnly}: an MFA-enabled-but-not-yet-enrolled user has a
+     * fresh secret provisioned here so the enrollment QR is stable.
+     */
+    @Transactional
+    public LoginOutcome login(LoginRequest request) {
         User user = userRepository.findByUsername(request.username())
                 .filter(candidate -> passwordEncoder.matches(request.password(), candidate.getPasswordHash()))
                 .orElseThrow(AuthService::invalidCredentials);
         if (!user.isActive()) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "ACCOUNT_DISABLED", "This account is disabled.");
         }
+        if (mfaService.mfaRequired(user)) {
+            return LoginOutcome.challenge(mfaService.challengeFor(user));
+        }
+        return LoginOutcome.completed(tokensFor(user));
+    }
+
+    /**
+     * Second login step for an enrolled user: validates the current TOTP code
+     * against the MFA ticket and issues the real token pair. A wrong/expired code
+     * is a 401; a stale/invalid ticket is a 401.
+     */
+    @Transactional(readOnly = true)
+    public TokenResponse verifyMfa(MfaVerifyRequest request) {
+        User user = mfaService.verifyLogin(request.mfaTicket(), request.code());
+        return tokensFor(user);
+    }
+
+    /**
+     * Enrollment confirmation: validates the first TOTP code, finalises
+     * enrollment, and issues the real token pair so the user proceeds in the same
+     * flow.
+     */
+    @Transactional
+    public TokenResponse confirmMfaEnrollment(MfaVerifyRequest request) {
+        User user = mfaService.confirmEnrollment(request.mfaTicket(), request.code());
         return tokensFor(user);
     }
 

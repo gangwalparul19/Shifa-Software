@@ -47,10 +47,14 @@ class AuthServiceTest {
         JwtProperties properties = new JwtProperties();
         properties.setSecret("test-secret-that-is-long-enough-for-hmac-sha256-signing");
         jwtService = new JwtService(properties, new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC));
+        MfaService mfaService = new MfaService(userRepository, jwtService,
+                new TotpService(Clock.fixed(NOW, ZoneOffset.UTC)), "Shifa OMS",
+                Clock.fixed(NOW, ZoneOffset.UTC));
         authService = new AuthService(userRepository, passwordEncoder, jwtService,
                 new com.shifa.oms.mail.MockMailService(),
                 new com.shifa.oms.mail.template.EmailRenderer(
-                        com.shifa.oms.mail.template.EmailBrandProperties.defaults()));
+                        com.shifa.oms.mail.template.EmailBrandProperties.defaults()),
+                mfaService);
     }
 
     private User activeAdmin(String rawPassword) {
@@ -73,7 +77,9 @@ class AuthServiceTest {
     void loginWithValidCredentialsIssuesTokenPair() {
         when(userRepository.findByUsername("admin")).thenReturn(Optional.of(activeAdmin("secret123")));
 
-        TokenResponse response = authService.login(new LoginRequest("admin", "secret123"));
+        LoginOutcome outcome = authService.login(new LoginRequest("admin", "secret123"));
+        assertThat(outcome.requiresMfa()).isFalse();
+        TokenResponse response = outcome.tokens();
 
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.role()).isEqualTo("ADMIN");
@@ -119,7 +125,7 @@ class AuthServiceTest {
         when(userRepository.findByUsername("admin")).thenReturn(Optional.of(admin));
         when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
 
-        String refreshToken = authService.login(new LoginRequest("admin", "secret123")).refreshToken();
+        String refreshToken = authService.login(new LoginRequest("admin", "secret123")).tokens().refreshToken();
         TokenResponse refreshed = authService.refresh(new RefreshRequest(refreshToken));
 
         assertThat(jwtService.parse(refreshed.accessToken(), TokenType.ACCESS).username()).isEqualTo("admin");
@@ -188,7 +194,7 @@ class AuthServiceTest {
         User admin = activeAdmin("secret123");
         when(userRepository.findByUsername("admin")).thenReturn(Optional.of(admin));
 
-        String accessToken = authService.login(new LoginRequest("admin", "secret123")).accessToken();
+        String accessToken = authService.login(new LoginRequest("admin", "secret123")).tokens().accessToken();
 
         assertThatThrownBy(() -> authService.refresh(new RefreshRequest(accessToken)))
                 .isInstanceOf(InvalidTokenException.class);

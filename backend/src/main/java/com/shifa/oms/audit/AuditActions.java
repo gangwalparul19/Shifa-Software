@@ -44,6 +44,11 @@ public final class AuditActions {
     public static final String USER_PASSWORD_CHANGED = "USER_PASSWORD_CHANGED";
     public static final String USER_ACTIVATED = "USER_ACTIVATED";
     public static final String USER_DEACTIVATED = "USER_DEACTIVATED";
+    /** An admin turned MFA requirement on or off for a user (TOTP rollout). */
+    public static final String USER_MFA_ENABLED = "USER_MFA_ENABLED";
+    public static final String USER_MFA_DISABLED = "USER_MFA_DISABLED";
+    /** An admin cleared a user's MFA enrollment (lost-device recovery; forces re-enroll). */
+    public static final String USER_MFA_RESET = "USER_MFA_RESET";
 
     // Staff onboarding profiles + ID verification.
     public static final String STAFF_PROFILE_UPDATED = "STAFF_PROFILE_UPDATED";

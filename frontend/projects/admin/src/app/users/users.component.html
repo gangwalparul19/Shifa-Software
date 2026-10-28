@@ -74,6 +74,10 @@
             <span class="badge bg-orange-lt ms-1">Must change</span>
           }
         </div>
+        <div class="shifa-uc__pwreset text-secondary small">
+          <i class="ti ti-shield-lock me-1" aria-hidden="true"></i>
+          Two-factor: <span class="badge ms-1" [class]="mfaBadgeClass(user)">{{ mfaStatusLabel(user) }}</span>
+        </div>
       </div>
     }
   </div>
@@ -88,6 +92,7 @@
             <th>Full name</th>
             <th>Role</th>
             <th>Status</th>
+            <th>Two-factor</th>
             <th>Created</th>
             <th>Password reset</th>
             <th class="text-end">Actions</th>
@@ -108,6 +113,9 @@
                 <span class="badge" [class.bg-green-lt]="user.active" [class.bg-secondary-lt]="!user.active">
                   {{ user.active ? 'Active' : 'Inactive' }}
                 </span>
+              </td>
+              <td>
+                <span class="badge" [class]="mfaBadgeClass(user)">{{ mfaStatusLabel(user) }}</span>
               </td>
               <td class="text-secondary">{{ createdLabel(user.createdAt) }}</td>
               <td class="text-secondary">

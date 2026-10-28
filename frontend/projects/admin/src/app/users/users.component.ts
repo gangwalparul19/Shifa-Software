@@ -238,6 +238,23 @@ export class UsersComponent implements OnInit {
       { key: 'edit', label: 'Edit', icon: 'ti-edit' },
       { key: 'reset', label: 'Reset password', icon: 'ti-key' },
     ];
+    // Two-factor (TOTP): turn the requirement on/off, and — once enrolled — a
+    // reset for lost-device recovery (clears the secret so they re-enroll).
+    actions.push({
+      key: 'mfa-toggle',
+      label: user.mfaEnabled ? 'Disable two-factor' : 'Enable two-factor',
+      icon: user.mfaEnabled ? 'ti-shield-off' : 'ti-shield-lock',
+      variant: user.mfaEnabled ? 'danger' : 'success',
+      disabled: this.actioningId() !== null,
+    });
+    if (user.mfaEnrolled) {
+      actions.push({
+        key: 'mfa-reset',
+        label: 'Reset two-factor',
+        icon: 'ti-shield-x',
+        disabled: this.actioningId() !== null,
+      });
+    }
     const blockDeactivate = user.active && this.isSelf(user);
     actions.push({
       key: 'toggle',
@@ -257,7 +274,102 @@ export class UsersComponent implements OnInit {
       this.resetPassword(user);
     } else if (key === 'toggle') {
       this.toggleActive(user);
+    } else if (key === 'mfa-toggle') {
+      this.toggleMfa(user);
+    } else if (key === 'mfa-reset') {
+      this.resetMfa(user);
     }
+  }
+
+  // --- Two-factor (TOTP) --------------------------------------------------
+
+  /**
+   * Human label for the MFA status cell: on + enrolled, on but awaiting the
+   * user's first enrollment, or off.
+   */
+  mfaStatusLabel(user: AdminUser): string {
+    if (!user.mfaEnabled) {
+      return 'Off';
+    }
+    return user.mfaEnrolled ? 'On' : 'On · setup pending';
+  }
+
+  /** Badge tone for the MFA status cell. */
+  mfaBadgeClass(user: AdminUser): string {
+    if (!user.mfaEnabled) {
+      return 'bg-secondary-lt';
+    }
+    return user.mfaEnrolled ? 'bg-green-lt' : 'bg-yellow-lt';
+  }
+
+  /** Turns two-factor on or off for the user. */
+  async toggleMfa(user: AdminUser): Promise<void> {
+    if (this.actioningId() !== null) {
+      return;
+    }
+    const enabling = !user.mfaEnabled;
+    const confirmed = await this.confirmService.confirm({
+      title: enabling ? 'Enable two-factor' : 'Disable two-factor',
+      message: enabling
+        ? `Require ${user.username} to use an authenticator app (TOTP)? They'll be guided ` +
+          `through setup the next time they sign in.`
+        : `Turn off two-factor for ${user.username}? They'll sign in with just their password. ` +
+          `Any existing authenticator setup is kept and resumes if you re-enable it.`,
+      confirmLabel: enabling ? 'Enable' : 'Disable',
+      danger: !enabling,
+      icon: enabling ? 'ti-shield-lock' : 'ti-shield-off',
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.actioningId.set(user.id);
+    this.service.setMfaEnabled(user.id, enabling).subscribe({
+      next: (updated) => {
+        this.actioningId.set(null);
+        this.users.update((items) => items.map((u) => (u.id === updated.id ? updated : u)));
+        this.toasts.success(
+          enabling
+            ? `Two-factor enabled for ${user.username}.`
+            : `Two-factor disabled for ${user.username}.`,
+        );
+      },
+      error: (err: HttpErrorResponse) => {
+        this.actioningId.set(null);
+        this.toasts.error(this.describeError(err));
+      },
+    });
+  }
+
+  /** Clears the user's enrollment so they re-enroll (lost-device recovery). */
+  async resetMfa(user: AdminUser): Promise<void> {
+    if (this.actioningId() !== null) {
+      return;
+    }
+    const confirmed = await this.confirmService.confirm({
+      title: 'Reset two-factor',
+      message:
+        `Reset ${user.username}'s authenticator setup? Their current authenticator stops ` +
+        `working, and they'll scan a new QR code at their next sign-in. Use this when a user ` +
+        `loses their device.`,
+      confirmLabel: 'Reset two-factor',
+      danger: true,
+      icon: 'ti-shield-x',
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.actioningId.set(user.id);
+    this.service.resetMfa(user.id).subscribe({
+      next: (updated) => {
+        this.actioningId.set(null);
+        this.users.update((items) => items.map((u) => (u.id === updated.id ? updated : u)));
+        this.toasts.success(`Two-factor reset for ${user.username}. They'll re-enroll at next sign-in.`);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.actioningId.set(null);
+        this.toasts.error(this.describeError(err));
+      },
+    });
   }
 
   // --- Create / edit form -------------------------------------------------

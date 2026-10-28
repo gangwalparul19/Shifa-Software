@@ -90,6 +90,11 @@ app:
       secret: ${JWT_SECRET:change-me-local-development-secret-change-me-please}
       access-token-ttl: PT15M
       refresh-token-ttl: P7D
+      # Short-lived ticket issued between the password step and the TOTP step.
+      mfa-ticket-ttl: PT5M
+    mfa:
+      # Label shown in the user's authenticator app (Google Authenticator etc.).
+      issuer: ${MFA_ISSUER:Shifa OMS}
   oci:
     object-storage:
       region: ${OCI_REGION:ap-mumbai-1}

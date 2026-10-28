@@ -21,6 +21,45 @@ export interface LoginCredentials {
 }
 
 /**
+ * The 200 body returned by {@code POST /api/auth/login} when the password was
+ * correct but TOTP multi-factor is active for the user (mirrors the backend
+ * {@code MfaChallengeResponse}). It is deliberately NOT a 401 so the token
+ * refresh interceptor leaves it alone.
+ *
+ * <ul>
+ *   <li>{@code MFA_REQUIRED} — the user is enrolled; prompt for the current
+ *       authenticator code and call {@code /api/auth/mfa/verify}. {@code
+ *       otpauthUri}/{@code secret} are absent.</li>
+ *   <li>{@code MFA_ENROLL} — MFA is on but the user has not enrolled; show the QR
+ *       from {@code otpauthUri} (and the manual {@code secret}) to scan, then
+ *       call {@code /api/auth/mfa/enroll/confirm}.</li>
+ * </ul>
+ */
+export interface MfaChallenge {
+  status: 'MFA_REQUIRED' | 'MFA_ENROLL';
+  mfaTicket: string;
+  /** otpauth:// provisioning URI for the QR code (enrollment only). */
+  otpauthUri?: string | null;
+  /** Base32 secret for manual entry (enrollment only). */
+  secret?: string | null;
+}
+
+/** Submission for {@code /api/auth/mfa/verify} and {@code /api/auth/mfa/enroll/confirm}. */
+export interface MfaVerifyRequest {
+  mfaTicket: string;
+  code: string;
+}
+
+/**
+ * The result of {@link AuthService.login}: either the session was established
+ * (no MFA) or a second factor is owed and the caller must complete the TOTP
+ * step with the carried {@link MfaChallenge}.
+ */
+export type LoginResult =
+  | { kind: 'authenticated'; session: AuthSession }
+  | { kind: 'mfa'; challenge: MfaChallenge };
+
+/**
  * Token pair returned by {@code /api/auth/login} and {@code /api/auth/refresh}
  * (mirrors the backend {@code TokenResponse}).
  */

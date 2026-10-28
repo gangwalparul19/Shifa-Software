@@ -6,6 +6,8 @@ import { AuthTokenStore } from './auth-token.store';
 import {
   AuthSession,
   LoginCredentials,
+  LoginResult,
+  MfaChallenge,
   Role,
   TokenResponse,
 } from '../models/auth.model';
@@ -77,12 +79,55 @@ export class AuthService {
   /** Up to two initials for the signed-in user's avatar (never blank when signed in). */
   readonly initials = computed<string>(() => initialsOf(this.displayName()));
 
-  /** Authenticates and stores the resulting token pair. */
-  login(credentials: LoginCredentials): Observable<AuthSession> {
-    return this.api.post<TokenResponse>('/api/auth/login', credentials).pipe(
-      tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken)),
-      map(() => this.requireSession()),
-    );
+  /**
+   * Authenticates with username + password. Resolves to either an established
+   * session (no MFA) or an MFA challenge the caller must complete via
+   * {@link verifyMfa} / {@link confirmMfaEnrollment}. Tokens are stored only when
+   * the login actually completes (never for a challenge).
+   *
+   * <p>The challenge comes back as a 200 (not a 401), so the response is either
+   * a {@link TokenResponse} or an {@link MfaChallenge}; we disambiguate on the
+   * presence of {@code accessToken}.
+   */
+  login(credentials: LoginCredentials): Observable<LoginResult> {
+    return this.api
+      .post<TokenResponse | MfaChallenge>('/api/auth/login', credentials)
+      .pipe(map((response) => this.resolveLoginResponse(response)));
+  }
+
+  /**
+   * Completes the TOTP second factor for an already-enrolled user and stores the
+   * resulting token pair.
+   */
+  verifyMfa(mfaTicket: string, code: string): Observable<AuthSession> {
+    return this.api
+      .post<TokenResponse>('/api/auth/mfa/verify', { mfaTicket, code })
+      .pipe(
+        tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken)),
+        map(() => this.requireSession()),
+      );
+  }
+
+  /**
+   * Confirms the first TOTP code to finish enrollment and stores the resulting
+   * token pair.
+   */
+  confirmMfaEnrollment(mfaTicket: string, code: string): Observable<AuthSession> {
+    return this.api
+      .post<TokenResponse>('/api/auth/mfa/enroll/confirm', { mfaTicket, code })
+      .pipe(
+        tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken)),
+        map(() => this.requireSession()),
+      );
+  }
+
+  /** Stores tokens + returns an authenticated result, or surfaces the MFA challenge. */
+  private resolveLoginResponse(response: TokenResponse | MfaChallenge): LoginResult {
+    if ('accessToken' in response && response.accessToken) {
+      this.tokens.setTokens(response.accessToken, response.refreshToken);
+      return { kind: 'authenticated', session: this.requireSession() };
+    }
+    return { kind: 'mfa', challenge: response as MfaChallenge };
   }
 
   /**

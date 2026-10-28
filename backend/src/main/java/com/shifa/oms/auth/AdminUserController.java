@@ -5,6 +5,7 @@ import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.auth.dto.AdminUserResponse;
 import com.shifa.oms.auth.dto.CreateUserRequest;
 import com.shifa.oms.auth.dto.ResetPasswordRequest;
+import com.shifa.oms.auth.dto.SetMfaEnabledRequest;
 import com.shifa.oms.auth.dto.UpdateUserRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -102,6 +103,35 @@ public class AdminUserController {
         AdminUserResponse response = adminUserService.deactivate(id);
         auditService.record(AuditActions.USER_DEACTIVATED, AuditActions.ENTITY_USER,
                 String.valueOf(id), "Deactivated user " + response.username());
+        return response;
+    }
+
+    /**
+     * Turns the MFA (TOTP) requirement on or off for a user — the control for the
+     * ADMIN-first rollout. Enabling a not-yet-enrolled user walks them through
+     * enrollment at next login (never locks them out).
+     */
+    @PostMapping("/{id}/mfa")
+    public AdminUserResponse setMfaEnabled(@PathVariable Long id,
+                                           @Valid @RequestBody SetMfaEnabledRequest request) {
+        boolean enabled = Boolean.TRUE.equals(request.enabled());
+        AdminUserResponse response = adminUserService.setMfaEnabled(id, enabled);
+        auditService.record(
+                enabled ? AuditActions.USER_MFA_ENABLED : AuditActions.USER_MFA_DISABLED,
+                AuditActions.ENTITY_USER, String.valueOf(id),
+                (enabled ? "Enabled" : "Disabled") + " two-factor for user " + response.username());
+        return response;
+    }
+
+    /**
+     * Clears a user's MFA enrollment so they re-enroll from scratch — the
+     * recovery path when a user loses their authenticator device.
+     */
+    @PostMapping("/{id}/mfa/reset")
+    public AdminUserResponse resetMfa(@PathVariable Long id) {
+        AdminUserResponse response = adminUserService.resetMfa(id);
+        auditService.record(AuditActions.USER_MFA_RESET, AuditActions.ENTITY_USER,
+                String.valueOf(id), "Reset two-factor enrollment for user " + response.username());
         return response;
     }
 }

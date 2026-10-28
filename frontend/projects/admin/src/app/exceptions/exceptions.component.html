@@ -1,7 +1,9 @@
 <admin-page-header
-  title="Exception Center"
-  subtitle="One admin work list for orders, payments, deliveries, claims, and urgent insights."
-  [breadcrumbs]="[{ label: 'Exception Center' }]"
+  [title]="selectedCategory() === 'QUIKSHIP' ? 'QuikShip failures' : 'Exception Center'"
+  [subtitle]="selectedCategory() === 'QUIKSHIP'
+    ? 'Orders with a recorded QuikShip failure. Open each order to retry tracking or reroute it.'
+    : 'One admin work list for orders, payments, deliveries, claims, and urgent insights.'"
+  [breadcrumbs]="[{ label: selectedCategory() === 'QUIKSHIP' ? 'QuikShip failures' : 'Exception Center' }]"
 >
   <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
     <i class="ti ti-refresh"></i>
@@ -26,6 +28,54 @@
       (click)="setSourceFilter('ALL')">All</button>
   </div>
 </div>
+
+<div class="exception-filterbar card mb-3">
+  <div class="card-body py-2">
+    <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+      <div>
+        <div class="fw-semibold">Filter exceptions</div>
+        <div class="text-secondary small">{{ totalElements() }} matching item{{ totalElements() === 1 ? '' : 's' }}</div>
+      </div>
+      @if (selectedCategory() || sourceFilter() !== 'PORTAL') {
+        <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="resetFilters()">
+          <i class="ti ti-filter-off me-1"></i> Reset filters
+        </button>
+      }
+    </div>
+    <div class="exception-category-tabs mt-2" role="tablist" aria-label="Filter exceptions by category">
+      <button
+        type="button"
+        class="exception-category-tab"
+        [class.is-active]="!selectedCategory()"
+        [attr.aria-selected]="!selectedCategory()"
+        (click)="setCategory(null)"
+      >
+        All <span>{{ sourceItems().length }}</span>
+      </button>
+      @for (category of categories; track category) {
+        <button
+          type="button"
+          class="exception-category-tab"
+          [class.is-active]="selectedCategory() === category"
+          [attr.aria-selected]="selectedCategory() === category"
+          (click)="setCategory(category)"
+        >
+          {{ categoryLabels[category] }} <span>{{ count(category) }}</span>
+        </button>
+      }
+    </div>
+  </div>
+</div>
+
+@if (selectedCategory() === 'QUIKSHIP') {
+  <div class="alert alert-warning d-flex align-items-start mb-3" role="status">
+    <i class="ti ti-truck-delivery me-2 mt-1"></i>
+    <div>
+      <strong>QuikShip failures</strong>
+      <div>These failures can be from portal or Shopify orders. Open an order to retry tracking or reroute it to Ishika Enterprise.</div>
+    </div>
+  </div>
+}
 
 <div class="alert alert-info d-flex align-items-start mb-3" role="note">
   <i class="ti ti-info-circle me-2 mt-1"></i>
@@ -57,27 +107,33 @@
     }
   </div>
 
-  @if (items().length === 0) {
+  @if (filteredItems().length === 0) {
     <admin-state-panel
       variant="empty"
       [card]="true"
       icon="ti-circle-check"
-      [title]="data.total === 0 ? 'No urgent exceptions' : 'Nothing for this source'"
+      [title]="data.total === 0
+        ? 'No urgent exceptions'
+        : selectedCategory() === 'QUIKSHIP'
+          ? 'No QuikShip failures'
+          : 'Nothing for this source'"
       [message]="data.total === 0
         ? 'Approval, payment, delivery, claim, and insight queues are clear.'
-        : 'No exceptions match the selected source. Switch to All to see every item.'"
+        : selectedCategory() === 'QUIKSHIP'
+          ? 'All recorded QuikShip failures are clear.'
+          : 'No exceptions match the selected source. Switch to All to see every item.'"
     />
   } @else {
     <div class="card">
-      <div class="card-header d-flex align-items-center justify-content-between">
+    <div class="card-header d-flex align-items-center justify-content-between">
         <div>
           <h3 class="card-title mb-0">Needs attention</h3>
-          <div class="text-secondary small">{{ items().length }} item{{ items().length === 1 ? '' : 's' }}, highest priority first</div>
+          <div class="text-secondary small">Showing {{ totalElements() }} item{{ totalElements() === 1 ? '' : 's' }}, highest priority first</div>
         </div>
         <span class="badge bg-red-lt text-red"><i class="ti ti-alert-triangle me-1"></i>Action required</span>
       </div>
       <div class="list-group list-group-flush">
-        @for (item of items(); track item.category + ':' + (item.orderId ?? item.title)) {
+        @for (item of pageItems(); track item.category + ':' + (item.orderId ?? item.title) + ':' + (item.createdAt ?? '')) {
           <div class="list-group-item exception-row">
             <div class="exception-row__icon" [class]="severityClass(item.severity)">
               <i class="ti {{ categoryIcon(item.category) }}"></i>
@@ -85,6 +141,12 @@
             <div class="exception-row__main">
               <div class="d-flex align-items-start justify-content-between gap-2">
                 <div class="min-w-0">
+                  <div class="d-flex align-items-center gap-1 flex-wrap">
+                    <span class="badge bg-secondary-lt">{{ categoryLabel(item.category) }}</span>
+                    @if (item.source || item.category !== 'INSIGHT') {
+                      <span class="badge" [class]="sourceBadgeClass(item.source)">{{ sourceLabel(item.source) }}</span>
+                    }
+                  </div>
                   <div class="fw-semibold text-truncate">{{ item.title }}</div>
                   <div class="text-secondary small">{{ item.detail }}</div>
                 </div>
@@ -120,5 +182,13 @@
         }
       </div>
     </div>
+    <admin-pagination
+      [page]="page()"
+      [totalPages]="totalPages()"
+      [totalElements]="totalElements()"
+      [size]="size()"
+      (pageChange)="goToPage($event)"
+      (sizeChange)="setSize($event)"
+    />
   }
 }

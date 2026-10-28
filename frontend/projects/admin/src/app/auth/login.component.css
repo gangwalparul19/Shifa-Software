@@ -38,3 +38,34 @@
   font-size: 1rem;
   border-radius: 10px;
 }
+
+/* --- Two-factor (TOTP) steps -------------------------------------------- */
+
+/* Enrollment QR: crisp, centred, with a light frame. */
+.shifa-auth__qr {
+  display: inline-block;
+  border: 1px solid rgba(15, 51, 36, 0.12);
+  border-radius: 12px;
+  padding: 10px;
+  background: #fff;
+}
+
+/* Manual-entry secret: readable, selectable monospace key. */
+.shifa-auth__secret {
+  font-size: 1.05rem;
+  letter-spacing: 0.12em;
+  word-break: break-all;
+  user-select: all;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  background: var(--shifa-green-50, #eef5f1);
+  color: var(--shifa-green-700, #184b33);
+}
+
+/* 6-digit code: large, spaced, centred for quick visual check. */
+.shifa-auth__code {
+  letter-spacing: 0.4em;
+  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 600;
+}

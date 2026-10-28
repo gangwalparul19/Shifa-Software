@@ -1,6 +1,6 @@
 import { OrderStatus } from 'core';
 
-export type ExceptionCategory = 'APPROVAL' | 'PAYMENT' | 'DELIVERY' | 'CLAIM' | 'INSIGHT';
+export type ExceptionCategory = 'APPROVAL' | 'PAYMENT' | 'DELIVERY' | 'CLAIM' | 'QUIKSHIP' | 'INSIGHT';
 export type ExceptionSeverity = 'HIGH' | 'MEDIUM' | 'DANGER' | 'WARNING' | 'INFO' | string;
 
 export interface AdminExceptionItem {
@@ -33,5 +33,6 @@ export const EXCEPTION_CATEGORY_LABELS: Record<ExceptionCategory, string> = {
   PAYMENT: 'Payment',
   DELIVERY: 'Delivery',
   CLAIM: 'Courier claims',
+  QUIKSHIP: 'QuikShip failures',
   INSIGHT: 'Insights',
 };

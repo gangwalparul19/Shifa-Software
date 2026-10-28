@@ -29,6 +29,7 @@
               "node_modules/@tabler/icons-webfont/dist/tabler-icons.min.css",
               "projects/admin/src/styles.css"
             ],
+            "allowedCommonJsDependencies": ["qrcode"],
             "serviceWorker": "projects/admin/ngsw-config.json"
           },
           "configurations": {
@@ -36,7 +37,7 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "3.25MB",
+                  "maximumWarning": "3.5MB",
                   "maximumError": "4MB"
                 },
                 {

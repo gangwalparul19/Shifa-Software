@@ -36,7 +36,9 @@ public record AdminUserResponse(
         Long teamLeadId,
         boolean mustChangePassword,
         LocalDateTime passwordResetAt,
-        int passwordResetCount) {
+        int passwordResetCount,
+        boolean mfaEnabled,
+        boolean mfaEnrolled) {
 
     public static AdminUserResponse from(User user) {
         return new AdminUserResponse(
@@ -57,6 +59,8 @@ public record AdminUserResponse(
                 user.getTeamLeadId(),
                 user.isMustChangePassword(),
                 user.getPasswordResetAt(),
-                user.getPasswordResetCount());
+                user.getPasswordResetCount(),
+                user.isMfaEnabled(),
+                user.isMfaEnrolled());
     }
 }

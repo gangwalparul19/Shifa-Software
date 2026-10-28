@@ -25,6 +25,13 @@ public class JwtProperties {
     /** Refresh-token time-to-live. */
     private Duration refreshTokenTtl = Duration.ofDays(7);
 
+    /**
+     * Lifetime of the short-lived MFA ticket issued between a correct password
+     * and the TOTP step. Kept brief (a few minutes) so a stolen ticket is
+     * useless almost immediately; it still grants no API access regardless.
+     */
+    private Duration mfaTicketTtl = Duration.ofMinutes(5);
+
     public String getSecret() {
         return secret;
     }
@@ -47,5 +54,13 @@ public class JwtProperties {
 
     public void setRefreshTokenTtl(Duration refreshTokenTtl) {
         this.refreshTokenTtl = refreshTokenTtl;
+    }
+
+    public Duration getMfaTicketTtl() {
+        return mfaTicketTtl;
+    }
+
+    public void setMfaTicketTtl(Duration mfaTicketTtl) {
+        this.mfaTicketTtl = mfaTicketTtl;
     }
 }

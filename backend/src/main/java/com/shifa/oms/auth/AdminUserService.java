@@ -140,6 +140,34 @@ public class AdminUserService {
         return AdminUserResponse.from(userRepository.save(user));
     }
 
+    /**
+     * Turns the MFA (TOTP) requirement on or off for a user — the control for the
+     * ADMIN-first sequenced rollout. Enabling a user who has not enrolled does
+     * NOT lock them out: they are walked through enrollment at their next login.
+     * Disabling leaves any enrolled secret intact (re-enabling resumes with it);
+     * use {@link #resetMfa(Long)} to clear the secret entirely.
+     */
+    @Transactional
+    public AdminUserResponse setMfaEnabled(Long id, boolean enabled) {
+        User user = require(id);
+        user.setMfaEnabled(enabled);
+        return AdminUserResponse.from(userRepository.save(user));
+    }
+
+    /**
+     * Clears a user's MFA enrollment (secret + enrolled timestamp) so they must
+     * re-enroll from scratch — the recovery path when a user loses their
+     * authenticator device. Leaves {@code mfaEnabled} unchanged: if it is still
+     * on, the user re-enrolls at next login; if off, nothing further happens.
+     */
+    @Transactional
+    public AdminUserResponse resetMfa(Long id) {
+        User user = require(id);
+        user.setMfaSecret(null);
+        user.setMfaEnrolledAt(null);
+        return AdminUserResponse.from(userRepository.save(user));
+    }
+
     /** Activates a user (idempotent). */
     @Transactional
     public AdminUserResponse activate(Long id) {

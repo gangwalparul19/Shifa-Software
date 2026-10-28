@@ -6,60 +6,157 @@
 
     <div class="card card-md">
       <div class="card-body">
-        <h1 class="h2 text-center mb-1">Welcome back</h1>
-        <p class="text-secondary text-center mb-4">Sign in to the admin dashboard</p>
+        <!-- Step 1: username + password -->
+        @if (step() === 'password') {
+          <h1 class="h2 text-center mb-1">Welcome back</h1>
+          <p class="text-secondary text-center mb-4">Sign in to the admin dashboard</p>
 
-        <form [formGroup]="form" (ngSubmit)="submit()" novalidate autocomplete="off">
-          <div class="mb-3">
-            <label class="form-label" for="username">Username</label>
-            <div class="input-icon">
-              <span class="input-icon-addon"><i class="ti ti-user"></i></span>
-              <input
-                id="username"
-                type="text"
-                class="form-control"
-                formControlName="username"
-                autocomplete="username"
-                placeholder="Enter your username"
-              />
-            </div>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label" for="password">Password</label>
-            <div class="input-icon">
-              <span class="input-icon-addon"><i class="ti ti-lock"></i></span>
-              <input
-                id="password"
-                type="password"
-                class="form-control"
-                formControlName="password"
-                autocomplete="current-password"
-                placeholder="Your password"
-              />
-            </div>
-          </div>
-
-          @if (error()) {
-            <div class="alert alert-danger anim-fade-up" role="alert">
-              <div class="d-flex align-items-center">
-                <i class="ti ti-alert-triangle me-2"></i>
-                <span>{{ error() }}</span>
+          <form [formGroup]="form" (ngSubmit)="submit()" novalidate autocomplete="off">
+            <div class="mb-3">
+              <label class="form-label" for="username">Username</label>
+              <div class="input-icon">
+                <span class="input-icon-addon"><i class="ti ti-user"></i></span>
+                <input
+                  id="username"
+                  type="text"
+                  class="form-control"
+                  formControlName="username"
+                  autocomplete="username"
+                  placeholder="Enter your username"
+                />
               </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label" for="password">Password</label>
+              <div class="input-icon">
+                <span class="input-icon-addon"><i class="ti ti-lock"></i></span>
+                <input
+                  id="password"
+                  type="password"
+                  class="form-control"
+                  formControlName="password"
+                  autocomplete="current-password"
+                  placeholder="Your password"
+                />
+              </div>
+            </div>
+
+            @if (error()) {
+              <div class="alert alert-danger anim-fade-up" role="alert">
+                <div class="d-flex align-items-center">
+                  <i class="ti ti-alert-triangle me-2"></i>
+                  <span>{{ error() }}</span>
+                </div>
+              </div>
+            }
+
+            <div class="form-footer">
+              <button type="submit" class="btn btn-primary w-100" [disabled]="submitting()">
+                @if (submitting()) {
+                  <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                  Signing in…
+                } @else {
+                  <i class="ti ti-login-2 me-2"></i> Sign in
+                }
+              </button>
+            </div>
+          </form>
+        }
+
+        <!-- Step 3: first-time TOTP enrollment (QR + secret) -->
+        @if (step() === 'enroll') {
+          <h1 class="h2 text-center mb-1">Set up two-factor</h1>
+          <p class="text-secondary text-center mb-3">
+            Scan this with Google Authenticator (or any TOTP app), then enter the 6-digit code it
+            shows.
+          </p>
+
+          <div class="text-center mb-3">
+            @if (qrDataUri()) {
+              <img
+                [src]="qrDataUri()"
+                alt="Two-factor QR code"
+                class="shifa-auth__qr"
+                width="220"
+                height="220"
+              />
+            } @else {
+              <div class="alert alert-info mb-0" role="alert">
+                Couldn't draw the QR code. Add the account manually using the key below.
+              </div>
+            }
+          </div>
+
+          @if (manualSecret()) {
+            <div class="mb-3">
+              <label class="form-label">Can't scan? Enter this key manually</label>
+              <code class="shifa-auth__secret d-block text-center">{{ manualSecret() }}</code>
             </div>
           }
 
-          <div class="form-footer">
-            <button type="submit" class="btn btn-primary w-100" [disabled]="submitting()">
-              @if (submitting()) {
-                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                Signing in…
-              } @else {
-                <i class="ti ti-login-2 me-2"></i> Sign in
-              }
-            </button>
-          </div>
-        </form>
+          <ng-container [ngTemplateOutlet]="codeStep"></ng-container>
+        }
+
+        <!-- Step 2: enrolled user enters the current code -->
+        @if (step() === 'code') {
+          <h1 class="h2 text-center mb-1">Two-factor verification</h1>
+          <p class="text-secondary text-center mb-3">
+            Enter the 6-digit code from your authenticator app.
+          </p>
+          <ng-container [ngTemplateOutlet]="codeStep"></ng-container>
+        }
+
+        <!-- Shared code-entry form for the verify + enroll-confirm steps -->
+        <ng-template #codeStep>
+          <form [formGroup]="codeForm" (ngSubmit)="submitCode()" novalidate autocomplete="off">
+            <div class="mb-3">
+              <label class="form-label" for="code">Authenticator code</label>
+              <div class="input-icon">
+                <span class="input-icon-addon"><i class="ti ti-shield-lock"></i></span>
+                <input
+                  id="code"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="one-time-code"
+                  maxlength="6"
+                  class="form-control shifa-auth__code"
+                  formControlName="code"
+                  placeholder="000000"
+                />
+              </div>
+            </div>
+
+            @if (error()) {
+              <div class="alert alert-danger anim-fade-up" role="alert">
+                <div class="d-flex align-items-center">
+                  <i class="ti ti-alert-triangle me-2"></i>
+                  <span>{{ error() }}</span>
+                </div>
+              </div>
+            }
+
+            <div class="form-footer">
+              <button type="submit" class="btn btn-primary w-100" [disabled]="submitting()">
+                @if (submitting()) {
+                  <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                  Verifying…
+                } @else {
+                  <i class="ti ti-shield-check me-2"></i>
+                  {{ step() === 'enroll' ? 'Verify & finish setup' : 'Verify' }}
+                }
+              </button>
+              <button
+                type="button"
+                class="btn btn-link w-100 mt-2"
+                (click)="cancelMfa()"
+                [disabled]="submitting()"
+              >
+                Back to sign in
+              </button>
+            </div>
+          </form>
+        </ng-template>
       </div>
     </div>
 

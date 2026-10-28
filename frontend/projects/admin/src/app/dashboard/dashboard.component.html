@@ -125,7 +125,7 @@
           </a>
         </div>
         <div class="col-6 col-md-3">
-          <a routerLink="/shopify-sync" class="p-2 rounded border h-100 d-block text-reset text-decoration-none">
+          <a routerLink="/exceptions" [queryParams]="{ category: 'QUIKSHIP', source: 'ALL' }" class="p-2 rounded border h-100 d-block text-reset text-decoration-none">
             <div class="subheader text-truncate">Stuck shipments</div>
             <div class="h2 m-0" [class.text-red]="os.stuckShipments > 0">{{ os.stuckShipments }}</div>
           </a>

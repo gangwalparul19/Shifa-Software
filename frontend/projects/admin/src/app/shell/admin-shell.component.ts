@@ -524,30 +524,6 @@ export class AdminShellComponent {
         },
         {
           kind: 'link',
-          label: 'Reconciliation',
-          path: '/reconciliation',
-          icon: 'ti-cash-register',
-          // CA has read access (route accountantGuard + backend admit CA), matching
-          // the Expenses / P&L / Accounting finance links.
-          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
-        },
-        {
-          kind: 'link',
-          label: 'Settlement Report',
-          path: '/remittance-report',
-          icon: 'ti-report-money',
-          // Weekly courier COD remittance report (what was settled + shortfalls).
-          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
-        },
-        {
-          kind: 'link',
-          label: 'Settlement Center',
-          path: '/settlements',
-          icon: 'ti-arrows-transfer-up',
-          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
-        },
-        {
-          kind: 'link',
           label: 'Returns',
           path: '/returns',
           icon: 'ti-arrow-back-up',
@@ -721,6 +697,29 @@ export class AdminShellComponent {
       children: [
         { kind: 'link', label: 'Expenses', path: '/expenses', icon: 'ti-cash', roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA] },
         { kind: 'link', label: 'Profit & Loss', path: '/finance/pnl', icon: 'ti-chart-pie', roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA] },
+        {
+          kind: 'link',
+          label: 'Reconciliation',
+          path: '/reconciliation',
+          icon: 'ti-cash-register',
+          // CA has read access (route accountantGuard + backend admits CA).
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'Settlement Report',
+          path: '/remittance-report',
+          icon: 'ti-report-money',
+          // Weekly courier COD remittance report (what was settled + shortfalls).
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
+        {
+          kind: 'link',
+          label: 'Settlement Center',
+          path: '/settlements',
+          icon: 'ti-arrows-transfer-up',
+          roles: [Role.ADMIN, Role.ACCOUNTANT, Role.CA],
+        },
       ],
     },
     {

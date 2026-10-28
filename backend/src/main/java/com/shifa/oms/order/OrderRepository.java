@@ -790,6 +790,15 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     long countByQuikShipXFailureReasonIsNotNullAndDeliveryMethod(
             com.shifa.oms.order.DeliveryMethod deliveryMethod);
 
+    /**
+     * Current QuikShip failures for the generic admin exception queue. The
+     * delivery-method predicate keeps in-house orders out even if an old failure
+     * reason was left behind; active-row filtering is supplied by User's
+     * {@code @SQLRestriction} on the entity.
+     */
+    List<OrderEntity> findByQuikShipXFailureReasonIsNotNullAndDeliveryMethodOrderByCreatedAtDesc(
+            DeliveryMethod deliveryMethod);
+
     /** Sum of COD amounts on active, non-cancelled orders created in a window. */
     @Query(value = """
             SELECT COALESCE(SUM(o.cod_amount), 0)

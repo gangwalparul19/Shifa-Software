@@ -128,6 +128,28 @@ public class User {
     @Column(name = "password_reset_count", nullable = false)
     private int passwordResetCount = 0;
 
+    // --- Multi-factor authentication (TOTP / Google Authenticator, V100) ----
+
+    /**
+     * Whether MFA is REQUIRED for this user. Flipping this true puts the user in
+     * the MFA flow; if they have not enrolled a secret yet they are walked
+     * through enrollment at their next login (never locked out by the flag
+     * alone). Drives the ADMIN-first sequenced rollout.
+     */
+    @Column(name = "mfa_enabled", nullable = false)
+    private boolean mfaEnabled = false;
+
+    /**
+     * The Base32-encoded TOTP shared secret, set at enrollment. Null until the
+     * user enrolls; never returned over the API once set.
+     */
+    @Column(name = "mfa_secret", length = 64)
+    private String mfaSecret;
+
+    /** When the user confirmed their first TOTP code (enrollment complete). */
+    @Column(name = "mfa_enrolled_at")
+    private LocalDateTime mfaEnrolledAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -333,6 +355,48 @@ public class User {
 
     public void setPasswordResetCount(int passwordResetCount) {
         this.passwordResetCount = passwordResetCount;
+    }
+
+    public boolean isMfaEnabled() {
+        return mfaEnabled;
+    }
+
+    public void setMfaEnabled(boolean mfaEnabled) {
+        this.mfaEnabled = mfaEnabled;
+    }
+
+    public String getMfaSecret() {
+        return mfaSecret;
+    }
+
+    public void setMfaSecret(String mfaSecret) {
+        this.mfaSecret = mfaSecret;
+    }
+
+    public LocalDateTime getMfaEnrolledAt() {
+        return mfaEnrolledAt;
+    }
+
+    public void setMfaEnrolledAt(LocalDateTime mfaEnrolledAt) {
+        this.mfaEnrolledAt = mfaEnrolledAt;
+    }
+
+    /**
+     * Whether the user has fully completed TOTP enrollment (a secret is stored
+     * and confirmed). A user with {@link #mfaEnabled} true but this false still
+     * needs to enroll before they can log in with a code.
+     */
+    public boolean isMfaEnrolled() {
+        return mfaSecret != null && !mfaSecret.isBlank() && mfaEnrolledAt != null;
+    }
+
+    /**
+     * Whether a second factor is required to complete this user's login right
+     * now: MFA is on AND they have an enrolled secret. When MFA is on but not
+     * enrolled, the login flow sends them through enrollment instead.
+     */
+    public boolean isMfaActive() {
+        return mfaEnabled && isMfaEnrolled();
     }
 
     public LocalDateTime getCreatedAt() {

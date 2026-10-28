@@ -62,6 +62,17 @@ public class JwtService {
         return issue(user, TokenType.REFRESH, now, now.plus(properties.getRefreshTokenTtl()));
     }
 
+    /**
+     * Issues a short-lived MFA ticket for the given user. Minted after a correct
+     * password when the user still owes a second factor; the client presents it
+     * back on the TOTP verify/enroll-confirm step. It is NOT an access token and
+     * is rejected by the request authentication filter.
+     */
+    public String issueMfaTicket(User user) {
+        Instant now = clock.instant();
+        return issue(user, TokenType.MFA, now, now.plus(properties.getMfaTicketTtl()));
+    }
+
     /** The configured access-token lifetime, in seconds (for the login response). */
     public long accessTokenTtlSeconds() {
         return properties.getAccessTokenTtl().toSeconds();

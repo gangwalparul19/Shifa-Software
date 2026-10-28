@@ -78,6 +78,10 @@ export interface AdminUser {
   passwordResetAt: string | null;
   /** How many times an admin has reset this user's password. */
   passwordResetCount: number;
+  /** Whether two-factor (TOTP) is required for this user. */
+  mfaEnabled: boolean;
+  /** Whether the user has completed TOTP enrollment (scanned the QR + confirmed). */
+  mfaEnrolled: boolean;
 }
 
 /** Payload for creating a staff account ({@code POST /api/admin/users}). */
@@ -153,5 +157,22 @@ export class UsersService {
   /** Blocks sign-in for the account (subject to backend guardrails). */
   deactivate(id: number): Observable<AdminUser> {
     return this.api.post<AdminUser>(`/api/admin/users/${id}/deactivate`, null);
+  }
+
+  /**
+   * Turns two-factor (TOTP) on or off for the account — the control for the
+   * ADMIN-first rollout. Enabling a not-yet-enrolled user walks them through
+   * enrollment at their next login (never locks them out).
+   */
+  setMfaEnabled(id: number, enabled: boolean): Observable<AdminUser> {
+    return this.api.post<AdminUser>(`/api/admin/users/${id}/mfa`, { enabled });
+  }
+
+  /**
+   * Clears the account's two-factor enrollment so they re-enroll from scratch —
+   * the recovery path when a user loses their authenticator device.
+   */
+  resetMfa(id: number): Observable<AdminUser> {
+    return this.api.post<AdminUser>(`/api/admin/users/${id}/mfa/reset`, null);
   }
 }

@@ -4,6 +4,7 @@ import com.shifa.oms.adminexception.dto.AdminExceptionResponse;
 import com.shifa.oms.insights.InsightEntity;
 import com.shifa.oms.insights.InsightRepository;
 import com.shifa.oms.insights.domain.InsightSeverity;
+import com.shifa.oms.order.DeliveryMethod;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.reconciliation.ReceivableEntity;
@@ -77,6 +78,9 @@ public class AdminExceptionService {
                         .toList();
         List<OrderEntity> failedDelivery =
                 orderRepository.findByOrderStatusInOrderByCreatedAtDesc(FAILED_DELIVERY);
+        List<OrderEntity> quikShipFailures = orderRepository
+                .findByQuikShipXFailureReasonIsNotNullAndDeliveryMethodOrderByCreatedAtDesc(
+                        DeliveryMethod.QUIKSHIPX);
         List<ReceivableEntity> pendingClaims = receivableRepository
                 .findByTypeAndSettledFalseOrderByCreatedAtDescIdDesc(ReceivableType.CLAIM_RECEIVABLE);
         Map<Long, OrderEntity> claimOrdersById = orderRepository.findAllById(
@@ -90,7 +94,7 @@ public class AdminExceptionService {
         // Resolve every order-backed row's salesperson (created_by) name in a single
         // query, so each exception shows who punched the order (no N+1).
         Map<Long, String> names = resolveSalespersonNames(
-                pendingApproval, pendingPayment, failedDelivery, claimOrdersById.values());
+                pendingApproval, pendingPayment, failedDelivery, quikShipFailures, claimOrdersById.values());
 
         pendingApproval.forEach(order -> addOrder(items, names, "APPROVAL", "HIGH", "Approval required",
                 "Order is waiting for admin approval.", order, null, "/approval-queue"));
@@ -103,6 +107,9 @@ public class AdminExceptionService {
 
         failedDelivery.forEach(order -> addOrder(items, names, "DELIVERY", "HIGH", "Delivery needs a decision",
                 "Retry delivery or send the parcel through the RTO flow.", order, null, "/orders"));
+
+        quikShipFailures.forEach(order -> addOrder(items, names, "QUIKSHIP", "HIGH", "QuikShip shipment failed",
+                quikShipFailureDetail(order), order, null, "/orders"));
 
         for (ReceivableEntity claim : pendingClaims) {
             OrderEntity order = claimOrdersById.get(claim.getOrderId());
@@ -141,6 +148,15 @@ public class AdminExceptionService {
         Map<String, Long> counts = new LinkedHashMap<>();
         items.forEach(item -> counts.merge(item.category(), 1L, Long::sum));
         return new AdminExceptionResponse(items.size(), counts, List.copyOf(items));
+    }
+
+    private static String quikShipFailureDetail(OrderEntity order) {
+        String reason = order.getQuikShipXFailureReason();
+        if (reason == null || reason.isBlank()) {
+            return "QuikShipX could not complete this shipment. Open the order to retry tracking or reroute it.";
+        }
+        return "QuikShipX could not complete this shipment: " + reason
+                + ". Open the order to retry tracking or reroute it.";
     }
 
     private static int severityRank(String severity) {
