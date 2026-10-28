@@ -410,3 +410,31 @@
 .sp-daybreak__sales {
   color: var(--shifa-green-700, #164632);
 }
+
+/* --- Performance exports ---------------------------------------------- */
+.sp-directory-export {
+  flex-wrap: wrap;
+}
+.sp-exportbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.55rem 0.65rem;
+  margin: 0 0 0.8rem;
+  border: 1px solid rgba(31, 93, 63, 0.14);
+  border-radius: 0.55rem;
+  background: #f5faf7;
+}
+@media (max-width: 430px) {
+  .sp-exportbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .sp-exportbar .btn-list {
+    width: 100%;
+  }
+  .sp-exportbar .btn {
+    flex: 1 1 0;
+  }
+}

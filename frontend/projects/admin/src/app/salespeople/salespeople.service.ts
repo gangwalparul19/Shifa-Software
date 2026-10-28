@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient, Role } from 'core';
@@ -90,6 +90,15 @@ export interface UpdateStaffProfileRequest {
 
 // --- Salesperson 360 (performance) ---------------------------------------
 
+export type PerformancePeriod = 'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'OVERALL';
+export type PerformanceExportFormat = 'xlsx' | 'pdf';
+
+/** A performance export returned by the server with its suggested filename. */
+export interface PerformanceDownload {
+  blob: Blob;
+  filename: string;
+}
+
 /** Headline performance metrics for one salesperson (leaderboard row). */
 export interface SalespersonPerformanceSummary {
   id: number;
@@ -156,7 +165,7 @@ export class SalespeopleService {
   private readonly api = inject(ApiClient);
   private readonly http = inject(HttpClient);
 
-  /** The "All salespeople" directory. */
+  /** The performance-owner directory (admins, team leads, and salespeople). */
   list(): Observable<StaffProfile[]> {
     return this.api.get<StaffProfile[]>('/api/admin/staff');
   }
@@ -223,9 +232,38 @@ export class SalespeopleService {
 
   // --- Salesperson 360 (performance) -------------------------------------
 
-  /** Team leaderboard — headline performance metrics for every salesperson. */
+  /** Team leaderboard — headline metrics for every performance owner. */
   performanceLeaderboard(): Observable<SalespersonPerformanceSummary[]> {
     return this.api.get<SalespersonPerformanceSummary[]>('/api/admin/salespeople/performance');
+  }
+
+  /** Download the complete team or individual performance report for a selected period. */
+  exportPerformance(
+    format: PerformanceExportFormat,
+    period: PerformancePeriod,
+    salespersonId?: number,
+  ): Observable<PerformanceDownload> {
+    const path = salespersonId == null
+      ? '/api/admin/salespeople/performance/export'
+      : `/api/admin/salespeople/${salespersonId}/performance/export`;
+    const params = new HttpParams().set('period', period).set('format', format);
+    return new Observable<PerformanceDownload>((subscriber) => {
+      const subscription = this.http
+        .get(this.api.url(path), { params, observe: 'response', responseType: 'blob' })
+        .subscribe({
+          next: (response: HttpResponse<Blob>) => {
+            const disposition = response.headers.get('Content-Disposition');
+            const match = disposition ? /filename="?([^";]+)"?/i.exec(disposition) : null;
+            subscriber.next({
+              blob: response.body ?? new Blob(),
+              filename: match?.[1] ?? `salesperson-performance.${format}`,
+            });
+            subscriber.complete();
+          },
+          error: (error) => subscriber.error(error),
+        });
+      return () => subscription.unsubscribe();
+    });
   }
 
   /** One salesperson's full 360 (summary + daily trend + recent orders + leads). */

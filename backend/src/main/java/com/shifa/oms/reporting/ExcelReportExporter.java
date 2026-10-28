@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Renders a {@link TabularData} to an {@code .xlsx} workbook using Apache POI
@@ -26,34 +27,44 @@ import java.util.List;
 @Component
 public class ExcelReportExporter {
 
-    /** Renders the table into workbook bytes with the given sheet name. */
+    /** Renders one table into a workbook with a sheet named after the report. */
     public byte[] export(String sheetName, TabularData table) {
+        return exportWorkbook(Map.of(sheetName, table));
+    }
+
+    /**
+     * Renders several related tables into one workbook. Linked map order is
+     * preserved so the summary sheet appears before the detail sheets.
+     */
+    public byte[] exportWorkbook(Map<String, TabularData> tables) {
         try (Workbook workbook = new XSSFWorkbook();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            Sheet sheet = workbook.createSheet(safeSheetName(sheetName));
-
             CellStyle headerStyle = workbook.createCellStyle();
             Font bold = workbook.createFont();
             bold.setBold(true);
             headerStyle.setFont(bold);
 
-            Row header = sheet.createRow(0);
-            List<String> headers = table.headers();
-            for (int c = 0; c < headers.size(); c++) {
-                Cell cell = header.createCell(c);
-                cell.setCellValue(headers.get(c));
-                cell.setCellStyle(headerStyle);
-            }
-
-            int r = 1;
-            for (List<String> dataRow : table.rows()) {
-                Row row = sheet.createRow(r++);
-                for (int c = 0; c < dataRow.size(); c++) {
-                    row.createCell(c).setCellValue(dataRow.get(c));
+            for (Map.Entry<String, TabularData> entry : tables.entrySet()) {
+                TabularData table = entry.getValue();
+                Sheet sheet = workbook.createSheet(safeSheetName(entry.getKey()));
+                Row header = sheet.createRow(0);
+                List<String> headers = table.headers();
+                for (int c = 0; c < headers.size(); c++) {
+                    Cell cell = header.createCell(c);
+                    cell.setCellValue(headers.get(c));
+                    cell.setCellStyle(headerStyle);
                 }
-            }
-            for (int c = 0; c < headers.size(); c++) {
-                sheet.autoSizeColumn(c);
+
+                int r = 1;
+                for (List<String> dataRow : table.rows()) {
+                    Row row = sheet.createRow(r++);
+                    for (int c = 0; c < dataRow.size(); c++) {
+                        row.createCell(c).setCellValue(dataRow.get(c));
+                    }
+                }
+                for (int c = 0; c < headers.size(); c++) {
+                    sheet.autoSizeColumn(c);
+                }
             }
 
             workbook.write(out);

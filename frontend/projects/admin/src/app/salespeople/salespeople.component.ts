@@ -7,6 +7,9 @@ import { ApiError, AuthService, Role } from 'core';
 import {
   ID_PROOF_TYPES,
   IdProofType,
+  PerformanceExportFormat,
+  PerformancePeriod,
+  PerformanceDownload,
   SalespeopleService,
   SalespersonPerformanceDetail,
   SalespersonPerformanceSummary,
@@ -25,7 +28,7 @@ import { verificationBadgeClass } from '../shared/status-badge.component';
 type StatusFilter = 'ALL' | VerificationStatus;
 
 /** Period lens for the Performance drawer (sales & orders per day). */
-type PerfPeriod = 'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'OVERALL';
+type PerfPeriod = PerformancePeriod;
 
 /** One day's sales + orders within the selected period. */
 export interface PerfDayRow {
@@ -99,8 +102,14 @@ export class SalespeopleComponent implements OnInit {
   /** Trend window (days) fetched for the drawer — wide enough for "This Month". */
   private readonly PERF_TREND_DAYS = 60;
 
+  /** Period used by the directory-level team export. */
+  protected readonly reportPeriod = signal<PerformancePeriod>('MONTH');
+  /** Prevents duplicate downloads from either export toolbar. */
+  protected readonly exporting = signal<PerformanceExportFormat | null>(null);
+
   /** Verification filter tab. */
   protected readonly filter = signal<StatusFilter>('ALL');
+
 
   /** The filter tabs rendered above the list, in display order. */
   protected readonly filterTabs: StatusFilter[] = ['ALL', 'PENDING', 'VERIFIED', 'REJECTED'];
@@ -366,9 +375,60 @@ export class SalespeopleComponent implements OnInit {
     return { label, orders, sales, days };
   });
 
-  /** Switch the Performance period lens (no re-fetch; derived from the trend). */
+  /** Switch the Performance period lens (no re-fetch; export uses server semantics). */
   setPerfPeriod(period: PerfPeriod): void {
     this.perfPeriod.set(period);
+  }
+
+  periodLabel(period: PerformancePeriod): string {
+    return this.perfPeriodTabs.find((tab) => tab.key === period)?.label ?? period;
+  }
+
+  setReportPeriod(period: PerformancePeriod): void {
+    this.reportPeriod.set(period);
+  }
+
+  /** Downloads the complete team report for the period selected above the directory. */
+  exportDirectory(format: PerformanceExportFormat): void {
+    this.downloadPerformance(format, this.reportPeriod());
+  }
+
+  /** Downloads the complete report for the salesperson currently in the drawer. */
+  exportPerson(format: PerformanceExportFormat): void {
+    const member = this.selected();
+    if (!member) {
+      return;
+    }
+    this.downloadPerformance(format, this.perfPeriod(), member.id);
+  }
+
+  private downloadPerformance(
+    format: PerformanceExportFormat,
+    period: PerformancePeriod,
+    salespersonId?: number,
+  ): void {
+    if (this.exporting()) {
+      return;
+    }
+    this.exporting.set(format);
+    this.service.exportPerformance(format, period, salespersonId).subscribe({
+      next: (result: PerformanceDownload) => {
+        const url = URL.createObjectURL(result.blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = result.filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        this.exporting.set(null);
+        this.toasts.success(`Performance ${format.toUpperCase()} downloaded.`);
+      },
+      error: () => {
+        this.exporting.set(null);
+        this.toasts.error(`Could not export the performance ${format.toUpperCase()} report.`);
+      },
+    });
   }
 
   // --- Drawer -------------------------------------------------------------
@@ -583,6 +643,15 @@ export class SalespeopleComponent implements OnInit {
     }
   }
 
+  ownerRoleLabel(role: Role | string): string {
+    if (role === Role.ADMIN || role === 'ADMIN') {
+      return 'Admin';
+    }
+    if (role === Role.TEAM_LEAD || role === 'TEAM_LEAD') {
+      return 'Team Lead';
+    }
+    return 'Salesperson';
+  }
   idProofLabel(type: IdProofType | null): string {
     switch (type) {
       case 'AADHAAR':

@@ -117,13 +117,26 @@ public class PdfReportExporter {
     }
 
     /**
-     * Renders a branded PDF with a titled header, an optional subtitle (e.g. the
-     * date range), an optional KPI summary band (total sales, orders, average
-     * order value, previous-period change and top performers), and the report
-     * table. The table rows/columns are unchanged (Property 24); the KPI band is
-     * additive context above the table.
+     * Named table section used when a PDF contains a chart plus several detail
+     * tables. The section title is optional; a null/blank title renders no
+     * heading, preserving the original single-table export layout.
      */
+    public record ReportSection(String title, TabularData table) {
+    }
+
+    /** Renders one table using the original report export layout. */
     public byte[] export(String title, String subtitle, ReportSummary summary, TabularData table) {
+        return exportWithSections(title, subtitle, summary, table,
+                List.of(new ReportSection(null, table)));
+    }
+
+    /**
+     * Renders a branded PDF with KPI cards, a chart source table, and one or
+     * more detail sections. The chart is derived from {@code chartTable}; the
+     * section tables remain the source of truth for the exported details.
+     */
+    public byte[] exportWithSections(String title, String subtitle, ReportSummary summary,
+                                     TabularData chartTable, List<ReportSection> sections) {
         Document document = new Document(PageSize.A4.rotate(), 24, 24, 24, 24);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try {
@@ -131,7 +144,6 @@ public class PdfReportExporter {
             document.open();
 
             writeBrandHeader(document, title);
-
             if (subtitle != null && !subtitle.isBlank()) {
                 Paragraph sub = new Paragraph(subtitle, SUBTITLE_FONT);
                 sub.setSpacingAfter(8f);
@@ -140,46 +152,60 @@ public class PdfReportExporter {
             if (summary != null) {
                 writeKpis(document, summary);
             }
-
-            // Professional bar graph derived from the same table (additive, above the
-            // detailed rows). Omitted silently when no numeric series is chartable.
-            writeChart(document, title, table);
-
-            List<List<String>> matrix = toMatrix(table);
-            int columns = table.columnCount();
-            if (columns == 0) {
-                document.add(new Paragraph("No columns.", BODY_FONT));
-            } else {
-                PdfPTable pdfTable = new PdfPTable(columns);
-                pdfTable.setWidthPercentage(100);
-                // First matrix row is the header, the rest are body rows.
-                boolean isHeader = true;
-                int bodyIndex = 0;
-                for (List<String> row : matrix) {
-                    for (String cellValue : row) {
-                        pdfTable.addCell(cell(cellValue, isHeader, bodyIndex));
-                    }
-                    if (!isHeader) {
-                        bodyIndex++;
-                    }
-                    isHeader = false;
-                }
-                document.add(pdfTable);
+            if (chartTable != null) {
+                writeChart(document, title, chartTable);
             }
 
-            if (table.rowCount() == 0) {
-                Paragraph none = new Paragraph("No rows for the selected criteria.", FOOTER_FONT);
-                none.setSpacingBefore(8f);
-                document.add(none);
+            if (sections == null || sections.isEmpty()) {
+                document.add(new Paragraph("No rows for the selected criteria.", FOOTER_FONT));
+            } else {
+                for (ReportSection section : sections) {
+                    if (section == null || section.table() == null) {
+                        continue;
+                    }
+                    if (section.title() != null && !section.title().isBlank()) {
+                        Paragraph heading = new Paragraph(section.title(), KPI_SECTION_FONT);
+                        heading.setSpacingBefore(8f);
+                        heading.setSpacingAfter(4f);
+                        document.add(heading);
+                    }
+                    writeTable(document, section.table());
+                }
             }
 
             writeFooter(document);
-
             document.close();
             return out.toByteArray();
         } catch (DocumentException e) {
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "REPORT_PDF_FAILED",
                     "Failed to render the report PDF file.");
+        }
+    }
+
+    private void writeTable(Document document, TabularData table) throws DocumentException {
+        int columns = table.columnCount();
+        if (columns == 0) {
+            document.add(new Paragraph("No columns.", BODY_FONT));
+            return;
+        }
+        PdfPTable pdfTable = new PdfPTable(columns);
+        pdfTable.setWidthPercentage(100);
+        boolean isHeader = true;
+        int bodyIndex = 0;
+        for (List<String> row : toMatrix(table)) {
+            for (String cellValue : row) {
+                pdfTable.addCell(cell(cellValue, isHeader, bodyIndex));
+            }
+            if (!isHeader) {
+                bodyIndex++;
+            }
+            isHeader = false;
+        }
+        document.add(pdfTable);
+        if (table.rowCount() == 0) {
+            Paragraph none = new Paragraph("No rows for the selected criteria.", FOOTER_FONT);
+            none.setSpacingBefore(8f);
+            document.add(none);
         }
     }
 

@@ -63,10 +63,16 @@ public class StaffProfileService {
      * and TEAM_LEAD users — a team lead also punches orders, so the client wants
      * them listed alongside salespeople here.
      */
+    /**
+     * Performance-owner directory: admins are included as a separate top-level
+     * owner because they also punch orders. Team assignment remains restricted
+     * to SALESPERSON users in TeamManagementService.
+     */
     @Transactional(readOnly = true)
     public List<StaffProfileResponse> listSalespeople() {
         return userRepository
-                .findByRoleInOrderByCreatedAtDescIdDesc(List.of(Role.SALESPERSON, Role.TEAM_LEAD))
+                .findByRoleInOrderByCreatedAtDescIdDesc(
+                        List.of(Role.ADMIN, Role.TEAM_LEAD, Role.SALESPERSON))
                 .stream()
                 .map(StaffProfileResponse::from)
                 .toList();

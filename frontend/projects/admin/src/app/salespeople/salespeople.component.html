@@ -1,6 +1,6 @@
 <admin-page-header
   title="Salespeople"
-  subtitle="Onboard, record and verify your sales team"
+  subtitle="Onboard, record and verify your team and admin order owners"
   [breadcrumbs]="[{ label: 'Salespeople' }]"
 >
   <button type="button" class="btn btn-outline-secondary" (click)="load()" [disabled]="loading()">
@@ -18,7 +18,7 @@
     (retry)="load()"
   />
 } @else {
-  <!-- Verification filter tabs + performance sort -->
+  <!-- Verification filter tabs + performance sort + exports -->
   <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-3">
     <div class="btn-list salespeople-filters">
       @for (tab of filterTabs; track tab) {
@@ -34,19 +34,53 @@
         </button>
       }
     </div>
-    <div class="d-flex align-items-center gap-1">
-      <span class="text-secondary small d-none d-sm-inline"><i class="ti ti-sort-descending me-1"></i>Sort by</span>
-      <select
-        class="form-select form-select-sm w-auto"
-        [value]="sortKey()"
-        (change)="setSort($any($event.target).value)"
-        aria-label="Sort salespeople"
-      >
-        <option value="revenueThisMonth">Revenue (this month)</option>
-        <option value="ordersThisMonth">Orders (this month)</option>
-        <option value="successRate">Delivery success %</option>
-        <option value="name">Name</option>
-      </select>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <div class="d-flex align-items-center gap-1">
+        <span class="text-secondary small d-none d-sm-inline"><i class="ti ti-sort-descending me-1"></i>Sort by</span>
+        <select
+          class="form-select form-select-sm w-auto"
+          [value]="sortKey()"
+          (change)="setSort($any($event.target).value)"
+          aria-label="Sort salespeople"
+        >
+          <option value="revenueThisMonth">Revenue (this month)</option>
+          <option value="ordersThisMonth">Orders (this month)</option>
+          <option value="successRate">Delivery success %</option>
+          <option value="name">Name</option>
+        </select>
+      </div>
+      <div class="d-flex align-items-center gap-2 sp-directory-export">
+        <select
+          class="form-select form-select-sm w-auto"
+          [value]="reportPeriod()"
+          (change)="setReportPeriod($any($event.target).value)"
+          aria-label="Performance export period"
+        >
+          @for (p of perfPeriodTabs; track p.key) {
+            <option [value]="p.key">{{ p.label }}</option>
+          }
+        </select>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-success"
+          (click)="exportDirectory('xlsx')"
+          [disabled]="exporting() !== null"
+          title="Download full team performance workbook"
+        >
+          @if (exporting() === 'xlsx') { <span class="spinner-border spinner-border-sm me-1"></span> }
+          <i class="ti ti-file-spreadsheet me-1" aria-hidden="true"></i> XLSX
+        </button>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-danger"
+          (click)="exportDirectory('pdf')"
+          [disabled]="exporting() !== null"
+          title="Download team performance PDF with charts"
+        >
+          @if (exporting() === 'pdf') { <span class="spinner-border spinner-border-sm me-1"></span> }
+          <i class="ti ti-file-type-pdf me-1" aria-hidden="true"></i> PDF
+        </button>
+      </div>
     </div>
   </div>
 
@@ -55,11 +89,11 @@
       variant="empty"
       [card]="true"
       icon="ti-users"
-      title="No salespeople here"
+      title="No performance owners here"
       [message]="
         filter() === 'ALL'
-          ? 'Create salesperson accounts under Users, then onboard them here.'
-          : 'No salespeople in this verification state.'
+          ? 'Create salesperson or admin accounts under Users, then onboard them here.'
+          : 'No performance owners in this verification state.'
       "
     />
   } @else {
@@ -74,7 +108,9 @@
                 <div class="flex-fill overflow-hidden">
                   <div class="fw-bold text-truncate">
                     {{ member.fullName }}
-                    @if (member.role === 'TEAM_LEAD') {
+                    @if (member.role === 'ADMIN') {
+                      <span class="badge bg-blue-lt ms-1" title="Admin order owner and boss">Admin</span>
+                    } @else if (member.role === 'TEAM_LEAD') {
                       <span class="badge bg-green-lt ms-1" title="Team lead (also punches orders)">Team Lead</span>
                     }
                   </div>
@@ -156,7 +192,7 @@
       <span class="sp-dr__avatar">{{ initials(member.fullName) }}</span>
       <div class="sp-dr__headmain">
         <div class="sp-dr__name">{{ member.fullName }}</div>
-        <div class="sp-dr__sub">&#64;{{ member.username }}</div>
+        <div class="sp-dr__sub">&#64;{{ member.username }} · {{ ownerRoleLabel(member.role) }}</div>
       </div>
       <span class="sp-dr__pill sp-pill--{{ member.verificationStatus.toLowerCase() }}">
         {{ statusLabel(member.verificationStatus) }}
@@ -200,6 +236,32 @@
                 {{ p.label }}
               </button>
             }
+          </div>
+
+          <div class="sp-exportbar">
+            <span class="text-secondary small">Export {{ periodLabel(perfPeriod()) }} report</span>
+            <div class="btn-list">
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-success"
+                (click)="exportPerson('xlsx')"
+                [disabled]="exporting() !== null"
+                title="Download full details as Excel"
+              >
+                @if (exporting() === 'xlsx') { <span class="spinner-border spinner-border-sm me-1"></span> }
+                <i class="ti ti-file-spreadsheet me-1" aria-hidden="true"></i> XLSX
+              </button>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-danger"
+                (click)="exportPerson('pdf')"
+                [disabled]="exporting() !== null"
+                title="Download PDF with charts"
+              >
+                @if (exporting() === 'pdf') { <span class="spinner-border spinner-border-sm me-1"></span> }
+                <i class="ti ti-file-type-pdf me-1" aria-hidden="true"></i> PDF
+              </button>
+            </div>
           </div>
 
           @if (periodStats(); as ps) {

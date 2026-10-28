@@ -1,5 +1,6 @@
 package com.shifa.oms.performance;
 
+import com.shifa.oms.common.ApiException;
 import com.shifa.oms.performance.dto.SalespersonPerformanceDetail;
 import com.shifa.oms.performance.dto.SalespersonPerformanceSummary;
 import com.shifa.oms.performance.dto.SalesTargetRow;
@@ -8,6 +9,9 @@ import com.shifa.oms.performance.dto.SetSalesTargetRequest;
 import com.shifa.oms.performance.dto.SetTeamTargetRequest;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,11 +37,14 @@ import java.util.List;
 public class SalespersonPerformanceController {
 
     private final SalespersonPerformanceService performanceService;
+    private final SalespersonPerformanceExportService exportService;
     private final SalesTargetService salesTargetService;
 
     public SalespersonPerformanceController(SalespersonPerformanceService performanceService,
+                                            SalespersonPerformanceExportService exportService,
                                             SalesTargetService salesTargetService) {
         this.performanceService = performanceService;
+        this.exportService = exportService;
         this.salesTargetService = salesTargetService;
     }
 
@@ -47,12 +54,60 @@ public class SalespersonPerformanceController {
         return performanceService.leaderboard();
     }
 
-    /** One salesperson's full 360: summary + daily trend + recent orders + lead metrics. */
+    /** One performance owner's full 360: summary + daily trend + recent orders + lead metrics. */
     @GetMapping("/{id}/performance")
     public SalespersonPerformanceDetail detail(@PathVariable Long id,
                                                @RequestParam(required = false) Integer days) {
         return performanceService.detail(id, days);
     }
+
+    @GetMapping("/performance/export")
+    public ResponseEntity<byte[]> exportTeam(@RequestParam(defaultValue = "MONTH") String period,
+                                             @RequestParam(defaultValue = "xlsx") String format) {
+        PerformancePeriod selected = parsePeriod(period);
+        byte[] body = exportService.exportTeam(selected, format);
+        return fileResponse(body, "salespeople-performance-" + selected.name().toLowerCase(), format);
+    }
+
+    /** Download the complete 360 report for one salesperson and selected period. */
+    @GetMapping("/{id}/performance/export")
+    public ResponseEntity<byte[]> exportPerson(@PathVariable Long id,
+                                               @RequestParam(defaultValue = "MONTH") String period,
+                                               @RequestParam(defaultValue = "xlsx") String format) {
+        PerformancePeriod selected = parsePeriod(period);
+        byte[] body = exportService.exportPerson(id, selected, format);
+        return fileResponse(body, "salesperson-" + id + "-" + selected.name().toLowerCase(), format);
+    }
+
+    private static PerformancePeriod parsePeriod(String value) {
+        try {
+            return PerformancePeriod.from(value);
+        } catch (IllegalArgumentException e) {
+            throw new ApiException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "UNKNOWN_PERFORMANCE_PERIOD", e.getMessage());
+        }
+    }
+
+    private static ResponseEntity<byte[]> fileResponse(byte[] body, String baseName, String format) {
+        String normalized = format == null ? "" : format.trim().toLowerCase();
+        return switch (normalized) {
+            case "xlsx", "excel" -> ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"" + baseName + ".xlsx\"")
+                    .body(body);
+            case "pdf" -> ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"" + baseName + ".pdf\"")
+                    .body(body);
+            default -> throw new ApiException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "UNSUPPORTED_FORMAT",
+                    "Unsupported export format: " + format + " (expected xlsx or pdf).");
+        };
+    }
+
 
     /** Sales targets vs achievement for a month (FEATURE-ROADMAP §6.1); default current month. */
     @GetMapping("/targets")

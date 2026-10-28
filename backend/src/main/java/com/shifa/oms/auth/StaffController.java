@@ -56,7 +56,7 @@ public class StaffController {
         this.auditService = auditService;
     }
 
-    /** The "All salespeople" directory (newest first). */
+    /** The performance-owner directory (ADMIN, TEAM_LEAD, and SALESPERSON). */
     @GetMapping
     public List<StaffProfileResponse> listSalespeople() {
         return staffProfileService.listSalespeople();

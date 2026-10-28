@@ -62,6 +62,9 @@ public class SalespersonPerformanceService {
             EnumSet.of(OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED,
                     OrderStatus.RTO, OrderStatus.REDISPATCH);
 
+    /** Roles whose users can own punched orders shown in Salesperson 360. */
+    private static final List<Role> PERFORMANCE_ROLES =
+            List.of(Role.ADMIN, Role.TEAM_LEAD, Role.SALESPERSON);
     private static final int DEFAULT_TREND_DAYS = 14;
     private static final int MAX_TREND_DAYS = 60;
     private static final int RECENT_ORDERS_LIMIT = 10;
@@ -91,17 +94,17 @@ public class SalespersonPerformanceService {
 
     // --- Leaderboard --------------------------------------------------------
 
-    /** Headline metrics for every salesperson, best (this month's revenue) first. */
+    /** Headline metrics for every performance owner, best (this month's revenue) first. */
     @Transactional(readOnly = true)
     public List<SalespersonPerformanceSummary> leaderboard() {
         return leaderboardFor(null);
     }
 
     /**
-     * Headline metrics for a specific set of salespeople (a team lead's team),
-     * best (this month's revenue) first. A {@code null} {@code memberIds} means
-     * "all salespeople" (the admin-wide leaderboard); an empty set yields an
-     * empty list (a team lead with no assigned salespeople).
+     * Headline metrics for a specific set of performance owners (a team lead's
+     * team), best (this month's revenue) first. A {@code null} {@code memberIds}
+     * means "all performance owners" (the admin-wide leaderboard); an empty set
+     * yields an empty list.
      */
     @Transactional(readOnly = true)
     public List<SalespersonPerformanceSummary> leaderboardFor(java.util.Collection<Long> memberIds) {
@@ -122,10 +125,9 @@ public class SalespersonPerformanceService {
 
         Set<Long> filter = memberIds == null ? null : new java.util.HashSet<>(memberIds);
         List<SalespersonPerformanceSummary> rows = new ArrayList<>();
-        // Include TEAM_LEAD users alongside SALESPERSON — a team lead also punches
-        // their own orders, so they belong on the performance leaderboard too.
-        for (User u : userRepository.findByRoleInOrderByCreatedAtDescIdDesc(
-                List.of(Role.SALESPERSON, Role.TEAM_LEAD))) {
+        // Admins are global performance owners; TEAM_LEAD and SALESPERSON users
+        // retain their existing team/order ownership semantics.
+        for (User u : userRepository.findByRoleInOrderByCreatedAtDescIdDesc(PERFORMANCE_ROLES)) {
             if (filter != null && !filter.contains(u.getId())) {
                 continue;
             }
@@ -162,15 +164,15 @@ public class SalespersonPerformanceService {
     // --- Detail (one salesperson) ------------------------------------------
 
     /**
-     * The full 360 for a salesperson: headline summary + a {@code days}-day daily
-     * trend + their latest orders + lead/CRM metrics.
+     * The full 360 for a performance owner: headline summary + a {@code days}-day
+     * daily trend + their latest orders + lead/CRM metrics.
      *
-     * @param id   the sales-staff user id (must be a SALESPERSON or TEAM_LEAD)
+     * @param id   the ADMIN, SALESPERSON, or TEAM_LEAD user id
      * @param days trend window in days (clamped to 1..60, default 14)
      */
     @Transactional(readOnly = true)
     public SalespersonPerformanceDetail detail(Long id, Integer days) {
-        User u = requireSalesStaff(id);
+        User u = requirePerformanceOwner(id);
         int trendDays = clampDays(days);
         LocalDate today = LocalDate.now(clock);
         LocalDateTime monthStart = today.withDayOfMonth(1).atStartOfDay();
@@ -273,16 +275,12 @@ public class SalespersonPerformanceService {
 
     // --- Helpers ------------------------------------------------------------
 
-    /**
-     * Resolves a sales-staff user for the 360 detail: a {@link Role#SALESPERSON}
-     * or a {@link Role#TEAM_LEAD} (a team lead also punches orders, so their 360
-     * is shown here too). Any other role is rejected.
-     */
-    private User requireSalesStaff(Long id) {
+    /** Resolves an allowed performance owner for the 360 detail. */
+    private User requirePerformanceOwner(Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User " + id + " does not exist."));
-        if (user.getRole() != Role.SALESPERSON && user.getRole() != Role.TEAM_LEAD) {
-            throw new ValidationException("This account is not a salesperson or team lead.");
+        if (!PERFORMANCE_ROLES.contains(user.getRole())) {
+            throw new ValidationException("This account is not an allowed performance owner.");
         }
         return user;
     }
