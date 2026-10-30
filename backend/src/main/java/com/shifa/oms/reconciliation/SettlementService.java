@@ -110,6 +110,9 @@ public class SettlementService {
         if (bytes == null || bytes.length == 0) {
             throw new ValidationException("The settlement file is empty.");
         }
+        if (source == SettlementSource.BANK_RECEIPT && destinationAccountId == null) {
+            throw new ValidationException("A destination account is required for bank receipt imports.");
+        }
         BankAccount destination = null;
         if (destinationAccountId != null) {
             destination = bankAccountRepository.findById(destinationAccountId)
@@ -140,7 +143,8 @@ public class SettlementService {
         List<PlannedLine> planned = new ArrayList<>();
         Set<String> seenTargets = new HashSet<>();
         for (int i = 1; i < rows.size(); i++) {
-            PlannedLine line = plan(i, rows.get(i), columns, source, destinationAccountId, seenTargets);
+            PlannedLine line = plan(i, rows.get(i), columns, source, destinationAccountId,
+                    statementDate, seenTargets);
             planned.add(line);
         }
         SettlementImportResponse preview = response(dryRun, null, source, externalReference, statementDate, planned);
@@ -219,7 +223,8 @@ public class SettlementService {
     }
 
     private PlannedLine plan(int rowNumber, List<String> row, Map<String, Integer> columns,
-                             SettlementSource source, Long bankAccountId, Set<String> seenTargets) {
+                             SettlementSource source, Long bankAccountId, LocalDate statementDate,
+                             Set<String> seenTargets) {
         String orderCode = value(row, columns, "ordercode");
         String shopifyId = value(row, columns, "shopifyorderid");
         String awb = value(row, columns, "awb");
@@ -232,6 +237,9 @@ public class SettlementService {
             return PlannedLine.invalid(rowNumber, orderCode, shopifyId, awb, utr, BigDecimal.ZERO, "Amount is not valid.");
         }
         LocalDate date = parseDate(value(row, columns, "date"));
+        if (date == null) {
+            date = statementDate;
+        }
         if (source == SettlementSource.BANK_RECEIPT && utr == null) {
             return PlannedLine.invalid(rowNumber, orderCode, shopifyId, awb, utr, amount,
                     "Bank receipt lines require a UTR/transaction reference.");
@@ -278,11 +286,11 @@ public class SettlementService {
                     new Candidate(SettlementTargetType.SHOPIFY_ORDER, o.getId(), null, null,
                             o.getAmountReceived(), SettlementMatchMethod.SHOPIFY_ORDER_ID)));
         }
-        if (orderCode != null) {
+        if (orderCode != null && source != SettlementSource.BANK_RECEIPT) {
             orderRepository.findByOrderCode(orderCode).ifPresent(o -> unique.put("order:" + o.getId(),
                     candidateForOrder(source, o, SettlementMatchMethod.ORDER_CODE)));
         }
-        if (awb != null) {
+        if (awb != null && source != SettlementSource.BANK_RECEIPT) {
             courierRecordRepository.findByAwb(awb).ifPresent(r -> addCourierCandidate(unique, source, r.getOrderId(), SettlementMatchMethod.AWB));
             shipmentRepository.findByAwb(awb).ifPresent(s -> addCourierCandidate(unique, source, s.getOrderId(), SettlementMatchMethod.AWB));
         }

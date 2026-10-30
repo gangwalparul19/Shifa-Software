@@ -56,3 +56,35 @@ export interface SettlementImportResponse {
   counts: Partial<Record<SettlementMatchStatus, number>>;
   lines: SettlementLine[];
 }
+
+export interface AccountSettlementKpi {
+  accountId: number | null;
+  accountName: string;
+  omsBookedAmount: Money;
+  verifiedAmount: Money;
+  pendingAmount: Money;
+  rejectedAmount: Money;
+  unreviewedAmount: Money;
+  bankStatementAmount: Money;
+  bankMatchedAmount: Money;
+  bankUnmatchedAmount: Money;
+  difference: Money;
+  statementRows: number;
+  matchedRows: number;
+  unmatchedRows: number;
+}
+
+export interface SettlementKpi {
+  from?: string | null;
+  to?: string | null;
+  omsBookedAmount: Money;
+  bankStatementAmount: Money;
+  bankMatchedAmount: Money;
+  bankUnmatchedAmount: Money;
+  difference: Money;
+  verifiedAmount: Money;
+  pendingAmount: Money;
+  rejectedAmount: Money;
+  unreviewedAmount: Money;
+  accounts: AccountSettlementKpi[];
+}

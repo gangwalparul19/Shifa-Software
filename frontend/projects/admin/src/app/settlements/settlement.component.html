@@ -2,17 +2,61 @@
   <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh"><i class="ti ti-refresh"></i></button>
 </admin-page-header>
 
+<section class="card mb-3 settlement-kpis">
+  <div class="card-header d-flex flex-wrap align-items-center gap-2">
+    <div class="me-auto"><h3 class="card-title mb-1"><i class="ti ti-building-bank me-2"></i>Upfront payments by account</h3><div class="text-secondary small">Bank/UPI receipts from order entry, reconciled against imported bank statements.</div></div>
+    <div class="settlement-periods" role="tablist" aria-label="Payment KPI period">
+      @for (period of kpiPeriods; track period.key) { <button type="button" class="btn btn-sm" [class.btn-primary]="kpiPreset() === period.key" [class.btn-outline-secondary]="kpiPreset() !== period.key" (click)="applyKpiPeriod(period.key)">{{ period.label }}</button> }
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="settlement-kpi-filters mb-3">
+      <label>From <input type="date" [value]="kpiFrom()" (change)="setKpiDate('from', $event)" /></label>
+      <span>to</span>
+      <label>To <input type="date" [value]="kpiTo()" (change)="setKpiDate('to', $event)" /></label>
+      <span class="text-secondary small">Default: Today (IST)</span>
+    </div>
+    @if (kpiLoading()) {
+      <div class="settlement-kpi-loading"><span class="spinner-border spinner-border-sm me-2"></span>Loading payment totals…</div>
+    } @else if (kpiError(); as kpiMessage) {
+      <div class="alert alert-danger mb-0">{{ kpiMessage }} <button type="button" class="btn btn-sm btn-link" (click)="loadKpis()">Retry</button></div>
+    } @else if (kpi(); as data) {
+      <div class="settlement-total-grid mb-3">
+        <div class="settlement-total"><span>OMS booked</span><strong>{{ money(data.omsBookedAmount) }}</strong></div>
+        <div class="settlement-total"><span>Bank statement</span><strong>{{ money(data.bankStatementAmount) }}</strong></div>
+        <div class="settlement-total"><span>UTR matched</span><strong class="text-success">{{ money(data.bankMatchedAmount) }}</strong></div>
+        <div class="settlement-total"><span>Difference</span><strong [class.text-danger]="positive(data.difference)">{{ money(data.difference) }}</strong></div>
+      </div>
+      <div class="settlement-account-grid">
+        @for (account of data.accounts; track account.accountId) {
+          <article class="settlement-account-card">
+            <div class="d-flex align-items-center gap-2 mb-3"><span class="settlement-account-icon"><i class="ti ti-building-bank"></i></span><div><strong>{{ account.accountName }}</strong><div class="text-secondary small">{{ account.statementRows }} bank rows · {{ account.matchedRows }} UTR matched</div></div></div>
+            <div class="settlement-account-main"><span>Received in OMS</span><strong>{{ money(account.omsBookedAmount) }}</strong></div>
+            <div class="settlement-account-row"><span>Verified</span><strong>{{ money(account.verifiedAmount) }}</strong></div>
+            <div class="settlement-account-row"><span>Pending verification</span><strong>{{ money(account.pendingAmount) }}</strong></div>
+            <div class="settlement-account-row"><span>Bank statement</span><strong>{{ money(account.bankStatementAmount) }}</strong></div>
+            <div class="settlement-account-row"><span>Unmatched</span><strong [class.text-danger]="positive(account.bankUnmatchedAmount)">{{ money(account.bankUnmatchedAmount) }}</strong></div>
+            <div class="settlement-account-row settlement-account-row--difference"><span>Statement − OMS</span><strong [class.text-danger]="positive(account.difference)">{{ money(account.difference) }}</strong></div>
+          </article>
+        } @empty {
+          <div class="text-secondary py-3">No upfront payments are recorded for this period.</div>
+        }
+      </div>
+    }
+  </div>
+</section>
+
 <div class="card mb-3 settlement-import">
   <div class="card-header"><h3 class="card-title mb-0"><i class="ti ti-file-import me-2"></i>Import settlement statement</h3></div>
   <div class="card-body">
     <div class="row g-2">
       <div class="col-12 col-md-4"><label class="form-label required">Source</label><select class="form-select" [value]="source()" (change)="setSource($any($event.target).value)">@for (s of sources; track s.value) {<option [value]="s.value">{{ s.label }}</option>}</select><div class="form-hint">{{ sourceHint() }}</div></div>
-      <div class="col-12 col-md-4"><label class="form-label">Destination account</label><select class="form-select" (change)="setAccount($event)"><option value="">Not assigned</option>@for (a of accounts(); track a.id) {<option [value]="a.id">{{ a.displayName }} · {{ a.maskedAccountNumber || a.upiId || '' }}</option>}</select></div>
+      <div class="col-12 col-md-4"><label class="form-label" [class.required]="source() === 'BANK_RECEIPT'">Destination account</label><select class="form-select" (change)="setAccount($event)"><option value="">{{ source() === 'BANK_RECEIPT' ? 'Select bank account' : 'Not assigned' }}</option>@for (a of accounts(); track a.id) {<option [value]="a.id">{{ a.displayName }} · {{ a.maskedAccountNumber || a.upiId || '' }}</option>}</select><div class="form-hint">Bank receipts must be assigned to the account shown on the statement.</div></div>
       <div class="col-12 col-md-4"><label class="form-label required">Statement date</label><input type="date" class="form-control" [value]="statementDate()" (change)="setDate($event)" /></div>
       <div class="col-12 col-md-6"><label class="form-label">External statement / payout reference</label><input class="form-control shifa-mono" [value]="reference()" (input)="setReference($event)" placeholder="Payout ID / UTR batch / statement no." /></div>
       <div class="col-12 col-md-6"><label class="form-label required">CSV or Excel file</label><input type="file" class="form-control" accept=".csv,.xlsx,.xls" (change)="onFile($event)" /></div>
     </div>
-    <div class="d-flex flex-wrap gap-2 mt-3"><button type="button" class="btn btn-outline-primary" (click)="previewImport()" [disabled]="!file() || busy()">@if (busy()) {<span class="spinner-border spinner-border-sm me-1"></span>} Preview matches</button><button type="button" class="btn btn-primary" (click)="commitImport()" [disabled]="!preview() || busy()">Post settlement batch</button></div>
+    <div class="d-flex flex-wrap gap-2 mt-3"><button type="button" class="btn btn-outline-primary" (click)="previewImport()" [disabled]="!file() || busy() || (source() === 'BANK_RECEIPT' && !accountId())">@if (busy()) {<span class="spinner-border spinner-border-sm me-1"></span>} Preview matches</button><button type="button" class="btn btn-primary" (click)="commitImport()" [disabled]="!preview() || busy() || (source() === 'BANK_RECEIPT' && !accountId())">Post settlement batch</button></div>
     @if (error()) {<div class="alert alert-danger mt-3 mb-0">{{ error() }}</div>}
     @if (preview(); as p) {<div class="settlement-preview mt-3"><strong>Preview:</strong> {{ p.totalRows }} rows · {{ money(p.totalAmount) }} total · {{ money(p.allocatedAmount) }} matched · <span class="text-danger">{{ money(p.suspenseAmount) }} suspense</span><div class="small text-secondary mt-1">Matched {{ count(p, 'MATCHED') }} · Unmatched {{ count(p, 'UNMATCHED') }} · Mismatch {{ count(p, 'MISMATCH') }} · Ambiguous {{ count(p, 'AMBIGUOUS') }} · Duplicate {{ count(p, 'DUPLICATE_IN_FILE') }}</div></div>}
     @if (result(); as r) {<div class="alert alert-success mt-3 mb-0">Batch posted. {{ r.totalRows }} rows processed; {{ money(r.suspenseAmount) }} remains in suspense for review.</div>}

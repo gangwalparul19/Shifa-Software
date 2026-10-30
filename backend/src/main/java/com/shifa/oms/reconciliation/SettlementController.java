@@ -7,6 +7,7 @@ import com.shifa.oms.reconciliation.dto.SettlementBatchResponse;
 import com.shifa.oms.reconciliation.dto.SettlementImportResponse;
 import com.shifa.oms.reconciliation.dto.SettlementLineRequest;
 import com.shifa.oms.reconciliation.dto.SettlementLineResponse;
+import com.shifa.oms.reconciliation.dto.SettlementKpiResponse;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
@@ -32,11 +33,22 @@ import java.util.List;
 public class SettlementController {
 
     private final SettlementService service;
+    private final SettlementKpiService kpiService;
     private final CurrentUserService currentUserService;
 
-    public SettlementController(SettlementService service, CurrentUserService currentUserService) {
+    public SettlementController(SettlementService service, SettlementKpiService kpiService,
+                                CurrentUserService currentUserService) {
         this.service = service;
+        this.kpiService = kpiService;
         this.currentUserService = currentUserService;
+    }
+
+    @GetMapping("/kpis")
+    public SettlementKpiResponse kpis(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "false") boolean allTime) {
+        return kpiService.kpis(from, to, allTime);
     }
 
     @GetMapping

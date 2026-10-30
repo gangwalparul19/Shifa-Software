@@ -4,3 +4,22 @@
 .settlement-row:hover { background: rgba(31,93,63,.05); }
 .settlement-drawer { position: fixed; inset: 0; z-index: 1050; background: rgba(0,0,0,.35); display: flex; justify-content: flex-end; }
 .settlement-drawer__panel { background: #fff; width: min(900px, 96vw); height: 100%; overflow: auto; padding: 1.25rem; box-shadow: -8px 0 24px rgba(0,0,0,.16); }
+.settlement-periods { display: flex; flex-wrap: wrap; gap: .35rem; }
+.settlement-kpi-filters { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem; font-size: .82rem; }
+.settlement-kpi-filters label { display: inline-flex; align-items: center; gap: .35rem; font-weight: 600; }
+.settlement-kpi-filters input { border: 1px solid var(--tblr-border-color, #dfe3e8); border-radius: .4rem; padding: .35rem .5rem; color: inherit; background: #fff; }
+.settlement-total-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+.settlement-total { border: 1px solid var(--tblr-border-color, #e6e7e9); border-radius: .65rem; padding: .8rem; background: #fbfdfb; }
+.settlement-total span, .settlement-account-row span { display: block; color: #687980; font-size: .78rem; }
+.settlement-total strong { display: block; margin-top: .2rem; font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.settlement-account-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .75rem; }
+.settlement-account-card { border: 1px solid #cfe7d7; border-top: 3px solid #1f5d3f; border-radius: .65rem; padding: .9rem; background: #fff; }
+.settlement-account-icon { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border-radius: .55rem; background: #eaf6ee; color: #1f5d3f; font-size: 1.2rem; }
+.settlement-account-main { border-bottom: 1px solid #e6e7e9; padding-bottom: .65rem; margin-bottom: .35rem; }
+.settlement-account-main span { display: block; color: #687980; font-size: .78rem; }
+.settlement-account-main strong { display: block; color: #1f5d3f; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.settlement-account-row { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .28rem 0; }
+.settlement-account-row strong { font-variant-numeric: tabular-nums; }
+.settlement-account-row--difference { border-top: 1px dashed #d9e3dd; margin-top: .35rem; padding-top: .55rem; }
+.settlement-kpi-loading { min-height: 8rem; display: flex; align-items: center; justify-content: center; color: #687980; }
+@media (max-width: 767.98px) { .settlement-total-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .settlement-periods { width: 100%; } .settlement-periods .btn { flex: 1 1 auto; } }

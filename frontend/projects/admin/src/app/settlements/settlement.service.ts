@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
-import { SettlementBatch, SettlementImportResponse, SettlementLine } from './settlement.model';
+import { SettlementBatch, SettlementImportResponse, SettlementKpi, SettlementLine } from './settlement.model';
 
 @Injectable({ providedIn: 'root' })
 export class SettlementService {
@@ -9,6 +9,13 @@ export class SettlementService {
 
   batches(): Observable<SettlementBatch[]> {
     return this.api.get<SettlementBatch[]>('/api/recon/settlements');
+  }
+
+  kpis(from?: string | null, to?: string | null, allTime = false): Observable<SettlementKpi> {
+    const params: Record<string, string | boolean> = { allTime };
+    if (from) params['from'] = from;
+    if (to) params['to'] = to;
+    return this.api.get<SettlementKpi>('/api/recon/settlements/kpis', { params });
   }
 
   lines(batchId: number): Observable<SettlementLine[]> {
