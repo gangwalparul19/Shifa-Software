@@ -38,6 +38,7 @@ import { InsightsComponent } from './insights/insights.component';
 import { BackupsComponent } from './backups/backups.component';
 import { PaymentsComponent } from './payments/payments.component';
 import { AnnouncementsComponent } from './announcements/announcements.component';
+import { AssistantComponent } from './assistant/assistant.component';
 import { AnalyticsComponent } from './analytics/analytics.component';
 import { ShopifySyncComponent } from './shopify-sync/shopify-sync.component';
 import { OrderCancellationComponent } from './order-cancellation/order-cancellation.component';
@@ -485,6 +486,12 @@ export const routes: Routes = [
         canActivate: [adminOnlyGuard],
       },
       {
+        // In-house business-question assistant (ADMIN only; answers come from the OMS database).
+        path: 'assistant',
+        component: AssistantComponent,
+        canActivate: [adminOnlyGuard],
+      },
+      {
         // Customizable WhatsApp message templates (ADMIN / ACCOUNTANT / TEAM_LEAD, V44).
         path: 'whatsapp-templates',
         component: WhatsappTemplatesComponent,
@@ -627,4 +634,8 @@ export const routes: Routes = [
       },
     ],
   },
+  // Anything that matches no route (a stale bookmark, a mistyped URL, a removed page)
+  // used to fail navigation with NG04002 and leave a blank view. Send it home instead;
+  // the shell's staffGuard then routes a signed-out visitor on to the login page.
+  { path: '**', redirectTo: '' },
 ];

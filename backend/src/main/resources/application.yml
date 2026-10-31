@@ -39,6 +39,15 @@ spring:
     enabled: true
     baseline-on-migrate: true
     locations: classpath:db/migration
+  task:
+    scheduling:
+      # Every @Scheduled job (the outbox drainers, the SSE relay, the nightly backup,
+      # the courier poller, ...) runs on this pool. Spring's default is ONE thread, so a
+      # single slow job (a large mysqldump, a courier HTTP poll) stalled every drainer
+      # behind it: ledger posts, courier assignment, emails and WhatsApp all waited.
+      # A job still never overlaps with itself (fixedDelay/cron wait for the previous run).
+      pool:
+        size: ${SCHEDULER_POOL_SIZE:4}
   # SMTP transport for outbound email; only used when app.mail.mode=SMTP.
   mail:
     host: ${MAIL_HOST:smtp.gmail.com}

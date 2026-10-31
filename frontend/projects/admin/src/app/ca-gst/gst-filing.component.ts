@@ -287,7 +287,8 @@ export class GstFilingComponent implements OnInit {
       return '—';
     }
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('en-IN');
+    // A snapshot timestamp is an instant: show it in IST regardless of the device's time zone.
+    return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
   }
 
   // --- internal helpers ----------------------------------------------------

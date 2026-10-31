@@ -1,5 +1,6 @@
 package com.shifa.oms.search;
 
+import com.shifa.oms.auth.CurrentUserService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -12,7 +13,8 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>{@code GET /api/admin/search?q=} returns a unified, capped, read-only set
  * of matching orders, products, and customers for the admin omni-search.
  * Restricted to authenticated staff roles (any admin/back-office role, never a
- * storefront {@code CUSTOMER}) via method security.
+ * storefront {@code CUSTOMER}) via method security. Order hits are scoped to
+ * the caller exactly like the Orders page (see {@link GlobalSearchService}).
  */
 @RestController
 @RequestMapping("/api/admin/search")
@@ -20,9 +22,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminSearchController {
 
     private final GlobalSearchService globalSearchService;
+    private final CurrentUserService currentUserService;
 
-    public AdminSearchController(GlobalSearchService globalSearchService) {
+    public AdminSearchController(GlobalSearchService globalSearchService,
+                                 CurrentUserService currentUserService) {
         this.globalSearchService = globalSearchService;
+        this.currentUserService = currentUserService;
     }
 
     /**
@@ -33,6 +38,6 @@ public class AdminSearchController {
      */
     @GetMapping
     public GlobalSearchResponse search(@RequestParam(required = false) String q) {
-        return globalSearchService.search(q);
+        return globalSearchService.search(q, currentUserService.requireCurrentUser());
     }
 }

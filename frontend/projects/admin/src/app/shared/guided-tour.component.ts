@@ -1,5 +1,5 @@
 import { NgStyle } from '@angular/common';
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import { GuidedTourService } from './guided-tour.service';
 
 /** Pixel rect used to position the spotlight cutout + tooltip. */
@@ -62,6 +62,13 @@ export class GuidedTourComponent {
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', this.resizeHandler);
       window.addEventListener('scroll', this.resizeHandler, true);
+      // The shell (and this tour) is rebuilt on every sign-out / sign-in in the same tab.
+      // Without removing the listeners, each cycle left another capture-phase scroll handler
+      // alive that kept a destroyed component in memory and ran on every scroll in the page.
+      inject(DestroyRef).onDestroy(() => {
+        window.removeEventListener('resize', this.resizeHandler);
+        window.removeEventListener('scroll', this.resizeHandler, true);
+      });
     }
   }
 

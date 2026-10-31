@@ -108,10 +108,12 @@ public class SecurityConfig {
                         // the original (already authorized) request would otherwise fail with
                         // a spurious AccessDeniedException once its response is committed.
                         .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
-                        // Public authentication endpoints (Req 5.2): login, refresh,
-                        // and customer self-registration (Phase B: /api/auth/register).
+                        // Public authentication endpoints (Req 5.2): login, MFA and
+                        // refresh. There is no self-registration; accounts are created
+                        // by an administrator.
                         .requestMatchers("/api/auth/**").permitAll()
-                        // Public customer order tracking by order code (Req 13.4).
+                        // Public customer order tracking (Req 13.4): status by order
+                        // code, and the token / mobile-number lookups.
                         .requestMatchers(HttpMethod.GET, "/api/track/**").permitAll()
                         // Inbound webhooks are unauthenticated to the browser but
                         // HMAC-validated inside their handlers (courier/WhatsApp).

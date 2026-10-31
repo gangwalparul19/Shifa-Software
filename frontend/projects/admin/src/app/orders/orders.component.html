@@ -4,33 +4,35 @@
   [breadcrumbs]="[{ label: 'Orders' }]"
 >
   <admin-density-toggle />
-  <div class="btn-group">
-    <button
-      type="button"
-      class="btn btn-outline-secondary"
-      (click)="exportOrders('xlsx')"
-      [disabled]="exporting()"
-      title="Export the current filtered list to Excel"
-      aria-label="Export to Excel"
-    >
-      @if (exporting()) {
-        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
-      } @else {
-        <i class="ti ti-download me-1"></i>
-      }
-      Export
-    </button>
-    <button
-      type="button"
-      class="btn btn-outline-secondary"
-      (click)="exportOrders('csv')"
-      [disabled]="exporting()"
-      title="Export the current filtered list to CSV"
-      aria-label="Export to CSV"
-    >
-      CSV
-    </button>
-  </div>
+  @if (canExport()) {
+    <div class="btn-group">
+      <button
+        type="button"
+        class="btn btn-outline-secondary"
+        (click)="exportOrders('xlsx')"
+        [disabled]="exporting()"
+        title="Export the current filtered list to Excel"
+        aria-label="Export to Excel"
+      >
+        @if (exporting()) {
+          <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+        } @else {
+          <i class="ti ti-download me-1"></i>
+        }
+        Export
+      </button>
+      <button
+        type="button"
+        class="btn btn-outline-secondary"
+        (click)="exportOrders('csv')"
+        [disabled]="exporting()"
+        title="Export the current filtered list to CSV"
+        aria-label="Export to CSV"
+      >
+        CSV
+      </button>
+    </div>
+  }
   <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
     <i class="ti ti-refresh"></i>
   </button>

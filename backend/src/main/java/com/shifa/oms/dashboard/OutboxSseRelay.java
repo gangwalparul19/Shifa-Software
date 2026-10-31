@@ -4,6 +4,7 @@ import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -89,11 +90,15 @@ public class OutboxSseRelay {
             }
             int relayed = 0;
             int batchLimit = Math.min(500, Math.max(1, maxRelayBatch));
-            for (OutboxEvent event : outboxEventRepository
-                    .findByStatusOrderByCreatedAtAsc(OutboxEvent.STATUS_PENDING)) {
+            // Ask the database for just this relay's event types, one bounded batch. Loading
+            // every PENDING row of every type (then skipping most) grew without limit while an
+            // integration (courier, WhatsApp, email, ledger) was backed up.
+            for (OutboxEvent event : outboxEventRepository.findByStatusAndEventTypeInOrderByCreatedAtAsc(
+                    OutboxEvent.STATUS_PENDING, ADMIN_NOTIFICATION_TYPES, PageRequest.of(0, batchLimit))) {
                 if (relayed >= batchLimit) {
                     break;
                 }
+                // Defensive: the query already filters, but never relay another drainer's row.
                 if (!ADMIN_NOTIFICATION_TYPES.contains(event.getEventType())) {
                     continue;
                 }

@@ -6,11 +6,13 @@ import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.auth.User;
 import com.shifa.oms.auth.UserRepository;
 import com.shifa.oms.common.ResourceNotFoundException;
+import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.lead.LeadEntity;
 import com.shifa.oms.lead.LeadReportRecord;
 import com.shifa.oms.lead.LeadRepository;
 import com.shifa.oms.lead.LeadStatus;
 import com.shifa.oms.order.OrderEntity;
+import com.shifa.oms.order.OrderListSpecifications;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.PaymentVerificationStatus;
 import com.shifa.oms.performance.dto.DirectReportPerformanceResponse;
@@ -23,6 +25,9 @@ import com.shifa.oms.performance.dto.TeamSourceConversion;
 import com.shifa.oms.performance.dto.TeamWorkSummary;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -154,9 +159,6 @@ public class TeamPerformanceService {
         SalespersonPerformanceSummary ownPerformance = actor.role() == Role.TEAM_LEAD
                 ? ownSummary(actor, ownOrders, ownPeriod)
                 : null;
-        Map<Long, String> salespersonNames = namesFor(memberIds, actor);
-        List<TeamOrderRow> ownOrderRows = toOrderRows(ownOrders, salespersonNames);
-        List<TeamOrderRow> teamOrderRows = toOrderRows(teamOrders, salespersonNames);
 
         // The team lead punches orders too — include their own sales in the team
         // totals and show them as a member row (marked "(Team Lead)"), so a team's
@@ -224,7 +226,7 @@ public class TeamPerformanceService {
                 delivered, failed, pct(delivered, delivered + failed), codOutstanding,
                 leadsTotal, leadsWon, pct(leadsWon, leadsTotal), topPerformer, topSource,
                 leaderboard, leadSources, headlinePeriod, work, coaching,
-                ownPerformance, ownPeriod, combinedPeriod, ownOrderRows, teamOrderRows);
+                ownPerformance, ownPeriod, combinedPeriod);
     }
 
     /**
@@ -369,12 +371,43 @@ public class TeamPerformanceService {
         return names;
     }
 
-    private List<TeamOrderRow> toOrderRows(List<OrderEntity> orders, Map<Long, String> names) {
-        return orders.stream().filter(order -> order.getId() != null).limit(100)
-                .map(order -> new TeamOrderRow(order.getId(), order.getOrderCode(), order.getCustomerName(),
-                        names.getOrDefault(order.getCreatedBy(), "Unknown"), order.getTotalAmount(),
-                        order.getOrderStatus(), order.getPaymentStatus(), order.getCreatedAt()))
-                .toList();
+    /**
+     * One page of orders for the Team Performance page, newest first and limited to the selected
+     * period (the same inclusive IST-day window the figures use). The scope comes from the caller,
+     * never from the request: {@code own=false} is the caller's team (a team lead's assigned
+     * salespeople, or every salesperson for an admin) and {@code own=true} is a team lead's own
+     * orders. An admin has no personal tab, so {@code own=true} is empty for them.
+     */
+    @Transactional(readOnly = true)
+    public Page<TeamOrderRow> orderPage(AuthPrincipal actor, boolean own, LocalDate from, LocalDate to,
+                                        Pageable pageable) {
+        LocalDate today = LocalDate.now(clock);
+        LocalDate start = from != null ? from : today.withDayOfMonth(1);
+        LocalDate end = to != null ? to : today;
+        if (end.isBefore(start)) {
+            throw new ValidationException("The end date cannot be before the start date.");
+        }
+        if (orderRepository == null) {
+            return Page.empty(pageable);
+        }
+        List<Long> creatorIds;
+        if (own) {
+            if (actor.role() != Role.TEAM_LEAD) {
+                return Page.empty(pageable);
+            }
+            creatorIds = List.of(actor.userId());
+        } else {
+            creatorIds = resolveMemberIds(actor);
+        }
+        if (creatorIds.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        Specification<OrderEntity> spec = OrderListSpecifications.build(null, null, null, null, start, end, creatorIds);
+        Page<OrderEntity> page = orderRepository.findAll(spec, pageable);
+        Map<Long, String> names = namesFor(resolveMemberIds(actor), actor);
+        return page.map(order -> new TeamOrderRow(order.getId(), order.getOrderCode(), order.getCustomerName(),
+                names.getOrDefault(order.getCreatedBy(), "Unknown"), order.getTotalAmount(),
+                order.getOrderStatus(), order.getPaymentStatus(), order.getCreatedAt()));
     }
 
     private TeamPeriodSummary combinePeriods(TeamPeriodSummary team, TeamPeriodSummary own) {

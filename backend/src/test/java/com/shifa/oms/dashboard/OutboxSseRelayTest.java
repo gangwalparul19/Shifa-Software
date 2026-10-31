@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -15,6 +16,8 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -66,7 +69,8 @@ class OutboxSseRelayTest {
     void relaysPendingPackedNotificationAndMarksItSent() {
         OutboxEvent packed = packedEvent();
         broker.active = true;
-        when(outboxEventRepository.findByStatusOrderByCreatedAtAsc(OutboxEvent.STATUS_PENDING))
+        when(outboxEventRepository.findByStatusAndEventTypeInOrderByCreatedAtAsc(
+                eq(OutboxEvent.STATUS_PENDING), anyCollection(), any(Pageable.class)))
                 .thenReturn(List.of(packed));
 
         int relayed = relay.relayPending();
@@ -92,8 +96,8 @@ class OutboxSseRelayTest {
 
         assertThat(relayed).isZero();
         // The row stays PENDING; the relay never even queries or broadcasts.
-        verify(outboxEventRepository, never())
-                .findByStatusOrderByCreatedAtAsc(OutboxEvent.STATUS_PENDING);
+        verify(outboxEventRepository, never()).findByStatusAndEventTypeInOrderByCreatedAtAsc(
+                any(), anyCollection(), any(Pageable.class));
         assertThat(broker.broadcasts).isEmpty();
         verify(outboxEventRepository, never()).save(any(OutboxEvent.class));
     }
@@ -107,7 +111,8 @@ class OutboxSseRelayTest {
         OutboxEvent whatsappNotify = new OutboxEvent(OutboxEvent.AGGREGATE_ORDER, 7L,
                 OutboxEvent.EVENT_WHATSAPP_NOTIFY, Map.of("orderId", 7L));
         broker.active = true;
-        when(outboxEventRepository.findByStatusOrderByCreatedAtAsc(OutboxEvent.STATUS_PENDING))
+        when(outboxEventRepository.findByStatusAndEventTypeInOrderByCreatedAtAsc(
+                eq(OutboxEvent.STATUS_PENDING), anyCollection(), any(Pageable.class)))
                 .thenReturn(List.of(courierAssign, whatsappNotify));
 
         int relayed = relay.relayPending();
@@ -133,7 +138,8 @@ class OutboxSseRelayTest {
         OutboxEvent whatsappFailed = new OutboxEvent(OutboxEvent.AGGREGATE_ORDER, 4L,
                 OutboxEvent.EVENT_WHATSAPP_FAILED, Map.of("error", "rejected"));
         broker.active = true;
-        when(outboxEventRepository.findByStatusOrderByCreatedAtAsc(OutboxEvent.STATUS_PENDING))
+        when(outboxEventRepository.findByStatusAndEventTypeInOrderByCreatedAtAsc(
+                eq(OutboxEvent.STATUS_PENDING), anyCollection(), any(Pageable.class)))
                 .thenReturn(List.of(statusChanged, claim, courierFailed, whatsappFailed));
 
         int relayed = relay.relayPending();

@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { ApiClient } from 'core';
+import { ApiClient, PageResponse } from 'core';
 
 /** Headline metrics for one salesperson (mirrors backend SalespersonPerformanceSummary). */
 export interface TeamMemberPerformance {
@@ -110,8 +110,6 @@ export interface TeamPerformance {
   ownPerformance: TeamMemberPerformance | null;
   ownPeriod: TeamPeriodSummary | null;
   combinedPeriod: TeamPeriodSummary | null;
-  ownOrders: TeamOrderRow[];
-  teamOrders: TeamOrderRow[];
 }
 
 /** Safe, work-relevant profile information for a Team Lead's direct report. */
@@ -175,6 +173,24 @@ export class TeamPerformanceService {
     if (to) params['to'] = to;
     return this.api.get<TeamPerformance>('/api/team/performance',
       Object.keys(params).length ? { params } : undefined);
+  }
+
+  /**
+   * One page of the orders behind the figures, newest first, for the selected period.
+   * {@code team} is the caller's team; {@code own} is a team lead's own orders. Who is
+   * included is decided by the server from the signed-in user.
+   */
+  orders(
+    scope: 'team' | 'own',
+    from: string | undefined,
+    to: string | undefined,
+    page: number,
+    size: number,
+  ): Observable<PageResponse<TeamOrderRow>> {
+    const params: Record<string, string | number> = { scope, page, size };
+    if (from) params['from'] = from;
+    if (to) params['to'] = to;
+    return this.api.get<PageResponse<TeamOrderRow>>('/api/team/performance/orders', { params });
   }
 
   /** Detailed performance for one authorised direct report (max 60 daily points). */

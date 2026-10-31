@@ -201,7 +201,13 @@ export class UsersComponent implements OnInit {
     if (Number.isNaN(d.getTime())) {
       return iso;
     }
-    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    return d.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      // Business dates are IST whatever the device's time zone (see passwordResetLabel below).
+      timeZone: 'Asia/Kolkata',
+    });
   }
 
   /**

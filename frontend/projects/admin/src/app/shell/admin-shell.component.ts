@@ -681,6 +681,7 @@ export class AdminShellComponent {
         { kind: 'link', label: 'Analytics', path: '/analytics', icon: 'ti-chart-dots', adminOnly: true },
         { kind: 'link', label: 'Delivery Partners', path: '/delivery-partners', icon: 'ti-truck-delivery', adminOnly: true },
         { kind: 'link', label: 'Shopify Sync', path: '/shopify-sync', icon: 'ti-brand-shopify', adminOnly: true },
+        { kind: 'link', label: 'Ask Shifa', path: '/assistant', icon: 'ti-robot', adminOnly: true },
         { kind: 'link', label: 'Insights', path: '/insights', icon: 'ti-bulb', adminOnly: true },
         {
           kind: 'link',
@@ -985,9 +986,22 @@ export class AdminShellComponent {
   }
 
   private titleForUrl(url: string): string {
-    const path = url.split('?')[0].replace(/^\//, '');
-    const match = this.allLinks().find((i) => i.path === `/${path}`);
-    return match?.label ?? 'Dashboard';
+    const path = `/${url.split('?')[0].replace(/^\//, '')}`;
+    // Exact link first; otherwise the longest link that is a parent of this route, so a page that
+    // is not in the menu itself (e.g. /orders/12/edit, /leads/follow-ups) is titled after its
+    // section ("Orders") instead of falling through to "Dashboard".
+    const links = this.allLinks();
+    const exact = links.find((i) => i.path === path);
+    if (exact) {
+      return exact.label;
+    }
+    let parent: { path: string; label: string } | undefined;
+    for (const link of links) {
+      if (path.startsWith(`${link.path}/`) && (!parent || link.path.length > parent.path.length)) {
+        parent = link;
+      }
+    }
+    return parent?.label ?? 'Dashboard';
   }
 
   /**

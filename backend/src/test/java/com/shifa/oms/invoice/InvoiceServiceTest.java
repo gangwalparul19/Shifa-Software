@@ -36,10 +36,8 @@ import static org.mockito.Mockito.when;
  *   <li>the authenticated admin path returns well-formed PDF bytes (starting
  *       with {@code %PDF-}) and a filename derived from the order code;</li>
  *   <li>salesperson scoping is honoured — a salesperson resolves via
- *       {@code findByIdAndCreatedBy} and an out-of-scope id yields 404;</li>
- *   <li>the public by-order-code path returns well-formed PDF bytes for a COD
- *       order;</li>
- *   <li>an unknown order code yields a 404 ({@link ResourceNotFoundException}).</li>
+ *       {@code findByIdAndCreatedBy} and an out-of-scope id yields 404
+ *       ({@link ResourceNotFoundException}).</li>
  * </ul>
  */
 @ExtendWith(MockitoExtension.class)
@@ -102,28 +100,6 @@ class InvoiceServiceTest {
         when(orderRepository.findByIdAndCreatedBy(9L, 7L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> invoiceService.invoicePdf(9L, SALES))
-                .isInstanceOf(ResourceNotFoundException.class);
-    }
-
-    @Test
-    void publicInvoiceByOrderCodeReturnsWellFormedPdfForCodOrder() {
-        OrderEntity order = order(PaymentStatus.COD,
-                new BigDecimal("240.00"), BigDecimal.ZERO.setScale(2),
-                new BigDecimal("240.00"), new BigDecimal("240.00"));
-        when(orderRepository.findByOrderCode("SHR-000123")).thenReturn(Optional.of(order));
-
-        InvoiceService.InvoiceDocument doc = invoiceService.invoicePdfByOrderCode("SHR-000123");
-
-        assertThat(doc.content()).isNotEmpty();
-        assertThat(new String(doc.content(), 0, 5)).startsWith("%PDF-");
-        assertThat(doc.filename()).isEqualTo("invoice-SHR-000123.pdf");
-    }
-
-    @Test
-    void unknownOrderCodeYields404() {
-        when(orderRepository.findByOrderCode("NOPE")).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> invoiceService.invoicePdfByOrderCode("NOPE"))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 

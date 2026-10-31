@@ -10,7 +10,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -41,6 +46,9 @@ public class ProcessBuilderDatabaseDumpRunner implements DatabaseDumpRunner {
             Pattern.compile("jdbc:mysql://([^:/]+)(?::(\\d+))?/([^?;]+).*");
 
     private static final long PROCESS_TIMEOUT_SECONDS = 300;
+
+    /** Grace for the pipe readers to finish once the process has exited (they hit EOF at once). */
+    private static final long PIPE_DRAIN_SECONDS = 30;
 
     private final BackupProperties properties;
     private final String datasourceUrl;
@@ -86,20 +94,36 @@ public class ProcessBuilderDatabaseDumpRunner implements DatabaseDumpRunner {
         }
         builder.redirectErrorStream(false);
 
+        // Both pipes are drained on their own threads while this thread waits on the process.
+        // Reading stdout to EOF first (as this method once did) meant the timeout below could
+        // never fire if mysqldump hung, and a dump that wrote a lot to stderr would block on a
+        // full stderr pipe while we were still waiting for stdout: a deadlock.
+        ExecutorService pipes = Executors.newFixedThreadPool(2, runnable -> {
+            Thread thread = new Thread(runnable, "mysqldump-pipe");
+            thread.setDaemon(true);
+            return thread;
+        });
+        Process process = null;
         try {
-            Process process = builder.start();
-            byte[] output = readAll(process.getInputStream());
-            String stderr = new String(readAll(process.getErrorStream()));
+            process = builder.start();
+            InputStream stdoutStream = process.getInputStream();
+            InputStream stderrStream = process.getErrorStream();
+            Future<byte[]> stdout = pipes.submit(() -> readAll(stdoutStream));
+            Future<byte[]> stderr = pipes.submit(() -> readAll(stderrStream));
+
             boolean finished = process.waitFor(PROCESS_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
                 throw new DatabaseDumpException(
                         "mysqldump timed out after " + PROCESS_TIMEOUT_SECONDS + "s");
             }
+            // The process has exited, so both pipes reach EOF promptly.
+            byte[] output = stdout.get(PIPE_DRAIN_SECONDS, TimeUnit.SECONDS);
+            String errorText = new String(stderr.get(PIPE_DRAIN_SECONDS, TimeUnit.SECONDS));
             int exit = process.exitValue();
             if (exit != 0) {
                 throw new DatabaseDumpException(
-                        "mysqldump exited with code " + exit + ": " + stderr.trim());
+                        "mysqldump exited with code " + exit + ": " + errorText.trim());
             }
             if (output.length == 0) {
                 throw new DatabaseDumpException("mysqldump produced no output");
@@ -108,9 +132,16 @@ public class ProcessBuilderDatabaseDumpRunner implements DatabaseDumpRunner {
             return output;
         } catch (IOException e) {
             throw new DatabaseDumpException("Failed to run mysqldump: " + e.getMessage(), e);
+        } catch (ExecutionException | TimeoutException e) {
+            throw new DatabaseDumpException("Failed to read mysqldump output: " + e.getMessage(), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new DatabaseDumpException("mysqldump was interrupted", e);
+        } finally {
+            if (process != null && process.isAlive()) {
+                process.destroyForcibly();
+            }
+            pipes.shutdownNow();
         }
     }
 

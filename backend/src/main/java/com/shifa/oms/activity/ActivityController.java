@@ -7,6 +7,7 @@ import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.CurrentUserService;
 import com.shifa.oms.crm.CustomerInsightService;
 import com.shifa.oms.crm.dto.CustomerOrderRow;
+import com.shifa.oms.lead.LeadService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -46,13 +47,16 @@ public class ActivityController {
     private final ActivityService activityService;
     private final CustomerInsightService customerInsightService;
     private final CurrentUserService currentUserService;
+    private final LeadService leadService;
 
     public ActivityController(ActivityService activityService,
                               CustomerInsightService customerInsightService,
-                              CurrentUserService currentUserService) {
+                              CurrentUserService currentUserService,
+                              LeadService leadService) {
         this.activityService = activityService;
         this.customerInsightService = customerInsightService;
         this.currentUserService = currentUserService;
+        this.leadService = leadService;
     }
 
     /**
@@ -82,16 +86,29 @@ public class ActivityController {
 
     /**
      * Logs a lightweight CRM-initiated touch (CALL / WHATSAPP / ...) on a
-     * lead/customer (Req 11.1), attributed to the caller. Any authenticated staff
-     * user may log their own touch.
+     * lead/customer (Req 11.1), attributed to the caller. A user may log a touch
+     * only on a lead / customer they are allowed to see (404 otherwise).
      */
     @PostMapping("/api/activities/log")
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','TEAM_LEAD')")
     public ActivityResponse log(@Valid @RequestBody LogActivityRequest request) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
+        // The ids come from the client, so authorise them before writing to anyone's timeline.
+        // Both lookups apply the same scoping as the read side and 404 when the lead / customer
+        // is not one this user may see; without them a salesperson could add entries to another
+        // salesperson's lead or customer history.
+        String mobile = request.customerMobile();
+        if (request.leadId() != null) {
+            // A lead is not necessarily a customer yet, so authorise the lead itself and record
+            // against ITS mobile. Trusting a client-supplied mobile next to a valid lead id would
+            // let the entry land in an unrelated customer's timeline.
+            mobile = leadService.detail(request.leadId(), actor).customerMobile();
+        } else if (mobile != null && !mobile.isBlank()) {
+            customerInsightService.profile(mobile);
+        }
         ActivityEntry saved = activityService.record(
-                request.type(), request.leadId(), request.customerMobile(), actor,
+                request.type(), request.leadId(), mobile, actor,
                 request.summary(), request.detail());
         return saved == null ? null : ActivityResponse.from(saved);
     }

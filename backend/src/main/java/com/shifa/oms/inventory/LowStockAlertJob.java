@@ -47,7 +47,10 @@ public class LowStockAlertJob {
 
     /** Scheduled entry point: re-flags every standing low/out-of-stock tracked product. */
     @Scheduled(cron = "${LOW_STOCK_SWEEP_CRON:0 30 7 * * *}")
-    @Transactional(readOnly = true)
+    // NOT readOnly: publishLowStock() inserts an outbox row in this transaction. A
+    // read-only transaction makes MySQL reject those inserts, and the per-product
+    // catch below would then swallow the error so the daily alert silently never fired.
+    @Transactional
     public void sweep() {
         if (!enabled) {
             log.debug("Low-stock sweep skipped: app.inventory.low-stock-sweep-enabled=false.");

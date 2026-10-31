@@ -3,19 +3,16 @@ package com.shifa.oms.auth;
 import com.shifa.oms.auth.dto.LoginRequest;
 import com.shifa.oms.auth.dto.MfaVerifyRequest;
 import com.shifa.oms.auth.dto.RefreshRequest;
-import com.shifa.oms.auth.dto.RegisterRequest;
 import com.shifa.oms.auth.dto.TokenResponse;
 import com.shifa.oms.common.ApiException;
 import com.shifa.oms.common.ClientIpResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -55,12 +52,6 @@ public class AuthController {
         this.loginRateLimiter = loginRateLimiter;
         this.clientIpResolver = clientIpResolver;
         this.mfaRateLimitKeyResolver = mfaRateLimitKeyResolver;
-    }
-
-    @PostMapping("/register")
-    @ResponseStatus(HttpStatus.CREATED)
-    public TokenResponse register(@Valid @RequestBody RegisterRequest request) {
-        return authService.register(request);
     }
 
     /**

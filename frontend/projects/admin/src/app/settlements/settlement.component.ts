@@ -6,6 +6,7 @@ import { IstDatePipe } from '../shared/ist-date.pipe';
 import { InrPipe, formatInr } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { SettingsService, PaymentAccountOption } from '../settings/settings.service';
 import { SettlementService } from './settlement.service';
@@ -70,6 +71,21 @@ export class SettlementComponent implements OnInit {
   protected readonly page = signal(0);
   protected readonly pageItems = computed(() => this.batches().slice(this.page() * PAGE_SIZE, (this.page() + 1) * PAGE_SIZE));
   protected readonly totalPages = computed(() => Math.max(1, Math.ceil(this.batches().length / PAGE_SIZE)));
+  // Batch-lines drawer paging. A batch can carry thousands of statement rows.
+  protected readonly linePage = signal(0);
+  protected readonly lineSize = signal(readPageSize('settlementLines', 25));
+  protected readonly lineTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.lines().length / this.lineSize())),
+  );
+  /** The page actually shown: {@link linePage} held within the current page count. */
+  protected readonly linePageClamped = computed(() =>
+    Math.min(this.linePage(), this.lineTotalPages() - 1),
+  );
+  protected readonly lineItems = computed(() => {
+    const size = this.lineSize();
+    const page = this.linePageClamped();
+    return this.lines().slice(page * size, (page + 1) * size);
+  });
   protected readonly resolveLine = signal<SettlementLine | null>(null);
   protected readonly candidates = signal<SettlementCandidate[]>([]);
   protected readonly selectedCandidate = signal<SettlementCandidate | null>(null);
@@ -199,9 +215,18 @@ export class SettlementComponent implements OnInit {
 
   protected openBatch(batch: SettlementBatch): void {
     this.selectedBatch.set(batch);
+    this.linePage.set(0);
+    // Drop the previous batch's lines at once, and ignore a response that arrives after the
+    // operator has moved on to another batch (or closed the drawer): otherwise batch A's lines
+    // could be shown, and resolved against, under batch B's header.
+    this.lines.set([]);
     this.service.lines(batch.id).subscribe({
-      next: (rows) => this.lines.set(rows),
-      error: () => this.lines.set([]),
+      next: (rows) => {
+        if (this.selectedBatch()?.id === batch.id) this.lines.set(rows);
+      },
+      error: () => {
+        if (this.selectedBatch()?.id === batch.id) this.lines.set([]);
+      },
     });
   }
   protected closeBatch(): void {
@@ -312,6 +337,8 @@ export class SettlementComponent implements OnInit {
     if (openBatch) {
       this.service.lines(openBatch.id).subscribe({
         next: (rows) => {
+          // Same guard as openBatch(): a late reply for a batch that is no longer open is dropped.
+          if (this.selectedBatch()?.id !== openBatch.id) return;
           this.lines.set(rows);
           const resolvingId = this.resolveLine()?.id;
           if (resolvingId != null) {
@@ -319,11 +346,19 @@ export class SettlementComponent implements OnInit {
             if (refreshedLine) this.resolveLine.set(refreshedLine);
           }
         },
-        error: () => this.lines.set([]),
+        error: () => {
+          if (this.selectedBatch()?.id === openBatch.id) this.lines.set([]);
+        },
       });
     }
   }
   protected goPage(page: number): void { this.page.set(Math.max(0, Math.min(page, this.totalPages() - 1))); }
+  protected goLinePage(page: number): void { this.linePage.set(Math.max(0, Math.min(page, this.lineTotalPages() - 1))); }
+  protected setLineSize(size: number): void {
+    this.lineSize.set(size);
+    writePageSize('settlementLines', size);
+    this.linePage.set(0);
+  }
   protected sourceLabel(source: SettlementSource): string { return SOURCES.find((item) => item.value === source)?.label ?? source; }
   protected sourceHint(): string { return SOURCES.find((item) => item.value === this.source())?.hint ?? ''; }
   protected statusLabel(status: string): string { return status.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase()); }

@@ -147,6 +147,17 @@ export class InventoryComponent implements OnInit {
 
   // History state
   protected readonly movements = signal<StockMovement[]>([]);
+  // Movement history paging: a busy product accumulates thousands of ledger rows.
+  protected readonly movementPage = signal(0);
+  protected readonly movementSize = signal(readPageSize('inventoryMovements', 20));
+  protected readonly movementTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.movements().length / this.movementSize())),
+  );
+  protected readonly movementItems = computed<StockMovement[]>(() => {
+    const size = this.movementSize();
+    const page = Math.min(this.movementPage(), this.movementTotalPages() - 1);
+    return this.movements().slice(page * size, (page + 1) * size);
+  });
   protected readonly historyLoading = signal(false);
   protected readonly historyError = signal<string | null>(null);
 
@@ -416,6 +427,7 @@ export class InventoryComponent implements OnInit {
   openHistory(row: InventoryProduct): void {
     this.activeProduct.set(row);
     this.movements.set([]);
+    this.movementPage.set(0);
     this.historyError.set(null);
     this.modal.set('history');
     this.historyLoading.set(true);
@@ -429,6 +441,16 @@ export class InventoryComponent implements OnInit {
         this.historyLoading.set(false);
       },
     });
+  }
+
+  goMovementPage(page: number): void {
+    this.movementPage.set(Math.max(0, Math.min(page, this.movementTotalPages() - 1)));
+  }
+
+  setMovementSize(size: number): void {
+    this.movementSize.set(size);
+    writePageSize('inventoryMovements', size);
+    this.movementPage.set(0);
   }
 
   /** A friendly label for the acting user id (or "System" for null). */

@@ -92,6 +92,43 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
   );
   protected readonly unsettled = signal<UnsettledCod[]>([]);
   protected readonly segregation = signal<Segregation | null>(null);
+
+  // --- Segregation lists: every fulfilled order ever, so each list pages on its own ----------
+  protected readonly prepaidPage = signal(0);
+  protected readonly prepaidSize = signal(readPageSize('segPrepaid', 10));
+  protected readonly prepaidTotalPages = computed(() =>
+    Math.max(1, Math.ceil((this.segregation()?.prepaid.length ?? 0) / this.prepaidSize())),
+  );
+  protected readonly prepaidPageClamped = computed(() =>
+    Math.min(this.prepaidPage(), this.prepaidTotalPages() - 1),
+  );
+  protected readonly prepaidPageItems = computed(() => {
+    const start = this.prepaidPageClamped() * this.prepaidSize();
+    return (this.segregation()?.prepaid ?? []).slice(start, start + this.prepaidSize());
+  });
+
+  protected readonly codPage = signal(0);
+  protected readonly codSize = signal(readPageSize('segCod', 10));
+  protected readonly codTotalPages = computed(() =>
+    Math.max(1, Math.ceil((this.segregation()?.cod.length ?? 0) / this.codSize())),
+  );
+  protected readonly codPageClamped = computed(() => Math.min(this.codPage(), this.codTotalPages() - 1));
+  protected readonly codPageItems = computed(() => {
+    const start = this.codPageClamped() * this.codSize();
+    return (this.segregation()?.cod ?? []).slice(start, start + this.codSize());
+  });
+
+  protected setPrepaidSize(size: number): void {
+    this.prepaidSize.set(size);
+    writePageSize('segPrepaid', size);
+    this.prepaidPage.set(0);
+  }
+
+  protected setCodSize(size: number): void {
+    this.codSize.set(size);
+    writePageSize('segCod', size);
+    this.codPage.set(0);
+  }
   protected readonly claims = signal<ReceivableRow[]>([]);
   /** COD aging buckets + courier-SLA flag (cod-aging enhancement). */
   protected readonly codAging = signal<CodAging | null>(null);

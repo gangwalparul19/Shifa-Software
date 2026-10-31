@@ -1,0 +1,83 @@
+<admin-page-header
+  title="Ask Shifa"
+  subtitle="Ask about orders, sales and product quantities. Answers come straight from your own data."
+  [breadcrumbs]="[{ label: 'Ask Shifa' }]"
+/>
+
+<div class="card as-chat">
+  <div class="as-chat__bar">
+    <span class="as-chat__title"><i class="ti ti-robot me-2"></i>Shifa assistant</span>
+    <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="clear()" [disabled]="sending()">
+      <i class="ti ti-eraser me-1"></i> Clear chat
+    </button>
+  </div>
+
+  <div class="as-chat__thread" #scroller aria-live="polite">
+    @for (m of messages(); track m.id) {
+      <div class="as-row" [class.as-row--user]="m.from === 'user'">
+        @if (m.from === 'bot') {
+          <span class="as-avatar" aria-hidden="true"><i class="ti ti-robot"></i></span>
+        }
+        <div class="as-bubble" [class.as-bubble--user]="m.from === 'user'" [class.as-bubble--problem]="m.problem">
+          <div class="as-text">{{ m.text }}</div>
+
+          @if (m.table; as t) {
+            <div class="table-responsive as-table">
+              <table class="table table-sm mb-0">
+                <thead>
+                  <tr>
+                    @for (h of t.headers; track $index) {
+                      <th [class.text-end]="isNumericColumn(t, $index)">{{ h }}</th>
+                    }
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of t.rows; track $index) {
+                    <tr [class.as-total]="isTotalRow(row)">
+                      @for (cell of row; track $index) {
+                        <td [class.text-end]="isNumericColumn(t, $index)">{{ cell }}</td>
+                      }
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+
+          @if (m.id === lastBotId() && m.suggestions?.length) {
+            <div class="as-chips">
+              @for (s of m.suggestions; track s) {
+                <button type="button" class="as-chip" (click)="send(s)" [disabled]="sending()">{{ s }}</button>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+    @if (sending()) {
+      <div class="as-row">
+        <span class="as-avatar" aria-hidden="true"><i class="ti ti-robot"></i></span>
+        <div class="as-bubble as-typing" aria-label="Shifa is working out the answer">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    }
+  </div>
+
+  <form class="as-chat__form" (submit)="$event.preventDefault(); send()">
+    <textarea
+      #box
+      class="form-control as-chat__input"
+      rows="1"
+      maxlength="300"
+      placeholder="e.g. Total sales by Sameer Khan this month"
+      aria-label="Your question"
+      (input)="onInput($event)"
+      (keydown.enter)="onEnter($event)"
+    ></textarea>
+    <button type="submit" class="btn btn-primary as-chat__send" [disabled]="!canSend()" aria-label="Send question">
+      <i class="ti ti-send"></i>
+    </button>
+  </form>
+</div>

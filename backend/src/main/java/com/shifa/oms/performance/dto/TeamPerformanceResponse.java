@@ -7,6 +7,10 @@ import java.util.List;
  * Team-lead performance payload. The original headline fields remain for
  * compatibility; Phase 1–3 fields add selected-period, actionable-work, and
  * explainable coaching projections without widening server-side scope.
+ *
+ * <p>The lists of individual orders are deliberately not part of this payload: they
+ * grow with the order book, so they are served page by page, for the selected
+ * period, by {@code GET /api/team/performance/orders}.
  */
 public record TeamPerformanceResponse(
         int memberCount,
@@ -30,9 +34,7 @@ public record TeamPerformanceResponse(
         List<TeamCoachingFlag> coachingFlags,
         SalespersonPerformanceSummary ownPerformance,
         TeamPeriodSummary ownPeriod,
-        TeamPeriodSummary combinedPeriod,
-        List<TeamOrderRow> ownOrders,
-        List<TeamOrderRow> teamOrders
+        TeamPeriodSummary combinedPeriod
 ) {
     /** Backward-compatible constructor for existing callers/tests. */
     public TeamPerformanceResponse(
@@ -55,6 +57,6 @@ public record TeamPerformanceResponse(
         this(memberCount, ordersTotal, ordersThisMonth, revenueTotal, revenueThisMonth,
                 delivered, failed, deliverySuccessRate, codOutstanding, leadsTotal, leadsWon,
                 leadConversionRate, topPerformerName, topSource, leaderboard, leadSources,
-                null, null, List.of(), null, null, null, List.of(), List.of());
+                null, null, List.of(), null, null, null);
     }
 }

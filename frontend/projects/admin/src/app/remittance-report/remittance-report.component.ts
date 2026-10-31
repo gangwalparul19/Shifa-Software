@@ -62,6 +62,18 @@ export class RemittanceReportComponent implements OnInit {
     this.partials().reduce((sum, p) => sum + Number(p.shortfall ?? 0), 0),
   );
 
+  // Paging for the partial follow-up list (the desktop table and mobile cards share it).
+  protected readonly partialPage = signal(0);
+  protected readonly partialSize = signal(readPageSize('remittancePartials', 20));
+  protected readonly partialTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.partials().length / this.partialSize())),
+  );
+  protected readonly partialItems = computed<PartialSettlement[]>(() => {
+    const size = this.partialSize();
+    const page = Math.min(this.partialPage(), this.partialTotalPages() - 1);
+    return this.partials().slice(page * size, (page + 1) * size);
+  });
+
   // --- Batch details drawer ----------------------------------------------
   protected readonly selectedBatch = signal<RemittanceBatch | null>(null);
   protected readonly lines = signal<RemittanceBatchLine[]>([]);
@@ -87,6 +99,19 @@ export class RemittanceReportComponent implements OnInit {
     return this.lines().filter(
       (l) => l.status === 'SETTLED' || l.status === 'PARTIALLY_SETTLED' || this.isReview(l.status),
     );
+  });
+
+  // Paging for the batch-lines drawer: a single remittance file can hold thousands of rows.
+  // CSV export still uses the full (unpaged) list.
+  protected readonly linePage = signal(0);
+  protected readonly lineSize = signal(readPageSize('remittanceLines', 25));
+  protected readonly lineTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.visibleLines().length / this.lineSize())),
+  );
+  protected readonly lineItems = computed<RemittanceBatchLine[]>(() => {
+    const size = this.lineSize();
+    const page = Math.min(this.linePage(), this.lineTotalPages() - 1);
+    return this.visibleLines().slice(page * size, (page + 1) * size);
   });
 
   ngOnInit(): void {
@@ -165,6 +190,7 @@ export class RemittanceReportComponent implements OnInit {
     this.service.partiallySettled().subscribe({
       next: (rows) => {
         this.partials.set(rows);
+        this.partialPage.set(0);
         this.partialsLoaded.set(true);
       },
       error: () => this.partialsLoaded.set(true),
@@ -212,6 +238,7 @@ export class RemittanceReportComponent implements OnInit {
   protected openBatch(batch: RemittanceBatch): void {
     this.selectedBatch.set(batch);
     this.onlyActionable.set(false);
+    this.linePage.set(0);
     this.linesLoading.set(true);
     this.lines.set([]);
     this.service.remittanceBatchLines(batch.id).subscribe({
@@ -225,6 +252,27 @@ export class RemittanceReportComponent implements OnInit {
   protected closeBatch(): void {
     this.selectedBatch.set(null);
     this.lines.set([]);
+  }
+
+  protected toggleOnlyActionable(): void {
+    this.onlyActionable.set(!this.onlyActionable());
+    this.linePage.set(0);
+  }
+  protected goLinePage(p: number): void {
+    this.linePage.set(Math.max(0, Math.min(p, this.lineTotalPages() - 1)));
+  }
+  protected setLineSize(size: number): void {
+    this.lineSize.set(size);
+    writePageSize('remittanceLines', size);
+    this.linePage.set(0);
+  }
+  protected goPartialPage(p: number): void {
+    this.partialPage.set(Math.max(0, Math.min(p, this.partialTotalPages() - 1)));
+  }
+  protected setPartialSize(size: number): void {
+    this.partialSize.set(size);
+    writePageSize('remittancePartials', size);
+    this.partialPage.set(0);
   }
 
   /** Downloads the open batch's per-order details as a CSV. */

@@ -44,7 +44,7 @@ interface QuickAction {
 const QUICK_ACTIONS: QuickAction[] = [
   { label: 'New order', hint: 'Create a new order', icon: 'ti ti-plus', route: '/orders/new',
     roles: [Role.ADMIN, Role.SALESPERSON, Role.TEAM_LEAD] },
-  { label: 'Approval queue', hint: 'Orders awaiting approval', icon: 'ti ti-checkbox', route: '/approvals',
+  { label: 'Approval queue', hint: 'Orders awaiting approval', icon: 'ti ti-checkbox', route: '/approval-queue',
     roles: [Role.ADMIN] },
   { label: 'Orders', hint: 'All orders', icon: 'ti ti-receipt', route: '/orders',
     roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON, Role.TEAM_LEAD, Role.CA] },
@@ -151,7 +151,7 @@ export class GlobalSearchComponent {
         queryParams: { q: o.orderCode },
       });
     }
-    for (const p of r.products ?? []) {
+    for (const p of this.products()) {
       hits.push({ kind: 'product', primary: p.name, secondary: p.sku, route: '/products' });
     }
     for (const c of r.customers ?? []) {
@@ -201,7 +201,16 @@ export class GlobalSearchComponent {
 
   /** Grouped result accessors used by the template. */
   protected readonly orders = computed(() => this.results().orders ?? []);
-  protected readonly products = computed(() => this.results().products ?? []);
+  /**
+   * Product hits open the Products page, which only ADMIN and SALESPERSON may load; the search
+   * API also answers for accountants, CA, team leads and packers, who would land on "forbidden".
+   * Hide the group for them rather than offer a link they cannot follow. Used by both the
+   * template and the keyboard-navigation list so the two stay in step.
+   */
+  private readonly canOpenProducts = this.auth.hasAnyRole(Role.ADMIN, Role.SALESPERSON);
+  protected readonly products = computed(() =>
+    this.canOpenProducts ? (this.results().products ?? []) : [],
+  );
   protected readonly customers = computed(() => this.results().customers ?? []);
 
   /** Index of a group's first row within the flat list, for active highlighting. */

@@ -1,6 +1,8 @@
 package com.shifa.oms.search;
 
+import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.Role;
+import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.auth.User;
 import com.shifa.oms.auth.UserRepository;
 import com.shifa.oms.order.OrderEntity;
@@ -11,9 +13,9 @@ import com.shifa.oms.product.Product;
 import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.product.ProductVisibility;
 import com.shifa.oms.statemachine.OrderStatus;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
@@ -49,8 +51,18 @@ class GlobalSearchServiceTest {
     @Mock
     private UserRepository userRepository;
 
-    @InjectMocks
     private GlobalSearchService service;
+
+    /** An unscoped caller (sees every order), as before scoping was introduced. */
+    private static final AuthPrincipal ADMIN = new AuthPrincipal(1L, "admin", Role.ADMIN);
+
+    @BeforeEach
+    void setUp() {
+        // A real resolver over the mocked repository interface: Mockito cannot mock
+        // concrete classes on this JVM.
+        service = new GlobalSearchService(orderRepository, productRepository, userRepository,
+                new SalespersonScopeResolver(userRepository));
+    }
 
     private OrderEntity order(long id, String code) {
         OrderEntity o = new OrderEntity(code, OrderSource.STOREFRONT, null,
@@ -84,7 +96,7 @@ class GlobalSearchServiceTest {
         when(userRepository.searchCustomers(eq("asha"), any(Pageable.class)))
                 .thenReturn(List.of(customer(20L, "Asha Kumar", "9812345678")));
 
-        GlobalSearchResponse result = service.search("asha");
+        GlobalSearchResponse result = service.search("asha", ADMIN);
 
         assertThat(result.orders()).singleElement().satisfies(h -> {
             assertThat(h.id()).isEqualTo(1L);
@@ -107,7 +119,7 @@ class GlobalSearchServiceTest {
 
     @Test
     void blankQueryReturnsEmptyGroupsWithoutRepositoryAccess() {
-        GlobalSearchResponse result = service.search("   ");
+        GlobalSearchResponse result = service.search("   ", ADMIN);
 
         assertThat(result.orders()).isEmpty();
         assertThat(result.products()).isEmpty();
@@ -117,7 +129,7 @@ class GlobalSearchServiceTest {
 
     @Test
     void nullQueryReturnsEmptyGroups() {
-        GlobalSearchResponse result = service.search(null);
+        GlobalSearchResponse result = service.search(null, ADMIN);
 
         assertThat(result.orders()).isEmpty();
         assertThat(result.products()).isEmpty();
@@ -136,7 +148,7 @@ class GlobalSearchServiceTest {
         when(productRepository.searchAllByNameOrSku("a")).thenReturn(manyProducts);
         when(userRepository.searchCustomers(eq("a"), any(Pageable.class))).thenReturn(List.of());
 
-        GlobalSearchResponse result = service.search("a");
+        GlobalSearchResponse result = service.search("a", ADMIN);
 
         assertThat(result.orders()).hasSize(GlobalSearchService.GROUP_LIMIT);
         assertThat(result.products()).hasSize(GlobalSearchService.GROUP_LIMIT);
@@ -148,11 +160,13 @@ class GlobalSearchServiceTest {
         when(productRepository.searchAllByNameOrSku("a")).thenReturn(List.of());
         when(userRepository.searchCustomers(eq("a"), any(Pageable.class))).thenReturn(List.of());
 
-        service.search("a");
+        service.search("a", ADMIN);
 
         // The customer group cap is enforced at the query via a size-limited Pageable.
         verify(userRepository).searchCustomers(eq("a"),
                 eq(org.springframework.data.domain.PageRequest.of(0, GlobalSearchService.GROUP_LIMIT)));
         verify(orderRepository, never()).findAll();
     }
+
+
 }

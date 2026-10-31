@@ -426,11 +426,19 @@
               <div class="table-responsive"><table class="table table-sm table-vcenter">
                 <thead><tr><th>Order</th><th>Customer</th><th>Status</th><th class="text-end">Total</th></tr></thead>
                 <tbody>
-                  @for (o of seg.prepaid; track o.orderId) {
+                  @for (o of prepaidPageItems(); track o.orderId) {
                     <tr><td>{{ o.orderCode }}</td><td>{{ o.customerName }}</td><td class="text-secondary">{{ o.orderStatus }}</td><td class="text-end">{{ money(o.totalAmount) }}</td></tr>
                   }
                 </tbody>
               </table></div>
+              <admin-pagination
+                [page]="prepaidPageClamped()"
+                [totalPages]="prepaidTotalPages()"
+                [totalElements]="seg.prepaid.length"
+                [size]="prepaidSize()"
+                (pageChange)="prepaidPage.set($event)"
+                (sizeChange)="setPrepaidSize($event)"
+              />
             }
           </div>
           <div class="col-lg-6">
@@ -442,11 +450,19 @@
               <div class="table-responsive"><table class="table table-sm table-vcenter">
                 <thead><tr><th>Order</th><th>Customer</th><th>Status</th><th class="text-end">COD</th></tr></thead>
                 <tbody>
-                  @for (o of seg.cod; track o.orderId) {
+                  @for (o of codPageItems(); track o.orderId) {
                     <tr><td>{{ o.orderCode }}</td><td>{{ o.customerName }}</td><td class="text-secondary">{{ o.orderStatus }}</td><td class="text-end">{{ money(o.codAmount) }}</td></tr>
                   }
                 </tbody>
               </table></div>
+              <admin-pagination
+                [page]="codPageClamped()"
+                [totalPages]="codTotalPages()"
+                [totalElements]="seg.cod.length"
+                [size]="codSize()"
+                (pageChange)="codPage.set($event)"
+                (sizeChange)="setCodSize($event)"
+              />
             }
           </div>
         </div>

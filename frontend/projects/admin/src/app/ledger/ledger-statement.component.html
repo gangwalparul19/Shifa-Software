@@ -133,16 +133,18 @@
           </tr>
         </thead>
         <tbody>
-          <!-- Opening balance row -->
-          <tr class="lg-opening-row">
-            <td class="text-secondary">{{ s.from }}</td>
-            <td colspan="3" class="fw-bold">Opening balance</td>
-            <td class="num"></td>
-            <td class="num"></td>
-            <td class="num fw-bold">{{ balanceText(s.opening) }}</td>
-          </tr>
+          <!-- Opening balance row (first page only) -->
+          @if (pageClamped() === 0) {
+            <tr class="lg-opening-row">
+              <td class="text-secondary">{{ s.from }}</td>
+              <td colspan="3" class="fw-bold">Opening balance</td>
+              <td class="num"></td>
+              <td class="num"></td>
+              <td class="num fw-bold">{{ balanceText(s.opening) }}</td>
+            </tr>
+          }
 
-          @for (r of s.rows; track $index) {
+          @for (r of pageRows(); track $index) {
             <tr>
               <td class="text-secondary">{{ r.date }}</td>
               <td class="shifa-mono">{{ r.reference }}</td>
@@ -164,16 +166,26 @@
             </tr>
           }
 
-          <!-- Closing balance row -->
-          <tr class="lg-closing-row">
-            <td class="text-secondary">{{ s.to }}</td>
-            <td colspan="3" class="fw-bold">Closing balance</td>
-            <td class="num"></td>
-            <td class="num"></td>
-            <td class="num fw-bold">{{ balanceText(s.closing) }}</td>
-          </tr>
+          <!-- Closing balance row (last page only) -->
+          @if (pageClamped() >= totalPages() - 1) {
+            <tr class="lg-closing-row">
+              <td class="text-secondary">{{ s.to }}</td>
+              <td colspan="3" class="fw-bold">Closing balance</td>
+              <td class="num"></td>
+              <td class="num"></td>
+              <td class="num fw-bold">{{ balanceText(s.closing) }}</td>
+            </tr>
+          }
         </tbody>
       </table>
     </div>
+    <admin-pagination
+      [page]="pageClamped()"
+      [totalPages]="totalPages()"
+      [totalElements]="s.rows.length"
+      [size]="size()"
+      (pageChange)="page.set($event)"
+      (sizeChange)="setSize($event)"
+    />
   </div>
 }

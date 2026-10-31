@@ -35,21 +35,15 @@ import java.util.Set;
  * {@code StorageService} could archive it later if needed, but that is not
  * required).
  *
- * <p><strong>Two access paths.</strong>
- * <ul>
- *   <li>{@link #invoicePdf(Long, AuthPrincipal)} — authenticated and
- *       role-scoped. It applies the <em>same</em> salesperson scoping rule as
- *       {@code OrderService.getOrder} via {@link SalespersonScopeResolver}: a
- *       salesperson only resolves their own orders ({@code findByIdAndCreatedBy})
- *       while admins/accountants resolve any order ({@code findById}); an unknown
- *       or out-of-scope id yields a 404 (Req 5.5, 5.4, 21.1).</li>
- *   <li>{@link #invoicePdfByOrderCode(String)} — public, mirroring the existing
- *       public {@code GET /api/track/{orderCode}} tracking endpoint: the
- *       storefront customer fetches their invoice by order code without
- *       authentication. Order codes are the same unguessable-ish identifiers the
- *       public tracking endpoint already exposes by, so this keeps the storefront
- *       simple and consistent; an unknown code yields a 404.</li>
- * </ul>
+ * <p><strong>Access.</strong> {@link #invoicePdf(Long, AuthPrincipal)} is
+ * authenticated and role-scoped. It applies the <em>same</em> scoping rule as
+ * {@code OrderService.getOrder} via {@link SalespersonScopeResolver}: a
+ * salesperson only resolves their own orders ({@code findByIdAndCreatedBy}), a
+ * team lead their team's, while admins/accountants resolve any order
+ * ({@code findById}); an unknown or out-of-scope id yields a 404 (Req 5.5, 5.4,
+ * 21.1). There is intentionally no anonymous variant: rendering allocates the
+ * order's GST invoice number, and the PDF carries the customer's address and
+ * mobile plus the seller GSTIN.
  *
  * <p>Depending on {@link OrderRepository} + {@link SalespersonScopeResolver}
  * (rather than {@code OrderService}) keeps the scoping rule identical while
@@ -122,21 +116,6 @@ public class InvoiceService {
             order = orderRepository.findById(id)
                     .orElseThrow(() -> new ResourceNotFoundException("Order " + id + " does not exist."));
         }
-        return render(order);
-    }
-
-    /**
-     * Renders the invoice for an order by its code, for the public storefront
-     * tracking path. Returns a 404 for an unknown code.
-     *
-     * @param orderCode the order code
-     * @return the rendered invoice (PDF bytes + order code for the filename)
-     */
-    @Transactional
-    public InvoiceDocument invoicePdfByOrderCode(String orderCode) {
-        OrderEntity order = orderRepository.findByOrderCode(orderCode)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "No order found for code " + orderCode + "."));
         return render(order);
     }
 

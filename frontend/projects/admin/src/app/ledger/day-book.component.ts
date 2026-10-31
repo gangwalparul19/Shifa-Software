@@ -2,6 +2,8 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { LedgerPeriod, LedgerService } from './ledger.service';
 import {
   DayBook,
@@ -30,7 +32,7 @@ type PeriodMode = 'fy' | 'range';
 @Component({
   selector: 'admin-day-book',
   standalone: true,
-  imports: [CommonModule, FormsModule, PageHeaderComponent],
+  imports: [CommonModule, FormsModule, PageHeaderComponent, PaginationComponent],
   templateUrl: './day-book.component.html',
   styleUrl: './day-book.component.css',
 })
@@ -57,6 +59,26 @@ export class DayBookComponent implements OnInit {
   protected readonly to = signal('');
   /** The selected voucher-type filter; empty string = "All" (no filter). */
   protected readonly voucherType = signal<VoucherType | ''>('');
+
+  // --- Paging: a busy year holds thousands of vouchers, so only one page is drawn at a time ----
+  // (the totals below still cover every voucher in the period, not just the page).
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('dayBook', 20));
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil((this.data()?.rows.length ?? 0) / this.size())),
+  );
+  /** The current page, pulled back in range if the list got shorter. */
+  protected readonly pageClamped = computed(() => Math.min(this.page(), this.totalPages() - 1));
+  protected readonly pageRows = computed(() => {
+    const start = this.pageClamped() * this.size();
+    return (this.data()?.rows ?? []).slice(start, start + this.size());
+  });
+
+  protected setSize(size: number): void {
+    this.size.set(size);
+    writePageSize('dayBook', size);
+    this.page.set(0);
+  }
 
   /** Total of all debit amounts across every line in the loaded period. */
   protected readonly totalDebit = computed(() =>
@@ -131,6 +153,7 @@ export class DayBookComponent implements OnInit {
     this.ledger.dayBook(period, type).subscribe({
       next: (d) => {
         this.data.set(d);
+        this.page.set(0);
         this.loading.set(false);
       },
       error: () => {

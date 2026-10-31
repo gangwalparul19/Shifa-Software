@@ -699,9 +699,16 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     return !!(v.customerName?.trim() || v.customerMobile?.trim() || v.addressLine?.trim() || anyItem);
   }
 
+  /**
+   * Set once the order has been placed. The autosave is debounced by 800 ms, so an edit made just
+   * before Save can still fire its pending write AFTER {@link clearDraft} has run and recreate the
+   * draft of an order that now exists, which then shows up as "unfinished order — Resume?".
+   */
+  private orderPlaced = false;
+
   /** Persists the current form to localStorage (skipped in convert/reorder mode). */
   private saveDraft(): void {
-    if (this.convertMode() || this.reorderActive || this.resubmitActive
+    if (this.orderPlaced || this.convertMode() || this.reorderActive || this.resubmitActive
         || this.posMode() || this.submitting()) {
       return;
     }
@@ -1835,6 +1842,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     this.orders.createOrder(payload).subscribe({
       next: (order) => {
         this.submitting.set(false);
+        this.orderPlaced = true;
         this.clearDraft();
         this.toasts.success(`Order ${order.orderCode} created`);
         void this.router.navigate(['/orders'], { queryParams: { q: order.orderCode } });

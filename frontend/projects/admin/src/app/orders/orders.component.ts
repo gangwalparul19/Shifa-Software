@@ -234,6 +234,15 @@ export class OrdersComponent implements OnInit, OnDestroy {
   private readonly waTemplates = inject(WhatsappTemplatesService);
   private readonly blobs = inject(AuthenticatedBlobService);
 
+  /**
+   * Whether the current user may export the orders list. Mirrors the backend's
+   * {@code GET /api/admin/orders/export} role list: a payment verifier can open this page
+   * (view-only) but the export endpoint rejects them, so the button would only ever fail.
+   */
+  protected readonly canExport = computed(() =>
+    this.auth.hasAnyRole(Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON, Role.TEAM_LEAD, Role.CA),
+  );
+
   /** Whether the current user may punch a new order (SALESPERSON + ADMIN + TEAM_LEAD, Req 7). */
   protected readonly canCreateOrder = computed(() =>
     this.auth.hasAnyRole(Role.SALESPERSON, Role.ADMIN, Role.TEAM_LEAD),

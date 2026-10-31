@@ -1,10 +1,12 @@
 package com.shifa.oms.platform.outbox;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -19,6 +21,16 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> 
 
     /** Undelivered events of a given status, oldest first (drainer/SSE consumer). */
     List<OutboxEvent> findByStatusOrderByCreatedAtAsc(String status);
+
+    /**
+     * One bounded page of events of a given status restricted to the given event
+     * types, oldest first. Lets a consumer that only cares about a few types (the
+     * admin SSE relay) ask the database for just those rows instead of loading every
+     * pending event of every type, which grows without bound while an integration
+     * is backed up.
+     */
+    List<OutboxEvent> findByStatusAndEventTypeInOrderByCreatedAtAsc(
+            String status, Collection<String> eventTypes, Pageable pageable);
 
     /**
      * Count of events of a given type in a given status. Backs the admin

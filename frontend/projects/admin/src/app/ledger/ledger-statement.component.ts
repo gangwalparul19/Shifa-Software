@@ -2,6 +2,8 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { LedgerPeriod, LedgerService } from './ledger.service';
 import {
   LedgerAccount,
@@ -32,7 +34,7 @@ type PeriodMode = 'fy' | 'range';
 @Component({
   selector: 'admin-ledger-statement',
   standalone: true,
-  imports: [CommonModule, FormsModule, PageHeaderComponent],
+  imports: [CommonModule, FormsModule, PageHeaderComponent, PaginationComponent],
   templateUrl: './ledger-statement.component.html',
   styleUrl: './ledger-statement.component.css',
 })
@@ -67,6 +69,25 @@ export class LedgerStatementComponent implements OnInit {
 
   /** True once the metadata (ledgers + FYs) has loaded and a ledger can be picked. */
   protected readonly metaLoading = signal(true);
+
+  // --- Paging: a busy ledger (Sales, Cash, Debtors) has a row per order, so one page is drawn at a time.
+  // Each row carries its own running balance, so any page reads correctly on its own.
+  protected readonly page = signal(0);
+  protected readonly size = signal(readPageSize('ledgerStatement', 20));
+  protected readonly totalPages = computed(() =>
+    Math.max(1, Math.ceil((this.statement()?.rows.length ?? 0) / this.size())),
+  );
+  protected readonly pageClamped = computed(() => Math.min(this.page(), this.totalPages() - 1));
+  protected readonly pageRows = computed(() => {
+    const start = this.pageClamped() * this.size();
+    return (this.statement()?.rows ?? []).slice(start, start + this.size());
+  });
+
+  protected setSize(size: number): void {
+    this.size.set(size);
+    writePageSize('ledgerStatement', size);
+    this.page.set(0);
+  }
 
   /** True when the loaded statement has no voucher lines in the period (Req 12.4). */
   protected readonly noEntries = computed(() => (this.statement()?.rows.length ?? 0) === 0);
@@ -154,6 +175,7 @@ export class LedgerStatementComponent implements OnInit {
     this.ledger.ledgerStatement(id, this.period()).subscribe({
       next: (s) => {
         this.statement.set(s);
+        this.page.set(0);
         this.loading.set(false);
       },
       error: () => {

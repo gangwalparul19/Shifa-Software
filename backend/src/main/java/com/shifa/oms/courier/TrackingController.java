@@ -4,13 +4,9 @@ import com.shifa.oms.common.ApiException;
 import com.shifa.oms.common.ClientIpResolver;
 import com.shifa.oms.courier.dto.TrackByMobileResponse;
 import com.shifa.oms.courier.dto.TrackingResponse;
-import com.shifa.oms.invoice.InvoiceService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,17 +25,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class TrackingController {
 
     private final TrackingService trackingService;
-    private final InvoiceService invoiceService;
     private final PublicTrackingRateLimiter rateLimiter;
     private final ClientIpResolver clientIpResolver;
 
     @Autowired
     public TrackingController(TrackingService trackingService,
-                              InvoiceService invoiceService,
                               PublicTrackingRateLimiter rateLimiter,
                               ClientIpResolver clientIpResolver) {
         this.trackingService = trackingService;
-        this.invoiceService = invoiceService;
         this.rateLimiter = rateLimiter;
         this.clientIpResolver = clientIpResolver;
     }
@@ -81,20 +74,9 @@ public class TrackingController {
         return trackingService.ordersByMobile(mobile);
     }
 
-    /**
-     * Public PDF invoice for an order by its code, mirroring the public tracking
-     * endpoint above: the storefront customer downloads their own invoice by
-     * order code without authenticating (order codes are the same unguessable-ish
-     * identifiers this tracking endpoint already exposes by). An unknown code
-     * yields 404. The PDF is streamed inline as {@code application/pdf}.
-     */
-    @GetMapping("/{orderCode}/invoice")
-    public ResponseEntity<byte[]> invoice(@PathVariable String orderCode) {
-        InvoiceService.InvoiceDocument invoice = invoiceService.invoicePdfByOrderCode(orderCode);
-        return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_PDF)
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "inline; filename=\"" + invoice.filename() + "\"")
-                .body(invoice.content());
-    }
+    // There is deliberately NO public invoice download here. An invoice carries the
+    // customer's name, address and mobile plus the seller GSTIN, and generating one
+    // allocates the next GST invoice number; neither belongs behind a guessable order
+    // code with no login. Staff download invoices via the authenticated
+    // GET /api/orders/{id}/invoice.
 }

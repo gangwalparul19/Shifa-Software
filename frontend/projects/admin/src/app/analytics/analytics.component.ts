@@ -313,6 +313,33 @@ export class AnalyticsComponent implements OnInit {
     this.demandPage.set(0);
   }
 
+  // --- Delivery-performance slices (courier / state / pincode band) --------
+  // Pincode bands can run to a few hundred rows, so every slice shares one page size and
+  // keeps its own page index (keyed by slice title). Short slices show no pager.
+  protected readonly bandSize = signal(readPageSize('analyticsBands', 10));
+  private readonly bandPages = signal<Record<string, number>>({});
+
+  protected bandPage(key: string, total: number): number {
+    const last = Math.max(0, Math.ceil(total / this.bandSize()) - 1);
+    return Math.min(this.bandPages()[key] ?? 0, last);
+  }
+  protected bandTotalPages(total: number): number {
+    return Math.max(1, Math.ceil(total / this.bandSize()));
+  }
+  protected bandRows<T>(key: string, rows: readonly T[]): T[] {
+    const size = this.bandSize();
+    const start = this.bandPage(key, rows.length) * size;
+    return rows.slice(start, start + size);
+  }
+  protected setBandPage(key: string, page: number): void {
+    this.bandPages.update((m) => ({ ...m, [key]: Math.max(0, page) }));
+  }
+  protected setBandSize(size: number): void {
+    this.bandSize.set(size);
+    writePageSize('analyticsBands', size);
+    this.bandPages.set({});
+  }
+
   protected readonly demandChart = computed<BarOptions | null>(() => {
     const r = this.forecast();
     if (!r || r.topDemand.length === 0) {

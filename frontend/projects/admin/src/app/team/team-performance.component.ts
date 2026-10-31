@@ -5,10 +5,13 @@ import { IstDatePipe } from '../shared/ist-date.pipe';
 import { addIstDays, monthStartIst, todayIst } from '../shared/business-date.util';
 import { reportFilename } from '../shared/report-filename.util';
 import { PageHeaderComponent, } from '../shared/page-header.component';
+import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import {
   TeamCoachingFlag,
   TeamMemberPerformance,
+  TeamOrderRow,
   TeamPerformance,
   TeamPerformanceService,
 } from './team-performance.service';
@@ -28,7 +31,7 @@ type HealthFilter = 'ALL' | 'INACTIVE' | 'NO_ACTIVITY' | 'FOLLOW_UPS' | 'RTO';
 
 @Component({
   selector: 'admin-team-performance',
-  imports: [RouterLink, IstDatePipe, PageHeaderComponent, StatePanelComponent, TeamMemberDetailComponent],
+  imports: [RouterLink, IstDatePipe, PageHeaderComponent, PaginationComponent, StatePanelComponent, TeamMemberDetailComponent],
   styleUrl: './team-performance.component.css',
   template: `
     <admin-page-header
@@ -139,24 +142,48 @@ type HealthFilter = 'ALL' | 'INACTIVE' | 'NO_ACTIVITY' | 'FOLLOW_UPS' | 'RTO';
         </div>
 
         <div class="card mb-3">
-          <div class="card-header d-flex align-items-center justify-content-between"><span class="fw-medium"><i class="ti ti-receipt me-1"></i>Order ownership</span><span class="text-secondary small">Salesperson name is shown for every team order</span></div>
-          <div class="card-body py-2">
-            @if (isTeamLead()) {
-              <div class="btn-group btn-group-sm mb-2" role="tablist">
-                <button type="button" class="btn" [class.btn-primary]="orderTab() === 'own'" [class.btn-outline-secondary]="orderTab() !== 'own'" (click)="orderTab.set('own')">My orders ({{ d.ownOrders.length }})</button>
-                <button type="button" class="btn" [class.btn-primary]="orderTab() === 'team'" [class.btn-outline-secondary]="orderTab() !== 'team'" (click)="orderTab.set('team')">Team orders ({{ d.teamOrders.length }})</button>
+          <div class="card-header d-flex align-items-center justify-content-between"><span class="fw-medium"><i class="ti ti-receipt me-1"></i>Order ownership</span><span class="text-secondary small">Orders placed in the selected period, newest first</span></div>
+          @if (isTeamLead()) {
+            <div class="card-body py-2">
+              <div class="btn-group btn-group-sm" role="tablist">
+                <button type="button" class="btn" [class.btn-primary]="orderTab() === 'own'" [class.btn-outline-secondary]="orderTab() !== 'own'" (click)="selectOrderTab('own')">My orders</button>
+                <button type="button" class="btn" [class.btn-primary]="orderTab() === 'team'" [class.btn-outline-secondary]="orderTab() !== 'team'" (click)="selectOrderTab('team')">Team orders</button>
               </div>
-            }
-            @if (orderTab() === 'own' && isTeamLead()) {
-              @if (d.ownOrders.length === 0) { <div class="text-secondary small py-2">No personal orders in this period.</div> } @else {
-                <div class="table-responsive"><table class="table table-sm table-vcenter"><thead><tr><th>Order</th><th>Customer</th><th class="text-end">Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>@for (order of d.ownOrders; track order.id) { <tr><td><a class="shifa-mono" [routerLink]="['/orders']" [queryParams]="{ q: order.orderCode }">{{ order.orderCode }}</a></td><td>{{ order.customerName }}</td><td class="text-end">{{ inr(order.totalAmount) }}</td><td>{{ statusLabel(order.orderStatus) }}</td><td>{{ order.createdAt | istDate:'dd MMM, HH:mm' }}</td></tr> }</tbody></table></div>
-              }
-            } @else {
-              @if (d.teamOrders.length === 0) { <div class="text-secondary small py-2">No teammate orders in this period.</div> } @else {
-                <div class="table-responsive"><table class="table table-sm table-vcenter"><thead><tr><th>Order</th><th>Salesperson</th><th>Customer</th><th class="text-end">Amount</th><th>Status</th><th>Date</th></tr></thead><tbody>@for (order of d.teamOrders; track order.id) { <tr><td><a class="shifa-mono" [routerLink]="['/orders']" [queryParams]="{ q: order.orderCode }">{{ order.orderCode }}</a></td><td class="fw-medium">{{ order.salespersonName }}</td><td>{{ order.customerName }}</td><td class="text-end">{{ inr(order.totalAmount) }}</td><td>{{ statusLabel(order.orderStatus) }}</td><td>{{ order.createdAt | istDate:'dd MMM, HH:mm' }}</td></tr> }</tbody></table></div>
-              }
-            }
-          </div>
+            </div>
+          }
+          @if (ordersLoading()) {
+            <div class="card-body text-secondary"><span class="spinner-border spinner-border-sm me-2"></span>Loading orders…</div>
+          } @else if (ordersError()) {
+            <div class="card-body"><div class="alert alert-danger d-flex align-items-center mb-0" role="alert"><span class="me-auto">{{ ordersError() }}</span><button type="button" class="btn btn-sm btn-danger" (click)="loadOrders(orderPage())">Retry</button></div></div>
+          } @else if (orderRows().length === 0) {
+            <div class="card-body text-secondary small">{{ orderScope() === 'own' ? 'No personal orders in this period.' : 'No teammate orders in this period.' }}</div>
+          } @else {
+            <div class="table-responsive">
+              <table class="table table-sm table-vcenter card-table">
+                <thead><tr><th>Order</th>@if (orderScope() === 'team') { <th>Salesperson</th> }<th>Customer</th><th class="text-end">Amount</th><th>Status</th><th>Date</th></tr></thead>
+                <tbody>
+                  @for (order of orderRows(); track order.id) {
+                    <tr>
+                      <td><a class="shifa-mono" [routerLink]="['/orders']" [queryParams]="{ q: order.orderCode }">{{ order.orderCode }}</a></td>
+                      @if (orderScope() === 'team') { <td class="fw-medium">{{ order.salespersonName }}</td> }
+                      <td>{{ order.customerName }}</td>
+                      <td class="text-end">{{ inr(order.totalAmount) }}</td>
+                      <td>{{ statusLabel(order.orderStatus) }}</td>
+                      <td>{{ order.createdAt | istDate:'dd MMM, HH:mm' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <admin-pagination
+              [page]="orderPage()"
+              [totalPages]="orderTotalPages()"
+              [totalElements]="orderTotal()"
+              [size]="orderSize()"
+              (pageChange)="loadOrders($event)"
+              (sizeChange)="setOrderSize($event)"
+            />
+          }
         </div>
 
         <div class="row g-2 g-md-3 mb-3">
@@ -167,8 +194,8 @@ type HealthFilter = 'ALL' | 'INACTIVE' | 'NO_ACTIVITY' | 'FOLLOW_UPS' | 'RTO';
         <div class="card mb-3" id="team-members">
           <div class="card-header d-flex flex-wrap align-items-center gap-2">
             <span class="fw-medium me-auto">Salespeople ({{ d.memberCount }})</span>
-            <input class="form-control form-control-sm team-member-search" type="search" placeholder="Search name…" [value]="search()" (input)="search.set($any($event.target).value)" aria-label="Search team members" />
-            <select class="form-select form-select-sm team-member-filter" [value]="healthFilter()" (change)="healthFilter.set($any($event.target).value)">
+            <input class="form-control form-control-sm team-member-search" type="search" placeholder="Search name…" [value]="search()" (input)="onSearch($any($event.target).value)" aria-label="Search team members" />
+            <select class="form-select form-select-sm team-member-filter" [value]="healthFilter()" (change)="onHealthFilter($any($event.target).value)">
               <option value="ALL">All members</option><option value="INACTIVE">Inactive</option><option value="NO_ACTIVITY">No activity</option><option value="FOLLOW_UPS">Follow-ups due</option><option value="RTO">RTO / redispatch</option>
             </select>
           </div>
@@ -176,7 +203,7 @@ type HealthFilter = 'ALL' | 'INACTIVE' | 'NO_ACTIVITY' | 'FOLLOW_UPS' | 'RTO';
             <table class="table table-vcenter card-table">
               <thead><tr><th>Salesperson</th><th>Status</th><th class="text-end">Orders</th><th class="text-end">Revenue</th><th class="text-end">AOV</th><th class="text-end">Delivery</th><th class="text-end">RTO</th><th class="text-end">Follow-ups</th><th class="text-end">Outstanding</th></tr></thead>
               <tbody>
-                @for (m of filteredMembers(); track m.id) {
+                @for (m of memberPageItems(); track m.id) {
                   <tr class="shifa-card-link" role="button" tabindex="0" (click)="openMember(m)" (keydown.enter)="openMember(m)" (keydown.space)="$event.preventDefault(); openMember(m)" title="View {{ m.fullName }} detail">
                     <td><div class="fw-medium">{{ m.fullName }}</div><div class="text-secondary small">{{ '@' + m.username }}</div></td>
                     <td><span class="badge" [class.tone-green]="m.active && m.ordersInPeriod > 0" [class.tone-amber]="m.active && m.ordersInPeriod === 0" [class.tone-red]="!m.active">{{ memberHealth(m) }}</span></td>
@@ -192,14 +219,32 @@ type HealthFilter = 'ALL' | 'INACTIVE' | 'NO_ACTIVITY' | 'FOLLOW_UPS' | 'RTO';
               </tbody>
             </table>
           </div>
+          <admin-pagination
+            [page]="memberPageClamped()"
+            [totalPages]="memberTotalPages()"
+            [totalElements]="filteredMembers().length"
+            [size]="memberSize()"
+            (pageChange)="memberPage.set($event)"
+            (sizeChange)="setMemberSize($event)"
+          />
         </div>
 
         @if (d.coachingFlags.length > 0) {
           <div class="card mb-3"><div class="card-header"><span class="fw-medium"><i class="ti ti-school me-1"></i>Coaching priorities</span></div><div class="list-group list-group-flush">
-            @for (flag of d.coachingFlags; track flag.salespersonId + ':' + flag.type) {
+            @for (flag of coachingPageItems(); track flag.salespersonId + ':' + flag.type) {
               <button type="button" class="list-group-item list-group-item-action text-start" (click)="openFlag(flag, d.leaderboard)"><div class="d-flex align-items-start gap-2"><span class="badge" [class.tone-red]="flag.severity === 'HIGH'" [class.tone-amber]="flag.severity === 'WARNING'" [class.tone-blue]="flag.severity === 'INFO'">{{ flag.severity }}</span><div><div class="fw-medium">{{ flag.salespersonName }} · {{ flag.title }}</div><div class="text-secondary small">{{ flag.detail }}</div></div></div></button>
             }
-          </div></div>
+          </div>
+          <admin-pagination
+            [page]="coachingPageClamped()"
+            [totalPages]="coachingTotalPages()"
+            [totalElements]="d.coachingFlags.length"
+            [size]="coachingSize()"
+            [sizeOptions]="[5, 10, 20]"
+            (pageChange)="coachingPage.set($event)"
+            (sizeChange)="setCoachingSize($event)"
+          />
+          </div>
         }
 
         <div class="card"><div class="card-header py-2"><span class="fw-medium">Lead source conversion</span></div>
@@ -225,6 +270,29 @@ export class TeamPerformanceComponent implements OnInit {
   protected readonly customTo = signal('');
   protected readonly search = signal('');
   protected readonly healthFilter = signal<HealthFilter>('ALL');
+
+  // --- Order list: paged by the server, for the selected period -----------------------------
+  protected readonly orderRows = signal<TeamOrderRow[]>([]);
+  protected readonly orderPage = signal(0);
+  protected readonly orderSize = signal(readPageSize('teamOrders', 10));
+  protected readonly orderTotal = signal(0);
+  protected readonly orderTotalPages = signal(0);
+  protected readonly ordersLoading = signal(false);
+  protected readonly ordersError = signal<string | null>(null);
+  /** Which list the order card shows: a team lead's own orders or the team's. */
+  protected readonly orderScope = computed<'team' | 'own'>(() =>
+    this.isTeamLead() && this.orderTab() === 'own' ? 'own' : 'team',
+  );
+  /** Guards against an older response overwriting a newer one when the user clicks quickly. */
+  private ordersRequest = 0;
+  /** Same guard for the KPI / leaderboard call made by {@link load}. */
+  private performanceRequest = 0;
+
+  // --- Salespeople table and coaching list: small lists, paged in the browser ---------------
+  protected readonly memberPage = signal(0);
+  protected readonly memberSize = signal(readPageSize('teamMembers', 10));
+  protected readonly coachingPage = signal(0);
+  protected readonly coachingSize = signal(readPageSize('teamCoaching', 5));
   protected readonly periodOptions: { key: PeriodKey; label: string }[] = [
     { key: 'today', label: 'Today' },
     { key: 'week', label: 'Last 7 days' },
@@ -244,6 +312,29 @@ export class TeamPerformanceComponent implements OnInit {
         || (filter === 'RTO' && member.rtoCount > 0);
       return matchesSearch && matchesFilter;
     });
+  });
+
+  protected readonly memberTotalPages = computed(() =>
+    Math.max(1, Math.ceil(this.filteredMembers().length / this.memberSize())),
+  );
+  /** The current members page, pulled back in range if a filter shrank the list. */
+  protected readonly memberPageClamped = computed(() =>
+    Math.min(this.memberPage(), this.memberTotalPages() - 1),
+  );
+  protected readonly memberPageItems = computed(() => {
+    const start = this.memberPageClamped() * this.memberSize();
+    return this.filteredMembers().slice(start, start + this.memberSize());
+  });
+
+  protected readonly coachingTotalPages = computed(() =>
+    Math.max(1, Math.ceil((this.data()?.coachingFlags.length ?? 0) / this.coachingSize())),
+  );
+  protected readonly coachingPageClamped = computed(() =>
+    Math.min(this.coachingPage(), this.coachingTotalPages() - 1),
+  );
+  protected readonly coachingPageItems = computed(() => {
+    const start = this.coachingPageClamped() * this.coachingSize();
+    return (this.data()?.coachingFlags ?? []).slice(start, start + this.coachingSize());
   });
 
   /**
@@ -301,11 +392,82 @@ export class TeamPerformanceComponent implements OnInit {
   load(): void {
     this.loading.set(true);
     this.loadError.set(null);
+    // Same guard as the order list below: clicking Today then This month in quick succession must
+    // not let the slower Today reply overwrite the newer month figures (the period chip would say
+    // "This month" over Today's numbers).
+    const request = ++this.performanceRequest;
     const dates = this.window();
     this.service.performance(dates.from, dates.to).subscribe({
-      next: (res) => { this.data.set(res); this.loading.set(false); },
-      error: () => { this.loadError.set('Could not load team performance. Please try again.'); this.loading.set(false); },
+      next: (res) => {
+        if (request !== this.performanceRequest) return;
+        this.data.set(res);
+        this.memberPage.set(0);
+        this.coachingPage.set(0);
+        this.loading.set(false);
+      },
+      error: () => {
+        if (request !== this.performanceRequest) return;
+        this.loadError.set('Could not load team performance. Please try again.');
+        this.loading.set(false);
+      },
     });
+    this.loadOrders(0);
+  }
+
+  /** Loads one page of the order list for the selected period and tab. */
+  protected loadOrders(page: number): void {
+    const request = ++this.ordersRequest;
+    this.ordersLoading.set(true);
+    this.ordersError.set(null);
+    const dates = this.window();
+    this.service.orders(this.orderScope(), dates.from, dates.to, page, this.orderSize()).subscribe({
+      next: (res) => {
+        if (request !== this.ordersRequest) return;
+        this.orderRows.set(res.content);
+        this.orderPage.set(res.page);
+        this.orderTotal.set(res.totalElements);
+        this.orderTotalPages.set(res.totalPages);
+        this.ordersLoading.set(false);
+      },
+      error: () => {
+        if (request !== this.ordersRequest) return;
+        this.ordersError.set('Could not load the orders. Please try again.');
+        this.ordersLoading.set(false);
+      },
+    });
+  }
+
+  protected selectOrderTab(tab: 'own' | 'team'): void {
+    this.orderTab.set(tab);
+    this.loadOrders(0);
+  }
+
+  protected setOrderSize(size: number): void {
+    this.orderSize.set(size);
+    writePageSize('teamOrders', size);
+    this.loadOrders(0);
+  }
+
+  protected setMemberSize(size: number): void {
+    this.memberSize.set(size);
+    writePageSize('teamMembers', size);
+    this.memberPage.set(0);
+  }
+
+  protected setCoachingSize(size: number): void {
+    this.coachingSize.set(size);
+    writePageSize('teamCoaching', size);
+    this.coachingPage.set(0);
+  }
+
+  protected onSearch(value: string): void {
+    this.search.set(value);
+    this.memberPage.set(0);
+  }
+
+  protected onHealthFilter(value: HealthFilter): void {
+    this.healthFilter.set(value);
+    this.memberPage.set(0);
   }
 
   private window(): { from?: string; to?: string } {

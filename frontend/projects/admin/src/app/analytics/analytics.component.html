@@ -377,7 +377,7 @@
               </tr>
             </thead>
             <tbody>
-              @for (r of slice.rows; track r.dimension) {
+              @for (r of bandRows(slice.title, slice.rows); track r.dimension) {
                 <tr>
                   <td class="fw-medium">{{ r.dimension }}</td>
                   <td class="text-end">{{ r.delivered }}</td>
@@ -391,6 +391,12 @@
             </tbody>
           </table>
         </div>
+        @if (slice.rows.length > 10) {
+          <admin-pagination
+            [page]="bandPage(slice.title, slice.rows.length)" [totalPages]="bandTotalPages(slice.rows.length)"
+            [totalElements]="slice.rows.length" [size]="bandSize()" [showSize]="true" [sizeOptions]="[10, 25, 50]"
+            (pageChange)="setBandPage(slice.title, $event)" (sizeChange)="setBandSize($event)" />
+        }
       </div>
     }
   }

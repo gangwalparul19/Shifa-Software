@@ -251,7 +251,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (p of partials(); track p.receivableId) {
+            @for (p of partialItems(); track p.receivableId) {
               <tr class="rr-line--short">
                 <td>
                   @if (p.orderCode) {
@@ -271,7 +271,7 @@
       </div>
       <!-- Mobile cards -->
       <div class="d-md-none">
-        @for (p of partials(); track p.receivableId) {
+        @for (p of partialItems(); track p.receivableId) {
           <div class="rr-card rr-line--short">
             <div class="d-flex justify-content-between">
               <a [routerLink]="['/orders']" [queryParams]="{ q: p.orderCode }" class="rr-ordercode">{{ p.orderCode || '—' }}</a>
@@ -284,6 +284,10 @@
           </div>
         }
       </div>
+      <admin-pagination
+        [page]="partialPage()" [totalPages]="partialTotalPages()" [totalElements]="partials().length"
+        [size]="partialSize()" [showSize]="true" [sizeOptions]="[10, 20, 50]"
+        (pageChange)="goPartialPage($event)" (sizeChange)="setPartialSize($event)" />
     }
   </div>
   }
@@ -315,7 +319,7 @@
       <div class="d-flex align-items-center justify-content-between mb-2">
         <label class="form-check form-switch mb-0">
           <input class="form-check-input" type="checkbox" [checked]="onlyActionable()"
-            (change)="onlyActionable.set(!onlyActionable())" />
+            (change)="toggleOnlyActionable()" />
           <span class="form-check-label small">Only settled / needs review</span>
         </label>
         <button type="button" class="btn btn-sm btn-outline-secondary" (click)="exportLines()">
@@ -341,7 +345,7 @@
               </tr>
             </thead>
             <tbody>
-              @for (l of visibleLines(); track l.id) {
+              @for (l of lineItems(); track l.id) {
                 <tr [class.rr-line--short]="l.status === 'PARTIALLY_SETTLED'"
                     [class.rr-line--review]="isReview(l.status)">
                   <td>
@@ -371,6 +375,10 @@
             </tbody>
           </table>
         </div>
+        <admin-pagination
+          [page]="linePage()" [totalPages]="lineTotalPages()" [totalElements]="visibleLines().length"
+          [size]="lineSize()" [showSize]="true" [sizeOptions]="[25, 50, 100]"
+          (pageChange)="goLinePage($event)" (sizeChange)="setLineSize($event)" />
       }
     </div>
   </div>

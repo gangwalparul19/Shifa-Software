@@ -3,14 +3,10 @@ package com.shifa.oms.auth;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shifa.oms.auth.dto.LoginRequest;
 import com.shifa.oms.auth.dto.RefreshRequest;
-import com.shifa.oms.auth.dto.RegisterRequest;
 import com.shifa.oms.auth.dto.TokenResponse;
 import com.shifa.oms.common.ApiException;
-import com.shifa.oms.common.DuplicateResourceException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import org.mockito.ArgumentCaptor;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -60,11 +56,7 @@ class AuthServiceTest {
                 Mockito.any(), Mockito.any())).thenReturn(1);
         when(authSessionRepository.rebindIfActive(Mockito.anyString(), Mockito.anyLong(), Mockito.anyLong(),
                 Mockito.any(), Mockito.any())).thenReturn(1);
-        authService = new AuthService(userRepository, passwordEncoder, jwtService,
-                new com.shifa.oms.mail.MockMailService(),
-                new com.shifa.oms.mail.template.EmailRenderer(
-                        com.shifa.oms.mail.template.EmailBrandProperties.defaults()),
-                mfaService, authSessionService);
+        authService = new AuthService(userRepository, passwordEncoder, jwtService, mfaService, authSessionService);
     }
 
     private User activeAdmin(String rawPassword) {
@@ -141,64 +133,6 @@ class AuthServiceTest {
         assertThat(jwtService.parse(refreshed.accessToken(), TokenType.ACCESS).username()).isEqualTo("admin");
     }
 
-    // --- Customer self-registration (Phase B) -------------------------------
-
-    @Test
-    void registerCreatesCustomerAndReturnsTokenPair() {
-        when(userRepository.existsByUsername("9876543210")).thenReturn(false);
-        when(userRepository.save(Mockito.any(User.class))).thenAnswer(inv -> {
-            User u = inv.getArgument(0);
-            setId(u, 42L);
-            return u;
-        });
-
-        TokenResponse response = authService.register(
-                new RegisterRequest("Neha Sharma", "9876543210", null, "secret123"));
-
-        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        Mockito.verify(userRepository).save(captor.capture());
-        User saved = captor.getValue();
-        assertThat(saved.getRole()).isEqualTo(Role.CUSTOMER);
-        assertThat(saved.getUsername()).isEqualTo("9876543210");
-        assertThat(saved.getMobile()).isEqualTo("9876543210");
-        assertThat(saved.isActive()).isTrue();
-        // Password is stored hashed, never in plaintext.
-        assertThat(saved.getPasswordHash()).isNotEqualTo("secret123");
-        assertThat(passwordEncoder.matches("secret123", saved.getPasswordHash())).isTrue();
-        // Token pair usable for auto-login.
-        assertThat(response.role()).isEqualTo("CUSTOMER");
-        assertThat(jwtService.parse(response.accessToken(), TokenType.ACCESS).role()).isEqualTo(Role.CUSTOMER);
-    }
-
-    @Test
-    void registerUsesEmailAsUsernameWhenProvided() {
-        when(userRepository.existsByUsername("neha@example.com")).thenReturn(false);
-        when(userRepository.save(Mockito.any(User.class))).thenAnswer(inv -> {
-            User u = inv.getArgument(0);
-            setId(u, 43L);
-            return u;
-        });
-
-        authService.register(new RegisterRequest("Neha", "9876543210", "neha@example.com", "secret123"));
-
-        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        Mockito.verify(userRepository).save(captor.capture());
-        assertThat(captor.getValue().getUsername()).isEqualTo("neha@example.com");
-        assertThat(captor.getValue().getEmail()).isEqualTo("neha@example.com");
-    }
-
-    @Test
-    void registerRejectsDuplicateUsernameWith409() {
-        when(userRepository.existsByUsername("9876543210")).thenReturn(true);
-
-        assertThatThrownBy(() -> authService.register(
-                new RegisterRequest("Neha", "9876543210", null, "secret123")))
-                .isInstanceOf(DuplicateResourceException.class)
-                .satisfies(ex -> assertThat(((ApiException) ex).getStatus().value()).isEqualTo(409));
-
-        Mockito.verify(userRepository, Mockito.never()).save(Mockito.any());
-    }
-
     @Test
     void refreshWithAnAccessTokenIsRejected() {
         User admin = activeAdmin("secret123");
@@ -231,11 +165,7 @@ class AuthServiceTest {
         MfaService laterMfa = new MfaService(userRepository, laterJwt,
                 new TotpService(Clock.fixed(NOW.plusSeconds(30 * 60L), ZoneOffset.UTC)), "Shifa OMS",
                 Clock.fixed(NOW.plusSeconds(30 * 60L), ZoneOffset.UTC));
-        AuthService laterAuth = new AuthService(userRepository, passwordEncoder, laterJwt,
-                new com.shifa.oms.mail.MockMailService(),
-                new com.shifa.oms.mail.template.EmailRenderer(
-                        com.shifa.oms.mail.template.EmailBrandProperties.defaults()),
-                laterMfa);
+        AuthService laterAuth = new AuthService(userRepository, passwordEncoder, laterJwt, laterMfa);
 
         TokenResponse refreshed = laterAuth.refresh(new RefreshRequest(refreshToken));
         assertThat(refreshed.accessToken()).isNotBlank();
