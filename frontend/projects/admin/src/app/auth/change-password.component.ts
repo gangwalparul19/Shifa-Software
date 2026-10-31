@@ -12,8 +12,8 @@ import {
 
 /**
  * Forced / self-service "set a new password" screen. Shown after an admin
- * resets a user's password: the user signs in with the temporary password
- * {@code Welcome@123} and is routed here (by the login flow + the shell's
+ * resets a user's password: the user signs in with the one-time random
+ * credential shown to the administrator and is routed here to choose their own
  * force-change guard) to choose their own strong password before using the app.
  *
  * <p>Lives outside the admin shell (like login) so a forced user sees no app

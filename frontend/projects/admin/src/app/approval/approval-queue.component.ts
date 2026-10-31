@@ -10,6 +10,7 @@ import { AdminEventsService } from '../dashboard/admin-events.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
+import { AuthenticatedBlobService } from '../shared/authenticated-blob.service';
 import { StatusBadgeComponent, humanizeStatus } from '../shared/status-badge.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
@@ -65,6 +66,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
   private readonly fb = inject(FormBuilder);
   private readonly confirmService = inject(ConfirmService);
   protected readonly events = inject(AdminEventsService);
+  private readonly blobs = inject(AuthenticatedBlobService);
 
   protected readonly queueRaw = signal<ApprovalQueueItem[]>([]);
 
@@ -584,14 +586,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
 
   /** Humanises an enum status (e.g. PARTIALLY_PAID → "Partially Paid") for the pill. */
   formatStatus(status: string | undefined): string {
-    if (!status) {
-      return '';
-    }
-    return status
-      .toLowerCase()
-      .split('_')
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(' ');
+    return status ? humanizeStatus(status) : '';
   }
 
   /** A Google Maps search link for an order's shipping address. */
@@ -709,15 +704,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     this.invoiceLoading.set(true);
     this.service.invoice(item.id).subscribe({
       next: (blob) => {
-        const url = URL.createObjectURL(blob);
-        const opened = window.open(url, '_blank');
-        if (!opened) {
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `invoice-${item.orderCode}.pdf`;
-          a.click();
-        }
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        this.blobs.open(blob, `invoice-${item.orderCode}.pdf`, 'invoice.pdf');
         this.invoiceLoading.set(false);
       },
       error: () => {

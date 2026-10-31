@@ -84,27 +84,45 @@ management:
 # and/or from environment variables in production.
 # -----------------------------------------------------------------------------
 app:
+  webhooks:
+    # Local/demo/test opt out explicitly; production overrides this to true.
+    # Set WEBHOOK_HMAC_STRICT=true for any non-production deployment receiving
+    # real webhook traffic.
+    hmac-strict: ${WEBHOOK_HMAC_STRICT:false}
   security:
+    # Only Nginx on this host is trusted to supply X-Forwarded-For. Add exact
+    # proxy addresses/CIDRs through TRUSTED_PROXY_CIDRS when topology changes;
+    # never use 0.0.0.0/0 here.
+    trusted-proxies: ${TRUSTED_PROXY_CIDRS:127.0.0.1/32,::1/128}
     jwt:
       # Base64-encoded HMAC secret; MUST be overridden in prod via env var.
       secret: ${JWT_SECRET:change-me-local-development-secret-change-me-please}
       access-token-ttl: PT15M
       refresh-token-ttl: P7D
+      # Sliding authenticated-session idle timeout. Activity extends this server-side deadline.
+      session-ttl: PT30M
       # Short-lived ticket issued between the password step and the TOTP step.
       mfa-ticket-ttl: PT5M
     mfa:
       # Label shown in the user's authenticator app (Google Authenticator etc.).
       issuer: ${MFA_ISSUER:Shifa OMS}
-  oci:
-    object-storage:
-      region: ${OCI_REGION:ap-mumbai-1}
-      namespace: ${OCI_OS_NAMESPACE:}
-      bucket: ${OCI_OS_BUCKET:shifa-oms}
-      par-url-ttl: PT10M
-      # AUTH_MODE: INSTANCE_PRINCIPAL (on OCI VM) or CONFIG_FILE (local dev)
-      auth-mode: ${OCI_AUTH_MODE:CONFIG_FILE}
-      config-file-path: ${OCI_CONFIG_FILE:~/.oci/config}
-      config-profile: ${OCI_CONFIG_PROFILE:DEFAULT}
+      # AES-GCM key for TOTP secrets. Production must provide MFA_ENCRYPTION_KEY.
+      encryption-key: ${MFA_ENCRYPTION_KEY:}
+    password-reset-ttl: ${PASSWORD_RESET_TTL:PT24H}
+  outbox:
+    claim:
+      # Integration drainers claim at most this many rows per cycle. Claims are
+      # short DB transactions; external calls happen after commit.
+      batch-size: ${OUTBOX_CLAIM_BATCH_SIZE:50}
+      # Must exceed the configured provider timeout. An expired lease is recovered
+      # by another instance; completion is fenced by the lease token.
+      lease-duration-ms: ${OUTBOX_CLAIM_LEASE_DURATION_MS:120000}
+      # Set this to a stable instance name when more than one JVM shares MySQL.
+      owner: ${OUTBOX_CLAIM_OWNER:}
+    sse:
+      # SSE is intentionally node-local, so it is guarded only against local
+      # overlap and remains a single-instance concern without shared pub/sub.
+      batch-size: ${OUTBOX_SSE_BATCH_SIZE:100}
   mail:
     # MOCK (default, logs to console) or SMTP (real send via spring.mail.*)
     mode: ${MAIL_MODE:MOCK}
@@ -234,8 +252,8 @@ app:
       # It NEVER leaves the server; the client only echoes an opaque token.
       secret: ${PAYMENT_SANDBOX_SECRET:shifa-sandbox-payment-secret-change-me}
     razorpay:
-      # Real Razorpay credentials (only used when mode=RAZORPAY). Move to env/OCI
-      # Vault in production; the key-secret must never reach the browser.
+      # Real Razorpay credentials (only used when mode=RAZORPAY). Keep them in
+      # environment variables or a secrets manager; the key-secret must never reach the browser.
       key-id: ${RAZORPAY_KEY_ID:}
       key-secret: ${RAZORPAY_KEY_SECRET:}
   backup:

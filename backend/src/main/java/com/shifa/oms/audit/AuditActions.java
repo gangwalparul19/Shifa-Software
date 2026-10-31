@@ -49,6 +49,10 @@ public final class AuditActions {
     public static final String USER_MFA_DISABLED = "USER_MFA_DISABLED";
     /** An admin cleared a user's MFA enrollment (lost-device recovery; forces re-enroll). */
     public static final String USER_MFA_RESET = "USER_MFA_RESET";
+    /** MFA enrollment and verification events; never include secret/code data. */
+    public static final String USER_MFA_ENROLLMENT_STARTED = "USER_MFA_ENROLLMENT_STARTED";
+    public static final String USER_MFA_ENROLLMENT_COMPLETED = "USER_MFA_ENROLLMENT_COMPLETED";
+    public static final String USER_MFA_FAILED = "USER_MFA_FAILED";
 
     // Staff onboarding profiles + ID verification.
     public static final String STAFF_PROFILE_UPDATED = "STAFF_PROFILE_UPDATED";

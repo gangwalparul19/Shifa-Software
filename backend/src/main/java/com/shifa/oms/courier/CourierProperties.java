@@ -12,7 +12,9 @@ import java.time.Duration;
  *                          {@code HTTP} (real Courier API, cloud)
  * @param baseUrl           the real Courier API base URL (HTTP mode)
  * @param apiKey            the API key for the real Courier API (HTTP mode)
- * @param webhookHmacSecret shared secret used to HMAC-validate inbound webhooks
+ * @param webhookHmacSecret shared secret used to HMAC-validate inbound webhooks;
+ *                          blank values are accepted only in explicit non-strict
+ *                          local/demo/test mode
  * @param requestTimeout    per-call timeout after which a courier call is treated
  *                          as a failure (Req 12.4)
  * @param maxAttempts       maximum assignment attempts before the outbox event is

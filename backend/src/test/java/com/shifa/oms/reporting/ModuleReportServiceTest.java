@@ -19,6 +19,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
@@ -47,10 +48,10 @@ class ModuleReportServiceTest {
 
     @Test
     void expensesReportMapsRowsWindowedAndOldestFirst() {
-        when(expenseRepository.findAll()).thenReturn(List.of(
+        when(expenseRepository.findForReport(any(), any())).thenReturn(List.of(
                 new Expense("Marketing", "Ads", new BigDecimal("2000.00"), LocalDate.of(2025, 3, 5), 1L),
                 new Expense("Rent", "Office", new BigDecimal("5000.00"), LocalDate.of(2025, 3, 1), 1L),
-                // Outside the window — must be excluded.
+                // Outside the window — the database query should exclude this in production.
                 new Expense("Misc", "Old", new BigDecimal("100.00"), LocalDate.of(2025, 2, 1), 1L)));
 
         ReportResponse res = service().generate(
@@ -65,7 +66,7 @@ class ModuleReportServiceTest {
 
     @Test
     void purchaseOrdersReportHasContractHeaders() {
-        when(purchaseOrderRepository.findAll()).thenReturn(List.of());
+        when(purchaseOrderRepository.findForReport(any(), any())).thenReturn(List.of());
         ReportResponse res = service().generate(ReportType.PURCHASE_ORDERS, null, null);
         assertThat(res.headers())
                 .containsExactly("PO Number", "Supplier", "Status", "Total", "Ordered On", "Received On");
@@ -74,7 +75,7 @@ class ModuleReportServiceTest {
 
     @Test
     void returnsReportHasContractHeaders() {
-        when(orderReturnRepository.findAll()).thenReturn(List.of());
+        when(orderReturnRepository.findForReport(any(), any())).thenReturn(List.of());
         ReportResponse res = service().generate(ReportType.RETURNS, null, null);
         assertThat(res.headers())
                 .containsExactly("Order", "Reason", "Status", "Refund", "Restocked", "Created On");
@@ -83,7 +84,7 @@ class ModuleReportServiceTest {
 
     @Test
     void stockReportHasContractHeaders() {
-        when(stockMovementRepository.findAll()).thenReturn(List.of());
+        when(stockMovementRepository.findForReport(any(), any())).thenReturn(List.of());
         ReportResponse res = service().generate(ReportType.STOCK, null, null);
         assertThat(res.headers())
                 .containsExactly("Date", "Product", "Type", "Change", "Balance", "Reason");

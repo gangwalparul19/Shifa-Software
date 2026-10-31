@@ -1,20 +1,19 @@
-import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
+import { AuthenticatedBlobService } from '../shared/authenticated-blob.service';
 import { BackupRun, BackupRunResult } from './backups.model';
 
 /**
  * Data access for the admin database Backups feature ({@code /api/admin/backups},
- * ADMIN only). JSON calls go through the shared {@link ApiClient}; the archive
- * download uses {@link HttpClient} directly with a {@code blob} response. Both
- * paths run through the auth interceptor (bearer token) and the backend enforces
- * the ADMIN role.
+ * JSON calls go through the shared {@link ApiClient}; the archive download uses
+ * the shared authenticated blob transport and browser download helper. Both
+ * paths run through the auth interceptor and the backend enforces ADMIN.
  */
 @Injectable({ providedIn: 'root' })
 export class BackupsService {
   private readonly api = inject(ApiClient);
-  private readonly http = inject(HttpClient);
+  private readonly blobs = inject(AuthenticatedBlobService);
 
   /** Recent backup runs, most recent first (backend orders them). */
   history(): Observable<BackupRun[]> {
@@ -28,8 +27,6 @@ export class BackupsService {
 
   /** Download a successful run's archive (gzip) as a Blob for the browser to save. */
   download(id: number): Observable<Blob> {
-    return this.http.get(this.api.url(`/api/admin/backups/${id}/download`), {
-      responseType: 'blob',
-    });
+    return this.blobs.get(`/api/admin/backups/${id}/download`);
   }
 }

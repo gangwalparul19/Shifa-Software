@@ -182,9 +182,11 @@ export class AdminEventsService {
       this.source = null;
     }
     this.status.set('closed');
+    this.liveStats.set(null);
+    this.activity.set(null);
+    this.clearNotifications();
   }
 
-  /** Clears the notification feed (e.g. a "mark all read" action). */
   clearNotifications(): void {
     this.notifications.set([]);
   }

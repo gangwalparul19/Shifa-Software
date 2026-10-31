@@ -1,4 +1,5 @@
 import { Component, EventEmitter, Input, OnInit, Output, inject, signal } from '@angular/core';
+import { todayIst } from '../shared/business-date.util';
 import {
   DirectReportPerformance,
   TeamMemberPerformance,
@@ -169,7 +170,7 @@ export class TeamMemberDetailComponent implements OnInit {
   }
 
   protected todayRevenue(detail: DirectReportPerformance): number {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayIst();
     return Number(detail.performance.trend.find((point) => point.date === today)?.revenue ?? 0);
   }
 

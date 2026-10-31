@@ -38,4 +38,13 @@ public interface ExpenseRepository extends JpaRepository<Expense, Long> {
 
     /** All expenses incurred within an inclusive date window, used by the P&amp;L report. */
     List<Expense> findByIncurredOnBetween(LocalDate from, LocalDate to);
+
+    /** Report rows filtered in SQL; null bounds intentionally mean all time. */
+    @Query("""
+            SELECT e FROM Expense e
+            WHERE (:from IS NULL OR e.incurredOn >= :from)
+              AND (:to IS NULL OR e.incurredOn <= :to)
+            ORDER BY e.incurredOn ASC
+            """)
+    List<Expense> findForReport(@Param("from") LocalDate from, @Param("to") LocalDate to);
 }

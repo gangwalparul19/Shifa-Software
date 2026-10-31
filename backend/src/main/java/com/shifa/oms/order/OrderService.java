@@ -1784,6 +1784,10 @@ public class OrderService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
+    private static String normalizeUtr(String value) {
+        return UtrNormalizer.normalize(value);
+    }
+
     private void requirePositiveTotal(Money total) {
         if (total.isZero() || total.isNegative()) {
             throw new ValidationException("An order must have a positive Total_Amount.");
@@ -1963,7 +1967,7 @@ public class OrderService {
     private PaymentCapture resolvePaymentCapture(String methodRaw, Long accountId, String utrRaw,
                                                  BigDecimal amount, Long currentOrderId) {
         PaymentMethod method = PaymentMethod.from(methodRaw);
-        String utr = trimToNull(utrRaw);
+        String utr = normalizeUtr(utrRaw);
         if (bankAccountRepository == null) {
             return new PaymentCapture(method, accountId, null, null, utr);
         }

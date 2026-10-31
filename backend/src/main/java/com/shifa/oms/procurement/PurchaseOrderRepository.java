@@ -37,6 +37,17 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
                                @Param("q") String q,
                                Pageable pageable);
 
+    /** Report rows filtered in SQL; null bounds intentionally mean all time. */
+    @Query("""
+            SELECT po FROM PurchaseOrder po
+            WHERE (:from IS NULL OR po.createdAt >= :from)
+              AND (:to IS NULL OR po.createdAt < :to)
+            ORDER BY po.createdAt ASC
+            """)
+    java.util.List<PurchaseOrder> findForReport(
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to") java.time.LocalDateTime to);
+
     /**
      * Sum of PO totals created within an inclusive timestamp window, for the GST
      * dashboard's "purchases" figure. Returns {@code null} when no PO matches

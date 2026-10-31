@@ -4,6 +4,7 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { nowIstLocalMinute } from '../shared/business-date.util';
 import { IstDatePipe } from '../shared/ist-date.pipe';
 import { ToastService } from '../shared/toast.service';
 import { TasksService } from './tasks.service';
@@ -66,7 +67,7 @@ export class TasksComponent implements OnInit {
     customerMobile: [''],
   });
 
-  private readonly today = new Date().toISOString().slice(0, 16);
+  private readonly today = nowIstLocalMinute();
 
   protected readonly openCount = computed(
     () => this.tasks().filter((t) => t.status === 'OPEN').length,

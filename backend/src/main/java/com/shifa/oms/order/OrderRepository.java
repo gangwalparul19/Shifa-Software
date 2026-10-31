@@ -4,7 +4,10 @@ import com.shifa.oms.statemachine.OrderStatus;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+
+import jakarta.persistence.LockModeType;
 import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
@@ -34,6 +37,11 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
      */
     Optional<OrderEntity> findByShopifyOrderId(String shopifyOrderId);
 
+    /** Locks a financial target order during settlement allocation. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select o from OrderEntity o where o.id = :id")
+    Optional<OrderEntity> findByIdForUpdate(@Param("id") Long id);
+
     /**
      * The order whose {@code order_code} equals this value (the value encoded in
      * the internal-label barcode), or empty when no order matches. Backs the
@@ -43,6 +51,19 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
 
     /** Lookup by the opaque customer tracking token (ENHANCEMENT 2.2, V77). */
     Optional<OrderEntity> findByTrackingToken(String trackingToken);
+
+    /** Compact order id/source projection for channel-scoped receivable totals. */
+    @Query(value = """
+            SELECT o.id AS orderId, o.source AS source
+            FROM orders o
+            WHERE o.active = 1
+            """, nativeQuery = true)
+    List<OrderSourceRow> findAllOrderSources();
+
+    interface OrderSourceRow {
+        Long getOrderId();
+        String getSource();
+    }
 
     /**
      * All orders in a given lifecycle status, most recent first. Used to build
@@ -155,6 +176,101 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
      */
     List<OrderEntity> findByCreatedAtBetween(java.time.LocalDateTime from, java.time.LocalDateTime to);
 
+    /** Revenue sum for an insight window, excluding written-off orders in SQL. */
+    @Query("""
+            SELECT COALESCE(SUM(o.totalAmount), 0) FROM OrderEntity o
+            WHERE o.createdAt >= :from AND o.createdAt < :to
+              AND (o.orderStatus IS NULL OR o.orderStatus NOT IN (
+                  com.shifa.oms.statemachine.OrderStatus.REJECTED,
+                  com.shifa.oms.statemachine.OrderStatus.PAYMENT_REJECTED,
+                  com.shifa.oms.statemachine.OrderStatus.CANCELLED))
+            """)
+    java.math.BigDecimal insightRevenueBetween(
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to") java.time.LocalDateTime to);
+
+    /** State-level insight aggregates; avoids loading one entity per order. */
+    @Query("""
+            SELECT o.state AS state,
+                   COUNT(o.id) AS orderCount,
+                   SUM(CASE WHEN o.orderStatus IN (
+                       com.shifa.oms.statemachine.OrderStatus.DELIVERED,
+                       com.shifa.oms.statemachine.OrderStatus.CLOSED,
+                       com.shifa.oms.statemachine.OrderStatus.COD_COLLECTED)
+                       THEN 1 ELSE 0 END) AS deliveredCount,
+                   SUM(CASE WHEN o.orderStatus IN (
+                       com.shifa.oms.statemachine.OrderStatus.RTO,
+                       com.shifa.oms.statemachine.OrderStatus.DELIVERY_FAILED,
+                       com.shifa.oms.statemachine.OrderStatus.CUSTOMER_REJECTED,
+                       com.shifa.oms.statemachine.OrderStatus.REDISPATCH)
+                       THEN 1 ELSE 0 END) AS failedCount,
+                   COALESCE(SUM(CASE WHEN o.orderStatus IS NULL OR o.orderStatus NOT IN (
+                       com.shifa.oms.statemachine.OrderStatus.REJECTED,
+                       com.shifa.oms.statemachine.OrderStatus.PAYMENT_REJECTED,
+                       com.shifa.oms.statemachine.OrderStatus.CANCELLED)
+                       THEN o.totalAmount ELSE 0 END), 0) AS revenue
+            FROM OrderEntity o
+            WHERE o.createdAt >= :from AND o.createdAt < :to
+            GROUP BY o.state
+            """)
+    List<InsightLocationRow> insightLocationRows(
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to") java.time.LocalDateTime to);
+
+    /** Historical terminal/failure counts grouped by destination state. */
+    @Query("""
+            SELECT o.state AS state,
+                   SUM(CASE WHEN o.orderStatus IN (
+                       com.shifa.oms.statemachine.OrderStatus.COD_COLLECTED,
+                       com.shifa.oms.statemachine.OrderStatus.CLOSED,
+                       com.shifa.oms.statemachine.OrderStatus.CANCELLED,
+                       com.shifa.oms.statemachine.OrderStatus.RTO,
+                       com.shifa.oms.statemachine.OrderStatus.REDISPATCH)
+                       THEN 1 ELSE 0 END) AS terminalCount,
+                   SUM(CASE WHEN o.orderStatus IN (
+                       com.shifa.oms.statemachine.OrderStatus.RTO,
+                       com.shifa.oms.statemachine.OrderStatus.REDISPATCH)
+                       THEN 1 ELSE 0 END) AS failedCount
+            FROM OrderEntity o
+            GROUP BY o.state
+            """)
+    List<InsightStateRiskRow> insightStateRiskRows();
+
+    /** Historical failed-order counts grouped by customer mobile. */
+    @Query("""
+            SELECT o.customerMobile AS mobile, COUNT(o.id) AS failedCount
+            FROM OrderEntity o
+            WHERE o.orderStatus IN (
+                com.shifa.oms.statemachine.OrderStatus.RTO,
+                com.shifa.oms.statemachine.OrderStatus.DELIVERY_FAILED,
+                com.shifa.oms.statemachine.OrderStatus.CUSTOMER_REJECTED,
+                com.shifa.oms.statemachine.OrderStatus.REDISPATCH)
+            GROUP BY o.customerMobile
+            """)
+    List<InsightFailedCustomerRow> insightFailedCustomerRows();
+
+    /** Projection used by the statistical-insights state aggregation. */
+    interface InsightLocationRow {
+        String getState();
+        long getOrderCount();
+        long getDeliveredCount();
+        long getFailedCount();
+        java.math.BigDecimal getRevenue();
+    }
+
+    /** Projection used by the historical RTO-risk state aggregation. */
+    interface InsightStateRiskRow {
+        String getState();
+        long getTerminalCount();
+        long getFailedCount();
+    }
+
+    /** Projection used by the historical RTO-risk customer aggregation. */
+    interface InsightFailedCustomerRow {
+        String getMobile();
+        long getFailedCount();
+    }
+
     /**
      * Orders created within an inclusive timestamp window with their line items
      * eagerly fetched in one query, for the GST accounting service — which reads
@@ -171,10 +287,27 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
                                                           @Param("to") java.time.LocalDateTime to);
 
     /**
+     * Loads the given orders together with their line items in one statement.
+     * Reports run this over orders they have already loaded (via the scoped
+     * native finders) purely to initialise each order's lazy {@code lineItems}
+     * in a batch, instead of one lazy-load query per order. Callers must pass a
+     * non-empty collection and keep it to a bounded size (chunk large sets).
+     */
+    @Query("""
+            SELECT DISTINCT o FROM OrderEntity o
+            LEFT JOIN FETCH o.lineItems
+            WHERE o.id IN :ids
+            """)
+    List<OrderEntity> findByIdInWithLineItems(@Param("ids") Collection<Long> ids);
+
+    /**
      * Orders for a customer mobile number, most recent first (Req 15.1 agent
      * lookup by mobile). May match several orders for a repeat customer.
      */
     List<OrderEntity> findByCustomerMobileOrderByCreatedAtDesc(String customerMobile);
+
+    /** At most 25 newest orders for the public mobile tracking cards. */
+    List<OrderEntity> findTop25ByCustomerMobileOrderByCreatedAtDescIdDesc(String customerMobile);
 
     /**
      * Active (not REJECTED/CANCELLED) orders for a customer mobile created within
@@ -242,6 +375,19 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             ORDER BY o.created_at DESC
             """, nativeQuery = true)
     List<OrderEntity> findAllScoped(@Param("createdBy") Long createdBy);
+
+    /** All active orders in an optional created-at window for report generation. */
+    @Query(value = """
+            SELECT o.* FROM orders o
+            WHERE o.active = 1
+              AND (:createdBy IS NULL OR o.created_by = :createdBy)
+              AND (:fromTs IS NULL OR o.created_at >= :fromTs)
+              AND (:toTs IS NULL OR o.created_at < :toTs)
+            ORDER BY o.created_at DESC, o.id DESC
+            """, nativeQuery = true)
+    List<OrderEntity> findAllScopedBetween(@Param("createdBy") Long createdBy,
+                                            @Param("fromTs") java.time.LocalDateTime fromTs,
+                                            @Param("toTs") java.time.LocalDateTime toTs);
 
     /**
      * All soft-deleted (inactive) orders, most recent first — the admin "Deleted

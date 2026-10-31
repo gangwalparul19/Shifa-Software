@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.util.List;
+import jakarta.persistence.LockModeType;
 
 /**
  * Spring Data repository for {@link ReceivableEntity} rows.
@@ -20,7 +21,11 @@ import java.util.List;
 public interface ReceivableRepository extends JpaRepository<ReceivableEntity, Long>,
         JpaSpecificationExecutor<ReceivableEntity> {
 
-    /** Existing receivables of a type for an order (used to avoid duplicates on redelivery). */
+    @org.springframework.data.jpa.repository.Lock(LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select r from ReceivableEntity r where r.id = :id")
+    java.util.Optional<ReceivableEntity> findByIdForUpdate(@org.springframework.data.repository.query.Param("id") Long id);
+
+
     List<ReceivableEntity> findByOrderIdAndType(Long orderId, ReceivableType type);
 
     /**

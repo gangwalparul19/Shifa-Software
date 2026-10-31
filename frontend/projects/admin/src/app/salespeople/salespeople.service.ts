@@ -2,6 +2,8 @@ import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient, Role } from 'core';
+import { filenameFromContentDisposition } from '../shared/blob-download.util';
+import { labelledFilename } from '../shared/report-filename.util';
 
 /** Accepted government ID document types (mirrors the backend IdProofType enum). */
 export type IdProofType =
@@ -252,11 +254,16 @@ export class SalespeopleService {
         .get(this.api.url(path), { params, observe: 'response', responseType: 'blob' })
         .subscribe({
           next: (response: HttpResponse<Blob>) => {
-            const disposition = response.headers.get('Content-Disposition');
-            const match = disposition ? /filename="?([^";]+)"?/i.exec(disposition) : null;
+            // The server names the file after the person and the dates it covers. If the
+            // header is unreadable, fall back to a still-descriptive name built from the
+            // report and period (the exact dates are resolved server-side).
+            const title =
+              salespersonId == null ? 'Salespeople Performance' : 'Salesperson Performance';
             subscriber.next({
               blob: response.body ?? new Blob(),
-              filename: match?.[1] ?? `salesperson-performance.${format}`,
+              filename:
+                filenameFromContentDisposition(response.headers.get('Content-Disposition')) ??
+                labelledFilename(title, period.toLowerCase(), format),
             });
             subscriber.complete();
           },

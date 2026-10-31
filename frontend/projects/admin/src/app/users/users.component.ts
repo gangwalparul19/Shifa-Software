@@ -22,7 +22,6 @@ import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { verificationBadgeClass } from '../shared/status-badge.component';
 import { roleLabel } from '../shared/role-label';
-import { TEMPORARY_PASSWORD } from '../shared/password-policy';
 
 /**
  * Admin-only staff user management (Req 5.4).
@@ -87,9 +86,6 @@ export class UsersComponent implements OnInit {
   protected readonly creating = signal(false);
   protected readonly formOpen = computed(() => this.creating() || this.editing() !== null);
   protected readonly formError = signal<string | null>(null);
-
-  /** The fixed temporary password an admin reset sets (shown in the confirm). */
-  protected readonly temporaryPassword = TEMPORARY_PASSWORD;
 
   /** The signed-in admin's username, used to prevent self-deactivation in the UI. */
   protected readonly currentUsername = computed(() => this.auth.session()?.username ?? null);
@@ -499,11 +495,7 @@ export class UsersComponent implements OnInit {
 
   // --- Reset password -----------------------------------------------------
 
-  /**
-   * Resets the user's password to the fixed temporary password. The admin does
-   * not choose a password — on their next login the user signs in with
-   * {@link TEMPORARY_PASSWORD} and is forced to set their own strong one.
-   */
+  /** Issues a random credential and shows it only once to the administrator. */
   async resetPassword(user: AdminUser): Promise<void> {
     if (this.actioningId() !== null) {
       return;
@@ -511,9 +503,8 @@ export class UsersComponent implements OnInit {
     const confirmed = await this.confirmService.confirm({
       title: 'Reset password',
       message:
-        `Reset the password for "${user.username}" to the temporary password ` +
-        `"${TEMPORARY_PASSWORD}"? Their current password stops working immediately, and ` +
-        `they will be required to set a new password the next time they sign in.`,
+        `Reset the password for "${user.username}"? Their current password stops working immediately. ` +
+        `A random temporary credential will be shown once and expires automatically; the user must change it on sign-in.`,
       confirmLabel: 'Reset password',
       icon: 'ti-key',
     });
@@ -522,11 +513,11 @@ export class UsersComponent implements OnInit {
     }
     this.actioningId.set(user.id);
     this.service.resetPassword(user.id).subscribe({
-      next: (updated) => {
+      next: (result) => {
         this.actioningId.set(null);
-        this.users.update((items) => items.map((u) => (u.id === updated.id ? updated : u)));
+        this.users.update((items) => items.map((u) => (u.id === result.user.id ? result.user : u)));
         this.toasts.success(
-          `Password reset for ${user.username}. Temporary password: ${TEMPORARY_PASSWORD}`,
+          `Password reset for ${user.username}. Temporary credential (show once): ${result.temporaryCredential}`,
         );
       },
       error: (err: HttpErrorResponse) => {

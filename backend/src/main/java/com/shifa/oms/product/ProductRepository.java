@@ -34,6 +34,35 @@ public interface ProductRepository extends JpaRepository<Product, Long>,
      */
     List<Product> findAllByOrderByNameAsc();
 
+    /** Compact catalogue projection used by GSTR-1 Table-12 UQC resolution. */
+    @Query("""
+            SELECT p.hsnCode AS hsnCode, p.uqc AS uqc
+            FROM Product p
+            WHERE p.hsnCode IS NOT NULL AND TRIM(p.hsnCode) <> ''
+            """)
+    List<HsnUqcRow> findHsnUqcRows();
+
+    interface HsnUqcRow {
+        String getHsnCode();
+        String getUqc();
+    }
+
+    /**
+     * Every product's category name (null when uncategorised) in one query, so
+     * reports can attach a category to each sold line without lazy-loading a
+     * {@link Category} per product.
+     */
+    @Query("""
+            SELECT p.id AS productId, c.name AS categoryName
+            FROM Product p LEFT JOIN p.category c
+            """)
+    List<ProductCategoryRow> findProductCategoryRows();
+
+    interface ProductCategoryRow {
+        Long getProductId();
+        String getCategoryName();
+    }
+
     /** A single product visible in the storefront, else empty (Req 1.2, 1.7). */
     Optional<Product> findByIdAndVisibility(Long id, ProductVisibility visibility);
 

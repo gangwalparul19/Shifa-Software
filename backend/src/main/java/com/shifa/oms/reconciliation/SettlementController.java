@@ -7,6 +7,7 @@ import com.shifa.oms.reconciliation.dto.SettlementBatchResponse;
 import com.shifa.oms.reconciliation.dto.SettlementImportResponse;
 import com.shifa.oms.reconciliation.dto.SettlementLineRequest;
 import com.shifa.oms.reconciliation.dto.SettlementLineResponse;
+import com.shifa.oms.reconciliation.dto.SettlementCandidateResponse;
 import com.shifa.oms.reconciliation.dto.SettlementKpiResponse;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -78,6 +79,12 @@ public class SettlementController {
         } catch (IOException ex) {
             throw new UncheckedIOException("Failed to read the settlement file.", ex);
         }
+    }
+
+    @GetMapping("/lines/{id}/candidates")
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','CA')")
+    public List<SettlementCandidateResponse> candidates(@PathVariable Long id) {
+        return service.candidatesForLine(id);
     }
 
     @PostMapping("/lines/{id}/resolve")

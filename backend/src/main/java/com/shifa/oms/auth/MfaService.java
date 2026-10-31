@@ -1,5 +1,7 @@
 package com.shifa.oms.auth;
 
+import com.shifa.oms.audit.AuditActions;
+import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.auth.dto.MfaChallengeResponse;
 import com.shifa.oms.common.ApiException;
 import com.shifa.oms.common.ResourceNotFoundException;
@@ -12,26 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.LocalDateTime;
 
-/**
- * Orchestrates the TOTP (Google Authenticator) multi-factor flow, keeping all
- * MFA logic out of {@link AuthService}.
- *
- * <p>After a correct password, {@link #challengeFor(User)} decides what the user
- * owes:
- * <ul>
- *   <li>MFA not active (off, or on-but-not-enrolled is handled below) → the
- *       caller issues tokens as normal;</li>
- *   <li>enrolled → an {@code MFA_REQUIRED} challenge (prompt for a code);</li>
- *   <li>on but not enrolled → an {@code MFA_ENROLL} challenge carrying a fresh
- *       secret + QR provisioning URI, so the user enrolls before their first
- *       code — never locked out by the flag alone.</li>
- * </ul>
- *
- * <p>The second-factor step is completed by {@link #verifyLogin(String)} (an
- * enrolled user's code) or {@link #confirmEnrollment(String, String)} (the first
- * code, which also finalises enrollment). Both resolve the user from the signed
- * MFA ticket and leave token issuance to the caller.
- */
+/** TOTP enrollment and verification with encrypted-at-rest secret handling. */
 @Service
 public class MfaService {
 
@@ -39,115 +22,186 @@ public class MfaService {
     private final JwtService jwtService;
     private final TotpService totpService;
     private final Clock clock;
-
-    /** Label shown in the authenticator app (the "issuer"). */
     private final String issuer;
+    private final MfaSecretCrypto crypto;
+    private final AuditService auditService;
+    private final AuthSessionService authSessionService;
 
     @Autowired
     public MfaService(UserRepository userRepository,
                       JwtService jwtService,
                       TotpService totpService,
-                      @Value("${app.security.mfa.issuer:Shifa OMS}") String issuer) {
-        this(userRepository, jwtService, totpService, issuer, Clock.systemUTC());
+                      @Value("${app.security.mfa.issuer:Shifa OMS}") String issuer,
+                      MfaSecretCrypto crypto,
+                      AuditService auditService,
+                      AuthSessionService authSessionService) {
+        this(userRepository, jwtService, totpService, issuer, Clock.systemUTC(), crypto, auditService,
+                authSessionService);
     }
 
-    /** Package-visible constructor for a fixed clock in tests. */
+    /** Backward-compatible fixed-clock constructor used by unit tests. */
     MfaService(UserRepository userRepository,
                JwtService jwtService,
                TotpService totpService,
                String issuer,
                Clock clock) {
+        this(userRepository, jwtService, totpService, issuer, clock,
+                new MfaSecretCrypto("test-mfa-key-that-is-at-least-32-bytes-long"), null, null);
+    }
+
+    /** Compatibility constructor for existing package tests and integrations. */
+    MfaService(UserRepository userRepository,
+               JwtService jwtService,
+               TotpService totpService,
+               String issuer,
+               Clock clock,
+               MfaSecretCrypto crypto,
+               AuditService auditService) {
+        this(userRepository, jwtService, totpService, issuer, clock, crypto, auditService, null);
+    }
+
+    MfaService(UserRepository userRepository,
+               JwtService jwtService,
+               TotpService totpService,
+               String issuer,
+               Clock clock,
+               MfaSecretCrypto crypto,
+               AuditService auditService,
+               AuthSessionService authSessionService) {
         this.userRepository = userRepository;
         this.jwtService = jwtService;
         this.totpService = totpService;
-        this.issuer = (issuer == null || issuer.isBlank()) ? "Shifa OMS" : issuer;
-        this.clock = clock;
+        this.issuer = issuer == null || issuer.isBlank() ? "Shifa OMS" : issuer;
+        this.clock = clock == null ? Clock.systemUTC() : clock;
+        this.crypto = crypto;
+        this.auditService = auditService;
+        this.authSessionService = authSessionService;
     }
 
-    /**
-     * Whether this user needs any MFA interaction at all (either a code or
-     * enrollment). When false the caller issues tokens immediately.
-     */
     public boolean mfaRequired(User user) {
         return user.isMfaEnabled();
     }
 
-    /**
-     * Builds the MFA challenge for a user whose password was just verified.
-     * Precondition: {@code user.isMfaEnabled()} is true (callers check
-     * {@link #mfaRequired(User)} first). Generates and persists a fresh secret
-     * for a not-yet-enrolled user so the QR is stable across a page reload until
-     * they confirm.
-     */
     @Transactional
     public MfaChallengeResponse challengeFor(User user) {
-        String ticket = jwtService.issueMfaTicket(user);
+        AuthSessionService.SessionHandle session = authSessionService == null ? null : authSessionService.create(user);
+        String ticket = session == null
+                ? jwtService.issueMfaTicket(user)
+                : jwtService.issueMfaTicket(user, session.sessionId(), session.idleExpiresAt());
         if (user.isMfaEnrolled()) {
+            // This also lazily converts V100 plaintext rows to ciphertext.
+            String secret = secretFor(user);
+            if (secret == null || secret.isBlank()) {
+                throw new IllegalStateException("MFA secret is unavailable");
+            }
             return MfaChallengeResponse.required(ticket);
         }
-        // On, but not enrolled yet: provision a secret now and return the QR.
-        // Persisted (not yet confirmed) so re-posting login during enrollment
-        // keeps the same secret the user may already be scanning.
+
         String secret = user.getMfaSecret();
+        if ((secret == null || secret.isBlank())
+                && user.getMfaSecretCiphertext() != null
+                && !user.getMfaSecretCiphertext().isBlank()) {
+            secret = secretFor(user);
+        }
         if (secret == null || secret.isBlank()) {
             secret = totpService.generateSecret();
-            user.setMfaSecret(secret);
+            storeEncrypted(user, secret);
             user.setMfaEnrolledAt(null);
             userRepository.save(user);
+            audit(AuditActions.USER_MFA_ENROLLMENT_STARTED, user,
+                    "Started two-factor enrollment");
+        } else {
+            storeEncryptedIfLegacy(user, secret);
         }
         String otpauthUri = totpService.buildOtpAuthUri(issuer, user.getUsername(), secret);
         return MfaChallengeResponse.enroll(ticket, otpauthUri, secret);
     }
 
-    /**
-     * Verifies an enrolled user's current code for the given login ticket and
-     * returns the user so the caller can issue tokens. Rejects a mismatched code
-     * (401) and a user who is not actually enrolled (409 — they must enroll).
-     */
-    @Transactional(readOnly = true)
+    @Transactional
     public User verifyLogin(String mfaTicket, String code) {
         User user = resolveTicketUser(mfaTicket);
         if (!user.isMfaEnrolled()) {
             throw new ApiException(HttpStatus.CONFLICT, "MFA_NOT_ENROLLED",
                     "Two-factor is not set up for this account yet.");
         }
-        if (!totpService.verify(user.getMfaSecret(), code)) {
+        String secret = secretFor(user);
+        if (!totpService.verify(secret, code)) {
+            audit(AuditActions.USER_MFA_FAILED, user, "Failed two-factor verification");
             throw invalidCode();
         }
         return user;
     }
 
-    /**
-     * Confirms the first code during enrollment: validates it against the
-     * provisioned secret, stamps {@code mfaEnrolledAt}, and returns the user so
-     * the caller can issue tokens. Rejects a wrong code (401) and a user with no
-     * provisioned secret (409 — they must restart the login/enroll flow).
-     */
     @Transactional
     public User confirmEnrollment(String mfaTicket, String code) {
         User user = resolveTicketUser(mfaTicket);
-        String secret = user.getMfaSecret();
+        String secret = secretFor(user);
         if (secret == null || secret.isBlank()) {
             throw new ApiException(HttpStatus.CONFLICT, "MFA_NOT_PROVISIONED",
                     "No pending two-factor setup. Please sign in again to restart setup.");
         }
         if (!totpService.verify(secret, code)) {
+            audit(AuditActions.USER_MFA_FAILED, user, "Failed two-factor enrollment confirmation");
             throw invalidCode();
         }
         user.setMfaEnrolledAt(LocalDateTime.now(clock));
+        user.incrementSessionVersion();
         userRepository.save(user);
+        audit(AuditActions.USER_MFA_ENROLLMENT_COMPLETED, user,
+                "Completed two-factor enrollment");
         return user;
     }
 
-    /** Resolves and re-loads the user behind a valid MFA ticket (401 if stale/invalid). */
     private User resolveTicketUser(String mfaTicket) {
         JwtClaims claims = jwtService.parse(mfaTicket, TokenType.MFA);
+        if (claims.sessionId() == null || claims.sessionId().isBlank()) {
+            throw new InvalidTokenException("Legacy MFA ticket has no authenticated session id");
+        }
         User user = userRepository.findById(claims.userId())
                 .orElseThrow(() -> new ResourceNotFoundException("Token subject no longer exists"));
         if (!user.isActive()) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "ACCOUNT_DISABLED", "This account is disabled.");
         }
+        if (user.getRole() != claims.role() || user.getSessionVersion() != claims.sessionVersion()) {
+            throw new InvalidTokenException("MFA ticket is no longer valid");
+        }
         return user;
+    }
+
+    private String secretFor(User user) {
+        String ciphertext = user.getMfaSecretCiphertext();
+        if (ciphertext != null && !ciphertext.isBlank()) {
+            String secret = crypto.decrypt(ciphertext);
+            user.setRuntimeMfaSecret(secret);
+            return secret;
+        }
+        String legacy = user.getMfaSecret();
+        if (legacy == null || legacy.isBlank()) {
+            return null;
+        }
+        storeEncrypted(user, legacy);
+        userRepository.save(user);
+        return legacy;
+    }
+
+    private void storeEncryptedIfLegacy(User user, String secret) {
+        if (user.getMfaSecretCiphertext() == null || user.getMfaSecretCiphertext().isBlank()) {
+            storeEncrypted(user, secret);
+            userRepository.save(user);
+        }
+    }
+
+    private void storeEncrypted(User user, String secret) {
+        user.setMfaSecretCiphertext(crypto.encrypt(secret));
+        user.setRuntimeMfaSecret(secret);
+        user.clearLegacyMfaSecret();
+    }
+
+    private void audit(String action, User user, String summary) {
+        if (auditService != null) {
+            auditService.record(null, "MFA", action, AuditActions.ENTITY_USER,
+                    String.valueOf(user.getId()), summary);
+        }
     }
 
     private static ApiException invalidCode() {

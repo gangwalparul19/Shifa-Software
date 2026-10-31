@@ -9,9 +9,8 @@ packing → courier → delivery → settlement) is tracked end to end.
 > and the important gotchas. Read it before scanning the codebase. A condensed "memory" for fast
 > context lives in `.kiro/steering/project-memory.md` and is kept in sync with this file.
 
----
+> **Current baseline (2026-10-30):** Source migrations are at **V105**; production was last documented at V73 and the A1–B6 plus selected C6/E/F work remains local and is **not deployed**. The supported production target is AWS EC2 (`15.252.230.73` SSH) with the canonical HTTPS URL `https://shifa.weblithic.online/` and Amazon S3 storage (`application-prod.yml` defaults to `STORAGE_PROVIDER=S3`). The unused OCI stub/SDK are removed. Current local validation is **1042 backend tests, 0 failures**, admin production build successful with the existing shell CSS budget warning, and frontend property tests **6 suites / 21 tests**. Dated deployment/build notes below are historical records; use the current baseline and `DEPLOYMENT.md` for operations.
 
-## 1. Tech Stack
 
 | Layer      | Technology                                                                 |
 |------------|----------------------------------------------------------------------------|
@@ -23,8 +22,7 @@ packing → courier → delivery → settlement) is tracked end to end.
 | Docs / PDF | Apache POI (Excel), OpenPDF (invoices/labels), ZXing (barcodes)             |
 | Cloud      | AWS EC2 (Ubuntu + self-hosted MySQL 8), Nginx/systemd, Amazon S3 file storage |
 
-Integrations (courier, WhatsApp, online payments) were **sandbox/mock** and payment/coupon flows
-have been removed in the dashboard-only pivot (see §7).
+Integrations are configuration-driven: Shopify webhooks and QuikShipX courier flows are production-capable and HMAC-protected; WhatsApp, email, and payment modes remain selectable between MOCK/SANDBOX and live providers.
 
 ---
 
@@ -38,7 +36,7 @@ Shifa-Software/
 │  │  ├─ application.yml              # base config
 │  │  ├─ application-local.yml        # local profile (MySQL localhost, shifa_dashboard)
 │  │  ├─ application-prod.yml         # prod profile (env-driven)
-│  │  └─ db/migration/                # Flyway V1..V65 (see §6)
+│  │  └─ db/migration/                # Flyway V1..V105 (see §6)
 │  └─ pom.xml
 ├─ frontend/                    # Angular 21 workspace
 │  ├─ angular.json                    # projects: admin, core, ui
@@ -96,7 +94,7 @@ login list and a per-role navigation tour.
 - `start:admin` — serve the admin app (dev, watch)
 - `build:admin` — production build (`dist/admin`)
 - `build:core`, `build:ui` — build the shared libraries
-- `test` — Angular unit tests; `test:pbt` — property-based tests (jest/fast-check)
+- `test` — Angular CLI unit-test runner (`ng test`); `test:pbt` — Jest/fast-check property tests. No Playwright/Cypress e2e runner is registered in this workspace.
 
 ---
 
@@ -136,7 +134,7 @@ Modular monolith — one package per bounded context. Kept modules after the das
 | `agent`           | Salesperson lookup helpers. `/api/agent` |
 | `notification`    | WhatsApp/outbox notifications (mock), transactional outbox drainer |
 | `mail`            | SMTP/mock email. `/api/admin/mail` |
-| `platform`        | Cross-cutting: storage (local/OCI), backups, outbox infra. `/api/admin/backups` |
+| `platform`        | Cross-cutting: `LOCAL`/`DB`/`S3` storage, backups, outbox infrastructure. Production `application-prod.yml` defaults to AWS S3; there is no OCI provider. `/api/admin/backups` |
 | `common`          | Shared errors, paging, `GlobalExceptionHandler` |
 
 **Removed in the dashboard-only pivot:** `account` (customer login/cart/wishlist/addresses),
@@ -161,16 +159,15 @@ and the running/created total **rounded to the nearest whole rupee** (`Money.rou
 
 The form remembers the salesperson's last non-OTHER lead source as a safe preference, keeps customer/payment
 values isolated between orders, and supports a persisted **Quick** single-screen mode with thumb-sized quantity
-steppers, decimal numeric keyboards, COD / Paid-in-full payment shortcuts, sticky actions, draft recovery, and
+steppers, decimal numeric keyboards, required upfront-payment shortcuts, sticky actions, draft recovery, and
 server-side last-order prefill. Reorder mode also carries forward the previous order's contact/source/GST details
-without copying payment or line-item state.
+without copying payment or line-item state. Offline creation is intentionally disabled because every new order now
+requires upfront collection and a payment screenshot.
 
 The Orders **list** filters by a **grouped status selector** (both a quick tab strip and the advanced-panel
-dropdown) instead of the raw ~18 statuses: the `order/OrderStatusGroup` enum clubs them into 9 business
-stages — Pending Approval, Packaging, Label Generated, Awaiting Handover, Awaiting Dispatch, In Transit,
-Completed, Cancelled, Failed/Returned (labels match the Packing queue). Filtering is server-side via
-`GET /api/admin/orders?statusGroup=…` (expands to `orderStatus IN (members)`), so it is correct across
-pagination and search. The exact `?status=` param + saved views still work (mapped onto their group).
+dropdown) instead of raw statuses: `OrderStatusGroup` exposes 6 QuikShip-aligned stages — Pending Approval,
+Processing, Shipped, Delivered, Failed/Returned, and Cancelled. Filtering is server-side via
+`GET /api/admin/orders?statusGroup=…`; aliases keep older saved views/deep links working.
 
 ---
 
@@ -194,7 +191,7 @@ Routing in `app.routes.ts`, shell/nav in `shell/admin-shell.component.ts`. Guard
 | `/announcements` | Post/hide/delete staff announcement banners | ADMIN |
 | `/suppliers`, `/purchase-orders` | Procurement | ADMIN |
 | `/expenses`, `/finance/pnl` | Finance | ADMIN+ACCOUNTANT |
-| `/packing` | **Scan & Move** camera/manual barcode preview + explicit Pack/Handover/Dispatch confirmation, handover popup (name/phone), multi-label print, and multi-pack | PACKING_USER+ADMIN |
+| `/packing` | Orders-to-pack, awaiting handover, QuickShip status, and in-house delivery queues; Scan & Move, label printing, handover, pagination | PACKING_USER+ADMIN |
 | `/payments` | Payment verification dashboard — review prepaid screenshots, verify/reject | PAYMENT_VERIFIER+ADMIN |
 | `/team` | Assign salespeople to a team lead (drives team-scoped order visibility) | ADMIN |
 | `/team-performance` | Team performance rollup — clickable Salespeople KPI, team-scoped salesperson list, and profile/performance drill-down (lifetime, today, last week/month, delivery/COD/leads, daily activity, recent orders) | TEAM_LEAD+ADMIN |
@@ -204,10 +201,16 @@ Routing in `app.routes.ts`, shell/nav in `shell/admin-shell.component.ts`. Guard
 | `/settings`, `/users` | Config + staff users | ADMIN |
 | `/salespeople` | Salesperson 360 performance-owner directory: onboarding/ID verification plus Admin, Team Lead, and Salesperson KPIs, sorting, per-owner performance drawers, and monthly targets. Admin owners stay outside team assignment. Team and individual XLSX/PDF exports support Overall, Today, Yesterday, This Week, and This Month; XLSX contains full selected-period details and PDF contains KPI cards, graphs/charts, and detail tables | ADMIN |
 
-The shell hamburger nav groups links under **collapsible, collapsed-by-default named groups**
-(accordion): only "Shifa Dashboard" is standalone; the rest sit under **CRM** (Leads, Due follow-ups,
-Customers, Salespeople), **Analytics & Reports** (Reports, Analytics, Insights), and
-**Account & Settings** (My Profile, Settings, Users, …). The role-aware bottom tab bar is unchanged.
+The shell hamburger nav groups links under **collapsible, collapsed-by-default named groups** (accordion): only
+"Shifa Dashboard" is standalone; the rest sit under **CRM** (Leads, Due follow-ups, Customers, Salespeople),
+**Analytics & Reports** (Reports, Analytics, Insights), and **Account & Settings** (My Profile, Settings, Users,
+…). The role-aware bottom tab bar is unchanged.
+
+The current route tree also includes `/tasks`, `/meetings`, `/crm-dashboard`, `/crm-settings`, `/packing/rto`,
+`/packing/pick-list`, `/settlements`, `/remittance-report`, `/whatsapp-templates`, `/shopify-sync`,
+`/order-cancellation`, `/deleted-orders`, `/ca/gst` plus filing/reconciliation pages, the accounting pages under
+`/accounting/*`, and `/teams-overview`, `/delivery-partners`, `/leaderboard`. `/channel-dashboard` is retained
+only as a redirect to `/dashboard`.
 
 ### Mobile-first UI redesign (spec `mobile-ui-redesign`)
 The admin app was redesigned mobile-first to a client wireframe (`docs/wireframe.jpeg`), reusing the
@@ -233,11 +236,10 @@ when a MEDIUM/HIGH-risk customer's mobile is entered (`GET /api/admin/customers/
 Salesperson scoping applies throughout (a salesperson only sees customers from their own orders).
 
 ### Staff mobile & UX (FEATURE-ROADMAP §8)
-- **Installable PWA + offline order capture (8.1)** — Angular service worker (`ngsw-config.json`,
-  registered in production via `provideServiceWorker`), `manifest.webmanifest` + icon. `PwaService`
-  drives an offline chip, an **Install** button and an **update-ready** banner in the shell.
-  `OfflineOrderQueueService` queues COD (no-payment) orders in `localStorage` when offline and
-  auto-syncs to `POST /api/orders` on reconnect (paid orders / lead-conversion require connectivity).
+- **Installable PWA + connectivity status (8.1)** — Angular service worker (`ngsw-config.json`),
+  `manifest.webmanifest`, install/update prompts, and an offline chip. New order creation is intentionally
+  blocked offline because the current policy requires upfront collection and a payment screenshot; no offline
+  order queue is active.
 - **Phone-camera barcode scan (8.2)** — `CameraScannerComponent` uses the native `BarcodeDetector`
   (Code 128) so the packer can scan the internal label with a phone camera; a **Camera** button on
   `/packing` feeds the decoded order code into the existing scan flow (graceful fallback when unsupported).
@@ -286,7 +288,7 @@ The current wave reduces taps for salespeople and gives admins a single, safer w
 - **Concurrency safety:** optimistic-lock failures now return HTTP 409 with code `CONCURRENT_UPDATE` and a refresh/retry message instead of a generic 500. The Orders UI treats lifecycle mutations pessimistically and explains when another operator changed an order.
 - **Order history and manual delivery:** the order drawer keeps the friendly grouped timeline and adds an ADMIN-only raw action history showing from/to status, actor, source, and timestamp. In-house failed/refused updates require a reason; the UI explains retry versus RTO and the GST-safe credit-note path.
 - **Contextual help and role homes:** help tips explain bulk previews and in-house/RTO semantics, while the admin dashboard has a direct Exception Center CTA and existing role-shaped dashboards keep each role's primary work visible first.
-- **Verification:** `mvn -f "backend/pom.xml" clean test` — **752 tests, 0 failures**. `npm --prefix frontend run build:admin` — clean bundle `main-SPUX7RFR.js` with no warnings/errors after the initial-bundle warning threshold was raised from 2.5 MB to 3 MB (hard failure remains 4 MB). This wave has no migration; current migration is **V64**. **Deployed and live** after explicit approval via `deploy\push-to-new-server.ps1 -SkipBuild`; production validated V64 with no migration necessary. Backup: `~/shifa-backup-2026-09-17-144600.sql`. Service active with zero restarts; HTTPS root 200; unauthenticated `/api/states` 401; served bundle `main-SPUX7RFR.js`.
+- **Verification:** the current local remediation worktree recorded **1042 backend tests, 0 failures**, frontend property tests **6 suites / 21 tests**, and a successful admin production build with the existing shell CSS budget warning. This local wave adds V101–V105 plus the selected C6/E/F changes and is **not deployed**. Source is V105; production remains at the last documented verified V73 until explicitly deployed and verified with Flyway. The canonical production URL is `https://shifa.weblithic.online/`.
 
 ---
 
@@ -319,7 +321,7 @@ Migration history:
   receivables (COD outstanding + a lost claim), 142 stock movements (many in the last 30 days), 50
   leads with due/overdue follow-ups, 5 suppliers, 5 POs, 21 monthly expenses, notifications and audit
   events. Additive and safe — won't disturb existing data. See `docs/test-data-guide.html`.
-- `V28` — `stored_files` (DB-backed binary store for payment screenshots; prod `app.storage.provider=DB`).
+- `V28` — `stored_files` (DB-backed binary store for payment screenshots; demo profile only — production uses S3).
 - `V29` — `orders.notes` (optional ≤1000-char order note captured at order entry) + `delivery_states`
   (name UNIQUE, active, sort_order), seeded once with 28 states + 8 UTs. Powers the New Order state
   typeahead (`GET /api/states`) and the admin Settings "Delivery states" manager (`/api/admin/states`).
@@ -374,7 +376,12 @@ Migration history:
   order's first proof. Additive and backward compatible: `orders.payment_screenshot_key` is KEPT and
   still holds the primary proof, so the screenshot-required rule, the `paymentScreenshotAvailable`
   projections, and the original `GET /api/orders/{id}/payment-screenshot` endpoint are unchanged.
-  **V65 is the highest migration.**
+  **V66`..`V100** — payment rejection/rework, international/export orders, Shopify import/auto-approval, channel and ledger/accounting extensions, settlement/bank-account support, and MFA enablement.
+  **V101__auth_session_reset_and_mfa_ciphertext.sql** — A2–A4 security hardening: adds per-user JWT session-version revocation, reset-credential expiry, and AES-GCM MFA ciphertext storage. Legacy MFA plaintext rows are encrypted by the startup backfill using the externally supplied `MFA_ENCRYPTION_KEY`; production fails closed when the key is missing.
+  **V102__authenticated_sessions.sql** — server-authoritative sliding idle sessions: hashed per-login session ids, activity timestamps, revocation binding, and indexes.
+  **V103__settlement_integrity.sql** — Settlement Center allocation target keys/reasons/date-default metadata plus allocation indexes/uniqueness.
+  **V104__payment_utr_normalization_and_preflight.sql** — canonical payment UTR values, historical duplicate preflight evidence, and a conditional receiving-account/UTR uniqueness boundary.
+  **V105__outbox_claim_leases.sql** — fenced pending-row leases, expiry recovery, and the composite due-claim index for multi-instance integration drainers. **V105 is the current highest migration.**
 
 > Fresh DB required: because V22 seeds with explicit IDs, start against an **empty**
 > `shifa_dashboard`. If a half-migrated DB exists, drop & recreate it before starting.
@@ -411,21 +418,36 @@ is done via the additive `V21` drop migration (never by editing old migrations).
 
 ## 9. Deployment
 
-Hosted on **one AWS EC2 instance** (Ubuntu + self-hosted MySQL 8, Nginx reverse proxy, systemd
-service, S3 for file storage). Admin app is served at `/`; API at `/api/` → Spring Boot on :8080.
-**Follow `DEPLOYMENT.md` — it is the single canonical guide.** Routine redeploy is one command:
+Hosted on **one AWS EC2 instance** (Ubuntu + self-hosted MySQL 8, Nginx reverse proxy, systemd, Amazon S3). The
+canonical production URL is **`https://shifa.weblithic.online/`**; `15.252.230.73` is the current SSH address,
+not the client URL. Admin app is served at `/`; API at `/api/` → Spring Boot on :8080. **Follow `DEPLOYMENT.md`**
+as the single canonical guide. Routine redeploy is one command:
 `powershell -ExecutionPolicy Bypass -File deploy\push-to-aws.ps1 -KeyPath "<your.pem>"`.
-Assets in `deploy/`: `push-to-aws.ps1` (build + upload + apply), `aws-apply.sh` (server-side
-backup → swap → restart), `nginx-shifa.conf`, `shifa-oms.service`, `shifa.env.example`. Prod
-`apiBaseUrl` is `''` (same-origin behind Nginx). Prod DB name defaults to `shifa_dashboard`
-(override via `DB_NAME`). **Last verified deployment: 2026-09-17** — production backup
-`~/shifa-backup-2026-09-17-144600.sql`; Flyway validated 64 migrations at V64 with no migration necessary,
-Spring Boot started on `:8080`, `https://shifa.weblithic.online/` returned `200`, unauthenticated
-`/api/states` returned `401`, and the served admin bundle was `main-SPUX7RFR.js`.
+`application-prod.yml` defaults to `STORAGE_PROVIDER=S3`; `STORAGE_S3_BUCKET` and the EC2 instance role provide
+production object storage. Source migrations are V105; production was last documented at V73 and must be checked in
+Flyway logs after the pending local remediation release is explicitly approved and deployed.
 
 ---
 
-## 10. Branches
+## 10. Audit Remediation Plan
+
+The repository-wide security, settlement, deployment, frontend, performance, testing, and product-enhancement findings are tracked one by one in **[`AUDIT-REMEDIATION-PLAN.md`](AUDIT-REMEDIATION-PLAN.md)**. The plan includes priorities, evidence paths, acceptance criteria, validation gates, deferred decisions, and a completion log. Work through P0/P1 items before adding unrelated features.
+
+### Audit remediation A1–A6 completed locally (2026-10-30)
+
+The first security work set is implemented locally and is **not deployed** yet. A1 makes Shopify/courier webhooks fail closed in production and validates required HMAC secrets at startup. A2 adds per-user JWT session-version revocation and server-side forced-password enforcement. A3 replaces the fixed reset password with a generated expiring credential returned only by the reset action. A4 adds V101 AES-GCM MFA ciphertext storage, production key validation, legacy backfill, and MFA failure/enrollment audit events. A5 uses trusted-proxy-aware client IP resolution, overwrites forwarded IP headers in the canonical Nginx config, and separates MFA rate-limit buckets by signed ticket user. A6 removes the credential-bearing demo environment file and adds a redacted demo template. Backend full tests passed **1010/1010**; the admin production build completed with the existing shell CSS budget warning. Before production restart, set `SHOPIFY_WEBHOOK_HMAC_SECRET`, `COURIER_WEBHOOK_HMAC_SECRET`, and `MFA_ENCRYPTION_KEY` in the server environment; do not deploy this batch until those values are confirmed.
+
+### Sliding 30-minute inactivity session and browser-close logout (implemented locally, not deployed)
+
+Authentication now uses a server-authoritative sliding idle timeout of **30 minutes**, not an absolute 30-minute workday limit. Each login/tab receives a hashed server session row and signed `sid`; authenticated API requests touch that row using server time. Silent refresh preserves the same session and refreshes the idle deadline only while the session is still active. Frontend tokens are stored in `sessionStorage`, old persistent localStorage token keys are removed without migration, and successful API responses update the local idle timer. If there is no authenticated activity for 30 minutes, the server rejects the session. Same-tab reload remains authenticated before expiry; closing the browser/tab requires a new login. Migration V102 adds `auth_sessions`. Backend full tests passed **1028/1028**, frontend property tests passed **19/19**, and the admin build completed with the existing shell CSS warning. This batch is not deployed; manually verify active work for several hours, 30-minute inactivity, refresh near 15 minutes, browser close/reopen, and multiple tabs after deployment.
+
+### Settlement hardening B1–B6 completed locally (V103/V104, not deployed)
+
+The Settlement Center now validates settlement target type and ownership, rejects null/invalid targets, locks and conserves allocations, supports safe partial/idempotent resolution, commits V98 imports atomically, distinguishes malformed dates from missing/defaulted dates, normalizes UTRs, records historical UTR duplicates without deleting evidence, and conditionally installs the account-plus-UTR uniqueness boundary. The Angular Settlement Center now provides scoped candidate selection and manual resolution with required reason/amount validation, while CA remains read-only and Admin/Accountant retain mutation controls. V103 adds settlement allocation target keys/reasons/date-default metadata; V104 adds canonical payment UTR storage and duplicate preflight. The older V99 remittance workflow remains separate. B1–B6 are implemented locally and not deployed; final full backend validation and production MySQL preflight must pass before release.
+
+---
+
+## 11. Branches
 
 - `feature/shifa-backend` — prior mainline.
 - `dashboard-only` — **current** working branch for the dashboard-only pivot.
@@ -512,7 +534,7 @@ could not cover it because a pure-COD order never goes through payment verificat
 ### Bank accounts, UTR capture & Shopify settlement destination (V97)
 The Settings page now includes a **Bank Accounts** manager (Tabler bank icon) for active receiving and settlement accounts. Admins can configure UPI/QR, bank-transfer, Shopify-settlement, QuikShip-remittance, cash, and other account purposes; historical accounts are deactivated rather than deleted. The existing singleton invoice bank fields remain for invoice compatibility.
 
-Normal salesperson order entry now captures the payment method, receiving account, and UTR/reference alongside the required upfront payment screenshot. The backend validates active account selection and UTR for UPI/bank payments, snapshots masked account identity on the payment transaction, and exposes scoped payment metadata at `GET /api/orders/{id}/payments`; Payment Verification, Approval Queue, and Order Detail show the account/UTR without exposing storage keys or unrestricted account numbers. Lead conversion and rejected-order resubmission carry the same metadata.
+Normal salesperson order entry now captures the payment method, receiving account, and UTR/reference alongside the required upfront payment screenshot. The backend validates active account selection and UTR for UPI/bank payments, snapshots masked account identity on the payment transaction, and exposes scoped payment metadata at `GET /api/orders/{id}/payments`. Payment Verification, Approval Queue, and Order Detail show account/UTR without exposing storage keys. **C6 remains open:** the admin `BankAccountResponse` currently includes both `accountNumber` and `maskedAccountNumber`; do not treat the normal admin list response as privacy-complete until the full value is removed or moved behind a separately audited reveal action.
 
 Shopify settlement tracking is configured separately from the existing Shopify webhook-import switch: Admin Settings can enable/disable settlement tracking and select the default Shopify settlement bank account. Shopify order import remains independent; actual T+1/T+2 payout reconciliation will use the configured destination when settlement batches are added. Migration **V97** adds the bank-account master, payment metadata columns, and Shopify settlement settings.
 
@@ -552,3 +574,54 @@ The RTO mobile scan field now uses a full-width 4rem input and 3.5rem camera but
 
 ### Settlement Center upfront-payment account KPIs — implemented locally, not deployed
 Clarified settlement scope: UTRs reconcile the partial/full upfront payment captured when an order is placed, not QuikShip COD remittances. Added read-only `GET /api/recon/settlements/kpis` with IST date-window support and an ADMIN/ACCOUNTANT/CA Settlement Center KPI panel. The UI defaults to **Today** and supports Yesterday, This week, This month, All time, and custom From/To dates. It shows one card per bank/UPI account with OMS booked, verified, pending, bank-statement total, UTR-matched, unmatched, and statement-minus-OMS difference. Legacy payments without an account appear under `Unassigned / legacy`. Bank receipt Excel imports now require a destination account, require UTR matching, prevent order-code/AWB fallback for bank statements, and use the statement date as the line date when a row date is absent. The KPI totals combine V97 `payments` metadata with V98 bank-receipt evidence; QuikShip COD and Shopify payouts remain separate. No migration was added; V97/V98 already provide the required data. Backend compile and admin bundle validation passed; not deployed.
+
+### Current audit-remediation continuation (local, not deployed)
+- Source is now at Flyway **V105**. V105 adds fenced outbox leases and the indexed due-claim path; integration drainers use bounded claims with lease-token completion fencing.
+- C6 bank-account responses now expose masked values only. Blank account-number edits preserve the stored value, so the browser never needs a full account number for ordinary edits.
+- F1 remains partially complete: dashboard/report windows use the existing SQL projections/windowed finders and public tracking mobile/detail responses are database-capped, while broad report pagination, all-time policy, and query-count/dataset tests remain follow-up work.
+- E1/E2/E3 are implemented in source but retain dedicated route-matrix/date-consistency test gaps. E8 is validated by the shared blob/money/status utilities and frontend property tests. F2 still needs real MySQL contention validation and provider-level idempotency decisions before horizontal deployment.
+- No deployment was performed. Production remains documented at V73 until an explicitly approved release applies V101–V105 and is verified from the server journal.
+
+### Local startup fix: authenticated-session schema mapping
+The V102 migration intentionally creates `auth_sessions.session_id_hash CHAR(64)`. Hibernate previously inferred `VARCHAR(64)` from `@Column(length=64)`, so MySQL `ddl-auto: validate` failed after V102–V105 applied. `AuthSession.sessionIdHash` now explicitly maps `columnDefinition = "CHAR(64)"`; no migration or data rewrite was needed. Focused auth/session/context tests passed, and a real local MySQL boot validated Flyway V105 plus `Initialized JPA EntityManagerFactory` and Tomcat startup.
+
+### Sales-executive × product reports and top-3 executives (ad targeting and retention) — implemented locally, not deployed
+Client request: see what each sales executive sold of every product (quantity, total price, and so on), and see the top 3 executives per category so ad spend and retention effort can back the people who sell each category best. Four new report types were added to the existing Reports page (`/api/reports/{type}` plus the Excel/PDF export); no migration, no change to any existing report contract.
+
+| Report (URL segment) | Rows | Use |
+|---|---|---|
+| Executive × product detail (`executive-product-detail`) | One per executive and product: category, orders, distinct customers, quantity, total sales, average price, share of that executive's sales % | Which products each executive actually sells |
+| Executive product tracker (`executive-product-matrix`) | One per executive: orders, **Gross Sale**, **Net Sale**, total qty, distinct products, then one quantity column per product, plus a `TOTAL` row | Mirrors the client's Excel "Executive Sales Tracker"; best exported to **Excel** (the PDF of a wide grid is cramped) |
+| Top 3 executives per category (`top-executives-by-category`) | Up to 3 per category: rank, orders, customers, quantity, total sales, share of category %, repeat customers, repeat rate % | Which executives to back with ads for a category |
+| Top 3 executives per product (`top-executives-by-product`) | Same columns, per product | Same, at product level |
+
+Definitions worth knowing:
+- Only revenue orders count (rejected, payment-rejected and cancelled are excluded), inside the selected From/To window, same as every other money figure.
+- **Gross Sale** is the sum of line totals (GST-inclusive, before the order discount); **Net Sale** is the sum of order totals (after discount and round-off). The gap is the discount given.
+- A **repeat customer** bought in at least 2 distinct orders from that executive in that category/product **inside the selected window**. Older history is not visible, so use a wide window (60–90+ days) for retention decisions. Customers are identified by mobile, then by name; an order with neither is never merged into a "repeat".
+- The top-3 reports rank only orders punched by an executive. Unattributed orders (for example Shopify) are left out of the ranking so they cannot crowd real people out, and the share % is the share of what executives sold. The detail and grid reports keep those orders under `UNSPECIFIED`, so their totals still reconcile.
+- **Categories must be assigned on the Products page** for the by-category report to be useful. The 30 products seeded by V50 have no category, so until they are assigned every product lands in one `Uncategorised` bucket (always listed last). The by-product report works without categories.
+- Not covered: the Excel's "No of Calls" column (call counts are not part of the OMS reporting pipeline).
+- Visibility: the detail and grid reports sit in the **Salesperson** group; the two top-3 reports sit in a new **Top performers** group that is hidden from salespeople (they only see their own orders, so a top 3 would be misleading). Backend: `reporting/domain/ExecutiveProductAnalytics` (pure), `ReportTableBuilder`, `ReportService` (category lookup through `ProductRepository.findProductCategoryRows()`), `ReportType`.
+- Validation: new `ExecutiveProductReportsTest` (16 cases) plus the existing `ReportExportFidelityPropertyTest`, `ApplicationContextLoadsTest` and `EndpointRoleGuardIntegrationTest` pass (90 tests in the focused run); admin build is clean. Not deployed.
+
+### Reports page performance fix (N+1 in the report loader) — implemented locally, not deployed
+A month-long report (about 2,300 orders) took over 20 seconds because the report loader ran four queries per order (line items, courier record, COD receivable, claim receivable). `ReportService` now loads all of that in batches of at most 1,000 order ids, so a report costs a handful of statements regardless of order count. This loader backs every report type, the Excel/PDF/CSV exports and the Vyapar export. Report output is unchanged. `ReportQueryCountTest` guards the statement count and checks that each order still gets its own AWB, COD status and claim status; the full backend suite passes (1065 tests). Restart the backend to pick it up; no migration.
+
+### Descriptive report download filenames — implemented locally, not deployed
+Downloaded reports no longer arrive as a generic `report.pdf`. Every report file is named `shifa-<report-name>_<date range>.<ext>`, so admins do not have to rename anything and files sort by date:
+
+| Download | Example name |
+|---|---|
+| Any Reports-page report (Excel / PDF) | `shifa-daily-sales-report_2026-10-02_to_2026-10-31.pdf` |
+| Report with no date filter | `shifa-customer-wise-report_all-time.xlsx` |
+| Vyapar billing export | `shifa-vyapar-billing_2026-10-02_to_2026-10-31.csv` |
+| Orders list export | `shifa-orders_2026-10-02_to_2026-10-31.xlsx` |
+| Salespeople performance (team / one person) | `shifa-salespeople-performance_2026-10-01_to_2026-10-31.xlsx`, `shifa-salesperson-performance-asha-kumari_2026-10-01_to_2026-10-31.pdf` |
+| Team performance CSV | `shifa-team-performance_2026-10-01_to_2026-10-31.csv` |
+| Partial settlements follow-up CSV | `shifa-partial-settlements-follow-up_as-of-2026-10-31.csv` |
+| Remittance batch details CSV | `shifa-remittance-batch-12-details_2026-10-20.csv` |
+
+The date part is `<from>_to_<to>`, a single date, `from-<date>`, `up-to-<date>`, or `all-time`. Names contain only lowercase letters, digits, dashes, underscores and dots, so they are valid on every operating system. GST reports/GSTR-1, invoices, labels and database backups keep their existing names.
+
+Cause of the old behaviour: the server sent `report-<type>.pdf` with no dates, and CORS did not expose the `Content-Disposition` header, so a browser on a different origin (such as the dev server on port 4300 calling port 8080) could not read the server's filename and saved a bare `report`. `Content-Disposition` and `X-Report-Message` are now exposed, and the frontend builds the same descriptive name itself if a header is ever unreadable. The convention lives in `reporting/ReportFilenames` (backend) and `shared/report-filename.util.ts` (frontend); both are tested against the same examples. Backend 1080 tests and frontend property tests (36) pass. Restart the backend and hard-refresh the browser to pick it up; no migration.

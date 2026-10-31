@@ -58,6 +58,11 @@ import com.shifa.oms.gst.domain.GstEngine.Gstr3bSummary;
 import com.shifa.oms.gst.domain.Gstr1Return;
 import com.shifa.oms.gst.domain.HsnRow;
 import com.shifa.oms.gst.domain.SupplyType;
+import com.shifa.oms.reconciliation.SettlementController;
+import com.shifa.oms.reconciliation.SettlementKpiService;
+import com.shifa.oms.reconciliation.SettlementService;
+import com.shifa.oms.reconciliation.dto.SettlementCandidateResponse;
+import com.shifa.oms.reconciliation.dto.SettlementLineResponse;
 import com.shifa.oms.packing.PackingController;
 import com.shifa.oms.packing.PackingService;
 import com.shifa.oms.packing.dto.PackingScanResponse;
@@ -139,7 +144,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         AdminProductController.class,
         CustomerController.class,
         GstController.class,
-        LedgerController.class},
+        LedgerController.class,
+        SettlementController.class},
         // The production JWT filter (a Filter @Component pulled into the web slice) needs
         // JwtService, which is irrelevant here — callers are authenticated directly via the
         // security-test post-processor. Exclude it so the slice does not wire its dependency chain.
@@ -281,6 +287,21 @@ class EndpointRoleGuardIntegrationTest {
     void reportIsAdminAccountantOrSalesperson() throws Exception {
         assertRoleMatrix(get("/api/reports/daily"),
                 List.of(Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON));
+    }
+
+    @Test
+    void settlementCandidatesAreReadableByFinanceRoles() throws Exception {
+        assertGstRoleMatrix(get("/api/recon/settlements/lines/5/candidates"),
+                List.of(Role.ADMIN, Role.ACCOUNTANT, Role.CA));
+    }
+
+    @Test
+    void settlementResolutionIsAdminOrAccountantOnly() throws Exception {
+        assertGstRoleMatrix(
+                post("/api/recon/settlements/lines/5/resolve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"targetType\":\"SHOPIFY_ORDER\",\"orderId\":5,\"amount\":\"10.00\",\"reason\":\"Manual review\"}"),
+                List.of(Role.ADMIN, Role.ACCOUNTANT));
     }
 
     // --- Products: reads ADMIN + SALESPERSON, writes ADMIN-only (this feature) ---------
@@ -661,6 +682,16 @@ class EndpointRoleGuardIntegrationTest {
         }
 
         @Bean
+        SettlementService settlementService() {
+            return new StubSettlementService();
+        }
+
+        @Bean
+        SettlementKpiService settlementKpiService() {
+            return new SettlementKpiService(null, null, null);
+        }
+
+        @Bean
         AdminOrderService adminOrderService() {
             return new StubAdminOrderService();
         }
@@ -854,6 +885,25 @@ class EndpointRoleGuardIntegrationTest {
         @Bean
         AuditEventRepository auditEventRepository() {
             return mock(AuditEventRepository.class);
+        }
+    }
+
+    static class StubSettlementService extends SettlementService {
+        StubSettlementService() {
+            super(null, null, null, null, null, null, null, null, null,
+                    new AuditService(null, null));
+        }
+
+        @Override
+        public List<SettlementCandidateResponse> candidatesForLine(Long lineId) {
+            return List.of();
+        }
+
+        @Override
+        public SettlementLineResponse resolve(Long lineId,
+                                              com.shifa.oms.reconciliation.dto.SettlementLineRequest request,
+                                              AuthPrincipal actor) {
+            return null;
         }
     }
 
@@ -1142,7 +1192,7 @@ class EndpointRoleGuardIntegrationTest {
 
     static class StubReportService extends ReportService {
         StubReportService() {
-            super(null, null, null, null, null, null, null);
+            super(null, null, null, null, null, null, null, null);
         }
 
         @Override

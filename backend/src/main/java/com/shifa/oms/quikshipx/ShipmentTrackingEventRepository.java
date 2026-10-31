@@ -15,8 +15,8 @@ import java.util.List;
  */
 public interface ShipmentTrackingEventRepository extends JpaRepository<ShipmentTrackingEvent, Long> {
 
-    /** The order's scan events, newest first (by {@code sort_order}). */
-    List<ShipmentTrackingEvent> findByOrderIdOrderBySortOrderAsc(Long orderId);
+    /** The newest 100 stored scan events for the public detail timeline. */
+    List<ShipmentTrackingEvent> findTop100ByOrderIdOrderBySortOrderAscIdAsc(Long orderId);
 
     /** Removes every stored scan event for an order (before re-inserting the fresh set). */
     @Modifying

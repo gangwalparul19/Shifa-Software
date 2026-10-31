@@ -1,6 +1,9 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { ApiError } from 'core';
+import { ApiError, AuthService, Role } from 'core';
+import { addIstDays, todayIst } from '../shared/business-date.util';
+import { IstDatePipe } from '../shared/ist-date.pipe';
+import { InrPipe, formatInr } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
@@ -13,6 +16,9 @@ import {
   SettlementKpi,
   SettlementMatchStatus,
   SettlementSource,
+  SettlementCandidate,
+  SettlementTargetType,
+  SettlementLineRequest,
 } from './settlement.model';
 
 const PAGE_SIZE = 10;
@@ -24,14 +30,15 @@ const SOURCES: { value: SettlementSource; label: string; hint: string }[] = [
 
 @Component({
   selector: 'admin-settlement-center',
-  imports: [PageHeaderComponent, PaginationComponent, StatePanelComponent],
+  imports: [PageHeaderComponent, PaginationComponent, StatePanelComponent, InrPipe, IstDatePipe],
   templateUrl: './settlement.component.html',
   styleUrl: './settlement.component.css',
 })
 export class SettlementComponent implements OnInit {
   private readonly service = inject(SettlementService);
   private readonly settings = inject(SettingsService);
-
+  private readonly auth = inject(AuthService);
+  protected readonly canMutate = computed(() => this.auth.hasAnyRole(Role.ADMIN, Role.ACCOUNTANT));
   protected readonly sources = SOURCES;
   protected readonly accounts = signal<PaymentAccountOption[]>([]);
   protected readonly batches = signal<SettlementBatch[]>([]);
@@ -56,21 +63,40 @@ export class SettlementComponent implements OnInit {
   protected readonly source = signal<SettlementSource>('BANK_RECEIPT');
   protected readonly file = signal<File | null>(null);
   protected readonly reference = signal('');
-  protected readonly statementDate = signal(new Date().toISOString().slice(0, 10));
+  protected readonly statementDate = signal(this.todayIst());
   protected readonly accountId = signal<number | null>(null);
   protected readonly preview = signal<SettlementImportResponse | null>(null);
   protected readonly result = signal<SettlementImportResponse | null>(null);
   protected readonly page = signal(0);
   protected readonly pageItems = computed(() => this.batches().slice(this.page() * PAGE_SIZE, (this.page() + 1) * PAGE_SIZE));
   protected readonly totalPages = computed(() => Math.max(1, Math.ceil(this.batches().length / PAGE_SIZE)));
+  protected readonly resolveLine = signal<SettlementLine | null>(null);
+  protected readonly candidates = signal<SettlementCandidate[]>([]);
+  protected readonly selectedCandidate = signal<SettlementCandidate | null>(null);
+  protected readonly resolveAmount = signal<number | null>(null);
+  protected readonly resolveReason = signal('');
+  protected readonly resolveBusy = signal(false);
+  protected readonly resolveError = signal<string | null>(null);
+  protected readonly candidatesLoading = signal(false);
+  protected readonly canSubmitResolution = computed(() => {
+    const line = this.resolveLine();
+    const candidate = this.selectedCandidate();
+    const amount = this.resolveAmount();
+    const reason = this.resolveReason().trim();
+    if (!line?.id || !candidate || amount == null || !Number.isFinite(amount) || amount <= 0 || !reason) return false;
+    return amount <= Math.min(Number(line.suspenseAmount), Number(candidate.availableAmount))
+      && Math.abs(amount * 100 - Math.round(amount * 100)) < 0.000001;
+  });
 
   ngOnInit(): void {
     this.load();
     this.loadKpis();
-    this.settings.activePaymentAccounts().subscribe({
-      next: (accounts) => this.accounts.set(accounts),
-      error: () => this.accounts.set([]),
-    });
+    if (this.canMutate()) {
+      this.settings.activePaymentAccounts().subscribe({
+        next: (accounts) => this.accounts.set(accounts),
+        error: () => this.accounts.set([]),
+      });
+    }
   }
 
   protected load(): void {
@@ -131,9 +157,7 @@ export class SettlementComponent implements OnInit {
   }
 
   private addDays(iso: string, days: number): string {
-    const date = new Date(`${iso}T12:00:00`);
-    date.setDate(date.getDate() + days);
-    return date.toISOString().slice(0, 10);
+    return addIstDays(iso, days);
   }
 
   protected onFile(event: Event): void {
@@ -180,13 +204,137 @@ export class SettlementComponent implements OnInit {
       error: () => this.lines.set([]),
     });
   }
-  protected closeBatch(): void { this.selectedBatch.set(null); this.lines.set([]); }
+  protected closeBatch(): void {
+    this.closeResolution();
+    this.selectedBatch.set(null);
+    this.lines.set([]);
+  }
+
+  protected openResolution(line: SettlementLine): void {
+    if (!this.canMutate() || line.id == null || Number(line.suspenseAmount) <= 0) return;
+    this.resolveLine.set(line);
+    this.candidates.set([]);
+    this.selectedCandidate.set(null);
+    this.resolveAmount.set(null);
+    this.resolveReason.set('');
+    this.resolveError.set(null);
+    this.candidatesLoading.set(true);
+    this.service.candidates(line.id).subscribe({
+      next: (rows) => { this.candidates.set(rows); this.candidatesLoading.set(false); },
+      error: (err: HttpErrorResponse) => {
+        this.candidatesLoading.set(false);
+        this.resolveError.set(this.errorMessage(err));
+      },
+    });
+  }
+
+  protected closeResolution(): void {
+    this.resolveLine.set(null);
+    this.candidates.set([]);
+    this.selectedCandidate.set(null);
+    this.resolveAmount.set(null);
+    this.resolveReason.set('');
+    this.resolveError.set(null);
+    this.candidatesLoading.set(false);
+  }
+
+  protected selectCandidate(candidate: SettlementCandidate): void {
+    this.selectedCandidate.set(candidate);
+    this.resolveAmount.set(Number(candidate.availableAmount));
+    this.resolveError.set(null);
+  }
+
+  protected setResolveAmount(event: Event): void {
+    const raw = (event.target as HTMLInputElement).value;
+    this.resolveAmount.set(raw === '' ? null : Number(raw));
+  }
+
+  protected setResolveReason(event: Event): void {
+    this.resolveReason.set((event.target as HTMLTextAreaElement).value.slice(0, 500));
+  }
+
+  protected submitResolution(): void {
+    const line = this.resolveLine();
+    const candidate = this.selectedCandidate();
+    const amount = this.resolveAmount();
+    const reason = this.resolveReason().trim();
+    const max = candidate ? Math.min(Number(line?.suspenseAmount ?? 0), Number(candidate.availableAmount)) : 0;
+    if (!line?.id || !candidate || amount == null || !Number.isFinite(amount) || amount <= 0
+        || amount > max || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.000001) {
+      this.resolveError.set(`Enter an amount up to ${formatInr(max)} and choose a valid target.`);
+      return;
+    }
+    if (!reason) {
+      this.resolveError.set('A reason is required for every manual settlement resolution.');
+      return;
+    }
+    const request: SettlementLineRequest = {
+      targetType: candidate.targetType,
+      amount: Number(amount.toFixed(2)),
+      reason,
+    };
+    if (candidate.targetType === 'ORDER_PAYMENT') request.paymentId = candidate.targetId;
+    else if (candidate.targetType === 'SHOPIFY_ORDER') request.orderId = candidate.targetId;
+    else request.receivableId = candidate.targetId;
+
+    this.resolveBusy.set(true);
+    this.resolveError.set(null);
+    this.service.resolveLine(line.id, request).subscribe({
+      next: () => {
+        this.resolveBusy.set(false);
+        this.closeResolution();
+        this.reloadSettlementViews();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.resolveBusy.set(false);
+        this.resolveError.set(err.status === 409
+          ? 'This settlement line changed elsewhere. The latest batch data has been loaded; review it again.'
+          : this.errorMessage(err));
+        if (err.status === 409) this.reloadSettlementViews();
+      },
+    });
+  }
+
+  private reloadSettlementViews(): void {
+    const openBatch = this.selectedBatch();
+    this.loadKpis();
+    this.service.batches().subscribe({
+      next: (rows) => {
+        this.batches.set(rows);
+        this.page.set(Math.min(this.page(), Math.max(0, Math.ceil(rows.length / PAGE_SIZE) - 1)));
+        if (openBatch) {
+          const refreshed = rows.find((batch) => batch.id === openBatch.id);
+          if (refreshed) this.selectedBatch.set(refreshed);
+        }
+      },
+      error: () => { /* The line reload below still gives the operator current detail. */ },
+    });
+    if (openBatch) {
+      this.service.lines(openBatch.id).subscribe({
+        next: (rows) => {
+          this.lines.set(rows);
+          const resolvingId = this.resolveLine()?.id;
+          if (resolvingId != null) {
+            const refreshedLine = rows.find((line) => line.id === resolvingId);
+            if (refreshedLine) this.resolveLine.set(refreshedLine);
+          }
+        },
+        error: () => this.lines.set([]),
+      });
+    }
+  }
   protected goPage(page: number): void { this.page.set(Math.max(0, Math.min(page, this.totalPages() - 1))); }
   protected sourceLabel(source: SettlementSource): string { return SOURCES.find((item) => item.value === source)?.label ?? source; }
   protected sourceHint(): string { return SOURCES.find((item) => item.value === this.source())?.hint ?? ''; }
-  protected statusLabel(status: string): string { return status.replaceAll('_', ' '); }
-  protected money(value: unknown): string { return value == null ? '₹0.00' : `₹${value}`; }
+  protected statusLabel(status: string): string { return status.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase()); }
+  protected targetLabel(type: SettlementTargetType): string {
+    return type === 'ORDER_PAYMENT' ? 'Order payment' : type === 'SHOPIFY_ORDER' ? 'Shopify order' : 'QuikShip COD receivable';
+  }
+  protected maxResolutionAmount(candidate: SettlementCandidate | null, line: SettlementLine): number {
+    return Math.min(Number(line.suspenseAmount), Number(candidate?.availableAmount ?? line.suspenseAmount));
+  }
+  protected money(value: unknown): string { return formatInr(value == null ? 0 : Number(value)); }
   protected positive(value: unknown): boolean { return Number(value ?? 0) > 0; }
   protected count(response: SettlementImportResponse | null, status: SettlementMatchStatus): number { return response?.counts?.[status] ?? 0; }
-  private errorMessage(err: HttpErrorResponse): string { return (err.error as ApiError | undefined)?.message ?? 'Could not import the settlement file.'; }
+  private errorMessage(err: HttpErrorResponse): string { return (err.error as ApiError | undefined)?.message ?? 'Could not complete the settlement operation.'; }
 }

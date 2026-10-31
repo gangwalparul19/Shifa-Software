@@ -4,7 +4,7 @@ import com.shifa.oms.audit.AuditActions;
 import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.auth.dto.AdminUserResponse;
 import com.shifa.oms.auth.dto.CreateUserRequest;
-import com.shifa.oms.auth.dto.ResetPasswordRequest;
+import com.shifa.oms.auth.dto.PasswordResetResponse;
 import com.shifa.oms.auth.dto.SetMfaEnabledRequest;
 import com.shifa.oms.auth.dto.UpdateUserRequest;
 import jakarta.validation.Valid;
@@ -80,12 +80,13 @@ public class AdminUserController {
 
     /** Re-encodes and sets a new password for the user. */
     @PostMapping("/{id}/reset-password")
-    public AdminUserResponse resetPassword(@PathVariable Long id,
-                                           @Valid @RequestBody ResetPasswordRequest request) {
-        AdminUserResponse response = adminUserService.resetPassword(id, request);
+    public PasswordResetResponse resetPassword(@PathVariable Long id,
+                                               @Valid @RequestBody com.shifa.oms.auth.dto.ResetPasswordRequest request) {
+        PasswordResetResponse result = adminUserService.resetPassword(id, request);
+        AdminUserResponse response = result.user();
         auditService.record(AuditActions.USER_PASSWORD_RESET, AuditActions.ENTITY_USER,
                 String.valueOf(id), "Reset password for user " + response.username());
-        return response;
+        return result;
     }
 
     /** Activates a user so they can authenticate again. */

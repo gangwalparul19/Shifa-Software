@@ -87,6 +87,19 @@ public class SalespersonPerformanceExportService {
         return renderTeam(report, format);
     }
 
+    /**
+     * The display name used to name a person's downloaded file (full name, else
+     * username). A missing user yields a neutral label rather than failing, since
+     * {@link #exportPerson} has already rejected unknown ids by the time this runs.
+     */
+    @Transactional(readOnly = true)
+    public String ownerName(Long id) {
+        return userRepository.findById(id)
+                .map(user -> user.getFullName() == null || user.getFullName().isBlank()
+                        ? user.getUsername() : user.getFullName())
+                .orElse("user " + id);
+    }
+
     /** Exports every selected-period detail for one performance owner. */
     @Transactional(readOnly = true)
     public byte[] exportPerson(Long id, PerformancePeriod period, String format) {

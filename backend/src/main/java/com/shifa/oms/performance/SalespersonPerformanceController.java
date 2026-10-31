@@ -7,6 +7,7 @@ import com.shifa.oms.performance.dto.SalesTargetRow;
 import com.shifa.oms.performance.dto.SetPeriodTargetRequest;
 import com.shifa.oms.performance.dto.SetSalesTargetRequest;
 import com.shifa.oms.performance.dto.SetTeamTargetRequest;
+import com.shifa.oms.reporting.ReportFilenames;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
@@ -66,7 +67,7 @@ public class SalespersonPerformanceController {
                                              @RequestParam(defaultValue = "xlsx") String format) {
         PerformancePeriod selected = parsePeriod(period);
         byte[] body = exportService.exportTeam(selected, format);
-        return fileResponse(body, "salespeople-performance-" + selected.name().toLowerCase(), format);
+        return fileResponse(body, "Salespeople Performance", selected, format);
     }
 
     /** Download the complete 360 report for one salesperson and selected period. */
@@ -76,7 +77,9 @@ public class SalespersonPerformanceController {
                                                @RequestParam(defaultValue = "xlsx") String format) {
         PerformancePeriod selected = parsePeriod(period);
         byte[] body = exportService.exportPerson(id, selected, format);
-        return fileResponse(body, "salesperson-" + id + "-" + selected.name().toLowerCase(), format);
+        // exportPerson has already rejected an unknown id, so the name lookup cannot fail the request.
+        String title = "Salesperson Performance " + exportService.ownerName(id);
+        return fileResponse(body, title, selected, format);
     }
 
     private static PerformancePeriod parsePeriod(String value) {
@@ -88,19 +91,26 @@ public class SalespersonPerformanceController {
         }
     }
 
-    private static ResponseEntity<byte[]> fileResponse(byte[] body, String baseName, String format) {
+    /**
+     * Wraps the export bytes as a download named after the report and the dates it
+     * covers (e.g. {@code shifa-salesperson-performance-asha-kumari_2026-10-01_to_2026-10-31.pdf}).
+     * The dates come from the same business-zone window the export itself used.
+     */
+    private static ResponseEntity<byte[]> fileResponse(byte[] body, String title,
+                                                       PerformancePeriod period, String format) {
         String normalized = format == null ? "" : format.trim().toLowerCase();
+        PerformancePeriod.Window window = period.window(LocalDate.now(PerformancePeriod.BUSINESS_ZONE));
         return switch (normalized) {
             case "xlsx", "excel" -> ResponseEntity.ok()
                     .contentType(MediaType.parseMediaType(
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-                    .header(HttpHeaders.CONTENT_DISPOSITION,
-                            "attachment; filename=\"" + baseName + ".xlsx\"")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, ReportFilenames.contentDisposition(
+                            ReportFilenames.of(title, window.firstDay(), window.lastDay(), "xlsx")))
                     .body(body);
             case "pdf" -> ResponseEntity.ok()
                     .contentType(MediaType.APPLICATION_PDF)
-                    .header(HttpHeaders.CONTENT_DISPOSITION,
-                            "attachment; filename=\"" + baseName + ".pdf\"")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, ReportFilenames.contentDisposition(
+                            ReportFilenames.of(title, window.firstDay(), window.lastDay(), "pdf")))
                     .body(body);
             default -> throw new ApiException(org.springframework.http.HttpStatus.BAD_REQUEST,
                     "UNSUPPORTED_FORMAT",

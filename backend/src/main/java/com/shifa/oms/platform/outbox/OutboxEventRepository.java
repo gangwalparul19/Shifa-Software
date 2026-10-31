@@ -68,6 +68,7 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> 
             WHERE e.eventType = :eventType
               AND e.status = :status
               AND (e.nextAttemptAt IS NULL OR e.nextAttemptAt <= :now)
+              AND (e.leaseUntil IS NULL OR e.leaseUntil <= :now)
             ORDER BY e.createdAt ASC
             """)
     List<OutboxEvent> findDue(@Param("eventType") String eventType,
@@ -88,4 +89,47 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> 
             """)
     List<OutboxEvent> findByStatusAndEventTypePrefix(@Param("status") String status,
                                                      @Param("prefix") String prefix);
+
+    /**
+     * Fenced completion for a leased row. The token is the fencing mechanism:
+     * after a lease expires and another worker claims the row, an old worker's
+     * completion updates zero rows and cannot overwrite the newer result.
+     */
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
+    @Query("""
+            UPDATE OutboxEvent e
+               SET e.status = :status,
+                   e.attempts = e.attempts + 1,
+                   e.lastError = :error,
+                   e.nextAttemptAt = :nextAttemptAt,
+                   e.leaseOwner = NULL,
+                   e.leaseToken = NULL,
+                   e.leaseUntil = NULL
+             WHERE e.id = :id
+               AND e.status = 'PENDING'
+               AND e.leaseToken = :leaseToken
+               AND (e.leaseUntil IS NULL OR e.leaseUntil > :now)
+            """)
+    int finishClaim(@Param("id") Long id,
+                    @Param("leaseToken") String leaseToken,
+                    @Param("status") String status,
+                    @Param("error") String error,
+                    @Param("nextAttemptAt") LocalDateTime nextAttemptAt,
+                    @Param("now") LocalDateTime now);
+
+    /** Requeues a failed integration event exactly once during concurrent redrive. */
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
+    @Query("""
+            UPDATE OutboxEvent e
+               SET e.status = 'PENDING',
+                   e.attempts = 0,
+                   e.lastError = NULL,
+                   e.nextAttemptAt = NULL,
+                   e.leaseOwner = NULL,
+                   e.leaseToken = NULL,
+                   e.leaseUntil = NULL
+             WHERE e.id = :id
+               AND e.status = 'FAILED'
+            """)
+    int requeueFailed(@Param("id") Long id);
 }

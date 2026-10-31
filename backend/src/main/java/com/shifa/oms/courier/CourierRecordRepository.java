@@ -1,5 +1,6 @@
 package com.shifa.oms.courier;
 
+import com.shifa.oms.statemachine.OrderStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -26,6 +27,19 @@ public interface CourierRecordRepository extends JpaRepository<CourierRecord, Lo
 
     /** All records that have an AWB assigned (poll fallback candidate set). */
     List<CourierRecord> findByAwbIsNotNull();
+
+    /** Compact order-status join used by statistical courier insights. */
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT r.courierCompanyId AS courierCompanyId, o.orderStatus AS orderStatus
+            FROM CourierRecord r, OrderEntity o
+            WHERE o.id = r.orderId AND r.courierCompanyId IS NOT NULL
+            """)
+    List<InsightCourierRow> insightOutcomeRows();
+
+    interface InsightCourierRow {
+        Long getCourierCompanyId();
+        OrderStatus getOrderStatus();
+    }
 
     /** Removes the courier record for an order — used by the admin hard-delete of an order. */
     void deleteByOrderId(Long orderId);

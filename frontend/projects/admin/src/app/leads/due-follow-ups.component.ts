@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
+import { addIstDays, todayIst } from '../shared/business-date.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { LeadsService } from './leads.service';
 import {
@@ -41,7 +42,7 @@ export class DueFollowUpsComponent implements OnInit {
   protected readonly loadError = signal<string | null>(null);
 
   /** Today's date as yyyy-MM-dd, for the overdue comparison. */
-  private readonly today = new Date().toISOString().slice(0, 10);
+  private readonly today = todayIst();
 
   protected readonly overdueCount = computed(
     () => this.leads().filter((l) => this.isOverdue(l)).length,

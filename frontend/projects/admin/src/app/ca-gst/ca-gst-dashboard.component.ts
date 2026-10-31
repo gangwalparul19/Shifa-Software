@@ -6,7 +6,8 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
-import { formatCompactInr } from '../shared/inr.pipe';
+import { AuthenticatedBlobService } from '../shared/authenticated-blob.service';
+import { formatCompactInr, formatInr } from '../shared/inr.pipe';
 import { GstService } from './gst.service';
 import { GstDashboard, GstOrderRow, Gstr1ReturnResponse } from './gst.model';
 
@@ -32,6 +33,7 @@ type MainTab = 'dashboard' | 'gstr1';
 export class CaGstDashboardComponent implements OnInit {
   private readonly gst = inject(GstService);
   private readonly toasts = inject(ToastService);
+  private readonly blobs = inject(AuthenticatedBlobService);
 
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
@@ -268,12 +270,7 @@ export class CaGstDashboardComponent implements OnInit {
       next: (blob) => {
         this.gstr1Exporting.set(false);
         const ext = format === 'csv' ? 'zip' : 'json';
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `gstr1-${this.from()}-to-${this.to()}.${ext}`;
-        a.click();
-        URL.revokeObjectURL(url);
+        this.blobs.save(blob, `gstr1-${this.from()}-to-${this.to()}.${ext}`, `gstr1.${ext}`);
       },
       error: () => {
         this.gstr1Exporting.set(false);
@@ -355,12 +352,7 @@ export class CaGstDashboardComponent implements OnInit {
     this.gst.exportReport(this.from(), this.to(), format).subscribe({
       next: (blob) => {
         this.exporting.set(false);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `gst-report-${this.from()}-to-${this.to()}.${format}`;
-        a.click();
-        URL.revokeObjectURL(url);
+        this.blobs.save(blob, `gst-report-${this.from()}-to-${this.to()}.${format}`, `gst-report.${format}`);
       },
       error: () => {
         this.exporting.set(false);
@@ -422,7 +414,7 @@ export class CaGstDashboardComponent implements OnInit {
 
   /** Format a value as ₹ with 2 decimals. */
   money(v: number | string | null | undefined): string {
-    return '₹' + this.n(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return formatInr(v, 2);
   }
 
   /** Compact ₹ amount (₹12.46K / ₹1.23L) for cramped table cells; pair with money() as the title. */

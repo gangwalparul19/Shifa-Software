@@ -1,4 +1,5 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { AuthService, Role } from 'core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
@@ -9,6 +10,7 @@ import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.c
 import { ToastService } from '../shared/toast.service';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { NotificationsService } from './notifications.service';
+import { StaffNotificationsService } from './staff-notifications.service';
 import { AdminNotificationItem } from './notifications.model';
 import { relativeTime, severityColor, severityIcon } from './notifications.util';
 
@@ -36,6 +38,8 @@ const TABLE_KEY = 'notifications';
 })
 export class NotificationsComponent implements OnInit, OnDestroy {
   private readonly service = inject(NotificationsService);
+  private readonly staffService = inject(StaffNotificationsService);
+  private readonly auth = inject(AuthService);
   private readonly toasts = inject(ToastService);
 
   protected readonly relativeTime = relativeTime;
@@ -77,7 +81,8 @@ export class NotificationsComponent implements OnInit, OnDestroy {
     this.loading.set(true);
     this.loadError.set(null);
     const f = this.filters.getRawValue();
-    this.service
+    const service = this.auth.hasAnyRole(Role.ADMIN) ? this.service : this.staffService;
+    service
       .page({
         unreadOnly: f.unreadOnly,
         type: f.type || null,
@@ -146,7 +151,8 @@ export class NotificationsComponent implements OnInit, OnDestroy {
     if (item.read) {
       return;
     }
-    this.service.markRead(item.id).subscribe({
+    const service = this.auth.hasAnyRole(Role.ADMIN) ? this.service : this.staffService;
+    service.markRead(item.id).subscribe({
       next: () => {
         this.items.update((list) =>
           list.map((n) => (n.id === item.id ? { ...n, read: true } : n)),
@@ -165,17 +171,31 @@ export class NotificationsComponent implements OnInit, OnDestroy {
       return;
     }
     this.busy.set(true);
-    this.service.markAllRead().subscribe({
-      next: () => {
-        this.busy.set(false);
-        this.toasts.success('All notifications marked read.');
-        this.load();
-      },
-      error: () => {
-        this.busy.set(false);
-        this.toasts.error('Could not mark all read.');
-      },
-    });
+    if (this.auth.hasAnyRole(Role.ADMIN)) {
+      this.service.markAllRead().subscribe({
+        next: () => {
+          this.busy.set(false);
+          this.toasts.success('All notifications marked read.');
+          this.load();
+        },
+        error: () => {
+          this.busy.set(false);
+          this.toasts.error('Could not mark all read.');
+        },
+      });
+    } else {
+      this.staffService.markAllRead().subscribe({
+        next: () => {
+          this.busy.set(false);
+          this.toasts.success('All notifications marked read.');
+          this.load();
+        },
+        error: () => {
+          this.busy.set(false);
+          this.toasts.error('Could not mark all read.');
+        },
+      });
+    }
   }
 
   humanizeType(type: string): string {

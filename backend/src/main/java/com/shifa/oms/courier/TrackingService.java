@@ -109,12 +109,19 @@ public class TrackingService {
      * the stored {@code shipment_tracking_events} (Option B) — no live QuikShipX
      * call. Empty when none are stored yet, or when the lightweight/test
      * constructor left the event repository unset.
+     *
+     * <p>The public response is deliberately capped at {@link #MAX_DETAIL_EVENTS}
+     * rows by the repository query, so an unexpectedly large courier timeline
+     * cannot turn a token lookup into an unbounded response.
      */
+    /** Maximum stored scan events exposed by the public tracking detail. */
+    private static final int MAX_DETAIL_EVENTS = 100;
+
     private List<com.shifa.oms.courier.dto.PublicTrackingResponse.Event> detailedEvents(Long orderId) {
         if (trackingEventRepository == null || orderId == null) {
             return List.of();
         }
-        return trackingEventRepository.findByOrderIdOrderBySortOrderAsc(orderId).stream()
+        return trackingEventRepository.findTop100ByOrderIdOrderBySortOrderAscIdAsc(orderId).stream()
                 .map(e -> new com.shifa.oms.courier.dto.PublicTrackingResponse.Event(
                         e.getStatus(), e.getInstructions(), e.getLocation(), e.getScanAt()))
                 .toList();
@@ -124,7 +131,6 @@ public class TrackingService {
      * The customer's orders for a registered mobile number, as privacy-safe
      * tracking cards (public self-service tracking page {@code /track-order}).
      *
-     * <p>Lets a customer (or an agent) look up all their orders by the mobile
      * they registered with — no login — and pick one to see its live tracking,
      * saving a WhatsApp notification. Deliberately minimal and privacy-safe: each
      * card carries only what the tracking list needs (order code, opaque tracking
@@ -149,8 +155,7 @@ public class TrackingService {
             return new com.shifa.oms.courier.dto.TrackByMobileResponse(brandName(), List.of());
         }
         List<com.shifa.oms.courier.dto.TrackByMobileResponse.OrderCard> cards =
-                orderRepository.findByCustomerMobileOrderByCreatedAtDesc(normalized).stream()
-                        .limit(MAX_MOBILE_CARDS)
+                orderRepository.findTop25ByCustomerMobileOrderByCreatedAtDescIdDesc(normalized).stream()
                         .map(TrackingService::toCard)
                         .toList();
         return new com.shifa.oms.courier.dto.TrackByMobileResponse(brandName(), cards);

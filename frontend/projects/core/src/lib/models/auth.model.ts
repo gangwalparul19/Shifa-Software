@@ -76,6 +76,8 @@ export interface TokenResponse {
    * change-password screen when true.
    */
   mustChangePassword?: boolean;
+  /** Sliding idle-session deadline, epoch seconds from the server. */
+  sessionExpiresAt?: number;
 }
 
 /** The decoded identity of the currently authenticated user. */
@@ -90,9 +92,11 @@ export interface AuthSession {
    */
   fullName?: string;
   /**
-   * When true, the user signed in with an admin-reset temporary password and
-   * must set a new strong password before using the app. Read from the JWT
+   * When true, the user signed in with an administrator-issued one-time
+   * credential and must set a new strong password before using the app.
    * {@code pwd} claim so it survives a page reload.
    */
   mustChangePassword?: boolean;
+  /** Current server-authoritative idle deadline, epoch milliseconds for UI scheduling. */
+  sessionExpiresAt?: number;
 }

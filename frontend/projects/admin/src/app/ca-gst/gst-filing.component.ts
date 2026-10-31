@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
+import { AuthenticatedBlobService } from '../shared/authenticated-blob.service';
 import { FilingService } from './filing.service';
 import {
   CalendarEntry,
@@ -45,6 +46,7 @@ interface MonthRow {
 export class GstFilingComponent implements OnInit {
   private readonly filing = inject(FilingService);
   private readonly toasts = inject(ToastService);
+  private readonly blobs = inject(AuthenticatedBlobService);
 
   // --- Calendar state ------------------------------------------------------
   protected readonly loading = signal(true);
@@ -253,12 +255,7 @@ export class GstFilingComponent implements OnInit {
       next: (blob) => {
         this.exportingKey.set(null);
         const ext = format === 'csv' ? 'zip' : 'json';
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `gstr1-${year}-${String(month).padStart(2, '0')}.${ext}`;
-        a.click();
-        URL.revokeObjectURL(url);
+        this.blobs.save(blob, `gstr1-${year}-${String(month).padStart(2, '0')}.${ext}`, `gstr1.${ext}`);
       },
       error: () => {
         this.exportingKey.set(null);

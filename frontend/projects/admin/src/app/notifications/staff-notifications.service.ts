@@ -45,9 +45,9 @@ export class StaffNotificationsService {
     return this.api.get<UnreadCount>('/api/notifications/unread-count');
   }
 
-  /** Mark a single notification read (idempotent). */
-  markRead(id: number): Observable<void> {
-    return this.api.post<void>(`/api/notifications/${id}/read`);
+  /** Mark a single notification read (idempotent) and return the updated item. */
+  markRead(id: number): Observable<AdminNotificationItem> {
+    return this.api.post<AdminNotificationItem>(`/api/notifications/${id}/read`);
   }
 
   /**

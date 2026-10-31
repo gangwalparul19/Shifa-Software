@@ -1,5 +1,6 @@
 package com.shifa.oms.lead;
 
+import com.shifa.oms.order.LeadSource;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -33,6 +34,22 @@ public interface LeadRepository extends JpaRepository<LeadEntity, Long> {
     @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
     @Query("UPDATE LeadEntity l SET l.convertedOrderId = NULL WHERE l.convertedOrderId = :orderId")
     int clearConvertedOrder(@Param("orderId") Long orderId);
+
+    /** Lead-source totals for the statistical-insights engine, grouped in SQL. */
+    @Query("""
+            SELECT l.leadSource AS source, COUNT(l.id) AS leadCount,
+                   SUM(CASE WHEN l.status = com.shifa.oms.lead.LeadStatus.WON THEN 1 ELSE 0 END) AS wonCount
+            FROM LeadEntity l
+            WHERE l.leadSource IS NOT NULL
+            GROUP BY l.leadSource
+            """)
+    List<InsightLeadSourceRow> insightLeadSourceCounts();
+
+    interface InsightLeadSourceRow {
+        LeadSource getSource();
+        long getLeadCount();
+        long getWonCount();
+    }
 
     /**
      * All leads for a scope (no search term), most recent first. A {@code null}

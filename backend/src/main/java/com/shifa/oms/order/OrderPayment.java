@@ -47,6 +47,10 @@ public class OrderPayment {
     @Column(name = "utr", length = 80)
     private String utr;
 
+    /** Canonical UTR used by the database uniqueness boundary and matching queries. */
+    @Column(name = "utr_normalized", length = 80)
+    private String utrNormalized;
+
     @Column(name = "captured_at", insertable = false, updatable = false)
     private LocalDateTime capturedAt;
 
@@ -68,7 +72,8 @@ public class OrderPayment {
         this.bankAccountId = bankAccountId;
         this.bankAccountNameSnapshot = bankAccountNameSnapshot;
         this.bankAccountMaskedSnapshot = bankAccountMaskedSnapshot;
-        this.utr = utr;
+        this.utr = UtrNormalizer.normalize(utr);
+        this.utrNormalized = this.utr;
     }
 
     public Long getId() { return id; }
@@ -79,5 +84,6 @@ public class OrderPayment {
     public String getBankAccountNameSnapshot() { return bankAccountNameSnapshot; }
     public String getBankAccountMaskedSnapshot() { return bankAccountMaskedSnapshot; }
     public String getUtr() { return utr; }
+    public String getUtrNormalized() { return utrNormalized; }
     public LocalDateTime getCapturedAt() { return capturedAt; }
 }

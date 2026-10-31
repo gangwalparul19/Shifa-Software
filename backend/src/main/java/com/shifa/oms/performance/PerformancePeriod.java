@@ -72,6 +72,16 @@ public enum PerformancePeriod {
                     && (to == null || timestamp.isBefore(to));
         }
 
+        /** First calendar day covered, or {@code null} for an unbounded ("Overall") window. */
+        public LocalDate firstDay() {
+            return from == null ? null : from.toLocalDate();
+        }
+
+        /** Last calendar day covered (inclusive; {@code to} is exclusive), or {@code null} when unbounded. */
+        public LocalDate lastDay() {
+            return to == null ? null : to.toLocalDate().minusDays(1);
+        }
+
         public String label() {
             if (from == null && to == null) {
                 return "All time";

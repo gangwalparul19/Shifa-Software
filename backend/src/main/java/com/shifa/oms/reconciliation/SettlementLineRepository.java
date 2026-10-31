@@ -1,6 +1,8 @@
 package com.shifa.oms.reconciliation;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -8,6 +10,10 @@ import java.util.List;
 
 public interface SettlementLineRepository extends JpaRepository<SettlementLine, Long> {
     List<SettlementLine> findByBatchIdOrderBySourceRowNumberAsc(Long batchId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select l from SettlementLine l join fetch l.batch where l.id = :id")
+    java.util.Optional<SettlementLine> findByIdForUpdate(@Param("id") Long id);
 
     @Query(value = """
             SELECT b.destination_account_id AS accountId,

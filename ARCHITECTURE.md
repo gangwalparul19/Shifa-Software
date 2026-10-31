@@ -8,7 +8,8 @@
 
 ---
 
-## 1. What this is
+> **Current baseline (2026-10-30):** Source migrations end at V105. The last documented production schema is V73 because the A1–B6 plus selected C6/E/F changes are local and not deployed. The supported production target is AWS EC2 (`15.252.230.73`) at `https://shifa.weblithic.online/` with Amazon S3; older dated deployment entries are historical.
+
 
 Dashboard-only **Order Management System** for Shifa Herbal Remedies. The public storefront is on
 **Shopify**; this app is the internal admin + salesperson operations platform (order entry, approval,
@@ -28,7 +29,7 @@ packing, courier handoff, payments/GST accounting, CRM, reporting). No public-fa
 **Run commands (Windows/cmd, explicit paths):**
 - Backend (8080): `mvn -f "backend/pom.xml" -DskipTests spring-boot:run`
 - Admin UI (4300): `npm --prefix frontend run start:admin`
-- Backend tests: `mvn -f "backend/pom.xml" test` (full suite 858 tests; exclude `-Dtest=!WhatsappTemplateEncodingIT` for DB-less runs)
+- Backend tests: `mvn -f "backend/pom.xml" clean test` (current local remediation validation recorded 1042 tests; exclude `-Dtest=!WhatsappTemplateEncodingIT` only for intentionally DB-less subsets)
 - Admin build: `npm --prefix frontend run build:admin`
 
 ## 3. Backend module map (`com.shifa.oms.*`)
@@ -66,10 +67,14 @@ packing, courier handoff, payments/GST accounting, CRM, reporting). No public-fa
 | `geo` | Delivery-state master list |
 | `mail` | Email outbox + drainer, daily/weekly consolidated report |
 | `search` | Global command-palette search |
-| `platform` | Pluggable storage (LOCAL/DB/S3), image compressor |
+| `platform` | Pluggable storage (LOCAL/DB/S3; production uses AWS S3), image compressor, backups, outbox infrastructure |
 | `common` | Shared DTOs, exceptions, spreadsheet parser, Jackson time config |
 | `lead` | Lead management (capture→convert), follow-up reminders, reports |
-| `adminexception` | Read-only exception center (approvals/payments/failures/claims/insights) |
+| `activity` | CRM/customer activity timeline and touch logging |
+| `meeting` | CRM meeting scheduling and outcomes |
+| `task` | CRM task lists, completion, cancellation, and notes |
+| `permission` | CRM permission and role-shaped configuration |
+| `crmcockpit` | Admin CRM cockpit and pipeline overview |
 
 ## 4. Order lifecycle (state machine)
 
@@ -118,7 +123,7 @@ to username) — never raw username (salespeople log in with their mobile number
 
 ## 6. Migrations (Flyway, `backend/src/main/resources/db/migration`)
 
-**Rule: never edit an applied migration; always add a new versioned one. Highest is V79.**
+**Rule: never edit an applied migration; always add a new versioned one. Highest source migration is V105.**
 
 | Range | Theme |
 |---|---|
@@ -130,7 +135,9 @@ to username) — never raw username (salespeople log in with their mobile number
 | V49–V50 | Product catalog: minimum_rate, wt_ml; order discount_type/value; seed 30 products |
 | V60–V69 | Delivery method, RTO reason, vehicle number, return credit-note value, **multi payment screenshots** (V65), reject reason (V66), country (V67), **shopify_order_id + unique index** (V68), shipment label-printed flag (V69) |
 | V70–V76 | Shopify sync toggle, **dashboard aggregation indexes** (V71), payment-screenshot content hash (V72), auto-approval settings (V73), shipment cancelled, QuikShipX failure reason, courier_record tracking_url (V76) |
-| V77–V79 | **Customer tracking token** (V77 `orders.tracking_token` unique + backfill), **return refund method** (V78 `order_returns.refund_method`), **product cost price** (V79 `products.cost_price`) for channel-margin analytics |
+| V77–V82 | Customer tracking token, return refund method, product cost price, order soft-delete, forced-password-change tracking, widened lead-source values |
+| V83–V100 | CRM pipelines/permissions/sources/settings, meetings/tasks/activity, deleted-order and order-cancellation support, GST filing/reconciliation, ledger/accounting, QuikShipX shipment metadata, remittance batches, bank accounts, settlement center, MFA enablement |
+| V101–V105 | Auth session-version reset + MFA ciphertext, authenticated idle sessions, settlement integrity metadata, canonical payment UTR normalization/duplicate preflight, and fenced outbox claim leases |
 
 Start against an **empty** `shifa_dashboard` (V22 uses explicit IDs). V27 test seed + V51 GST demo reset
 (DESTRUCTIVE — wipes orders, reseeds ~200) run in ALL profiles.
@@ -144,12 +151,7 @@ Start against an **empty** `shifa_dashboard` (V22 uses explicit IDs). V27 test s
 - **Shell:** `shell/admin-shell.component.ts`. Desktop ≥992px = persistent left sidebar (collapsible accordion
   groups); mobile = hamburger drawer + role-aware 4-tab bottom bar. SSE connected for all staff roles.
 - **Role landings:** PAYMENT_VERIFIER→`/payments`, CA→`/ca/gst`; others→role-shaped `/dashboard`.
-- **Pages:** dashboard, approval-queue, orders(+/new, /:id/edit, convert, reorder, resubmit), leads(+follow-ups),
-  products, inventory, customers (360), returns, notifications, announcements, audit, suppliers, purchase-orders,
-  expenses, finance/pnl, packing (+pick-list, +RTO), reconciliation, reports, settings, users, salespeople,
-  my-profile, profile-approvals, team (assign), team-performance, teams-overview, leaderboard, analytics,
-  insights, exceptions, payments, ca-gst (dashboard/reconciliation/filing), ledger (CoA/voucher/day-book/
-  trial-balance/statement/balance-sheet/P&L/cash-flow), shopify-sync, whatsapp-templates.
+- **Routes/pages:** dashboard, approval-queue, orders (new/edit/reorder/resubmit), leads/follow-ups, tasks, meetings, CRM dashboard/settings, products, inventory, customers (360), returns, notifications, audit, announcements, suppliers, purchase-orders, expenses, finance/P&L, packing/RTO/pick-list, reconciliation/remittance-report/settlements, reports, settings/users/salespeople/profile approvals, backups, payments, WhatsApp templates, analytics/insights/exceptions, Shopify sync/order cancellation/deleted orders, CA GST dashboard/filing/reconciliation, accounting (chart/vouchers/day book/trial balance/statement/balance sheet/P&L/cash flow), team/team performance/teams overview/delivery partners/leaderboard. `/channel-dashboard` is a redirect to `/dashboard`.
 - **Shared conventions:** `| istDate` pipe (never `| date`), `InrPipe` for money, `admin-pagination` +
   `readPageSize`/`writePageSize`, `admin-state-panel` (skeleton+retry), canonical `.badge.tone-*` status pills,
   `STATUS_LABEL_OVERRIDES` humanize map, `shared/role-label.ts`.
@@ -170,8 +172,7 @@ Start against an **empty** `shifa_dashboard` (V22 uses explicit IDs). V27 test s
 
 ## 9. Deploy & ops
 
-- **Canonical:** `DEPLOYMENT.md`. One command: `deploy\push-to-aws.ps1 -KeyPath "<pem>" -Ip 15.252.230.73`
-  (⚠️ default IP in the script is stale `13.234.22.207` — **always pass `-Ip 15.252.230.73`**).
+- **Canonical:** `DEPLOYMENT.md`. One command: `deploy\push-to-aws.ps1 -KeyPath "<pem>"` (the script defaults to the current prod EC2 address `15.252.230.73`; pass `-Ip` if EC2 assigns a new address). The client URL is always `https://shifa.weblithic.online/`.
   `-SkipBuild` reuses the prebuilt JAR + admin bundle. `aws-apply.sh` on the box: mysqldump backup → swap JAR
   → publish admin → restart `shifa-oms` → reload nginx.
 - **Verify a deploy via SSH (console/log output is unreliable):** `systemctl is-active shifa-oms`,
@@ -184,8 +185,7 @@ Start against an **empty** `shifa_dashboard` (V22 uses explicit IDs). V27 test s
 
 ## 10. Testing patterns
 
-- Full suite 858 tests. `ApplicationContextLoadsTest` (`@SpringBootTest`, H2 `smoketest` profile) boots the full
-  context DB-less → catches missing-`@Autowired`/broken DI before deploy.
+- Full backend suite: **1042 tests** in the current local remediation worktree. `ApplicationContextLoadsTest` (`@SpringBootTest`, H2 `smoketest` profile) boots the full context DB-less → catches missing-`@Autowired`/broken DI before deploy. Use `mvn -f "backend/pom.xml" clean test`; the live-MySQL `WhatsappTemplateEncodingIT` may be excluded only when intentionally running a DB-less subset (`-Dtest=!WhatsappTemplateEncodingIT`).
 - **Java 25 can't mock concrete classes (Mockito/ByteBuddy):** mock repository *interfaces*, use real instances or
   recording subclasses for concrete services/entities. Dual-constructor services (one takes `Clock` for tests)
   **must `@Autowired` the primary ctor** or the context fails to start.
@@ -216,19 +216,18 @@ Status key: 🔴 open-high · 🟡 open-medium · 🟢 verified-good/no-action �
 | 3 | `gst/GstAccountingService` toGstOrders/orders/hasLineRate/hasLineHsn | ✅ fixed | lazy `getLineItems()` N+1; `report()`→`dashboard()` re-queried window 2-3× | `findByCreatedAtBetweenWithLineItems` (JOIN FETCH DISTINCT); window loaded once via shared `buildReport` |
 | 4 | `GstAccountingService.dashboard()` | ✅ fixed | `purchaseOrderRepository.findAll()` + `orderReturnRepository.findAll()` filtered in Java | windowed SQL SUM finders `sumTotalCreatedBetween` / `sumRefundByStatusCreatedBetween` |
 | 5 | `dashboard/TeamsOverviewService.overview()/rowFor()` | ✅ fixed | per-team `leaderboardFor` re-ran full-table aggregate + `findByRole` | `leaderboard()` computed once, indexed by id, sliced per team in-memory |
-| 6 | `dashboard/DashboardMetricsService` liveStats/activityCards | ✅ fixed | `findAll()` on the SSE hot path | `liveStatsBetween` SQL COUNT+SUM; `activityCards` uses `statusCounts()` GROUP BY. (`metrics()` `loadRecords()` kept `findAll()` by design — not the SSE tick) |
+| 6 | `dashboard/DashboardMetricsService` liveStats/activityCards/metrics | ✅ fixed | `findAll()` on the SSE hot path and all-window metric loads | `liveStatsBetween` SQL COUNT+SUM; `activityCards` uses `statusCounts()` GROUP BY; `metrics()` loads only the selected and previous comparison windows with line items in one query |
 | 7 | `order/ChannelSummaryService.loadWindow()` | ✅ fixed | `findAll()` for open-ended window | one-sided windows now push a bounded `findByCreatedAtBetween` with wide sentinels; only all-time loads all |
-| 8 | `insights/InsightComputationService` | 🟡 | 3× `findAll()` + per-product N+1 (nightly 02:00 — low urgency) | windowed finders + batch product load |
-| 9 | `gst/Gstr1ReturnService.buildCreditNotes()` + `productRepository.findAll()` | 🟡 | lazy N+1 + full product scan | JOIN FETCH + `findAllById` |
-| 10 | `reporting/ModuleReportService` (4 sites) | 🟡 | `findAll()` + Java window filter | windowed finders |
+| 8 | `insights/InsightComputationService` | 🟡 partial | historical open-order risk rows and courier/company enrichment can still grow | revenue/location/lead/COD/risk history use SQL projections; open orders remain a bounded-by-domain live queue and insight API pagination is still open |
+| 9 | `gst/Gstr1ReturnService.buildCreditNotes()` + product catalogue | ✅ fixed | lazy N+1 + full product scan | in-period return finder plus compact HSN/UQC projection |
+| 10 | `reporting/ModuleReportService` (4 sites) | 🟡 partial | unbounded all-time report lists still materialize every row | date-windowed SQL finders are used; all-time pagination/maximum-row policy remains open |
 
-**Index gaps:** 🟢 `orders.shopify_order_id` unique index **confirmed present** (V68 `uq_orders_shopify_order_id`).
-🟡 `outbox(event_type,status,next_attempt_at)` composite missing (only `(status,next_attempt_at)`) — the re-drive
-scans by event_type prefix. No `@BatchSize` anywhere; all `OrderEntity` associations are LAZY (good).
+**Index gaps:** 🟢 `orders.shopify_order_id` unique index **confirmed present** (V68 `uq_orders_shopify_order_id`); 🟢 outbox claim index **added in V105** (`event_type,status,next_attempt_at,lease_until,created_at,id`).
+No `@BatchSize` is configured; all `OrderEntity` associations are LAZY (good). Public tracking mobile history is capped by a derived top-25 query and stored tracking detail is capped by a derived top-100 query.
 
 **Already optimal (do not re-touch):** `AdminOrderService.listOrders`, `OrderService.getOrder`,
 `PackingService.queue`, `ReturnService.list`, `DailyReportService`, the role dashboards (GROUP BY aggregates),
-all outbox drainers (scoped `findDue`).
+and the five integration outbox drainers (bounded fenced claims via V105).
 
 ### 12.2 DTO integrity
 

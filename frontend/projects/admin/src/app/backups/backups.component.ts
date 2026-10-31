@@ -3,9 +3,11 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
+import { todayIst } from '../shared/business-date.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
+import { AuthenticatedBlobService } from '../shared/authenticated-blob.service';
 import { BackupsService } from './backups.service';
 import { BackupRun } from './backups.model';
 
@@ -27,6 +29,7 @@ export class BackupsComponent implements OnInit {
   private readonly service = inject(BackupsService);
   private readonly confirm = inject(ConfirmService);
   private readonly toasts = inject(ToastService);
+  private readonly blobs = inject(AuthenticatedBlobService);
 
   protected readonly runs = signal<BackupRun[]>([]);
   protected readonly loading = signal(true);
@@ -118,14 +121,7 @@ export class BackupsComponent implements OnInit {
     this.downloadingId.set(run.id);
     this.service.download(run.id).subscribe({
       next: (blob) => {
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = this.downloadName(run);
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        this.blobs.save(blob, this.downloadName(run), 'shifa-backup.sql.gz');
         this.downloadingId.set(null);
       },
       error: () => {
@@ -138,7 +134,7 @@ export class BackupsComponent implements OnInit {
   /** A friendly filename for the downloaded archive, e.g. shifa-backup-2026-07-24.sql.gz. */
   private downloadName(run: BackupRun): string {
     const when = run.finishedAt || run.startedAt;
-    const stamp = when ? new Date(when).toISOString().slice(0, 10) : String(run.id);
+    const stamp = when ? todayIst(new Date(when)) : String(run.id);
     return `shifa-backup-${stamp}.sql.gz`;
   }
 

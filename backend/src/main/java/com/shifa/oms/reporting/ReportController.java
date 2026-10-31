@@ -46,6 +46,7 @@ public class ReportController {
     private static final MediaType XLSX =
             MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     private static final MediaType CSV = MediaType.parseMediaType("text/csv");
+    private static final String VYAPAR_TITLE = "Vyapar Billing";
 
     private final ReportService reportService;
     private final ExcelReportExporter excelExporter;
@@ -84,15 +85,16 @@ public class ReportController {
         // Generate once so the PDF can carry the KPI summary alongside the table.
         ReportResponse report = reportService.generate(reportType, from, to);
         TabularData table = new TabularData(report.headers(), report.rows());
-        String baseName = "report-" + reportType.name().toLowerCase();
         String label = reportLabel(reportType);
         String subtitle = rangeSubtitle(from, to);
+        // e.g. shifa-daily-sales-report_2026-10-02_to_2026-10-31.pdf — self-describing, no renaming.
         return switch (format.trim().toLowerCase()) {
             case "xlsx", "excel" -> fileResponse(
-                    excelExporter.export(reportType.name(), table), XLSX, baseName + ".xlsx", null);
+                    excelExporter.export(reportType.name(), table), XLSX,
+                    ReportFilenames.of(label, from, to, "xlsx"), null);
             case "pdf" -> fileResponse(
                     pdfExporter.export(label, subtitle, report.summary(), table),
-                    MediaType.APPLICATION_PDF, baseName + ".pdf", null);
+                    MediaType.APPLICATION_PDF, ReportFilenames.of(label, from, to, "pdf"), null);
             default -> throw new ApiException(HttpStatus.BAD_REQUEST, "UNSUPPORTED_FORMAT",
                     "Unsupported export format: " + format + " (expected xlsx or pdf).");
         };
@@ -111,9 +113,11 @@ public class ReportController {
                 ? "No orders were found for the selected date range." : null;
         return switch (format.trim().toLowerCase()) {
             case "csv" -> fileResponse(
-                    csvExporter.export(table), CSV, "vyapar-billing.csv", message);
+                    csvExporter.export(table), CSV,
+                    ReportFilenames.of(VYAPAR_TITLE, from, to, "csv"), message);
             case "xlsx", "excel" -> fileResponse(
-                    excelExporter.export("Vyapar", table), XLSX, "vyapar-billing.xlsx", message);
+                    excelExporter.export("Vyapar", table), XLSX,
+                    ReportFilenames.of(VYAPAR_TITLE, from, to, "xlsx"), message);
             default -> throw new ApiException(HttpStatus.BAD_REQUEST, "UNSUPPORTED_FORMAT",
                     "Unsupported Vyapar format: " + format + " (expected csv or xlsx).");
         };
@@ -123,7 +127,7 @@ public class ReportController {
                                                 String filename, String message) {
         ResponseEntity.BodyBuilder builder = ResponseEntity.ok()
                 .contentType(contentType)
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"");
+                .header(HttpHeaders.CONTENT_DISPOSITION, ReportFilenames.contentDisposition(filename));
         if (message != null) {
             builder.header("X-Report-Message", message);
         }
@@ -150,6 +154,10 @@ public class ReportController {
             case SALESPERSON -> "Salesperson-wise Report";
             case SALESPERSON_SUMMARY -> "Salesperson Summary Report";
             case SALESPERSON_PRODUCT -> "Salesperson \u00d7 Product Report";
+            case EXECUTIVE_PRODUCT_DETAIL -> "Sales Executive \u00d7 Product Detail";
+            case EXECUTIVE_PRODUCT_MATRIX -> "Sales Executive Product Tracker";
+            case TOP_EXECUTIVES_BY_CATEGORY -> "Top Sales Executives by Category";
+            case TOP_EXECUTIVES_BY_PRODUCT -> "Top Sales Executives by Product";
             case ORDERS_BY_LEAD_SOURCE -> "Orders by Lead Source";
             case ORDERS_BY_STATUS -> "Orders by Status";
             case ORDERS_BY_SALESPERSON -> "Orders by Salesperson";

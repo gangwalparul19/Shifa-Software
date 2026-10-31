@@ -244,7 +244,8 @@
           <div class="col-6 col-md-4 mb-2">
             <label class="form-label">Account number</label>
             <input type="text" class="form-control shifa-mono" formControlName="bankAccountNumber" maxlength="40"
-              autocomplete="off" />
+              autocomplete="off" [placeholder]="maskedBankAccountNumber() ? 'Leave blank to keep ' + maskedBankAccountNumber() : 'Enter account number'" />
+            @if (maskedBankAccountNumber()) { <div class="form-hint">Stored as {{ maskedBankAccountNumber() }}. Leave blank to keep it, or enter a new number to replace it.</div> }
           </div>
           <div class="col-6 col-md-4 mb-2">
             <label class="form-label">IFSC</label>

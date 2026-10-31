@@ -1,7 +1,8 @@
 import { IstDatePipe } from '../shared/ist-date.pipe';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
-import { FormBuilder, FormControl, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { FormBuilder, FormControl, ReactiveFormsModule } from '@angular/forms';
+import { todayIst } from '../shared/business-date.util';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
 import { Money, ReceivableType, SortState } from 'core';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -463,7 +464,7 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
   }
 
   private today(): string {
-    return new Date().toISOString().slice(0, 10);
+    return todayIst();
   }
 
   private showToast(kind: Toast['kind'], text: string): void {

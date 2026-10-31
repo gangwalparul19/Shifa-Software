@@ -2,6 +2,7 @@ package com.shifa.oms.quikshipx;
 
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
+import com.shifa.oms.platform.outbox.OutboxClaimService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -39,23 +40,34 @@ public class QuikShipXDrainer {
      * order did not get its tracking id and can recover it. Nullable in tests.
      */
     private final com.shifa.oms.adminnotification.AdminNotificationService adminNotificationService;
+    private final OutboxClaimService claimService;
 
     /** Test constructor without the admin-alert collaborator (no alert on permanent failure). */
     public QuikShipXDrainer(OutboxEventRepository outboxEventRepository,
                             QuikShipXService quikShipXService,
                             QuikShipXProperties properties) {
-        this(outboxEventRepository, quikShipXService, properties, null);
+        this(outboxEventRepository, quikShipXService, properties, null, null);
+    }
+
+    /** Legacy test constructor without admin-alert or claim collaborators. */
+    public QuikShipXDrainer(OutboxEventRepository outboxEventRepository,
+                            QuikShipXService quikShipXService,
+                            QuikShipXProperties properties,
+                            com.shifa.oms.adminnotification.AdminNotificationService adminNotificationService) {
+        this(outboxEventRepository, quikShipXService, properties, adminNotificationService, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public QuikShipXDrainer(OutboxEventRepository outboxEventRepository,
                             QuikShipXService quikShipXService,
                             QuikShipXProperties properties,
-                            com.shifa.oms.adminnotification.AdminNotificationService adminNotificationService) {
+                            com.shifa.oms.adminnotification.AdminNotificationService adminNotificationService,
+                            OutboxClaimService claimService) {
         this.outboxEventRepository = outboxEventRepository;
         this.quikShipXService = quikShipXService;
         this.properties = properties;
         this.adminNotificationService = adminNotificationService;
+        this.claimService = claimService;
     }
 
     /** Scheduled entry point: drains due QuikShipX events every 15 seconds. */
@@ -100,11 +112,17 @@ public class QuikShipXDrainer {
             if (!looksTransient(event.getLastError())) {
                 continue; // a genuinely permanent failure — leave for manual review
             }
-            // Back to PENDING with a fresh retry ladder (attempts 0, due now), so the
-            // full tolerance window is available again for this recovery attempt.
-            event.requeue();
-            outboxEventRepository.save(event);
-            requeued++;
+            boolean didRequeue;
+            if (claimService != null) {
+                didRequeue = claimService.requeueFailed(event);
+            } else {
+                event.requeue();
+                outboxEventRepository.save(event);
+                didRequeue = true;
+            }
+            if (didRequeue) {
+                requeued++;
+            }
         }
         if (requeued > 0) {
             log.info("QuikShipX self-heal: re-queued {} transiently-failed event(s) to PENDING", requeued);
@@ -137,8 +155,9 @@ public class QuikShipXDrainer {
     }
 
     private int drain(String eventType, Consumer<Long> action) {
-        List<OutboxEvent> due = outboxEventRepository.findDue(
-                eventType, OutboxEvent.STATUS_PENDING, LocalDateTime.now());
+        List<OutboxEvent> due = claimService == null
+                ? outboxEventRepository.findDue(eventType, OutboxEvent.STATUS_PENDING, LocalDateTime.now())
+                : claimService.claimDue(eventType, LocalDateTime.now());
         int processed = 0;
         for (OutboxEvent event : due) {
             processOne(event, action);
@@ -151,8 +170,9 @@ public class QuikShipXDrainer {
         Long orderId = Objects.requireNonNull(event.getAggregateId(), "outbox aggregateId");
         try {
             action.accept(orderId);
-            event.markSent();
-            outboxEventRepository.save(event);
+            if (markSent(event)) {
+                log.debug("QuikShipX {} for order {} marked SENT", event.getEventType(), orderId);
+            }
         } catch (RuntimeException ex) {
             handleFailure(event, orderId, ex);
         }
@@ -163,8 +183,10 @@ public class QuikShipXDrainer {
         boolean retryable = !(ex instanceof QuikShipXException q) || q.isRetryable();
         boolean exhausted = event.getAttempts() + 1 >= properties.maxAttempts();
         if (!retryable || exhausted) {
-            event.markFailed(error);
-            outboxEventRepository.save(event);
+            if (!markFailed(event, error)) {
+                log.debug("QuikShipX event {} lost its lease before permanent failure was recorded", event.getId());
+                return;
+            }
             log.warn("QuikShipX {} for order {} failed permanently after {} attempt(s): {}",
                     event.getEventType(), orderId, event.getAttempts() + 1, error);
             // Surface the reason on the order so the admin sees it on the drawer and
@@ -173,11 +195,40 @@ public class QuikShipXDrainer {
             alertPermanentFailure(event, orderId, error);
         } else {
             LocalDateTime next = LocalDateTime.now().plus(properties.retryBackoff());
-            event.recordRetry(error, next);
-            outboxEventRepository.save(event);
+            if (!recordRetry(event, error, next)) {
+                log.debug("QuikShipX event {} lost its lease before retry was recorded", event.getId());
+                return;
+            }
             log.debug("QuikShipX {} for order {} will retry at {} ({})",
                     event.getEventType(), orderId, next, error);
         }
+    }
+
+    private boolean markSent(OutboxEvent event) {
+        if (claimService != null) {
+            return claimService.markSent(event);
+        }
+        event.markSent();
+        outboxEventRepository.save(event);
+        return true;
+    }
+
+    private boolean markFailed(OutboxEvent event, String error) {
+        if (claimService != null) {
+            return claimService.markFailed(event, error);
+        }
+        event.markFailed(error);
+        outboxEventRepository.save(event);
+        return true;
+    }
+
+    private boolean recordRetry(OutboxEvent event, String error, LocalDateTime next) {
+        if (claimService != null) {
+            return claimService.recordRetry(event, error, next);
+        }
+        event.recordRetry(error, next);
+        outboxEventRepository.save(event);
+        return true;
     }
 
     /**

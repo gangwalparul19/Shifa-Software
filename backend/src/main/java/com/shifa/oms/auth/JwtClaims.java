@@ -2,26 +2,35 @@ package com.shifa.oms.auth;
 
 import java.time.Instant;
 
-/**
- * The decoded, verified contents of a JWT issued by {@link JwtService}.
- *
- * @param userId    the subject user's id (claim {@code uid})
- * @param username  the subject user's username (claim {@code sub})
- * @param role      the subject user's {@link Role} (claim {@code role})
- * @param type      whether this is an access or refresh token (claim {@code typ})
- * @param issuedAt  when the token was issued (claim {@code iat})
- * @param expiresAt when the token expires (claim {@code exp})
- */
+/** Decoded, signed JWT contents. The sid identifies the server-side idle session. */
 public record JwtClaims(
         Long userId,
         String username,
         Role role,
+        long sessionVersion,
         TokenType type,
         Instant issuedAt,
-        Instant expiresAt) {
+        Instant expiresAt,
+        Instant sessionStartedAt,
+        Instant sessionExpiresAt,
+        String sessionId) {
 
-    /** Builds the immutable {@link AuthPrincipal} represented by these claims. */
+    /** Backward-compatible constructor for direct test fixtures and old callers. */
+    public JwtClaims(Long userId, String username, Role role, long sessionVersion,
+                     TokenType type, Instant issuedAt, Instant expiresAt) {
+        this(userId, username, role, sessionVersion, type, issuedAt, expiresAt,
+                issuedAt, issuedAt == null ? null : issuedAt.plusSeconds(30 * 60L), null);
+    }
+
+    /** Compatibility constructor for the previous nine-claim representation. */
+    public JwtClaims(Long userId, String username, Role role, long sessionVersion,
+                     TokenType type, Instant issuedAt, Instant expiresAt,
+                     Instant sessionStartedAt, Instant sessionExpiresAt) {
+        this(userId, username, role, sessionVersion, type, issuedAt, expiresAt,
+                sessionStartedAt, sessionExpiresAt, null);
+    }
+
     public AuthPrincipal toPrincipal() {
-        return new AuthPrincipal(userId, username, role);
+        return new AuthPrincipal(userId, username, role, sessionStartedAt, sessionId);
     }
 }

@@ -11,11 +11,20 @@ public interface OrderPaymentRepository extends JpaRepository<OrderPayment, Long
             SELECT p.id AS paymentId, p.order_id AS orderId, p.amount_received AS amount,
                    p.bank_account_id AS bankAccountId
             FROM payments p
-            WHERE UPPER(TRIM(p.utr)) = UPPER(TRIM(:utr))
+            WHERE p.utr_normalized = :utr
               AND (:bankAccountId IS NULL OR p.bank_account_id = :bankAccountId)
             """, nativeQuery = true)
     java.util.List<PaymentMatch> findByUtr(@Param("utr") String utr,
                                            @Param("bankAccountId") Long bankAccountId);
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select p from OrderPayment p where p.id = :id")
+    java.util.Optional<OrderPayment> findByIdForUpdate(@org.springframework.data.repository.query.Param("id") Long id);
+
+    java.util.Optional<Long> findOrderIdById(@Param("id") Long id);
+
+    @Query(value = "SELECT p.order_id AS orderId, p.id AS paymentId, p.amount_received AS amount, p.bank_account_id AS bankAccountId FROM payments p WHERE p.id = :id", nativeQuery = true)
+    java.util.Optional<PaymentMatch> findMatchById(@Param("id") Long id);
 
     interface PaymentMatch {
         Long getPaymentId();
@@ -71,7 +80,7 @@ public interface OrderPaymentRepository extends JpaRepository<OrderPayment, Long
     @Query(value = """
             SELECT COUNT(*) FROM payments
             WHERE bank_account_id = :bankAccountId
-              AND UPPER(TRIM(utr)) = UPPER(TRIM(:utr))
+              AND utr_normalized = :utr
               AND (:orderId IS NULL OR order_id <> :orderId)
             """, nativeQuery = true)
     long countDuplicateUtr(@Param("bankAccountId") Long bankAccountId,

@@ -1,23 +1,21 @@
-import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient, Order, RejectReason } from 'core';
+import { AuthenticatedBlobService } from '../shared/authenticated-blob.service';
 import { ApprovalQueueItem, BulkApproveResult } from './approval.model';
 import { PaymentScreenshot } from '../orders/orders.model';
 
 /**
  * Data access for the admin order-approval workflow (Req 9).
  *
- * <p>JSON calls go through the shared {@link ApiClient} (the auth interceptor
- * attaches the bearer token). The payment screenshot is a binary download, so
- * it is fetched with {@link HttpClient} as a {@code Blob} against the same
- * authenticated endpoint ({@code GET /api/orders/&#123;id&#125;/payment-screenshot},
- * ACCOUNTANT/ADMIN, Req 9.2, 21.2).
+ * JSON calls go through the shared {@link ApiClient}; binary calls use the
+ * shared authenticated blob transport and browser download helper so auth,
+ * filename fallbacks and object-URL cleanup stay consistent.
  */
 @Injectable({ providedIn: 'root' })
 export class ApprovalService {
   private readonly api = inject(ApiClient);
-  private readonly http = inject(HttpClient);
+  private readonly blobs = inject(AuthenticatedBlobService);
 
   /** The pending-approval queue with review details (Req 9.1). */
   queue(): Observable<ApprovalQueueItem[]> {
@@ -67,9 +65,7 @@ export class ApprovalService {
 
   /** Fetch the PRIMARY payment screenshot as a Blob for inline rendering (Req 9.2, 21.2). */
   paymentScreenshot(orderId: number): Observable<Blob> {
-    return this.http.get(this.api.url(`/api/orders/${orderId}/payment-screenshot`), {
-      responseType: 'blob',
-    });
+    return this.blobs.get(`/api/orders/${orderId}/payment-screenshot`);
   }
 
   /** List every payment proof attached to the order, in upload order (V65). */
@@ -79,10 +75,7 @@ export class ApprovalService {
 
   /** Fetch one specific payment proof as a Blob for inline rendering (V65). */
   paymentScreenshotById(orderId: number, screenshotId: number): Observable<Blob> {
-    return this.http.get(
-      this.api.url(`/api/orders/${orderId}/payment-screenshots/${screenshotId}`),
-      { responseType: 'blob' },
-    );
+    return this.blobs.get(`/api/orders/${orderId}/payment-screenshots/${screenshotId}`);
   }
 
   /**
@@ -91,8 +84,6 @@ export class ApprovalService {
    * open/download it, mirroring the payment-screenshot blob fetch.
    */
   invoice(orderId: number): Observable<Blob> {
-    return this.http.get(this.api.url(`/api/orders/${orderId}/invoice`), {
-      responseType: 'blob',
-    });
+    return this.blobs.get(`/api/orders/${orderId}/invoice`);
   }
 }

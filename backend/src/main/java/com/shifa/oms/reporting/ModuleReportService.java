@@ -92,12 +92,8 @@ public class ModuleReportService {
 
     private TabularData expenses(DateRange window) {
         List<String> headers = List.of("Date", "Category", "Amount", "Description");
-        List<Expense> rows = new ArrayList<>();
-        for (Expense e : expenseRepository.findAll()) {
-            if (e.getIncurredOn() != null && window.contains(e.getIncurredOn())) {
-                rows.add(e);
-            }
-        }
+        List<Expense> rows = new ArrayList<>(expenseRepository.findForReport(window.from(), window.to()));
+        rows.removeIf(e -> e.getIncurredOn() == null || !window.contains(e.getIncurredOn()));
         rows.sort(Comparator.comparing(Expense::getIncurredOn));
         List<List<String>> cells = new ArrayList<>();
         for (Expense e : rows) {
@@ -115,14 +111,9 @@ public class ModuleReportService {
     private TabularData purchaseOrders(DateRange window) {
         List<String> headers = List.of(
                 "PO Number", "Supplier", "Status", "Total", "Ordered On", "Received On");
-        List<PurchaseOrder> rows = new ArrayList<>();
-        for (PurchaseOrder po : purchaseOrderRepository.findAll()) {
-            if (inWindow(po.getCreatedAt(), window)) {
-                rows.add(po);
-            }
-        }
-        rows.sort(Comparator.comparing(PurchaseOrder::getCreatedAt,
-                Comparator.nullsLast(Comparator.naturalOrder())));
+        List<PurchaseOrder> rows = new ArrayList<>(purchaseOrderRepository.findForReport(
+                startOf(window), endExclusive(window)));
+        rows.removeIf(po -> po.getCreatedAt() == null);
         Map<Long, String> supplierNames = supplierNames(rows);
         List<List<String>> cells = new ArrayList<>();
         for (PurchaseOrder po : rows) {
@@ -158,14 +149,9 @@ public class ModuleReportService {
     private TabularData returns(DateRange window) {
         List<String> headers = List.of(
                 "Order", "Reason", "Status", "Refund", "Restocked", "Created On");
-        List<OrderReturn> rows = new ArrayList<>();
-        for (OrderReturn r : orderReturnRepository.findAll()) {
-            if (inWindow(r.getCreatedAt(), window)) {
-                rows.add(r);
-            }
-        }
-        rows.sort(Comparator.comparing(OrderReturn::getCreatedAt,
-                Comparator.nullsLast(Comparator.naturalOrder())));
+        List<OrderReturn> rows = new ArrayList<>(orderReturnRepository.findForReport(
+                startOf(window), endExclusive(window)));
+        rows.removeIf(r -> r.getCreatedAt() == null);
         Map<Long, String> orderCodes = orderCodes(rows);
         List<List<String>> cells = new ArrayList<>();
         for (OrderReturn r : rows) {
@@ -201,14 +187,9 @@ public class ModuleReportService {
     private TabularData stock(DateRange window) {
         List<String> headers = List.of(
                 "Date", "Product", "Type", "Change", "Balance", "Reason");
-        List<StockMovement> rows = new ArrayList<>();
-        for (StockMovement m : stockMovementRepository.findAll()) {
-            if (inWindow(m.getCreatedAt(), window)) {
-                rows.add(m);
-            }
-        }
-        rows.sort(Comparator.comparing(StockMovement::getCreatedAt,
-                Comparator.nullsLast(Comparator.naturalOrder())));
+        List<StockMovement> rows = new ArrayList<>(stockMovementRepository.findForReport(
+                startOf(window), endExclusive(window)));
+        rows.removeIf(m -> m.getCreatedAt() == null);
         Map<Long, String> productNames = productNames(rows);
         List<List<String>> cells = new ArrayList<>();
         for (StockMovement m : rows) {
@@ -257,6 +238,14 @@ public class ModuleReportService {
 
     private static String nz(String s) {
         return s == null ? "" : s;
+    }
+
+    private static LocalDateTime startOf(DateRange window) {
+        return window.from() == null ? null : window.from().atStartOfDay();
+    }
+
+    private static LocalDateTime endExclusive(DateRange window) {
+        return window.to() == null ? null : window.to().plusDays(1).atStartOfDay();
     }
 
     /** A zeroed summary — module reports are pure tables (the frontend hides the sales tiles). */

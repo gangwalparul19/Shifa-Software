@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Relays persisted admin-notification outbox rows to connected admins over SSE,
@@ -55,6 +56,11 @@ public class OutboxSseRelay {
     private final OutboxEventRepository outboxEventRepository;
     private final AdminSseBroker broker;
     private final DashboardMetricsService metricsService;
+    /** Prevents overlapping local scheduler invocations. This is not a distributed lock. */
+    private final AtomicBoolean relayRunning = new AtomicBoolean();
+
+    @org.springframework.beans.factory.annotation.Value("${app.outbox.sse.batch-size:100}")
+    private int maxRelayBatch = 100;
 
     public OutboxSseRelay(OutboxEventRepository outboxEventRepository,
                           AdminSseBroker broker,
@@ -74,24 +80,35 @@ public class OutboxSseRelay {
     @Scheduled(fixedDelayString = "${app.dashboard.sse.relay-interval-ms:5000}")
     @Transactional
     public int relayPending() {
-        if (!broker.hasActiveAdmins()) {
+        if (!relayRunning.compareAndSet(false, true)) {
             return 0;
         }
-        int relayed = 0;
-        for (OutboxEvent event : outboxEventRepository
-                .findByStatusOrderByCreatedAtAsc(OutboxEvent.STATUS_PENDING)) {
-            if (!ADMIN_NOTIFICATION_TYPES.contains(event.getEventType())) {
-                continue;
+        try {
+            if (!broker.hasActiveAdmins()) {
+                return 0;
             }
-            broker.broadcastToAdmins(event.getEventType(), toSseData(event));
-            event.markSent();
-            outboxEventRepository.save(event);
-            relayed++;
+            int relayed = 0;
+            int batchLimit = Math.min(500, Math.max(1, maxRelayBatch));
+            for (OutboxEvent event : outboxEventRepository
+                    .findByStatusOrderByCreatedAtAsc(OutboxEvent.STATUS_PENDING)) {
+                if (relayed >= batchLimit) {
+                    break;
+                }
+                if (!ADMIN_NOTIFICATION_TYPES.contains(event.getEventType())) {
+                    continue;
+                }
+                broker.broadcastToAdmins(event.getEventType(), toSseData(event));
+                event.markSent();
+                outboxEventRepository.save(event);
+                relayed++;
+            }
+            if (relayed > 0) {
+                log.debug("Relayed {} admin notification(s) over SSE", relayed);
+            }
+            return relayed;
+        } finally {
+            relayRunning.set(false);
         }
-        if (relayed > 0) {
-            log.debug("Relayed {} admin notification(s) over SSE", relayed);
-        }
-        return relayed;
     }
 
     /**

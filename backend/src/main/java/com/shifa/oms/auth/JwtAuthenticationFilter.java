@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -15,28 +16,30 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.List;
 
-/**
- * Extracts a bearer JWT from the {@code Authorization} header, validates it, and
- * populates the Spring Security context with the {@link AuthPrincipal} and its
- * {@code ROLE_<role>} authority for the duration of the request.
- *
- * <p>The filter is deliberately permissive about missing/invalid tokens: it does
- * not reject the request itself. If no valid authentication is established, the
- * request simply proceeds unauthenticated, and the security filter chain's entry
- * point returns 401 for protected resources (Req 5.2) while public endpoints
- * (catalog/search/PWA/auth) still work. This avoids a stale token blocking public
- * pages.
- */
+/** Validates bearer identity and atomically touches its server-side idle session. */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    /** Response header carrying the server idle expiry as epoch milliseconds; hint only. */
+    public static final String SESSION_IDLE_EXPIRES_HEADER = "X-Session-Idle-Expires-At";
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String SSE_TOKEN_PARAM = "access_token";
 
     private final JwtService jwtService;
+    private final UserRepository userRepository;
+    private final AuthSessionService authSessionService;
 
-    public JwtAuthenticationFilter(JwtService jwtService) {
+    @Autowired
+    public JwtAuthenticationFilter(JwtService jwtService, UserRepository userRepository,
+                                   AuthSessionService authSessionService) {
         this.jwtService = jwtService;
+        this.userRepository = userRepository;
+        this.authSessionService = authSessionService;
+    }
+
+    /** Compatibility constructor for direct filter tests without persistence. */
+    public JwtAuthenticationFilter(JwtService jwtService, UserRepository userRepository) {
+        this(jwtService, userRepository, null);
     }
 
     @Override
@@ -47,39 +50,54 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (token != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             try {
                 JwtClaims claims = jwtService.parse(token, TokenType.ACCESS);
-                AuthPrincipal principal = claims.toPrincipal();
+                if (claims.sessionId() == null || claims.sessionId().isBlank()) {
+                    throw new InvalidTokenException("Legacy access token has no authenticated session id");
+                }
+                User user = userRepository.findById(claims.userId())
+                        .orElseThrow(() -> new InvalidTokenException("Token subject no longer exists"));
+                if (!user.isActive()
+                        || user.getSessionVersion() != claims.sessionVersion()
+                        || user.getRole() != claims.role()) {
+                    throw new InvalidTokenException("Token is no longer valid");
+                }
+                if (user.isMustChangePassword() && !passwordChangeAllowed(request)) {
+                    throw new InvalidTokenException("Password change is required");
+                }
+                AuthSessionService.SessionHandle touched = authSessionService == null
+                        ? new AuthSessionService.SessionHandle(claims.sessionId(),
+                        claims.sessionExpiresAt() == null ? java.time.Instant.now()
+                                : claims.sessionExpiresAt())
+                        : authSessionService.touch(claims.sessionId(), user.getId(), user.getSessionVersion())
+                        .orElseThrow(() -> new InvalidTokenException("Authenticated session has expired or been revoked"));
+                response.setHeader(SESSION_IDLE_EXPIRES_HEADER,
+                        Long.toString(touched.idleExpiresAtEpochMillis()));
+                AuthPrincipal principal = new AuthPrincipal(user.getId(), user.getUsername(), user.getRole(),
+                        claims.sessionStartedAt(), claims.sessionId());
                 var authorities = List.of(new SimpleGrantedAuthority(principal.role().authority()));
-                var authentication =
-                        new UsernamePasswordAuthenticationToken(principal, null, authorities);
+                var authentication = new UsernamePasswordAuthenticationToken(principal, null, authorities);
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } catch (InvalidTokenException ex) {
-                // Invalid/expired token: proceed unauthenticated. Protected routes
-                // will be rejected with 401 by the entry point.
                 SecurityContextHolder.clearContext();
             }
         }
         filterChain.doFilter(request, response);
     }
 
+    private static boolean passwordChangeAllowed(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        return "/api/me/password".equals(uri) || "/api/auth/refresh".equals(uri);
+    }
+
     private static String extractBearerToken(HttpServletRequest request) {
         String header = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (header != null && header.startsWith(BEARER_PREFIX)) {
             String value = header.substring(BEARER_PREFIX.length()).trim();
-            if (!value.isEmpty()) {
-                return value;
-            }
+            if (!value.isEmpty()) return value;
         }
-        // The browser EventSource API cannot set an Authorization header, so the
-        // admin SSE stream (/api/admin/events) passes the access token as an
-        // ?access_token= query parameter instead. It is validated identically to
-        // a bearer token (signature/expiry/type), and the endpoint still enforces
-        // the ADMIN authority via @PreAuthorize.
         if (isSseRequest(request)) {
             String queryToken = request.getParameter(SSE_TOKEN_PARAM);
-            if (queryToken != null && !queryToken.isBlank()) {
-                return queryToken.trim();
-            }
+            if (queryToken != null && !queryToken.isBlank()) return queryToken.trim();
         }
         return null;
     }

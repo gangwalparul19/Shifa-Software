@@ -6,6 +6,7 @@ import com.shifa.oms.mail.MailService;
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
+import com.shifa.oms.platform.outbox.OutboxClaimService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -46,15 +47,27 @@ public class EmailOutboxDrainer {
     private final OutboxEventPublisher outboxEventPublisher;
     private final MailService mailService;
     private final MailProperties properties;
+    private final OutboxClaimService claimService;
 
+    /** Legacy test constructor; production uses the fenced-claim constructor. */
     public EmailOutboxDrainer(OutboxEventRepository outboxEventRepository,
                               OutboxEventPublisher outboxEventPublisher,
                               MailService mailService,
                               MailProperties properties) {
+        this(outboxEventRepository, outboxEventPublisher, mailService, properties, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public EmailOutboxDrainer(OutboxEventRepository outboxEventRepository,
+                              OutboxEventPublisher outboxEventPublisher,
+                              MailService mailService,
+                              MailProperties properties,
+                              OutboxClaimService claimService) {
         this.outboxEventRepository = outboxEventRepository;
         this.outboxEventPublisher = outboxEventPublisher;
         this.mailService = mailService;
         this.properties = properties;
+        this.claimService = claimService;
     }
 
     /** Scheduled entry point: drains due email-notify events every 15 seconds. */
@@ -74,8 +87,10 @@ public class EmailOutboxDrainer {
      */
     public int drainNotifications() {
         LocalDateTime now = LocalDateTime.now();
-        List<OutboxEvent> due = outboxEventRepository.findDue(
-                OutboxEvent.EVENT_EMAIL_NOTIFY, OutboxEvent.STATUS_PENDING, now);
+        List<OutboxEvent> due = claimService == null
+                ? outboxEventRepository.findDue(
+                        OutboxEvent.EVENT_EMAIL_NOTIFY, OutboxEvent.STATUS_PENDING, now)
+                : claimService.claimDue(OutboxEvent.EVENT_EMAIL_NOTIFY, now);
         int processed = 0;
         for (OutboxEvent event : due) {
             processOne(event);
@@ -88,10 +103,10 @@ public class EmailOutboxDrainer {
         try {
             MailMessage message = MailNotificationPublisher.messageFromPayload(payload(event));
             mailService.send(message);
-            event.markSent();
-            outboxEventRepository.save(event);
-            log.debug("Milestone email for order {} sent (subject '{}')",
-                    event.getAggregateId(), message.subject());
+            if (markSent(event)) {
+                log.debug("Milestone email for order {} sent (subject '{}')",
+                        event.getAggregateId(), message.subject());
+            }
         } catch (RuntimeException ex) {
             handleFailure(event, ex);
         }
@@ -101,8 +116,10 @@ public class EmailOutboxDrainer {
         String error = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
         boolean exhausted = event.getAttempts() + 1 >= properties.maxAttempts();
         if (exhausted) {
-            event.markFailed(error);
-            outboxEventRepository.save(event);
+            if (!markFailed(event, error)) {
+                log.debug("Email event {} lost its lease before permanent failure was recorded", event.getId());
+                return;
+            }
             // Record the admin-facing failure and flag the order for review (Req 14.5).
             Map<String, Object> payload = payload(event);
             String orderCode = asString(payload.getOrDefault("orderCode", event.getAggregateId()));
@@ -113,11 +130,40 @@ public class EmailOutboxDrainer {
                     event.getAggregateId(), event.getAttempts(), error);
         } else {
             LocalDateTime next = LocalDateTime.now().plus(properties.retryBackoff());
-            event.recordRetry(error, next);
-            outboxEventRepository.save(event);
+            if (!recordRetry(event, error, next)) {
+                log.debug("Email event {} lost its lease before retry was recorded", event.getId());
+                return;
+            }
             log.debug("Milestone email for order {} will retry at {} ({})",
                     event.getAggregateId(), next, error);
         }
+    }
+
+    private boolean markSent(OutboxEvent event) {
+        if (claimService != null) {
+            return claimService.markSent(event);
+        }
+        event.markSent();
+        outboxEventRepository.save(event);
+        return true;
+    }
+
+    private boolean markFailed(OutboxEvent event, String error) {
+        if (claimService != null) {
+            return claimService.markFailed(event, error);
+        }
+        event.markFailed(error);
+        outboxEventRepository.save(event);
+        return true;
+    }
+
+    private boolean recordRetry(OutboxEvent event, String error, LocalDateTime next) {
+        if (claimService != null) {
+            return claimService.recordRetry(event, error, next);
+        }
+        event.recordRetry(error, next);
+        outboxEventRepository.save(event);
+        return true;
     }
 
     private Map<String, Object> payload(OutboxEvent event) {

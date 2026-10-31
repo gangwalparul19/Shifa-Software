@@ -54,6 +54,8 @@ import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { WHATSAPP_TEMPLATES, openWhatsApp, renderTemplate, whatsAppMessage } from '../shared/whatsapp.util';
 import { relativeTime } from '../shared/time.util';
 import { IstDatePipe } from '../shared/ist-date.pipe';
+import { AuthenticatedBlobService } from '../shared/authenticated-blob.service';
+import { reportFilename } from '../shared/report-filename.util';
 import { formatInr } from '../shared/inr.pipe';
 import { ChannelLogoComponent } from '../shared/channel-logo.component';
 import { WhatsappTemplate, WhatsappTemplatesService } from '../whatsapp/whatsapp-templates.service';
@@ -230,6 +232,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   protected readonly events = inject(AdminEventsService);
   private readonly waTemplates = inject(WhatsappTemplatesService);
+  private readonly blobs = inject(AuthenticatedBlobService);
 
   /** Whether the current user may punch a new order (SALESPERSON + ADMIN + TEAM_LEAD, Req 7). */
   protected readonly canCreateOrder = computed(() =>
@@ -1155,13 +1158,14 @@ export class OrdersComponent implements OnInit, OnDestroy {
         format,
       )
       .subscribe({
-        next: (blob) => {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `orders.${format}`;
-          a.click();
-          setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        next: (download) => {
+          // Prefer the server's name; if the header is unreadable, build the same
+          // shifa-orders_<range>.<ext> name here rather than saving a bare "orders".
+          this.blobs.save(
+            download.blob,
+            download.filename,
+            reportFilename('Orders', f.from || null, f.to || null, format),
+          );
           this.exporting.set(false);
           this.toasts.success('Export ready.');
         },
@@ -1450,15 +1454,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
       this.service.bulkLabels(eligible).subscribe({
         next: (blob) => {
           this.bulkBusy.set(false);
-          const url = URL.createObjectURL(blob);
-          const opened = window.open(url, '_blank');
-          if (!opened) {
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'order-labels.pdf';
-            a.click();
-          }
-          setTimeout(() => URL.revokeObjectURL(url), 60_000);
+          this.blobs.open(blob, 'order-labels.pdf', 'order-labels.pdf');
           this.toasts.success(`Labels generated for ${eligible.length} order${eligible.length === 1 ? '' : 's'}.`);
           this.clearSelection();
           this.load();
@@ -1579,10 +1575,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   money(value: Money | undefined): string {
-    if (value === undefined || value === null) {
-      return '₹0.00';
-    }
-    return `₹${value}`;
+    return formatInr(value as number | string | null | undefined, 2);
   }
 
   /**
@@ -1979,15 +1972,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.invoiceError.set(null);
     this.service.invoice(order.id).subscribe({
       next: (blob) => {
-        const url = URL.createObjectURL(blob);
-        const opened = window.open(url, '_blank');
-        if (!opened) {
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `invoice-${order.orderCode}.pdf`;
-          a.click();
-        }
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        this.blobs.open(blob, `invoice-${order.orderCode}.pdf`, 'invoice.pdf');
         this.invoiceLoading.set(false);
       },
       error: () => {
@@ -2007,15 +1992,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.labelLoading.set(true);
     this.service.label(order.id).subscribe({
       next: (blob) => {
-        const url = URL.createObjectURL(blob);
-        const opened = window.open(url, '_blank');
-        if (!opened) {
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `label-${order.orderCode}.pdf`;
-          a.click();
-        }
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        this.blobs.open(blob, `label-${order.orderCode}.pdf`, 'label.pdf');
         this.labelLoading.set(false);
       },
       error: () => {

@@ -12,7 +12,15 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
 
 app:
+  webhooks:
+    # Explicit local opt-out: unsigned webhook calls are allowed for local testing.
+    hmac-strict: false
   security:
+    mfa:
+      # LOCAL DEV ONLY: stable key so TOTP secrets stay decryptable across
+      # restarts. Production (application-prod.yml) has no default and requires
+      # MFA_ENCRYPTION_KEY; never reuse this value there.
+      encryption-key: ${MFA_ENCRYPTION_KEY:local-dev-only-mfa-key-change-me-32chars!}
     cors:
       # The Angular HTTPS dev server is local-only. Override CORS_EXTRA_ORIGIN
       # when the laptop's LAN address changes.

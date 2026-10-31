@@ -39,6 +39,7 @@ class AuthServiceTest {
     private PasswordEncoder passwordEncoder;
     private JwtService jwtService;
     private AuthService authService;
+    private AuthSessionRepository authSessionRepository;
 
     @BeforeEach
     void setUp() {
@@ -50,11 +51,20 @@ class AuthServiceTest {
         MfaService mfaService = new MfaService(userRepository, jwtService,
                 new TotpService(Clock.fixed(NOW, ZoneOffset.UTC)), "Shifa OMS",
                 Clock.fixed(NOW, ZoneOffset.UTC));
+        authSessionRepository = Mockito.mock(AuthSessionRepository.class);
+        AuthSessionService authSessionService = new AuthSessionService(authSessionRepository, properties,
+                Clock.fixed(NOW, ZoneOffset.UTC));
+        when(authSessionRepository.save(Mockito.any(AuthSession.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(authSessionRepository.touchIfActive(Mockito.anyString(), Mockito.anyLong(), Mockito.anyLong(),
+                Mockito.any(), Mockito.any())).thenReturn(1);
+        when(authSessionRepository.rebindIfActive(Mockito.anyString(), Mockito.anyLong(), Mockito.anyLong(),
+                Mockito.any(), Mockito.any())).thenReturn(1);
         authService = new AuthService(userRepository, passwordEncoder, jwtService,
                 new com.shifa.oms.mail.MockMailService(),
                 new com.shifa.oms.mail.template.EmailRenderer(
                         com.shifa.oms.mail.template.EmailBrandProperties.defaults()),
-                mfaService);
+                mfaService, authSessionService);
     }
 
     private User activeAdmin(String rawPassword) {
@@ -198,5 +208,85 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.refresh(new RefreshRequest(accessToken)))
                 .isInstanceOf(InvalidTokenException.class);
+    }
+
+    @Test
+    void oldTokenResponseConstructorRemainsCompatible() {
+        TokenResponse response = new TokenResponse("access", "refresh", "Bearer", 900,
+                "ADMIN", "admin", false);
+        assertThat(response.sessionExpiresAt()).isZero();
+    }
+
+    @Test
+    void refreshCanContinueAfterTheFormerAbsoluteBoundaryWhenIdleActivityIsValid() {
+        User admin = activeAdmin("secret123");
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(admin));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
+        String refreshToken = authService.login(new LoginRequest("admin", "secret123")).tokens().refreshToken();
+
+        JwtProperties properties = new JwtProperties();
+        properties.setSecret("test-secret-that-is-long-enough-for-hmac-sha256-signing");
+        JwtService laterJwt = new JwtService(properties, new ObjectMapper(),
+                Clock.fixed(NOW.plusSeconds(30 * 60L), ZoneOffset.UTC));
+        MfaService laterMfa = new MfaService(userRepository, laterJwt,
+                new TotpService(Clock.fixed(NOW.plusSeconds(30 * 60L), ZoneOffset.UTC)), "Shifa OMS",
+                Clock.fixed(NOW.plusSeconds(30 * 60L), ZoneOffset.UTC));
+        AuthService laterAuth = new AuthService(userRepository, passwordEncoder, laterJwt,
+                new com.shifa.oms.mail.MockMailService(),
+                new com.shifa.oms.mail.template.EmailRenderer(
+                        com.shifa.oms.mail.template.EmailBrandProperties.defaults()),
+                laterMfa);
+
+        TokenResponse refreshed = laterAuth.refresh(new RefreshRequest(refreshToken));
+        assertThat(refreshed.accessToken()).isNotBlank();
+    }
+
+    @Test
+    void refreshPreservesTheLoginSessionDeadline() {
+        User admin = activeAdmin("secret123");
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(admin));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
+
+        TokenResponse original = authService.login(new LoginRequest("admin", "secret123")).tokens();
+        TokenResponse refreshed = authService.refresh(new RefreshRequest(original.refreshToken()));
+
+        assertThat(refreshed.sessionExpiresAt()).isEqualTo(original.sessionExpiresAt());
+        assertThat(jwtService.parse(refreshed.accessToken(), TokenType.ACCESS).sessionStartedAt())
+                .isEqualTo(jwtService.parse(original.accessToken(), TokenType.ACCESS).sessionStartedAt());
+    }
+    @Test
+    void passwordLoginCreatesServerSessionAndRefreshPreservesSidAndTouchesIt() {
+        User admin = activeAdmin("secret123");
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(admin));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
+
+        TokenResponse original = authService.login(new LoginRequest("admin", "secret123")).tokens();
+        String sid = jwtService.parse(original.accessToken(), TokenType.ACCESS).sessionId();
+        TokenResponse refreshed = authService.refresh(new RefreshRequest(original.refreshToken()));
+
+        assertThat(sid).isNotBlank();
+        assertThat(jwtService.parse(refreshed.accessToken(), TokenType.ACCESS).sessionId()).isEqualTo(sid);
+        Mockito.verify(authSessionRepository).save(Mockito.any(AuthSession.class));
+        Mockito.verify(authSessionRepository).touchIfActive(
+                Mockito.eq(AuthSessionService.hash(sid)), Mockito.eq(1L), Mockito.eq(0L),
+                Mockito.any(), Mockito.any());
+    }
+
+    @Test
+    void passwordChangeRebindsAndPreservesTheAuthenticatedSessionId() {
+        User admin = activeAdmin("secret123");
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(admin));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(admin));
+        TokenResponse original = authService.login(new LoginRequest("admin", "secret123")).tokens();
+        String sid = jwtService.parse(original.accessToken(), TokenType.ACCESS).sessionId();
+
+        TokenResponse changed = authService.changeMyPassword(1L,
+                new com.shifa.oms.auth.dto.ChangePasswordRequest("NewPassword1!"), sid);
+
+        assertThat(jwtService.parse(changed.accessToken(), TokenType.ACCESS).sessionId()).isEqualTo(sid);
+        assertThat(jwtService.parse(changed.accessToken(), TokenType.ACCESS).sessionVersion()).isEqualTo(1L);
+        Mockito.verify(authSessionRepository).rebindIfActive(
+                Mockito.eq(AuthSessionService.hash(sid)), Mockito.eq(1L), Mockito.eq(1L),
+                Mockito.any(), Mockito.any());
     }
 }

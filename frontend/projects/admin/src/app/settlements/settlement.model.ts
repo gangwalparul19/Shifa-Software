@@ -41,6 +41,30 @@ export interface SettlementLine {
   resolvedPaymentId?: number | null;
   resolvedReceivableId?: number | null;
   message?: string | null;
+  dateDefaulted?: boolean;
+  resolutionReason?: string | null;
+  resolutionTargetKey?: string | null;
+}
+
+export type SettlementTargetType = 'ORDER_PAYMENT' | 'SHOPIFY_ORDER' | 'COD_RECEIVABLE';
+export interface SettlementLineRequest {
+  targetType: SettlementTargetType;
+  orderId?: number | null;
+  paymentId?: number | null;
+  receivableId?: number | null;
+  amount: number;
+  reason: string;
+}
+export interface SettlementCandidate {
+  targetType: SettlementTargetType;
+  targetId: number;
+  orderId?: number | null;
+  orderCode?: string | null;
+  customerName?: string | null;
+  expectedAmount: Money;
+  allocatedAmount: Money;
+  availableAmount: Money;
+  reference?: string | null;
 }
 
 export interface SettlementImportResponse {

@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
-import { SettlementBatch, SettlementImportResponse, SettlementKpi, SettlementLine } from './settlement.model';
+import { SettlementBatch, SettlementCandidate, SettlementImportResponse, SettlementKpi, SettlementLine, SettlementLineRequest } from './settlement.model';
 
 @Injectable({ providedIn: 'root' })
 export class SettlementService {
@@ -22,6 +22,13 @@ export class SettlementService {
     return this.api.get<SettlementLine[]>(`/api/recon/settlements/${batchId}/lines`);
   }
 
+  candidates(lineId: number): Observable<SettlementCandidate[]> {
+    return this.api.get<SettlementCandidate[]>(`/api/recon/settlements/lines/${lineId}/candidates`);
+  }
+
+  resolveLine(lineId: number, request: SettlementLineRequest): Observable<SettlementLine> {
+    return this.api.post<SettlementLine>(`/api/recon/settlements/lines/${lineId}/resolve`, request);
+  }
   importFile(file: File, source: string, dryRun: boolean, accountId?: number | null,
              reference?: string | null, statementDate?: string | null): Observable<SettlementImportResponse> {
     const form = new FormData();

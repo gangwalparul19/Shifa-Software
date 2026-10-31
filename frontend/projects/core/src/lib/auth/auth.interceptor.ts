@@ -8,7 +8,7 @@ import {
   HttpResponse,
 } from '@angular/common/http';
 import { Observable, throwError } from 'rxjs';
-import { catchError, filter, finalize, map, shareReplay, switchMap, take } from 'rxjs/operators';
+import { catchError, filter, finalize, map, shareReplay, switchMap, take, tap } from 'rxjs/operators';
 import { AuthTokenStore } from './auth-token.store';
 import { AuthEventsService } from './auth-events.service';
 import { API_BASE_URL } from '../tokens/api-base-url.token';
@@ -18,6 +18,7 @@ import { isApiRequest, isPublicAuthRequest } from './auth-request-scope';
 interface RefreshTokenResponse {
   accessToken: string;
   refreshToken: string;
+  sessionExpiresAt?: number;
 }
 
 /**
@@ -59,12 +60,13 @@ export const authInterceptor: HttpInterceptorFn = (
   const isOurApi = isApiRequest(req.url, apiBaseUrl);
   const isPublicAuth = isPublicAuthRequest(req.url, apiBaseUrl);
 
+  const requestAccessToken = tokens.getAccessToken();
   const withToken = (token: string | null): HttpRequest<unknown> =>
     token && isOurApi && !isPublicAuth
       ? req.clone({ setHeaders: { Authorization: `Bearer ${token}` } })
       : req;
 
-  return next(withToken(tokens.getAccessToken())).pipe(
+  return next(withToken(requestAccessToken)).pipe(
     catchError((error: unknown) => {
       if (!(error instanceof HttpErrorResponse)) {
         return throwError(() => error);
@@ -74,6 +76,10 @@ export const authInterceptor: HttpInterceptorFn = (
         // Only attempt a silent refresh for our own API calls that carried a
         // token — never for the auth endpoints themselves (login/refresh/register),
         // which would loop, and never for third-party hosts.
+        if (tokens.expireIfNeeded()) {
+          authEvents.emit({ kind: 'unauthorized', status: 401, url: '/session-expiry' });
+          return throwError(() => error);
+        }
         const canRefresh =
           isOurApi && !isPublicAuth && !!tokens.getRefreshToken() && !!tokens.getAccessToken();
         if (canRefresh) {
@@ -95,6 +101,14 @@ export const authInterceptor: HttpInterceptorFn = (
       }
       return throwError(() => error);
     }),
+    tap((event) => {
+      if (event instanceof HttpResponse && isOurApi && !isPublicAuth) {
+        const header = event.headers.get('X-Session-Idle-Expires-At');
+        if (header) {
+          tokens.updateSessionDeadline(header, requestAccessToken);
+        }
+      }
+    }),
   );
 };
 
@@ -114,8 +128,9 @@ function refreshAccessToken(
   }
   const base = apiBaseUrl.replace(/\/+$/, '');
   const refreshUrl = `${base}/api/auth/refresh`;
+  const refreshToken = tokens.getRefreshToken();
   const refreshReq = new HttpRequest('POST', refreshUrl, {
-    refreshToken: tokens.getRefreshToken() ?? '',
+    refreshToken: refreshToken ?? '',
   });
 
   refreshInFlight = next(refreshReq).pipe(
@@ -127,7 +142,12 @@ function refreshAccessToken(
       if (!pair || !pair.accessToken) {
         throw new Error('Refresh response missing access token.');
       }
-      tokens.setTokens(pair.accessToken, pair.refreshToken);
+      // A logout or expiry may have cleared/replaced this tab while the
+      // refresh was in flight. Never let a late response repopulate it.
+      if (tokens.getRefreshToken() !== refreshToken) {
+        throw new Error('Refresh response belongs to an ended session.');
+      }
+      tokens.setTokens(pair.accessToken, pair.refreshToken, pair.sessionExpiresAt);
       return pair.accessToken;
     }),
     // Reset the shared slot once the refresh settles (on the source, so it fires

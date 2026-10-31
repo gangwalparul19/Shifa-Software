@@ -1,10 +1,11 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
-import { CurrencyPipe, DatePipe } from '@angular/common';
+import { CurrencyPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { ChannelLogoComponent } from '../shared/channel-logo.component';
 import { ToastService } from '../shared/toast.service';
 import { OrdersService } from '../orders/orders.service';
@@ -20,7 +21,7 @@ import { RecoverResult, ShopifySyncService, StuckShopifyOrder } from './shopify-
 @Component({
   selector: 'admin-shopify-sync',
   standalone: true,
-  imports: [CurrencyPipe, DatePipe, RouterLink, PageHeaderComponent, PaginationComponent, StatePanelComponent, ChannelLogoComponent],
+  imports: [CurrencyPipe, IstDatePipe, RouterLink, PageHeaderComponent, PaginationComponent, StatePanelComponent, ChannelLogoComponent],
   templateUrl: './shopify-sync.component.html',
   styleUrl: './shopify-sync.component.css',
 })

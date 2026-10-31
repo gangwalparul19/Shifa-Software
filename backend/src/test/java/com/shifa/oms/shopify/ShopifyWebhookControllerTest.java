@@ -85,6 +85,19 @@ class ShopifyWebhookControllerTest {
     }
 
     @Test
+    void strictModeRejectsBlankSecretBeforeImport() {
+        settings.setShopifySyncEnabled(true);
+        ShopifyWebhookController strict = new ShopifyWebhookController(
+                new ShopifyHmacVerifier(new ShopifyProperties(""), true), importService,
+                new ObjectMapper(), new SettingsService(mock(AppSettingsRepository.class)));
+
+        assertThatThrownBy(() -> strict.receiveOrder(BODY, null))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getCode()).isEqualTo("INVALID_SIGNATURE"));
+        assertThat(importService.calls).isZero();
+    }
+
+    @Test
     void forgedSignatureIsRejectedEvenWhenOff() {
         AppSettingsRepository repo = mock(AppSettingsRepository.class);
         when(repo.findById(AppSettings.SINGLETON_ID)).thenReturn(Optional.of(settings));

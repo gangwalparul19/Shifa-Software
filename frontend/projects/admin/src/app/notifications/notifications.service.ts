@@ -45,9 +45,9 @@ export class NotificationsService {
     return this.api.get<UnreadCount>('/api/admin/notifications/unread-count');
   }
 
-  /** Mark a single notification read. */
-  markRead(id: number): Observable<void> {
-    return this.api.post<void>(`/api/admin/notifications/${id}/read`);
+  /** Mark a single notification read and return the updated item. */
+  markRead(id: number): Observable<AdminNotificationItem> {
+    return this.api.post<AdminNotificationItem>(`/api/admin/notifications/${id}/read`);
   }
 
   /** Mark every notification read. */

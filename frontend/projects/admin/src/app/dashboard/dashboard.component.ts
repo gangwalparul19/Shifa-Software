@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService, Role } from 'core';
 import { AdminEventsService } from './admin-events.service';
@@ -92,7 +92,7 @@ const DEFAULT_STAGE_STYLE = { accent: '#868e96', accentSoft: '#f1f3f5', icon: 't
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.css',
 })
-export class DashboardComponent implements OnInit, OnDestroy {
+export class DashboardComponent implements OnInit {
   private readonly service = inject(DashboardService);
   private readonly myDayService = inject(MyDayService);
   private readonly teamPerformanceService = inject(TeamPerformanceService);
@@ -324,10 +324,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
       // service is idempotent and no-ops when unauthenticated.
       this.events.connect();
     }
-  }
-
-  ngOnDestroy(): void {
-    this.events.disconnect();
   }
 
   /** Loads the role-shaped dashboard summary for the current user (Req 3.1–3.6). */

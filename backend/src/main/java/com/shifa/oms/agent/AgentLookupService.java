@@ -10,7 +10,6 @@ import com.shifa.oms.order.OrderRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -112,12 +111,9 @@ public class AgentLookupService {
     }
 
     private AgentLookupResponse byMobile(String mobile) {
-        List<OrderEntity> orders = orderRepository.findByCustomerMobileOrderByCreatedAtDesc(mobile);
-        if (orders.isEmpty()) {
-            return AgentLookupResponse.notFound(NO_MATCH_MESSAGE);
-        }
-        // Most recent order for the customer.
-        return toResponse(orders.get(0));
+        return orderRepository.findFirstByCustomerMobileOrderByCreatedAtDescIdDesc(mobile)
+                .map(this::toResponse)
+                .orElseGet(() -> AgentLookupResponse.notFound(NO_MATCH_MESSAGE));
     }
 
     private AgentLookupResponse byAwb(String awb) {

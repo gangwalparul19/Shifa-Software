@@ -114,7 +114,7 @@ public class DashboardMetricsService {
         DateRange window = period.resolve(today, from, to);
         SalesBucket effectiveBucket = bucket != null ? bucket : period.defaultBucket();
 
-        List<OrderReportRecord> records = loadRecords();
+        List<OrderReportRecord> records = loadRecords(window);
         List<OrderReportRecord> windowed = aggregator.within(records, window);
 
         MetricCards cards = buildCards(records, windowed, window);
@@ -293,9 +293,13 @@ public class DashboardMetricsService {
 
     // --- Loading & helpers --------------------------------------------------
 
-    /** Loads every order as a pure report record (admin dashboard is unscoped). */
-    private List<OrderReportRecord> loadRecords() {
-        List<OrderEntity> orders = orderRepository.findAll();
+    /** Loads only the selected and previous comparison windows with line items in one query. */
+    private List<OrderReportRecord> loadRecords(DateRange window) {
+        DateRange previous = window.previousPeriod();
+        LocalDate from = previous != null ? previous.from() : window.from();
+        LocalDate to = window.to();
+        List<OrderEntity> orders = orderRepository.findByCreatedAtBetweenWithLineItems(
+                from.atStartOfDay(), to.plusDays(1).atStartOfDay());
         List<OrderReportRecord> records = new ArrayList<>(orders.size());
         for (OrderEntity o : orders) {
             records.add(toRecord(o));

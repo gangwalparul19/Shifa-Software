@@ -273,6 +273,18 @@ public class OutboxEvent {
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    /** Identifier of the process currently leasing this pending event. */
+    @Column(name = "lease_owner", length = 128)
+    private String leaseOwner;
+
+    /** Opaque fencing token for the current lease. */
+    @Column(name = "lease_token", length = 64)
+    private String leaseToken;
+
+    /** Lease expiry; an expired lease can be claimed by another worker. */
+    @Column(name = "lease_until")
+    private LocalDateTime leaseUntil;
+
     protected OutboxEvent() {
         // Required by JPA.
     }
@@ -332,6 +344,37 @@ public class OutboxEvent {
         this.attempts = 0;
         this.lastError = null;
         this.nextAttemptAt = null;
+        clearLease();
+    }
+
+    /**
+     * Records the lease returned by the atomic claim transaction. The drainer does
+     * not persist this object through JPA after claiming; completion is fenced by
+     * the token in the repository update.
+     */
+    void claim(String owner, String token, LocalDateTime until) {
+        this.leaseOwner = owner;
+        this.leaseToken = token;
+        this.leaseUntil = until;
+    }
+
+    /** Clears local lease metadata after a successful fenced completion. */
+    void clearLease() {
+        this.leaseOwner = null;
+        this.leaseToken = null;
+        this.leaseUntil = null;
+    }
+
+    public String getLeaseOwner() {
+        return leaseOwner;
+    }
+
+    public String getLeaseToken() {
+        return leaseToken;
+    }
+
+    public LocalDateTime getLeaseUntil() {
+        return leaseUntil;
     }
 
     private static String truncate(String error) {

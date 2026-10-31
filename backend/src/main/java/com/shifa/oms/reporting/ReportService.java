@@ -11,6 +11,7 @@ import com.shifa.oms.courier.CourierRecordRepository;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderRepository;
+import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.reconciliation.ReceivableEntity;
 import com.shifa.oms.reconciliation.ReceivableRepository;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
@@ -57,6 +58,7 @@ public class ReportService {
     private final SalespersonScopeResolver scopeResolver;
     private final UserRepository userRepository;
     private final ModuleReportService moduleReportService;
+    private final ProductRepository productRepository;
 
     private final ReportAggregator aggregator = new ReportAggregator();
     private final ReportTableBuilder tableBuilder = new ReportTableBuilder(aggregator);
@@ -68,7 +70,8 @@ public class ReportService {
                          CurrentUserService currentUserService,
                          SalespersonScopeResolver scopeResolver,
                          UserRepository userRepository,
-                         ModuleReportService moduleReportService) {
+                         ModuleReportService moduleReportService,
+                         ProductRepository productRepository) {
         this.orderRepository = orderRepository;
         this.receivableRepository = receivableRepository;
         this.courierRecordRepository = courierRecordRepository;
@@ -76,6 +79,7 @@ public class ReportService {
         this.scopeResolver = scopeResolver;
         this.userRepository = userRepository;
         this.moduleReportService = moduleReportService;
+        this.productRepository = productRepository;
     }
 
     /** Generates a report of the given type over the window, for the current user. */
@@ -93,7 +97,7 @@ public class ReportService {
             requireAdminOrAccountant();
         }
         DateRange window = new DateRange(from, to);
-        List<OrderReportRecord> records = loadRecords();
+        List<OrderReportRecord> records = loadRecords(window);
         Map<Long, String> salespersonNames = salespersonNames(records);
         TabularData table = tableBuilder.build(type, records, window);
         // Show salesperson names (not raw ids) in the grouped-by-salesperson report.
@@ -106,14 +110,14 @@ public class ReportService {
     @Transactional(readOnly = true)
     public TabularData reportTable(ReportType type, LocalDate from, LocalDate to) {
         DateRange window = new DateRange(from, to);
-        return tableBuilder.build(type, loadRecords(), window);
+        return tableBuilder.build(type, loadRecords(window), window);
     }
 
     /** The Vyapar billing table over the window (Req 23.1). */
     @Transactional(readOnly = true)
     public TabularData vyaparTable(LocalDate from, LocalDate to) {
         DateRange window = new DateRange(from, to);
-        return vyaparBuilder.build(loadRecords(), window);
+        return vyaparBuilder.build(loadRecords(window), window);
     }
 
     // --- Assembly -----------------------------------------------------------
@@ -208,20 +212,18 @@ public class ReportService {
      */
     private TabularData remapSalespersonColumn(ReportType type, TabularData table,
                                                Map<Long, String> names) {
-        boolean hasSalespersonKeyColumn = type == ReportType.ORDERS_BY_SALESPERSON
-                || type == ReportType.SALESPERSON_SUMMARY
-                || type == ReportType.SALESPERSON_PRODUCT;
-        if (!hasSalespersonKeyColumn || table.rows().isEmpty()) {
+        int column = ReportTableBuilder.salespersonColumn(type);
+        if (column < 0 || table.rows().isEmpty()) {
             return table;
         }
         List<List<String>> rows = new ArrayList<>(table.rows().size());
         for (List<String> row : table.rows()) {
             List<String> copy = new ArrayList<>(row);
-            String key = copy.get(0);
+            String key = copy.get(column);
             try {
                 String name = names.get(Long.parseLong(key));
                 if (name != null) {
-                    copy.set(0, name);
+                    copy.set(column, name);
                 }
             } catch (NumberFormatException ignored) {
                 // Non-numeric key (e.g. UNSPECIFIED) — leave unchanged.
@@ -231,30 +233,126 @@ public class ReportService {
         return new TabularData(table.headers(), rows);
     }
 
-    /** Loads the orders visible to the current user as pure report records. */
-    private List<OrderReportRecord> loadRecords() {
+    /** Loads only the requested window; null bounds retain explicit all-time semantics. */
+    private List<OrderReportRecord> loadRecords(DateRange window) {
         Long createdBy = currentUserService.currentUser()
                 .flatMap(scopeResolver::creatorConstraint)
                 .orElse(null);
-        List<OrderEntity> orders = orderRepository.findAllScoped(createdBy);
+        java.time.LocalDateTime fromTs = window.from() == null ? null : window.from().atStartOfDay();
+        java.time.LocalDateTime toTs = window.to() == null ? null : window.to().plusDays(1).atStartOfDay();
+        List<OrderEntity> orders = (fromTs == null && toTs == null)
+                ? orderRepository.findAllScoped(createdBy)
+                : orderRepository.findAllScopedBetween(createdBy, fromTs, toTs);
+        Map<Long, String> categories = productCategories();
+        OrderExtras extras = loadExtras(orders);
         List<OrderReportRecord> records = new ArrayList<>(orders.size());
         for (OrderEntity o : orders) {
-            records.add(toRecord(o));
+            records.add(toRecord(o, categories, extras));
         }
         return records;
     }
 
-    private OrderReportRecord toRecord(OrderEntity o) {
+    /** Max ids per {@code IN (...)} batch; keeps statements small and the count flat up to this many orders. */
+    private static final int BATCH_SIZE = 1000;
+
+    /**
+     * The per-order data a report row needs beyond the order itself (AWB, COD
+     * settlement status, loss-claim status), keyed by order id.
+     */
+    private record OrderExtras(Map<Long, String> awbByOrder,
+                               Map<Long, String> codStatusByOrder,
+                               Map<Long, String> claimStatusByOrder) {
+        String awb(Long orderId) {
+            return awbByOrder.get(orderId);
+        }
+
+        String codStatus(Long orderId) {
+            return codStatusByOrder.getOrDefault(orderId, NO_RECEIVABLE);
+        }
+
+        String claimStatus(Long orderId) {
+            return claimStatusByOrder.getOrDefault(orderId, NO_RECEIVABLE);
+        }
+    }
+
+    /** Status shown when an order has no receivable of the relevant kind. */
+    private static final String NO_RECEIVABLE = "N/A";
+
+    /**
+     * Batch-loads everything {@link #toRecord} would otherwise fetch one order
+     * at a time. Reports used to run four queries per order (lazy line items,
+     * courier record, COD receivable, claim receivable) — ~9,000 round-trips for
+     * a month of 2,300 orders, i.e. 20+ seconds. This runs a constant handful of
+     * queries per {@value #BATCH_SIZE} orders instead.
+     *
+     * <p>The line-item fetch is run for its side effect: the orders are already
+     * managed in this session, and a fetch join initialises each one's lazy
+     * {@code lineItems} collection, so {@code getLineItems()} later hits memory.
+     */
+    private OrderExtras loadExtras(List<OrderEntity> orders) {
+        Map<Long, String> awbs = new java.util.HashMap<>();
+        Map<Long, List<ReceivableEntity>> cod = new java.util.HashMap<>();
+        Map<Long, List<ReceivableEntity>> claims = new java.util.HashMap<>();
+
+        List<Long> ids = new ArrayList<>(orders.size());
+        for (OrderEntity o : orders) {
+            ids.add(o.getId());
+        }
+        for (int start = 0; start < ids.size(); start += BATCH_SIZE) {
+            List<Long> chunk = ids.subList(start, Math.min(start + BATCH_SIZE, ids.size()));
+            orderRepository.findByIdInWithLineItems(chunk);
+            for (CourierRecord record : courierRecordRepository.findByOrderIdIn(chunk)) {
+                // One record per order; if data ever holds duplicates, keep the first AWB that is set.
+                awbs.merge(record.getOrderId(), nullToEmpty(record.getAwb()),
+                        (kept, other) -> kept.isEmpty() ? other : kept);
+            }
+            groupByOrder(receivableRepository.findByOrderIdInAndType(chunk, ReceivableType.COD_RECEIVABLE), cod);
+            groupByOrder(receivableRepository.findByOrderIdInAndType(chunk, ReceivableType.CLAIM_RECEIVABLE), claims);
+        }
+
+        // An order with a courier record but no AWB yet reports no AWB, exactly as before.
+        awbs.replaceAll((orderId, awb) -> awb.isEmpty() ? null : awb);
+
+        Map<Long, String> codStatuses = new java.util.HashMap<>();
+        cod.forEach((orderId, rows) -> codStatuses.put(orderId, codSettlementStatus(rows)));
+        Map<Long, String> claimStatuses = new java.util.HashMap<>();
+        claims.forEach((orderId, rows) -> claimStatuses.put(orderId, claimStatus(rows)));
+        return new OrderExtras(awbs, codStatuses, claimStatuses);
+    }
+
+    private static void groupByOrder(List<ReceivableEntity> rows, Map<Long, List<ReceivableEntity>> into) {
+        for (ReceivableEntity row : rows) {
+            into.computeIfAbsent(row.getOrderId(), k -> new ArrayList<>()).add(row);
+        }
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    /** Product id → category name for every categorised product (one small query per report). */
+    private Map<Long, String> productCategories() {
+        Map<Long, String> categories = new java.util.HashMap<>();
+        for (ProductRepository.ProductCategoryRow row : productRepository.findProductCategoryRows()) {
+            if (row.getProductId() != null && row.getCategoryName() != null
+                    && !row.getCategoryName().isBlank()) {
+                categories.put(row.getProductId(), row.getCategoryName());
+            }
+        }
+        return categories;
+    }
+
+    private OrderReportRecord toRecord(OrderEntity o, Map<Long, String> categories, OrderExtras extras) {
         List<OrderReportRecord.ProductLine> products = new ArrayList<>();
         for (OrderLineItem line : o.getLineItems()) {
             products.add(new OrderReportRecord.ProductLine(
-                    line.getProductName(), line.getQuantity(), line.getRate(), line.getLineTotal()));
+                    line.getProductName(), line.getQuantity(), line.getRate(), line.getLineTotal(),
+                    line.getProductId() == null ? null : categories.get(line.getProductId())));
         }
         LocalDate orderDate = o.getCreatedAt() != null ? o.getCreatedAt().toLocalDate() : null;
-        String awb = courierRecordRepository.findByOrderId(o.getId())
-                .map(CourierRecord::getAwb).orElse(null);
-        String codStatus = codSettlementStatus(o.getId());
-        String claimStatus = claimStatus(o.getId());
+        String awb = extras.awb(o.getId());
+        String codStatus = extras.codStatus(o.getId());
+        String claimStatus = extras.claimStatus(o.getId());
         return new OrderReportRecord(
                 o.getId(),
                 o.getOrderCode(),
@@ -281,11 +379,9 @@ public class ReportService {
      * receivable reads "Received-from-courier", an unsettled one "Pending", and
      * no COD receivable "N/A".
      */
-    private String codSettlementStatus(Long orderId) {
-        List<ReceivableEntity> cod = receivableRepository
-                .findByOrderIdAndType(orderId, ReceivableType.COD_RECEIVABLE);
+    private static String codSettlementStatus(List<ReceivableEntity> cod) {
         if (cod.isEmpty()) {
-            return "N/A";
+            return NO_RECEIVABLE;
         }
         boolean settled = cod.stream().anyMatch(ReceivableEntity::isSettled);
         return settled ? "Received-from-courier" : "Pending";
@@ -295,11 +391,9 @@ public class ReportService {
      * Loss claim status from the receivables ledger (Req 20.3): a settled claim
      * reads "Received", an unsettled one "Pending", and no claim "N/A".
      */
-    private String claimStatus(Long orderId) {
-        List<ReceivableEntity> claims = receivableRepository
-                .findByOrderIdAndType(orderId, ReceivableType.CLAIM_RECEIVABLE);
+    private static String claimStatus(List<ReceivableEntity> claims) {
         if (claims.isEmpty()) {
-            return "N/A";
+            return NO_RECEIVABLE;
         }
         boolean settled = claims.stream().anyMatch(ReceivableEntity::isSettled);
         return settled ? "Received" : "Pending";

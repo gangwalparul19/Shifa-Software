@@ -94,7 +94,13 @@ public class BankAccountService {
     private void apply(BankAccount account, BankAccountRequest request) {
         account.setBankName(clean(request.bankName()));
         account.setAccountHolderName(clean(request.accountHolderName()));
-        account.setAccountNumber(clean(request.accountNumber()));
+        String accountNumber = clean(request.accountNumber());
+        // Full account numbers are never returned by the response DTO. A blank
+        // update therefore means "keep the existing number"; creation still
+        // leaves it null when no number was supplied.
+        if (accountNumber != null || account.getAccountNumber() == null) {
+            account.setAccountNumber(accountNumber);
+        }
         String ifsc = clean(request.ifsc());
         if (ifsc != null && !IFSC.matcher(ifsc).matches()) {
             throw new ValidationException("IFSC must be in the format HDFC0001234.");

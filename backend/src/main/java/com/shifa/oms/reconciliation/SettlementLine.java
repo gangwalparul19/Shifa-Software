@@ -39,6 +39,7 @@ public class SettlementLine {
     @Column(name = "message", length = 500) private String message;
     @Column(name = "resolved_by") private Long resolvedBy;
     @Column(name = "resolved_at") private LocalDateTime resolvedAt;
+    @Column(name = "date_defaulted", nullable = false) private boolean dateDefaulted;
 
     protected SettlementLine() { }
     public SettlementLine(SettlementBatch batch, int sourceRowNumber) { this.batch = batch; this.sourceRowNumber = sourceRowNumber; }
@@ -55,6 +56,8 @@ public class SettlementLine {
     public void setUtr(String v) { utr = v; }
     public LocalDate getTransactionDate() { return transactionDate; }
     public void setTransactionDate(LocalDate v) { transactionDate = v; }
+    public boolean isDateDefaulted() { return dateDefaulted; }
+    public void setDateDefaulted(boolean v) { dateDefaulted = v; }
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal v) { amount = v; }
     public BigDecimal getExpectedAmount() { return expectedAmount; }

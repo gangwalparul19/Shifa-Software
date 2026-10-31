@@ -14,6 +14,10 @@ export interface DecodedJwt {
    * back to {@link DecodedJwt.sub}.
    */
   name?: string;
+  /** Sliding idle deadline hint, epoch seconds. It is not server authority. */
+  session_exp?: number;
+  /** Opaque server session id, present on new tokens; never persisted by the client separately. */
+  sid?: string;
   /**
    * Force-password-change flag. Present and {@code true} only when an admin has
    * reset the user's password and they must choose a new one before using the

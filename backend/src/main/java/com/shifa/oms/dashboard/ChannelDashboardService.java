@@ -73,6 +73,10 @@ public class ChannelDashboardService {
             OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED, OrderStatus.CANCELLED);
 
     /** Display labels for the lifecycle stages (match the Orders page tabs). */
+    private static final Set<OrderStatus> LIVE_QUEUE_STATES = EnumSet.of(
+            OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.APPROVED, OrderStatus.LABEL_GENERATED,
+            OrderStatus.PACKED, OrderStatus.HANDED_TO_DELIVERY, OrderStatus.COURIER_ASSIGNED);
+
     private static final Map<OrderStatusGroup, String> STAGE_LABELS = new EnumMap<>(OrderStatusGroup.class);
 
     static {
@@ -131,10 +135,12 @@ public class ChannelDashboardService {
         DateRange previous = window.previousPeriod();
         SalesBucket effectiveBucket = bucket != null ? bucket : period.defaultBucket();
 
-        List<OrderEntity> all = orderRepository.findAll();
+        List<OrderEntity> periodOrders = orderRepository.findByCreatedAtBetweenWithLineItems(
+                previous != null ? previous.from().atStartOfDay() : window.from().atStartOfDay(),
+                window.to().plusDays(1).atStartOfDay());
         List<OrderEntity> current = new ArrayList<>();
         List<OrderEntity> prior = new ArrayList<>();
-        for (OrderEntity o : all) {
+        for (OrderEntity o : periodOrders) {
             LocalDate d = dateOf(o);
             if (window.contains(d)) {
                 current.add(o);
@@ -142,6 +148,9 @@ public class ChannelDashboardService {
                 prior.add(o);
             }
         }
+        List<OrderEntity> queueOrders = orderRepository.findByOrderStatusInOrderByCreatedAtDesc(LIVE_QUEUE_STATES);
+        List<OrderEntity> todayOrders = orderRepository.findByCreatedAtBetween(
+                today.atStartOfDay(), today.plusDays(1).atStartOfDay());
         List<OrderEntity> scoped = filter(current, channel);
         List<OrderEntity> scopedPrior = filter(prior, channel);
 
@@ -151,8 +160,8 @@ public class ChannelDashboardService {
                 kpis(scoped, scopedPrior),
                 trend(current, prior, channel, window, previous, effectiveBucket),
                 pipeline(scoped),
-                queues(all, channel),
-                payments(scoped, all, channel, today),
+                queues(queueOrders, channel),
+                payments(scoped, todayOrders, channel, today),
                 performance(scoped, channel));
     }
 
@@ -381,8 +390,8 @@ public class ChannelDashboardService {
 
     // --- Payments & cash ----------------------------------------------------
 
-    private Payments payments(List<OrderEntity> scoped, List<OrderEntity> all, DashboardChannel channel,
-                              LocalDate today) {
+    private Payments payments(List<OrderEntity> scoped, List<OrderEntity> ordersToday,
+                              DashboardChannel channel, LocalDate today) {
         Map<PaymentStatus, long[]> counts = new EnumMap<>(PaymentStatus.class);
         Map<PaymentStatus, BigDecimal> amounts = new EnumMap<>(PaymentStatus.class);
         BigDecimal team = BigDecimal.ZERO;
@@ -409,8 +418,15 @@ public class ChannelDashboardService {
 
         // Courier-side money: unsettled receivables, attributed to the order's channel.
         Map<Long, OrderSource> sourceById = new HashMap<>();
-        for (OrderEntity o : all) {
-            sourceById.put(o.getId(), o.getSource());
+        for (OrderRepository.OrderSourceRow row : orderRepository.findAllOrderSources()) {
+            if (row.getOrderId() == null || row.getSource() == null) {
+                continue;
+            }
+            try {
+                sourceById.put(row.getOrderId(), OrderSource.valueOf(row.getSource()));
+            } catch (IllegalArgumentException ignored) {
+                // Unknown historical source names are not attributable to a channel.
+            }
         }
         BigDecimal codCourier = unsettled(ReceivableType.COD_RECEIVABLE, channel, sourceById);
         BigDecimal claims = unsettled(ReceivableType.CLAIM_RECEIVABLE, channel, sourceById);
@@ -418,7 +434,7 @@ public class ChannelDashboardService {
         long todayOrders = 0;
         BigDecimal todayTeam = BigDecimal.ZERO;
         BigDecimal todayShopify = BigDecimal.ZERO;
-        for (OrderEntity o : all) {
+        for (OrderEntity o : ordersToday) {
             if (!today.equals(dateOf(o)) || !channel.matches(o.getSource())) {
                 continue;
             }

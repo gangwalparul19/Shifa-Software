@@ -128,6 +128,14 @@ public class User {
     @Column(name = "password_reset_count", nullable = false)
     private int passwordResetCount = 0;
 
+    /** Deadline after which the generated reset credential can no longer be used. */
+    @Column(name = "password_reset_expires_at")
+    private LocalDateTime passwordResetExpiresAt;
+
+    /** Monotonic per-user revocation counter embedded in newly issued JWTs. */
+    @Column(name = "session_version", nullable = false)
+    private long sessionVersion = 0L;
+
     // --- Multi-factor authentication (TOTP / Google Authenticator, V100) ----
 
     /**
@@ -140,11 +148,19 @@ public class User {
     private boolean mfaEnabled = false;
 
     /**
-     * The Base32-encoded TOTP shared secret, set at enrollment. Null until the
-     * user enrolls; never returned over the API once set.
+     * Legacy plaintext column retained only for lazy migration of V100 rows.
+     * New application writes clear it after populating {@link #mfaSecretCiphertext}.
      */
     @Column(name = "mfa_secret", length = 64)
     private String mfaSecret;
+
+    /** AES-GCM ciphertext of the TOTP secret (V101). */
+    @Column(name = "mfa_secret_ciphertext", length = 512)
+    private String mfaSecretCiphertext;
+
+    /** Runtime-only plaintext used by the MFA service during one operation. */
+    @jakarta.persistence.Transient
+    private String mfaSecretPlaintext;
 
     /** When the user confirmed their first TOTP code (enrollment complete). */
     @Column(name = "mfa_enrolled_at")
@@ -357,6 +373,26 @@ public class User {
         this.passwordResetCount = passwordResetCount;
     }
 
+    public LocalDateTime getPasswordResetExpiresAt() {
+        return passwordResetExpiresAt;
+    }
+
+    public void setPasswordResetExpiresAt(LocalDateTime passwordResetExpiresAt) {
+        this.passwordResetExpiresAt = passwordResetExpiresAt;
+    }
+
+    public long getSessionVersion() {
+        return sessionVersion;
+    }
+
+    public void incrementSessionVersion() {
+        if (sessionVersion == Long.MAX_VALUE) {
+            sessionVersion = 0L;
+        } else {
+            sessionVersion++;
+        }
+    }
+
     public boolean isMfaEnabled() {
         return mfaEnabled;
     }
@@ -366,11 +402,37 @@ public class User {
     }
 
     public String getMfaSecret() {
-        return mfaSecret;
+        return mfaSecretPlaintext != null ? mfaSecretPlaintext : mfaSecret;
     }
 
+    /** Used by MFA service/tests to provision a legacy/runtime secret before encryption. */
     public void setMfaSecret(String mfaSecret) {
         this.mfaSecret = mfaSecret;
+        this.mfaSecretPlaintext = mfaSecret;
+    }
+
+    public String getMfaSecretCiphertext() {
+        return mfaSecretCiphertext;
+    }
+
+    public void setMfaSecretCiphertext(String mfaSecretCiphertext) {
+        this.mfaSecretCiphertext = mfaSecretCiphertext;
+    }
+
+    /** Clears the legacy persisted plaintext after ciphertext has been written. */
+    public void clearLegacyMfaSecret() {
+        this.mfaSecret = null;
+    }
+
+    /** Keeps a decrypted value available for the current service operation only. */
+    public void setRuntimeMfaSecret(String secret) {
+        this.mfaSecretPlaintext = secret;
+    }
+
+    public void clearMfaSecret() {
+        this.mfaSecret = null;
+        this.mfaSecretCiphertext = null;
+        this.mfaSecretPlaintext = null;
     }
 
     public LocalDateTime getMfaEnrolledAt() {
@@ -387,7 +449,9 @@ public class User {
      * needs to enroll before they can log in with a code.
      */
     public boolean isMfaEnrolled() {
-        return mfaSecret != null && !mfaSecret.isBlank() && mfaEnrolledAt != null;
+        return (getMfaSecret() != null && !getMfaSecret().isBlank()
+                || mfaSecretCiphertext != null && !mfaSecretCiphertext.isBlank())
+                && mfaEnrolledAt != null;
     }
 
     /**

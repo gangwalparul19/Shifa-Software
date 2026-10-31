@@ -113,6 +113,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
   protected readonly statesLoading = signal(true);
   protected readonly statesError = signal<string | null>(null);
   protected readonly stateBusyId = signal<number | 'new' | null>(null);
+  protected readonly maskedBankAccountNumber = signal<string | null>(null);
   /** Free-text field for adding a new delivery state. */
   protected readonly newStateName = this.fb.nonNullable.control('', [
     Validators.required,
@@ -308,7 +309,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
           gstSlabs: s.gstSlabs ?? '',
           bankName: s.bankName ?? '',
           bankAccountName: s.bankAccountName ?? '',
-          bankAccountNumber: s.bankAccountNumber ?? '',
+          bankAccountNumber: '',
           bankIfsc: s.bankIfsc ?? '',
           bankBranch: s.bankBranch ?? '',
           autoApproveEnabled: s.autoApproveEnabled ?? false,
@@ -316,6 +317,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
           shopifySettlementEnabled: s.shopifySettlementEnabled ?? false,
           shopifySettlementAccountId: s.shopifySettlementAccountId ?? null,
         });
+        this.maskedBankAccountNumber.set(s.maskedBankAccountNumber ?? null);
         this.applyGstinValidators(s.gstEnabled);
         this.loading.set(false);
         this.applyLogoState(s);
@@ -426,6 +428,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
       next: (saved) => {
         this.saving.set(false);
         this.toasts.success('Settings saved.');
+        this.maskedBankAccountNumber.set(saved.maskedBankAccountNumber ?? null);
+        this.form.controls.bankAccountNumber.setValue('');
         this.applyGstinValidators(saved.gstEnabled);
       },
       error: (err: HttpErrorResponse) => {
@@ -465,6 +469,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
       next: (saved) => {
         this.logoBusy.set(false);
         this.toasts.success('Logo updated.');
+        this.maskedBankAccountNumber.set(saved.maskedBankAccountNumber ?? null);
         this.applyLogoState(saved);
       },
       error: (err: HttpErrorResponse) => {
@@ -496,6 +501,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
       next: (saved) => {
         this.logoBusy.set(false);
         this.toasts.success('Logo removed.');
+        this.maskedBankAccountNumber.set(saved.maskedBankAccountNumber ?? null);
         this.applyLogoState(saved);
       },
       error: (err: HttpErrorResponse) => {

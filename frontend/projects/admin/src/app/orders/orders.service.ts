@@ -1,7 +1,7 @@
-import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient, OrderStatus, PageResponse, PaymentStatus } from 'core';
+import { AuthenticatedBlobService, BlobDownload } from '../shared/authenticated-blob.service';
 import {
   AssignableCreator,
   CourierCompanyOption,
@@ -95,14 +95,13 @@ export interface DeleteOrderResult {
  *
  * <p>JSON calls go through the shared {@link ApiClient} (the auth interceptor
  * attaches the bearer token; the backend scopes salespeople to their own
- * orders). The payment screenshot is a binary download, fetched with
- * {@link HttpClient} as a {@code Blob} against the authenticated endpoint
- * ({@code GET /api/orders/{id}/payment-screenshot}, ACCOUNTANT/ADMIN, Req 21.2).
+ * orders). Binary endpoints use the shared authenticated blob transport so
+ * payment proofs, invoices, labels and exports all follow the same auth path.
  */
 @Injectable({ providedIn: 'root' })
 export class OrdersService {
   private readonly api = inject(ApiClient);
-  private readonly http = inject(HttpClient);
+  private readonly blobs = inject(AuthenticatedBlobService);
 
   /**
    * Punch a new salesperson/admin order via {@code POST /api/orders}
@@ -223,7 +222,7 @@ export class OrdersService {
    * {@link page} (minus paging) plus the format; the server applies the
    * identical role scope and returns a CSV/Excel attachment as a Blob.
    */
-  exportOrders(query: OrderPageQuery, format: 'csv' | 'xlsx'): Observable<Blob> {
+  exportOrders(query: OrderPageQuery, format: 'csv' | 'xlsx'): Observable<BlobDownload> {
     const params: Record<string, string> = { format };
     const q = query.q?.trim();
     if (q) {
@@ -250,10 +249,7 @@ export class OrdersService {
     if (query.createdBy != null) {
       params['createdBy'] = String(query.createdBy);
     }
-    return this.http.get(this.api.url('/api/admin/orders/export'), {
-      params,
-      responseType: 'blob',
-    });
+    return this.blobs.download('/api/admin/orders/export', { params });
   }
 
   /**
@@ -302,13 +298,11 @@ export class OrdersService {
 
   /**
    * Generate a single merged PDF of shipping labels for the given orders. The
-   * response is a binary {@code application/pdf}; fetched with {@link HttpClient}
-   * as a {@code Blob} (the auth interceptor attaches the bearer token).
+   * response is a binary {@code application/pdf}; the shared authenticated blob
+   * transport fetches it as a {@code Blob} for opening/printing.
    */
   bulkLabels(ids: number[]): Observable<Blob> {
-    return this.http.post(this.api.url('/api/admin/orders/bulk-labels'), { ids }, {
-      responseType: 'blob',
-    });
+    return this.blobs.post('/api/admin/orders/bulk-labels', { ids });
   }
 
   /** Full order detail with line items and payment tracking (Req 21.1). */
@@ -446,9 +440,7 @@ export class OrdersService {
 
   /** Fetch the PRIMARY payment screenshot as a Blob for inline rendering (Req 21.2). */
   paymentScreenshot(id: number): Observable<Blob> {
-    return this.http.get(this.api.url(`/api/orders/${id}/payment-screenshot`), {
-      responseType: 'blob',
-    });
+    return this.blobs.get(`/api/orders/${id}/payment-screenshot`);
   }
 
   /** List every payment proof attached to an order, in upload order (V65). */
@@ -458,21 +450,15 @@ export class OrdersService {
 
   /** Fetch one specific payment proof as a Blob for inline rendering (V65). */
   paymentScreenshotById(id: number, screenshotId: number): Observable<Blob> {
-    return this.http.get(this.api.url(`/api/orders/${id}/payment-screenshots/${screenshotId}`), {
-      responseType: 'blob',
-    });
+    return this.blobs.get(`/api/orders/${id}/payment-screenshots/${screenshotId}`);
   }
 
   /**
    * Fetch the PDF invoice as a Blob from the authenticated, role-scoped endpoint
-   * ({@code GET /api/orders/{id}/invoice}). Fetched with {@link HttpClient} as a
-   * {@code Blob} (the auth interceptor attaches the bearer token) so the PDF can
-   * be opened/downloaded, mirroring the payment-screenshot blob fetch.
+   * ({@code GET /api/orders/{id}/invoice}) using the shared binary transport.
    */
   invoice(id: number): Observable<Blob> {
-    return this.http.get(this.api.url(`/api/orders/${id}/invoice`), {
-      responseType: 'blob',
-    });
+    return this.blobs.get(`/api/orders/${id}/invoice`);
   }
 
   /**
@@ -481,9 +467,7 @@ export class OrdersService {
    * ({@code GET /api/admin/labels/internal/{id}}, ADMIN + PACKING_USER).
    */
   label(id: number): Observable<Blob> {
-    return this.http.get(this.api.url(`/api/admin/labels/internal/${id}`), {
-      responseType: 'blob',
-    });
+    return this.blobs.get(`/api/admin/labels/internal/${id}`);
   }
 
   /**

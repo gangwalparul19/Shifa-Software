@@ -1,4 +1,4 @@
-# Production profile - MySQL 8 on the OCI Always Free A1 VM (localhost).
+# Production profile - MySQL on the deployment host.
 # All secrets and connection details are injected via environment variables.
 spring:
   datasource:
@@ -10,12 +10,16 @@ spring:
       maximum-pool-size: ${DB_POOL_SIZE:10}
 
 app:
+  webhooks:
+    # Production must never accept unsigned webhooks.
+    hmac-strict: true
+  security:
+    mfa:
+      # No default: MFA_ENCRYPTION_KEY is mandatory in production.
+      encryption-key: ${MFA_ENCRYPTION_KEY:}
   storage:
-    # Store internal label PDFs (labels/internal/...) and payment screenshots
-    # (payments/...) in an S3 bucket — durable, off the (read-only) server
-    # filesystem, and not bloating the database. Requires STORAGE_S3_BUCKET and
-    # an EC2 instance role (or STORAGE_S3_ACCESS_KEY/SECRET_KEY) with access to
-    # the bucket. Set STORAGE_PROVIDER=DB or LOCAL to fall back.
+    # AWS EC2 production uses Amazon S3. LOCAL/DB are for local/demo profiles;
+    # do not select an OCI provider because none is implemented or registered.
     provider: ${STORAGE_PROVIDER:S3}
 
 logging:

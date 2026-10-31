@@ -141,7 +141,7 @@ class TrackingServiceTest {
                 LocalDateTime.of(2026, 5, 1, 10, 0),
                 line("Honey", 1));
         // Repo contract is already DESC by created_at.
-        when(orderRepository.findByCustomerMobileOrderByCreatedAtDesc(MOBILE))
+        when(orderRepository.findTop25ByCustomerMobileOrderByCreatedAtDescIdDesc(MOBILE))
                 .thenReturn(List.of(newer, older));
 
         TrackByMobileResponse response = trackingService.ordersByMobile(" 98765-43210 ");
@@ -167,7 +167,7 @@ class TrackingServiceTest {
     void cardStatusLabelMatchesTokenView() {
         OrderEntity order = order("SHR-9", OrderStatus.OUT_FOR_DELIVERY, "tok-9",
                 LocalDateTime.of(2026, 5, 3, 9, 0), line("Amla Juice", 1));
-        when(orderRepository.findByCustomerMobileOrderByCreatedAtDesc(MOBILE))
+        when(orderRepository.findTop25ByCustomerMobileOrderByCreatedAtDescIdDesc(MOBILE))
                 .thenReturn(List.of(order));
         when(orderRepository.findByTrackingToken("tok-9")).thenReturn(Optional.of(order));
         when(courierRecordRepository.findByOrderId(any())).thenReturn(Optional.empty());
@@ -187,7 +187,7 @@ class TrackingServiceTest {
         settings.setLegalName("Acme Wellness Pvt Ltd");
         when(appSettingsRepository.findById(com.shifa.oms.settings.AppSettings.SINGLETON_ID))
                 .thenReturn(Optional.of(settings));
-        when(orderRepository.findByCustomerMobileOrderByCreatedAtDesc(MOBILE)).thenReturn(List.of());
+        when(orderRepository.findTop25ByCustomerMobileOrderByCreatedAtDescIdDesc(MOBILE)).thenReturn(List.of());
 
         assertThat(trackingService.ordersByMobile(MOBILE).brandName()).isEqualTo("Acme Wellness Pvt Ltd");
     }
@@ -204,7 +204,7 @@ class TrackingServiceTest {
         ReflectionTestUtils.setField(order, "id", 77L);
         when(orderRepository.findByTrackingToken("tok-7")).thenReturn(Optional.of(order));
         when(courierRecordRepository.findByOrderId(any())).thenReturn(Optional.empty());
-        when(trackingEventRepository.findByOrderIdOrderBySortOrderAsc(77L)).thenReturn(List.of(
+        when(trackingEventRepository.findTop100ByOrderIdOrderBySortOrderAscIdAsc(77L)).thenReturn(List.of(
                 new com.shifa.oms.quikshipx.ShipmentTrackingEvent(
                         77L, "In Transit", "Indore_Dakachya_GW (Madhya Pradesh)",
                         "Vehicle Departed", "2026-10-05 01:53:10", 0),
@@ -225,7 +225,7 @@ class TrackingServiceTest {
     /** An unknown mobile yields an empty list (clean "no orders" UX), never a throw. */
     @Test
     void ordersByMobileEmptyForUnknownNumber() {
-        when(orderRepository.findByCustomerMobileOrderByCreatedAtDesc(MOBILE))
+        when(orderRepository.findTop25ByCustomerMobileOrderByCreatedAtDescIdDesc(MOBILE))
                 .thenReturn(List.of());
         assertThat(trackingService.ordersByMobile(MOBILE).orders()).isEmpty();
     }
@@ -245,7 +245,8 @@ class TrackingServiceTest {
             many.add(order("SHR-" + i, OrderStatus.DELIVERED, "tok-" + i,
                     LocalDateTime.of(2026, 5, 1, 0, 0), line("Honey", 1)));
         }
-        when(orderRepository.findByCustomerMobileOrderByCreatedAtDesc(eq(MOBILE))).thenReturn(many);
+        when(orderRepository.findTop25ByCustomerMobileOrderByCreatedAtDescIdDesc(eq(MOBILE)))
+                .thenReturn(many.subList(0, 25));
         assertThat(trackingService.ordersByMobile(MOBILE).orders()).hasSize(25);
     }
 

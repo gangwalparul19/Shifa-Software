@@ -8,6 +8,7 @@ import com.shifa.oms.ledger.VoucherService;
 import com.shifa.oms.ledger.domain.DraftVoucher;
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
+import com.shifa.oms.platform.outbox.OutboxClaimService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -63,6 +64,7 @@ public class LedgerPostingDrainer {
     private final VoucherService voucherService;
     private final SourcePostingGuard sourcePostingGuard;
     private final StaffNotificationDispatcher staffNotificationDispatcher;
+    private final OutboxClaimService claimService;
 
     /** Maximum delivery attempts before a row is marked FAILED (config-driven, like the WhatsApp drainer). */
     @Value("${app.ledger.autopost.max-attempts:5}")
@@ -72,16 +74,29 @@ public class LedgerPostingDrainer {
     @Value("${app.ledger.autopost.retry-backoff-ms:60000}")
     private long retryBackoffMs;
 
+    /** Legacy test constructor; production uses the fenced-claim constructor. */
     public LedgerPostingDrainer(OutboxEventRepository outboxEventRepository,
                                 LedgerAutoPostingService ledgerAutoPostingService,
                                 VoucherService voucherService,
                                 SourcePostingGuard sourcePostingGuard,
                                 StaffNotificationDispatcher staffNotificationDispatcher) {
+        this(outboxEventRepository, ledgerAutoPostingService, voucherService,
+                sourcePostingGuard, staffNotificationDispatcher, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public LedgerPostingDrainer(OutboxEventRepository outboxEventRepository,
+                                LedgerAutoPostingService ledgerAutoPostingService,
+                                VoucherService voucherService,
+                                SourcePostingGuard sourcePostingGuard,
+                                StaffNotificationDispatcher staffNotificationDispatcher,
+                                OutboxClaimService claimService) {
         this.outboxEventRepository = outboxEventRepository;
         this.ledgerAutoPostingService = ledgerAutoPostingService;
         this.voucherService = voucherService;
         this.sourcePostingGuard = sourcePostingGuard;
         this.staffNotificationDispatcher = staffNotificationDispatcher;
+        this.claimService = claimService;
     }
 
     /** Scheduled entry point: drains due ledger-post events (default every 20 seconds). */
@@ -101,8 +116,10 @@ public class LedgerPostingDrainer {
      */
     public int drainPostings() {
         LocalDateTime now = LocalDateTime.now();
-        List<OutboxEvent> due = outboxEventRepository.findDue(
-                OutboxEvent.EVENT_LEDGER_POST, OutboxEvent.STATUS_PENDING, now);
+        List<OutboxEvent> due = claimService == null
+                ? outboxEventRepository.findDue(
+                        OutboxEvent.EVENT_LEDGER_POST, OutboxEvent.STATUS_PENDING, now)
+                : claimService.claimDue(OutboxEvent.EVENT_LEDGER_POST, now);
         int processed = 0;
         for (OutboxEvent event : due) {
             processOne(event);
@@ -125,9 +142,9 @@ public class LedgerPostingDrainer {
             // A malformed/unparseable payload can never succeed on retry — fail it immediately and
             // notify, rather than looping. The source aggregate is untouched (Req 17.4).
             String error = "Malformed LEDGER_POST payload: " + malformed.getMessage();
-            event.markFailed(error);
-            outboxEventRepository.save(event);
-            raiseAdminNotification(event, "unknown", error);
+            if (markFailed(event, error)) {
+                raiseAdminNotification(event, "unknown", error);
+            }
             log.warn("Ledger auto-post event {} has a malformed payload: {}", event.getId(), error);
             return;
         }
@@ -135,8 +152,7 @@ public class LedgerPostingDrainer {
         try {
             // Idempotency pre-check (Reqs 8.4, 9.3, 10.3, 11.4): a voucher already exists → no-op success.
             if (sourcePostingGuard.alreadyPosted(sourceType, sourceId)) {
-                event.markSent();
-                outboxEventRepository.save(event);
+                markSent(event);
                 log.debug("Ledger auto-post for {} #{} already posted; marking event {} SENT (no-op).",
                         sourceType, sourceId, event.getId());
                 return;
@@ -147,8 +163,7 @@ public class LedgerPostingDrainer {
             Voucher voucher = voucherService.postForSource(draft, sourceType.name(), sourceId);
             sourcePostingGuard.recordPosting(sourceType, sourceId, voucher.getId());
 
-            event.markSent();
-            outboxEventRepository.save(event);
+            markSent(event);
             log.debug("Ledger auto-post for {} #{} posted voucher {}; marking event {} SENT.",
                     sourceType, sourceId, voucher.getVoucherReference(), event.getId());
         } catch (RuntimeException ex) {
@@ -166,18 +181,49 @@ public class LedgerPostingDrainer {
         String error = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
         boolean exhausted = event.getAttempts() + 1 >= maxAttempts;
         if (exhausted) {
-            event.markFailed(error);
-            outboxEventRepository.save(event);
+            if (!markFailed(event, error)) {
+                log.debug("Ledger event {} lost its lease before permanent failure was recorded", event.getId());
+                return;
+            }
             raiseAdminNotification(event, sourceType + " #" + sourceId, error);
             log.warn("Ledger auto-post for {} #{} failed after {} attempts: {}",
                     sourceType, sourceId, event.getAttempts(), error);
         } else {
             LocalDateTime next = LocalDateTime.now().plus(Duration.ofMillis(retryBackoffMs));
-            event.recordRetry(error, next);
-            outboxEventRepository.save(event);
+            if (!recordRetry(event, error, next)) {
+                log.debug("Ledger event {} lost its lease before retry was recorded", event.getId());
+                return;
+            }
             log.debug("Ledger auto-post for {} #{} will retry at {} ({})",
                     sourceType, sourceId, next, error);
         }
+    }
+
+    private boolean markSent(OutboxEvent event) {
+        if (claimService != null) {
+            return claimService.markSent(event);
+        }
+        event.markSent();
+        outboxEventRepository.save(event);
+        return true;
+    }
+
+    private boolean markFailed(OutboxEvent event, String error) {
+        if (claimService != null) {
+            return claimService.markFailed(event, error);
+        }
+        event.markFailed(error);
+        outboxEventRepository.save(event);
+        return true;
+    }
+
+    private boolean recordRetry(OutboxEvent event, String error, LocalDateTime next) {
+        if (claimService != null) {
+            return claimService.recordRetry(event, error, next);
+        }
+        event.recordRetry(error, next);
+        outboxEventRepository.save(event);
+        return true;
     }
 
     /** Raises an ADMIN in-app notification flagging a ledger auto-post failure for review (Req 8.5). */

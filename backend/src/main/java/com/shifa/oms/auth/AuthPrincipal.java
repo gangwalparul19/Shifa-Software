@@ -1,16 +1,26 @@
 package com.shifa.oms.auth;
 
+import java.time.Instant;
 import java.util.Objects;
 
-/**
- * The authenticated principal placed in the Spring Security context for the
- * duration of a request. Carries just enough identity to drive authorization
- * and salesperson scoping: the user id, username, and {@link Role}.
- *
- * <p>Kept deliberately small and immutable so it is safe to read from the
- * security context anywhere in the request thread.
- */
-public record AuthPrincipal(Long userId, String username, Role role) {
+/** Immutable authenticated identity plus the server-side idle-session sid. */
+public record AuthPrincipal(Long userId, String username, Role role,
+                            Instant sessionStartedAt, String sessionId) {
+
+    /** Backward-compatible identity-only constructor. */
+    public AuthPrincipal(Long userId, String username, Role role) {
+        this(userId, username, role, null, null);
+    }
+
+    /** Backward-compatible constructor used by legacy callers that do not carry a sid. */
+    public AuthPrincipal(Long userId, String username, Role role, Instant sessionStartedAt) {
+        this(userId, username, role, sessionStartedAt, null);
+    }
+
+    /** New convenience constructor for an idle-session identity. */
+    public AuthPrincipal(Long userId, String username, Role role, String sessionId) {
+        this(userId, username, role, null, sessionId);
+    }
 
     public AuthPrincipal {
         Objects.requireNonNull(userId, "userId");

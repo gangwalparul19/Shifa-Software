@@ -23,3 +23,17 @@
 .settlement-account-row--difference { border-top: 1px dashed #d9e3dd; margin-top: .35rem; padding-top: .55rem; }
 .settlement-kpi-loading { min-height: 8rem; display: flex; align-items: center; justify-content: center; color: #687980; }
 @media (max-width: 767.98px) { .settlement-total-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .settlement-periods { width: 100%; } .settlement-periods .btn { flex: 1 1 auto; } }
+.settlement-drawer__summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem 1.25rem; padding: .75rem 1rem; border: 1px solid #cfe7d7; border-radius: .6rem; background: #f7fcf8; }
+.settlement-drawer__summary strong { color: #1f5d3f; font-size: 1.1rem; }
+.settlement-lines-table th { white-space: nowrap; }
+.settlement-resolution { z-index: 1060; }
+.settlement-resolution .settlement-drawer__panel { width: min(620px, 96vw); }
+.settlement-candidates .list-group-item { border-left: 3px solid transparent; }
+.settlement-candidates .list-group-item.active { border-left-color: #1f5d3f; }
+.settlement-candidates-loading { min-height: 6rem; display: flex; align-items: center; justify-content: center; color: #687980; }
+.settlement-resolution-detail { color: #805d00; }
+@media (max-width: 767.98px) {
+  .settlement-drawer__panel { width: 100%; padding: 1rem; }
+  .settlement-lines-table { min-width: 760px; }
+  .settlement-drawer__summary { gap: .4rem .85rem; }
+}

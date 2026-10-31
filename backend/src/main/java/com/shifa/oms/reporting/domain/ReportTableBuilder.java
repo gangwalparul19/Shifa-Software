@@ -63,7 +63,11 @@ public class ReportTableBuilder {
             "Delivery Success %",
             "Pending COD");
 
+    /** Label of the grid's totals row (non-numeric, so the salesperson-name remap leaves it alone). */
+    public static final String TOTAL_ROW_LABEL = "TOTAL";
+
     private final ReportAggregator aggregator;
+    private final ExecutiveProductAnalytics executive;
 
     public ReportTableBuilder() {
         this(new ReportAggregator());
@@ -71,6 +75,21 @@ public class ReportTableBuilder {
 
     public ReportTableBuilder(ReportAggregator aggregator) {
         this.aggregator = aggregator;
+        this.executive = new ExecutiveProductAnalytics(aggregator);
+    }
+
+    /**
+     * The 0-based column that holds the raw salesperson id for a report type
+     * (the service replaces it with the display name), or {@code -1} when the
+     * report has no salesperson-id column.
+     */
+    public static int salespersonColumn(ReportType type) {
+        return switch (type) {
+            case ORDERS_BY_SALESPERSON, SALESPERSON_SUMMARY, SALESPERSON_PRODUCT,
+                    EXECUTIVE_PRODUCT_DETAIL, EXECUTIVE_PRODUCT_MATRIX -> 0;
+            case TOP_EXECUTIVES_BY_CATEGORY, TOP_EXECUTIVES_BY_PRODUCT -> 2;
+            default -> -1;
+        };
     }
 
     /** Builds the displayed table for the given report type over the window. */
@@ -85,6 +104,12 @@ public class ReportTableBuilder {
             case SALESPERSON -> salesperson(orders, window);
             case SALESPERSON_SUMMARY -> salespersonSummary(orders, window);
             case SALESPERSON_PRODUCT -> salespersonProduct(orders, window);
+            case EXECUTIVE_PRODUCT_DETAIL -> executiveProductDetail(orders, window);
+            case EXECUTIVE_PRODUCT_MATRIX -> executiveProductMatrix(orders, window);
+            case TOP_EXECUTIVES_BY_CATEGORY -> topExecutives(
+                    "Category", "Share of Category %", executive.topByCategory(orders, window));
+            case TOP_EXECUTIVES_BY_PRODUCT -> topExecutives(
+                    "Product", "Share of Product %", executive.topByProduct(orders, window));
             case ORDERS_BY_LEAD_SOURCE -> countTable(
                     "Lead Source", aggregator.ordersByLeadSource(orders, window));
             case ORDERS_BY_STATUS -> countTable(
@@ -361,6 +386,121 @@ public class ReportTableBuilder {
                     money(r.totalSales())));
         }
         return new TabularData(headers, rows);
+    }
+
+    /**
+     * Sales-executive &times; product detail: one row per (executive, product)
+     * with category, orders, distinct customers, quantity, total sales, average
+     * realised price and the product's share of the executive's sales.
+     */
+    private TabularData executiveProductDetail(List<OrderReportRecord> orders, DateRange window) {
+        List<String> headers = List.of(
+                "Sales Executive", "Category", "Product", "Orders", "Customers", "Quantity",
+                "Total Sales", "Avg Price", "Share of Executive Sales %");
+        List<List<String>> rows = new ArrayList<>();
+        for (ExecutiveProductAnalytics.DetailRow r : executive.detail(orders, window)) {
+            rows.add(List.of(
+                    executiveKey(r.salespersonId()),
+                    nullToEmpty(r.category()),
+                    nullToEmpty(r.productName()),
+                    Long.toString(r.orders()),
+                    Long.toString(r.customers()),
+                    Long.toString(r.quantity()),
+                    money(r.totalSales()),
+                    money(r.avgPrice()),
+                    money(r.shareOfExecutivePct())));
+        }
+        return new TabularData(headers, rows);
+    }
+
+    /**
+     * The executive tracker grid (mirrors the client's Excel sheet): per
+     * executive the order count, gross sale, net sale, total quantity and
+     * distinct products, then one quantity column per product sold, ending with
+     * a TOTAL row. Gross sale is the sum of line totals (before order discount);
+     * net sale is the sum of order totals (after discount and round-off).
+     */
+    private TabularData executiveProductMatrix(List<OrderReportRecord> orders, DateRange window) {
+        ExecutiveProductAnalytics.Matrix matrix = executive.matrix(orders, window);
+        List<String> headers = new ArrayList<>(List.of(
+                "Sales Executive", "Orders", "Gross Sale", "Net Sale", "Total Qty", "Distinct Products"));
+        headers.addAll(matrix.products());
+
+        List<List<String>> rows = new ArrayList<>();
+        long totalOrders = 0;
+        long totalQty = 0;
+        BigDecimal totalGross = BigDecimal.ZERO;
+        BigDecimal totalNet = BigDecimal.ZERO;
+        long[] perProductTotal = new long[matrix.products().size()];
+        for (ExecutiveProductAnalytics.MatrixRow r : matrix.rows()) {
+            List<String> cells = new ArrayList<>();
+            cells.add(executiveKey(r.salespersonId()));
+            cells.add(Long.toString(r.orders()));
+            cells.add(money(r.grossSale()));
+            cells.add(money(r.netSale()));
+            cells.add(Long.toString(r.totalQuantity()));
+            cells.add(Integer.toString(r.distinctProducts()));
+            for (int i = 0; i < matrix.products().size(); i++) {
+                long q = r.quantityByProduct().getOrDefault(matrix.products().get(i), 0L);
+                perProductTotal[i] += q;
+                cells.add(Long.toString(q));
+            }
+            totalOrders += r.orders();
+            totalQty += r.totalQuantity();
+            totalGross = totalGross.add(r.grossSale());
+            totalNet = totalNet.add(r.netSale());
+            rows.add(cells);
+        }
+        if (!rows.isEmpty()) {
+            int distinctSold = 0;
+            for (long q : perProductTotal) {
+                if (q > 0) {
+                    distinctSold++;
+                }
+            }
+            List<String> total = new ArrayList<>(List.of(
+                    TOTAL_ROW_LABEL, Long.toString(totalOrders),
+                    money(totalGross.setScale(2, java.math.RoundingMode.HALF_UP)),
+                    money(totalNet.setScale(2, java.math.RoundingMode.HALF_UP)),
+                    Long.toString(totalQty), Integer.toString(distinctSold)));
+            for (long q : perProductTotal) {
+                total.add(Long.toString(q));
+            }
+            rows.add(total);
+        }
+        return new TabularData(headers, rows);
+    }
+
+    /**
+     * Top executives per group (category or product): rank, order/customer
+     * counts, quantity, total sales, share of the group's executive-sold sales,
+     * and the repeat-customer count and rate (within the selected period).
+     */
+    private TabularData topExecutives(String groupLabel, String shareLabel,
+                                      List<ExecutiveProductAnalytics.TopRow> top) {
+        List<String> headers = List.of(
+                groupLabel, "Rank", "Sales Executive", "Orders", "Customers", "Quantity",
+                "Total Sales", shareLabel, "Repeat Customers", "Repeat Rate %");
+        List<List<String>> rows = new ArrayList<>();
+        for (ExecutiveProductAnalytics.TopRow r : top) {
+            rows.add(List.of(
+                    nullToEmpty(r.group()),
+                    Integer.toString(r.rank()),
+                    executiveKey(r.salespersonId()),
+                    Long.toString(r.orders()),
+                    Long.toString(r.customers()),
+                    Long.toString(r.quantity()),
+                    money(r.totalSales()),
+                    money(r.shareOfGroupPct()),
+                    Long.toString(r.repeatCustomers()),
+                    money(r.repeatRatePct())));
+        }
+        return new TabularData(headers, rows);
+    }
+
+    /** The raw salesperson id as text, or {@code UNSPECIFIED}; the service maps it to a name. */
+    private static String executiveKey(Long salespersonId) {
+        return salespersonId == null ? "UNSPECIFIED" : Long.toString(salespersonId);
     }
 
     /** A generic two-column grouped-count table ({@code keyLabel}, "Orders"). */

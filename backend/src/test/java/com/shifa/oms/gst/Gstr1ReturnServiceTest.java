@@ -91,7 +91,10 @@ class Gstr1ReturnServiceTest {
         // Sensible empty defaults; individual tests override as needed.
         when(orderRepository.findByCreatedAtBetween(any(), any())).thenReturn(List.of());
         when(orderReturnRepository.findAll()).thenReturn(List.of());
+        when(orderReturnRepository.findByStatusAndCreatedAtBetween(any(), any(), any()))
+                .thenReturn(List.of());
         when(productRepository.findAll()).thenReturn(List.of());
+        when(productRepository.findHsnUqcRows()).thenReturn(List.of());
 
         Clock clock = Clock.fixed(TODAY.atStartOfDay(ZONE).toInstant(), ZONE);
         service = new Gstr1ReturnService(orderRepository, orderReturnRepository, productRepository,
@@ -205,7 +208,8 @@ class Gstr1ReturnServiceTest {
         OrderReturn r3 = refundedReturn(103L, "50.00", TODAY);
         OrderReturn r4 = returnWithStatus(101L, "20.00", TODAY, ReturnStatus.APPROVED);
         OrderReturn r5 = refundedReturn(102L, "15.00", TODAY.minusMonths(2));
-        when(orderReturnRepository.findAll()).thenReturn(List.of(r1, r2, r3, r4, r5));
+        when(orderReturnRepository.findByStatusAndCreatedAtBetween(any(), any(), any()))
+                .thenReturn(List.of(r1, r2, r3));
 
         Gstr1Return ret = service.build(periodStart(), periodEnd());
 
@@ -256,9 +260,13 @@ class Gstr1ReturnServiceTest {
                 line("33051010", "18", 1, "118"));
         when(orderRepository.findByCreatedAtBetween(any(), any()))
                 .thenReturn(List.of(withUqc, blankUqc));
-        when(productRepository.findAll()).thenReturn(List.of(
-                product("30049011", "BTL"),
-                product("33051010", null)));
+        ProductRepository.HsnUqcRow catalogWithUqc = Mockito.mock(ProductRepository.HsnUqcRow.class);
+        when(catalogWithUqc.getHsnCode()).thenReturn("30049011");
+        when(catalogWithUqc.getUqc()).thenReturn("BTL");
+        ProductRepository.HsnUqcRow catalogBlankUqc = Mockito.mock(ProductRepository.HsnUqcRow.class);
+        when(catalogBlankUqc.getHsnCode()).thenReturn("33051010");
+        when(catalogBlankUqc.getUqc()).thenReturn(null);
+        when(productRepository.findHsnUqcRows()).thenReturn(List.of(catalogWithUqc, catalogBlankUqc));
 
         Gstr1Return ret = service.build(periodStart(), periodEnd());
 

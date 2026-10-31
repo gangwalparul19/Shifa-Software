@@ -67,7 +67,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
             """)
     List<User> searchCustomers(@Param("q") String q, Pageable pageable);
 
-    /** Whether a registered {@link Role#CUSTOMER} account exists for the given mobile. */
+    /** Legacy V100 plaintext rows awaiting AES-GCM conversion. */
+    @Query("SELECT u FROM User u WHERE u.mfaSecret IS NOT NULL AND u.mfaSecret <> ''")
+    List<User> findUsersWithLegacyMfaSecret();
+
     boolean existsByMobileAndRole(String mobile, Role role);
 
     /**

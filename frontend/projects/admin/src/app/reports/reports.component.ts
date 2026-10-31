@@ -19,6 +19,7 @@ import { DownloadResult, ReportsService } from './reports.service';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
+import { addIstDays, monthStartIst, todayIst } from '../shared/business-date.util';
 import {
   DatePreset,
   ExportFormat,
@@ -110,6 +111,11 @@ export class ReportsComponent implements OnInit {
     { value: 'salesperson-summary', label: 'Salesperson summary (per person)', group: 'Salesperson' },
     { value: 'salesperson-product', label: 'Salesperson × product (qty & sales)', group: 'Salesperson' },
     { value: 'salesperson', label: 'Salesperson (detailed orders)', group: 'Salesperson' },
+    { value: 'executive-product-detail', label: 'Executive × product detail (qty, price, share)', group: 'Salesperson' },
+    { value: 'executive-product-matrix', label: 'Executive product tracker (grid)', group: 'Salesperson' },
+    // Top performers — who to back with ads / retention effort (admin / accountant / CA)
+    { value: 'top-executives-by-category', label: 'Top 3 executives per category', group: 'Top performers' },
+    { value: 'top-executives-by-product', label: 'Top 3 executives per product', group: 'Top performers' },
     // Orders
     { value: 'orders-by-status', label: 'Orders by status', group: 'Orders' },
     { value: 'orders-by-lead-source', label: 'Orders by lead source', group: 'Orders' },
@@ -128,7 +134,13 @@ export class ReportsComponent implements OnInit {
   ];
 
   /** Report groups a salesperson may NOT see (money + operations are admin/accountant). */
-  private static readonly SALESPERSON_HIDDEN_GROUPS = new Set(['Money & Receivables', 'Operations']);
+  private static readonly SALESPERSON_HIDDEN_GROUPS = new Set([
+    'Money & Receivables',
+    'Operations',
+    // A salesperson only ever sees their own orders, so a "top 3" ranking would
+    // list just themselves — hide it rather than show a misleading leaderboard.
+    'Top performers',
+  ]);
 
   /**
    * The report-type options grouped by category, for optgroup rendering. For a
@@ -330,10 +342,8 @@ export class ReportsComponent implements OnInit {
 
   /** Resolves a preset key into concrete from/to ISO dates in the form. */
   private applyPreset(key: string): void {
-    const today = new Date();
-    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const to = todayIst();
     let from = '';
-    let to = iso(today);
     switch (key) {
       case 'all':
         // Unbounded window — every order regardless of age (owner "see everything").
@@ -341,24 +351,17 @@ export class ReportsComponent implements OnInit {
         this.form.controls.to.setValue('');
         return;
       case 'today':
-        from = iso(today);
+        from = to;
         break;
-      case 'last7': {
-        const d = new Date(today);
-        d.setDate(d.getDate() - 6);
-        from = iso(d);
+      case 'last7':
+        from = addIstDays(to, -6);
         break;
-      }
-      case 'last30': {
-        const d = new Date(today);
-        d.setDate(d.getDate() - 29);
-        from = iso(d);
+      case 'last30':
+        from = addIstDays(to, -29);
         break;
-      }
-      case 'month': {
-        from = iso(new Date(today.getFullYear(), today.getMonth(), 1));
+      case 'month':
+        from = monthStartIst();
         break;
-      }
       default:
         return;
     }

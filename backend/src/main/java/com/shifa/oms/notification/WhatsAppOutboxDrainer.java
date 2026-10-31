@@ -3,6 +3,7 @@ package com.shifa.oms.notification;
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
+import com.shifa.oms.platform.outbox.OutboxClaimService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -41,15 +42,27 @@ public class WhatsAppOutboxDrainer {
     private final OutboxEventPublisher outboxEventPublisher;
     private final WhatsAppClient whatsAppClient;
     private final WhatsAppProperties properties;
+    private final OutboxClaimService claimService;
 
+    /** Legacy test constructor; production uses the fenced-claim constructor. */
     public WhatsAppOutboxDrainer(OutboxEventRepository outboxEventRepository,
                                  OutboxEventPublisher outboxEventPublisher,
                                  WhatsAppClient whatsAppClient,
                                  WhatsAppProperties properties) {
+        this(outboxEventRepository, outboxEventPublisher, whatsAppClient, properties, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public WhatsAppOutboxDrainer(OutboxEventRepository outboxEventRepository,
+                                 OutboxEventPublisher outboxEventPublisher,
+                                 WhatsAppClient whatsAppClient,
+                                 WhatsAppProperties properties,
+                                 OutboxClaimService claimService) {
         this.outboxEventRepository = outboxEventRepository;
         this.outboxEventPublisher = outboxEventPublisher;
         this.whatsAppClient = whatsAppClient;
         this.properties = properties;
+        this.claimService = claimService;
     }
 
     /** Scheduled entry point: drains due WhatsApp-notify events every 15 seconds. */
@@ -69,8 +82,10 @@ public class WhatsAppOutboxDrainer {
      */
     public int drainNotifications() {
         LocalDateTime now = LocalDateTime.now();
-        List<OutboxEvent> due = outboxEventRepository.findDue(
-                OutboxEvent.EVENT_WHATSAPP_NOTIFY, OutboxEvent.STATUS_PENDING, now);
+        List<OutboxEvent> due = claimService == null
+                ? outboxEventRepository.findDue(
+                        OutboxEvent.EVENT_WHATSAPP_NOTIFY, OutboxEvent.STATUS_PENDING, now)
+                : claimService.claimDue(OutboxEvent.EVENT_WHATSAPP_NOTIFY, now);
         int processed = 0;
         for (OutboxEvent event : due) {
             processOne(event);
@@ -83,10 +98,10 @@ public class WhatsAppOutboxDrainer {
         try {
             WhatsAppMessage message = WhatsAppNotificationPublisher.messageFromPayload(payload(event));
             whatsAppClient.send(message);
-            event.markSent();
-            outboxEventRepository.save(event);
-            log.debug("WhatsApp notification for order {} sent (template {})",
-                    event.getAggregateId(), message.templateName());
+            if (markSent(event)) {
+                log.debug("WhatsApp notification for order {} sent (template {})",
+                        event.getAggregateId(), message.templateName());
+            }
         } catch (RuntimeException ex) {
             handleFailure(event, ex);
         }
@@ -96,8 +111,10 @@ public class WhatsAppOutboxDrainer {
         String error = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
         boolean exhausted = event.getAttempts() + 1 >= properties.maxAttempts();
         if (exhausted) {
-            event.markFailed(error);
-            outboxEventRepository.save(event);
+            if (!markFailed(event, error)) {
+                log.debug("WhatsApp event {} lost its lease before permanent failure was recorded", event.getId());
+                return;
+            }
             // Record the admin-facing failure and flag the order for review (Req 14.4).
             Map<String, Object> payload = payload(event);
             String orderCode = asString(payload.getOrDefault("orderCode", event.getAggregateId()));
@@ -108,11 +125,40 @@ public class WhatsAppOutboxDrainer {
                     event.getAggregateId(), event.getAttempts(), error);
         } else {
             LocalDateTime next = LocalDateTime.now().plus(properties.retryBackoff());
-            event.recordRetry(error, next);
-            outboxEventRepository.save(event);
+            if (!recordRetry(event, error, next)) {
+                log.debug("WhatsApp event {} lost its lease before retry was recorded", event.getId());
+                return;
+            }
             log.debug("WhatsApp notification for order {} will retry at {} ({})",
                     event.getAggregateId(), next, error);
         }
+    }
+
+    private boolean markSent(OutboxEvent event) {
+        if (claimService != null) {
+            return claimService.markSent(event);
+        }
+        event.markSent();
+        outboxEventRepository.save(event);
+        return true;
+    }
+
+    private boolean markFailed(OutboxEvent event, String error) {
+        if (claimService != null) {
+            return claimService.markFailed(event, error);
+        }
+        event.markFailed(error);
+        outboxEventRepository.save(event);
+        return true;
+    }
+
+    private boolean recordRetry(OutboxEvent event, String error, LocalDateTime next) {
+        if (claimService != null) {
+            return claimService.recordRetry(event, error, next);
+        }
+        event.recordRetry(error, next);
+        outboxEventRepository.save(event);
+        return true;
     }
 
     private Map<String, Object> payload(OutboxEvent event) {

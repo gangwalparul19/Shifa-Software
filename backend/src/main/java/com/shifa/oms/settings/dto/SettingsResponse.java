@@ -28,6 +28,7 @@ public record SettingsResponse(
         String bankName,
         String bankAccountName,
         String bankAccountNumber,
+        String maskedBankAccountNumber,
         String bankIfsc,
         String bankBranch,
         String gstSlabs,
@@ -59,7 +60,8 @@ public record SettingsResponse(
                 s.getInvoiceTerms(),
                 s.getBankName(),
                 s.getBankAccountName(),
-                s.getBankAccountNumber(),
+                null,
+                mask(s.getBankAccountNumber()),
                 s.getBankIfsc(),
                 s.getBankBranch(),
                 s.getGstSlabs(),
@@ -70,5 +72,11 @@ public record SettingsResponse(
                 s.getAutoApproveMaxAmount(),
                 s.isShopifySettlementEnabled(),
                 s.getShopifySettlementAccountId());
+    }
+
+    private static String mask(String value) {
+        if (value == null || value.isBlank()) return null;
+        String trimmed = value.trim();
+        return trimmed.length() <= 4 ? "••••" : "••••" + trimmed.substring(trimmed.length() - 4);
     }
 }

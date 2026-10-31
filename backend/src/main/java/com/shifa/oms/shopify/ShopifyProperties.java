@@ -12,8 +12,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * and compares in constant time.
  *
  * @param webhookHmacSecret the shared secret used to verify inbound webhook
- *                          signatures. When blank (local dev default) verification
- *                          is skipped so the endpoint is usable without Shopify;
+ *                          signatures. When blank, verification is skipped only
+ *                          in explicit non-strict local/demo/test mode;
  *                          production MUST configure it.
  */
 @ConfigurationProperties(prefix = "app.shopify")

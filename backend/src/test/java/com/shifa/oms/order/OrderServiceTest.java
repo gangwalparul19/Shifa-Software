@@ -25,6 +25,9 @@ import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.product.ProductVisibility;
 import com.shifa.oms.settings.AppSettings;
 import com.shifa.oms.settings.AppSettingsRepository;
+import com.shifa.oms.settings.BankAccount;
+import com.shifa.oms.settings.BankAccountRepository;
+import com.shifa.oms.settings.BankAccountType;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -80,6 +83,10 @@ class OrderServiceTest {
     private com.shifa.oms.product.ProductImageRepository productImageRepository;
     @Mock
     private com.shifa.oms.auth.UserRepository userRepository;
+    @Mock
+    private BankAccountRepository bankAccountRepository;
+    @Mock
+    private OrderPaymentRepository orderPaymentRepository;
 
     private OrderService service;
 
@@ -141,6 +148,23 @@ class OrderServiceTest {
         return new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
                 "Pune", "Maharashtra", "411001", items, amountReceived, screenshotKey,
                 LeadSource.WHATSAPP, null, null, null, null, null, null, null, null, null, null, null);
+    }
+
+    private void enablePaymentCapture() {
+        ReflectionTestUtils.setField(service, "bankAccountRepository", bankAccountRepository);
+        ReflectionTestUtils.setField(service, "orderPaymentRepository", orderPaymentRepository);
+    }
+
+    private CreateOrderRequest orderRequestWithPayment(List<LineItemRequest> items,
+                                                       BigDecimal amountReceived,
+                                                       String screenshotKey,
+                                                       String method,
+                                                       Long accountId,
+                                                       String utr) {
+        return new CreateOrderRequest("Asha", "9812345678", "12 MG Road",
+                "Pune", "Maharashtra", "411001", items, amountReceived, screenshotKey,
+                LeadSource.WHATSAPP, null, null, null, null, null, null, null, null,
+                null, null, null, method, accountId, utr);
     }
 
     // --- Order total round-off to nearest rupee (product-audit §4.6) --------
@@ -241,6 +265,47 @@ class OrderServiceTest {
         assertThatThrownBy(() -> service.createSalespersonOrder(low, salesperson))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("collected upfront");
+    }
+
+    @Test
+    void paymentCaptureStoresCanonicalUtrWithReceivingAccount() {
+        enablePaymentCapture();
+        BankAccount account = new BankAccount("Primary UPI", BankAccountType.UPI_QR);
+        ReflectionTestUtils.setField(account, "id", 22L);
+        when(bankAccountRepository.findById(22L)).thenReturn(Optional.of(account));
+        when(orderPaymentRepository.countDuplicateUtr(22L, "AB12", null)).thenReturn(0L);
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+
+        CreateOrderRequest request = orderRequestWithPayment(
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("100.00"),
+                "payments/utr.jpg", "UPI_QR", 22L, "  ab 12\t");
+
+        service.createSalespersonOrder(request, salesperson);
+
+        ArgumentCaptor<OrderEntity> captor = ArgumentCaptor.forClass(OrderEntity.class);
+        verify(orderRepository).save(captor.capture());
+        OrderPayment payment = captor.getValue().getPayments().get(0);
+        assertThat(payment.getUtr()).isEqualTo("AB12");
+        assertThat(payment.getUtrNormalized()).isEqualTo("AB12");
+        assertThat(payment.getBankAccountId()).isEqualTo(22L);
+    }
+
+    @Test
+    void paymentCaptureFriendlyPrecheckRejectsCanonicalUtrReuse() {
+        enablePaymentCapture();
+        BankAccount account = new BankAccount("Primary UPI", BankAccountType.UPI_QR);
+        ReflectionTestUtils.setField(account, "id", 22L);
+        when(bankAccountRepository.findById(22L)).thenReturn(Optional.of(account));
+        when(orderPaymentRepository.countDuplicateUtr(22L, "AB12", null)).thenReturn(1L);
+        when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "120.00")));
+
+        CreateOrderRequest request = orderRequestWithPayment(
+                List.of(new LineItemRequest(1L, 1, null)), new BigDecimal("100.00"),
+                "payments/utr.jpg", "UPI_QR", 22L, " ab\t12 ");
+
+        assertThatThrownBy(() -> service.createSalespersonOrder(request, salesperson))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("already recorded");
     }
 
     // --- Alternate contact number (product-audit §4.5) ----------------------

@@ -2,6 +2,8 @@ import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
+import { filenameFromContentDisposition } from '../shared/blob-download.util';
+import { reportFilename } from '../shared/report-filename.util';
 import { ExportFormat, ReportResponse, ReportType, VyaparFormat } from './reports.model';
 
 /** A downloaded export: the file blob, its filename, and any server message. */
@@ -42,17 +44,27 @@ export class ReportsService {
   ): Observable<DownloadResult> {
     let params = this.rangeParams(from, to);
     params = params.set('type', type).set('format', format);
-    return this.download('/api/reports/export', params);
+    // The server names the file after the report and its dates; this is only the
+    // fallback if the browser cannot read that header, and is still descriptive.
+    return this.download('/api/reports/export', params, reportFilename(type, from, to, format));
   }
 
   /** Download the Vyapar billing export for a date range (Req 23.1, 23.2). */
   vyapar(format: VyaparFormat, from: string | null, to: string | null): Observable<DownloadResult> {
     let params = this.rangeParams(from, to);
     params = params.set('format', format);
-    return this.download('/api/reports/vyapar', params);
+    return this.download(
+      '/api/reports/vyapar',
+      params,
+      reportFilename('Vyapar Billing', from, to, format),
+    );
   }
 
-  private download(path: string, params: HttpParams): Observable<DownloadResult> {
+  private download(
+    path: string,
+    params: HttpParams,
+    fallbackFilename: string,
+  ): Observable<DownloadResult> {
     return new Observable<DownloadResult>((subscriber) => {
       const sub = this.http
         .get(this.api.url(path), { params, observe: 'response', responseType: 'blob' })
@@ -60,7 +72,9 @@ export class ReportsService {
           next: (response: HttpResponse<Blob>) => {
             subscriber.next({
               blob: response.body ?? new Blob(),
-              filename: this.filenameOf(response),
+              filename:
+                filenameFromContentDisposition(response.headers.get('Content-Disposition')) ??
+                fallbackFilename,
               message: response.headers.get('X-Report-Message'),
             });
             subscriber.complete();
@@ -80,16 +94,5 @@ export class ReportsService {
       params = params.set('to', to);
     }
     return params;
-  }
-
-  private filenameOf(response: HttpResponse<Blob>): string {
-    const disposition = response.headers.get('Content-Disposition');
-    if (disposition) {
-      const match = /filename="?([^"]+)"?/i.exec(disposition);
-      if (match) {
-        return match[1];
-      }
-    }
-    return 'report';
   }
 }

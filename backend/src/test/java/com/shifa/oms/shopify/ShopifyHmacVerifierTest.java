@@ -9,8 +9,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Unit tests for {@link ShopifyHmacVerifier}: it must accept a correct base64
- * Shopify signature, reject a wrong/garbled one, and (dev convenience) skip
- * verification only when no secret is configured.
+ * Shopify signature, reject a wrong/garbled one, and skip verification only
+ * in the explicit non-strict local/demo/test mode.
  */
 class ShopifyHmacVerifierTest {
 
@@ -62,7 +62,17 @@ class ShopifyHmacVerifierTest {
     }
 
     @Test
-    void skipsVerificationWhenNoSecretConfigured() {
+    void strictModeRejectsWhenNoSecretConfigured() {
+        byte[] body = "{\"id\":123}".getBytes(StandardCharsets.UTF_8);
+
+        assertThat(new ShopifyHmacVerifier(new ShopifyProperties(""), true)
+                .isValid(body, null)).isFalse();
+        assertThat(new ShopifyHmacVerifier(new ShopifyProperties("   "), true)
+                .isValid(body, "anything")).isFalse();
+    }
+
+    @Test
+    void skipsVerificationWhenNoSecretConfiguredInExplicitNonStrictMode() {
         byte[] body = "{\"id\":123}".getBytes(StandardCharsets.UTF_8);
 
         assertThat(verifier("").isValid(body, null)).isTrue();

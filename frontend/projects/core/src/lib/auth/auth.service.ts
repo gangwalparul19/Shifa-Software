@@ -3,6 +3,7 @@ import { Observable } from 'rxjs';
 import { map, tap } from 'rxjs/operators';
 import { ApiClient } from '../http/api-client.service';
 import { AuthTokenStore } from './auth-token.store';
+import { AuthEventsService } from './auth-events.service';
 import {
   AuthSession,
   LoginCredentials,
@@ -34,11 +35,22 @@ import { initialsOf } from './initials.util';
 export class AuthService {
   private readonly api = inject(ApiClient);
   private readonly tokens = inject(AuthTokenStore);
+  private readonly authEvents = inject(AuthEventsService);
+
+  constructor() {
+    this.tokens.expired.subscribe(() => {
+      this.authEvents.emit({ kind: 'unauthorized', status: 401, url: '/session-expiry' });
+    });
+  }
 
   /** The decoded identity of the signed-in user, or {@code null} when signed out. */
   readonly session = computed<AuthSession | null>(() => {
     const claims = decodeJwtPayload(this.tokens.accessToken());
     if (!claims) {
+      return null;
+    }
+    const deadline = this.tokens.sessionExpiresAt();
+    if (deadline !== null && Date.now() >= deadline) {
       return null;
     }
     return {
@@ -47,6 +59,7 @@ export class AuthService {
       role: claims.role,
       fullName: claims.name?.trim() || undefined,
       mustChangePassword: claims.pwd === true,
+      sessionExpiresAt: deadline ?? undefined,
     };
   });
 
@@ -103,7 +116,7 @@ export class AuthService {
     return this.api
       .post<TokenResponse>('/api/auth/mfa/verify', { mfaTicket, code })
       .pipe(
-        tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken)),
+        tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken, response.sessionExpiresAt)),
         map(() => this.requireSession()),
       );
   }
@@ -116,7 +129,7 @@ export class AuthService {
     return this.api
       .post<TokenResponse>('/api/auth/mfa/enroll/confirm', { mfaTicket, code })
       .pipe(
-        tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken)),
+        tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken, response.sessionExpiresAt)),
         map(() => this.requireSession()),
       );
   }
@@ -124,7 +137,7 @@ export class AuthService {
   /** Stores tokens + returns an authenticated result, or surfaces the MFA challenge. */
   private resolveLoginResponse(response: TokenResponse | MfaChallenge): LoginResult {
     if ('accessToken' in response && response.accessToken) {
-      this.tokens.setTokens(response.accessToken, response.refreshToken);
+      this.tokens.setTokens(response.accessToken, response.refreshToken, response.sessionExpiresAt);
       return { kind: 'authenticated', session: this.requireSession() };
     }
     return { kind: 'mfa', challenge: response as MfaChallenge };
@@ -139,7 +152,7 @@ export class AuthService {
     return this.api
       .post<TokenResponse>('/api/auth/refresh', { refreshToken: refreshToken ?? '' })
       .pipe(
-        tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken)),
+        tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken, response.sessionExpiresAt)),
         map(() => this.requireSession()),
       );
   }
@@ -151,7 +164,7 @@ export class AuthService {
    */
   changePassword(newPassword: string): Observable<AuthSession> {
     return this.api.post<TokenResponse>('/api/me/password', { newPassword }).pipe(
-      tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken)),
+      tap((response) => this.tokens.setTokens(response.accessToken, response.refreshToken, response.sessionExpiresAt)),
       map(() => this.requireSession()),
     );
   }

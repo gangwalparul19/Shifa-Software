@@ -1,10 +1,12 @@
 package com.shifa.oms.courier;
 
 import com.shifa.oms.common.ApiException;
+import com.shifa.oms.common.ClientIpResolver;
 import com.shifa.oms.courier.dto.TrackByMobileResponse;
 import com.shifa.oms.courier.dto.TrackingResponse;
 import com.shifa.oms.invoice.InvoiceService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -29,13 +31,17 @@ public class TrackingController {
     private final TrackingService trackingService;
     private final InvoiceService invoiceService;
     private final PublicTrackingRateLimiter rateLimiter;
+    private final ClientIpResolver clientIpResolver;
 
+    @Autowired
     public TrackingController(TrackingService trackingService,
                               InvoiceService invoiceService,
-                              PublicTrackingRateLimiter rateLimiter) {
+                              PublicTrackingRateLimiter rateLimiter,
+                              ClientIpResolver clientIpResolver) {
         this.trackingService = trackingService;
         this.invoiceService = invoiceService;
         this.rateLimiter = rateLimiter;
+        this.clientIpResolver = clientIpResolver;
     }
 
     /** Current status, AWB, and courier tracking link for an order (Req 13.4). */
@@ -68,25 +74,11 @@ public class TrackingController {
      */
     @GetMapping("/by-mobile")
     public TrackByMobileResponse byMobile(@RequestParam String mobile, HttpServletRequest httpRequest) {
-        if (!rateLimiter.tryAcquire(clientIp(httpRequest))) {
+        if (!rateLimiter.tryAcquire(clientIpResolver.resolve(httpRequest))) {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "RATE_LIMITED",
                     "Too many lookups, please wait a few minutes.");
         }
         return trackingService.ordersByMobile(mobile);
-    }
-
-    /**
-     * Best-effort client IP. Behind Nginx the real client is the first entry of
-     * {@code X-Forwarded-For}; fall back to the socket address otherwise (mirrors
-     * {@code AuthController}).
-     */
-    private static String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            int comma = forwarded.indexOf(',');
-            return (comma > 0 ? forwarded.substring(0, comma) : forwarded).trim();
-        }
-        return request.getRemoteAddr();
     }
 
     /**

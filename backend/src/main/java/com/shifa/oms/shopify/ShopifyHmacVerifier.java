@@ -2,6 +2,8 @@ package com.shifa.oms.shopify;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.Mac;
@@ -21,8 +23,9 @@ import java.util.Base64;
  * hex digest — Shopify mandates base64.)
  *
  * <p>When no secret is configured (local dev default is blank), verification is
- * skipped so the endpoint is usable without a Shopify account; the skip is logged
- * as a warning. Production MUST configure the secret.
+ * skipped only in non-strict mode so the endpoint is usable without a Shopify
+ * account. Strict mode rejects unsigned requests; production also fails startup
+ * when the secret is missing.</p>
  */
 @Component
 public class ShopifyHmacVerifier {
@@ -31,9 +34,19 @@ public class ShopifyHmacVerifier {
     private static final String HMAC_SHA256 = "HmacSHA256";
 
     private final String secret;
+    private final boolean strict;
 
-    public ShopifyHmacVerifier(ShopifyProperties properties) {
+    /** Spring constructor. Strict mode is enabled in production and opt-in elsewhere. */
+    @Autowired
+    public ShopifyHmacVerifier(ShopifyProperties properties,
+                               @Value("${app.webhooks.hmac-strict:false}") boolean strict) {
         this.secret = properties.webhookHmacSecret();
+        this.strict = strict;
+    }
+
+    /** Explicit non-strict constructor retained for local/demo/test callers. */
+    public ShopifyHmacVerifier(ShopifyProperties properties) {
+        this(properties, false);
     }
 
     /**
@@ -41,11 +54,16 @@ public class ShopifyHmacVerifier {
      *
      * @param rawBody   the exact request body bytes as received
      * @param signature the {@code X-Shopify-Hmac-Sha256} header value (base64; may be {@code null})
-     * @return {@code true} if valid, or if no secret is configured (dev mode)
+     * @return {@code true} if valid, or if no secret is configured in explicit
+     *         non-strict mode (local/demo/test)
      */
     public boolean isValid(byte[] rawBody, String signature) {
         if (secret == null || secret.isBlank()) {
-            log.warn("Shopify webhook HMAC secret is not configured — accepting webhook without verification.");
+            if (strict) {
+                log.warn("Shopify webhook HMAC secret is not configured — rejecting the webhook in strict mode.");
+                return false;
+            }
+            log.warn("Shopify webhook HMAC secret is not configured — accepting webhook without verification in non-strict mode.");
             return true;
         }
         if (signature == null || signature.isBlank() || rawBody == null) {

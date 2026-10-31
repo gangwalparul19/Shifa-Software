@@ -17,7 +17,6 @@ export interface BankAccount {
   accountType: BankAccountType;
   bankName?: string | null;
   accountHolderName?: string | null;
-  accountNumber?: string | null;
   maskedAccountNumber?: string | null;
   ifsc?: string | null;
   branch?: string | null;
@@ -92,8 +91,10 @@ export interface AppSettings {
   bankName?: string | null;
   /** Bank account holder name. */
   bankAccountName?: string | null;
-  /** Bank account number. */
+  /** Never returned in full; the writable request uses blank to preserve it. */
   bankAccountNumber?: string | null;
+  /** Last-four mask returned by the settings read projection. */
+  maskedBankAccountNumber?: string | null;
   /** Bank IFSC code (validated against the IFSC pattern when present). */
   bankIfsc?: string | null;
   /** Bank branch. */

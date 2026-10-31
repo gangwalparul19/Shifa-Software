@@ -249,6 +249,7 @@ export class AdminShellComponent {
     // inline with no way forward).
     this.authEvents.events.pipe(takeUntilDestroyed()).subscribe((event) => {
       if (event.kind === 'unauthorized' && !this.router.url.startsWith('/login')) {
+        this.events.disconnect();
         this.toasts.error('Your session has expired. Please sign in again.');
         void this.router.navigateByUrl('/login');
       }
@@ -1093,6 +1094,10 @@ export class AdminShellComponent {
     return outlet?.activatedRouteData?.['animation'] ?? this.router.url;
   }
 
+  ngOnDestroy(): void {
+    this.events.disconnect();
+  }
+
   async signOut(): Promise<void> {
     const confirmed = await this.confirm.confirm({
       title: 'Sign out',
@@ -1103,6 +1108,7 @@ export class AdminShellComponent {
     if (!confirmed) {
       return;
     }
+    this.events.disconnect();
     this.auth.logout();
     void this.router.navigateByUrl('/login');
   }

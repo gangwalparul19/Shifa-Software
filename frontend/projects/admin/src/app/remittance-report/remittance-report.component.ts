@@ -3,9 +3,11 @@ import { Router, RouterLink } from '@angular/router';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { PaginationComponent } from '../shared/pagination.component';
+import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { IstDatePipe } from '../shared/ist-date.pipe';
 import { formatInr } from '../shared/inr.pipe';
-import { readPageSize, writePageSize } from '../shared/page-size.util';
+import { asOfFilename, reportFilename } from '../shared/report-filename.util';
+import { addIstDays, monthEndIst, monthStartIst, todayIst, weekStartIst } from '../shared/business-date.util';
 import {
   PartialSettlement,
   ReconciliationService,
@@ -194,7 +196,8 @@ export class RemittanceReportComponent implements OnInit {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'partial-settlements-to-follow-up.csv';
+    // A live "still owed" list, so it is dated by the day it was taken.
+    a.download = asOfFilename('Partial Settlements Follow-up', todayIst(), 'csv');
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -255,7 +258,9 @@ export class RemittanceReportComponent implements OnInit {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `remittance-batch-${batch.id}-details.csv`;
+    // Dated by when the courier remitted (else when it was imported), so batches are told apart.
+    const batchDate = batch.remittedDate || batch.importedAt?.slice(0, 10) || todayIst();
+    a.download = reportFilename(`Remittance Batch ${batch.id} Details`, batchDate, batchDate, 'csv');
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -352,24 +357,20 @@ export class RemittanceReportComponent implements OnInit {
   }
 
   private rangeFor(key: PresetKey): [string, string] {
-    const now = new Date();
-    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const today = todayIst();
     if (key === 'this-week' || key === 'last-week') {
-      const day = (now.getDay() + 6) % 7; // 0 = Monday
-      const monday = new Date(now);
-      monday.setDate(now.getDate() - day - (key === 'last-week' ? 7 : 0));
-      const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 6);
-      return [iso(monday), iso(sunday)];
+      const thisMonday = weekStartIst(today);
+      const monday = key === 'last-week' ? addIstDays(thisMonday, -7) : thisMonday;
+      return [monday, addIstDays(monday, 6)];
     }
     if (key === 'this-month') {
-      const first = new Date(now.getFullYear(), now.getMonth(), 1);
-      const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      return [iso(first), iso(last)];
+      const first = monthStartIst();
+      return [monthStartIst(), monthEndIst()];
     }
     // last-month
-    const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const last = new Date(now.getFullYear(), now.getMonth(), 0);
-    return [iso(first), iso(last)];
+    const currentFirst = monthStartIst();
+    const lastFirst = addIstDays(currentFirst, -1);
+    const lastMonthFirst = `${lastFirst.slice(0, 7)}-01`;
+    return [lastMonthFirst, addIstDays(currentFirst, -1)];
   }
 }

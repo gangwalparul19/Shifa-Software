@@ -11,6 +11,17 @@ import java.util.Optional;
  */
 public interface StockMovementRepository extends JpaRepository<StockMovement, Long> {
 
+    /** Report rows filtered in SQL; null bounds intentionally mean all time. */
+    @org.springframework.data.jpa.repository.Query("""
+            SELECT m FROM StockMovement m
+            WHERE (:from IS NULL OR m.createdAt >= :from)
+              AND (:to IS NULL OR m.createdAt < :to)
+            ORDER BY m.createdAt ASC
+            """)
+    List<StockMovement> findForReport(
+            @org.springframework.data.repository.query.Param("from") LocalDateTime from,
+            @org.springframework.data.repository.query.Param("to") LocalDateTime to);
+
     /** Recent movements for a product, newest first (admin drill-down). */
     List<StockMovement> findByProductIdOrderByCreatedAtDescIdDesc(Long productId);
 

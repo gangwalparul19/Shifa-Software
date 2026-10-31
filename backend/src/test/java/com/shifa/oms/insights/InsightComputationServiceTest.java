@@ -78,22 +78,26 @@ class InsightComputationServiceTest {
 
         OrderRepository orderRepository = mock(OrderRepository.class);
         when(orderRepository.findByCreatedAtBetween(any(), any())).thenReturn(List.of());
+        when(orderRepository.insightRevenueBetween(any(), any())).thenReturn(BigDecimal.ZERO);
+        when(orderRepository.insightLocationRows(any(), any())).thenReturn(List.of());
+        when(orderRepository.insightStateRiskRows()).thenReturn(List.of());
+        when(orderRepository.insightFailedCustomerRows()).thenReturn(List.of());
         when(orderRepository.findAll()).thenReturn(List.of());
         when(orderRepository.findByOrderStatusInOrderByCreatedAtDesc(any())).thenReturn(List.of());
 
         CourierRecordRepository courierRecordRepository = mock(CourierRecordRepository.class);
         when(courierRecordRepository.findAll()).thenReturn(List.of());
+        when(courierRecordRepository.insightOutcomeRows()).thenReturn(List.of());
         CourierCompanyRepository courierCompanyRepository = mock(CourierCompanyRepository.class);
 
         // The only trigger: unsettled COD (60000) above the 50000 threshold → one WARNING insight.
         ReceivableRepository receivableRepository = mock(ReceivableRepository.class);
-        when(receivableRepository.findByTypeAndSettledFalseOrderByCreatedAtDescIdDesc(
-                ReceivableType.COD_RECEIVABLE))
-                .thenReturn(List.of(new ReceivableEntity(1L, 1L, ReceivableType.COD_RECEIVABLE,
-                        new BigDecimal("60000.00"))));
+        when(receivableRepository.sumAmountByTypeAndSettled(ReceivableType.COD_RECEIVABLE, false))
+                .thenReturn(new BigDecimal("60000.00"));
 
         LeadRepository leadRepository = mock(LeadRepository.class);
         when(leadRepository.findAll()).thenReturn(List.of());
+        when(leadRepository.insightLeadSourceCounts()).thenReturn(List.of());
 
         // Real outbox publisher over a stubbed repo (echoes the saved event, no side sinks).
         OutboxEventRepository outboxEventRepository = mock(OutboxEventRepository.class);

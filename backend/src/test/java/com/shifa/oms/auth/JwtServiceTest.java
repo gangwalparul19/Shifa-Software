@@ -54,16 +54,21 @@ class JwtServiceTest {
     @Test
     void accessTokenRoundTripsToItsClaims() {
         JwtService service = serviceAt(NOW);
-        String token = service.issueAccessToken(user());
+        User alice = user();
+        String token = service.issueAccessToken(alice);
 
         JwtClaims claims = service.parse(token, TokenType.ACCESS);
 
+        assertThat(claims.sessionVersion()).isEqualTo(0L);
+        alice.incrementSessionVersion();
+        JwtClaims revokedReplacement = service.parse(service.issueAccessToken(alice), TokenType.ACCESS);
+        assertThat(revokedReplacement.sessionVersion()).isEqualTo(1L);
         assertThat(claims.userId()).isEqualTo(42L);
-        assertThat(claims.username()).isEqualTo("alice");
         assertThat(claims.role()).isEqualTo(Role.SALESPERSON);
         assertThat(claims.type()).isEqualTo(TokenType.ACCESS);
         assertThat(claims.expiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(15)));
-        assertThat(claims.toPrincipal()).isEqualTo(new AuthPrincipal(42L, "alice", Role.SALESPERSON));
+        assertThat(claims.toPrincipal()).isEqualTo(new AuthPrincipal(42L, "alice", Role.SALESPERSON,
+                claims.sessionStartedAt(), claims.sessionId()));
     }
 
     @Test
@@ -116,5 +121,62 @@ class JwtServiceTest {
                 .isInstanceOf(InvalidTokenException.class);
         assertThatThrownBy(() -> service.parse(null, TokenType.ACCESS))
                 .isInstanceOf(InvalidTokenException.class);
+    }
+
+    @Test
+    void tokensCarryAReusableSessionIdAndIdleHint() {
+        JwtService service = serviceAt(NOW);
+        User alice = user();
+
+        JwtClaims access = service.parse(service.issueAccessToken(alice), TokenType.ACCESS);
+        JwtClaims refresh = service.parse(service.issueRefreshToken(alice), TokenType.REFRESH);
+        JwtClaims mfa = service.parse(service.issueMfaTicket(alice), TokenType.MFA);
+
+        assertThat(access.sessionId()).isNotBlank();
+        assertThat(refresh.sessionId()).isNotBlank();
+        assertThat(mfa.sessionId()).isNotBlank();
+        assertThat(access.sessionExpiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(30)));
+        assertThat(refresh.sessionExpiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(30)));
+        assertThat(mfa.sessionExpiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(30)));
+    }
+
+    @Test
+    void refreshedTokensCanReuseTheSameSessionIdWithoutAnAbsoluteCap() {
+        JwtService initial = serviceAt(NOW);
+        JwtClaims original = initial.parse(initial.issueRefreshToken(user()), TokenType.REFRESH);
+        JwtService later = serviceAt(NOW.plus(Duration.ofMinutes(10)));
+
+        JwtClaims refreshed = later.parse(
+                later.issueRefreshToken(user(), original.sessionId()), TokenType.REFRESH);
+
+        assertThat(refreshed.sessionId()).isEqualTo(original.sessionId());
+        assertThat(refreshed.sessionExpiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(10)).plus(Duration.ofMinutes(30)));
+    }
+
+    @Test
+    void tokensWithoutSessionClaimsRemainParseableForSafeLegacyHandling() throws Exception {
+        String legacy = legacyToken(serviceAt(NOW).issueRefreshToken(user()), properties.getSecret());
+
+        JwtClaims claims = serviceAt(NOW.plus(Duration.ofMinutes(29))).parse(legacy, TokenType.REFRESH);
+        assertThat(claims.sessionId()).isNotBlank();
+        assertThat(claims.sessionStartedAt()).isNull();
+        assertThat(claims.sessionExpiresAt()).isNull();
+    }
+
+    private String legacyToken(String token, String secret) throws Exception {
+        String[] parts = token.split("\\.");
+        byte[] payloadBytes = java.util.Base64.getUrlDecoder().decode(parts[1]);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> payload = objectMapper.readValue(payloadBytes, java.util.Map.class);
+        payload.remove("session_start");
+        payload.remove("session_exp");
+        String payloadPart = java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(objectMapper.writeValueAsBytes(payload));
+        String signingInput = parts[0] + "." + payloadPart;
+        javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+        mac.init(new javax.crypto.spec.SecretKeySpec(secret.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+        String signature = java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(mac.doFinal(signingInput.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        return signingInput + "." + signature;
     }
 }

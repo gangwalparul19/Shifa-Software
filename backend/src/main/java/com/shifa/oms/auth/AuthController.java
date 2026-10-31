@@ -6,8 +6,10 @@ import com.shifa.oms.auth.dto.RefreshRequest;
 import com.shifa.oms.auth.dto.RegisterRequest;
 import com.shifa.oms.auth.dto.TokenResponse;
 import com.shifa.oms.common.ApiException;
+import com.shifa.oms.common.ClientIpResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -41,10 +43,18 @@ public class AuthController {
 
     private final AuthService authService;
     private final LoginRateLimiter loginRateLimiter;
+    private final ClientIpResolver clientIpResolver;
+    private final MfaRateLimitKeyResolver mfaRateLimitKeyResolver;
 
-    public AuthController(AuthService authService, LoginRateLimiter loginRateLimiter) {
+    @Autowired
+    public AuthController(AuthService authService,
+                          LoginRateLimiter loginRateLimiter,
+                          ClientIpResolver clientIpResolver,
+                          MfaRateLimitKeyResolver mfaRateLimitKeyResolver) {
         this.authService = authService;
         this.loginRateLimiter = loginRateLimiter;
+        this.clientIpResolver = clientIpResolver;
+        this.mfaRateLimitKeyResolver = mfaRateLimitKeyResolver;
     }
 
     @PostMapping("/register")
@@ -62,7 +72,7 @@ public class AuthController {
      */
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
-        String ip = clientIp(httpRequest);
+        String ip = clientIpResolver.resolve(httpRequest);
         // Reject up front if this username|IP is locked out (throws 429).
         loginRateLimiter.checkNotLocked(request.username(), ip);
         try {
@@ -80,21 +90,21 @@ public class AuthController {
     }
 
     /**
-     * MFA step for an already-enrolled user: validate the current authenticator
-     * code and issue the token pair. The 6-digit code is brute-forceable, so the
-     * same per-{@code username|IP} throttle guards it; the ticket's username is
-     * resolved from the ticket, so we key the throttle on the client IP.
+     * MFA step for an already-enrolled user. The throttle uses the signed ticket
+     * user plus the resolved client IP, with one bounded fallback bucket for an
+     * invalid ticket; the MFA service remains authoritative for ticket errors.
      */
     @PostMapping("/mfa/verify")
     public TokenResponse verifyMfa(@Valid @RequestBody MfaVerifyRequest request, HttpServletRequest httpRequest) {
-        String ip = clientIp(httpRequest);
-        loginRateLimiter.checkNotLocked(MFA_RATE_KEY, ip);
+        String ip = clientIpResolver.resolve(httpRequest);
+        String mfaKey = mfaRateLimitKeyResolver.resolve(request.mfaTicket());
+        loginRateLimiter.checkNotLocked(mfaKey, ip);
         try {
             TokenResponse response = authService.verifyMfa(request);
-            loginRateLimiter.recordSuccess(MFA_RATE_KEY, ip);
+            loginRateLimiter.recordSuccess(mfaKey, ip);
             return response;
         } catch (ApiException ex) {
-            loginRateLimiter.recordFailure(MFA_RATE_KEY, ip);
+            loginRateLimiter.recordFailure(mfaKey, ip);
             throw ex;
         }
     }
@@ -106,35 +116,17 @@ public class AuthController {
     @PostMapping("/mfa/enroll/confirm")
     public TokenResponse confirmMfaEnrollment(@Valid @RequestBody MfaVerifyRequest request,
                                               HttpServletRequest httpRequest) {
-        String ip = clientIp(httpRequest);
-        loginRateLimiter.checkNotLocked(MFA_RATE_KEY, ip);
+        String ip = clientIpResolver.resolve(httpRequest);
+        String mfaKey = mfaRateLimitKeyResolver.resolve(request.mfaTicket());
+        loginRateLimiter.checkNotLocked(mfaKey, ip);
         try {
             TokenResponse response = authService.confirmMfaEnrollment(request);
-            loginRateLimiter.recordSuccess(MFA_RATE_KEY, ip);
+            loginRateLimiter.recordSuccess(mfaKey, ip);
             return response;
         } catch (ApiException ex) {
-            loginRateLimiter.recordFailure(MFA_RATE_KEY, ip);
+            loginRateLimiter.recordFailure(mfaKey, ip);
             throw ex;
         }
-    }
-
-    /**
-     * Fixed pseudo-username for throttling the MFA code steps per client IP
-     * (the real username is inside the signed ticket, not the request body).
-     */
-    private static final String MFA_RATE_KEY = "__mfa__";
-
-    /**
-     * Best-effort client IP. Behind Nginx the real client is the first entry of
-     * {@code X-Forwarded-For}; fall back to the socket address otherwise.
-     */
-    private static String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            int comma = forwarded.indexOf(',');
-            return (comma > 0 ? forwarded.substring(0, comma) : forwarded).trim();
-        }
-        return request.getRemoteAddr();
     }
 
     @PostMapping("/refresh")

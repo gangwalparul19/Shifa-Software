@@ -1,19 +1,20 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
+import { AuthenticatedBlobService } from '../shared/authenticated-blob.service';
 import { Gstr1ReturnResponse, GstDashboard, GstOrderFilter, GstOrderRow, GstReport } from './gst.model';
 
 /**
  * Data access for the CA GST/accounting dashboard ({@code /api/ca/gst},
- * ADMIN + CA + ACCOUNTANT). JSON calls go through the shared {@link ApiClient};
- * the CSV export is fetched as a Blob via {@link HttpClient} so the auth
- * interceptor attaches the bearer token.
+ * JSON calls go through the shared {@link ApiClient}; binary exports use the
+ * shared authenticated blob transport so the auth interceptor remains the
+ * single bearer-token path.
  */
 @Injectable({ providedIn: 'root' })
 export class GstService {
   private readonly api = inject(ApiClient);
-  private readonly http = inject(HttpClient);
+  private readonly blobs = inject(AuthenticatedBlobService);
 
   /** The dashboard: GST report + money in/out for the period (defaults to current month). */
   dashboard(from?: string | null, to?: string | null): Observable<GstDashboard> {
@@ -34,10 +35,7 @@ export class GstService {
     if (to) {
       params = params.set('to', to);
     }
-    return this.http.get(this.api.url('/api/ca/gst/report/export'), {
-      params,
-      responseType: 'blob',
-    });
+    return this.blobs.get('/api/ca/gst/report/export', { params });
   }
 
   /** The portal-ready GSTR-1 return for the period (defaults to current month). */
@@ -58,10 +56,7 @@ export class GstService {
     if (to) {
       params = params.set('to', to);
     }
-    return this.http.get(this.api.url('/api/ca/gst/gstr1/export'), {
-      params,
-      responseType: 'blob',
-    });
+    return this.blobs.get('/api/ca/gst/gstr1/export', { params });
   }
 
   /** The orders behind a GST figure for the period (drill-down), optionally filtered. */

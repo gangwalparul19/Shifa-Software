@@ -262,8 +262,8 @@ public class InsightComputationService {
 
     private SalesWindow gatherSales(LocalDateTime currentFrom, LocalDateTime currentTo,
                                     LocalDateTime previousFrom, LocalDateTime previousTo) {
-        BigDecimal current = sumRevenue(orderRepository.findByCreatedAtBetween(currentFrom, currentTo));
-        BigDecimal previous = sumRevenue(orderRepository.findByCreatedAtBetween(previousFrom, previousTo));
+        BigDecimal current = nz(orderRepository.insightRevenueBetween(currentFrom, currentTo));
+        BigDecimal previous = nz(orderRepository.insightRevenueBetween(previousFrom, previousTo));
         return new SalesWindow(current, previous);
     }
 
@@ -291,21 +291,10 @@ public class InsightComputationService {
     private List<LocationPerformance> gatherLocations(LocalDateTime currentFrom, LocalDateTime currentTo) {
         Map<String, long[]> counts = new LinkedHashMap<>();       // state -> [orders, delivered, failed]
         Map<String, BigDecimal> revenueByState = new HashMap<>(); // state -> revenue (excl rejected/cancelled)
-        for (OrderEntity o : orderRepository.findByCreatedAtBetween(currentFrom, currentTo)) {
-            String state = o.getState() == null ? "" : o.getState();
-            OrderStatus s = o.getOrderStatus();
-            long[] cell = counts.computeIfAbsent(state, k -> new long[3]);
-            cell[0]++;                                            // every order placed to this state
-            if (DELIVERED_TERMINAL.contains(s)) {
-                cell[1]++;
-            } else if (FAILED_TERMINAL.contains(s)) {
-                cell[2]++;
-            }
-            boolean rejectedOrCancelled = s == OrderStatus.REJECTED
-                    || s == OrderStatus.PAYMENT_REJECTED || s == OrderStatus.CANCELLED;
-            if (!rejectedOrCancelled) {
-                revenueByState.merge(state, nz(o.getTotalAmount()), BigDecimal::add);
-            }
+        for (OrderRepository.InsightLocationRow row : orderRepository.insightLocationRows(currentFrom, currentTo)) {
+            String state = row.getState() == null ? "" : row.getState();
+            counts.put(state, new long[] {row.getOrderCount(), row.getDeliveredCount(), row.getFailedCount()});
+            revenueByState.put(state, nz(row.getRevenue()));
         }
         List<LocationPerformance> out = new ArrayList<>();
         for (Map.Entry<String, long[]> e : counts.entrySet()) {
@@ -317,22 +306,13 @@ public class InsightComputationService {
     }
 
     private List<CourierOutcome> gatherCouriers() {
-        Map<Long, OrderStatus> statusByOrderId = new HashMap<>();
-        for (OrderEntity o : orderRepository.findAll()) {
-            statusByOrderId.put(o.getId(), o.getOrderStatus());
-        }
-
         Map<Long, long[]> counts = new LinkedHashMap<>(); // courierCompanyId -> [delivered, rto, failed, other]
-        for (CourierRecord r : courierRecordRepository.findAll()) {
-            Long courierCompanyId = r.getCourierCompanyId();
-            if (courierCompanyId == null) {
-                continue;
-            }
-            OrderStatus s = statusByOrderId.get(r.getOrderId());
+        for (CourierRecordRepository.InsightCourierRow row : courierRecordRepository.insightOutcomeRows()) {
+            OrderStatus s = row.getOrderStatus();
             if (s == null || !s.isTerminal()) {
                 continue;
             }
-            long[] c = counts.computeIfAbsent(courierCompanyId, k -> new long[4]);
+            long[] c = counts.computeIfAbsent(row.getCourierCompanyId(), k -> new long[4]);
             if (DELIVERED_TERMINAL.contains(s)) {
                 c[0]++;
             } else if (s == OrderStatus.RTO) {
@@ -357,23 +337,17 @@ public class InsightComputationService {
     }
 
     private List<OpenOrderRisk> gatherOpenOrders() {
-        List<OrderEntity> all = orderRepository.findAll();
-
-        // Historical, one-time aggregations: per-state failure rate + prior failed per customer.
+        // Historical, one-time aggregations are computed as compact SQL projections,
+        // rather than hydrating every historical OrderEntity.
         Map<String, long[]> stateStats = new HashMap<>(); // state -> [failedTerminal, allTerminal]
+        for (OrderRepository.InsightStateRiskRow row : orderRepository.insightStateRiskRows()) {
+            stateStats.put(row.getState() == null ? "" : row.getState(),
+                    new long[] {row.getFailedCount(), row.getTerminalCount()});
+        }
         Map<String, Integer> priorFailedByMobile = new HashMap<>();
-        for (OrderEntity o : all) {
-            OrderStatus s = o.getOrderStatus();
-            if (s != null && s.isTerminal()) {
-                String state = o.getState() == null ? "" : o.getState();
-                long[] cell = stateStats.computeIfAbsent(state, k -> new long[2]);
-                cell[1]++;
-                if (FAILED_TERMINAL.contains(s)) {
-                    cell[0]++;
-                }
-            }
-            if (FAILED_TERMINAL.contains(s) && o.getCustomerMobile() != null) {
-                priorFailedByMobile.merge(o.getCustomerMobile(), 1, Integer::sum);
+        for (OrderRepository.InsightFailedCustomerRow row : orderRepository.insightFailedCustomerRows()) {
+            if (row.getMobile() != null) {
+                priorFailedByMobile.put(row.getMobile(), Math.toIntExact(row.getFailedCount()));
             }
         }
 
@@ -391,30 +365,17 @@ public class InsightComputationService {
     }
 
     private CodOutstanding gatherCod() {
-        BigDecimal total = BigDecimal.ZERO;
-        for (ReceivableEntity e : receivableRepository
-                .findByTypeAndSettledFalseOrderByCreatedAtDescIdDesc(ReceivableType.COD_RECEIVABLE)) {
-            total = total.add(nz(e.getAmount()));
-        }
-        return new CodOutstanding(total);
+        BigDecimal total = receivableRepository.sumAmountByTypeAndSettled(
+                ReceivableType.COD_RECEIVABLE, false);
+        return new CodOutstanding(nz(total));
     }
 
     private List<LeadSourceConversion> gatherLeadSources() {
-        Map<LeadSource, long[]> bySource = new EnumMap<>(LeadSource.class); // source -> [leads, won]
-        for (LeadEntity l : leadRepository.findAll()) {
-            LeadSource source = l.getLeadSource();
-            if (source == null) {
-                continue;
-            }
-            long[] cell = bySource.computeIfAbsent(source, k -> new long[2]);
-            cell[0]++;
-            if (l.getStatus() == LeadStatus.WON) {
-                cell[1]++;
-            }
-        }
         List<LeadSourceConversion> out = new ArrayList<>();
-        for (Map.Entry<LeadSource, long[]> e : bySource.entrySet()) {
-            out.add(new LeadSourceConversion(e.getKey(), e.getValue()[0], e.getValue()[1]));
+        for (LeadRepository.InsightLeadSourceRow row : leadRepository.insightLeadSourceCounts()) {
+            if (row.getSource() != null) {
+                out.add(new LeadSourceConversion(row.getSource(), row.getLeadCount(), row.getWonCount()));
+            }
         }
         return out;
     }

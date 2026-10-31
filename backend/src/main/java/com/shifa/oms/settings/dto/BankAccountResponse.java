@@ -10,7 +10,6 @@ public record BankAccountResponse(
         BankAccountType accountType,
         String bankName,
         String accountHolderName,
-        String accountNumber,
         String maskedAccountNumber,
         String ifsc,
         String branch,
@@ -23,7 +22,7 @@ public record BankAccountResponse(
 
     public static BankAccountResponse from(BankAccount a) {
         return new BankAccountResponse(a.getId(), a.getDisplayName(), a.getAccountType(), a.getBankName(),
-                a.getAccountHolderName(), a.getAccountNumber(), a.maskedAccountNumber(), a.getIfsc(),
+                a.getAccountHolderName(), a.maskedAccountNumber(), a.getIfsc(),
                 a.getBranch(), a.getUpiId(), a.getLedgerAccountId(), a.isActive(), a.isDefaultAccount(),
                 a.getSortOrder(), a.getInternalNote());
     }

@@ -46,25 +46,72 @@
   </div>
 </section>
 
-<div class="card mb-3 settlement-import">
-  <div class="card-header"><h3 class="card-title mb-0"><i class="ti ti-file-import me-2"></i>Import settlement statement</h3></div>
-  <div class="card-body">
-    <div class="row g-2">
-      <div class="col-12 col-md-4"><label class="form-label required">Source</label><select class="form-select" [value]="source()" (change)="setSource($any($event.target).value)">@for (s of sources; track s.value) {<option [value]="s.value">{{ s.label }}</option>}</select><div class="form-hint">{{ sourceHint() }}</div></div>
-      <div class="col-12 col-md-4"><label class="form-label" [class.required]="source() === 'BANK_RECEIPT'">Destination account</label><select class="form-select" (change)="setAccount($event)"><option value="">{{ source() === 'BANK_RECEIPT' ? 'Select bank account' : 'Not assigned' }}</option>@for (a of accounts(); track a.id) {<option [value]="a.id">{{ a.displayName }} · {{ a.maskedAccountNumber || a.upiId || '' }}</option>}</select><div class="form-hint">Bank receipts must be assigned to the account shown on the statement.</div></div>
-      <div class="col-12 col-md-4"><label class="form-label required">Statement date</label><input type="date" class="form-control" [value]="statementDate()" (change)="setDate($event)" /></div>
-      <div class="col-12 col-md-6"><label class="form-label">External statement / payout reference</label><input class="form-control shifa-mono" [value]="reference()" (input)="setReference($event)" placeholder="Payout ID / UTR batch / statement no." /></div>
-      <div class="col-12 col-md-6"><label class="form-label required">CSV or Excel file</label><input type="file" class="form-control" accept=".csv,.xlsx,.xls" (change)="onFile($event)" /></div>
+@if (canMutate()) {
+  <div class="card mb-3 settlement-import">
+    <div class="card-header"><h3 class="card-title mb-0"><i class="ti ti-file-import me-2"></i>Import settlement statement</h3></div>
+    <div class="card-body">
+      <div class="row g-2">
+        <div class="col-12 col-md-4"><label class="form-label required">Source</label><select class="form-select" [value]="source()" (change)="setSource($any($event.target).value)">@for (s of sources; track s.value) {<option [value]="s.value">{{ s.label }}</option>}</select><div class="form-hint">{{ sourceHint() }}</div></div>
+        <div class="col-12 col-md-4"><label class="form-label" [class.required]="source() === 'BANK_RECEIPT'">Destination account</label><select class="form-select" (change)="setAccount($event)"><option value="">{{ source() === 'BANK_RECEIPT' ? 'Select bank account' : 'Not assigned' }}</option>@for (a of accounts(); track a.id) {<option [value]="a.id">{{ a.displayName }} · {{ a.maskedAccountNumber || a.upiId || '' }}</option>}</select><div class="form-hint">Bank receipts must be assigned to the account shown on the statement.</div></div>
+        <div class="col-12 col-md-4"><label class="form-label required">Statement date</label><input type="date" class="form-control" [value]="statementDate()" (change)="setDate($event)" /></div>
+        <div class="col-12 col-md-6"><label class="form-label">External statement / payout reference</label><input class="form-control shifa-mono" [value]="reference()" (input)="setReference($event)" placeholder="Payout ID / UTR batch / statement no." /></div>
+        <div class="col-12 col-md-6"><label class="form-label required">CSV or Excel file</label><input type="file" class="form-control" accept=".csv,.xlsx,.xls" (change)="onFile($event)" /></div>
+      </div>
+      <div class="d-flex flex-wrap gap-2 mt-3"><button type="button" class="btn btn-outline-primary" (click)="previewImport()" [disabled]="!file() || busy() || (source() === 'BANK_RECEIPT' && !accountId())">@if (busy()) {<span class="spinner-border spinner-border-sm me-1"></span>} Preview matches</button><button type="button" class="btn btn-primary" (click)="commitImport()" [disabled]="!preview() || busy() || (source() === 'BANK_RECEIPT' && !accountId())">Post settlement batch</button></div>
+      @if (error()) {<div class="alert alert-danger mt-3 mb-0">{{ error() }}</div>}
+      @if (preview(); as p) {<div class="settlement-preview mt-3"><strong>Preview:</strong> {{ p.totalRows }} rows · {{ money(p.totalAmount) }} total · {{ money(p.allocatedAmount) }} matched · <span class="text-danger">{{ money(p.suspenseAmount) }} suspense</span><div class="small text-secondary mt-1">Matched {{ count(p, 'MATCHED') }} · Unmatched {{ count(p, 'UNMATCHED') }} · Mismatch {{ count(p, 'MISMATCH') }} · Ambiguous {{ count(p, 'AMBIGUOUS') }} · Duplicate {{ count(p, 'DUPLICATE_IN_FILE') }}</div></div>}
+      @if (result(); as r) {<div class="alert alert-success mt-3 mb-0">Batch posted. {{ r.totalRows }} rows processed; {{ money(r.suspenseAmount) }} remains in suspense for review.</div>}
     </div>
-    <div class="d-flex flex-wrap gap-2 mt-3"><button type="button" class="btn btn-outline-primary" (click)="previewImport()" [disabled]="!file() || busy() || (source() === 'BANK_RECEIPT' && !accountId())">@if (busy()) {<span class="spinner-border spinner-border-sm me-1"></span>} Preview matches</button><button type="button" class="btn btn-primary" (click)="commitImport()" [disabled]="!preview() || busy() || (source() === 'BANK_RECEIPT' && !accountId())">Post settlement batch</button></div>
-    @if (error()) {<div class="alert alert-danger mt-3 mb-0">{{ error() }}</div>}
-    @if (preview(); as p) {<div class="settlement-preview mt-3"><strong>Preview:</strong> {{ p.totalRows }} rows · {{ money(p.totalAmount) }} total · {{ money(p.allocatedAmount) }} matched · <span class="text-danger">{{ money(p.suspenseAmount) }} suspense</span><div class="small text-secondary mt-1">Matched {{ count(p, 'MATCHED') }} · Unmatched {{ count(p, 'UNMATCHED') }} · Mismatch {{ count(p, 'MISMATCH') }} · Ambiguous {{ count(p, 'AMBIGUOUS') }} · Duplicate {{ count(p, 'DUPLICATE_IN_FILE') }}</div></div>}
-    @if (result(); as r) {<div class="alert alert-success mt-3 mb-0">Batch posted. {{ r.totalRows }} rows processed; {{ money(r.suspenseAmount) }} remains in suspense for review.</div>}
   </div>
-</div>
-
-@if (loading()) {<admin-state-panel variant="loading" [card]="true" loadingLabel="Loading settlement batches…" />} @else if (error() && batches().length === 0) {<admin-state-panel variant="error" [card]="true" [message]="error()!" (retry)="load()" />} @else {
-  <div class="card"><div class="card-header"><h3 class="card-title mb-0">Imported batches</h3></div><div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Source</th><th>Reference</th><th>Date</th><th>Account</th><th class="text-end">Rows</th><th class="text-end">Total</th><th class="text-end">Suspense</th><th>Status</th></tr></thead><tbody>@for (batch of pageItems(); track batch.id) {<tr class="settlement-row" (click)="openBatch(batch)"><td>{{ sourceLabel(batch.sourceChannel) }}</td><td class="shifa-mono">{{ batch.externalReference || '—' }}</td><td>{{ batch.statementDate || '—' }}</td><td>{{ batch.destinationAccountName || 'Unassigned' }}</td><td class="text-end">{{ batch.lineCount }}</td><td class="text-end">{{ money(batch.totalAmount) }}</td><td class="text-end" [class.text-danger]="positive(batch.suspenseAmount)">{{ money(batch.suspenseAmount) }}</td><td><span class="badge" [class.tone-green]="batch.status === 'POSTED'" [class.tone-amber]="batch.status === 'POSTED_WITH_EXCEPTIONS'" [class.tone-blue]="batch.status === 'PROCESSING'">{{ statusLabel(batch.status) }}</span></td></tr>} @empty {<tr><td colspan="8" class="text-center text-secondary py-4">No settlement batches imported yet.</td></tr>}</tbody></table></div><admin-pagination [page]="page()" [totalPages]="totalPages()" [totalElements]="batches().length" [size]="10" (pageChange)="goPage($event)" /></div>
 }
 
-@if (selectedBatch(); as batch) {<div class="settlement-drawer" role="dialog"><div class="settlement-drawer__panel"><div class="d-flex justify-content-between align-items-center mb-3"><div><h3 class="mb-1">Settlement batch #{{ batch.id }}</h3><div class="text-secondary small">{{ sourceLabel(batch.sourceChannel) }} · {{ batch.externalReference || 'No reference' }}</div></div><button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeBatch()"><i class="ti ti-x"></i></button></div><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Row</th><th>Reference</th><th>Amount</th><th>Match</th><th>Reason</th></tr></thead><tbody>@for (line of lines(); track line.id ?? line.sourceRowNumber) {<tr><td>{{ line.sourceRowNumber }}</td><td class="shifa-mono">{{ line.orderCode || line.shopifyOrderId || line.awb || line.utr || '—' }}</td><td>{{ money(line.amount) }}</td><td><span class="badge" [class.tone-green]="line.matchStatus === 'MATCHED' || line.matchStatus === 'RESOLVED'" [class.tone-red]="line.matchStatus === 'MISMATCH' || line.matchStatus === 'AMBIGUOUS'" [class.tone-amber]="line.matchStatus === 'UNMATCHED' || line.matchStatus === 'DUPLICATE_IN_FILE'">{{ statusLabel(line.matchStatus) }}</span></td><td>{{ line.message || '—' }}</td></tr>}</tbody></table></div></div></div>}
+@if (loading()) {<admin-state-panel variant="loading" [card]="true" loadingLabel="Loading settlement batches…" />} @else if (error() && batches().length === 0) {<admin-state-panel variant="error" [card]="true" [message]="error()!" (retry)="load()" />} @else {
+  <div class="card"><div class="card-header"><h3 class="card-title mb-0">Imported batches</h3></div><div class="table-responsive"><table class="table table-vcenter card-table"><thead><tr><th>Source</th><th>Reference</th><th>Date</th><th>Account</th><th class="text-end">Rows</th><th class="text-end">Total</th><th class="text-end">Suspense</th><th>Status</th></tr></thead><tbody>@for (batch of pageItems(); track batch.id) {<tr class="settlement-row" (click)="openBatch(batch)"><td>{{ sourceLabel(batch.sourceChannel) }}</td><td class="shifa-mono">{{ batch.externalReference || '—' }}</td><td>{{ batch.statementDate ? (batch.statementDate | istDate:'dd MMM yyyy') : '—' }}</td><td>{{ batch.destinationAccountName || 'Unassigned' }}</td><td class="text-end">{{ batch.lineCount }}</td><td class="text-end">{{ money(batch.totalAmount) }}</td><td class="text-end" [class.text-danger]="positive(batch.suspenseAmount)">{{ money(batch.suspenseAmount) }}</td><td><span class="badge" [class.tone-green]="batch.status === 'POSTED'" [class.tone-amber]="batch.status === 'POSTED_WITH_EXCEPTIONS'" [class.tone-blue]="batch.status === 'PROCESSING'">{{ statusLabel(batch.status) }}</span></td></tr>} @empty {<tr><td colspan="8" class="text-center text-secondary py-4">No settlement batches imported yet.</td></tr>}</tbody></table></div><admin-pagination [page]="page()" [totalPages]="totalPages()" [totalElements]="batches().length" [size]="10" (pageChange)="goPage($event)" /></div>
+}
+
+@if (selectedBatch(); as batch) {
+  <div class="settlement-drawer" role="dialog" aria-modal="true" aria-label="Settlement batch details" (click)="closeBatch()">
+    <div class="settlement-drawer__panel" (click)="$event.stopPropagation()">
+      <div class="d-flex justify-content-between align-items-center mb-3"><div><h3 class="mb-1">Settlement batch #{{ batch.id }}</h3><div class="text-secondary small">{{ sourceLabel(batch.sourceChannel) }} · {{ batch.externalReference || 'No reference' }} · {{ batch.statementDate ? (batch.statementDate | istDate:'dd MMM yyyy') : '—' }}</div></div><button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeBatch()" aria-label="Close batch"><i class="ti ti-x"></i></button></div>
+      <div class="settlement-drawer__summary mb-3"><span>{{ batch.lineCount }} lines</span><strong>{{ money(batch.totalAmount) }}</strong><span>Allocated {{ money(batch.allocatedAmount) }}</span><span class="text-danger">Suspense {{ money(batch.suspenseAmount) }}</span></div>
+      <div class="table-responsive"><table class="table table-sm settlement-lines-table"><thead><tr><th>Row</th><th>Date / reference</th><th>Amount</th><th>Allocated / suspense</th><th>Match / details</th>@if (canMutate()) {<th></th>}</tr></thead><tbody>
+        @for (line of lines(); track line.id ?? line.sourceRowNumber) {
+          <tr>
+            <td>{{ line.sourceRowNumber }}</td>
+            <td><div>{{ line.transactionDate ? (line.transactionDate | istDate:'dd MMM yyyy') : '—' }}</div><div class="shifa-mono small">{{ line.orderCode || line.shopifyOrderId || line.awb || line.utr || '—' }}</div>@if (line.dateDefaulted) {<span class="badge tone-amber mt-1">Date defaulted</span>}</td>
+            <td>{{ money(line.amount) }}@if (line.expectedAmount != null) {<div class="small text-secondary">Expected {{ money(line.expectedAmount) }}</div>}</td>
+            <td><div>Allocated {{ money(line.allocatedAmount) }}</div><div [class.text-danger]="positive(line.suspenseAmount)">Suspense {{ money(line.suspenseAmount) }}</div></td>
+            <td><span class="badge" [class.tone-green]="line.matchStatus === 'MATCHED' || line.matchStatus === 'RESOLVED'" [class.tone-red]="line.matchStatus === 'MISMATCH' || line.matchStatus === 'AMBIGUOUS'" [class.tone-amber]="line.matchStatus === 'UNMATCHED' || line.matchStatus === 'DUPLICATE_IN_FILE'">{{ statusLabel(line.matchStatus) }}</span>@if (line.message) {<div class="small mt-1">{{ line.message }}</div>}@if (line.resolutionReason) {<div class="small settlement-resolution-detail mt-1"><strong>Reason:</strong> {{ line.resolutionReason }}</div>}@if (line.resolutionTargetKey) {<div class="small text-secondary shifa-mono">Target {{ line.resolutionTargetKey }}</div>}</td>
+            @if (canMutate()) {<td><button type="button" class="btn btn-sm btn-outline-primary" (click)="$event.stopPropagation(); openResolution(line)" [disabled]="!positive(line.suspenseAmount)">Resolve</button></td>}
+          </tr>
+        } @empty {<tr><td [attr.colspan]="canMutate() ? 6 : 5" class="text-center text-secondary py-4">No lines in this batch.</td></tr>}
+      </tbody></table></div>
+    </div>
+  </div>
+}
+
+@if (resolveLine(); as line) {
+  <div class="settlement-drawer settlement-resolution" role="dialog" aria-modal="true" aria-label="Resolve settlement line" (click)="closeResolution()">
+    <div class="settlement-drawer__panel" (click)="$event.stopPropagation()">
+      <div class="d-flex justify-content-between align-items-center mb-3"><div><h3 class="mb-1">Resolve settlement line</h3><div class="text-secondary small">Row {{ line.sourceRowNumber }} · {{ money(line.amount) }} statement amount</div></div><button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeResolution()" aria-label="Close resolution"><i class="ti ti-x"></i></button></div>
+      <div class="settlement-preview mb-3"><div class="d-flex justify-content-between"><span>Allocated</span><strong>{{ money(line.allocatedAmount) }}</strong></div><div class="d-flex justify-content-between"><span>Suspense available</span><strong class="text-danger">{{ money(line.suspenseAmount) }}</strong></div>@if (line.dateDefaulted) {<div class="small text-warning mt-2"><i class="ti ti-calendar-exclamation me-1"></i>Transaction date defaulted to the statement date.</div>}</div>
+      @if (candidatesLoading()) {<div class="settlement-candidates-loading"><span class="spinner-border spinner-border-sm me-2"></span>Finding safe matching targets…</div>}
+      @else if (candidates().length) {
+        <label class="form-label required">Target</label>
+        <div class="list-group mb-3 settlement-candidates">
+          @for (candidate of candidates(); track candidate.targetType + ':' + candidate.targetId) {
+            <button type="button" class="list-group-item list-group-item-action text-start" [class.active]="selectedCandidate()?.targetId === candidate.targetId && selectedCandidate()?.targetType === candidate.targetType" (click)="selectCandidate(candidate)">
+              <div class="d-flex justify-content-between gap-2"><strong>{{ targetLabel(candidate.targetType) }}</strong><span>{{ candidate.availableAmount | inr }}</span></div>
+              <span class="d-block small">{{ candidate.customerName || '—' }} · {{ candidate.orderCode || candidate.reference || ('Target #' + candidate.targetId) }}</span>
+              <span class="d-block small text-secondary">Expected {{ money(candidate.expectedAmount) }} · Already allocated {{ money(candidate.allocatedAmount) }} · Available {{ money(candidate.availableAmount) }}</span>
+            </button>
+          }
+        </div>
+      } @else if (!resolveError()) {<div class="alert alert-warning">No valid target is available for this line. The backend rejected unrelated or already exhausted targets.</div>}
+      <label class="form-label required">Amount</label><input type="number" min="0.01" step="0.01" class="form-control mb-1" [max]="maxResolutionAmount(selectedCandidate(), line)" [value]="resolveAmount() ?? ''" (input)="setResolveAmount($event)" /><div class="form-hint mb-3">Maximum: {{ money(maxResolutionAmount(selectedCandidate(), line)) }}</div>
+      <label class="form-label required">Reason <span class="text-secondary">({{ resolveReason().length }}/500)</span></label><textarea class="form-control mb-3" rows="3" maxlength="500" required [value]="resolveReason()" (input)="setResolveReason($event)" placeholder="Why was this suspense line assigned?"></textarea>
+      @if (resolveError(); as message) {<div class="alert alert-danger">{{ message }}</div>}
+      <div class="d-flex justify-content-end gap-2"><button type="button" class="btn btn-outline-secondary" (click)="closeResolution()">Cancel</button><button type="button" class="btn btn-primary" (click)="submitResolution()" [disabled]="resolveBusy() || !canSubmitResolution()">@if (resolveBusy()) {<span class="spinner-border spinner-border-sm me-1"></span>}Resolve line</button></div>
+    </div>
+  </div>
+}

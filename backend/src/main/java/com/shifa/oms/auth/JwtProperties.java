@@ -11,6 +11,7 @@ import java.time.Duration;
  *   <li>{@code secret} — HMAC signing secret (overridden per environment).</li>
  *   <li>{@code accessTokenTtl} — lifetime of short-lived access tokens (e.g. PT15M).</li>
  *   <li>{@code refreshTokenTtl} — lifetime of refresh tokens (e.g. P7D).</li>
+ *   <li>{@code sessionTtl} — sliding authenticated-session idle timeout (e.g. PT30M).</li>
  * </ul>
  */
 @ConfigurationProperties(prefix = "app.security.jwt")
@@ -24,6 +25,9 @@ public class JwtProperties {
 
     /** Refresh-token time-to-live. */
     private Duration refreshTokenTtl = Duration.ofDays(7);
+
+    /** Sliding idle timeout for server-authoritative authenticated sessions. */
+    private Duration sessionTtl = Duration.ofMinutes(30);
 
     /**
      * Lifetime of the short-lived MFA ticket issued between a correct password
@@ -54,6 +58,14 @@ public class JwtProperties {
 
     public void setRefreshTokenTtl(Duration refreshTokenTtl) {
         this.refreshTokenTtl = refreshTokenTtl;
+    }
+
+    public Duration getSessionTtl() {
+        return sessionTtl;
+    }
+
+    public void setSessionTtl(Duration sessionTtl) {
+        this.sessionTtl = sessionTtl;
     }
 
     public Duration getMfaTicketTtl() {

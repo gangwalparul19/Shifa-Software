@@ -1,11 +1,11 @@
 package com.shifa.oms.auth;
 
+import com.shifa.oms.auth.dto.ChangePasswordRequest;
 import com.shifa.oms.auth.dto.LoginRequest;
 import com.shifa.oms.auth.dto.MfaVerifyRequest;
 import com.shifa.oms.auth.dto.RefreshRequest;
 import com.shifa.oms.auth.dto.RegisterRequest;
 import com.shifa.oms.auth.dto.TokenResponse;
-import com.shifa.oms.auth.dto.ChangePasswordRequest;
 import com.shifa.oms.common.ApiException;
 import com.shifa.oms.common.DuplicateResourceException;
 import com.shifa.oms.common.ResourceNotFoundException;
@@ -15,23 +15,17 @@ import com.shifa.oms.mail.template.EmailModels;
 import com.shifa.oms.mail.template.EmailRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Authenticates users and mints JWT token pairs.
- *
- * <p>Login verifies the username/password against the stored BCrypt hash and,
- * on success, issues an access + refresh token (Req 5.1, 5.2). Refresh validates
- * a refresh token and re-issues a fresh pair, re-reading the user so a disabled
- * or role-changed account cannot keep operating on a stale token.
- *
- * <p>Failed logins return a single generic 401 regardless of whether the
- * username or the password was wrong, so the endpoint does not reveal which
- * usernames exist.
- */
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+/** Authenticates users and issues JWT pairs bound to sliding server sessions. */
 @Service
 public class AuthService {
 
@@ -43,87 +37,63 @@ public class AuthService {
     private final MailService mailService;
     private final EmailRenderer emailRenderer;
     private final MfaService mfaService;
+    private final AuthSessionService authSessionService;
 
+    @Autowired
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        JwtService jwtService,
                        MailService mailService,
                        EmailRenderer emailRenderer,
-                       MfaService mfaService) {
+                       MfaService mfaService,
+                       AuthSessionService authSessionService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.mailService = mailService;
         this.emailRenderer = emailRenderer;
         this.mfaService = mfaService;
+        this.authSessionService = authSessionService;
     }
 
-    /**
-     * Registers a new storefront customer (role {@code CUSTOMER}) and returns a
-     * fresh token pair so the client can auto-login. The username is the supplied
-     * email when present, otherwise the 10-digit mobile. A duplicate username
-     * yields a 409 {@link DuplicateResourceException}. The password is stored as a
-     * BCrypt hash; the account is active immediately.
-     */
+    /** Compatibility constructor for direct unit tests; production uses the session-aware constructor. */
+    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtService jwtService,
+                       MailService mailService, EmailRenderer emailRenderer, MfaService mfaService) {
+        this(userRepository, passwordEncoder, jwtService, mailService, emailRenderer, mfaService, null);
+    }
+
     @Transactional
     public TokenResponse register(RegisterRequest request) {
         String email = normalize(request.email());
         String mobile = request.mobile().trim();
         String username = (email != null ? email : mobile);
-
         if (userRepository.existsByUsername(username)) {
             throw new DuplicateResourceException("USERNAME_TAKEN",
                     "An account already exists for '" + username + "'.");
         }
-
-        User user = new User(
-                username,
-                passwordEncoder.encode(request.password()),
-                Role.CUSTOMER,
-                request.fullName().trim(),
-                email,
-                mobile,
-                true);
+        User user = new User(username, passwordEncoder.encode(request.password()), Role.CUSTOMER,
+                request.fullName().trim(), email, mobile, true);
         User saved = userRepository.save(user);
         sendWelcomeEmail(saved);
-        return tokensFor(saved);
+        return tokensFor(saved, newSession(saved));
     }
 
-    /**
-     * Best-effort welcome email on registration. Only sent when the account has
-     * a non-blank email; any failure is logged and swallowed so a mail outage can
-     * never break signup.
-     */
     private void sendWelcomeEmail(User user) {
         String to = user.getEmail();
-        if (to == null || to.isBlank()) {
-            return;
-        }
+        if (to == null || to.isBlank()) return;
         try {
-            mailService.send(emailRenderer.renderWelcome(
-                    new EmailModels.Welcome(user.getFullName())).toMessage(to.trim()));
+            mailService.send(emailRenderer.renderWelcome(new EmailModels.Welcome(user.getFullName())).toMessage(to.trim()));
         } catch (RuntimeException e) {
             log.warn("Welcome email to {} failed (registration still succeeded): {}", to, e.getMessage());
         }
     }
 
     private static String normalize(String value) {
-        if (value == null) {
-            return null;
-        }
+        if (value == null) return null;
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    /**
-     * First login step: verify the username/password and the active flag, then
-     * either issue tokens immediately (no MFA) or return an MFA challenge the
-     * caller must complete. A single generic 401 is returned for a bad username
-     * or password so the endpoint does not reveal which usernames exist.
-     *
-     * <p>Not {@code readOnly}: an MFA-enabled-but-not-yet-enrolled user has a
-     * fresh secret provisioned here so the enrollment QR is stable.
-     */
     @Transactional
     public LoginOutcome login(LoginRequest request) {
         User user = userRepository.findByUsername(request.username())
@@ -132,77 +102,124 @@ public class AuthService {
         if (!user.isActive()) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "ACCOUNT_DISABLED", "This account is disabled.");
         }
+        rejectExpiredForcedPassword(user);
         if (mfaService.mfaRequired(user)) {
             return LoginOutcome.challenge(mfaService.challengeFor(user));
         }
-        return LoginOutcome.completed(tokensFor(user));
+        return LoginOutcome.completed(tokensFor(user, newSession(user)));
     }
 
-    /**
-     * Second login step for an enrolled user: validates the current TOTP code
-     * against the MFA ticket and issues the real token pair. A wrong/expired code
-     * is a 401; a stale/invalid ticket is a 401.
-     */
-    @Transactional(readOnly = true)
+    @Transactional
     public TokenResponse verifyMfa(MfaVerifyRequest request) {
+        JwtClaims ticket = jwtService.parse(request.mfaTicket(), TokenType.MFA);
+        requireSessionId(ticket);
         User user = mfaService.verifyLogin(request.mfaTicket(), request.code());
-        return tokensFor(user);
+        AuthSessionService.SessionHandle handle = touchOrReject(ticket, user);
+        return tokensFor(user, handle);
     }
 
-    /**
-     * Enrollment confirmation: validates the first TOTP code, finalises
-     * enrollment, and issues the real token pair so the user proceeds in the same
-     * flow.
-     */
     @Transactional
     public TokenResponse confirmMfaEnrollment(MfaVerifyRequest request) {
+        JwtClaims ticket = jwtService.parse(request.mfaTicket(), TokenType.MFA);
+        requireSessionId(ticket);
         User user = mfaService.confirmEnrollment(request.mfaTicket(), request.code());
-        return tokensFor(user);
+        // Enrollment increments session_version, so the pending password session
+        // is intentionally replaced with a new row carrying the new version.
+        return tokensFor(user, newSession(user));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public TokenResponse refresh(RefreshRequest request) {
         JwtClaims claims = jwtService.parse(request.refreshToken(), TokenType.REFRESH);
+        requireSessionId(claims);
         User user = userRepository.findById(claims.userId())
                 .orElseThrow(() -> new InvalidTokenException("Token subject no longer exists"));
         if (!user.isActive()) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "ACCOUNT_DISABLED", "This account is disabled.");
         }
-        return tokensFor(user);
+        if (user.getRole() != claims.role() || user.getSessionVersion() != claims.sessionVersion()) {
+            throw new InvalidTokenException("Refresh token is no longer valid");
+        }
+        rejectExpiredForcedPassword(user);
+        return tokensFor(user, touchOrReject(claims, user));
     }
 
-    /**
-     * Self-service password change for the signed-in user. Sets the new (already
-     * complexity-validated) password, clears the force-change flag, and returns a
-     * fresh token pair so the client proceeds without the {@code pwd} claim. The
-     * caller's identity comes from the authenticated principal (not the body), so
-     * no old password is required — the valid session proves identity. Rejects
-     * reusing the temporary reset password.
-     */
     @Transactional
     public TokenResponse changeMyPassword(Long userId, ChangePasswordRequest request) {
+        return changeMyPassword(userId, request, (String) null);
+    }
+
+    /** Source-compatible bridge for callers that do not yet carry the session sid. */
+    @Transactional
+    public TokenResponse changeMyPassword(Long userId, ChangePasswordRequest request, Instant ignoredSessionStart) {
+        return changeMyPassword(userId, request, (String) null);
+    }
+
+    /** Changes password while preserving the current server-side idle session when possible. */
+    @Transactional
+    public TokenResponse changeMyPassword(Long userId, ChangePasswordRequest request, String sessionId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User " + userId + " does not exist."));
         String newPassword = request.newPassword();
-        if (AdminUserService.TEMPORARY_PASSWORD.equals(newPassword)
-                || passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+        if (user.isMustChangePassword() && user.getPasswordResetExpiresAt() != null
+                && !user.getPasswordResetExpiresAt().isAfter(LocalDateTime.now())) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "PASSWORD_RESET_EXPIRED",
+                    "This temporary password has expired. Ask an administrator to reset it again.");
+        }
+        if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
             throw new ValidationException("Choose a new password different from your current one.");
         }
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         user.setMustChangePassword(false);
+        user.setPasswordResetExpiresAt(null);
+        user.incrementSessionVersion();
         userRepository.save(user);
-        return tokensFor(user);
+
+        AuthSessionService.SessionHandle handle = null;
+        if (sessionId != null && authSessionService != null) {
+            handle = authSessionService.rebind(sessionId, user.getId(), user.getSessionVersion())
+                    .orElseThrow(() -> new InvalidTokenException("Authenticated session is no longer active"));
+        }
+        if (handle == null) handle = newSession(user);
+        return tokensFor(user, handle);
     }
 
-    private TokenResponse tokensFor(User user) {
+    private AuthSessionService.SessionHandle newSession(User user) {
+        if (authSessionService != null) return authSessionService.create(user);
+        String sid = UUID.randomUUID().toString();
+        Instant idleExpiry = jwtService.sessionExpiresAt(jwtService.now());
+        return new AuthSessionService.SessionHandle(sid, idleExpiry);
+    }
+
+    private AuthSessionService.SessionHandle touchOrReject(JwtClaims claims, User user) {
+        if (authSessionService == null) {
+            return new AuthSessionService.SessionHandle(claims.sessionId(),
+                    jwtService.sessionExpiresAt(jwtService.now()));
+        }
+        return authSessionService.touch(claims.sessionId(), user.getId(), user.getSessionVersion())
+                .orElseThrow(() -> new InvalidTokenException("Authenticated session has expired or been revoked"));
+    }
+
+    private static void requireSessionId(JwtClaims claims) {
+        if (claims.sessionId() == null || claims.sessionId().isBlank()) {
+            throw new InvalidTokenException("Legacy token has no authenticated session id");
+        }
+    }
+
+    private TokenResponse tokensFor(User user, AuthSessionService.SessionHandle handle) {
         return new TokenResponse(
-                jwtService.issueAccessToken(user),
-                jwtService.issueRefreshToken(user),
-                "Bearer",
-                jwtService.accessTokenTtlSeconds(),
-                user.getRole().name(),
-                user.getUsername(),
-                user.isMustChangePassword());
+                jwtService.issueAccessToken(user, handle.sessionId(), handle.idleExpiresAt()),
+                jwtService.issueRefreshToken(user, handle.sessionId(), handle.idleExpiresAt()),
+                "Bearer", jwtService.accessTokenTtlSeconds(), user.getRole().name(), user.getUsername(),
+                user.isMustChangePassword(), handle.idleExpiresAtEpochSeconds());
+    }
+
+    private void rejectExpiredForcedPassword(User user) {
+        if (user.isMustChangePassword() && user.getPasswordResetExpiresAt() != null
+                && !user.getPasswordResetExpiresAt().isAfter(LocalDateTime.now())) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "PASSWORD_RESET_EXPIRED",
+                    "This temporary password has expired. Ask an administrator to reset it again.");
+        }
     }
 
     private static ApiException invalidCredentials() {

@@ -48,6 +48,28 @@ public interface OrderReturnRepository extends JpaRepository<OrderReturn, Long> 
                              @Param("to") LocalDateTime to,
                              Pageable pageable);
 
+    /** Refunded returns in a half-open filing window, filtered in SQL. */
+    @Query("""
+            SELECT r FROM OrderReturn r
+            WHERE r.status = :status
+              AND r.createdAt >= :from AND r.createdAt < :to
+            ORDER BY r.createdAt ASC, r.id ASC
+            """)
+    List<OrderReturn> findByStatusAndCreatedAtBetween(
+            @Param("status") ReturnStatus status,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to);
+
+    /** Report rows filtered in SQL; null bounds intentionally mean all time. */
+    @Query("""
+            SELECT r FROM OrderReturn r
+            WHERE (:from IS NULL OR r.createdAt >= :from)
+              AND (:to IS NULL OR r.createdAt < :to)
+            ORDER BY r.createdAt ASC
+            """)
+    List<OrderReturn> findForReport(@Param("from") LocalDateTime from,
+                                    @Param("to") LocalDateTime to);
+
     /**
      * Sum of refund amounts for returns in a given status created within an
      * inclusive timestamp window, for the GST dashboard's "refunds" figure.

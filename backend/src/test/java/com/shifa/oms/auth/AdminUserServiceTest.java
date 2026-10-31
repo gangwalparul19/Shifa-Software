@@ -2,6 +2,7 @@ package com.shifa.oms.auth;
 
 import com.shifa.oms.auth.dto.AdminUserResponse;
 import com.shifa.oms.auth.dto.CreateUserRequest;
+import com.shifa.oms.auth.dto.PasswordResetResponse;
 import com.shifa.oms.auth.dto.ResetPasswordRequest;
 import com.shifa.oms.auth.dto.UpdateUserRequest;
 import com.shifa.oms.common.DuplicateResourceException;
@@ -129,24 +130,24 @@ class AdminUserServiceTest {
     }
 
     @Test
-    void resetPasswordSetsTemporaryPasswordAndForcesChange() {
+    void resetPasswordSetsRandomCredentialAndForcesChangeUntilExpiry() {
         User target = userWithId("salesperson1", Role.SALESPERSON, true, 7L);
         String originalHash = target.getPasswordHash();
         when(userRepository.findById(7L)).thenReturn(Optional.of(target));
         when(userRepository.save(Mockito.any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        // The request body is ignored; the reset always sets the fixed temp password.
-        AdminUserResponse response = service.resetPassword(7L, new ResetPasswordRequest("brandnew1"));
+        PasswordResetResponse response = service.resetPassword(7L, new ResetPasswordRequest(null));
 
         assertThat(target.getPasswordHash()).isNotEqualTo(originalHash);
-        assertThat(passwordEncoder.matches(AdminUserService.TEMPORARY_PASSWORD, target.getPasswordHash())).isTrue();
-        assertThat(passwordEncoder.matches("brandnew1", target.getPasswordHash())).isFalse();
-        // The user is now forced to choose a new password and the reset is tracked.
+        assertThat(response.temporaryCredential()).isNotBlank();
+        assertThat(passwordEncoder.matches(response.temporaryCredential(), target.getPasswordHash())).isTrue();
+        assertThat(response.temporaryCredential()).isNotEqualTo("Welcome@123");
         assertThat(target.isMustChangePassword()).isTrue();
         assertThat(target.getPasswordResetAt()).isNotNull();
+        assertThat(target.getPasswordResetExpiresAt()).isAfter(target.getPasswordResetAt());
         assertThat(target.getPasswordResetCount()).isEqualTo(1);
-        assertThat(response.mustChangePassword()).isTrue();
-        assertThat(response.passwordResetCount()).isEqualTo(1);
+        assertThat(response.user().mustChangePassword()).isTrue();
+        assertThat(response.user().passwordResetCount()).isEqualTo(1);
     }
 
     @Test

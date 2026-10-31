@@ -1,7 +1,8 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
+import { AuthenticatedBlobService } from '../shared/authenticated-blob.service';
 import {
   Amendment,
   AmendmentReviewRequest,
@@ -19,14 +20,14 @@ import {
 
 /**
  * Data access for the Phase-3 GST returns & filing endpoints (`/api/ca/gst/filing/**` and
- * `/api/ca/gst/reconciliation/**`, ADMIN + CA). JSON calls go through the shared {@link ApiClient};
- * the filing-aware GSTR-1 export is fetched as a Blob via {@link HttpClient} so the auth interceptor
- * attaches the bearer token — mirroring {@code GstService} exactly.
+ * `/api/ca/gst/reconciliation/**`, ADMIN + CA). JSON calls go through the shared
+ * {@link ApiClient}; the filing-aware export uses the shared authenticated blob
+ * transport so auth handling stays uniform.
  */
 @Injectable({ providedIn: 'root' })
 export class FilingService {
   private readonly api = inject(ApiClient);
-  private readonly http = inject(HttpClient);
+  private readonly blobs = inject(AuthenticatedBlobService);
 
   /* ── Filing status lifecycle ─────────────────────────────────────────────── */
 
@@ -78,10 +79,7 @@ export class FilingService {
       .set('month', String(month))
       .set('year', String(year))
       .set('format', format);
-    return this.http.get(this.api.url('/api/ca/gst/filing/gstr1/export'), {
-      params,
-      responseType: 'blob',
-    });
+    return this.blobs.get('/api/ca/gst/filing/gstr1/export', { params });
   }
 
   /* ── Reconciliation ──────────────────────────────────────────────────────── */

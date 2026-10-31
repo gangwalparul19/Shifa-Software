@@ -122,7 +122,12 @@ public class SettingsService {
         settings.setInvoiceTerms(trimToNull(request.invoiceTerms()));
         settings.setBankName(trimToNull(request.bankName()));
         settings.setBankAccountName(trimToNull(request.bankAccountName()));
-        settings.setBankAccountNumber(trimToNull(request.bankAccountNumber()));
+        String bankAccountNumber = trimToNull(request.bankAccountNumber());
+        // The read DTO exposes only a mask. Blank means preserve the existing
+        // number so ordinary settings saves cannot erase it accidentally.
+        if (bankAccountNumber != null) {
+            settings.setBankAccountNumber(bankAccountNumber);
+        }
         settings.setBankIfsc(bankIfsc != null ? bankIfsc.toUpperCase(java.util.Locale.ROOT) : null);
         settings.setBankBranch(trimToNull(request.bankBranch()));
         settings.setGstSlabs(gstSlabs);

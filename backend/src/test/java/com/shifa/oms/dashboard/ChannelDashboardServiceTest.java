@@ -56,7 +56,9 @@ class ChannelDashboardServiceTest {
         shipmentRepository = mock(OrderShipmentRepository.class);
         service = new ChannelDashboardService(orderRepository, mock(ReceivableRepository.class),
                 mock(UserRepository.class), shipmentRepository, CLOCK);
-        when(orderRepository.findAll()).thenReturn(orders);
+        when(orderRepository.findByCreatedAtBetweenWithLineItems(any(), any())).thenReturn(orders);
+        when(orderRepository.findByCreatedAtBetween(any(), any())).thenReturn(orders);
+        when(orderRepository.findByOrderStatusInOrderByCreatedAtDesc(any())).thenReturn(orders);
     }
 
     private ChannelDashboardResponse run(DashboardChannel channel) {

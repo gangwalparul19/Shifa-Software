@@ -9,9 +9,6 @@ import { AbstractControl, ValidationErrors, ValidatorFn } from '@angular/forms';
  */
 export const PASSWORD_PATTERN = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
-/** The fixed temporary password an admin reset sets (users must change it). */
-export const TEMPORARY_PASSWORD = 'Welcome@123';
-
 /** Human-readable requirements shown next to the password field. */
 export const PASSWORD_REQUIREMENTS: readonly string[] = [
   'At least 8 characters',

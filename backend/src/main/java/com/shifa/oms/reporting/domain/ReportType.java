@@ -44,6 +44,27 @@ public enum ReportType {
      * salesperson sees only their own products and admins see everyone's.
      */
     SALESPERSON_PRODUCT,
+    /**
+     * Sales-executive × product detail (client request): one row per (executive,
+     * product) with category, orders, distinct customers, quantity, total sales,
+     * average realised price and the product's share of that executive's sales.
+     */
+    EXECUTIVE_PRODUCT_DETAIL,
+    /**
+     * Sales-executive × product grid mirroring the client's Excel executive
+     * tracker: one row per executive (orders, gross/net sale, total quantity,
+     * number of distinct products) followed by one quantity column per product
+     * sold, with a TOTAL row.
+     */
+    EXECUTIVE_PRODUCT_MATRIX,
+    /**
+     * Top {@value com.shifa.oms.reporting.domain.ExecutiveProductAnalytics#TOP_N}
+     * sales executives per product category, with share of category sales and
+     * repeat-customer signals — who to back with ads / retention effort.
+     */
+    TOP_EXECUTIVES_BY_CATEGORY,
+    /** As {@link #TOP_EXECUTIVES_BY_CATEGORY} but ranked per individual product. */
+    TOP_EXECUTIVES_BY_PRODUCT,
     ORDERS_BY_PAYMENT_METHOD,
     DELIVERY_OUTCOME,
 
@@ -112,6 +133,14 @@ public enum ReportType {
             case "salesperson-product", "salesperson_product", "orders-by-salesperson-product",
                     "orders_by_salesperson_product", "salesperson-product-wise" ->
                     SALESPERSON_PRODUCT;
+            case "executive-product", "executive_product", "executive-product-detail",
+                    "executive_product_detail", "exec-product" -> EXECUTIVE_PRODUCT_DETAIL;
+            case "executive-product-matrix", "executive_product_matrix", "executive-matrix",
+                    "exec-matrix" -> EXECUTIVE_PRODUCT_MATRIX;
+            case "top-executives-by-category", "top_executives_by_category", "top-by-category" ->
+                    TOP_EXECUTIVES_BY_CATEGORY;
+            case "top-executives-by-product", "top_executives_by_product", "top-by-product" ->
+                    TOP_EXECUTIVES_BY_PRODUCT;
             case "orders-by-payment-method", "orders_by_payment_method", "payment-method",
                     "by-payment", "payment-mode" ->
                     ORDERS_BY_PAYMENT_METHOD;

@@ -167,10 +167,10 @@ public class Gstr1ReturnService {
 
     private List<CreditNote> buildCreditNotes(Period p, String sellerState) {
         List<CreditNote> notes = new ArrayList<>();
-        for (OrderReturn r : orderReturnRepository.findAll()) {
-            if (r.getStatus() != ReturnStatus.REFUNDED || !within(r.getCreatedAt(), p)) {
-                continue;
-            }
+        LocalDateTime from = p.from().atStartOfDay();
+        LocalDateTime to = p.to().plusDays(1).atStartOfDay();
+        for (OrderReturn r : orderReturnRepository.findByStatusAndCreatedAtBetween(
+                ReturnStatus.REFUNDED, from, to)) {
             OrderEntity original = orderRepository.findById(r.getOrderId()).orElse(null);
             if (original == null) {
                 continue;
@@ -207,7 +207,7 @@ public class Gstr1ReturnService {
      */
     private Map<String, String> buildUqcByHsn() {
         Map<String, String> map = new LinkedHashMap<>();
-        for (Product product : productRepository.findAll()) {
+        for (ProductRepository.HsnUqcRow product : productRepository.findHsnUqcRows()) {
             String hsn = product.getHsnCode();
             if (hsn == null || hsn.isBlank()) {
                 continue;

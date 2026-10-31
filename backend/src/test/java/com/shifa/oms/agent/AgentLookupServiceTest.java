@@ -58,8 +58,8 @@ class AgentLookupServiceTest {
 
     @Test
     void noMatchingOrderByMobileReturnsNoMatchResult() {
-        when(orderRepository.findByCustomerMobileOrderByCreatedAtDesc("9999999999"))
-                .thenReturn(List.of());
+        when(orderRepository.findFirstByCustomerMobileOrderByCreatedAtDescIdDesc("9999999999"))
+                .thenReturn(Optional.empty());
 
         AgentLookupResponse response = service.lookup("mobile", "9999999999");
 

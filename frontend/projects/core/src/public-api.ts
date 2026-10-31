@@ -30,6 +30,7 @@ export * from './lib/auth/auth.interceptor';
 export * from './lib/auth/auth.service';
 export * from './lib/auth/jwt.util';
 export * from './lib/auth/initials.util';
+export * from './lib/auth/session-deadline.util';
 export * from './lib/auth/auth.guards';
 
 // Application wiring helper

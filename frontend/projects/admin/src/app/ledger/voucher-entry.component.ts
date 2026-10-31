@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ApiError, AuthService, Role } from 'core';
+import { todayIst } from '../shared/business-date.util';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ConfirmService } from '../shared/confirm.service';
@@ -22,9 +23,7 @@ import { BalanceLine, balanceOf } from './voucher-balance.util';
 
 /** Today as an ISO `yyyy-MM-dd` string for the default voucher date. */
 function todayIso(): string {
-  const now = new Date();
-  const off = now.getTimezoneOffset();
-  return new Date(now.getTime() - off * 60_000).toISOString().slice(0, 10);
+  return todayIst();
 }
 
 /**

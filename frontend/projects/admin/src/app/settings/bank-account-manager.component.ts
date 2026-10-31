@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { BankAccount, BankAccountRequest, BankAccountType, SettingsService } from './settings.service';
 import { ConfirmService } from '../shared/confirm.service';
@@ -32,6 +32,10 @@ export class BankAccountManagerComponent implements OnInit {
   protected readonly loading = signal(true);
   protected readonly busy = signal(false);
   protected readonly editingId = signal<number | null>(null);
+  protected readonly editingAccount = computed(() => {
+    const id = this.editingId();
+    return id == null ? null : this.accounts().find((account) => account.id === id) ?? null;
+  });
   protected readonly form = this.fb.nonNullable.group({
     displayName: ['', [Validators.required, Validators.maxLength(100)]],
     accountType: ['UPI_QR' as BankAccountType, [Validators.required]],
@@ -72,7 +76,7 @@ export class BankAccountManagerComponent implements OnInit {
       accountType: account.accountType,
       bankName: account.bankName ?? '',
       accountHolderName: account.accountHolderName ?? '',
-      accountNumber: account.accountNumber ?? '',
+      accountNumber: '',
       ifsc: account.ifsc ?? '',
       branch: account.branch ?? '',
       upiId: account.upiId ?? '',

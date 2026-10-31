@@ -334,10 +334,11 @@ export const routes: Routes = [
         canActivate: [accountantGuard],
       },
       {
-        // Notifications center (ADMIN only, Set B — Feature 3).
+        // Staff notification center: ADMIN uses the broader admin notification
+        // service, while other staff roles use their scoped notification service.
         path: 'notifications',
         component: NotificationsComponent,
-        canActivate: [adminOnlyGuard],
+        canActivate: [staffGuard],
       },
       {
         // Audit log (ADMIN only, Set B — Feature 4).

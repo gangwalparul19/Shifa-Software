@@ -67,7 +67,9 @@ public record OrderReportRecord(
      * total back the Vyapar billing export and exact product-wise sales; the
      * salesperson report only surfaces name + quantity (Req 20.3).
      */
-    public record ProductLine(String productName, int quantity, BigDecimal rate, BigDecimal lineTotal) {
+    public record ProductLine(String productName, int quantity, BigDecimal rate, BigDecimal lineTotal,
+                              /** Product category name; null/blank means uncategorised. */
+                              String category) {
         public ProductLine {
             Objects.requireNonNull(productName, "productName");
             rate = rate == null ? BigDecimal.ZERO : rate;
@@ -76,9 +78,14 @@ public record OrderReportRecord(
                     : lineTotal;
         }
 
+        /** Convenience constructor for callers that do not track the category. */
+        public ProductLine(String productName, int quantity, BigDecimal rate, BigDecimal lineTotal) {
+            this(productName, quantity, rate, lineTotal, null);
+        }
+
         /** Convenience constructor for callers that only track name + quantity. */
         public ProductLine(String productName, int quantity) {
-            this(productName, quantity, BigDecimal.ZERO, BigDecimal.ZERO);
+            this(productName, quantity, BigDecimal.ZERO, BigDecimal.ZERO, null);
         }
     }
 

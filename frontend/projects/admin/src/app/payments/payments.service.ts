@@ -1,20 +1,19 @@
-import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
+import { AuthenticatedBlobService } from '../shared/authenticated-blob.service';
 import { PaymentQueueRow } from './payments.model';
 import { PaymentScreenshot } from '../orders/orders.model';
 
 /**
  * Data access for the Payment Verifier dashboard ({@code /api/payments},
- * PAYMENT_VERIFIER + ADMIN, product-audit §4.4). JSON calls go through the
- * shared {@link ApiClient}; the screenshot is fetched as a Blob with
- * {@link HttpClient} so the auth interceptor attaches the bearer token.
+ * shared {@link ApiClient}; binary screenshot calls use the shared authenticated
+ * blob transport so the auth interceptor attaches the bearer token consistently.
  */
 @Injectable({ providedIn: 'root' })
 export class PaymentsService {
   private readonly api = inject(ApiClient);
-  private readonly http = inject(HttpClient);
+  private readonly blobs = inject(AuthenticatedBlobService);
 
   /** Prepaid payments awaiting verification, oldest first. */
   queue(): Observable<PaymentQueueRow[]> {
@@ -33,9 +32,7 @@ export class PaymentsService {
 
   /** Fetch the order's PRIMARY payment screenshot as a Blob for inline viewing. */
   screenshot(orderId: number): Observable<Blob> {
-    return this.http.get(this.api.url(`/api/orders/${orderId}/payment-screenshot`), {
-      responseType: 'blob',
-    });
+    return this.blobs.get(`/api/orders/${orderId}/payment-screenshot`);
   }
 
   /** List every payment proof attached to the order, in upload order (V65). */
@@ -45,9 +42,6 @@ export class PaymentsService {
 
   /** Fetch one specific payment proof as a Blob for inline viewing (V65). */
   screenshotById(orderId: number, screenshotId: number): Observable<Blob> {
-    return this.http.get(
-      this.api.url(`/api/orders/${orderId}/payment-screenshots/${screenshotId}`),
-      { responseType: 'blob' },
-    );
+    return this.blobs.get(`/api/orders/${orderId}/payment-screenshots/${screenshotId}`);
   }
 }

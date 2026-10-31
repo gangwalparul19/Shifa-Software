@@ -10,9 +10,9 @@ package com.shifa.oms.auth.dto;
  * @param role         the authenticated user's role (convenience for the client)
  * @param username     the authenticated user's username
  * @param mustChangePassword whether the user must set a new password before using
- *                           the app (an admin reset their password to the
- *                           temporary one); the client routes to the
- *                           change-password screen when true
+ *                           the app
+ * @param sessionExpiresAt current server-calculated idle expiry as epoch seconds;
+ *                          it is a frontend timer hint, not authorization
  */
 public record TokenResponse(
         String accessToken,
@@ -21,5 +21,14 @@ public record TokenResponse(
         long expiresIn,
         String role,
         String username,
-        boolean mustChangePassword) {
+        boolean mustChangePassword,
+        long sessionExpiresAt) {
+
+    /** Backward-compatible constructor for existing callers. */
+    public TokenResponse(String accessToken, String refreshToken, String tokenType,
+                         long expiresIn, String role, String username,
+                         boolean mustChangePassword) {
+        this(accessToken, refreshToken, tokenType, expiresIn, role, username,
+                mustChangePassword, 0L);
+    }
 }

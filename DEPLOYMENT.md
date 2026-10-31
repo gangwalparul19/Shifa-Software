@@ -11,8 +11,8 @@ app at `/`** plus the `/api/` backend.
 
 | Thing | Value |
 |---|---|
-| Live URL | **http://13.234.22.207/** |
-| SSH | `ubuntu@13.234.22.207` |
+| Live URL | **https://shifa.weblithic.online/** |
+| SSH | `ubuntu@15.252.230.73` (current EC2 address; use the current address from EC2 if it changes) |
 | SSH key | `C:\Users\Parul\Downloads\shifa-admin.pem` |
 | Admin served at | **`/`** (root) — Angular built with base-href `/` |
 | API | Nginx `/api/` → Spring Boot on `127.0.0.1:8080` |
@@ -21,9 +21,11 @@ app at `/`** plus the `/api/` backend.
 | Backend service | systemd unit **`shifa-oms`**, JAR at `/opt/shifa/shifa-oms.jar` |
 | Web root | `/var/www/shifa/admin` (served by Nginx) |
 | Backend env/secrets | `/etc/shifa/shifa.env` (root-only, mode 600 — never in git) |
+| Schema source | V104 (`V104__payment_utr_normalization_and_preflight.sql`); the next migration is V105 |
+| Production schema | Last documented live verification: V73. Confirm Flyway in the server journal after every deploy; source V104 is not a claim that production is V104. |
 
-> ⚠️ The public IP is **ephemeral** — if the instance is stopped/started it can change. If the site
-> stops responding, get the new IP from the EC2 console and pass it with `-Ip <new-ip>` (below).
+> The public production URL is the HTTPS domain above. The EC2 address is only the current SSH target; it
+> may change unless an Elastic IP is attached. Do not use the IP or plain HTTP as the client-facing URL.
 
 ---
 
@@ -59,7 +61,7 @@ That's it. The script (`deploy/push-to-aws.ps1`) does everything:
 ## 2. Verify the deploy worked
 
 ```powershell
-ssh -i "C:\Users\Parul\Downloads\shifa-admin.pem" ubuntu@13.234.22.207 "sudo journalctl -u shifa-oms -n 60 --no-pager"
+ssh -i "C:\Users\Parul\Downloads\shifa-admin.pem" ubuntu@15.252.230.73 "sudo journalctl -u shifa-oms -n 60 --no-pager"
 ```
 Look for:
 - `Successfully applied N migrations ... now at version vNN` (only when there ARE new migrations),
@@ -68,7 +70,7 @@ Look for:
 
 Quick HTTP check (from anywhere):
 ```powershell
-curl -s -o NUL -w "%{http_code}" http://13.234.22.207/      # expect 200 (admin loads)
+curl -s -o NUL -w "%{http_code}" https://shifa.weblithic.online/      # expect 200 (admin loads)
 ```
 Then hard-refresh the admin in your browser (**Ctrl-Shift-R**) so the new PWA service worker picks up
 the fresh bundle.
@@ -83,8 +85,8 @@ the fresh bundle.
 
 You do **not** run SQL on the server. Flyway does it on restart.
 
-1. Add a **new** migration file: `backend/src/main/resources/db/migration/V44__your_change.sql`
-   (then `V45__…`, etc.). **Never edit an already-applied migration.**
+1. Add a **new** migration file: `backend/src/main/resources/db/migration/V105__your_change.sql`
+   (then `V106__…`, etc.). **Never edit an already-applied migration.**
 2. Add/adjust the matching JPA entity field (because `ddl-auto: validate` compares entities to the schema).
 3. Redeploy (§1). On restart Flyway detects the new file, runs it once, and records it in
    `flyway_schema_history`.

@@ -108,6 +108,6 @@ public class BankAccount {
     public String maskedAccountNumber() {
         if (accountNumber == null || accountNumber.isBlank()) return null;
         String value = accountNumber.trim();
-        return value.length() <= 4 ? value : "••••" + value.substring(value.length() - 4);
+        return value.length() <= 4 ? "••••" : "••••" + value.substring(value.length() - 4);
     }
 }

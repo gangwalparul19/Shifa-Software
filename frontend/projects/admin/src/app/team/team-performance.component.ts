@@ -2,6 +2,8 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AuthService, Role } from 'core';
 import { IstDatePipe } from '../shared/ist-date.pipe';
+import { addIstDays, monthStartIst, todayIst } from '../shared/business-date.util';
+import { reportFilename } from '../shared/report-filename.util';
 import { PageHeaderComponent, } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import {
@@ -289,9 +291,9 @@ export class TeamPerformanceComponent implements OnInit {
   applyPeriod(key: PeriodKey): void {
     this.period.set(key);
     if (key === 'custom') {
-      const today = new Date();
-      this.customTo.set(today.toISOString().slice(0, 10));
-      this.customFrom.set(new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10));
+      const today = todayIst();
+      this.customTo.set(today);
+      this.customFrom.set(monthStartIst());
     }
     this.load();
   }
@@ -307,15 +309,13 @@ export class TeamPerformanceComponent implements OnInit {
   }
 
   private window(): { from?: string; to?: string } {
-    const today = new Date();
-    const to = today.toISOString().slice(0, 10);
+    const to = todayIst();
     if (this.period() === 'today') return { from: to, to };
     if (this.period() === 'week') {
-      const from = new Date(today); from.setDate(today.getDate() - 6);
-      return { from: from.toISOString().slice(0, 10), to };
+      return { from: addIstDays(to, -6), to };
     }
     if (this.period() === 'custom') return { from: this.customFrom(), to: this.customTo() };
-    return { from: new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10), to };
+    return { from: monthStartIst(), to };
   }
 
   protected openMember(member: TeamMemberPerformance): void { this.selectedMember.set(member); }
@@ -352,7 +352,10 @@ export class TeamPerformanceComponent implements OnInit {
     ];
     const csv = rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const a = document.createElement('a'); a.href = url; a.download = `team-performance-${this.period()}.csv`; a.click();
+    // Named after the exact dates the figures cover, e.g. shifa-team-performance_2026-10-01_to_2026-10-31.csv.
+    const today = todayIst();
+    const filename = reportFilename('Team Performance', d.period?.from ?? today, d.period?.to ?? today, 'csv');
+    const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 }

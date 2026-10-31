@@ -79,7 +79,10 @@ public class SecurityConfig {
         config.setAllowedOriginPatterns(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
-        config.setExposedHeaders(List.of("Authorization"));
+        // Content-Disposition carries the server's download filename and X-Report-Message the
+        // Vyapar "no orders" notice; a cross-origin browser can only read them when exposed.
+        config.setExposedHeaders(List.of("Authorization", JwtAuthenticationFilter.SESSION_IDLE_EXPIRES_HEADER,
+                "Content-Disposition", "X-Report-Message"));
         config.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);

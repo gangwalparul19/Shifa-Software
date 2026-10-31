@@ -15,16 +15,16 @@ import org.springframework.web.bind.annotation.RestController;
  * Self-service "change my password" for the signed-in user
  * ({@code POST /api/me/password}).
  *
- * <p>Used both for the forced change after an admin reset (the user signed in
- * with the temporary password {@code Welcome@123} and must now choose their own
+ * <p>Used for the forced change after an administrator issues a one-time random
+ * credential and for a voluntary change. The caller's identity comes from
  * strong password) and for a voluntary change. The caller's identity comes from
  * the authenticated principal, so no old password is required — the valid
  * session proves identity. The new password's complexity (min 8 chars, 1
  * uppercase, 1 number, 1 special) is enforced by {@link ChangePasswordRequest}.
  *
  * <p>Returns a fresh token pair so the client continues without the force-change
- * flag; the clearing of {@code mustChangePassword} happens in
- * {@link AuthService#changeMyPassword}.
+ * flag; the current server-side idle session is rebound to the incremented
+ * session version when the authenticated sid is available.
  */
 @RestController
 @RequestMapping("/api/me/password")
@@ -47,7 +47,8 @@ public class MyPasswordController {
     @PostMapping
     public TokenResponse changePassword(@Valid @RequestBody ChangePasswordRequest request) {
         AuthPrincipal principal = currentUserService.requireCurrentUser();
-        TokenResponse response = authService.changeMyPassword(principal.userId(), request);
+        TokenResponse response = authService.changeMyPassword(principal.userId(), request,
+                principal.sessionId());
         auditService.record(AuditActions.USER_PASSWORD_CHANGED, AuditActions.ENTITY_USER,
                 String.valueOf(principal.userId()), "Changed own password");
         return response;

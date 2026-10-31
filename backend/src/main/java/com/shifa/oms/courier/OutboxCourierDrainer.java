@@ -3,6 +3,7 @@ package com.shifa.oms.courier;
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
+import com.shifa.oms.platform.outbox.OutboxClaimService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -42,15 +43,27 @@ public class OutboxCourierDrainer {
     private final OutboxEventPublisher outboxEventPublisher;
     private final CourierAssignmentService assignmentService;
     private final CourierProperties properties;
+    private final OutboxClaimService claimService;
 
+    /** Legacy test constructor; production uses the fenced-claim constructor. */
     public OutboxCourierDrainer(OutboxEventRepository outboxEventRepository,
                                 OutboxEventPublisher outboxEventPublisher,
                                 CourierAssignmentService assignmentService,
                                 CourierProperties properties) {
+        this(outboxEventRepository, outboxEventPublisher, assignmentService, properties, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public OutboxCourierDrainer(OutboxEventRepository outboxEventRepository,
+                                OutboxEventPublisher outboxEventPublisher,
+                                CourierAssignmentService assignmentService,
+                                CourierProperties properties,
+                                OutboxClaimService claimService) {
         this.outboxEventRepository = outboxEventRepository;
         this.outboxEventPublisher = outboxEventPublisher;
         this.assignmentService = assignmentService;
         this.properties = properties;
+        this.claimService = claimService;
     }
 
     /** Scheduled entry point: drains due courier-assign events every 15 seconds. */
@@ -72,8 +85,10 @@ public class OutboxCourierDrainer {
      */
     public int drainCourierAssignments() {
         LocalDateTime now = LocalDateTime.now();
-        List<OutboxEvent> due = outboxEventRepository.findDue(
-                OutboxEvent.EVENT_COURIER_ASSIGN, OutboxEvent.STATUS_PENDING, now);
+        List<OutboxEvent> due = claimService == null
+                ? outboxEventRepository.findDue(
+                        OutboxEvent.EVENT_COURIER_ASSIGN, OutboxEvent.STATUS_PENDING, now)
+                : claimService.claimDue(OutboxEvent.EVENT_COURIER_ASSIGN, now);
         int processed = 0;
         for (OutboxEvent event : due) {
             processOne(event);
@@ -86,8 +101,7 @@ public class OutboxCourierDrainer {
         Long orderId = aggregateId(event);
         try {
             assignmentService.assignForOrder(orderId);
-            event.markSent();
-            outboxEventRepository.save(event);
+            markSent(event);
         } catch (RuntimeException ex) {
             handleFailure(event, orderId, ex);
         }
@@ -97,8 +111,10 @@ public class OutboxCourierDrainer {
         String error = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
         boolean exhausted = event.getAttempts() + 1 >= properties.maxAttempts();
         if (exhausted) {
-            event.markFailed(error);
-            outboxEventRepository.save(event);
+            if (!markFailed(event, error)) {
+                log.debug("Courier event {} lost its lease before permanent failure was recorded", event.getId());
+                return;
+            }
             // Persist the admin-facing failure notification; order retains Packed (Req 12.4).
             String orderCode = String.valueOf(event.getPayload() == null
                     ? orderId : event.getPayload().getOrDefault("orderCode", orderId));
@@ -107,11 +123,40 @@ public class OutboxCourierDrainer {
                     orderId, event.getAttempts(), error);
         } else {
             LocalDateTime next = LocalDateTime.now().plus(properties.retryBackoff());
-            event.recordRetry(error, next);
-            outboxEventRepository.save(event);
+            if (!recordRetry(event, error, next)) {
+                log.debug("Courier event {} lost its lease before retry was recorded", event.getId());
+                return;
+            }
             log.debug("Courier assignment for order {} will retry at {} ({})",
                     orderId, next, error);
         }
+    }
+
+    private boolean markSent(OutboxEvent event) {
+        if (claimService != null) {
+            return claimService.markSent(event);
+        }
+        event.markSent();
+        outboxEventRepository.save(event);
+        return true;
+    }
+
+    private boolean markFailed(OutboxEvent event, String error) {
+        if (claimService != null) {
+            return claimService.markFailed(event, error);
+        }
+        event.markFailed(error);
+        outboxEventRepository.save(event);
+        return true;
+    }
+
+    private boolean recordRetry(OutboxEvent event, String error, LocalDateTime next) {
+        if (claimService != null) {
+            return claimService.recordRetry(event, error, next);
+        }
+        event.recordRetry(error, next);
+        outboxEventRepository.save(event);
+        return true;
     }
 
     private Long aggregateId(OutboxEvent event) {

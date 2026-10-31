@@ -14,7 +14,7 @@ import java.util.TimeZone;
  * {@code statemachine}, {@code label}, {@code courier}, {@code notification},
  * {@code reconciliation}, {@code reporting}, {@code agent}, {@code dashboard},
  * {@code platform}, and {@code common} sub-packages) but deploys as a single
- * Spring Boot artifact, in line with the OCI Always Free tier budget.
+ * Spring Boot artifact on the supported AWS EC2 production target.
  */
 @SpringBootApplication
 @EnableScheduling

@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.persistence.OptimisticLockException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -125,6 +126,41 @@ public class GlobalExceptionHandler {
                 "This record changed elsewhere. Refresh it and try again.",
                 request.getRequestURI());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    /**
+     * The payment UTR unique index is a concurrency boundary. The friendly
+     * repository pre-check normally catches reuse, but two requests can pass
+     * that check concurrently and let the database reject one of them. Expose
+     * only the stable domain message; never leak SQL, account ids, or UTRs.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex,
+                                                                        HttpServletRequest request) {
+        if (isPaymentUtrUniqueViolation(ex)) {
+            ErrorResponse body = ErrorResponse.of(
+                    HttpStatus.CONFLICT.value(),
+                    HttpStatus.CONFLICT.getReasonPhrase(),
+                    "PAYMENT_UTR_DUPLICATE",
+                    "This UTR/reference is already recorded for the selected receiving account. Refresh and try again.",
+                    request.getRequestURI());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+        }
+        return handleUnexpected(ex, request);
+    }
+
+    private boolean isPaymentUtrUniqueViolation(Throwable ex) {
+        for (Throwable current = ex; current != null; current = current.getCause()) {
+            String message = current.getMessage();
+            if (message != null
+                    && message.toLowerCase(Locale.ROOT).contains("uq_payments_receiving_account_utr")) {
+                return true;
+            }
+            if (current.getCause() == current) {
+                break;
+            }
+        }
+        return false;
     }
 
     /**

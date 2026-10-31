@@ -10,27 +10,21 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /**
- * Issues and validates JSON Web Tokens signed with HMAC-SHA256, using the secret
- * from {@link JwtProperties}. Kept dependency-free (JDK crypto + Jackson) so the
- * OMS does not pull in an extra JWT library.
- *
- * <p>Tokens carry the subject username ({@code sub}), user id ({@code uid}), role
- * ({@code role}), display name ({@code name}, omitted when blank), token type
- * ({@code typ}) and standard {@code iat}/{@code exp}
- * timestamps. Access tokens are short-lived; refresh tokens live longer and are
- * accepted only by {@code /api/auth/refresh}. Validation checks the signature
- * (constant-time), the expiry, and — when requested — the token type.
+ * Issues and validates HS256 JWTs. JWT expiry remains an upper bound only;
+ * authenticated-session acceptance is server-authoritative in AuthSessionService
+ * and uses the signed opaque sid claim to apply the sliding idle timeout.
  */
 @Service
 public class JwtService {
 
     private static final String HMAC_ALGORITHM = "HmacSHA256";
-    // Fixed JOSE header for HS256: {"alg":"HS256","typ":"JWT"}
     private static final String ENCODED_HEADER =
             base64Url("{\"alg\":\"HS256\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8));
 
@@ -50,40 +44,86 @@ public class JwtService {
         this.clock = clock;
     }
 
-    /** Issues a signed access token for the given user. */
     public String issueAccessToken(User user) {
-        Instant now = clock.instant();
-        return issue(user, TokenType.ACCESS, now, now.plus(properties.getAccessTokenTtl()));
+        return issueAccessToken(user, newSessionId());
     }
 
-    /** Issues a signed refresh token for the given user. */
+    /** Issues an access token for an existing server-side session. */
+    public String issueAccessToken(User user, String sessionId) {
+        return issue(user, TokenType.ACCESS, sessionId, now().plus(properties.getSessionTtl()),
+                now().plus(properties.getAccessTokenTtl()));
+    }
+
+    /** Compatibility overload for callers that supplied the former session-start value. */
+    public String issueAccessToken(User user, Instant ignoredSessionStart) {
+        return issueAccessToken(user, newSessionId());
+    }
+
+    /** Issues an access token with the current server-calculated idle hint. */
+    public String issueAccessToken(User user, String sessionId, Instant idleExpiresAt) {
+        return issue(user, TokenType.ACCESS, sessionId, idleExpiresAt,
+                now().plus(properties.getAccessTokenTtl()));
+    }
+
     public String issueRefreshToken(User user) {
-        Instant now = clock.instant();
-        return issue(user, TokenType.REFRESH, now, now.plus(properties.getRefreshTokenTtl()));
+        return issueRefreshToken(user, newSessionId());
     }
 
-    /**
-     * Issues a short-lived MFA ticket for the given user. Minted after a correct
-     * password when the user still owes a second factor; the client presents it
-     * back on the TOTP verify/enroll-confirm step. It is NOT an access token and
-     * is rejected by the request authentication filter.
-     */
+    /** Issues a refresh token for an existing server-side session. */
+    public String issueRefreshToken(User user, String sessionId) {
+        return issue(user, TokenType.REFRESH, sessionId, now().plus(properties.getSessionTtl()),
+                now().plus(properties.getRefreshTokenTtl()));
+    }
+
+    /** Compatibility overload for callers that supplied the former session-start value. */
+    public String issueRefreshToken(User user, Instant ignoredSessionStart) {
+        return issueRefreshToken(user, newSessionId());
+    }
+
+    public String issueRefreshToken(User user, String sessionId, Instant idleExpiresAt) {
+        return issue(user, TokenType.REFRESH, sessionId, idleExpiresAt,
+                now().plus(properties.getRefreshTokenTtl()));
+    }
+
     public String issueMfaTicket(User user) {
-        Instant now = clock.instant();
-        return issue(user, TokenType.MFA, now, now.plus(properties.getMfaTicketTtl()));
+        return issueMfaTicket(user, newSessionId());
     }
 
-    /** The configured access-token lifetime, in seconds (for the login response). */
+    /** Issues an MFA ticket carrying the session sid created after password verification. */
+    public String issueMfaTicket(User user, String sessionId) {
+        return issue(user, TokenType.MFA, sessionId, now().plus(properties.getSessionTtl()),
+                now().plus(properties.getMfaTicketTtl()));
+    }
+
+    /** Compatibility overload for callers that supplied the former session-start value. */
+    public String issueMfaTicket(User user, Instant ignoredSessionStart) {
+        return issueMfaTicket(user, newSessionId());
+    }
+
+    public String issueMfaTicket(User user, String sessionId, Instant idleExpiresAt) {
+        return issue(user, TokenType.MFA, sessionId, idleExpiresAt,
+                now().plus(properties.getMfaTicketTtl()));
+    }
+
+    /** Current signing clock instant, truncated to JWT's second precision. */
+    Instant now() {
+        return clock.instant().truncatedTo(ChronoUnit.SECONDS);
+    }
+
+    /** Compatibility helper retained for callers; this is now an idle hint only. */
+    Instant sessionExpiresAt(Instant ignoredSessionStart) {
+        return now().plus(properties.getSessionTtl());
+    }
+
+    /** Epoch seconds for a server idle deadline. */
+    public long sessionExpiresAtEpochSeconds(Instant idleExpiresAt) {
+        return idleExpiresAt.getEpochSecond();
+    }
+
     public long accessTokenTtlSeconds() {
         return properties.getAccessTokenTtl().toSeconds();
     }
 
-    /**
-     * Parses and fully validates a token, requiring it to be of {@code expectedType}.
-     *
-     * @throws InvalidTokenException if the token is malformed, its signature is
-     *                               invalid, it is expired, or it is of the wrong type
-     */
     public JwtClaims parse(String token, TokenType expectedType) {
         JwtClaims claims = parse(token);
         if (claims.type() != expectedType) {
@@ -92,12 +132,7 @@ public class JwtService {
         return claims;
     }
 
-    /**
-     * Parses and validates a token's signature and expiry (any type).
-     *
-     * @throws InvalidTokenException if the token is malformed, its signature is
-     *                               invalid, or it is expired
-     */
+    /** Parses signature and normal JWT expiry. Idle acceptance is checked by the session table. */
     public JwtClaims parse(String token) {
         if (token == null || token.isBlank()) {
             throw new InvalidTokenException("Token is missing");
@@ -107,52 +142,63 @@ public class JwtService {
             throw new InvalidTokenException("Token structure is invalid");
         }
         String signingInput = parts[0] + "." + parts[1];
-        String expectedSignature = sign(signingInput);
-        if (!constantTimeEquals(expectedSignature, parts[2])) {
+        if (!constantTimeEquals(sign(signingInput), parts[2])) {
             throw new InvalidTokenException("Token signature is invalid");
         }
-
         Map<String, Object> payload = decodePayload(parts[1]);
+        Instant now = now();
         Instant expiresAt = readInstant(payload, "exp");
-        if (expiresAt == null || !expiresAt.isAfter(clock.instant())) {
+        if (expiresAt == null || !expiresAt.isAfter(now)) {
             throw new InvalidTokenException("Token has expired");
         }
-
         return new JwtClaims(
                 readLong(payload, "uid"),
                 readString(payload, "sub"),
                 readRole(payload),
+                readOptionalLong(payload, "sv"),
                 readTokenType(payload),
                 readInstant(payload, "iat"),
-                expiresAt);
+                expiresAt,
+                readInstant(payload, "session_start"),
+                readInstant(payload, "session_exp"),
+                readOptionalString(payload, "sid"));
     }
 
-    private String issue(User user, TokenType type, Instant issuedAt, Instant expiresAt) {
+    private String issue(User user, TokenType type, String sessionId, Instant idleExpiresAt,
+                         Instant requestedExpiry) {
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new InvalidTokenException("Authenticated token session id is missing");
+        }
+        Instant issuedAt = now();
+        Instant expiresAt = requestedExpiry;
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("sub", user.getUsername());
         payload.put("uid", user.getId());
         payload.put("role", user.getRole().name());
-        // Display name, so the client can greet the user by name instead of by
-        // username (salespeople sign in with their mobile number). Omitted when
-        // blank so the client falls back to the username.
+        payload.put("sv", user.getSessionVersion());
+        payload.put("sid", sessionId);
         String fullName = user.getFullName();
         if (fullName != null && !fullName.isBlank()) {
             payload.put("name", fullName.trim());
         }
-        // Force-password-change flag: when true the user must set a new password
-        // before using the app. Carried on the token so a page reload / refresh
-        // still knows (not just the login response). Omitted when false to keep
-        // tokens small and backward-compatible with the client's optional read.
         if (user.isMustChangePassword()) {
             payload.put("pwd", true);
         }
         payload.put("typ", type.name());
         payload.put("iat", issuedAt.getEpochSecond());
         payload.put("exp", expiresAt.getEpochSecond());
+        // Retained as a signed client hint for compatibility. The server never
+        // accepts or rejects activity from these claims.
+        payload.put("session_start", issuedAt.getEpochSecond());
+        payload.put("session_exp", idleExpiresAt.getEpochSecond());
 
         String encodedPayload = base64Url(toJsonBytes(payload));
         String signingInput = ENCODED_HEADER + "." + encodedPayload;
         return signingInput + "." + sign(signingInput);
+    }
+
+    private static String newSessionId() {
+        return UUID.randomUUID().toString();
     }
 
     private byte[] toJsonBytes(Map<String, Object> payload) {
@@ -166,8 +212,7 @@ public class JwtService {
     @SuppressWarnings("unchecked")
     private Map<String, Object> decodePayload(String encodedPayload) {
         try {
-            byte[] json = Base64.getUrlDecoder().decode(encodedPayload);
-            return objectMapper.readValue(json, Map.class);
+            return objectMapper.readValue(Base64.getUrlDecoder().decode(encodedPayload), Map.class);
         } catch (Exception e) {
             throw new InvalidTokenException("Token payload is invalid");
         }
@@ -177,16 +222,15 @@ public class JwtService {
         try {
             Mac mac = Mac.getInstance(HMAC_ALGORITHM);
             mac.init(new SecretKeySpec(properties.getSecret().getBytes(StandardCharsets.UTF_8), HMAC_ALGORITHM));
-            byte[] signature = mac.doFinal(signingInput.getBytes(StandardCharsets.UTF_8));
-            return Base64.getUrlEncoder().withoutPadding().encodeToString(signature);
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(
+                    mac.doFinal(signingInput.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception e) {
             throw new IllegalStateException("Failed to sign JWT", e);
         }
     }
 
     private static boolean constantTimeEquals(String a, String b) {
-        return MessageDigest.isEqual(
-                a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
+        return MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
     }
 
     private static String base64Url(byte[] bytes) {
@@ -195,26 +239,31 @@ public class JwtService {
 
     private static Long readLong(Map<String, Object> payload, String key) {
         Object value = payload.get(key);
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
+        if (value instanceof Number number) return number.longValue();
+        throw new InvalidTokenException("Token claim '" + key + "' is invalid");
+    }
+
+    private static long readOptionalLong(Map<String, Object> payload, String key) {
+        Object value = payload.get(key);
+        if (value == null) return 0L;
+        if (value instanceof Number number && number.longValue() >= 0) return number.longValue();
         throw new InvalidTokenException("Token claim '" + key + "' is invalid");
     }
 
     private static String readString(Map<String, Object> payload, String key) {
         Object value = payload.get(key);
-        if (value instanceof String s && !s.isBlank()) {
-            return s;
-        }
+        if (value instanceof String s && !s.isBlank()) return s;
         throw new InvalidTokenException("Token claim '" + key + "' is invalid");
+    }
+
+    private static String readOptionalString(Map<String, Object> payload, String key) {
+        Object value = payload.get(key);
+        return value instanceof String s && !s.isBlank() ? s : null;
     }
 
     private static Instant readInstant(Map<String, Object> payload, String key) {
         Object value = payload.get(key);
-        if (value instanceof Number number) {
-            return Instant.ofEpochSecond(number.longValue());
-        }
-        return null;
+        return value instanceof Number number ? Instant.ofEpochSecond(number.longValue()) : null;
     }
 
     private static Role readRole(Map<String, Object> payload) {

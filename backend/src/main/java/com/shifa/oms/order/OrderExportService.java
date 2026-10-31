@@ -4,6 +4,7 @@ import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.reporting.CsvReportExporter;
 import com.shifa.oms.reporting.ExcelReportExporter;
+import com.shifa.oms.reporting.ReportFilenames;
 import com.shifa.oms.reporting.domain.TabularData;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.springframework.data.domain.PageRequest;
@@ -35,6 +36,9 @@ public class OrderExportService {
 
     private static final DateTimeFormatter DATE_TIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+    /** Download name: {@code shifa-orders_<from>_to_<to>.xlsx} (or {@code _all-time}). */
+    private static final String FILE_TITLE = "Orders";
 
     private static final List<String> HEADERS = List.of(
             "Order Code", "Customer", "Mobile", "Status", "Payment", "Source",
@@ -68,12 +72,13 @@ public class OrderExportService {
         TabularData table = buildTable(q, status, statusGroup, paymentStatus, from, to, creatorIds, source, excludeSource);
         boolean csv = "csv".equalsIgnoreCase(format);
         if (csv) {
-            return new ExportResult(csvExporter.export(table), "text/csv", "orders.csv");
+            return new ExportResult(csvExporter.export(table), "text/csv",
+                    ReportFilenames.of(FILE_TITLE, from, to, "csv"));
         }
         return new ExportResult(
                 excelExporter.export("Orders", table),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "orders.xlsx");
+                ReportFilenames.of(FILE_TITLE, from, to, "xlsx"));
     }
 
     private TabularData buildTable(String q, OrderStatus status, OrderStatusGroup statusGroup,
