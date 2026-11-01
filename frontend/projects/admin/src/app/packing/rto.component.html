@@ -57,10 +57,10 @@
 <!-- Scan review and RTO confirmation modal. Eligible scans wait here for comments and confirmation. -->
 @if (pendingPreview(); as preview) {
   <div class="pk-modal-backdrop" (click)="cancelPreview()">
-    <div class="card pk-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="rtoPreviewTitle">
+    <div class="card pk-modal" (click)="$event.stopPropagation()" adminDialog aria-labelledby="rtoPreviewTitle" (dialogClose)="cancelPreview()">
       <div class="card-header py-2">
         <h3 id="rtoPreviewTitle" class="card-title mb-0">
-          <i class="ti ti-rotate-2 me-2"></i>{{ preview.eligible ? 'Review and mark RTO' : 'Cannot mark RTO' }}
+          <i class="ti ti-rotate-2 me-2" aria-hidden="true"></i>{{ preview.eligible ? 'Review and mark RTO' : 'Cannot mark RTO' }}
         </h3>
       </div>
       <div class="card-body">
@@ -133,7 +133,7 @@
         }
       </div>
       <div class="card-footer d-flex gap-2 justify-content-end py-2">
-        <button type="button" class="btn btn-link" (click)="cancelPreview()">
+        <button type="button" class="btn btn-link" data-autofocus (click)="cancelPreview()">
           {{ preview.eligible ? 'Cancel' : 'Close' }}
         </button>
         @if (preview.eligible) {

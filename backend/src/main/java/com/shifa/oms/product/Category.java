@@ -11,8 +11,8 @@ import java.time.LocalDateTime;
 
 /**
  * A product category / collection, mapped to the {@code categories} table (see
- * the V3 Flyway migration). Categories power storefront discovery: a category
- * landing page is simply the shop filtered by {@link #slug}.
+ * the V3 Flyway migration). Categories group products in the catalog: a category
+ * view is simply the product list filtered by {@link #slug}.
  *
  * <p>The {@link #slug} is a URL-friendly identifier ({@code hair-and-skin}). The
  * {@link #active} flag allows an admin to soft-deactivate a category so it stops

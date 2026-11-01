@@ -9,6 +9,7 @@ import {
   ExceptionCategory,
   EXCEPTION_CATEGORY_LABELS,
 } from './exceptions.model';
+import { formatInr } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
@@ -175,8 +176,7 @@ export class ExceptionsComponent implements OnInit {
   }
 
   money(value: string | number | null | undefined): string {
-    const amount = Number(value ?? 0);
-    return Number.isFinite(amount) ? `₹${amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '₹0';
+    return formatInr(value, 2);
   }
 
   actionLabel(item: AdminExceptionItem): string {

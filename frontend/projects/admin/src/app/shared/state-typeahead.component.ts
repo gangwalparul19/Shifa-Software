@@ -10,6 +10,9 @@ import {
 } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 
+/** Gives every typeahead its own listbox/option ids so two instances never clash. */
+let stateTypeaheadCounter = 0;
+
 /**
  * Scores a candidate against a fuzzy query. Returns {@code null} when the query
  * is not a subsequence of the candidate (no match), otherwise a lower-is-better
@@ -90,7 +93,9 @@ export function fuzzyScore(candidate: string, query: string): number | null {
         class="form-control"
         role="combobox"
         aria-autocomplete="list"
-        [attr.aria-expanded]="open()"
+        [attr.aria-expanded]="popupOpen()"
+        [attr.aria-controls]="listboxId"
+        [attr.aria-activedescendant]="activeOptionId()"
         [class.is-invalid]="invalid"
         [value]="value()"
         [placeholder]="placeholder"
@@ -100,12 +105,13 @@ export function fuzzyScore(candidate: string, query: string): number | null {
         (focus)="onFocus()"
         (keydown)="onKeydown($event)"
       />
-      @if (open() && matches().length) {
-        <ul class="state-ta__menu" role="listbox">
+      @if (popupOpen()) {
+        <ul class="state-ta__menu" role="listbox" [id]="listboxId">
           @for (m of matches(); track m; let i = $index) {
             <li
               role="option"
               class="state-ta__opt"
+              [id]="optionId(i)"
               [class.is-active]="i === active()"
               [attr.aria-selected]="i === active()"
               (mousedown)="select(m)"
@@ -170,6 +176,8 @@ export class StateTypeaheadComponent implements ControlValueAccessor {
   protected readonly open = signal(false);
   protected readonly active = signal(0);
   protected readonly disabled = signal(false);
+  /** Id of the options listbox (referenced by the input's {@code aria-controls}). */
+  protected readonly listboxId = `state-ta-list-${++stateTypeaheadCounter}`;
   private readonly optionList = signal<string[]>([]);
 
   /** The fuzzy-ranked matches for the current query (top 8). */
@@ -184,6 +192,20 @@ export class StateTypeaheadComponent implements ControlValueAccessor {
     }
     scored.sort((a, b) => a.score - b.score || a.name.localeCompare(b.name));
     return scored.slice(0, 8).map((s) => s.name);
+  });
+
+  /** Whether the options popup is actually visible (open AND something to show). */
+  protected readonly popupOpen = computed(() => this.open() && this.matches().length > 0);
+
+  /** DOM id of the option at an index (for {@code aria-activedescendant}). */
+  protected optionId(index: number): string {
+    return `${this.listboxId}-opt-${index}`;
+  }
+
+  /** Id of the highlighted option, or null when the popup is closed / nothing is highlighted. */
+  protected readonly activeOptionId = computed<string | null>(() => {
+    const i = this.active();
+    return this.popupOpen() && i >= 0 && i < this.matches().length ? this.optionId(i) : null;
   });
 
   // --- ControlValueAccessor ------------------------------------------------

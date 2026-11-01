@@ -4,24 +4,22 @@ import { Observable } from 'rxjs';
 import { ApiClient } from 'core';
 import { filenameFromContentDisposition } from '../shared/blob-download.util';
 import { reportFilename } from '../shared/report-filename.util';
-import { ExportFormat, ReportResponse, ReportType, VyaparFormat } from './reports.model';
+import { ExportFormat, ReportResponse, ReportType } from './reports.model';
 
-/** A downloaded export: the file blob, its filename, and any server message. */
+/** A downloaded export: the file blob and its filename. */
 export interface DownloadResult {
   blob: Blob;
   filename: string;
-  /** The {@code X-Report-Message} header, e.g. the Vyapar "no orders" notice (Req 23.2). */
-  message: string | null;
 }
 
 /**
- * Data access for the reporting/export API (Req 20.1-20.4, 23.1, 23.2).
+ * Data access for the reporting/export API (Req 20.1-20.4).
  *
  * <p>JSON report reads go through the shared {@link ApiClient}; file exports use
  * {@link HttpClient} directly with a {@code blob} response so the downloaded
- * bytes and the {@code X-Report-Message} header (empty Vyapar range notice) are
- * both available. Both paths run through the global auth interceptor, so the
- * bearer token is attached and the server enforces role + salesperson scoping.
+ * bytes and the {@code Content-Disposition} filename are both available. Both
+ * paths run through the global auth interceptor, so the bearer token is attached
+ * and the server enforces role + salesperson scoping.
  */
 @Injectable({ providedIn: 'root' })
 export class ReportsService {
@@ -49,17 +47,6 @@ export class ReportsService {
     return this.download('/api/reports/export', params, reportFilename(type, from, to, format));
   }
 
-  /** Download the Vyapar billing export for a date range (Req 23.1, 23.2). */
-  vyapar(format: VyaparFormat, from: string | null, to: string | null): Observable<DownloadResult> {
-    let params = this.rangeParams(from, to);
-    params = params.set('format', format);
-    return this.download(
-      '/api/reports/vyapar',
-      params,
-      reportFilename('Vyapar Billing', from, to, format),
-    );
-  }
-
   private download(
     path: string,
     params: HttpParams,
@@ -75,7 +62,6 @@ export class ReportsService {
               filename:
                 filenameFromContentDisposition(response.headers.get('Content-Disposition')) ??
                 fallbackFilename,
-              message: response.headers.get('X-Report-Message'),
             });
             subscriber.complete();
           },

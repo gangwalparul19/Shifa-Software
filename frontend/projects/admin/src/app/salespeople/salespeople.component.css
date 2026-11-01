@@ -438,3 +438,8 @@
     flex: 1 1 0;
   }
 }
+
+/* The dialog panel itself is only a programmatic focus fallback (see adminDialog): no ring around it. */
+.shifa-drawer:focus-visible {
+  outline: none;
+}

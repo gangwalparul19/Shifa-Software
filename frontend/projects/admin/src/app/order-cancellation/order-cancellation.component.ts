@@ -10,6 +10,7 @@ import { StatePanelComponent } from '../shared/state-panel.component';
 import { StatusBadgeComponent, humanizeStatus } from '../shared/status-badge.component';
 import { ChannelLogoComponent } from '../shared/channel-logo.component';
 import { PaginationComponent } from '../shared/pagination.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import { ToastService } from '../shared/toast.service';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 
@@ -36,6 +37,7 @@ import { readPageSize, writePageSize } from '../shared/page-size.util';
     StatusBadgeComponent,
     ChannelLogoComponent,
     PaginationComponent,
+    DialogDirective,
   ],
   templateUrl: './order-cancellation.component.html',
   styleUrl: './order-cancellation.component.css',

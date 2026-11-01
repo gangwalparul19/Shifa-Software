@@ -59,8 +59,8 @@ public class SecurityConfig {
     }
 
     /**
-     * CORS policy for local development: permits the Angular storefront and admin
-     * dev servers (any localhost/127.0.0.1 port) to call the API with the
+     * CORS policy for local development: permits the Angular admin dev server
+     * (any localhost/127.0.0.1 port) to call the API with the
      * Authorization header. Production origins should be restricted via config.
      */
     @Bean
@@ -79,10 +79,10 @@ public class SecurityConfig {
         config.setAllowedOriginPatterns(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
-        // Content-Disposition carries the server's download filename and X-Report-Message the
-        // Vyapar "no orders" notice; a cross-origin browser can only read them when exposed.
+        // Content-Disposition carries the server's download filename; a cross-origin browser can
+        // only read it when exposed.
         config.setExposedHeaders(List.of("Authorization", JwtAuthenticationFilter.SESSION_IDLE_EXPIRES_HEADER,
-                "Content-Disposition", "X-Report-Message"));
+                "Content-Disposition"));
         config.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
@@ -95,7 +95,7 @@ public class SecurityConfig {
                                                    RestAuthenticationEntryPoint authenticationEntryPoint,
                                                    RestAccessDeniedHandler accessDeniedHandler) throws Exception {
         http
-                // Allow the Angular dev servers (storefront/admin) to call the API cross-origin.
+                // Allow the Angular admin dev server to call the API cross-origin.
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 // Stateless REST API: no CSRF token, no HTTP session.
                 .csrf(AbstractHttpConfigurer::disable)

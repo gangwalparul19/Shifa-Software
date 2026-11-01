@@ -4,7 +4,7 @@ import com.shifa.oms.product.ProductImage;
 
 /**
  * Image projection returned with product detail. {@code published} lets the
- * storefront decide whether to show the image or a placeholder (Req 1.4).
+ * client decide whether to show the image or a placeholder (Req 1.4).
  */
 public record ProductImageResponse(
         Long id,

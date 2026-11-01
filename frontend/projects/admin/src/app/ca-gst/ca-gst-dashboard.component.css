@@ -233,3 +233,8 @@
 
 /* A non-compliant HSN row is subtly highlighted. */
 .gst-table tbody tr.g1-flag td { background: #fff8ec; }
+
+/* The dialog panel itself is only a programmatic focus fallback (see adminDialog): no ring around it. */
+.shifa-drawer:focus-visible {
+  outline: none;
+}

@@ -96,7 +96,16 @@
        payment pill, and clear Approve / Reject actions (mockup-faithful). -->
   <div class="shifa-appr-cards d-md-none">
     @for (item of pageItems(); track item.id) {
-      <div class="shifa-appr shifa-appr--clickable" [class.is-selected]="isSelected(item.id)" (click)="openDetail(item)" tabindex="0" (keydown.enter)="openDetail(item)">
+      <div
+        class="shifa-appr shifa-appr--clickable"
+        [class.is-selected]="isSelected(item.id)"
+        role="button"
+        tabindex="0"
+        [attr.aria-label]="'Review order ' + item.orderCode + ' for ' + item.customerName"
+        (click)="openDetail(item)"
+        (keydown.enter)="openDetailFromKey($event, item)"
+        (keydown.space)="openDetailFromKey($event, item)"
+      >
         <!-- Top row: checkbox + order id/meta on the left, compact amount on the right. -->
         <div class="shifa-appr__top">
           <input
@@ -164,7 +173,14 @@
         </thead>
         <tbody>
           @for (item of pageItems(); track item.id) {
-            <tr class="shifa-rowlink" [class.is-selected]="isSelected(item.id)" (click)="openDetail(item)">
+            <tr
+              class="shifa-rowlink"
+              [class.is-selected]="isSelected(item.id)"
+              tabindex="0"
+              (click)="openDetail(item)"
+              (keydown.enter)="openDetailFromKey($event, item)"
+              (keydown.space)="openDetailFromKey($event, item)"
+            >
               <td (click)="$event.stopPropagation()">
                 <input
                   type="checkbox"
@@ -245,7 +261,7 @@
 <!-- Detail drawer -->
 @if (selected(); as item) {
   <div class="shifa-overlay" (click)="closeDetail()"></div>
-  <aside class="shifa-drawer sa-dr" role="dialog" aria-label="Order review">
+  <aside class="shifa-drawer sa-dr" adminDialog [attr.aria-label]="'Order review ' + item.orderCode" (dialogClose)="closeDetail()">
     <!-- Themed green header: avatar + order code + payment pill + date -->
     <header class="sa-dr__head">
       <span class="sa-dr__avatar">{{ initials(item.customerName) }}</span>
@@ -436,11 +452,11 @@
      must verify each here first, then the approval resumes. -->
 @if (verifyModalItems().length > 0) {
   <div class="shifa-overlay" (click)="closeVerifyModal()"></div>
-  <div class="shifa-modal sa-verify-modal" role="dialog" aria-label="Verify payment before approving">
+  <div class="shifa-modal sa-verify-modal" adminDialog aria-labelledby="approval-verify-title" (dialogClose)="closeVerifyModal()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0">
-          <i class="ti ti-shield-check me-1"></i>Verify payment first
+        <h3 class="card-title mb-0" id="approval-verify-title">
+          <i class="ti ti-shield-check me-1" aria-hidden="true"></i>Verify payment first
         </h3>
       </div>
       <div class="card-body">
@@ -511,7 +527,7 @@
           }
         </div>
         <div class="d-flex justify-content-end gap-2">
-          <button type="button" class="btn btn-outline-secondary" (click)="closeVerifyModal()">Cancel</button>
+          <button type="button" class="btn btn-outline-secondary" data-autofocus (click)="closeVerifyModal()">Cancel</button>
           <button
             type="button"
             class="btn btn-primary"
@@ -529,14 +545,14 @@
 <!-- Reject reason modal -->
 @if (rejectTarget(); as item) {
   <div class="shifa-overlay" (click)="cancelReject()"></div>
-  <div class="shifa-modal" role="dialog" aria-label="Reject order">
+  <div class="shifa-modal" adminDialog aria-labelledby="approval-reject-title" (dialogClose)="cancelReject()">
     <div class="card">
-      <div class="card-header"><h3 class="card-title mb-0">Reject {{ item.orderCode }}</h3></div>
+      <div class="card-header"><h3 class="card-title mb-0" id="approval-reject-title">Reject {{ item.orderCode }}</h3></div>
       <div class="card-body">
         <p class="text-secondary">Choose a reason category and add a note. Both are required, and the salesperson will see them.</p>
         <form [formGroup]="rejectForm" (ngSubmit)="confirmReject()" novalidate>
           <label class="form-label" for="rejectCategory">Reason</label>
-          <select id="rejectCategory" class="form-select mb-2" formControlName="category">
+          <select id="rejectCategory" class="form-select mb-2" formControlName="category" data-autofocus>
             @for (c of rejectCategories; track c.value) {
               <option [value]="c.value">{{ c.label }}</option>
             }
@@ -555,12 +571,5 @@
         </form>
       </div>
     </div>
-  </div>
-}
-
-<!-- Toast -->
-@if (toast(); as t) {
-  <div class="shifa-toast" [class.is-error]="t.kind === 'error'" role="status">
-    <i class="ti me-2" [class.ti-circle-check]="t.kind === 'ok'" [class.ti-alert-triangle]="t.kind === 'error'"></i>{{ t.text }}
   </div>
 }

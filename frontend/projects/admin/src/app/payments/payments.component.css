@@ -91,3 +91,9 @@
   height: 26px;
   color: #62707a;
 }
+
+/* The dialog panel itself is only a programmatic focus fallback (see adminDialog): no ring around it. */
+.pay-modal:focus-visible,
+.pay-modal-img:focus-visible {
+  outline: none;
+}

@@ -37,9 +37,9 @@
             aria-label="Search products"
           />
           @if (search.value) {
-            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
-              <i class="ti ti-x"></i>
-            </span>
+            <button type="button" class="input-icon-addon end shifa-clear" (click)="clearSearch()" aria-label="Clear search" title="Clear">
+              <i class="ti ti-x" aria-hidden="true"></i>
+            </button>
           }
         </div>
       </div>
@@ -269,10 +269,10 @@
 <!-- Add / Edit form modal -->
 @if (formOpen()) {
   <div class="shifa-overlay" (click)="closeForm()"></div>
-  <div class="shifa-modal" role="dialog" aria-label="Product form">
+  <div class="shifa-modal" adminDialog aria-labelledby="product-form-title" (dialogClose)="closeForm()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0">{{ editing() ? 'Edit product' : 'Add product' }}</h3>
+        <h3 class="card-title mb-0" id="product-form-title">{{ editing() ? 'Edit product' : 'Add product' }}</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeForm()" aria-label="Close"><i class="ti ti-x"></i></button>
         </div>
@@ -477,10 +477,10 @@
 <!-- Categories management modal -->
 @if (categoriesOpen()) {
   <div class="shifa-overlay" (click)="closeCategories()"></div>
-  <div class="shifa-modal shifa-modal-wide" role="dialog" aria-label="Manage categories">
+  <div class="shifa-modal shifa-modal-wide" adminDialog aria-labelledby="product-categories-title" (dialogClose)="closeCategories()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0">Categories</h3>
+        <h3 class="card-title mb-0" id="product-categories-title">Categories</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeCategories()" aria-label="Close"><i class="ti ti-x"></i></button>
         </div>
@@ -584,10 +584,10 @@
 <!-- ===================== Import CSV modal ===================== -->
 @if (importOpen()) {
   <div class="shifa-overlay" (click)="closeImport()"></div>
-  <div class="shifa-modal shifa-modal-wide" role="dialog" aria-label="Import products from CSV">
+  <div class="shifa-modal shifa-modal-wide" adminDialog aria-labelledby="product-import-title" (dialogClose)="closeImport()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-file-import me-2"></i>Import products from CSV</h3>
+        <h3 class="card-title mb-0" id="product-import-title"><i class="ti ti-file-import me-2" aria-hidden="true"></i>Import products from CSV</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeImport()" aria-label="Close">
             <i class="ti ti-x"></i>
@@ -733,13 +733,13 @@
 <!-- ===================== Product detail drawer (Req 9) ===================== -->
 @if (selectedProduct(); as product) {
   <div class="shifa-overlay" (click)="closeDetail()"></div>
-  <aside class="shifa-drawer" role="dialog" aria-label="Product detail">
+  <aside class="shifa-drawer" adminDialog aria-labelledby="product-detail-title" (dialogClose)="closeDetail()">
     <!-- Green header strip: back + title + edit pencil + close (Req 9.3) -->
     <header class="shifa-pd-head">
       <button type="button" class="shifa-pd-head__btn" (click)="closeDetail()" aria-label="Back">
         <i class="ti ti-arrow-left"></i>
       </button>
-      <h3 class="shifa-pd-head__title">Product Details</h3>
+      <h3 class="shifa-pd-head__title" id="product-detail-title">Product Details</h3>
       <div class="d-flex align-items-center gap-1">
         @if (canManage()) {
           <button type="button" class="shifa-pd-head__btn" (click)="editFromDetail()" aria-label="Edit product" title="Edit">

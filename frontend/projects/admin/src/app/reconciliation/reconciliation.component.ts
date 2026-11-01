@@ -22,6 +22,8 @@ import {
 } from './reconciliation.model';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { DialogDirective } from '../shared/dialog.directive';
+import { formatInr, formatInrOrDash } from '../shared/inr.pipe';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { SortableHeaderComponent } from '../shared/sortable-header.component';
@@ -61,6 +63,7 @@ type SettledFilter = 'all' | 'unsettled' | 'settled';
     DensityToggleComponent,
     PaginationComponent,
     SortableHeaderComponent,
+    DialogDirective,
   ],
   templateUrl: './reconciliation.component.html',
   styleUrl: './reconciliation.component.css',
@@ -177,6 +180,17 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
   protected readonly tab = signal<Tab>('receivables');
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
+
+  // --- Per-tab / per-list load state (each list shows its own loading + error + Retry) ---
+  protected readonly receivablesLoading = signal(true);
+  protected readonly receivablesError = signal<string | null>(null);
+  protected readonly unsettledLoading = signal(true);
+  protected readonly unsettledError = signal<string | null>(null);
+  protected readonly segregationError = signal<string | null>(null);
+  protected readonly claimsLoading = signal(true);
+  protected readonly claimsError = signal<string | null>(null);
+  /** The collectible summary and/or COD-aging widgets failed to load. */
+  protected readonly agingError = signal(false);
   protected readonly toast = signal<Toast | null>(null);
   protected readonly acting = signal(false);
 
@@ -266,17 +280,23 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Loads the COD aging buckets + SLA flag + the collectible summary (non-fatal on error). */
-  private refreshCodAging(): void {
+  /**
+   * Loads the COD aging buckets + SLA flag + the collectible summary. A failure is
+   * non-fatal for the rest of the page, but it is surfaced as a small banner with
+   * Retry ({@link agingError}) instead of the widgets silently not rendering.
+   */
+  protected refreshCodAging(): void {
+    this.agingError.set(false);
     this.service.collectibleSummary().subscribe({
       next: (c) => this.collectible.set(c),
-      error: () => this.collectible.set(null),
+      error: () => {
+        this.collectible.set(null);
+        this.agingError.set(true);
+      },
     });
     this.service.codAging().subscribe({
       next: (a) => this.codAging.set(a),
-      error: () => {
-        /* non-fatal; the aging widget simply doesn't render */
-      },
+      error: () => this.agingError.set(true),
     });
   }
 
@@ -293,8 +313,10 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     });
   }
 
-  private refreshReceivables(done?: () => void): void {
+  protected refreshReceivables(done?: () => void): void {
     const settled = this.filterSettled();
+    this.receivablesLoading.set(true);
+    this.receivablesError.set(null);
     this.service
       .receivablesPage({
         courier: this.filterCourier(),
@@ -312,9 +334,14 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
           this.receivables.set(res.content);
           this.recvTotalPages.set(res.totalPages);
           this.recvTotalElements.set(res.totalElements);
+          this.receivablesLoading.set(false);
           done?.();
         },
-        error: () => done?.(),
+        error: () => {
+          this.receivablesLoading.set(false);
+          this.receivablesError.set('Could not load receivables. Please try again.');
+          done?.();
+        },
       });
   }
 
@@ -376,7 +403,9 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
     );
   }
 
-  private refreshUnsettled(done?: () => void): void {
+  protected refreshUnsettled(done?: () => void): void {
+    this.unsettledLoading.set(true);
+    this.unsettledError.set(null);
     this.service.unsettledCod().subscribe({
       next: (rows) => {
         this.unsettled.set(rows);
@@ -384,23 +413,34 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
         if (this.unsettledPage() > maxPage) {
           this.unsettledPage.set(maxPage);
         }
+        this.unsettledLoading.set(false);
         done?.();
       },
-      error: () => done?.(),
+      error: () => {
+        this.unsettledLoading.set(false);
+        this.unsettledError.set('Could not load unsettled COD receivables. Please try again.');
+        done?.();
+      },
     });
   }
 
-  private refreshSegregation(done?: () => void): void {
+  protected refreshSegregation(done?: () => void): void {
+    this.segregationError.set(null);
     this.service.segregation().subscribe({
       next: (s) => {
         this.segregation.set(s);
         done?.();
       },
-      error: () => done?.(),
+      error: () => {
+        this.segregationError.set('Could not load the prepaid / COD split. Please try again.');
+        done?.();
+      },
     });
   }
 
-  private refreshClaims(done?: () => void): void {
+  protected refreshClaims(done?: () => void): void {
+    this.claimsLoading.set(true);
+    this.claimsError.set(null);
     this.service.pendingClaims().subscribe({
       next: (rows) => {
         this.claims.set(rows);
@@ -408,9 +448,14 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
         if (this.claimsPage() > maxPage) {
           this.claimsPage.set(maxPage);
         }
+        this.claimsLoading.set(false);
         done?.();
       },
-      error: () => done?.(),
+      error: () => {
+        this.claimsLoading.set(false);
+        this.claimsError.set('Could not load pending claims. Please try again.');
+        done?.();
+      },
     });
   }
 
@@ -484,16 +529,13 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
   // --- Helpers ------------------------------------------------------------
 
   money(value: Money | undefined | null): string {
-    if (value === undefined || value === null) {
-      return '₹0.00';
-    }
-    return `₹${value}`;
+    return formatInr(value, 2);
   }
 
   /** Sums a list of Money (decimal-string) values into a formatted ₹ total. */
   private sumMoney(values: (Money | undefined | null)[]): string {
     const total = values.reduce<number>((acc, v) => acc + Number(v ?? 0), 0);
-    return `₹${total.toFixed(2)}`;
+    return formatInr(total, 2);
   }
 
   courierLabel(name: string | null): string {
@@ -632,10 +674,7 @@ export class ReconciliationComponent implements OnInit, OnDestroy {
 
   /** Formats a remittance row's amount (may be a raw number, unlike Money elsewhere). */
   remittanceMoney(value: number | string | undefined | null): string {
-    if (value === undefined || value === null) {
-      return '—';
-    }
-    return `₹${value}`;
+    return formatInrOrDash(value, 2);
   }
 
   private describeRemittanceError(err: HttpErrorResponse): string {

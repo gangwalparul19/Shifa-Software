@@ -16,6 +16,8 @@ import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
+import { ToastService } from '../shared/toast.service';
+import { DialogDirective } from '../shared/dialog.directive';
 import { ChannelLogoComponent } from '../shared/channel-logo.component';
 import { NoteCellComponent } from '../shared/note-cell.component';
 import {
@@ -25,11 +27,6 @@ import {
   writeSourceFilter,
 } from '../shared/source-filter.util';
 import { DELIVERY_METHOD_OPTIONS } from '../orders/orders.model';
-
-interface Toast {
-  kind: 'ok' | 'error';
-  text: string;
-}
 
 /**
  * Admin approval queue view (Req 9.1-9.4).
@@ -55,6 +52,7 @@ interface Toast {
     RowActionsMenuComponent,
     ChannelLogoComponent,
     NoteCellComponent,
+    DialogDirective,
   ],
   templateUrl: './approval-queue.component.html',
   styleUrl: './approval-queue.component.css',
@@ -65,6 +63,7 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
   private readonly service = inject(ApprovalService);
   private readonly fb = inject(FormBuilder);
   private readonly confirmService = inject(ConfirmService);
+  private readonly toasts = inject(ToastService);
   protected readonly events = inject(AdminEventsService);
   private readonly blobs = inject(AuthenticatedBlobService);
 
@@ -86,7 +85,6 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
 
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
-  protected readonly toast = signal<Toast | null>(null);
   protected readonly acting = signal(false);
 
   // --- Client-side paging -------------------------------------------------
@@ -489,8 +487,6 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     { value: 'OTHER', label: 'Other' },
   ];
 
-  private toastTimer?: ReturnType<typeof setTimeout>;
-
   constructor() {
     // A status change elsewhere may add/remove pending orders here; surface a
     // subtle, non-disruptive refresh pill rather than reloading mid-review.
@@ -526,9 +522,6 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.revokeScreenshot();
     this.revokeModalShots();
-    if (this.toastTimer) {
-      clearTimeout(this.toastTimer);
-    }
   }
 
   load(): void {
@@ -604,6 +597,19 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     // coerce any non-QuikShipX value to IN_HOUSE for the picker default.
     this.deliveryMethod.set(item.deliveryMethod === 'QUIKSHIPX' ? 'QUIKSHIPX' : 'IN_HOUSE');
     this.loadScreenshot(item);
+  }
+
+  /**
+   * Keyboard activation (Enter / Space) for a clickable queue row or card. Only acts when the
+   * row itself has focus, so a key press on an inner checkbox or the actions menu does not
+   * also open the review drawer.
+   */
+  openDetailFromKey(event: Event, item: ApprovalQueueItem): void {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    event.preventDefault();
+    this.openDetail(item);
   }
 
   /** Per-row kebab actions (row click opens the detail, so it isn't repeated here). */
@@ -833,11 +839,12 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     this.page.set(0);
   }
 
-  private showToast(kind: Toast['kind'], text: string): void {
-    this.toast.set({ kind, text });
-    if (this.toastTimer) {
-      clearTimeout(this.toastTimer);
+  /** Shows feedback through the app-wide toast host ('ok' → success, 'error' → error). */
+  private showToast(kind: 'ok' | 'error', text: string): void {
+    if (kind === 'ok') {
+      this.toasts.success(text);
+    } else {
+      this.toasts.error(text);
     }
-    this.toastTimer = setTimeout(() => this.toast.set(null), 4000);
   }
 }

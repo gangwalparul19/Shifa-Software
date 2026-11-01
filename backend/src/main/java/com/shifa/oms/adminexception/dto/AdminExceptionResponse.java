@@ -33,7 +33,7 @@ public record AdminExceptionResponse(
             // rows like INSIGHT), so the admin sees who triggered each exception.
             String salespersonName,
             // Where the order originated (SALESPERSON / SHOPIFY / STORE /
-            // STOREFRONT), or null for a non-order-backed row (INSIGHT). Drives
+            // STOREFRONT [legacy]), or null for a non-order-backed row (INSIGHT). Drives
             // the Portal-vs-Shopify filter on the Exception Center.
             com.shifa.oms.order.OrderSource source
     ) {

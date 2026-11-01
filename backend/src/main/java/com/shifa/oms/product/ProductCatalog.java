@@ -8,7 +8,7 @@ import java.util.Objects;
  * Pure catalog/search predicate (Req 1.1, 1.3, 6.4).
  *
  * <p>This mirrors, in testable pure logic, the visibility + substring rule the
- * storefront applies: only {@link ProductVisibility#PUBLISHED} products are ever
+ * catalog applies: only {@link ProductVisibility#PUBLISHED} products are ever
  * exposed, and a search matches when its (trimmed, case-insensitive) query is a
  * substring of the product name or SKU. The {@link ProductRepository} pushes the
  * same rule into SQL; keeping the canonical definition here lets it be
@@ -19,7 +19,7 @@ public final class ProductCatalog {
     private ProductCatalog() {
     }
 
-    /** Whether a product is visible in the public storefront (Req 6.4). */
+    /** Whether a product is visible in the catalog (Req 6.4). */
     public static boolean isVisible(Product product) {
         Objects.requireNonNull(product, "product");
         return product.getVisibility() == ProductVisibility.PUBLISHED;

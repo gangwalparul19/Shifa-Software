@@ -3,7 +3,6 @@ import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService, MfaChallenge } from 'core';
-import * as QRCode from 'qrcode';
 
 /**
  * Admin/staff login with optional TOTP multi-factor (Google Authenticator).
@@ -136,6 +135,8 @@ export class LoginComponent {
       return;
     }
     try {
+      // Loaded on demand: only a user enrolling in MFA ever needs the QR library.
+      const QRCode = await import('qrcode');
       const dataUri = await QRCode.toDataURL(otpauthUri, { width: 220, margin: 1 });
       this.qrDataUri.set(dataUri);
     } catch {

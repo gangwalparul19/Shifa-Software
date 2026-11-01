@@ -1,0 +1,221 @@
+@if (!hasSales()) {
+  <admin-state-panel
+    variant="empty"
+    [card]="true"
+    icon="ti-package"
+    title="No product sales in this period"
+    message="Choose a longer period, or check back once orders have been placed."
+  />
+} @else {
+  <p class="text-secondary small mb-3">Product sales from {{ periodLabel() }}.</p>
+
+  <!-- ============================ Headline numbers ============================ -->
+  <div class="row row-cards mb-3">
+    <div class="col-6 col-md-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="subheader">Units sold</div>
+          <div class="h1 m-0">{{ num(report().totalUnits) }}</div>
+          <div class="text-secondary small">all products together</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="subheader">Product revenue</div>
+          <div class="h1 m-0">{{ money(report().totalRevenue) }}</div>
+          <div class="text-secondary small">from the products below</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="subheader">Products sold</div>
+          <div class="h1 m-0">{{ num(report().productsSold) }}</div>
+          <div class="text-secondary small">different products with a sale</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="subheader">Top 3 products' share</div>
+          <div class="h1 m-0">{{ pct(report().top3RevenueSharePct) }}</div>
+          <div class="text-secondary small">of product revenue</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="subheader">Orders with 2+ products</div>
+          <div class="h1 m-0">{{ pct(report().multiProductOrdersPct) }}</div>
+          <div class="text-secondary small">{{ num(report().multiProductOrders) }} orders</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="subheader">Average units per order</div>
+          <div class="h1 m-0">{{ avg(report().avgUnitsPerOrder) }}</div>
+          <div class="text-secondary small">items in a typical order</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ Pareto chart ============================ -->
+  <div class="card mb-3">
+    <div class="card-header py-2">
+      <h3 class="card-title mb-0">Top products and their share of revenue</h3>
+    </div>
+    <div class="card-body">
+      @if (paretoChart(); as opts) {
+        <div class="pt-chart" role="img" [attr.aria-label]="paretoLabel()">
+          <apx-chart
+            [series]="opts.series"
+            [chart]="opts.chart"
+            [colors]="opts.colors"
+            [dataLabels]="opts.dataLabels"
+            [stroke]="opts.stroke"
+            [plotOptions]="opts.plotOptions"
+            [markers]="opts.markers"
+            [xaxis]="opts.xaxis"
+            [yaxis]="opts.yaxis"
+            [legend]="opts.legend"
+            [grid]="opts.grid"
+            [tooltip]="opts.tooltip"
+          />
+        </div>
+        <p class="text-secondary small mb-0 mt-2">
+          Columns show each product's revenue. The line adds the products up from the best seller down, so you can see how
+          much of your revenue the top few make together. The table below has the same figures.
+        </p>
+      }
+    </div>
+  </div>
+
+  <!-- ============================ All products ============================ -->
+  <div class="card mb-3">
+    <div class="card-header py-2">
+      <h3 class="card-title mb-0">All products</h3>
+    </div>
+    <div class="card-body py-2 border-bottom small text-secondary">
+      <strong class="text-body">Class:</strong>
+      <span class="badge tone-green mx-1">A</span> core products that make the first 80% of revenue;
+      <span class="badge tone-blue mx-1">B</span> the next 15%;
+      <span class="badge tone-grey mx-1">C</span> the long tail.
+    </div>
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table">
+        <caption class="visually-hidden">
+          Products sold in the period, with units, revenue, share of revenue, class and change from the previous period
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Product</th>
+            <th scope="col" class="text-end">Units</th>
+            <th scope="col" class="text-end">Revenue</th>
+            <th scope="col">Share</th>
+            <th scope="col" class="text-center">Class</th>
+            <th scope="col" class="text-end">vs previous period</th>
+            <th scope="col" class="text-end d-none d-md-table-cell">Buyers</th>
+            <th scope="col" class="text-end d-none d-md-table-cell">Repeat buyers</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (p of pageRows(); track $index) {
+            <tr>
+              <td class="pt-name fw-medium">{{ p.name }}</td>
+              <td class="text-end">{{ num(p.units) }}</td>
+              <td class="text-end fw-semibold">{{ money(p.revenue) }}</td>
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <div class="pt-bar d-none d-sm-block" aria-hidden="true">
+                    <div class="pt-bar__fill" [style.width.%]="barWidth(p.revenueSharePct)"></div>
+                  </div>
+                  <span class="text-nowrap">{{ pct(p.revenueSharePct) }}</span>
+                </div>
+                <div class="small text-secondary d-none d-md-block">running {{ pct(p.cumulativeSharePct) }}</div>
+              </td>
+              <td class="text-center">
+                <span class="badge {{ abcTone(p.abcClass) }}" [attr.title]="abcTitle(p.abcClass)">{{ p.abcClass }}</span>
+              </td>
+              <td class="text-end">
+                @if (p.revenueGrowthPct !== null) {
+                  <span class="fw-semibold text-nowrap" [class]="growthTone(p.revenueGrowthPct)">
+                    <i class="ti {{ growthIcon(p.revenueGrowthPct) }}" aria-hidden="true"></i>
+                    {{ growthText(p.revenueGrowthPct) }}
+                  </span>
+                } @else {
+                  <span class="text-secondary" title="No sales in the previous period">—</span>
+                }
+                <div class="small text-secondary">was {{ money(p.previousRevenue) }}</div>
+              </td>
+              <td class="text-end d-none d-md-table-cell">{{ num(p.buyers) }}</td>
+              <td class="text-end d-none d-md-table-cell">{{ pct(p.repeatBuyerPct) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <admin-pagination
+      [page]="currentPage()"
+      [totalPages]="totalPages()"
+      [totalElements]="sorted().length"
+      [size]="size()"
+      (pageChange)="setPage($event)"
+      (sizeChange)="setSize($event)"
+    />
+  </div>
+
+  <!-- ============================ Bought together ============================ -->
+  <div class="card">
+    <div class="card-header py-2">
+      <h3 class="card-title mb-0">Bought together</h3>
+    </div>
+    @if (report().pairs.length === 0) {
+      <div class="card-body text-secondary text-center py-4">
+        No pair of products was bought together often enough in this period to show here.
+      </div>
+    } @else {
+      <div class="card-body py-2 border-bottom small text-secondary">
+        Lift above 1 means the pair sells together more than chance; good candidates for bundles.
+      </div>
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+          <caption class="visually-hidden">
+            Pairs of products that were bought in the same order
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Products</th>
+              <th scope="col" class="text-end">Orders together</th>
+              <th scope="col" class="text-end">Share of orders</th>
+              <th scope="col" class="text-end">Bought together</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (pair of report().pairs; track $index) {
+              <tr>
+                <td class="pt-name">
+                  <div class="fw-medium">{{ pair.productA }}</div>
+                  <div class="text-secondary">+ {{ pair.productB }}</div>
+                </td>
+                <td class="text-end">{{ num(pair.orders) }}</td>
+                <td class="text-end">{{ pct(pair.supportPct) }}</td>
+                <td class="text-end">
+                  <span class="fw-semibold text-nowrap">{{ liftValue(pair) }}</span>
+                  <span class="d-block small text-secondary">{{ liftNote(pair) }}</span>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+}

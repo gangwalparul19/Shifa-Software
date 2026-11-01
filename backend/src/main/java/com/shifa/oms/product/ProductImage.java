@@ -11,7 +11,7 @@ import jakarta.persistence.Table;
  * An image belonging to a {@link Product}, mapped to the {@code product_images}
  * table (see the V1 Flyway migration).
  *
- * <p>The {@link #published} flag drives the storefront placeholder logic
+ * <p>The {@link #published} flag drives the image placeholder logic
  * (Req 1.4): a product with no published image is shown with a placeholder in
  * the UI. {@link #sortOrder} determines display order, so the primary image is
  * the published one with the lowest sort order.

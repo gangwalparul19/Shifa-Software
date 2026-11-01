@@ -26,9 +26,9 @@
             aria-label="Search inventory"
           />
           @if (search.value) {
-            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
-              <i class="ti ti-x"></i>
-            </span>
+            <button type="button" class="input-icon-addon end shifa-clear" (click)="clearSearch()" aria-label="Clear search" title="Clear">
+              <i class="ti ti-x" aria-hidden="true"></i>
+            </button>
           }
         </div>
       </div>
@@ -222,10 +222,10 @@
 <!-- ===================== Restock modal ===================== -->
 @if (modal() === 'restock' && activeProduct(); as product) {
   <div class="shifa-overlay" (click)="closeModal()"></div>
-  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Restock product">
+  <div class="shifa-modal shifa-modal--sm" adminDialog aria-labelledby="inventory-restock-title" (dialogClose)="closeModal()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-package-import me-2"></i>Restock</h3>
+        <h3 class="card-title mb-0" id="inventory-restock-title"><i class="ti ti-package-import me-2" aria-hidden="true"></i>Restock</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeModal()" aria-label="Close">
             <i class="ti ti-x"></i>
@@ -281,10 +281,10 @@
 <!-- ===================== Adjust modal ===================== -->
 @if (modal() === 'adjust' && activeProduct(); as product) {
   <div class="shifa-overlay" (click)="closeModal()"></div>
-  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Adjust stock">
+  <div class="shifa-modal shifa-modal--sm" adminDialog aria-labelledby="inventory-adjust-title" (dialogClose)="closeModal()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-adjustments me-2"></i>Adjust stock</h3>
+        <h3 class="card-title mb-0" id="inventory-adjust-title"><i class="ti ti-adjustments me-2" aria-hidden="true"></i>Adjust stock</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeModal()" aria-label="Close">
             <i class="ti ti-x"></i>
@@ -378,10 +378,10 @@
 <!-- ===================== History modal ===================== -->
 @if (modal() === 'history' && activeProduct(); as product) {
   <div class="shifa-overlay" (click)="closeModal()"></div>
-  <div class="shifa-modal shifa-modal--wide" role="dialog" aria-label="Stock movement history">
+  <div class="shifa-modal shifa-modal--wide" adminDialog aria-labelledby="inventory-history-title" (dialogClose)="closeModal()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-history me-2"></i>Stock history — {{ product.name }}</h3>
+        <h3 class="card-title mb-0" id="inventory-history-title"><i class="ti ti-history me-2" aria-hidden="true"></i>Stock history — {{ product.name }}</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeModal()" aria-label="Close">
             <i class="ti ti-x"></i>

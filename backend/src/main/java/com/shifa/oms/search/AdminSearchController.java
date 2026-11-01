@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>{@code GET /api/admin/search?q=} returns a unified, capped, read-only set
  * of matching orders, products, and customers for the admin omni-search.
  * Restricted to authenticated staff roles (any admin/back-office role, never a
- * storefront {@code CUSTOMER}) via method security. Order hits are scoped to
+ * legacy {@code CUSTOMER} account) via method security. Order hits are scoped to
  * the caller exactly like the Orders page (see {@link GlobalSearchService}).
  */
 @RestController

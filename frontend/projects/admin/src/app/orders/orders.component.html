@@ -81,9 +81,9 @@
             aria-label="Search orders"
           />
           @if (search.value) {
-            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
-              <i class="ti ti-x"></i>
-            </span>
+            <button type="button" class="input-icon-addon end shifa-clear" (click)="clearSearch()" aria-label="Clear search" title="Clear">
+              <i class="ti ti-x" aria-hidden="true"></i>
+            </button>
           }
         </div>
       </div>
@@ -348,9 +348,10 @@
         class="shifa-oc"
         role="button"
         tabindex="0"
+        [attr.aria-label]="'Open order ' + order.orderCode + ' for ' + order.customerName"
         (click)="openDetail(order)"
-        (keydown.enter)="openDetail(order)"
-        (keydown.space)="$event.preventDefault(); openDetail(order)"
+        (keydown.enter)="openDetailFromKey($event, order)"
+        (keydown.space)="openDetailFromKey($event, order)"
       >
         <div class="shifa-oc__r1">
           <span class="shifa-oc__code">
@@ -457,7 +458,14 @@
         </thead>
         <tbody>
           @for (order of visibleOrders(); track order.id) {
-            <tr class="clickable" [class.table-active]="isSelected(order.id)" (click)="openDetail(order)">
+            <tr
+              class="clickable"
+              [class.table-active]="isSelected(order.id)"
+              tabindex="0"
+              (click)="openDetail(order)"
+              (keydown.enter)="openDetailFromKey($event, order)"
+              (keydown.space)="openDetailFromKey($event, order)"
+            >
               <td class="d-none d-md-table-cell" (click)="$event.stopPropagation()">
                 <input
                   type="checkbox"
@@ -577,11 +585,19 @@
 <!-- Order-detail drawer (mobile-first redesign — mockup-faithful) -->
 @if (detailLoading() || selectedDetail() || detailError()) {
   <div class="shifa-overlay" (click)="closeDetail()"></div>
-  <aside class="shifa-drawer shifa-od" role="dialog" aria-label="Order details">
+  <aside class="shifa-drawer shifa-od" adminDialog aria-label="Order details" (dialogClose)="closeDetail()">
     @if (detailLoading()) {
       <div class="shifa-drawer__body"><div class="skeleton skeleton-line w-60 mb-3"></div><div class="skeleton skeleton-card"></div></div>
     } @else if (detailError()) {
-      <div class="shifa-drawer__body"><div class="alert alert-danger">{{ detailError() }}</div></div>
+      <div class="shifa-drawer__body">
+        <div class="alert alert-danger" role="alert">{{ detailError() }}</div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-primary" (click)="retryDetail($event)">
+            <i class="ti ti-refresh me-1" aria-hidden="true"></i> Retry
+          </button>
+          <button type="button" class="btn btn-outline-secondary" (click)="closeDetail()">Close</button>
+        </div>
+      </div>
     } @else if (selectedDetail(); as order) {
       <!-- (1) Green header strip: back · title · print/invoice -->
       <header class="shifa-drawer__head shifa-od__head">
@@ -1600,10 +1616,10 @@
 <!-- ===================== Create return modal ===================== -->
 @if (createReturnOpen() && selectedDetail(); as order) {
   <div class="shifa-overlay" (click)="closeCreateReturn()"></div>
-  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Create return">
+  <div class="shifa-modal shifa-modal--sm" adminDialog aria-labelledby="orders-return-title" (dialogClose)="closeCreateReturn()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-arrow-back-up me-2"></i>Create return</h3>
+        <h3 class="card-title mb-0" id="orders-return-title"><i class="ti ti-arrow-back-up me-2" aria-hidden="true"></i>Create return</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeCreateReturn()" aria-label="Close">
             <i class="ti ti-x"></i>
@@ -1621,7 +1637,7 @@
         <form (ngSubmit)="submitCreateReturn()" novalidate [formGroup]="returnForm">
           <div class="mb-3">
             <label class="form-label required">Reason</label>
-            <input type="text" class="form-control" formControlName="reason" maxlength="255"
+            <input type="text" class="form-control" formControlName="reason" maxlength="255" data-autofocus
               placeholder="e.g. Damaged on arrival" autocomplete="off"
               [class.is-invalid]="returnForm.controls.reason.touched && returnForm.controls.reason.invalid" />
             @if (returnForm.controls.reason.touched && returnForm.controls.reason.invalid) {
@@ -1651,10 +1667,10 @@
 <!-- ===================== Assign courier modal (manual, ADMIN-only) ===================== -->
 @if (assignCourierOpen() && selectedDetail(); as order) {
   <div class="shifa-overlay" (click)="closeAssignCourier()"></div>
-  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Assign courier">
+  <div class="shifa-modal shifa-modal--sm" adminDialog aria-labelledby="orders-courier-title" (dialogClose)="closeAssignCourier()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-truck-loading me-2"></i>Assign delivery partner</h3>
+        <h3 class="card-title mb-0" id="orders-courier-title"><i class="ti ti-truck-loading me-2" aria-hidden="true"></i>Assign delivery partner</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeAssignCourier()" aria-label="Close">
             <i class="ti ti-x"></i>
@@ -1675,6 +1691,7 @@
             <label class="form-label required">Delivery partner</label>
             <select
               class="form-select"
+              data-autofocus
               [ngModel]="courierSelectValue()"
               [ngModelOptions]="{ standalone: true }"
               (ngModelChange)="onCourierSelectChange($event)"

@@ -38,6 +38,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -169,9 +170,19 @@ public class Gstr1ReturnService {
         List<CreditNote> notes = new ArrayList<>();
         LocalDateTime from = p.from().atStartOfDay();
         LocalDateTime to = p.to().plusDays(1).atStartOfDay();
-        for (OrderReturn r : orderReturnRepository.findByStatusAndCreatedAtBetween(
-                ReturnStatus.REFUNDED, from, to)) {
-            OrderEntity original = orderRepository.findById(r.getOrderId()).orElse(null);
+        List<OrderReturn> refunded = orderReturnRepository.findByStatusAndCreatedAtBetween(
+                ReturnStatus.REFUNDED, from, to);
+        // Load every returned order, with its lines, in ONE statement rather than a findById (plus a
+        // lazy line-item load) per credit note.
+        Map<Long, OrderEntity> originals = new HashMap<>();
+        if (!refunded.isEmpty()) {
+            List<Long> ids = refunded.stream().map(OrderReturn::getOrderId).distinct().toList();
+            for (OrderEntity o : orderRepository.findByIdInWithLineItems(ids)) {
+                originals.put(o.getId(), o);
+            }
+        }
+        for (OrderReturn r : refunded) {
+            OrderEntity original = originals.get(r.getOrderId());
             if (original == null) {
                 continue;
             }
@@ -358,7 +369,10 @@ public class Gstr1ReturnService {
     private List<OrderEntity> allOrders(Period p) {
         LocalDateTime fromTs = p.from().atStartOfDay();
         LocalDateTime toTs = p.to().plusDays(1).atStartOfDay();
-        return orderRepository.findByCreatedAtBetween(fromTs, toTs);
+        // Fetch-join the line items: every order is classified from its lines (toGstOrder /
+        // invoiceValue), and a plain finder lazy-loads them with one extra query PER ORDER for the
+        // whole filing period. GstAccountingService already does the same for its own period load.
+        return orderRepository.findByCreatedAtBetweenWithLineItems(fromTs, toTs);
     }
 
     private static boolean within(LocalDateTime ts, Period p) {

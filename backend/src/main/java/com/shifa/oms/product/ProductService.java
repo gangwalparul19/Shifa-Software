@@ -413,7 +413,7 @@ public class ProductService {
 
     /**
      * Product detail, only when the product is published; otherwise a 404 so
-     * hidden/unavailable products are indistinguishable to the storefront
+     * hidden/unavailable products are indistinguishable from missing ones
      * (Req 1.2, 1.7).
      */
     @Transactional(readOnly = true)

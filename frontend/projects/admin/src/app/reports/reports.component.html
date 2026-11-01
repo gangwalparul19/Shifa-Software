@@ -1,6 +1,6 @@
 <admin-page-header
   title="Reports"
-  subtitle="Daily, monthly, product-wise, state-wise and salesperson-wise reports with Excel, PDF and Vyapar exports."
+  subtitle="Daily, monthly, product-wise, state-wise and salesperson-wise reports with Excel and PDF exports."
   [breadcrumbs]="[{ label: 'Reports' }]"
 />
 
@@ -86,7 +86,7 @@
     }
   </div>
 
-  <!-- Export — a 2×2 grid so all four options stay fully visible on any width -->
+  <!-- Export — Excel and PDF side by side -->
   <div class="card-footer">
     <div class="text-secondary small mb-2"><i class="ti ti-download me-1"></i> Export</div>
     <div class="row g-2 shifa-export-grid">
@@ -100,25 +100,17 @@
           <i class="ti ti-file-type-pdf me-1"></i> PDF
         </button>
       </div>
-      <!-- Vyapar (billing) export is ADMIN/ACCOUNTANT-only — hidden for salespeople. -->
-      @if (!isSalesperson()) {
-        <div class="col-6">
-          <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-nowrap" [disabled]="exporting()" (click)="exportVyapar('csv')">
-            <i class="ti ti-file-text me-1"></i> Vyapar CSV
-          </button>
-        </div>
-        <div class="col-6">
-          <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-nowrap" [disabled]="exporting()" (click)="exportVyapar('xlsx')">
-            <i class="ti ti-file-spreadsheet me-1"></i> Vyapar Excel
-          </button>
-        </div>
-      }
     </div>
   </div>
 </form>
 
 @if (loadError(); as err) {
-  <div class="alert alert-danger d-flex align-items-center" role="alert"><i class="ti ti-alert-triangle me-2"></i>{{ err }}</div>
+  <div class="alert alert-danger d-flex align-items-center justify-content-between gap-2" role="alert">
+    <span><i class="ti ti-alert-triangle me-2"></i>{{ err }}</span>
+    <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" (click)="generate()" [disabled]="loading()">
+      <i class="ti ti-refresh me-1"></i> Retry
+    </button>
+  </div>
 }
 
 <!-- Customers tab has no backing report yet — graceful "coming soon" (Req 12.1) -->

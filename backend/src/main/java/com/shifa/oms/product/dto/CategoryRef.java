@@ -4,7 +4,7 @@ import com.shifa.oms.product.Category;
 
 /**
  * Lightweight category reference embedded in a {@link ProductResponse}
- * (id/slug/name), so the storefront can render and link a product's category
+ * (id/slug/name), so a client can render and link a product's category
  * without a second request. Null when the product is uncategorised.
  */
 public record CategoryRef(

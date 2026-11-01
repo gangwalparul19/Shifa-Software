@@ -13,7 +13,7 @@ import java.util.Optional;
  *
  * <p>The catalog/search finders apply the same visibility + substring rule as
  * the pure {@link ProductCatalog} predicate (Req 1.1, 1.3, 6.4), pushed into SQL
- * so the storefront never sees hidden products.
+ * so catalog and order-entry callers never see hidden products.
  */
 public interface ProductRepository extends JpaRepository<Product, Long>,
         JpaSpecificationExecutor<Product> {
@@ -63,7 +63,7 @@ public interface ProductRepository extends JpaRepository<Product, Long>,
         String getCategoryName();
     }
 
-    /** A single product visible in the storefront, else empty (Req 1.2, 1.7). */
+    /** A single product visible in the catalog, else empty (Req 1.2, 1.7). */
     Optional<Product> findByIdAndVisibility(Long id, ProductVisibility visibility);
 
     /**

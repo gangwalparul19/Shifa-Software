@@ -16,8 +16,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       (default {@code "Shifa Herbal Remedies"})
  * @param tagline        the short brand tagline shown under the wordmark
  *                       (default {@code "Pure herbal wellness, delivered."})
- * @param siteUrl        the public storefront URL used for every CTA/link
- *                       (default {@code "https://www.shifaherbals.com"})
+ * @param siteUrl        the public website URL used for links in emails
+ *                       (default {@code "https://www.shifaherbals.com"}; note this
+ *                       fallback differs from the one documented on
+ *                       {@code MailProperties.Brand}, so the real value is set
+ *                       per environment via {@code app.mail.brand.site-url})
  * @param logoUrl        absolute URL of a logo image; blank ⇒ render the styled
  *                       wordmark instead of an {@code <img>} (default blank)
  * @param supportEmail   the support email shown in the footer

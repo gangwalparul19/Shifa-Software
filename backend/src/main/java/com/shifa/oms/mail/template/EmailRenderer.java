@@ -602,7 +602,7 @@ public class EmailRenderer {
     // Small formatting utilities
     // ---------------------------------------------------------------------
 
-    /** The storefront orders URL used by the confirmation CTA. */
+    /** The orders URL used by the confirmation CTA. */
     private String ordersUrl() {
         String base = brand.siteUrl();
         if (base == null || base.isBlank()) {

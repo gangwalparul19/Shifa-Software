@@ -2,7 +2,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
-import { ApiError, AuthService, Product, Role, paiseToMoney, toPaise } from 'core';
+import { ApiError, AuthService, Product, Role } from 'core';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { StateTypeaheadComponent } from '../shared/state-typeahead.component';
@@ -13,6 +13,15 @@ import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { CatalogService } from './catalog.service';
 import { OrdersService } from './orders.service';
+import {
+  discountPaiseOf,
+  formatPaise,
+  lineTotalsPaise,
+  orderTotalPaiseOf,
+  priceBandOf,
+  rateBandError,
+  subtotalPaiseOf,
+} from './order-totals';
 import {
   CreateOrderLineItem,
   LEAD_SOURCE_OPTIONS,
@@ -334,12 +343,7 @@ export class EditOrderComponent implements OnInit {
 
   lineBand(index: number): { min: number; max: number; wtMl: string | null } | null {
     const p = this.productForLine(index);
-    if (!p) {
-      return null;
-    }
-    const min = Number(p.minimumRate ?? p.salePrice);
-    const max = Number(p.mrp);
-    return { min, max, wtMl: p.wtMl ?? null };
+    return p ? priceBandOf(p) : null;
   }
 
   lineRateError(index: number): string | null {
@@ -348,20 +352,7 @@ export class EditOrderComponent implements OnInit {
       return null;
     }
     const raw = this.items.at(index).controls['rate'].value as number | null;
-    if (raw === null || raw === undefined || (raw as unknown) === '') {
-      return null;
-    }
-    const rate = Number(raw);
-    if (Number.isNaN(rate)) {
-      return null;
-    }
-    if (rate < band.min) {
-      return `Below minimum ₹${band.min}`;
-    }
-    if (band.max && rate > band.max) {
-      return `Above MRP ₹${band.max}`;
-    }
-    return null;
+    return rateBandError(raw, band);
   }
 
   hasBandErrors(): boolean {
@@ -375,34 +366,22 @@ export class EditOrderComponent implements OnInit {
 
   // --- Totals ----------------------------------------------------------------
 
-  protected readonly lineTotals = computed(() =>
-    this.model().items.map((it) => toPaise(it.rate ?? 0) * (it.quantity || 0)),
-  );
+  protected readonly lineTotals = computed(() => lineTotalsPaise(this.model().items));
 
-  protected readonly subtotalPaise = computed(() =>
-    this.lineTotals().reduce((sum, cents) => sum + cents, 0),
-  );
+  protected readonly subtotalPaise = computed(() => subtotalPaiseOf(this.lineTotals()));
 
   protected readonly discountPaise = computed(() => {
     const sub = this.subtotalPaise();
     const m = this.model();
-    let d = 0;
-    if (m.discountType === 'PERCENT') {
-      const pct = Math.max(0, Math.min(100, m.discountValue || 0));
-      d = Math.round((sub * pct) / 100);
-    } else if (m.discountType === 'FLAT') {
-      d = toPaise(m.discountValue || 0);
-    }
-    return Math.max(0, Math.min(sub, d));
+    return discountPaiseOf(sub, m.discountType, m.discountValue);
   });
 
-  protected readonly orderTotalPaise = computed(() => {
-    const net = this.subtotalPaise() - this.discountPaise();
-    return Math.round(net / 100) * 100;
-  });
+  protected readonly orderTotalPaise = computed(() =>
+    orderTotalPaiseOf(this.subtotalPaise(), this.discountPaise()),
+  );
 
   formatMoney(paise: number): string {
-    return `₹${paiseToMoney(paise)}`;
+    return formatPaise(paise);
   }
 
   // --- Validation helpers ------------------------------------------------

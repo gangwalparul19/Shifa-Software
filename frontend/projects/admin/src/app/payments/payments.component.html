@@ -245,10 +245,10 @@
 <!-- Screenshot viewer modal -->
 @if (screenshotUrls().length > 0 || screenshotLoading()) {
   <div class="pay-modal-backdrop" (click)="closeScreenshot()">
-    <div class="card pay-modal-img" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+    <div class="card pay-modal-img" (click)="$event.stopPropagation()" adminDialog aria-labelledby="pay-screenshot-title" (dialogClose)="closeScreenshot()">
       <div class="card-header py-2">
-        <h3 class="card-title mb-0">
-          <i class="ti ti-photo me-2"></i>Payment screenshot@if (screenshotUrls().length > 1) {
+        <h3 class="card-title mb-0" id="pay-screenshot-title">
+          <i class="ti ti-photo me-2" aria-hidden="true"></i>Payment screenshot@if (screenshotUrls().length > 1) {
             <span>s</span>
             <span class="badge bg-blue-lt ms-2">{{ screenshotUrls().length }}</span>
           }
@@ -295,9 +295,9 @@
 <!-- Verify / Reject decision modal -->
 @if (decision(); as d) {
   <div class="pay-modal-backdrop" (click)="cancelDecision()">
-    <div class="card pay-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+    <div class="card pay-modal" (click)="$event.stopPropagation()" adminDialog aria-labelledby="pay-decision-title" (dialogClose)="cancelDecision()">
       <div class="card-header py-2">
-        <h3 class="card-title mb-0">
+        <h3 class="card-title mb-0" id="pay-decision-title">
           @if (d.kind === 'verify') {
             <i class="ti ti-check me-2 text-success"></i>Verify payment — {{ d.row.orderCode }}
           } @else {
@@ -321,7 +321,7 @@
           placeholder="e.g. Matches UPI ref, or reason for rejecting"></textarea>
       </div>
       <div class="card-footer d-flex gap-2 justify-content-end py-2">
-        <button type="button" class="btn btn-link" (click)="cancelDecision()">Cancel</button>
+        <button type="button" class="btn btn-link" data-autofocus (click)="cancelDecision()">Cancel</button>
         <button type="button" [class]="d.kind === 'verify' ? 'btn btn-success' : 'btn btn-danger'"
           (click)="confirmDecision(payNote.value)">
           @if (d.kind === 'verify') { <i class="ti ti-check me-1"></i> Confirm verify }

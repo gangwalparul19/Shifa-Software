@@ -22,10 +22,12 @@ import {
   PurchaseOrderStatus,
   PurchaseOrderSummaryResponse,
 } from './purchase-orders.model';
+import { formatInr } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { PaginationComponent } from '../shared/pagination.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import { SortableHeaderComponent } from '../shared/sortable-header.component';
 import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
@@ -59,6 +61,7 @@ const TABLE_KEY = 'purchase-orders';
     PaginationComponent,
     SortableHeaderComponent,
     RowActionsMenuComponent,
+    DialogDirective,
   ],
   templateUrl: './purchase-orders.component.html',
   styleUrl: './purchase-orders.component.css',
@@ -297,8 +300,7 @@ export class PurchaseOrdersComponent implements OnInit, OnDestroy {
   }
 
   money(value: number | null | undefined): string {
-    const n = typeof value === 'number' && Number.isFinite(value) ? value : 0;
-    return `₹${n.toFixed(2)}`;
+    return formatInr(value, 2);
   }
 
   isReceivable(status: PurchaseOrderStatus | string): boolean {

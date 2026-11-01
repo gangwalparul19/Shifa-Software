@@ -204,10 +204,10 @@
 <!-- Add modal -->
 @if (creating()) {
   <div class="shifa-overlay" (click)="closeCreate()"></div>
-  <div class="shifa-modal" role="dialog" aria-label="Add expense">
+  <div class="shifa-modal" adminDialog aria-labelledby="expense-add-title" (dialogClose)="closeCreate()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0">Add expense</h3>
+        <h3 class="card-title mb-0" id="expense-add-title">Add expense</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeCreate()" aria-label="Close"><i class="ti ti-x"></i></button>
         </div>

@@ -5,8 +5,6 @@ import com.shifa.oms.auth.Role;
 import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.auth.User;
 import com.shifa.oms.auth.UserRepository;
-import com.shifa.oms.order.OrderEntity;
-import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.performance.SalesTarget;
 import com.shifa.oms.performance.SalesTargetRepository;
 import com.shifa.oms.salesperson.dto.LeaderboardResponse;
@@ -14,6 +12,7 @@ import com.shifa.oms.salesperson.dto.MyDayResponse;
 import com.shifa.oms.salesperson.dto.ReorderDueCustomer;
 import com.shifa.oms.salesperson.dto.WinBackCustomer;
 import com.shifa.oms.statemachine.OrderStatus;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,8 +25,10 @@ import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,9 +41,10 @@ import java.util.stream.Collectors;
  *
  * <p>Both views are scoped to the caller's own orders via
  * {@link SalespersonScopeResolver} (an ADMIN caller is unscoped and sees the
- * whole business). Everything is computed in-memory from the caller's order list
- * — a salesperson's volume is modest — so there are no new queries beyond the
- * existing scoped fetch and the monthly-target lookup.
+ * whole business). The figures come from database aggregates in
+ * {@link MyDayQueryRepository}, so the cost of a dashboard open no longer grows
+ * with the total number of orders ever punched; only the monthly-target lookup
+ * and the small final lists are handled here.
  */
 @Service
 public class MyDayService {
@@ -63,17 +65,20 @@ public class MyDayService {
     /** How many rows the leaderboard returns. */
     private static final int LEADERBOARD_SIZE = 10;
 
-    private final OrderRepository orderRepository;
+    /** Placeholder creator id passed to the queries when the scope is "everyone". */
+    private static final Long NO_CREATOR = -1L;
+
+    private final MyDayQueryRepository queries;
     private final SalespersonScopeResolver scopeResolver;
     private final SalesTargetRepository targetRepository;
     private final UserRepository userRepository;
     private final Clock clock = Clock.system(BUSINESS_ZONE);
 
-    public MyDayService(OrderRepository orderRepository,
+    public MyDayService(MyDayQueryRepository queries,
                         SalespersonScopeResolver scopeResolver,
                         SalesTargetRepository targetRepository,
                         UserRepository userRepository) {
-        this.orderRepository = orderRepository;
+        this.queries = queries;
         this.scopeResolver = scopeResolver;
         this.targetRepository = targetRepository;
         this.userRepository = userRepository;
@@ -83,40 +88,26 @@ public class MyDayService {
     @Transactional(readOnly = true)
     public MyDayResponse forCaller(AuthPrincipal principal) {
         Long createdBy = scopeResolver.creatorConstraint(principal).orElse(null);
-        List<OrderEntity> orders = orderRepository.findAllScoped(createdBy);
+        boolean anyCreator = createdBy == null;
+        Long creator = anyCreator ? NO_CREATOR : createdBy;
 
         LocalDate today = LocalDate.now(clock);
         LocalDate firstOfMonth = YearMonth.from(today).atDay(1);
 
-        long ordersToday = 0;
-        long monthOrders = 0;
-        long pendingCount = 0;
-        BigDecimal revenueToday = BigDecimal.ZERO;
-        BigDecimal monthRevenue = BigDecimal.ZERO;
-        BigDecimal pendingAmount = BigDecimal.ZERO;
+        MyDayQueryRepository.TotalsRow todayRow = queries.totalsBetween(
+                EXCLUDED, anyCreator, creator, today.atStartOfDay(), today.plusDays(1).atStartOfDay());
+        // Month-to-date has no upper bound, as before.
+        MyDayQueryRepository.TotalsRow monthRow = queries.totalsSince(
+                EXCLUDED, anyCreator, creator, firstOfMonth.atStartOfDay());
+        // Payments to chase: an active order still carrying a balance.
+        MyDayQueryRepository.TotalsRow pendingRow = queries.pendingPayments(EXCLUDED, anyCreator, creator);
 
-        for (OrderEntity o : orders) {
-            boolean counts = !EXCLUDED.contains(o.getOrderStatus());
-            LocalDate placed = o.getCreatedAt() == null ? null : o.getCreatedAt().toLocalDate();
-            if (counts && placed != null) {
-                if (placed.equals(today)) {
-                    ordersToday++;
-                    revenueToday = revenueToday.add(nz(o.getTotalAmount()));
-                }
-                if (!placed.isBefore(firstOfMonth)) {
-                    monthOrders++;
-                    monthRevenue = monthRevenue.add(nz(o.getTotalAmount()));
-                }
-            }
-            // Payments to chase: an active order still carrying a balance.
-            if (counts) {
-                BigDecimal remaining = nz(o.getRemainingAmount());
-                if (remaining.signum() > 0) {
-                    pendingCount++;
-                    pendingAmount = pendingAmount.add(remaining);
-                }
-            }
-        }
+        long ordersToday = count(todayRow.getOrderCount());
+        long monthOrders = count(monthRow.getOrderCount());
+        long pendingCount = count(pendingRow.getOrderCount());
+        BigDecimal revenueToday = nz(todayRow.getAmount());
+        BigDecimal monthRevenue = nz(monthRow.getAmount());
+        BigDecimal pendingAmount = nz(pendingRow.getAmount());
 
         BigDecimal target = createdBy == null ? null
                 : targetRepository.findBySalespersonIdAndPeriodMonth(createdBy, firstOfMonth)
@@ -142,46 +133,37 @@ public class MyDayService {
     public List<WinBackCustomer> winBack(AuthPrincipal principal, Integer days) {
         int window = (days == null || days <= 0) ? DEFAULT_WINBACK_DAYS : days;
         Long createdBy = scopeResolver.creatorConstraint(principal).orElse(null);
-        List<OrderEntity> orders = orderRepository.findAllScoped(createdBy);
+        boolean anyCreator = createdBy == null;
+        Long creator = anyCreator ? NO_CREATOR : createdBy;
         LocalDate today = LocalDate.now(clock);
         LocalDate cutoff = today.minusDays(window);
 
-        // Aggregate by mobile (skip rejected/cancelled and blank mobiles).
-        Map<String, Agg> byMobile = new LinkedHashMap<>();
-        for (OrderEntity o : orders) {
-            if (EXCLUDED.contains(o.getOrderStatus())) {
-                continue;
-            }
-            String mobile = o.getCustomerMobile();
-            if (mobile == null || mobile.isBlank()) {
-                continue;
-            }
-            LocalDateTime created = o.getCreatedAt();
-            Agg agg = byMobile.computeIfAbsent(mobile.trim(), m -> new Agg());
-            agg.orderCount++;
-            agg.totalValue = agg.totalValue.add(nz(o.getTotalAmount()));
-            if (created != null && (agg.lastOrder == null || created.isAfter(agg.lastOrder))) {
-                agg.lastOrder = created;
-                agg.name = o.getCustomerName();
-            }
-        }
+        // A customer is lapsed when the date of their last order is on or before the
+        // cutoff, i.e. their last order time is before the start of the day after it.
+        // Rejected/cancelled orders and blank mobiles are left out in the query; the
+        // database ranks by lifetime value and applies the list cap.
+        List<MyDayQueryRepository.WinBackRow> rows = queries.winBackCandidates(
+                EXCLUDED, anyCreator, creator, cutoff.plusDays(1).atStartOfDay(),
+                PageRequest.of(0, WINBACK_LIMIT));
 
-        List<WinBackCustomer> result = new ArrayList<>();
-        for (Map.Entry<String, Agg> e : byMobile.entrySet()) {
-            Agg a = e.getValue();
-            if (a.lastOrder == null) {
+        List<String> mobiles = new ArrayList<>(rows.size());
+        for (MyDayQueryRepository.WinBackRow r : rows) {
+            mobiles.add(r.getMobile());
+        }
+        Map<String, String> names = latestNames(mobiles, anyCreator, creator);
+
+        List<WinBackCustomer> result = new ArrayList<>(rows.size());
+        for (MyDayQueryRepository.WinBackRow r : rows) {
+            if (r.getLastOrderAt() == null) {
                 continue;
             }
-            LocalDate last = a.lastOrder.toLocalDate();
-            if (last.isAfter(cutoff)) {
-                continue; // ordered recently — not lapsed
-            }
+            LocalDate last = r.getLastOrderAt().toLocalDate();
             long daysSince = ChronoUnit.DAYS.between(last, today);
             result.add(new WinBackCustomer(
-                    e.getKey(), a.name, last, daysSince, a.orderCount, scale(a.totalValue)));
+                    r.getMobile().trim(), names.get(r.getMobile()), last, daysSince,
+                    count(r.getOrderCount()), scale(nz(r.getTotalValue()))));
         }
-        result.sort(Comparator.comparing(WinBackCustomer::totalValue).reversed());
-        return result.size() > WINBACK_LIMIT ? result.subList(0, WINBACK_LIMIT) : result;
+        return result;
     }
 
     /** Grace window (days): a customer within this many days of their predicted date is "due". */
@@ -196,54 +178,53 @@ public class MyDayService {
     @Transactional(readOnly = true)
     public List<ReorderDueCustomer> reorderDue(AuthPrincipal principal) {
         Long createdBy = scopeResolver.creatorConstraint(principal).orElse(null);
-        List<OrderEntity> orders = orderRepository.findAllScoped(createdBy);
+        boolean anyCreator = createdBy == null;
+        Long creator = anyCreator ? NO_CREATOR : createdBy;
         LocalDate today = LocalDate.now(clock);
 
-        Map<String, Cadence> byMobile = new LinkedHashMap<>();
-        for (OrderEntity o : orders) {
-            if (EXCLUDED.contains(o.getOrderStatus()) || o.getCreatedAt() == null) {
-                continue;
-            }
-            String mobile = o.getCustomerMobile();
-            if (mobile == null || mobile.isBlank()) {
-                continue;
-            }
-            Cadence c = byMobile.computeIfAbsent(mobile.trim(), m -> new Cadence());
-            LocalDate placed = o.getCreatedAt().toLocalDate();
-            c.dates.add(placed);
-            c.totalValue = c.totalValue.add(nz(o.getTotalAmount()));
-            if (c.last == null || o.getCreatedAt().isAfter(c.lastAt)) {
-                c.lastAt = o.getCreatedAt();
-                c.last = placed;
-                c.name = o.getCustomerName();
-            }
-        }
-
-        List<ReorderDueCustomer> due = new ArrayList<>();
-        for (Map.Entry<String, Cadence> e : byMobile.entrySet()) {
-            Cadence c = e.getValue();
-            if (c.dates.size() < 2 || c.last == null) {
+        // One row per repeat customer (>= 2 dated orders) — grows with customers, not orders.
+        record Candidate(String rawMobile, LocalDate last, LocalDate predicted, long avgInterval,
+                         long overdue, long orderCount, BigDecimal totalValue) {}
+        List<Candidate> due = new ArrayList<>();
+        for (MyDayQueryRepository.CadenceRow r : queries.repeatCustomers(EXCLUDED, anyCreator, creator)) {
+            long orderCount = count(r.getOrderCount());
+            if (orderCount < 2 || r.getFirstOrderAt() == null || r.getLastOrderAt() == null) {
                 continue; // need at least two orders to infer a cadence
             }
-            LocalDate first = c.dates.stream().min(LocalDate::compareTo).orElse(c.last);
-            long span = ChronoUnit.DAYS.between(first, c.last);
-            long avgInterval = Math.round((double) span / (c.dates.size() - 1));
+            LocalDate first = r.getFirstOrderAt().toLocalDate();
+            LocalDate last = r.getLastOrderAt().toLocalDate();
+            long span = ChronoUnit.DAYS.between(first, last);
+            long avgInterval = Math.round((double) span / (orderCount - 1));
             if (avgInterval <= 0) {
                 continue; // multiple orders same day — no meaningful cadence
             }
-            LocalDate predicted = c.last.plusDays(avgInterval);
+            LocalDate predicted = last.plusDays(avgInterval);
             long overdue = ChronoUnit.DAYS.between(predicted, today); // + = overdue, - = future
             if (overdue < -REORDER_GRACE_DAYS) {
                 continue; // not due yet
             }
-            due.add(new ReorderDueCustomer(
-                    e.getKey(), c.name, c.last, predicted, avgInterval, overdue,
-                    c.dates.size(), scale(c.totalValue)));
+            due.add(new Candidate(r.getMobile(), last, predicted, avgInterval, overdue,
+                    orderCount, scale(nz(r.getTotalValue()))));
         }
         // Most overdue first (largest overdueDays), then highest value.
-        due.sort(Comparator.comparingLong(ReorderDueCustomer::overdueDays).reversed()
-                .thenComparing(Comparator.comparing(ReorderDueCustomer::totalValue).reversed()));
-        return due.size() > WINBACK_LIMIT ? due.subList(0, WINBACK_LIMIT) : due;
+        due.sort(Comparator.comparingLong(Candidate::overdue).reversed()
+                .thenComparing(Comparator.comparing(Candidate::totalValue).reversed()));
+        List<Candidate> top = due.size() > WINBACK_LIMIT ? due.subList(0, WINBACK_LIMIT) : due;
+
+        // Names only for the customers actually returned.
+        List<String> mobiles = new ArrayList<>(top.size());
+        for (Candidate c : top) {
+            mobiles.add(c.rawMobile());
+        }
+        Map<String, String> names = latestNames(mobiles, anyCreator, creator);
+
+        List<ReorderDueCustomer> result = new ArrayList<>(top.size());
+        for (Candidate c : top) {
+            result.add(new ReorderDueCustomer(
+                    c.rawMobile().trim(), names.get(c.rawMobile()), c.last(), c.predicted(),
+                    c.avgInterval(), c.overdue(), c.orderCount(), c.totalValue()));
+        }
+        return result;
     }
 
     /**
@@ -253,28 +234,25 @@ public class MyDayService {
     @Transactional(readOnly = true)
     public LeaderboardResponse leaderboard(AuthPrincipal principal) {
         Long me = principal.userId();
-        List<OrderEntity> all = orderRepository.findAllScoped(null); // whole business
         LocalDate today = LocalDate.now(clock);
         LocalDate firstOfMonth = YearMonth.from(today).atDay(1);
 
-        Map<Long, MonthAgg> byCreator = new LinkedHashMap<>();
+        // Whole business, this month, attributed non-excluded orders, grouped by creator.
+        Map<Long, MyDayQueryRepository.CreatorRow> byCreator = new LinkedHashMap<>();
+        for (MyDayQueryRepository.CreatorRow row : queries.revenueByCreatorSince(
+                firstOfMonth.atStartOfDay(), EXCLUDED)) {
+            byCreator.putIfAbsent(row.getCreatorId(), row);
+        }
+
+        // Streak counts any order the caller punched (regardless of status).
         Set<LocalDate> myOrderDates = new HashSet<>();
-        for (OrderEntity o : all) {
-            Long creator = o.getCreatedBy();
-            LocalDate placed = o.getCreatedAt() == null ? null : o.getCreatedAt().toLocalDate();
-            // Streak counts any order the caller punched (regardless of status).
-            if (creator != null && creator.equals(me) && placed != null) {
-                myOrderDates.add(placed);
+        if (me != null) {
+            for (Object value : queries.orderDates(me)) {
+                LocalDate date = toLocalDate(value);
+                if (date != null) {
+                    myOrderDates.add(date);
+                }
             }
-            if (creator == null || placed == null || EXCLUDED.contains(o.getOrderStatus())) {
-                continue;
-            }
-            if (placed.isBefore(firstOfMonth)) {
-                continue;
-            }
-            MonthAgg a = byCreator.computeIfAbsent(creator, k -> new MonthAgg());
-            a.revenue = a.revenue.add(nz(o.getTotalAmount()));
-            a.orders++;
         }
 
         // Resolve creators to users and keep only salespeople (the leaderboard is
@@ -284,14 +262,15 @@ public class MyDayService {
 
         record Scored(long id, String name, BigDecimal revenue, long orders) {}
         List<Scored> scored = new ArrayList<>();
-        for (Map.Entry<Long, MonthAgg> e : byCreator.entrySet()) {
+        for (Map.Entry<Long, MyDayQueryRepository.CreatorRow> e : byCreator.entrySet()) {
             User u = users.get(e.getKey());
             if (u == null || u.getRole() != Role.SALESPERSON) {
                 continue;
             }
             String name = (u.getFullName() == null || u.getFullName().isBlank())
                     ? u.getUsername() : u.getFullName();
-            scored.add(new Scored(e.getKey(), name, e.getValue().revenue, e.getValue().orders));
+            scored.add(new Scored(e.getKey(), name, nz(e.getValue().getRevenue()),
+                    count(e.getValue().getOrderCount())));
         }
         scored.sort(Comparator.comparing(Scored::revenue).reversed()
                 .thenComparing(Comparator.comparingLong(Scored::orders).reversed()));
@@ -312,6 +291,39 @@ public class MyDayService {
             }
         }
         return new LeaderboardResponse(rows, myRank, scale(myRevenue), streakDays(myOrderDates, today));
+    }
+
+    /**
+     * Name on each mobile's most recent dated, non-excluded order within the caller's
+     * scope, keyed by the mobile exactly as the aggregate query returned it.
+     */
+    private Map<String, String> latestNames(Collection<String> mobiles, boolean anyCreator, Long creator) {
+        Map<String, String> names = new HashMap<>();
+        if (mobiles.isEmpty()) {
+            return names;
+        }
+        // Newest first, so the first name seen for a mobile is its latest order's.
+        for (MyDayQueryRepository.NameRow r : queries.latestOrderNames(mobiles, EXCLUDED, anyCreator, creator)) {
+            names.putIfAbsent(r.getMobile(), r.getCustomerName());
+        }
+        return names;
+    }
+
+    /** Converts whatever date type the database cast returns into a {@link LocalDate}. */
+    private static LocalDate toLocalDate(Object value) {
+        if (value instanceof LocalDate localDate) {
+            return localDate;
+        }
+        if (value instanceof java.sql.Date sqlDate) {
+            return sqlDate.toLocalDate();
+        }
+        if (value instanceof java.util.Date utilDate) {
+            return new java.sql.Date(utilDate.getTime()).toLocalDate();
+        }
+        if (value instanceof LocalDateTime dateTime) {
+            return dateTime.toLocalDate();
+        }
+        return null;
     }
 
     /** Consecutive days (ending today or yesterday) on which the caller punched an order. */
@@ -336,34 +348,15 @@ public class MyDayService {
         return streak;
     }
 
+    private static long count(Long v) {
+        return v == null ? 0L : v;
+    }
+
     private static BigDecimal nz(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;
     }
 
     private static BigDecimal scale(BigDecimal v) {
         return v.setScale(2, RoundingMode.HALF_UP);
-    }
-
-    /** Mutable per-mobile accumulator (win-back). */
-    private static final class Agg {
-        private String name;
-        private LocalDateTime lastOrder;
-        private long orderCount;
-        private BigDecimal totalValue = BigDecimal.ZERO;
-    }
-
-    /** Mutable per-mobile accumulator with order dates (reorder-cadence). */
-    private static final class Cadence {
-        private final List<LocalDate> dates = new ArrayList<>();
-        private String name;
-        private LocalDate last;
-        private LocalDateTime lastAt;
-        private BigDecimal totalValue = BigDecimal.ZERO;
-    }
-
-    /** Mutable per-salesperson month accumulator (leaderboard). */
-    private static final class MonthAgg {
-        private BigDecimal revenue = BigDecimal.ZERO;
-        private long orders;
     }
 }

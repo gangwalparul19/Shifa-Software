@@ -9,7 +9,7 @@ import {
 } from '@angular/forms';
 import { debounceTime, distinctUntilChanged, map } from 'rxjs';
 import { ActivatedRoute, Router } from '@angular/router';
-import { ApiError, AuthService, Product, Role, paiseToMoney, toPaise } from 'core';
+import { ApiError, AuthService, Product, Role, toPaise } from 'core';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { StateTypeaheadComponent } from '../shared/state-typeahead.component';
@@ -24,6 +24,20 @@ import { ToastService } from '../shared/toast.service';
 import { CatalogService } from './catalog.service';
 import { OrdersService } from './orders.service';
 import { OfflineOrderQueueService } from './offline-order-queue.service';
+import {
+  clampReceivedRupees,
+  discountPaiseOf,
+  formatPaise,
+  isBelowMinimumUpfront,
+  lineTotalsPaise,
+  minUpfrontPaiseOf,
+  orderTotalPaiseOf,
+  paymentKindOf,
+  priceBandOf,
+  rateBandError,
+  remainingPaiseOf,
+  subtotalPaiseOf,
+} from './order-totals';
 import { CustomersService } from '../customers/customers.service';
 import { CustomerRisk, riskLabel, riskPillClass } from '../customers/customers.model';
 import { LeadsService } from '../leads/leads.service';
@@ -487,14 +501,10 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   );
 
   /** Per-line totals in paise (rate × quantity), aligned to the item rows. */
-  protected readonly lineTotals = computed(() =>
-    this.model().items.map((it) => toPaise(it.rate ?? 0) * (it.quantity || 0)),
-  );
+  protected readonly lineTotals = computed(() => lineTotalsPaise(this.model().items));
 
   /** The (unrounded) subtotal in paise: Σ line totals before any discount. */
-  protected readonly subtotalPaise = computed(() =>
-    this.lineTotals().reduce((sum, cents) => sum + cents, 0),
-  );
+  protected readonly subtotalPaise = computed(() => subtotalPaiseOf(this.lineTotals()));
 
   /**
    * The order-level discount in paise (product-catalog-pricing-gst Req 6):
@@ -503,14 +513,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   protected readonly discountPaise = computed(() => {
     const sub = this.subtotalPaise();
     const m = this.model();
-    let d = 0;
-    if (m.discountType === 'PERCENT') {
-      const pct = Math.max(0, Math.min(100, m.discountValue || 0));
-      d = Math.round((sub * pct) / 100);
-    } else if (m.discountType === 'FLAT') {
-      d = toPaise(m.discountValue || 0);
-    }
-    return Math.max(0, Math.min(sub, d));
+    return discountPaiseOf(sub, m.discountType, m.discountValue);
   });
 
   /**
@@ -518,14 +521,13 @@ export class NewOrderComponent implements OnInit, OnDestroy {
    * nearest whole rupee so the figure matches what the backend will charge
    * (product-audit §4.6; product-catalog-pricing-gst Req 6, 8).
    */
-  protected readonly orderTotalPaise = computed(() => {
-    const net = this.subtotalPaise() - this.discountPaise();
-    return Math.round(net / 100) * 100;
-  });
+  protected readonly orderTotalPaise = computed(() =>
+    orderTotalPaiseOf(this.subtotalPaise(), this.discountPaise()),
+  );
 
   /** Remaining balance after the amount received (may be negative if overpaid). */
-  protected readonly remainingPaise = computed(
-    () => this.orderTotalPaise() - toPaise(this.model().amountReceived),
+  protected readonly remainingPaise = computed(() =>
+    remainingPaiseOf(this.orderTotalPaise(), toPaise(this.model().amountReceived)),
   );
 
   /**
@@ -540,18 +542,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
    */
   protected readonly paymentKind = computed<'below' | 'partial' | 'full' | 'none'>(() => {
     const total = this.orderTotalPaise();
-    if (total <= 0) {
-      return 'none';
-    }
     const received = toPaise(this.model().amountReceived);
-    if (received < this.minUpfrontPaise()) {
-      // Below the minimum upfront — not a valid Full/Partial payment (no ₹0/COD).
-      return 'below';
-    }
-    if (received >= total) {
-      return 'full';
-    }
-    return 'partial';
+    // 'below' = under the minimum upfront — not a valid Full/Partial payment (no ₹0/COD).
+    return paymentKindOf(total, received, this.minUpfrontPaise());
   });
 
   /**
@@ -560,10 +553,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
    * ₹100 (a small order can't require more than it costs). Mirrors the backend
    * {@code requireMinimumUpfront}.
    */
-  protected readonly minUpfrontPaise = computed<number>(() => {
-    const total = this.orderTotalPaise();
-    return Math.min(10000, total); // ₹100 = 10000 paise
-  });
+  protected readonly minUpfrontPaise = computed<number>(() =>
+    minUpfrontPaiseOf(this.orderTotalPaise()),
+  );
 
   /** Whether the entered amount meets the minimum-upfront policy (blocks submit). */
   protected readonly paymentBelowMinimum = computed<boolean>(() => {
@@ -573,11 +565,12 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     if (this.posMode() || this.resubmitMode()) {
       return false;
     }
-    const total = this.orderTotalPaise();
-    if (total <= 0) {
-      return false; // total handled separately; nothing to validate yet
-    }
-    return toPaise(this.model().amountReceived) < this.minUpfrontPaise();
+    // Returns false while there is no order total yet (total handled separately; nothing to validate).
+    return isBelowMinimumUpfront(
+      this.orderTotalPaise(),
+      toPaise(this.model().amountReceived),
+      this.minUpfrontPaise(),
+    );
   });
 
   ngOnInit(): void {
@@ -1365,12 +1358,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
    */
   lineBand(index: number): { min: number; max: number; wtMl: string | null } | null {
     const p = this.productForLine(index);
-    if (!p) {
-      return null;
-    }
-    const min = Number(p.minimumRate ?? p.salePrice);
-    const max = Number(p.mrp);
-    return { min, max, wtMl: p.wtMl ?? null };
+    return p ? priceBandOf(p) : null;
   }
 
   /**
@@ -1383,20 +1371,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       return null;
     }
     const raw = this.items.at(index).controls['rate'].value as number | null;
-    if (raw === null || raw === undefined || (raw as unknown) === '') {
-      return null;
-    }
-    const rate = Number(raw);
-    if (Number.isNaN(rate)) {
-      return null;
-    }
-    if (rate < band.min) {
-      return `Below minimum ₹${band.min}`;
-    }
-    if (band.max && rate > band.max) {
-      return `Above MRP ₹${band.max}`;
-    }
-    return null;
+    return rateBandError(raw, band);
   }
 
   /** True when any line's rate is outside its product's price band. */
@@ -1529,8 +1504,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   /** Sets a payment amount using one-hand quick actions in the payment step. */
   setAmountReceived(amount: number): void {
     const total = this.orderTotalPaise() / 100;
-    const safe = Math.max(0, Math.min(Number.isFinite(amount) ? amount : 0, total));
-    this.form.controls.amountReceived.setValue(Number(safe.toFixed(2)));
+    this.form.controls.amountReceived.setValue(clampReceivedRupees(amount, total));
     this.form.controls.amountReceived.markAsDirty();
     this.form.controls.amountReceived.markAsTouched();
     this.model.set(this.snapshot());
@@ -2095,7 +2069,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   /** Formats a paise integer as a ₹ money string. */
   formatMoney(paise: number): string {
-    return `₹${paiseToMoney(paise)}`;
+    return formatPaise(paise);
   }
 
   /** True when a control should show its invalid state (touched or submitted). */

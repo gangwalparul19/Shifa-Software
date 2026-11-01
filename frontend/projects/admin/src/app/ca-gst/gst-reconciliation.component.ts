@@ -1,9 +1,11 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { formatInr, formatInrSigned } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import { ToastService } from '../shared/toast.service';
 import { FilingService } from './filing.service';
 import {
@@ -28,7 +30,7 @@ type PresetKey = 'this-month' | 'last-month' | 'custom';
 @Component({
   selector: 'admin-gst-reconciliation',
   standalone: true,
-  imports: [CommonModule, FormsModule, PageHeaderComponent, PaginationComponent, StatePanelComponent],
+  imports: [CommonModule, FormsModule, PageHeaderComponent, PaginationComponent, StatePanelComponent, DialogDirective],
   templateUrl: './gst-reconciliation.component.html',
   styleUrl: './gst-reconciliation.component.css',
 })
@@ -202,13 +204,11 @@ export class GstReconciliationComponent implements OnInit {
 
   /** Format a value as ₹ with 2 decimals. */
   money(v: number | string | null | undefined): string {
-    return '₹' + this.n(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return formatInr(this.n(v), 2);
   }
 
   /** Format a signed difference with an explicit +/- sign. */
   signedMoney(v: number | string | null | undefined): string {
-    const num = this.n(v);
-    const sign = num > 0 ? '+' : num < 0 ? '−' : '';
-    return sign + '₹' + Math.abs(num).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return formatInrSigned(this.n(v), 2);
   }
 }

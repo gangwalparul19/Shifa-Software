@@ -17,13 +17,22 @@ import com.shifa.oms.performance.SalespersonPerformanceService;
 import com.shifa.oms.performance.dto.SalespersonPerformanceSummary;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -32,6 +41,10 @@ import static org.mockito.Mockito.when;
 /**
  * Focused unit tests for {@link TeamsOverviewService} — the "team-wise sales
  * with status" admin dashboard rollup ("Team Sameer" / "Team Zeeshan").
+ *
+ * <p>The service reads grouped SQL aggregates; {@link InMemoryQueries} is a fake
+ * of {@link TeamsOverviewQueryRepository} that applies the same filters and
+ * grouping to in-memory orders and leads.
  */
 class TeamsOverviewServiceTest {
 
@@ -41,8 +54,7 @@ class TeamsOverviewServiceTest {
     private static final LocalDate TODAY = LocalDate.now(CLOCK);
 
     private final UserRepository userRepository = mock(UserRepository.class);
-    private final OrderRepository orderRepository = mock(OrderRepository.class);
-    private final LeadRepository leadRepository = mock(LeadRepository.class);
+    private final InMemoryQueries queries = new InMemoryQueries();
     // Recording subclass: Java 25 cannot mock the concrete SalespersonPerformanceService;
     // returns an empty leaderboard by default (individual tests do not assert on it).
     private final SalespersonPerformanceService performanceService = new SalespersonPerformanceService(
@@ -53,7 +65,7 @@ class TeamsOverviewServiceTest {
         }
     };
     private final TeamsOverviewService service =
-            new TeamsOverviewService(userRepository, orderRepository, leadRepository, performanceService, CLOCK);
+            new TeamsOverviewService(userRepository, queries, performanceService, CLOCK);
 
     private static User user(long id, String name, Role role) {
         User u = new User("user" + id, "$2a$hash", role, name, true);
@@ -92,19 +104,17 @@ class TeamsOverviewServiceTest {
 
         // Orders are scoped to the member(s) PLUS the team lead's own id (the lead
         // punches orders too — their sales count towards the team total).
-        when(orderRepository.findAllScopedIn(List.of(1L, 10L))).thenReturn(List.of(
+        queries.orders.addAll(List.of(
                 order(1L, "DELIVERED", "1000.00", TODAY),
                 order(1L, "DELIVERY_FAILED", "500.00", TODAY.minusDays(40)),
                 // Sameer's OWN order — must be included in the team's totals.
-                order(10L, "DELIVERED", "700.00", TODAY)));
-        when(orderRepository.findAllScopedIn(List.of(2L, 11L))).thenReturn(List.of(
+                order(10L, "DELIVERED", "700.00", TODAY),
                 order(2L, "DELIVERED", "2000.00", TODAY)));
 
         // Leads stay scoped to the assigned salespeople only (a team lead owns no leads).
-        when(leadRepository.findAllScopedIn(List.of(1L))).thenReturn(List.of(
+        queries.leads.addAll(List.of(
                 lead(1L, LeadStatus.NEW, TODAY.minusDays(3)),
-                lead(1L, LeadStatus.WON, null)));
-        when(leadRepository.findAllScopedIn(List.of(2L))).thenReturn(List.of(
+                lead(1L, LeadStatus.WON, null),
                 lead(2L, LeadStatus.QUOTED, TODAY.plusDays(2))));
 
         TeamsOverviewResponse res = service.overview();
@@ -146,9 +156,7 @@ class TeamsOverviewServiceTest {
         when(userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.TEAM_LEAD)).thenReturn(List.of());
         when(userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.SALESPERSON))
                 .thenReturn(List.of(user(3L, "Solo", Role.SALESPERSON)));
-        when(orderRepository.findAllScopedIn(List.of(3L))).thenReturn(List.of(
-                order(3L, "DELIVERED", "300.00", TODAY)));
-        when(leadRepository.findAllScopedIn(List.of(3L))).thenReturn(List.of());
+        queries.orders.add(order(3L, "DELIVERED", "300.00", TODAY));
 
         TeamsOverviewResponse res = service.overview();
 
@@ -165,9 +173,8 @@ class TeamsOverviewServiceTest {
         when(userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.TEAM_LEAD)).thenReturn(List.of(lead));
         when(userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.SALESPERSON)).thenReturn(List.of());
         when(userRepository.findIdsByTeamLeadId(20L)).thenReturn(List.of());
-        // The lead's own order scope is still loaded (the lead can punch orders);
+        // The lead's own order scope is still queried (the lead can punch orders);
         // with none, the row is empty.
-        when(orderRepository.findAllScopedIn(List.of(20L))).thenReturn(List.of());
 
         TeamsOverviewResponse res = service.overview();
 
@@ -178,5 +185,185 @@ class TeamsOverviewServiceTest {
         assertThat(row.deliverySuccessRate()).isNull();
         assertThat(row.leadConversionRate()).isNull();
         assertThat(row.callOuts()).isEmpty();
+    }
+
+    /**
+     * In-memory stand-in for the grouped SQL queries: applies the same creator /
+     * owner filters, month and follow-up rules, ordering and page cap.
+     */
+    private static final class InMemoryQueries implements TeamsOverviewQueryRepository {
+
+        private final List<OrderEntity> orders = new ArrayList<>();
+        private final List<LeadEntity> leads = new ArrayList<>();
+
+        @Override
+        public List<CreatorStatusRow> orderTotalsByCreator(Collection<Long> creatorIds) {
+            return groupOrders(orders.stream().filter(o -> creatorIds.contains(o.getCreatedBy())));
+        }
+
+        @Override
+        public List<CreatorStatusRow> orderTotalsByCreatorSince(Collection<Long> creatorIds, LocalDateTime since) {
+            return groupOrders(orders.stream()
+                    .filter(o -> creatorIds.contains(o.getCreatedBy()))
+                    .filter(o -> !o.getCreatedAt().isBefore(since)));
+        }
+
+        @Override
+        public List<OwnerLeadStatusRow> leadCountsByOwnerAndStatus(Collection<Long> ownerIds) {
+            Map<List<Object>, List<LeadEntity>> groups = leads.stream()
+                    .filter(l -> ownerIds.contains(l.getOwnerUserId()))
+                    .collect(Collectors.groupingBy(
+                            l -> List.<Object>of(l.getOwnerUserId(), l.getStatus()),
+                            LinkedHashMap::new, Collectors.toList()));
+            List<OwnerLeadStatusRow> rows = new ArrayList<>();
+            groups.forEach((key, list) -> rows.add(
+                    new LeadStatusRow((Long) key.get(0), (LeadStatus) key.get(1), (long) list.size())));
+            return rows;
+        }
+
+        @Override
+        public List<OwnerCountRow> dueFollowUpCountsByOwner(Collection<Long> ownerIds, LocalDate today) {
+            Map<Long, List<LeadEntity>> groups = due(ownerIds, today).collect(Collectors.groupingBy(
+                    LeadEntity::getOwnerUserId, LinkedHashMap::new, Collectors.toList()));
+            List<OwnerCountRow> rows = new ArrayList<>();
+            groups.forEach((owner, list) -> rows.add(new CountRow(owner, (long) list.size())));
+            return rows;
+        }
+
+        @Override
+        public List<DueLeadRow> dueFollowUps(Collection<Long> ownerIds, LocalDate today, Pageable pageable) {
+            return due(ownerIds, today)
+                    .sorted(Comparator.comparing(LeadEntity::getFollowUpDate))
+                    .limit(pageable.getPageSize())
+                    .<DueLeadRow>map(l -> new DueRow(l.getId(), l.getCustomerName(), l.getCustomerMobile(),
+                            l.getLeadSource(), l.getStatus(), l.getFollowUpDate(), l.getOwnerUserId()))
+                    .toList();
+        }
+
+        private Stream<LeadEntity> due(Collection<Long> ownerIds, LocalDate today) {
+            return leads.stream()
+                    .filter(l -> ownerIds.contains(l.getOwnerUserId()))
+                    .filter(l -> l.getFollowUpDate() != null && !l.getFollowUpDate().isAfter(today))
+                    .filter(l -> l.getStatus() != LeadStatus.WON && l.getStatus() != LeadStatus.LOST);
+        }
+
+        private static List<CreatorStatusRow> groupOrders(Stream<OrderEntity> stream) {
+            Map<List<Object>, List<OrderEntity>> groups = stream.collect(Collectors.groupingBy(
+                    o -> List.<Object>of(o.getCreatedBy(), o.getOrderStatus()),
+                    LinkedHashMap::new, Collectors.toList()));
+            List<CreatorStatusRow> rows = new ArrayList<>();
+            groups.forEach((key, list) -> {
+                BigDecimal total = list.stream().map(OrderEntity::getTotalAmount)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                BigDecimal outstanding = list.stream().map(OrderEntity::getCustomerOutstanding)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                rows.add(new OrderRow((Long) key.get(0), (OrderStatus) key.get(1),
+                        (long) list.size(), total, outstanding));
+            });
+            return rows;
+        }
+    }
+
+    private record OrderRow(Long personId, OrderStatus orderStatus, Long orderCount,
+                            BigDecimal totalAmount, BigDecimal outstandingAmount)
+            implements TeamsOverviewQueryRepository.CreatorStatusRow {
+
+        @Override
+        public Long getPersonId() {
+            return personId;
+        }
+
+        @Override
+        public OrderStatus getOrderStatus() {
+            return orderStatus;
+        }
+
+        @Override
+        public Long getOrderCount() {
+            return orderCount;
+        }
+
+        @Override
+        public BigDecimal getTotalAmount() {
+            return totalAmount;
+        }
+
+        @Override
+        public BigDecimal getOutstandingAmount() {
+            return outstandingAmount;
+        }
+    }
+
+    private record LeadStatusRow(Long ownerId, LeadStatus leadStatus, Long leadCount)
+            implements TeamsOverviewQueryRepository.OwnerLeadStatusRow {
+
+        @Override
+        public Long getOwnerId() {
+            return ownerId;
+        }
+
+        @Override
+        public LeadStatus getLeadStatus() {
+            return leadStatus;
+        }
+
+        @Override
+        public Long getLeadCount() {
+            return leadCount;
+        }
+    }
+
+    private record CountRow(Long ownerId, Long leadCount)
+            implements TeamsOverviewQueryRepository.OwnerCountRow {
+
+        @Override
+        public Long getOwnerId() {
+            return ownerId;
+        }
+
+        @Override
+        public Long getLeadCount() {
+            return leadCount;
+        }
+    }
+
+    private record DueRow(Long leadId, String customerName, String customerMobile, LeadSource leadSource,
+                          LeadStatus leadStatus, LocalDate followUpDate, Long ownerId)
+            implements TeamsOverviewQueryRepository.DueLeadRow {
+
+        @Override
+        public Long getLeadId() {
+            return leadId;
+        }
+
+        @Override
+        public String getCustomerName() {
+            return customerName;
+        }
+
+        @Override
+        public String getCustomerMobile() {
+            return customerMobile;
+        }
+
+        @Override
+        public LeadSource getLeadSource() {
+            return leadSource;
+        }
+
+        @Override
+        public LeadStatus getLeadStatus() {
+            return leadStatus;
+        }
+
+        @Override
+        public LocalDate getFollowUpDate() {
+            return followUpDate;
+        }
+
+        @Override
+        public Long getOwnerId() {
+            return ownerId;
+        }
     }
 }

@@ -5,6 +5,7 @@ import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.Role;
 import com.shifa.oms.auth.SalespersonScopeResolver;
+import com.shifa.oms.auth.UserRepository;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.courier.TrackingService;
@@ -13,6 +14,8 @@ import com.shifa.oms.crm.domain.CustomerRiskLevel;
 import com.shifa.oms.gst.domain.Gstin;
 import com.shifa.oms.inventory.StockMovementType;
 import com.shifa.oms.inventory.StockService;
+import com.shifa.oms.label.LabelService;
+import com.shifa.oms.notification.ShipmentMilestoneNotifier;
 import com.shifa.oms.order.domain.DiscountType;
 import com.shifa.oms.order.domain.Money;
 import com.shifa.oms.order.domain.OrderPricing;
@@ -38,6 +41,12 @@ import com.shifa.oms.product.ProductImage;
 import com.shifa.oms.product.ProductImageRepository;
 import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.quikshipx.OrderShipmentRepository;
+import com.shifa.oms.reconciliation.ReceivableEntity;
+import com.shifa.oms.reconciliation.ReceivableRepository;
+import com.shifa.oms.reconciliation.domain.ReceivableType;
+import com.shifa.oms.settings.AppSettings;
+import com.shifa.oms.settings.BankAccountRepository;
+import com.shifa.oms.settings.SettingsService;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,17 +59,22 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Order / OMS application service (design: "Order / OMS Module").
  *
- * <p>Owns creation of the order aggregate for both entry paths — salesperson
- * order entry ({@code POST /api/orders}, Req 7) and public storefront checkout
- * ({@code POST /api/checkout}, Req 3) — plus role-scoped search / detail
+ * <p>Owns creation of the order aggregate for the staff entry paths — salesperson
+ * order entry ({@code POST /api/orders}, Req 7), in-shop store sales, and lead
+ * conversion — plus role-scoped search / detail
  * (Req 22.1, 5.5), duplicate detection (Req 22.2), and payment-screenshot
  * retrieval (Req 21.2). All money math is delegated to the pure
  * {@link PaymentCalculator}; the initial status is {@link OrderStatus#INITIAL}
@@ -70,7 +84,7 @@ import java.util.Optional;
  *
  * <p><strong>Zero-total guard</strong>: order creation is rejected when
  * {@code Total_Amount <= 0} — an order must have a positive total — applied to
- * both entry paths.
+ * every entry path.
  */
 @Service
 public class OrderService {
@@ -104,7 +118,7 @@ public class OrderService {
      * salesperson's display name for the order-detail drawer. Null under the
      * legacy test constructor — the name is then omitted.
      */
-    private final com.shifa.oms.auth.UserRepository userRepository;
+    private final UserRepository userRepository;
     /**
      * Central workflow (nullable): used by {@link #resubmit} to transition a
      * reworked REJECTED/PAYMENT_REJECTED order back to PENDING_ADMIN_APPROVAL via
@@ -124,13 +138,13 @@ public class OrderService {
      * constructor — auto-approval is then skipped (orders stay pending), so unit
      * tests see the unchanged manual-approval behaviour.
      */
-    private final com.shifa.oms.settings.SettingsService settingsService;
+    private final SettingsService settingsService;
     /**
      * Internal label generation (nullable): used by the auto-approval path to
      * generate the shipping label on approval, exactly as the admin approve does.
      * Null under the legacy test constructor.
      */
-    private final com.shifa.oms.label.LabelService labelService;
+    private final LabelService labelService;
     /**
      * Receivables (nullable): used by the store-order fast-forward to record the
      * COD receivable for a PARTIALLY-paid counter (STORE_PICKUP) sale when it is
@@ -140,23 +154,23 @@ public class OrderService {
      * {@code customer_outstanding} via the COD amount), so those unit tests are
      * unaffected.
      */
-    private final com.shifa.oms.reconciliation.ReceivableRepository receivableRepository;
+    private final ReceivableRepository receivableRepository;
     /**
      * Customer shipment-milestone WhatsApp (nullable): fires the "order placed"
      * COD message at creation (the scan-driven picked-up / departed / out-for-
      * delivery milestones are fired from the courier scan path, not here). Null
      * under the legacy test constructors — the message is then skipped.
      */
-    private final com.shifa.oms.notification.ShipmentMilestoneNotifier milestoneNotifier;
+    private final ShipmentMilestoneNotifier milestoneNotifier;
 
     /** Optional bank-account master; setter injection preserves legacy test constructors. */
-    private com.shifa.oms.settings.BankAccountRepository bankAccountRepository;
+    private BankAccountRepository bankAccountRepository;
     /** Optional payment repository used to flag reused UTRs at capture time. */
     private OrderPaymentRepository orderPaymentRepository;
 
     /** Injected separately so historical unit constructors remain source-compatible. */
     @Autowired(required = false)
-    void setBankAccountRepository(com.shifa.oms.settings.BankAccountRepository bankAccountRepository) {
+    void setBankAccountRepository(BankAccountRepository bankAccountRepository) {
         this.bankAccountRepository = bankAccountRepository;
     }
 
@@ -208,7 +222,7 @@ public class OrderService {
                         OutboxEventPublisher outboxEventPublisher,
                         QuikShipXProperties quikShipXProperties,
                         OrderShipmentRepository orderShipmentRepository,
-                        com.shifa.oms.auth.UserRepository userRepository,
+                        UserRepository userRepository,
                         OrderWorkflowService orderWorkflowService,
                         AuditService auditService) {
         this(orderRepository, productRepository, orderCodeGenerator, storageService, scopeResolver,
@@ -234,11 +248,11 @@ public class OrderService {
                         OutboxEventPublisher outboxEventPublisher,
                         QuikShipXProperties quikShipXProperties,
                         OrderShipmentRepository orderShipmentRepository,
-                        com.shifa.oms.auth.UserRepository userRepository,
+                        UserRepository userRepository,
                         OrderWorkflowService orderWorkflowService,
                         AuditService auditService,
-                        com.shifa.oms.settings.SettingsService settingsService,
-                        com.shifa.oms.label.LabelService labelService) {
+                        SettingsService settingsService,
+                        LabelService labelService) {
         this(orderRepository, productRepository, orderCodeGenerator, storageService, scopeResolver,
                 trackingService, stockService, productImageRepository, outboxEventPublisher,
                 quikShipXProperties, orderShipmentRepository, userRepository, orderWorkflowService,
@@ -248,7 +262,7 @@ public class OrderService {
     /**
      * Pre-milestone-notifier constructor (kept for the 17-arg store-order test
      * call site): delegates to the full constructor with no
-     * {@link com.shifa.oms.notification.ShipmentMilestoneNotifier}, so the
+     * {@link ShipmentMilestoneNotifier}, so the
      * order-placed COD WhatsApp is skipped in those unit tests.
      */
     public OrderService(OrderRepository orderRepository,
@@ -262,12 +276,12 @@ public class OrderService {
                         OutboxEventPublisher outboxEventPublisher,
                         QuikShipXProperties quikShipXProperties,
                         OrderShipmentRepository orderShipmentRepository,
-                        com.shifa.oms.auth.UserRepository userRepository,
+                        UserRepository userRepository,
                         OrderWorkflowService orderWorkflowService,
                         AuditService auditService,
-                        com.shifa.oms.settings.SettingsService settingsService,
-                        com.shifa.oms.label.LabelService labelService,
-                        com.shifa.oms.reconciliation.ReceivableRepository receivableRepository) {
+                        SettingsService settingsService,
+                        LabelService labelService,
+                        ReceivableRepository receivableRepository) {
         this(orderRepository, productRepository, orderCodeGenerator, storageService, scopeResolver,
                 trackingService, stockService, productImageRepository, outboxEventPublisher,
                 quikShipXProperties, orderShipmentRepository, userRepository, orderWorkflowService,
@@ -286,13 +300,13 @@ public class OrderService {
                         OutboxEventPublisher outboxEventPublisher,
                         QuikShipXProperties quikShipXProperties,
                         OrderShipmentRepository orderShipmentRepository,
-                        com.shifa.oms.auth.UserRepository userRepository,
+                        UserRepository userRepository,
                         OrderWorkflowService orderWorkflowService,
                         AuditService auditService,
-                        com.shifa.oms.settings.SettingsService settingsService,
-                        com.shifa.oms.label.LabelService labelService,
-                        com.shifa.oms.reconciliation.ReceivableRepository receivableRepository,
-                        com.shifa.oms.notification.ShipmentMilestoneNotifier milestoneNotifier) {
+                        SettingsService settingsService,
+                        LabelService labelService,
+                        ReceivableRepository receivableRepository,
+                        ShipmentMilestoneNotifier milestoneNotifier) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.orderCodeGenerator = orderCodeGenerator;
@@ -351,10 +365,10 @@ public class OrderService {
         // place several orders the same day for DIFFERENT items. The message names the
         // existing order + who placed it. Authoritative block; the server 400 also
         // surfaces on the New Order form at submit.
-        java.util.Set<Long> newProductIds = priced.stream()
+        Set<Long> newProductIds = priced.stream()
                 .map(pl -> pl.product().getId())
-                .filter(java.util.Objects::nonNull)
-                .collect(java.util.stream.Collectors.toSet());
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
         requireNoSameDayDuplicate(request.customerMobile(), actor, newProductIds);
 
         Money received = Money.of(request.amountReceived());
@@ -370,7 +384,7 @@ public class OrderService {
         // Enforce screenshot-required rule before computing/persisting (Req 7.6). A
         // screenshot is now ALWAYS required because a payment (≥ ₹100 / full) is
         // always collected upfront; the rule below reads naturally from any proof.
-        PaymentCalculator.requireScreenshotWhenPaid(received, primaryKey(screenshotKeys));
+        PaymentCalculator.requireScreenshotWhenPaid(received, OrderPaymentProofs.primary(screenshotKeys));
         // A fully-paid amount may have carried paise before the total was rounded
         // down; absorb ONLY that sub-rupee overage so a valid full payment isn't
         // rejected. A genuine over-payment (>= ₹1 above the total) still falls
@@ -541,7 +555,7 @@ public class OrderService {
             received = total;
         }
         List<String> screenshotKeys = storeScreenshotKeys(request);
-        PaymentCalculator.requireScreenshotWhenPaid(received, primaryKey(screenshotKeys));
+        PaymentCalculator.requireScreenshotWhenPaid(received, OrderPaymentProofs.primary(screenshotKeys));
         PaymentCalculation calc = PaymentCalculator.classify(total, received);
 
         // Address is optional for a counter sale (no delivery) — store whatever was
@@ -685,12 +699,12 @@ public class OrderService {
             return;
         }
         if (!receivableRepository.findByOrderIdAndType(
-                order.getId(), com.shifa.oms.reconciliation.domain.ReceivableType.COD_RECEIVABLE).isEmpty()) {
+                order.getId(), ReceivableType.COD_RECEIVABLE).isEmpty()) {
             return;
         }
-        receivableRepository.save(new com.shifa.oms.reconciliation.ReceivableEntity(
+        receivableRepository.save(new ReceivableEntity(
                 order.getId(), null,
-                com.shifa.oms.reconciliation.domain.ReceivableType.COD_RECEIVABLE, cod));
+                ReceivableType.COD_RECEIVABLE, cod));
     }
 
     /** Trims to empty string (for optional NOT-NULL address columns on a counter sale). */
@@ -740,7 +754,7 @@ public class OrderService {
             return;
         }
         try {
-            com.shifa.oms.settings.AppSettings settings = settingsService.getSettings();
+            AppSettings settings = settingsService.getSettings();
             if (!settings.isAutoApproveEnabled()) {
                 return;
             }
@@ -800,12 +814,12 @@ public class OrderService {
     }
 
     /** Concluded-delivery success statuses for the auto-approval risk gate. */
-    private static final java.util.Set<OrderStatus> AUTO_APPROVE_DELIVERED_STATUSES =
-            java.util.EnumSet.of(OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED, OrderStatus.CLOSED);
+    private static final Set<OrderStatus> AUTO_APPROVE_DELIVERED_STATUSES =
+            EnumSet.of(OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED, OrderStatus.CLOSED);
 
     /** Concluded-delivery failure statuses for the auto-approval risk gate. */
-    private static final java.util.Set<OrderStatus> AUTO_APPROVE_FAILED_STATUSES =
-            java.util.EnumSet.of(OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED,
+    private static final Set<OrderStatus> AUTO_APPROVE_FAILED_STATUSES =
+            EnumSet.of(OrderStatus.CUSTOMER_REJECTED, OrderStatus.DELIVERY_FAILED,
                     OrderStatus.RTO, OrderStatus.REDISPATCH);
 
     /**
@@ -841,7 +855,7 @@ public class OrderService {
         if (raw == null || raw.isBlank()) {
             return DeliveryMethod.QUIKSHIPX;
         }
-        return DeliveryMethod.valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT));
+        return DeliveryMethod.valueOf(raw.trim().toUpperCase(Locale.ROOT));
     }
 
     // --- Admin edit-order (correct salesperson-entered details) ------------
@@ -858,8 +872,8 @@ public class OrderService {
      * already-approved order must cancel it and create a corrected one. Editing is
      * therefore restricted to before approval, matching {@link #OWN_EDITABLE_STATUSES}.
      */
-    private static final java.util.Set<OrderStatus> EDITABLE_STATUSES =
-            java.util.EnumSet.of(OrderStatus.PENDING_ADMIN_APPROVAL);
+    private static final Set<OrderStatus> EDITABLE_STATUSES =
+            EnumSet.of(OrderStatus.PENDING_ADMIN_APPROVAL);
 
     /**
      * Admin edit-order (Req: "As an Admin I should be able to update the order
@@ -914,8 +928,8 @@ public class OrderService {
      * admin has approved it, only an admin may edit (via {@link #updateOrder}),
      * so a salesperson can't silently change an approved order.
      */
-    private static final java.util.Set<OrderStatus> OWN_EDITABLE_STATUSES =
-            java.util.EnumSet.of(OrderStatus.PENDING_ADMIN_APPROVAL);
+    private static final Set<OrderStatus> OWN_EDITABLE_STATUSES =
+            EnumSet.of(OrderStatus.PENDING_ADMIN_APPROVAL);
 
     /**
      * Edit of an order by the person who punched it (own-pending-edit feature):
@@ -951,8 +965,8 @@ public class OrderService {
      * Statuses from which a salesperson (or admin) may rework a REJECTED order
      * back into the approval queue (rejection-status rework feature).
      */
-    private static final java.util.Set<OrderStatus> RESUBMITTABLE_STATUSES =
-            java.util.EnumSet.of(OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED);
+    private static final Set<OrderStatus> RESUBMITTABLE_STATUSES =
+            EnumSet.of(OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED);
 
     /** Source recorded on the resubmit status-history row. */
     private static final String SOURCE_RESUBMIT = "SALESPERSON";
@@ -1030,7 +1044,7 @@ public class OrderService {
 
         // Snapshot the old field values BEFORE mutating so we can build a concise
         // "what changed" diff for the audit trail (who/what/when).
-        Map<String, String> before = fieldSnapshot(order);
+        Map<String, String> before = OrderEditDiff.snapshot(order);
 
         // Snapshot the quantity previously committed per tracked product so the
         // stock ledger can be reconciled to the new lines below (stock was
@@ -1151,7 +1165,7 @@ public class OrderService {
         }
 
         // Build the field-level diff from the before/after snapshots (audit trail).
-        return diffSummary(before, fieldSnapshot(order));
+        return OrderEditDiff.diff(before, OrderEditDiff.snapshot(order));
     }
 
     /**
@@ -1160,72 +1174,7 @@ public class OrderService {
      * Empty when the request carries no new proof (a plain field edit).
      */
     private static List<String> editScreenshotKeys(UpdateOrderRequest request) {
-        List<String> keys = new ArrayList<>();
-        addKey(keys, request.paymentScreenshotKey());
-        if (request.paymentScreenshotKeys() != null) {
-            for (String k : request.paymentScreenshotKeys()) {
-                addKey(keys, k);
-            }
-        }
-        return keys;
-    }
-
-    /**
-     * Captures the audited scalar fields of an order into an ordered label→value
-     * map, so an edit can be diffed old→new for the audit trail. Amounts/status/
-     * payment-verification are intentionally excluded (payment capture is not
-     * editable here); the line-item set is summarised as a single "Items" entry.
-     */
-    private static Map<String, String> fieldSnapshot(OrderEntity order) {
-        Map<String, String> m = new LinkedHashMap<>();
-        m.put("Customer", nz(order.getCustomerName()));
-        m.put("Mobile", nz(order.getCustomerMobile()));
-        m.put("Alt mobile", nz(order.getAlternateMobile()));
-        m.put("Email", nz(order.getCustomerEmail()));
-        m.put("Address", nz(order.getAddressLine()));
-        m.put("City", nz(order.getCity()));
-        m.put("State", nz(order.getState()));
-        m.put("Pincode", nz(order.getPostalCode()));
-        m.put("Lead source", order.getLeadSource() == null ? "" : order.getLeadSource().name());
-        m.put("Lead note", nz(order.getLeadSourceNote()));
-        m.put("Notes", nz(order.getNotes()));
-        m.put("GSTIN", nz(order.getBuyerGstin()));
-        m.put("Discount", order.getDiscountAmount() == null ? "0" : order.getDiscountAmount().toPlainString());
-        m.put("Total", order.getTotalAmount() == null ? "0" : order.getTotalAmount().toPlainString());
-        m.put("Items", itemsSummary(order.getLineItems()));
-        return m;
-    }
-
-    /** A compact "product×qty@rate; …" summary of the order lines for diffing. */
-    private static String itemsSummary(List<OrderLineItem> lines) {
-        if (lines == null || lines.isEmpty()) {
-            return "";
-        }
-        return lines.stream()
-                .map(li -> nz(li.getProductName()) + "×" + li.getQuantity()
-                        + "@" + (li.getRate() == null ? "0" : li.getRate().toPlainString()))
-                .collect(java.util.stream.Collectors.joining("; "));
-    }
-
-    /**
-     * Builds a concise human-readable diff of the changed fields (label:
-     * old→new), or an empty string when nothing changed. Used as the audit
-     * summary so the trail shows exactly what an edit changed.
-     */
-    private static String diffSummary(Map<String, String> before, Map<String, String> after) {
-        List<String> changes = new ArrayList<>();
-        for (Map.Entry<String, String> e : after.entrySet()) {
-            String old = before.getOrDefault(e.getKey(), "");
-            String now = e.getValue();
-            if (!java.util.Objects.equals(old, now)) {
-                changes.add(e.getKey() + ": '" + old + "' → '" + now + "'");
-            }
-        }
-        return String.join("; ", changes);
-    }
-
-    private static String nz(String value) {
-        return value == null ? "" : value;
+        return OrderPaymentProofs.keysOf(request.paymentScreenshotKey(), request.paymentScreenshotKeys());
     }
 
     /**
@@ -1309,26 +1258,10 @@ public class OrderService {
         }
         try {
             return storageService.load(storageKey)
-                    .map(obj -> sha256Hex(obj.content()))
+                    .map(obj -> OrderPaymentProofs.sha256Hex(obj.content()))
                     .orElse(null);
         } catch (RuntimeException e) {
             return null;
-        }
-    }
-
-    private static String sha256Hex(byte[] bytes) {
-        if (bytes == null) {
-            return null;
-        }
-        try {
-            byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes);
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
-            }
-            return sb.toString();
-        } catch (java.security.NoSuchAlgorithmException e) {
-            return null; // SHA-256 is always available on a standard JVM.
         }
     }
 
@@ -1343,32 +1276,22 @@ public class OrderService {
     public List<OrderSummaryResponse> search(String term, AuthPrincipal actor) {
         String trimmed = (term == null || term.isBlank()) ? null : term.trim();
         Optional<List<Long>> scope = scopeResolver.creatorScope(actor);
-        List<OrderEntity> results;
-        if (scope.isEmpty()) {
-            // Unscoped (admin / accountant): all orders, optionally searched.
-            results = trimmed == null
-                    ? orderRepository.findAllScoped(null)
-                    : orderRepository.search(trimmed, null);
-        } else {
-            List<Long> ids = scope.get();
-            if (ids.isEmpty()) {
-                // Scoped to nothing (e.g. a team lead with no assigned salespeople).
-                results = List.of();
-            } else if (ids.size() == 1) {
-                // Single creator (a salesperson) — reuse the single-id query.
-                Long only = ids.get(0);
-                results = trimmed == null
-                        ? orderRepository.findAllScoped(only)
-                        : orderRepository.search(trimmed, only);
-            } else {
-                // Multiple creators (a team lead's team) — scope by the id set.
-                results = trimmed == null
-                        ? orderRepository.findAllScopedIn(ids)
-                        : orderRepository.searchIn(trimmed, ids);
-            }
+        if (scope.isPresent() && scope.get().isEmpty()) {
+            // Scoped to nothing (e.g. a team lead with no assigned salespeople).
+            return List.of();
         }
+        // One capped query for every scope shape: unscoped (admin / accountant), a single
+        // creator (salesperson) or a creator set (team lead). This used to load the whole
+        // orders table for an unscoped caller; it now returns the newest SEARCH_RESULT_LIMIT.
+        boolean anyCreator = scope.isEmpty();
+        List<Long> creatorIds = anyCreator ? List.of(-1L) : scope.get();
+        List<OrderEntity> results = orderRepository.searchRecent(
+                trimmed == null ? "" : trimmed, trimmed != null, anyCreator, creatorIds, SEARCH_RESULT_LIMIT);
         return results.stream().map(OrderSummaryResponse::from).toList();
     }
+
+    /** Most orders {@link #search} returns; the endpoint is a quick lookup, not an export. */
+    static final int SEARCH_RESULT_LIMIT = 200;
 
     /**
      * IST is the business day boundary used for same-day duplicate detection, so
@@ -1531,7 +1454,7 @@ public class OrderService {
     private Map<Long, String> primaryImageKeys(OrderEntity order) {
         List<Long> productIds = order.getLineItems().stream()
                 .map(OrderLineItem::getProductId)
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .distinct()
                 .toList();
         if (productIds.isEmpty()) {
@@ -1825,7 +1748,7 @@ public class OrderService {
      * left to the existing field validation.
      */
     private void requireNoSameDayDuplicate(String mobile, AuthPrincipal actor,
-                                           java.util.Set<Long> newProductIds) {
+                                           Set<Long> newProductIds) {
         if (mobile == null || mobile.isBlank() || newProductIds == null || newProductIds.isEmpty()) {
             return;
         }
@@ -1857,7 +1780,7 @@ public class OrderService {
      * The name of the first line item in {@code existing} whose product id is also
      * in {@code newProductIds}, or null when there is no product overlap.
      */
-    private static String firstRepeatedProductName(OrderEntity existing, java.util.Set<Long> newProductIds) {
+    private static String firstRepeatedProductName(OrderEntity existing, Set<Long> newProductIds) {
         for (OrderLineItem li : existing.getLineItems()) {
             if (li.getProductId() != null && newProductIds.contains(li.getProductId())) {
                 return li.getProductName();
@@ -2010,14 +1933,7 @@ public class OrderService {
      * are dropped. An order with no proofs yields an empty list.
      */
     private static List<String> effectiveScreenshotKeys(CreateOrderRequest request) {
-        List<String> keys = new ArrayList<>();
-        addKey(keys, request.paymentScreenshotKey());
-        if (request.paymentScreenshotKeys() != null) {
-            for (String extra : request.paymentScreenshotKeys()) {
-                addKey(keys, extra);
-            }
-        }
-        return keys;
+        return OrderPaymentProofs.keysOf(request.paymentScreenshotKey(), request.paymentScreenshotKeys());
     }
 
     /**
@@ -2026,30 +1942,7 @@ public class OrderService {
      * {@link #effectiveScreenshotKeys(CreateOrderRequest)} for the salesperson path.
      */
     private static List<String> storeScreenshotKeys(StoreOrderRequest request) {
-        List<String> keys = new ArrayList<>();
-        addKey(keys, request.paymentScreenshotKey());
-        if (request.paymentScreenshotKeys() != null) {
-            for (String extra : request.paymentScreenshotKeys()) {
-                addKey(keys, extra);
-            }
-        }
-        return keys;
-    }
-
-    /** Appends a trimmed, non-blank, not-already-present key. */
-    private static void addKey(List<String> keys, String key) {
-        if (key == null || key.isBlank()) {
-            return;
-        }
-        String trimmed = key.trim();
-        if (!keys.contains(trimmed)) {
-            keys.add(trimmed);
-        }
-    }
-
-    /** The primary (first) proof of an ordered proof set, or null when there are none. */
-    private static String primaryKey(List<String> screenshotKeys) {
-        return screenshotKeys.isEmpty() ? null : screenshotKeys.get(0);
+        return OrderPaymentProofs.keysOf(request.paymentScreenshotKey(), request.paymentScreenshotKeys());
     }
 
     /** Fills line items, amounts, initial status, payment proofs, and the creation history row. */
@@ -2090,7 +1983,7 @@ public class OrderService {
 
         if (!calc.amountReceived().isZero()) {
             order.addPayment(new OrderPayment(
-                    calc.amountReceived().toBigDecimal(), primaryKey(screenshotKeys),
+                    calc.amountReceived().toBigDecimal(), OrderPaymentProofs.primary(screenshotKeys),
                     paymentCapture.method(), paymentCapture.accountId(), paymentCapture.accountName(),
                     paymentCapture.accountMasked(), paymentCapture.utr()));
         }

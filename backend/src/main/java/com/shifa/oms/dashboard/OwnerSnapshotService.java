@@ -19,7 +19,6 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -134,18 +133,7 @@ public class OwnerSnapshotService {
     }
 
     private Map<OrderStatus, Long> statusCounts() {
-        Map<OrderStatus, Long> map = new EnumMap<>(OrderStatus.class);
-        for (OrderRepository.StatusCountRow row : orderRepository.statusCounts()) {
-            if (row.getStatus() == null) {
-                continue;
-            }
-            try {
-                map.merge(OrderStatus.valueOf(row.getStatus()), row.getCount(), Long::sum);
-            } catch (IllegalArgumentException ignored) {
-                // Unknown stored status name — skip.
-            }
-        }
-        return map;
+        return OrderStatusCounts.fold(orderRepository.statusCounts());
     }
 
     private static String displayName(User u) {

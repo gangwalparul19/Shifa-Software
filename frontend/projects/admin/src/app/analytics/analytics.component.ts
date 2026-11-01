@@ -1,5 +1,7 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   ApexAxisChartSeries,
   ApexChart,
@@ -11,20 +13,73 @@ import {
   ApexYAxis,
   NgApexchartsModule,
 } from 'ng-apexcharts';
+import { formatDateLabel } from '../shared/date-label.util';
+import { formatInr } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
+import {
+  MAX_DATASET_DAYS,
+  PERIOD_PRESETS,
+  PeriodKey,
+  inclusiveDays,
+  istToday,
+  periodProblem,
+  resolvePeriod,
+} from './analytics-period.util';
 import { AnalyticsService } from './analytics.service';
 import {
+  CustomerSegmentsReport,
   DeliveryPerformanceReport,
   ForecastReport,
+  LeadFunnel,
+  OperationsReport,
+  OverviewReport,
+  PointersReport,
+  ProductPerformanceReport,
   RetentionReport,
   SalesTargetRow,
 } from './analytics.model';
+import { AcquisitionTabComponent } from './tabs/acquisition-tab.component';
+import { CustomersTabComponent } from './tabs/customers-tab.component';
+import { DatasetsTabComponent } from './tabs/datasets-tab.component';
+import { OperationsTabComponent } from './tabs/operations-tab.component';
+import { OverviewTabComponent } from './tabs/overview-tab.component';
+import { ProductsTabComponent } from './tabs/products-tab.component';
 
-type AnalyticsTab = 'targets' | 'retention' | 'forecast' | 'delivery';
+type AnalyticsTab =
+  | 'overview'
+  | 'customers'
+  | 'retention'
+  | 'products'
+  | 'acquisition'
+  | 'operations'
+  | 'delivery'
+  | 'forecast'
+  | 'targets'
+  | 'data';
+
+/** Tabs that read the period chosen at the top of the page. The others cover all time or a fixed window. */
+const PERIOD_TABS: readonly AnalyticsTab[] = ['overview', 'products', 'acquisition', 'operations', 'data'];
+
+const TAB_KEYS: readonly AnalyticsTab[] = [
+  'overview',
+  'customers',
+  'retention',
+  'products',
+  'acquisition',
+  'operations',
+  'delivery',
+  'forecast',
+  'targets',
+  'data',
+];
+
+function isTab(value: string | null): value is AnalyticsTab {
+  return value !== null && (TAB_KEYS as readonly string[]).includes(value);
+}
 
 /** ApexCharts bar option bundle used by both the reorder + demand charts. */
 interface BarOptions {
@@ -40,20 +95,40 @@ interface BarOptions {
 }
 
 /**
- * Admin analytics suite (FEATURE-ROADMAP §6): Sales targets & incentives (§6.1),
- * cohort/retention (§6.3), and demand/cash forecasting (§6.5), presented as three
- * tabs. ADMIN-only route.
+ * Admin analytics suite. Growth analytics (overview with key pointers, customers, products,
+ * acquisition, operations and data downloads) sit beside the original sales targets (§6.1),
+ * retention (§6.3), forecast (§6.5) and delivery performance tabs. ADMIN-only route.
+ *
+ * <p>The page period (default last 30 days, IST) drives the overview, products, acquisition,
+ * operations and data tabs. Customers, retention, delivery, forecast and targets do not use it.
+ * The selected tab is kept in {@code ?tab=} so a pointer on the overview can link straight to
+ * the tab that explains it.
  */
 @Component({
   selector: 'admin-analytics',
   standalone: true,
-  imports: [FormsModule, NgApexchartsModule, PageHeaderComponent, PaginationComponent, StatePanelComponent],
+  imports: [
+    FormsModule,
+    NgApexchartsModule,
+    PageHeaderComponent,
+    PaginationComponent,
+    StatePanelComponent,
+    OverviewTabComponent,
+    CustomersTabComponent,
+    ProductsTabComponent,
+    AcquisitionTabComponent,
+    OperationsTabComponent,
+    DatasetsTabComponent,
+  ],
   templateUrl: './analytics.component.html',
   styleUrl: './analytics.component.css',
 })
 export class AnalyticsComponent implements OnInit {
   private readonly service = inject(AnalyticsService);
   private readonly toasts = inject(ToastService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   private readonly reducedMotion =
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -61,12 +136,65 @@ export class AnalyticsComponent implements OnInit {
       : false;
 
   protected readonly tabs: { key: AnalyticsTab; label: string; icon: string }[] = [
-    { key: 'targets', label: 'Targets & Incentives', icon: 'ti-target' },
+    { key: 'overview', label: 'Overview', icon: 'ti-layout-dashboard' },
+    { key: 'customers', label: 'Customers', icon: 'ti-heart-handshake' },
     { key: 'retention', label: 'Retention', icon: 'ti-users-group' },
-    { key: 'forecast', label: 'Forecast', icon: 'ti-chart-dots' },
+    { key: 'products', label: 'Products', icon: 'ti-package' },
+    { key: 'acquisition', label: 'Acquisition', icon: 'ti-speakerphone' },
+    { key: 'operations', label: 'Operations', icon: 'ti-truck-loading' },
     { key: 'delivery', label: 'Delivery', icon: 'ti-truck-delivery' },
+    { key: 'forecast', label: 'Forecast', icon: 'ti-chart-dots' },
+    { key: 'targets', label: 'Targets & Incentives', icon: 'ti-target' },
+    { key: 'data', label: 'Data', icon: 'ti-database-export' },
   ];
-  protected readonly activeTab = signal<AnalyticsTab>('targets');
+  protected readonly activeTab = signal<AnalyticsTab>('overview');
+
+  // --- Page period (overview, products, acquisition, operations, data) -----
+  protected readonly periodPresets = PERIOD_PRESETS;
+  protected readonly periodKey = signal<PeriodKey>('30d');
+  /** The period the reports were requested for (IST, yyyy-MM-dd). */
+  protected readonly from = signal<string>(resolvePeriod('30d', istToday()).from);
+  protected readonly to = signal<string>(resolvePeriod('30d', istToday()).to);
+  /** What the user has typed in the custom boxes, applied only when they press Apply. */
+  protected readonly customFrom = signal<string>(this.from());
+  protected readonly customTo = signal<string>(this.to());
+  protected readonly periodError = signal<string | null>(null);
+  protected readonly usesPeriod = computed(() => PERIOD_TABS.includes(this.activeTab()));
+  protected readonly periodLabel = computed(
+    () => `${formatDateLabel(this.from())} – ${formatDateLabel(this.to())}`,
+  );
+  protected readonly periodDays = computed(() => inclusiveDays(this.from(), this.to()));
+  /** Bumped whenever the period changes, so a late reply for an old period is dropped. */
+  private periodVersion = 0;
+
+  // --- Growth analytics ---------------------------------------------------
+  protected readonly overview = signal<OverviewReport | null>(null);
+  protected readonly overviewLoading = signal(false);
+  protected readonly overviewError = signal<string | null>(null);
+
+  protected readonly pointers = signal<PointersReport | null>(null);
+  protected readonly pointersLoading = signal(false);
+  protected readonly pointersError = signal<string | null>(null);
+
+  protected readonly customers = signal<CustomerSegmentsReport | null>(null);
+  protected readonly customersLoading = signal(false);
+  protected readonly customersError = signal<string | null>(null);
+
+  protected readonly products = signal<ProductPerformanceReport | null>(null);
+  protected readonly productsLoading = signal(false);
+  protected readonly productsError = signal<string | null>(null);
+
+  protected readonly operations = signal<OperationsReport | null>(null);
+  protected readonly operationsLoading = signal(false);
+  protected readonly operationsError = signal<string | null>(null);
+
+  protected readonly funnel = signal<LeadFunnel | null>(null);
+  protected readonly funnelLoading = signal(false);
+  protected readonly funnelError = signal<string | null>(null);
+
+  /** The acquisition tab needs both the overview (revenue by source) and the lead funnel. */
+  protected readonly acquisitionLoading = computed(() => this.overviewLoading() || this.funnelLoading());
+  protected readonly acquisitionError = computed(() => this.overviewError() ?? this.funnelError());
 
   // --- Targets (§6.1) -----------------------------------------------------
   protected readonly targetRows = signal<SalesTargetRow[]>([]);
@@ -112,19 +240,289 @@ export class AnalyticsComponent implements OnInit {
   protected readonly deliveryLoading = signal(false);
   protected readonly deliveryError = signal<string | null>(null);
 
+  private targetsLoaded = false;
+  /** True once the first address-bar state has been applied. */
+  private started = false;
+
+  /** The data tab allows a shorter period than the reports; warn instead of letting the download fail. */
+  protected readonly datasetPeriodTooLong = computed(
+    () => this.activeTab() === 'data' && this.periodDays() > MAX_DATASET_DAYS,
+  );
+  protected readonly maxDatasetDays = MAX_DATASET_DAYS;
+
   ngOnInit(): void {
-    this.loadTargets();
+    // The URL decides the tab. A link such as /analytics?tab=customers (from a pointer, or a
+    // bookmark) opens that tab; no parameter means the overview.
+    this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
+      const requested = params.get('tab');
+      const tab: AnalyticsTab = isTab(requested) ? requested : 'overview';
+      if (tab !== this.activeTab() || !this.started) {
+        this.started = true;
+        this.activate(tab);
+      }
+    });
   }
 
+  /** A tab button was pressed: show it and keep the address bar in step. */
   selectTab(tab: AnalyticsTab): void {
+    this.activate(tab);
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { tab },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
+  /** Shows a tab and loads what it needs the first time it is opened. */
+  private activate(tab: AnalyticsTab): void {
     this.activeTab.set(tab);
-    if (tab === 'retention' && !this.retention()) {
-      this.loadRetention();
-    } else if (tab === 'forecast' && !this.forecast()) {
-      this.loadForecast();
-    } else if (tab === 'delivery' && !this.delivery()) {
-      this.loadDelivery();
+    switch (tab) {
+      case 'overview':
+        if (!this.overview() && !this.overviewLoading()) {
+          this.loadOverview();
+        }
+        break;
+      case 'customers':
+        if (!this.customers() && !this.customersLoading()) {
+          this.loadCustomers();
+        }
+        break;
+      case 'retention':
+        if (!this.retention() && !this.retentionLoading()) {
+          this.loadRetention();
+        }
+        break;
+      case 'products':
+        if (!this.products() && !this.productsLoading()) {
+          this.loadProducts();
+        }
+        break;
+      case 'acquisition':
+        this.loadAcquisition();
+        break;
+      case 'operations':
+        if (!this.operations() && !this.operationsLoading()) {
+          this.loadOperations();
+        }
+        break;
+      case 'delivery':
+        if (!this.delivery() && !this.deliveryLoading()) {
+          this.loadDelivery();
+        }
+        break;
+      case 'forecast':
+        if (!this.forecast() && !this.forecastLoading()) {
+          this.loadForecast();
+        }
+        break;
+      case 'targets':
+        if (!this.targetsLoaded) {
+          this.loadTargets();
+        }
+        break;
+      case 'data':
+        // The data tab loads its own catalogue when it appears.
+        break;
     }
+  }
+
+  // --- Period -------------------------------------------------------------
+
+  /** A preset was chosen. "Custom" only reveals the date boxes; Apply runs it. */
+  choosePeriod(key: PeriodKey): void {
+    this.periodKey.set(key);
+    if (key === 'custom') {
+      this.customFrom.set(this.from());
+      this.customTo.set(this.to());
+      this.periodError.set(null);
+      return;
+    }
+    const range = resolvePeriod(key, istToday());
+    this.periodError.set(null);
+    this.setPeriod(range.from, range.to);
+  }
+
+  /** Apply the dates typed into the custom boxes. */
+  applyCustomPeriod(): void {
+    const from = this.customFrom();
+    const to = this.customTo();
+    const problem = periodProblem(from, to, this.activeTab() === 'data' ? MAX_DATASET_DAYS : undefined);
+    if (problem) {
+      this.periodError.set(problem);
+      return;
+    }
+    this.periodError.set(null);
+    this.setPeriod(from, to);
+  }
+
+  /** Switches to a new period: forgets the old period's reports and reloads the open tab. */
+  private setPeriod(from: string, to: string): void {
+    if (from === this.from() && to === this.to()) {
+      return;
+    }
+    this.periodVersion++;
+    this.from.set(from);
+    this.to.set(to);
+    this.overview.set(null);
+    this.pointers.set(null);
+    this.products.set(null);
+    this.operations.set(null);
+    this.funnel.set(null);
+    this.overviewLoading.set(false);
+    this.pointersLoading.set(false);
+    this.productsLoading.set(false);
+    this.operationsLoading.set(false);
+    this.funnelLoading.set(false);
+    this.overviewError.set(null);
+    this.pointersError.set(null);
+    this.productsError.set(null);
+    this.operationsError.set(null);
+    this.funnelError.set(null);
+    if (PERIOD_TABS.includes(this.activeTab())) {
+      this.activate(this.activeTab());
+    }
+  }
+
+  // --- Overview, pointers, acquisition ------------------------------------
+
+  /** The overview and the pointers load together; the page shows the overview as soon as it lands. */
+  loadOverview(): void {
+    const version = this.periodVersion;
+    this.overviewLoading.set(true);
+    this.overviewError.set(null);
+    this.service.overview(this.from(), this.to()).subscribe({
+      next: (r) => {
+        if (version !== this.periodVersion) {
+          return;
+        }
+        this.overview.set(r);
+        this.overviewLoading.set(false);
+      },
+      error: () => {
+        if (version !== this.periodVersion) {
+          return;
+        }
+        this.overviewError.set('Could not load the overview.');
+        this.overviewLoading.set(false);
+      },
+    });
+    this.loadPointers();
+  }
+
+  loadPointers(): void {
+    const version = this.periodVersion;
+    this.pointersLoading.set(true);
+    this.pointersError.set(null);
+    this.service.pointers(this.from(), this.to()).subscribe({
+      next: (r) => {
+        if (version !== this.periodVersion) {
+          return;
+        }
+        this.pointers.set(r);
+        this.pointersLoading.set(false);
+      },
+      error: () => {
+        if (version !== this.periodVersion) {
+          return;
+        }
+        this.pointersError.set('Could not load the key pointers.');
+        this.pointersLoading.set(false);
+      },
+    });
+  }
+
+  /** Loads whichever of the overview and the lead funnel is missing. */
+  loadAcquisition(): void {
+    if (!this.overview() && !this.overviewLoading()) {
+      this.loadOverview();
+    }
+    if (!this.funnel() && !this.funnelLoading()) {
+      this.loadFunnel();
+    }
+  }
+
+  private loadFunnel(): void {
+    const version = this.periodVersion;
+    this.funnelLoading.set(true);
+    this.funnelError.set(null);
+    this.service.leadFunnel(this.from(), this.to()).subscribe({
+      next: (r) => {
+        if (version !== this.periodVersion) {
+          return;
+        }
+        this.funnel.set(r);
+        this.funnelLoading.set(false);
+      },
+      error: () => {
+        if (version !== this.periodVersion) {
+          return;
+        }
+        this.funnelError.set('Could not load the lead funnel.');
+        this.funnelLoading.set(false);
+      },
+    });
+  }
+
+  // --- Customers, products, operations ------------------------------------
+
+  loadCustomers(): void {
+    this.customersLoading.set(true);
+    this.customersError.set(null);
+    this.service.customers().subscribe({
+      next: (r) => {
+        this.customers.set(r);
+        this.customersLoading.set(false);
+      },
+      error: () => {
+        this.customersError.set('Could not load customer segments.');
+        this.customersLoading.set(false);
+      },
+    });
+  }
+
+  loadProducts(): void {
+    const version = this.periodVersion;
+    this.productsLoading.set(true);
+    this.productsError.set(null);
+    this.service.products(this.from(), this.to()).subscribe({
+      next: (r) => {
+        if (version !== this.periodVersion) {
+          return;
+        }
+        this.products.set(r);
+        this.productsLoading.set(false);
+      },
+      error: () => {
+        if (version !== this.periodVersion) {
+          return;
+        }
+        this.productsError.set('Could not load product performance.');
+        this.productsLoading.set(false);
+      },
+    });
+  }
+
+  loadOperations(): void {
+    const version = this.periodVersion;
+    this.operationsLoading.set(true);
+    this.operationsError.set(null);
+    this.service.operations(this.from(), this.to()).subscribe({
+      next: (r) => {
+        if (version !== this.periodVersion) {
+          return;
+        }
+        this.operations.set(r);
+        this.operationsLoading.set(false);
+      },
+      error: () => {
+        if (version !== this.periodVersion) {
+          return;
+        }
+        this.operationsError.set('Could not load operations analytics.');
+        this.operationsLoading.set(false);
+      },
+    });
   }
 
   // --- Delivery performance -----------------------------------------------
@@ -172,6 +570,7 @@ export class AnalyticsComponent implements OnInit {
         }
         this.edits.set(map);
         this.targetsPage.set(0);
+        this.targetsLoaded = true;
         this.targetsLoading.set(false);
       },
       error: () => {
@@ -382,8 +781,7 @@ export class AnalyticsComponent implements OnInit {
   }
 
   money(value: string | number | null | undefined): string {
-    const n = Number(value ?? 0);
-    return '₹' + Math.round(n).toLocaleString('en-IN');
+    return formatInr(value, 0);
   }
 
   attainmentClass(pct: number | null): string {

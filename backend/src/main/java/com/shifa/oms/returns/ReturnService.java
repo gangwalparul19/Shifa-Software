@@ -13,6 +13,8 @@ import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.returns.dto.ReturnResponse;
 import com.shifa.oms.statemachine.OrderStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -41,6 +43,8 @@ import java.util.Set;
  */
 @Service
 public class ReturnService {
+
+    private static final Logger log = LoggerFactory.getLogger(ReturnService.class);
 
     /** Order statuses from which a return may be raised. */
     static final Set<OrderStatus> RETURNABLE_STATUSES =
@@ -236,7 +240,12 @@ public class ReturnService {
         try {
             outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_RETURN_REFUND, ret.getId());
         } catch (RuntimeException e) {
-            // best-effort; the drainer / a later recompute will pick it up
+            // Deliberately non-fatal: the refund itself has already been recorded. But if the
+            // ledger-post event could not be queued, nothing downstream will ever post it, so
+            // this must be visible rather than silent (it used to be swallowed with no log).
+            log.error("Refund ledger posting was NOT queued for return {} (the refund is recorded but "
+                    + "will not reach the general ledger until it is re-posted): {}",
+                    ret.getId(), e.getMessage(), e);
         }
     }
 

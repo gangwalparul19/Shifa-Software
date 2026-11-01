@@ -1,5 +1,6 @@
 import { Money } from 'core';
 import { CreateOrderLineItem, LeadSource, PaymentMethod } from '../orders/orders.model';
+import { formatInr } from '../shared/inr.pipe';
 
 /**
  * Client-side models for the Lead Management / sales-pipeline feature, mirroring
@@ -323,10 +324,7 @@ export function leadPillClass(status: LeadStatus): 'is-green' | 'is-amber' | 'is
 
 /** Money formatting helper (Money is a decimal string). */
 export function leadMoney(value: Money | number | undefined | null): string {
-  if (value === undefined || value === null) {
-    return '₹0.00';
-  }
-  return `₹${value}`;
+  return formatInr(value, 2);
 }
 
 // --- CRM expansion Phase 2 (Req 10, 13): follow-up health + group reports ---

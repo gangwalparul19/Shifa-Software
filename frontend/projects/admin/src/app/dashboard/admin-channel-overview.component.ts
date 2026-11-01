@@ -17,6 +17,7 @@ import {
 } from 'ng-apexcharts';
 import { CountUpDirective } from '../shared/count-up.directive';
 import { ChannelLogoComponent } from '../shared/channel-logo.component';
+import { formatInr } from '../shared/inr.pipe';
 import { AdminEventsService } from './admin-events.service';
 import { DashboardService } from './dashboard.service';
 import { ActivityCards, InsightsSummary, MetricsPeriod, PeriodOption, SalesBucket } from './dashboard.model';
@@ -437,8 +438,7 @@ export class AdminChannelOverviewComponent implements OnInit {
   // --- Formatting ---------------------------------------------------------
 
   inr(value: number | null | undefined): string {
-    const n = typeof value === 'number' ? value : 0;
-    return `₹${Math.round(n).toLocaleString('en-IN')}`;
+    return formatInr(value, 0);
   }
 
   /** "+12.5%" / "−4.0%" / "—" for a nullable % change. */

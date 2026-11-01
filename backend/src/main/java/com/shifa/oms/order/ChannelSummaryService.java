@@ -1,5 +1,7 @@
 package com.shifa.oms.order;
 
+import com.shifa.oms.dashboard.ChannelAggregateRepository;
+import com.shifa.oms.dashboard.ChannelAggregateRepository.SourceStatusRow;
 import com.shifa.oms.order.dto.ChannelSummaryResponse;
 import com.shifa.oms.order.dto.ChannelSummaryResponse.ChannelStats;
 import com.shifa.oms.order.dto.ChannelSummaryResponse.StatusCount;
@@ -22,15 +24,17 @@ import java.util.Set;
 
 /**
  * Computes the ADMIN-only channel dashboard: order metrics split by origin
- * channel (portal vs Shopify) plus the combined total, over a chosen date window,
- * with a per-channel status breakdown, COD outstanding, and this-month figures.
+ * channel (portal vs Shopify vs in-shop store) plus the combined total, over a
+ * chosen date window, with a per-channel status breakdown, COD outstanding, and
+ * this-month figures.
  *
- * <p>Read-only; iterates the windowed orders in memory (the volumes are the
- * business's order book, not an unbounded scan) and applies the same money rules
- * used elsewhere: revenue EXCLUDES rejected/cancelled orders, and COD outstanding
- * is the persisted {@code customer_outstanding} on active orders. A Shopify order
- * is {@link OrderSource#SHOPIFY}; "portal" is everything else (SALESPERSON /
- * STOREFRONT).
+ * <p>Read-only. The orders are NOT loaded: the database groups them by source
+ * and status ({@link ChannelAggregateRepository}) and this service folds those
+ * few rows into the channel totals, applying the same money rules used
+ * elsewhere: revenue EXCLUDES rejected/cancelled orders, and COD outstanding is
+ * the persisted {@code customer_outstanding} on active orders. A Shopify order
+ * is {@link OrderSource#SHOPIFY}, a store sale is {@link OrderSource#STORE};
+ * "portal" is everything else (SALESPERSON / STOREFRONT).
  */
 @Service
 public class ChannelSummaryService {
@@ -68,17 +72,17 @@ public class ChannelSummaryService {
         return map;
     }
 
-    private final OrderRepository orderRepository;
+    private final ChannelAggregateRepository aggregates;
     private final Clock clock;
 
     @org.springframework.beans.factory.annotation.Autowired
-    public ChannelSummaryService(OrderRepository orderRepository) {
-        this(orderRepository, Clock.system(BUSINESS_ZONE));
+    public ChannelSummaryService(ChannelAggregateRepository aggregates) {
+        this(aggregates, Clock.system(BUSINESS_ZONE));
     }
 
     /** Test constructor with a fixed clock (deterministic "this month" window). */
-    ChannelSummaryService(OrderRepository orderRepository, Clock clock) {
-        this.orderRepository = orderRepository;
+    ChannelSummaryService(ChannelAggregateRepository aggregates, Clock clock) {
+        this.aggregates = aggregates;
         this.clock = clock;
     }
 
@@ -93,8 +97,6 @@ public class ChannelSummaryService {
         LocalDateTime start = from != null ? from.atStartOfDay() : null;
         LocalDateTime end = to != null ? LocalDateTime.of(to, LocalTime.MAX) : null;
 
-        List<OrderEntity> orders = loadWindow(start, end);
-
         // "This month" boundaries (IST), independent of the requested window.
         LocalDate today = LocalDate.now(clock);
         LocalDateTime monthStart = today.withDayOfMonth(1).atStartOfDay();
@@ -105,17 +107,13 @@ public class ChannelSummaryService {
         Accumulator shopify = new Accumulator();
         Accumulator store = new Accumulator();
 
-        for (OrderEntity order : orders) {
-            boolean inMonth = withinMonth(order.getCreatedAt(), monthStart, monthEnd);
-            total.add(order, inMonth);
-            // Portal = our own online orders (neither Shopify nor an in-shop store
-            // sale), so each order lands in exactly one of the three channels.
-            Accumulator bucket = switch (order.getSource()) {
-                case SHOPIFY -> shopify;
-                case STORE -> store;
-                default -> portal;
-            };
-            bucket.add(order, inMonth);
+        for (SourceStatusRow row : loadWindow(start, end)) {
+            total.addWindow(row);
+            channelOf(row, portal, shopify, store).addWindow(row);
+        }
+        for (SourceStatusRow row : loadMonth(start, end, monthStart, monthEnd)) {
+            total.addMonth(row);
+            channelOf(row, portal, shopify, store).addMonth(row);
         }
 
         return new ChannelSummaryResponse(
@@ -128,37 +126,63 @@ public class ChannelSummaryService {
     }
 
     /**
-     * Loads the orders in the window. Only the fully-unbounded "all time" case
-     * loads every order (that genuinely IS the whole order book); any bounded
-     * side pushes the filter to SQL via a wide sentinel on the open side, so a
-     * one-sided window no longer does {@code findAll()} + a Java filter.
+     * Portal = our own online orders (neither Shopify nor an in-shop store
+     * sale), so each order lands in exactly one of the three channels.
      */
-    private List<OrderEntity> loadWindow(LocalDateTime start, LocalDateTime end) {
+    private static Accumulator channelOf(SourceStatusRow row, Accumulator portal,
+                                         Accumulator shopify, Accumulator store) {
+        return switch (row.getOrderSource()) {
+            case SHOPIFY -> shopify;
+            case STORE -> store;
+            default -> portal;
+        };
+    }
+
+    /**
+     * Groups the orders in the window by source and status. Only the
+     * fully-unbounded "all time" case reads every order (that genuinely IS the
+     * whole order book); any bounded side pushes the filter to SQL via a wide
+     * sentinel on the open side.
+     */
+    private List<SourceStatusRow> loadWindow(LocalDateTime start, LocalDateTime end) {
+        List<SourceStatusRow> rows;
         if (start == null && end == null) {
-            return orderRepository.findAll();
+            rows = aggregates.allTotals();
+        } else {
+            rows = aggregates.windowTotals(start != null ? start : SENTINEL_MIN, end != null ? end : SENTINEL_MAX);
         }
-        LocalDateTime lo = start != null ? start : SENTINEL_MIN;
-        LocalDateTime hi = end != null ? end : SENTINEL_MAX;
-        return orderRepository.findByCreatedAtBetween(lo, hi);
+        return rows == null ? List.of() : rows;
+    }
+
+    /**
+     * The window's orders created this calendar month, grouped by source and
+     * status. A sentinel on an open side is exact here: the month always lies
+     * inside it, and a null created-at can never be "this month".
+     */
+    private List<SourceStatusRow> loadMonth(LocalDateTime start, LocalDateTime end,
+                                            LocalDateTime monthStart, LocalDateTime monthEnd) {
+        List<SourceStatusRow> rows = aggregates.monthTotals(
+                start != null ? start : SENTINEL_MIN, end != null ? end : SENTINEL_MAX, monthStart, monthEnd);
+        return rows == null ? List.of() : rows;
     }
 
     /** Wide sentinels so a one-sided window still runs as a bounded SQL query. */
     private static final LocalDateTime SENTINEL_MIN = LocalDateTime.of(1970, 1, 1, 0, 0);
     private static final LocalDateTime SENTINEL_MAX = LocalDateTime.of(9999, 12, 31, 23, 59, 59);
 
-    private static boolean withinMonth(LocalDateTime created, LocalDateTime monthStart, LocalDateTime monthEnd) {
-        return created != null && !created.isBefore(monthStart) && created.isBefore(monthEnd);
-    }
-
-    private static boolean isRevenue(OrderEntity order) {
-        return !NON_REVENUE.contains(order.getOrderStatus());
+    private static boolean isRevenue(OrderStatus status) {
+        return !NON_REVENUE.contains(status);
     }
 
     private static BigDecimal nz(BigDecimal v) {
         return v != null ? v : BigDecimal.ZERO;
     }
 
-    /** Accumulates per-channel metrics as orders are streamed. */
+    private static long nzLong(Long v) {
+        return v != null ? v : 0L;
+    }
+
+    /** Accumulates per-channel metrics as the grouped source/status rows are folded in. */
     private static final class Accumulator {
         private long orderCount;
         private BigDecimal revenue = BigDecimal.ZERO;
@@ -167,23 +191,26 @@ public class ChannelSummaryService {
         private BigDecimal monthRevenue = BigDecimal.ZERO;
         private final Map<OrderStatusGroup, Long> byGroup = new EnumMap<>(OrderStatusGroup.class);
 
-        void add(OrderEntity order, boolean inMonth) {
-            orderCount++;
-            boolean revenue = isRevenue(order);
-            if (revenue) {
-                this.revenue = this.revenue.add(nz(order.getTotalAmount()));
+        /** Folds in the orders of one (source, status) group within the window. */
+        void addWindow(SourceStatusRow row) {
+            long count = nzLong(row.getOrderCount());
+            orderCount += count;
+            if (isRevenue(row.getOrderStatus())) {
+                revenue = revenue.add(nz(row.getTotalAmount()));
                 // COD still to collect on an active (non-cancelled/rejected) order.
-                this.codOutstanding = this.codOutstanding.add(nz(order.getCustomerOutstanding()));
+                codOutstanding = codOutstanding.add(nz(row.getOutstandingAmount()));
             }
-            if (inMonth) {
-                monthOrderCount++;
-                if (revenue) {
-                    monthRevenue = monthRevenue.add(nz(order.getTotalAmount()));
-                }
-            }
-            OrderStatusGroup group = STATUS_TO_GROUP.get(order.getOrderStatus());
+            OrderStatusGroup group = STATUS_TO_GROUP.get(row.getOrderStatus());
             if (group != null) {
-                byGroup.merge(group, 1L, Long::sum);
+                byGroup.merge(group, count, Long::sum);
+            }
+        }
+
+        /** Folds in the orders of one (source, status) group created this month. */
+        void addMonth(SourceStatusRow row) {
+            monthOrderCount += nzLong(row.getOrderCount());
+            if (isRevenue(row.getOrderStatus())) {
+                monthRevenue = monthRevenue.add(nz(row.getTotalAmount()));
             }
         }
 

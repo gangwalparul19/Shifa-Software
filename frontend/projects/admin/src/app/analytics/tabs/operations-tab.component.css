@@ -1,0 +1,74 @@
+/* Operations tab — relies on the shared Tabler card/table/alert styles. */
+
+:host {
+  display: block;
+}
+
+/* "Where orders ended up": one proportional bar split into stages. */
+.ops-stack {
+  display: flex;
+  width: 100%;
+  height: 1.5rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(15, 51, 36, 0.08);
+}
+
+.ops-stack__seg {
+  flex: 1 1 0;
+  min-width: 2px;
+}
+
+.ops-stack__seg + .ops-stack__seg {
+  border-left: 2px solid #fff;
+}
+
+.ops-swatch {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-right: 0.4rem;
+  border-radius: 3px;
+  vertical-align: -0.05rem;
+}
+
+/* Success rates: green from 80, amber from 50, red below. The number and a word always sit next to it. */
+.ops-rate--good {
+  color: #1a7f37;
+}
+
+.ops-rate--fair {
+  color: #b45309;
+}
+
+.ops-rate--low {
+  color: #b42318;
+}
+
+/* Reason lists. */
+.ops-reasons li {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--tblr-border-color, #e6e7e9);
+}
+
+.ops-reasons li:first-child {
+  border-top: 0;
+}
+
+.ops-mini {
+  height: 0.4rem;
+  margin-top: 0.4rem;
+  border-radius: 999px;
+  background: rgba(15, 51, 36, 0.08);
+  overflow: hidden;
+}
+
+.ops-mini__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #d97706;
+}
+
+.ops-mini__fill--red {
+  background: #dc2626;
+}

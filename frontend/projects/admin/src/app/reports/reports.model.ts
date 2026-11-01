@@ -26,11 +26,8 @@ export type ReportType =
   | 'returns'
   | 'stock';
 
-/** Export file formats offered for a report (Req 20.4, 23.1). */
+/** Export file formats offered for a report (Req 20.4). */
 export type ExportFormat = 'xlsx' | 'pdf';
-
-/** Vyapar billing export file formats (Req 23.1). */
-export type VyaparFormat = 'csv' | 'xlsx';
 
 /**
  * The headline metrics returned with a report (Req 19.3, 19.4, 19.7). Mirrors

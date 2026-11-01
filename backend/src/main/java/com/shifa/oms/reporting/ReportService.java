@@ -22,7 +22,6 @@ import com.shifa.oms.reporting.domain.ReportAggregator;
 import com.shifa.oms.reporting.domain.ReportTableBuilder;
 import com.shifa.oms.reporting.domain.ReportType;
 import com.shifa.oms.reporting.domain.TabularData;
-import com.shifa.oms.reporting.domain.VyaparTableBuilder;
 import com.shifa.oms.reporting.dto.ReportResponse;
 import com.shifa.oms.reporting.dto.ReportSummary;
 import org.springframework.stereotype.Service;
@@ -62,7 +61,6 @@ public class ReportService {
 
     private final ReportAggregator aggregator = new ReportAggregator();
     private final ReportTableBuilder tableBuilder = new ReportTableBuilder(aggregator);
-    private final VyaparTableBuilder vyaparBuilder = new VyaparTableBuilder();
 
     public ReportService(OrderRepository orderRepository,
                          ReceivableRepository receivableRepository,
@@ -111,13 +109,6 @@ public class ReportService {
     public TabularData reportTable(ReportType type, LocalDate from, LocalDate to) {
         DateRange window = new DateRange(from, to);
         return tableBuilder.build(type, loadRecords(window), window);
-    }
-
-    /** The Vyapar billing table over the window (Req 23.1). */
-    @Transactional(readOnly = true)
-    public TabularData vyaparTable(LocalDate from, LocalDate to) {
-        DateRange window = new DateRange(from, to);
-        return vyaparBuilder.build(loadRecords(window), window);
     }
 
     // --- Assembly -----------------------------------------------------------

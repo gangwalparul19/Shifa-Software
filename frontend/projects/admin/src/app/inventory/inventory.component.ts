@@ -1,4 +1,5 @@
 import { IstDatePipe } from '../shared/ist-date.pipe';
+import { DialogDirective } from '../shared/dialog.directive';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -56,6 +57,7 @@ const ADJUST_REASONS = [
     StatePanelComponent,
     DensityToggleComponent,
     RowActionsMenuComponent,
+    DialogDirective,
   ],
   templateUrl: './inventory.component.html',
   styleUrl: './inventory.component.css',

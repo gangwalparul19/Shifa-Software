@@ -144,10 +144,10 @@ public class OrderEntity {
     private Long createdBy;
 
     /**
-     * The registered customer who placed this order while logged in on the
-     * storefront (Phase B: customer accounts). Null for salesperson orders and
-     * anonymous/guest checkout. Drives account order history alongside the
-     * customer mobile match.
+     * LEGACY: the registered customer who placed this order while logged in on the
+     * retired storefront (customer accounts no longer exist). Null for salesperson,
+     * Shopify and store orders and for old guest-checkout rows. Drives account
+     * order history alongside the customer mobile match.
      */
     @Column(name = "customer_user_id")
     private Long customerUserId;

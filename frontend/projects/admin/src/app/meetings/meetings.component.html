@@ -87,9 +87,9 @@
 
 @if (promptFor()) {
   <div class="shifa-drawer-backdrop" (click)="closePrompt()"></div>
-  <div class="shifa-outcome card">
+  <div class="shifa-outcome card" adminDialog aria-labelledby="meeting-prompt-title" (dialogClose)="closePrompt()">
     <div class="card-body">
-      <h3 class="mb-2">
+      <h3 class="mb-2" id="meeting-prompt-title">
         @switch (promptKind()) {
           @case ('outcome') { Record outcome }
           @case ('no-show') { Meeting didn't happen }
@@ -119,7 +119,7 @@
         (input)="onPromptInput($event)"
       ></textarea>
       <div class="d-flex justify-content-end gap-2">
-        <button type="button" class="btn btn-link" (click)="closePrompt()">Back</button>
+        <button type="button" class="btn btn-link" data-autofocus (click)="closePrompt()">Back</button>
         <button
           type="button"
           [class]="
@@ -145,9 +145,9 @@
 
 @if (drawerOpen()) {
   <div class="shifa-drawer-backdrop" (click)="closeDrawer()"></div>
-  <aside class="shifa-drawer" role="dialog" aria-label="Meeting">
+  <aside class="shifa-drawer" adminDialog aria-labelledby="meeting-drawer-title" (dialogClose)="closeDrawer()">
     <div class="shifa-drawer__head">
-      <h2 class="shifa-drawer__title">{{ editingId() == null ? 'Schedule meeting' : 'Reschedule meeting' }}</h2>
+      <h2 class="shifa-drawer__title" id="meeting-drawer-title">{{ editingId() == null ? 'Schedule meeting' : 'Reschedule meeting' }}</h2>
       <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeDrawer()" aria-label="Close">
         <i class="ti ti-x"></i>
       </button>

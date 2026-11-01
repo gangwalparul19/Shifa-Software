@@ -8,7 +8,7 @@
 
 ---
 
-> **Current baseline (2026-10-30):** Source migrations end at V105. The last documented production schema is V73 because the A1–B6 plus selected C6/E/F changes are local and not deployed. The supported production target is AWS EC2 (`15.252.230.73`) at `https://shifa.weblithic.online/` with Amazon S3; older dated deployment entries are historical.
+> **Current baseline (2026-11-01):** Source migrations end at V106. The last documented production schema is V73 because the A1–B6 plus selected C6/E/F changes are local and not deployed. The supported production target is AWS EC2 (`15.252.230.73`) at `https://shifa.weblithic.online/` with Amazon S3; older dated deployment entries are historical.
 
 
 Dashboard-only **Order Management System** for Shifa Herbal Remedies. The public storefront is on
@@ -29,7 +29,7 @@ packing, courier handoff, payments/GST accounting, CRM, reporting). No public-fa
 **Run commands (Windows/cmd, explicit paths):**
 - Backend (8080): `mvn -f "backend/pom.xml" -DskipTests spring-boot:run`
 - Admin UI (4300): `npm --prefix frontend run start:admin`
-- Backend tests: `mvn -f "backend/pom.xml" clean test` (current local remediation validation recorded 1042 tests; exclude `-Dtest=!WhatsappTemplateEncodingIT` only for intentionally DB-less subsets)
+- Backend tests: `mvn -f "backend/pom.xml" clean test` (current local validation recorded 1075 tests; exclude `-Dtest=!WhatsappTemplateEncodingIT` only for intentionally DB-less subsets)
 - Admin build: `npm --prefix frontend run build:admin`
 
 ## 3. Backend module map (`com.shifa.oms.*`)
@@ -123,7 +123,7 @@ to username) — never raw username (salespeople log in with their mobile number
 
 ## 6. Migrations (Flyway, `backend/src/main/resources/db/migration`)
 
-**Rule: never edit an applied migration; always add a new versioned one. Highest source migration is V105.**
+**Rule: never edit an applied migration; always add a new versioned one. Highest source migration is V106.**
 
 | Range | Theme |
 |---|---|
@@ -137,7 +137,7 @@ to username) — never raw username (salespeople log in with their mobile number
 | V70–V76 | Shopify sync toggle, **dashboard aggregation indexes** (V71), payment-screenshot content hash (V72), auto-approval settings (V73), shipment cancelled, QuikShipX failure reason, courier_record tracking_url (V76) |
 | V77–V82 | Customer tracking token, return refund method, product cost price, order soft-delete, forced-password-change tracking, widened lead-source values |
 | V83–V100 | CRM pipelines/permissions/sources/settings, meetings/tasks/activity, deleted-order and order-cancellation support, GST filing/reconciliation, ledger/accounting, QuikShipX shipment metadata, remittance batches, bank accounts, settlement center, MFA enablement |
-| V101–V105 | Auth session-version reset + MFA ciphertext, authenticated idle sessions, settlement integrity metadata, canonical payment UTR normalization/duplicate preflight, and fenced outbox claim leases |
+| V101–V106 | Auth session-version reset + MFA ciphertext, authenticated idle sessions, settlement integrity metadata, canonical payment UTR normalization/duplicate preflight, fenced outbox claim leases, and composite query-performance indexes (V106) |
 
 Start against an **empty** `shifa_dashboard` (V22 uses explicit IDs). V27 test seed + V51 GST demo reset
 (DESTRUCTIVE — wipes orders, reseeds ~200) run in ALL profiles.
@@ -185,7 +185,7 @@ Start against an **empty** `shifa_dashboard` (V22 uses explicit IDs). V27 test s
 
 ## 10. Testing patterns
 
-- Full backend suite: **1042 tests** in the current local remediation worktree. `ApplicationContextLoadsTest` (`@SpringBootTest`, H2 `smoketest` profile) boots the full context DB-less → catches missing-`@Autowired`/broken DI before deploy. Use `mvn -f "backend/pom.xml" clean test`; the live-MySQL `WhatsappTemplateEncodingIT` may be excluded only when intentionally running a DB-less subset (`-Dtest=!WhatsappTemplateEncodingIT`).
+- Full backend suite: **1075 tests** in the current local worktree. `ApplicationContextLoadsTest` (`@SpringBootTest`, H2 `smoketest` profile) boots the full context DB-less → catches missing-`@Autowired`/broken DI before deploy. Use `mvn -f "backend/pom.xml" clean test`; the live-MySQL `WhatsappTemplateEncodingIT` may be excluded only when intentionally running a DB-less subset (`-Dtest=!WhatsappTemplateEncodingIT`).
 - **Java 25 can't mock concrete classes (Mockito/ByteBuddy):** mock repository *interfaces*, use real instances or
   recording subclasses for concrete services/entities. Dual-constructor services (one takes `Clock` for tests)
   **must `@Autowired` the primary ctor** or the context fails to start.
@@ -223,7 +223,7 @@ Status key: 🔴 open-high · 🟡 open-medium · 🟢 verified-good/no-action �
 | 10 | `reporting/ModuleReportService` (4 sites) | 🟡 partial | unbounded all-time report lists still materialize every row | date-windowed SQL finders are used; all-time pagination/maximum-row policy remains open |
 
 **Index gaps:** 🟢 `orders.shopify_order_id` unique index **confirmed present** (V68 `uq_orders_shopify_order_id`); 🟢 outbox claim index **added in V105** (`event_type,status,next_attempt_at,lease_until,created_at,id`).
-No `@BatchSize` is configured; all `OrderEntity` associations are LAZY (good). Public tracking mobile history is capped by a derived top-25 query and stored tracking detail is capped by a derived top-100 query.
+No `@BatchSize` is configured, but `hibernate.default_batch_fetch_size: 100` batches lazy loads globally (2026-11-01); all `OrderEntity` associations are LAZY (good). Public tracking mobile history is capped by a derived top-25 query and stored tracking detail is capped by a derived top-100 query.
 
 **Already optimal (do not re-touch):** `AdminOrderService.listOrders`, `OrderService.getOrder`,
 `PackingService.queue`, `ReturnService.list`, `DailyReportService`, the role dashboards (GROUP BY aggregates),

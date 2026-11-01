@@ -1,5 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { formatInr } from '../shared/inr.pipe';
 import { TeamsOverviewService } from './teams-overview.service';
 import { TeamOverviewRow } from './teams-overview.model';
 
@@ -61,8 +62,7 @@ export class TeamsOverviewWidgetComponent implements OnInit {
   }
 
   money(value: string | number | null | undefined): string {
-    const n = Number(value ?? 0);
-    return '₹' + (Number.isFinite(n) ? Math.round(n).toLocaleString('en-IN') : '0');
+    return formatInr(value, 0);
   }
 
   trackTeam(_: number, row: TeamOverviewRow): string {

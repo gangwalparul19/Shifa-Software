@@ -4,7 +4,7 @@ package com.shifa.oms.product;
  * Derived stock/availability status for a product.
  *
  * <p>This is pure logic (no persistence) so it can be unit-tested in isolation
- * and reused by both the catalog responses and the storefront badges. The rule
+ * and reused by both the catalog responses and the stock badges. The rule
  * (see {@link #of(boolean, int)}):
  *
  * <ul>

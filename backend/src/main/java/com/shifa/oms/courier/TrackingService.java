@@ -1,13 +1,21 @@
 package com.shifa.oms.courier;
 
 import com.shifa.oms.common.ResourceNotFoundException;
+import com.shifa.oms.courier.dto.PublicTrackingResponse;
+import com.shifa.oms.courier.dto.TrackByMobileResponse;
 import com.shifa.oms.courier.dto.TrackingResponse;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderRepository;
+import com.shifa.oms.order.OrderStatusGroup;
+import com.shifa.oms.quikshipx.ShipmentTrackingEventRepository;
+import com.shifa.oms.settings.SettingsService;
+import com.shifa.oms.statemachine.OrderStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,15 +29,15 @@ public class TrackingService {
     private final OrderRepository orderRepository;
     private final CourierRecordRepository courierRecordRepository;
     private final CourierCompanyRepository courierCompanyRepository;
-    private final com.shifa.oms.quikshipx.ShipmentTrackingEventRepository trackingEventRepository;
-    private final com.shifa.oms.settings.SettingsService settingsService;
+    private final ShipmentTrackingEventRepository trackingEventRepository;
+    private final SettingsService settingsService;
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public TrackingService(OrderRepository orderRepository,
                            CourierRecordRepository courierRecordRepository,
                            CourierCompanyRepository courierCompanyRepository,
-                           com.shifa.oms.quikshipx.ShipmentTrackingEventRepository trackingEventRepository,
-                           com.shifa.oms.settings.SettingsService settingsService) {
+                           ShipmentTrackingEventRepository trackingEventRepository,
+                           SettingsService settingsService) {
         this.orderRepository = orderRepository;
         this.courierRecordRepository = courierRecordRepository;
         this.courierCompanyRepository = courierCompanyRepository;
@@ -81,16 +89,16 @@ public class TrackingService {
      * @throws ResourceNotFoundException when no order has that token
      */
     @Transactional(readOnly = true)
-    public com.shifa.oms.courier.dto.PublicTrackingResponse trackByToken(String token) {
+    public PublicTrackingResponse trackByToken(String token) {
         OrderEntity order = orderRepository.findByTrackingToken(token)
                 .orElseThrow(() -> new ResourceNotFoundException("No order found for this tracking link."));
 
-        com.shifa.oms.statemachine.OrderStatus status = order.getOrderStatus();
-        com.shifa.oms.order.OrderStatusGroup group =
-                com.shifa.oms.order.OrderStatusGroup.groupOf(status);
+        OrderStatus status = order.getOrderStatus();
+        OrderStatusGroup group =
+                OrderStatusGroup.groupOf(status);
         ShipmentInfo shipment = shipmentFor(order.getId()).orElse(null);
 
-        return new com.shifa.oms.courier.dto.PublicTrackingResponse(
+        return new PublicTrackingResponse(
                 order.getOrderCode(),
                 firstName(order.getCustomerName()),
                 statusLabel(group, status),
@@ -117,12 +125,12 @@ public class TrackingService {
     /** Maximum stored scan events exposed by the public tracking detail. */
     private static final int MAX_DETAIL_EVENTS = 100;
 
-    private List<com.shifa.oms.courier.dto.PublicTrackingResponse.Event> detailedEvents(Long orderId) {
+    private List<PublicTrackingResponse.Event> detailedEvents(Long orderId) {
         if (trackingEventRepository == null || orderId == null) {
             return List.of();
         }
         return trackingEventRepository.findTop100ByOrderIdOrderBySortOrderAscIdAsc(orderId).stream()
-                .map(e -> new com.shifa.oms.courier.dto.PublicTrackingResponse.Event(
+                .map(e -> new PublicTrackingResponse.Event(
                         e.getStatus(), e.getInstructions(), e.getLocation(), e.getScanAt()))
                 .toList();
     }
@@ -149,16 +157,16 @@ public class TrackingService {
      * @return the privacy-safe tracking cards, newest first (possibly empty)
      */
     @Transactional(readOnly = true)
-    public com.shifa.oms.courier.dto.TrackByMobileResponse ordersByMobile(String mobile) {
+    public TrackByMobileResponse ordersByMobile(String mobile) {
         String normalized = normalizeMobile(mobile);
         if (normalized == null) {
-            return new com.shifa.oms.courier.dto.TrackByMobileResponse(brandName(), List.of());
+            return new TrackByMobileResponse(brandName(), List.of());
         }
-        List<com.shifa.oms.courier.dto.TrackByMobileResponse.OrderCard> cards =
+        List<TrackByMobileResponse.OrderCard> cards =
                 orderRepository.findTop25ByCustomerMobileOrderByCreatedAtDescIdDesc(normalized).stream()
                         .map(TrackingService::toCard)
                         .toList();
-        return new com.shifa.oms.courier.dto.TrackByMobileResponse(brandName(), cards);
+        return new TrackByMobileResponse(brandName(), cards);
     }
 
     /** Cap on the number of tracking cards returned for a mobile lookup. */
@@ -197,11 +205,11 @@ public class TrackingService {
     }
 
     /** Maps one order to a privacy-safe tracking card for the by-mobile list. */
-    private static com.shifa.oms.courier.dto.TrackByMobileResponse.OrderCard toCard(OrderEntity order) {
-        com.shifa.oms.statemachine.OrderStatus status = order.getOrderStatus();
-        com.shifa.oms.order.OrderStatusGroup group =
-                com.shifa.oms.order.OrderStatusGroup.groupOf(status);
-        return new com.shifa.oms.courier.dto.TrackByMobileResponse.OrderCard(
+    private static TrackByMobileResponse.OrderCard toCard(OrderEntity order) {
+        OrderStatus status = order.getOrderStatus();
+        OrderStatusGroup group =
+                OrderStatusGroup.groupOf(status);
+        return new TrackByMobileResponse.OrderCard(
                 order.getOrderCode(),
                 order.getTrackingToken(),
                 productSummary(order),
@@ -238,27 +246,27 @@ public class TrackingService {
     }
 
     /** Whether the coarse group represents a successfully delivered/closed order. */
-    private static boolean isDelivered(com.shifa.oms.order.OrderStatusGroup group) {
-        return group == com.shifa.oms.order.OrderStatusGroup.DELIVERED;
+    private static boolean isDelivered(OrderStatusGroup group) {
+        return group == OrderStatusGroup.DELIVERED;
     }
 
     /** Whether the coarse group represents a failed / returned / cancelled / rejected order. */
-    private static boolean isFailed(com.shifa.oms.order.OrderStatusGroup group) {
-        return group == com.shifa.oms.order.OrderStatusGroup.FAILED_RETURNED
-                || group == com.shifa.oms.order.OrderStatusGroup.CANCELLED
-                || group == com.shifa.oms.order.OrderStatusGroup.REJECTED;
+    private static boolean isFailed(OrderStatusGroup group) {
+        return group == OrderStatusGroup.FAILED_RETURNED
+                || group == OrderStatusGroup.CANCELLED
+                || group == OrderStatusGroup.REJECTED;
     }
 
     /** A plain-English status for the customer, from the coarse lifecycle group. */
-    private static String statusLabel(com.shifa.oms.order.OrderStatusGroup group,
-                                      com.shifa.oms.statemachine.OrderStatus status) {
+    private static String statusLabel(OrderStatusGroup group,
+                                      OrderStatus status) {
         if (group == null) {
             return "In progress";
         }
         return switch (group) {
             case PENDING_APPROVAL -> "Order received — being confirmed";
             case PROCESSING -> "Being prepared for shipment";
-            case SHIPPED -> status == com.shifa.oms.statemachine.OrderStatus.OUT_FOR_DELIVERY
+            case SHIPPED -> status == OrderStatus.OUT_FOR_DELIVERY
                     ? "Out for delivery" : "Shipped — on the way";
             case DELIVERED -> "Delivered";
             case FAILED_RETURNED -> "Delivery could not be completed";
@@ -268,10 +276,10 @@ public class TrackingService {
     }
 
     /** The happy-path stage timeline with each step flagged reached/pending. */
-    private static List<com.shifa.oms.courier.dto.PublicTrackingResponse.Step> timeline(
-            com.shifa.oms.order.OrderStatusGroup group, boolean failed) {
+    private static List<PublicTrackingResponse.Step> timeline(
+            OrderStatusGroup group, boolean failed) {
         // Ordinal of the current group on the happy path (−1 for failed/unknown).
-        int reachedUpTo = switch (group == null ? com.shifa.oms.order.OrderStatusGroup.PENDING_APPROVAL : group) {
+        int reachedUpTo = switch (group == null ? OrderStatusGroup.PENDING_APPROVAL : group) {
             case PENDING_APPROVAL -> 0;
             case PROCESSING -> 1;
             case SHIPPED -> 2;
@@ -279,10 +287,10 @@ public class TrackingService {
             default -> failed ? -1 : 0;
         };
         String[] labels = {"Order placed", "Being prepared", "Shipped", "Delivered"};
-        List<com.shifa.oms.courier.dto.PublicTrackingResponse.Step> steps =
-                new java.util.ArrayList<>(labels.length);
+        List<PublicTrackingResponse.Step> steps =
+                new ArrayList<>(labels.length);
         for (int i = 0; i < labels.length; i++) {
-            steps.add(new com.shifa.oms.courier.dto.PublicTrackingResponse.Step(
+            steps.add(new PublicTrackingResponse.Step(
                     labels[i], reachedUpTo >= i));
         }
         return steps;

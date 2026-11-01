@@ -1,7 +1,9 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { formatInr } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import { openWhatsApp, whatsAppMessage } from '../shared/whatsapp.util';
 import { TeamMemberPerformance } from '../team/team-performance.service';
 import { TeamMemberDetailComponent } from '../team/team-member-detail.component';
@@ -26,7 +28,7 @@ const PIPELINE_STAGES: { key: string; label: string }[] = [
 @Component({
   selector: 'admin-teams-overview',
   standalone: true,
-  imports: [PageHeaderComponent, StatePanelComponent, RouterLink, TeamMemberDetailComponent],
+  imports: [PageHeaderComponent, StatePanelComponent, RouterLink, TeamMemberDetailComponent, DialogDirective],
   templateUrl: './teams-overview.component.html',
   styleUrl: './teams-overview.component.css',
 })
@@ -108,8 +110,7 @@ export class TeamsOverviewComponent implements OnInit {
   }
 
   money(value: string | number | null | undefined): string {
-    const n = Number(value ?? 0);
-    return '₹' + (Number.isFinite(n) ? Math.round(n).toLocaleString('en-IN') : '0');
+    return formatInr(value, 0);
   }
 
   /** Opens the caller's phone dialer for a call-out. */

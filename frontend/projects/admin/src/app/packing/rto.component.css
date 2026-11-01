@@ -108,3 +108,8 @@
     font-size: 1.05rem;
   }
 }
+
+/* The dialog panel itself is only a programmatic focus fallback (see adminDialog): no ring around it. */
+.pk-modal:focus-visible {
+  outline: none;
+}

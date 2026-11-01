@@ -23,14 +23,47 @@ export class InrPipe implements PipeTransform {
   }
 }
 
-/** Pure INR formatter shared by the {@link InrPipe} and component code. */
+/**
+ * Pure INR formatter shared by the {@link InrPipe} and component code.
+ *
+ * <p>The sign comes first ({@code -₹1,234.00}, never {@code ₹-1,234.00}) and a
+ * value that rounds to zero is shown unsigned ({@code ₹0.00}, never
+ * {@code -₹0.00}).
+ */
 export function formatInr(value: number | string | null | undefined, decimals: 0 | 2 = 2): string {
-  const n = typeof value === 'number' ? value : Number(String(value ?? '').replace(/[₹,\s]/g, ''));
-  const safe = Number.isFinite(n) ? n : 0;
-  return `₹${safe.toLocaleString('en-IN', {
+  const safe = toNumber(value);
+  const text = Math.abs(safe).toLocaleString('en-IN', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  })}`;
+  });
+  // Only show a minus when something other than zero is displayed.
+  const showsZero = !/[1-9]/.test(text);
+  return `${safe < 0 && !showsZero ? '-' : ''}₹${text}`;
+}
+
+/**
+ * Same as {@link formatInr}, but renders an em dash for a missing / non-numeric
+ * value instead of {@code ₹0.00}. Use it where "no figure yet" must read
+ * differently from a real zero (optional amounts in tables and cards).
+ */
+export function formatInrOrDash(
+  value: number | string | null | undefined,
+  decimals: 0 | 2 = 2,
+): string {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return '—';
+  }
+  const n = typeof value === 'number' ? value : Number(String(value).replace(/[₹,\s]/g, ''));
+  return Number.isFinite(n) ? formatInr(n, decimals) : '—';
+}
+
+/**
+ * Signed variant for deltas and differences: {@code +₹1,200.00}, {@code -₹300.00},
+ * {@code ₹0.00} for zero.
+ */
+export function formatInrSigned(value: number | string | null | undefined, decimals: 0 | 2 = 2): string {
+  const text = formatInr(value, decimals);
+  return text.startsWith('-') || text === formatInr(0, decimals) ? text : `+${text}`;
 }
 
 /** Coerces a number|string|nullish money value to a finite number (0 on failure). */

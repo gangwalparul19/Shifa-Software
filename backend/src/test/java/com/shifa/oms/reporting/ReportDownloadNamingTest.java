@@ -8,7 +8,6 @@ import com.shifa.oms.order.OrderStatusGroup;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.reporting.domain.ReportType;
-import com.shifa.oms.reporting.domain.TabularData;
 import com.shifa.oms.reporting.dto.ReportResponse;
 import com.shifa.oms.reporting.dto.ReportSummary;
 import com.shifa.oms.statemachine.OrderStatus;
@@ -40,7 +39,7 @@ class ReportDownloadNamingTest {
     private static final LocalDate TO = LocalDate.of(2026, 10, 31);
 
     private final ReportController controller = new ReportController(
-            new CannedReportService(), new ExcelReportExporter(), new PdfReportExporter(), new CsvReportExporter());
+            new CannedReportService(), new ExcelReportExporter(), new PdfReportExporter());
 
     @Test
     void everyReportTypeDownloadsUnderItsOwnNameInBothFormats() {
@@ -79,14 +78,6 @@ class ReportDownloadNamingTest {
     }
 
     @Test
-    void vyaparExportsAreNamedForTheirDateRangeToo() {
-        assertThat(filenameOf(controller.vyapar(FROM, TO, "csv")))
-                .isEqualTo("shifa-vyapar-billing_2026-10-02_to_2026-10-31.csv");
-        assertThat(filenameOf(controller.vyapar(FROM, TO, "xlsx")))
-                .isEqualTo("shifa-vyapar-billing_2026-10-02_to_2026-10-31.xlsx");
-    }
-
-    @Test
     void theOrdersListExportIsNamedForItsDateRange() {
         OrderExportService orders = new OrderExportService(
                 new EmptyOrdersService(), new CsvReportExporter(), new ExcelReportExporter());
@@ -101,14 +92,14 @@ class ReportDownloadNamingTest {
     }
 
     @Test
-    void theBrowserIsAllowedToReadTheFilenameAndTheVyaparNotice() {
+    void theBrowserIsAllowedToReadTheFilename() {
         UrlBasedCorsConfigurationSource source =
                 (UrlBasedCorsConfigurationSource) new SecurityConfig().corsConfigurationSource();
         CorsConfiguration config = source.getCorsConfigurations().get("/**");
 
         // Without this a cross-origin page (the dev server) cannot read the name and saves "report.pdf".
         assertThat(config.getExposedHeaders())
-                .contains(HttpHeaders.CONTENT_DISPOSITION, "X-Report-Message", "Authorization");
+                .contains(HttpHeaders.CONTENT_DISPOSITION, "Authorization");
     }
 
     private static String filenameOf(ResponseEntity<byte[]> response) {
@@ -128,11 +119,6 @@ class ReportDownloadNamingTest {
                     BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
             return new ReportResponse(type.name(), from, to, List.of("Name", "Orders"),
                     List.of(List.of("Asha", "3")), summary);
-        }
-
-        @Override
-        public TabularData vyaparTable(LocalDate from, LocalDate to) {
-            return new TabularData(List.of("Invoice"), List.of(List.of("INV-1")));
         }
     }
 

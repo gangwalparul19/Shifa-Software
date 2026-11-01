@@ -121,6 +121,28 @@ import { ToastService } from './toast.service';
       .shifa-toasts__close:hover {
         opacity: 1;
       }
+      /* Touch screens: the dismiss "x" and the action pill get a >= 44x44 CSS px
+         hit area (WCAG 2.5.5 / 2.5.8). Negative margins let the larger target
+         overlap the toast's own padding, so the toast does not grow taller. */
+      @media (pointer: coarse) {
+        .shifa-toasts__close {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          align-self: center;
+          min-width: 2.75rem;
+          min-height: 2.75rem;
+          margin: -0.8rem -0.6rem -0.8rem 0;
+        }
+        .shifa-toasts__action {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 2.75rem;
+          padding-inline: 0.9rem;
+          margin-block: -0.8rem;
+        }
+      }
       @media (max-width: 575.98px) {
         .shifa-toasts {
           top: 0.5rem;

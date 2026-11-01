@@ -79,3 +79,8 @@
 .shifa-fab:hover {
   background: var(--shifa-green-700, #164632);
 }
+
+/* The dialog panel itself is only a programmatic focus fallback (see adminDialog): no ring around it. */
+.shifa-modal:focus-visible {
+  outline: none;
+}

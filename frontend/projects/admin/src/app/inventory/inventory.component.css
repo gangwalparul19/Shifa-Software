@@ -91,3 +91,28 @@
   flex: 0 0 36px;
   width: 36px;
 }
+
+/* Search "clear" control: a real <button> sitting in the input's end addon slot. */
+.shifa-clear {
+  cursor: pointer;
+  pointer-events: all;
+  /* Now a real <button>: drop the native button chrome so it looks like the old addon. */
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+}
+.shifa-clear:focus-visible {
+  outline: 2px solid var(--shifa-green-600, #1f5d3f);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+.input-icon-addon.end {
+  left: auto;
+  right: 0;
+}
+
+/* The dialog panel itself is only a programmatic focus fallback (see adminDialog): no ring around it. */
+.shifa-modal:focus-visible {
+  outline: none;
+}

@@ -12,10 +12,12 @@ import {
   ReturnResponse,
   ReturnStatus,
 } from './returns.model';
+import { formatInrOrDash } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { PaginationComponent } from '../shared/pagination.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import { SortableHeaderComponent } from '../shared/sortable-header.component';
 import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ToastService } from '../shared/toast.service';
@@ -51,6 +53,7 @@ type ReturnModal = 'approve' | 'reject' | 'refund' | 'create' | null;
     PaginationComponent,
     SortableHeaderComponent,
     RowActionsMenuComponent,
+    DialogDirective,
   ],
   templateUrl: './returns.component.html',
   styleUrl: './returns.component.css',
@@ -245,10 +248,7 @@ export class ReturnsComponent implements OnInit, OnDestroy {
   }
 
   money(value: Money | undefined | null): string {
-    if (value === undefined || value === null) {
-      return '—';
-    }
-    return `₹${value}`;
+    return formatInrOrDash(value, 2);
   }
 
   /** Short relative time (enhancement: relative timestamps) — shown alongside the exact date. */

@@ -1,5 +1,9 @@
 import { Component, EventEmitter, Input, OnInit, Output, inject, signal } from '@angular/core';
 import { todayIst } from '../shared/business-date.util';
+import { formatDateLabel } from '../shared/date-label.util';
+import { formatInr } from '../shared/inr.pipe';
+import { humanizeStatus } from '../shared/status-badge.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import {
   DirectReportPerformance,
   TeamMemberPerformance,
@@ -13,10 +17,11 @@ import {
 @Component({
   selector: 'admin-team-member-detail',
   standalone: true,
+  imports: [DialogDirective],
   styleUrl: './team-member-detail.component.css',
   template: `
     <div class="tm-detail__backdrop" (click)="closed.emit()">
-      <aside class="tm-detail" role="dialog" aria-modal="true" [attr.aria-label]="member.fullName + ' performance detail'" (click)="$event.stopPropagation()">
+      <aside class="tm-detail" adminDialog [attr.aria-label]="member.fullName + ' performance detail'" (dialogClose)="closed.emit()" (click)="$event.stopPropagation()">
         <header class="tm-detail__header">
           <div>
             <div class="subheader">Salesperson performance</div>
@@ -196,14 +201,12 @@ export class TeamMemberDetailComponent implements OnInit {
   }
 
   protected money(value: string | number | null | undefined): string {
-    return `₹${Number(value ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+    return formatInr(value, 0);
   }
 
   protected dateLabel(value: string | null | undefined): string {
-    if (!value) {
-      return 'Not recorded';
-    }
-    return new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    // Only the calendar-date part matters here (joined-on / daily activity dates).
+    return formatDateLabel(value ? value.slice(0, 10) : value, { empty: 'Not recorded', day: 'numeric' });
   }
 
   protected dateTimeLabel(value: string | null | undefined): string {
@@ -220,6 +223,6 @@ export class TeamMemberDetailComponent implements OnInit {
   }
 
   protected statusLabel(value: string | null | undefined): string {
-    return (value || '—').toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+    return value ? humanizeStatus(value) : '—';
   }
 }

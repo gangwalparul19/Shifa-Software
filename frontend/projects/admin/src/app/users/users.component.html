@@ -154,10 +154,10 @@
 <!-- Create / edit modal -->
 @if (formOpen()) {
   <div class="shifa-overlay" (click)="closeForm()"></div>
-  <div class="shifa-modal" role="dialog" aria-label="User form">
+  <div class="shifa-modal" adminDialog aria-labelledby="user-form-title" (dialogClose)="closeForm()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0">{{ editing() ? 'Edit user' : 'Add user' }}</h3>
+        <h3 class="card-title mb-0" id="user-form-title">{{ editing() ? 'Edit user' : 'Add user' }}</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeForm()" aria-label="Close"><i class="ti ti-x"></i></button>
         </div>

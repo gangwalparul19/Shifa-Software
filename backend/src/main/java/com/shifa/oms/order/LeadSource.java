@@ -3,7 +3,7 @@ package com.shifa.oms.order;
 /**
  * The origin channel of a customer lead, captured on order entry (design
  * §3.1, Req 4.1). Distinct from {@link OrderSource}, which records the
- * provenance of the order record itself (storefront vs salesperson): a
+ * provenance of the order record itself (salesperson vs Shopify import vs store): a
  * {@code SALESPERSON} order can carry any of these lead channels.
  *
  * <p>Persisted on {@code orders.lead_source} as {@code VARCHAR(20)} via

@@ -4,6 +4,7 @@ import { FinanceService } from './finance.service';
 import { ProfitLossResponse } from './finance.model';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { formatInr } from '../shared/inr.pipe';
 
 /**
  * Admin Profit &amp; Loss report (Phase C3 — ADMIN + ACCOUNTANT).
@@ -66,9 +67,7 @@ export class ProfitLossComponent implements OnInit {
   }
 
   money(value: number | null | undefined): string {
-    const n = typeof value === 'number' && Number.isFinite(value) ? value : 0;
-    const sign = n < 0 ? '-' : '';
-    return `${sign}₹${Math.abs(n).toFixed(2)}`;
+    return formatInr(value, 2);
   }
 
   private currentMonthRange(): { from: string; to: string } {

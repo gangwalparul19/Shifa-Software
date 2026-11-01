@@ -91,9 +91,9 @@
 
 @if (promptFor()) {
   <div class="shifa-drawer-backdrop" (click)="closePrompt()"></div>
-  <div class="shifa-outcome card">
+  <div class="shifa-outcome card" adminDialog aria-labelledby="task-prompt-title" (dialogClose)="closePrompt()">
     <div class="card-body">
-      <h3 class="mb-2">{{ promptKind() === 'complete' ? 'Complete task' : 'Cancel task' }}</h3>
+      <h3 class="mb-2" id="task-prompt-title">{{ promptKind() === 'complete' ? 'Complete task' : 'Cancel task' }}</h3>
       <p class="text-secondary mb-2">{{ promptFor()!.title }}</p>
       <label class="form-label">
         {{ promptKind() === 'complete' ? 'Completion note (optional)' : 'Reason (optional)' }}
@@ -107,7 +107,7 @@
         (input)="onPromptInput($event)"
       ></textarea>
       <div class="d-flex justify-content-end gap-2">
-        <button type="button" class="btn btn-link" (click)="closePrompt()">Back</button>
+        <button type="button" class="btn btn-link" data-autofocus (click)="closePrompt()">Back</button>
         <button
           type="button"
           [class]="promptKind() === 'complete' ? 'btn btn-success' : 'btn btn-danger'"
@@ -123,9 +123,9 @@
 
 @if (drawerOpen()) {
   <div class="shifa-drawer-backdrop" (click)="closeDrawer()"></div>
-  <aside class="shifa-drawer" role="dialog" aria-label="Task">
+  <aside class="shifa-drawer" adminDialog aria-labelledby="task-drawer-title" (dialogClose)="closeDrawer()">
     <div class="shifa-drawer__head">
-      <h2 class="shifa-drawer__title">{{ editingId() == null ? 'New task' : 'Edit task' }}</h2>
+      <h2 class="shifa-drawer__title" id="task-drawer-title">{{ editingId() == null ? 'New task' : 'Edit task' }}</h2>
       <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeDrawer()" aria-label="Close">
         <i class="ti ti-x"></i>
       </button>

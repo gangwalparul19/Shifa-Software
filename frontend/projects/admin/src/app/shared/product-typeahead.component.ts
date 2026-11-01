@@ -12,7 +12,11 @@ import {
 } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { Product } from 'core';
+import { InrPipe } from './inr.pipe';
 import { fuzzyScore } from './state-typeahead.component';
+
+/** Gives every typeahead its own listbox/option ids so two instances never clash. */
+let productTypeaheadCounter = 0;
 
 /**
  * A reactive-form-friendly fuzzy typeahead combobox for picking a product on an
@@ -29,6 +33,7 @@ import { fuzzyScore } from './state-typeahead.component';
 @Component({
   selector: 'admin-product-typeahead',
   standalone: true,
+  imports: [InrPipe],
   providers: [
     {
       provide: NG_VALUE_ACCESSOR,
@@ -44,7 +49,9 @@ import { fuzzyScore } from './state-typeahead.component';
         class="form-control"
         role="combobox"
         aria-autocomplete="list"
-        [attr.aria-expanded]="open()"
+        [attr.aria-expanded]="popupOpen()"
+        [attr.aria-controls]="listboxId"
+        [attr.aria-activedescendant]="activeOptionId()"
         [class.is-invalid]="invalid"
         [value]="query()"
         [placeholder]="placeholder"
@@ -54,19 +61,20 @@ import { fuzzyScore } from './state-typeahead.component';
         (focus)="onFocus()"
         (keydown)="onKeydown($event)"
       />
-      @if (open() && matches().length) {
-        <ul class="prod-ta__menu" role="listbox">
+      @if (popupOpen()) {
+        <ul class="prod-ta__menu" role="listbox" [id]="listboxId">
           @for (m of matches(); track m.id; let i = $index) {
             <li
               role="option"
               class="prod-ta__opt"
+              [id]="optionId(i)"
               [class.is-active]="i === active()"
               [attr.aria-selected]="i === active()"
               (mousedown)="select(m)"
               (mouseenter)="active.set(i)"
             >
               <span class="prod-ta__name">{{ m.name }}</span>
-              <span class="prod-ta__meta">₹{{ m.salePrice }}@if (m.wtMl) { · {{ m.wtMl }} } · {{ m.sku }}</span>
+              <span class="prod-ta__meta">{{ m.salePrice | inr }}@if (m.wtMl) { · {{ m.wtMl }} } · {{ m.sku }}</span>
             </li>
           }
         </ul>
@@ -139,6 +147,8 @@ export class ProductTypeaheadComponent implements ControlValueAccessor {
   protected readonly open = signal(false);
   protected readonly active = signal(0);
   protected readonly disabled = signal(false);
+  /** Id of the options listbox (referenced by the input's {@code aria-controls}). */
+  protected readonly listboxId = `prod-ta-list-${++productTypeaheadCounter}`;
   private readonly productList = signal<Product[]>([]);
   /** The currently selected product id (the control value). */
   private readonly selectedId = signal<number | null>(null);
@@ -161,6 +171,20 @@ export class ProductTypeaheadComponent implements ControlValueAccessor {
     }
     scored.sort((a, b) => a.score - b.score || a.product.name.localeCompare(b.product.name));
     return scored.slice(0, 30).map((s) => s.product);
+  });
+
+  /** Whether the options popup is actually visible (open AND something to show). */
+  protected readonly popupOpen = computed(() => this.open() && this.matches().length > 0);
+
+  /** DOM id of the option at an index (for {@code aria-activedescendant}). */
+  protected optionId(index: number): string {
+    return `${this.listboxId}-opt-${index}`;
+  }
+
+  /** Id of the highlighted option, or null when the popup is closed / nothing is highlighted. */
+  protected readonly activeOptionId = computed<string | null>(() => {
+    const i = this.active();
+    return this.popupOpen() && i >= 0 && i < this.matches().length ? this.optionId(i) : null;
   });
 
   private nameOf(id: number | null): string {

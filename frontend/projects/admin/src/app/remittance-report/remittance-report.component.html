@@ -296,10 +296,10 @@
 <!-- Per-batch details drawer -->
 @if (selectedBatch(); as b) {
   <div class="rr-drawer" (click)="closeBatch()">
-    <div class="rr-drawer__panel" (click)="$event.stopPropagation()">
+    <div class="rr-drawer__panel" (click)="$event.stopPropagation()" adminDialog aria-labelledby="rr-batch-title" (dialogClose)="closeBatch()">
       <div class="d-flex align-items-start justify-content-between mb-2">
         <div>
-          <h3 class="mb-0">Settled orders</h3>
+          <h3 class="mb-0" id="rr-batch-title">Settled orders</h3>
           <div class="small text-secondary">
             {{ b.originalFilename || 'Remittance import' }}
             @if (b.externalReference) { · Batch {{ b.externalReference }} }

@@ -6,6 +6,7 @@ import { AdminChannelOverviewComponent } from './admin-channel-overview.componen
 import { DeliveryPartnerOverviewComponent } from './delivery-partner-overview.component';
 import { TeamsOverviewWidgetComponent } from './teams-overview-widget.component';
 import { CountUpDirective } from '../shared/count-up.directive';
+import { formatInr } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { DashboardService } from './dashboard.service';
 import { MyDay, MyDayService, ReorderDueCustomer, WinBackCustomer } from './my-day.service';
@@ -160,8 +161,7 @@ export class DashboardComponent implements OnInit {
 
   /** ₹ formatter for the My Day / win-back figures (no decimals for compactness). */
   money(value: string | number | null | undefined): string {
-    const n = Number(value ?? 0);
-    return '₹' + (Number.isFinite(n) ? Math.round(n).toLocaleString('en-IN') : '0');
+    return formatInr(value, 0);
   }
 
   /** Opens WhatsApp for a lapsed customer with a friendly win-back follow-up. */
@@ -377,7 +377,6 @@ export class DashboardComponent implements OnInit {
 
   /** Formats a number as Indian Rupees with two decimals. */
   inr(value: number | null | undefined): string {
-    const n = typeof value === 'number' ? value : 0;
-    return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return formatInr(value, 2);
   }
 }

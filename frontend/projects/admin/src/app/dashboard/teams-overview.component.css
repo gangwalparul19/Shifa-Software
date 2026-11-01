@@ -75,3 +75,8 @@
   outline: 2px solid var(--shifa-green-500, #2b7a52);
   outline-offset: 2px;
 }
+
+/* The dialog panel itself is only a programmatic focus fallback (see adminDialog): no ring around it. */
+.teams-ov__panel:focus-visible {
+  outline: none;
+}

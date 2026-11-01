@@ -82,9 +82,9 @@
             aria-label="Search leads"
           />
           @if (search.value) {
-            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
-              <i class="ti ti-x"></i>
-            </span>
+            <button type="button" class="input-icon-addon end shifa-clear" (click)="clearSearch()" aria-label="Clear search" title="Clear">
+              <i class="ti ti-x" aria-hidden="true"></i>
+            </button>
           }
         </div>
       </div>
@@ -267,22 +267,28 @@
 <!-- ===================== Capture / edit form drawer ===================== -->
 @if (formOpen()) {
   <div class="shifa-overlay" (click)="closeForm()"></div>
-  <aside class="shifa-drawer" role="dialog" aria-label="Capture lead">
+  <aside class="shifa-drawer" adminDialog aria-labelledby="lead-form-title" (dialogClose)="closeForm()">
     <header class="shifa-drawer__head shifa-lead-head">
       <button type="button" class="shifa-lead-headbtn" (click)="closeForm()" aria-label="Close">
         <i class="ti ti-x"></i>
       </button>
-      <h3 class="shifa-lead-title">{{ editingId() ? 'Edit lead' : 'Add lead' }}</h3>
+      <h3 class="shifa-lead-title" id="lead-form-title">{{ editingId() ? 'Edit lead' : 'Add lead' }}</h3>
       <span class="shifa-lead-headspacer"></span>
     </header>
     <div class="shifa-drawer__body">
       @if (formError(); as err) {
-        <div class="alert alert-danger anim-fade-up" role="alert"><i class="ti ti-alert-triangle me-2"></i>{{ err }}</div>
+        <div class="alert alert-danger anim-fade-up d-flex justify-content-between align-items-start gap-2" role="alert">
+          <span><i class="ti ti-alert-triangle me-2"></i>{{ err }}</span>
+          <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" (click)="submitForm()" [disabled]="formBusy()">
+            <i class="ti ti-refresh me-1"></i> Retry
+          </button>
+        </div>
       }
       <form (ngSubmit)="submitForm()" novalidate [formGroup]="leadForm">
         <div class="mb-3">
-          <label class="form-label required">Customer name</label>
+          <label class="form-label required" for="lead-form-name">Customer name</label>
           <input
+            id="lead-form-name"
             type="text"
             class="form-control"
             formControlName="customerName"
@@ -296,8 +302,9 @@
         </div>
 
         <div class="mb-3">
-          <label class="form-label required">Source</label>
+          <label class="form-label required" for="lead-form-source">Source</label>
           <select
+            id="lead-form-source"
             class="form-select"
             formControlName="leadSource"
             [class.is-invalid]="leadForm.controls.leadSource.touched && leadForm.controls.leadSource.invalid"
@@ -314,15 +321,16 @@
 
         @if (showSourceNote()) {
           <div class="mb-3">
-            <label class="form-label">Source note <span class="text-secondary">(optional)</span></label>
-            <input type="text" class="form-control" formControlName="leadSourceNote" maxlength="200"
+            <label class="form-label" for="lead-form-source-note">Source note <span class="text-secondary">(optional)</span></label>
+            <input id="lead-form-source-note" type="text" class="form-control" formControlName="leadSourceNote" maxlength="200"
               placeholder="Describe the “Other” source" autocomplete="off" />
           </div>
         }
 
         <div class="mb-3">
-          <label class="form-label">Mobile <span class="text-secondary">(optional)</span></label>
+          <label class="form-label" for="lead-form-mobile">Mobile <span class="text-secondary">(optional)</span></label>
           <input
+            id="lead-form-mobile"
             type="tel"
             class="form-control"
             formControlName="customerMobile"
@@ -338,8 +346,9 @@
         </div>
 
         <div class="mb-3">
-          <label class="form-label">Email <span class="text-secondary">(optional)</span></label>
+          <label class="form-label" for="lead-form-email">Email <span class="text-secondary">(optional)</span></label>
           <input
+            id="lead-form-email"
             type="email"
             class="form-control"
             formControlName="customerEmail"
@@ -353,32 +362,32 @@
         </div>
 
         <div class="mb-3">
-          <label class="form-label">Note <span class="text-secondary">(optional)</span></label>
-          <textarea class="form-control" rows="3" formControlName="note" maxlength="1000"
+          <label class="form-label" for="lead-form-note">Note <span class="text-secondary">(optional)</span></label>
+          <textarea id="lead-form-note" class="form-control" rows="3" formControlName="note" maxlength="1000"
             placeholder="What does the customer want?"></textarea>
         </div>
 
         <div class="row g-2 mb-3">
           <div class="col-7">
-            <label class="form-label">Follow-up date <span class="text-secondary">(optional)</span></label>
-            <input type="date" class="form-control" formControlName="followUpDate" />
+            <label class="form-label" for="lead-form-followup-date">Follow-up date <span class="text-secondary">(optional)</span></label>
+            <input id="lead-form-followup-date" type="date" class="form-control" formControlName="followUpDate" />
           </div>
           <div class="col-5">
-            <label class="form-label">Time <span class="text-secondary">(optional)</span></label>
-            <input type="time" class="form-control" formControlName="followUpTime" />
+            <label class="form-label" for="lead-form-followup-time">Time <span class="text-secondary">(optional)</span></label>
+            <input id="lead-form-followup-time" type="time" class="form-control" formControlName="followUpTime" />
           </div>
         </div>
 
         <!-- Shipping address (optional; pre-fills lead-to-order conversion; Req 7) -->
         <div class="mb-3">
-          <label class="form-label">Address <span class="text-secondary">(optional)</span></label>
-          <input type="text" class="form-control" formControlName="addressLine" maxlength="250"
+          <label class="form-label" for="lead-form-address">Address <span class="text-secondary">(optional)</span></label>
+          <input id="lead-form-address" type="text" class="form-control" formControlName="addressLine" maxlength="250"
             placeholder="House / street / area" autocomplete="off" />
         </div>
         <div class="row g-2 mb-3">
           <div class="col-5">
-            <label class="form-label">Pincode <span class="text-secondary">(optional)</span></label>
-            <input type="text" inputmode="numeric" class="form-control" formControlName="postalCode"
+            <label class="form-label" for="lead-form-pincode">Pincode <span class="text-secondary">(optional)</span></label>
+            <input id="lead-form-pincode" type="text" inputmode="numeric" class="form-control" formControlName="postalCode"
               maxlength="6" placeholder="6-digit PIN" autocomplete="off"
               [class.is-invalid]="leadForm.controls.postalCode.touched && leadForm.controls.postalCode.invalid" />
             @if (pincodeLooking()) {
@@ -388,14 +397,14 @@
             }
           </div>
           <div class="col-7">
-            <label class="form-label">City <span class="text-secondary">(optional)</span></label>
-            <input type="text" class="form-control" formControlName="city" maxlength="100"
+            <label class="form-label" for="lead-form-city">City <span class="text-secondary">(optional)</span></label>
+            <input id="lead-form-city" type="text" class="form-control" formControlName="city" maxlength="100"
               placeholder="City" autocomplete="off" />
           </div>
         </div>
         <div class="mb-3">
-          <label class="form-label">State <span class="text-secondary">(optional)</span></label>
-          <input type="text" class="form-control" formControlName="state" maxlength="100"
+          <label class="form-label" for="lead-form-state">State <span class="text-secondary">(optional)</span></label>
+          <input id="lead-form-state" type="text" class="form-control" formControlName="state" maxlength="100"
             placeholder="State" autocomplete="off" />
         </div>
 
@@ -417,11 +426,19 @@
 <!-- ===================== Lead-detail drawer ===================== -->
 @if (detailLoading() || selectedDetail() || detailError()) {
   <div class="shifa-overlay" (click)="closeDetail()"></div>
-  <aside class="shifa-drawer shifa-ld" role="dialog" aria-label="Lead details">
+  <aside class="shifa-drawer shifa-ld" adminDialog aria-label="Lead details" (dialogClose)="closeDetail()">
     @if (detailLoading()) {
       <div class="shifa-drawer__body"><div class="skeleton skeleton-line w-60 mb-3"></div><div class="skeleton skeleton-card"></div></div>
     } @else if (detailError()) {
-      <div class="shifa-drawer__body"><div class="alert alert-danger">{{ detailError() }}</div></div>
+      <div class="shifa-drawer__body">
+        <div class="alert alert-danger" role="alert">{{ detailError() }}</div>
+        <div class="d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-link text-secondary" (click)="closeDetail()">Close</button>
+          <button type="button" class="btn btn-primary" (click)="retryDetail()">
+            <i class="ti ti-refresh me-1"></i> Retry
+          </button>
+        </div>
+      </div>
     } @else if (selectedDetail(); as lead) {
       <!-- Green header strip -->
       <header class="shifa-drawer__head shifa-ld__head">
@@ -569,7 +586,7 @@
             <div class="shifa-ld__label mb-1">Follow-up date</div>
             <div class="shifa-ld__card">
               <div class="d-flex gap-2 align-items-center flex-wrap">
-                <input type="date" class="form-control shifa-ld__date" [formControl]="followUpControl" />
+                <input type="date" class="form-control shifa-ld__date" [formControl]="followUpControl" aria-label="Follow-up date" />
                 <input type="time" class="form-control shifa-ld__date" [formControl]="followUpTimeControl"
                   [disabled]="!followUpControl.value" aria-label="Follow-up time" />
                 <button type="button" class="btn btn-primary" (click)="saveFollowUp()" [disabled]="detailBusy()">
@@ -669,10 +686,10 @@
 <!-- ===================== Mark-lost modal ===================== -->
 @if (lostOpen() && selectedDetail(); as lead) {
   <div class="shifa-overlay" (click)="closeMarkLost()"></div>
-  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Mark lead lost">
+  <div class="shifa-modal shifa-modal--sm" adminDialog aria-labelledby="lead-lost-title" (dialogClose)="closeMarkLost()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-circle-x me-2"></i>Mark lead lost</h3>
+        <h3 class="card-title mb-0" id="lead-lost-title"><i class="ti ti-circle-x me-2"></i>Mark lead lost</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeMarkLost()" aria-label="Close">
             <i class="ti ti-x"></i>
@@ -683,8 +700,9 @@
         <p class="text-secondary small mb-3">{{ lead.customerName }} — choose why this lead didn’t convert.</p>
         <form (ngSubmit)="submitMarkLost()" novalidate [formGroup]="lostForm">
           <div class="mb-3">
-            <label class="form-label required">Reason</label>
+            <label class="form-label required" for="lead-lost-reason">Reason</label>
             <select
+              id="lead-lost-reason"
               class="form-select"
               formControlName="lostReason"
               [class.is-invalid]="lostForm.controls.lostReason.touched && lostForm.controls.lostReason.invalid"
@@ -699,8 +717,8 @@
             }
           </div>
           <div class="mb-3">
-            <label class="form-label">Note <span class="text-secondary">(optional)</span></label>
-            <input type="text" class="form-control" formControlName="lostReasonNote" maxlength="200" autocomplete="off" />
+            <label class="form-label" for="lead-lost-note">Note <span class="text-secondary">(optional)</span></label>
+            <input id="lead-lost-note" type="text" class="form-control" formControlName="lostReasonNote" maxlength="200" autocomplete="off" />
           </div>
           <div class="d-flex justify-content-end gap-2">
             <button type="button" class="btn btn-link text-secondary" (click)="closeMarkLost()">Cancel</button>
@@ -721,10 +739,10 @@
 <!-- ===================== Assign / reassign modal ===================== -->
 @if (assignOpen()) {
   <div class="shifa-overlay" (click)="closeAssign()"></div>
-  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Assign lead">
+  <div class="shifa-modal shifa-modal--sm" adminDialog aria-labelledby="lead-assign-title" (dialogClose)="closeAssign()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-user-share me-2"></i>
+        <h3 class="card-title mb-0" id="lead-assign-title"><i class="ti ti-user-share me-2"></i>
           {{ assignLeadId() ? 'Reassign lead' : 'Assign ' + selectionCount() + ' leads' }}
         </h3>
         <div class="card-actions">
@@ -735,8 +753,8 @@
       </div>
       <div class="card-body">
         <div class="mb-3">
-          <label class="form-label required">Assign to</label>
-          <select class="form-select" [formControl]="assignUserControl">
+          <label class="form-label required" for="lead-assign-user">Assign to</label>
+          <select id="lead-assign-user" class="form-select" [formControl]="assignUserControl">
             <option value="">Select a user…</option>
             @for (u of assignableUsers(); track u.id) {
               <option [value]="u.id">{{ u.name }} ({{ u.role === 'TEAM_LEAD' ? 'Team Lead' : 'Salesperson' }})</option>

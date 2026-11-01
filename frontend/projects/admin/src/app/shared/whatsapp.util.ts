@@ -4,6 +4,7 @@
  * phone without any WhatsApp Business API (the courier/WhatsApp integrations
  * stay mocked). The salesperson just taps Send.
  */
+import { formatInr } from './inr.pipe';
 
 /** Default country calling code prepended to bare 10-digit Indian mobiles. */
 const DEFAULT_CC = '91';
@@ -83,8 +84,7 @@ function firstName(name: string | null | undefined): string {
 }
 
 function money(v: string | number | null | undefined): string {
-  const n = Number(v ?? 0);
-  return '₹' + (Number.isFinite(n) ? Math.round(n).toLocaleString('en-IN') : '0');
+  return formatInr(v, 0);
 }
 
 /**

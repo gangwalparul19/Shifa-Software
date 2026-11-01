@@ -1,71 +1,16 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router, Routes, UrlTree } from '@angular/router';
 import { AuthService, createRoleGuard, Role } from 'core';
-import { LoginComponent } from './auth/login.component';
-import { ChangePasswordComponent } from './auth/change-password.component';
-import { ForbiddenComponent } from './auth/forbidden.component';
-import { DashboardComponent } from './dashboard/dashboard.component';
 import { AdminShellComponent } from './shell/admin-shell.component';
-import { ApprovalQueueComponent } from './approval/approval-queue.component';
-import { OrdersComponent } from './orders/orders.component';
-import { NewOrderComponent } from './orders/new-order.component';
-import { EditOrderComponent } from './orders/edit-order.component';
-import { ProductsComponent } from './products/products.component';
-import { InventoryComponent } from './inventory/inventory.component';
-import { ScanComponent } from './packing/scan.component';
-import { RtoComponent } from './packing/rto.component';
-import { PickListComponent } from './packing/pick-list.component';
-import { ReconciliationComponent } from './reconciliation/reconciliation.component';
-import { SettlementComponent } from './settlements/settlement.component';
-import { RemittanceReportComponent } from './remittance-report/remittance-report.component';
-import { ReportsComponent } from './reports/reports.component';
-import { SettingsComponent } from './settings/settings.component';
-import { UsersComponent } from './users/users.component';
-import { SalespeopleComponent } from './salespeople/salespeople.component';
-import { MyProfileComponent } from './my-profile/my-profile.component';
-import { ProfileApprovalsComponent } from './profile-approvals/profile-approvals.component';
-import { CustomersComponent } from './customers/customers.component';
-import { ReturnsComponent } from './returns/returns.component';
-import { NotificationsComponent } from './notifications/notifications.component';
-import { AuditComponent } from './audit/audit.component';
-import { SuppliersComponent } from './suppliers/suppliers.component';
-import { PurchaseOrdersComponent } from './purchase-orders/purchase-orders.component';
-import { ExpensesComponent } from './expenses/expenses.component';
-import { ProfitLossComponent } from './finance/profit-loss.component';
-import { LeadsComponent } from './leads/leads.component';
-import { DueFollowUpsComponent } from './leads/due-follow-ups.component';
-import { InsightsComponent } from './insights/insights.component';
-import { BackupsComponent } from './backups/backups.component';
-import { PaymentsComponent } from './payments/payments.component';
-import { AnnouncementsComponent } from './announcements/announcements.component';
-import { AssistantComponent } from './assistant/assistant.component';
-import { AnalyticsComponent } from './analytics/analytics.component';
-import { ShopifySyncComponent } from './shopify-sync/shopify-sync.component';
-import { OrderCancellationComponent } from './order-cancellation/order-cancellation.component';
-import { DeletedOrdersComponent } from './deleted-orders/deleted-orders.component';
-import { TeamComponent } from './team/team.component';
-import { TeamsOverviewComponent } from './dashboard/teams-overview.component';
-import { DeliveryPartnersPageComponent } from './dashboard/delivery-partners-page.component';
-import { WhatsappTemplatesComponent } from './whatsapp/whatsapp-templates.component';
-import { CaGstDashboardComponent } from './ca-gst/ca-gst-dashboard.component';
-import { GstFilingComponent } from './ca-gst/gst-filing.component';
-import { GstReconciliationComponent } from './ca-gst/gst-reconciliation.component';
-import { TeamPerformanceComponent } from './team/team-performance.component';
-import { LeaderboardComponent } from './leaderboard/leaderboard.component';
-import { ChartOfAccountsComponent } from './ledger/chart-of-accounts.component';
-import { VoucherEntryComponent } from './ledger/voucher-entry.component';
-import { DayBookComponent } from './ledger/day-book.component';
-import { TrialBalanceComponent } from './ledger/trial-balance.component';
-import { LedgerStatementComponent } from './ledger/ledger-statement.component';
-import { BalanceSheetComponent } from './ledger/balance-sheet.component';
-import { ProfitAndLossComponent } from './ledger/profit-and-loss.component';
-import { CashFlowComponent } from './ledger/cash-flow.component';
-import { ExceptionsComponent } from './exceptions/exceptions.component';
-import { TasksComponent } from './tasks/tasks.component';
-import { MeetingsComponent } from './meetings/meetings.component';
-import { CrmDashboardComponent } from './crm-dashboard/crm-dashboard.component';
 
-import { CrmSettingsComponent } from './crm-settings/crm-settings.component';
+/*
+ * Route components are loaded lazily (`loadComponent`) so the initial bundle only
+ * carries the shell and the router. Each page becomes its own chunk, fetched the
+ * first time the user opens it. Only the shell stays eager: every signed-in visit
+ * renders it, so splitting it out would just add a request. All chunks are still
+ * pre-cached by the service worker (`/*.js` in ngsw-config.json), so pages keep
+ * working offline.
+ */
 
 const LOGIN_PATH = '/login';
 const FORBIDDEN_PATH = '/forbidden';
@@ -213,14 +158,24 @@ export const forcePasswordChangeGuard: CanActivateFn = (): boolean | UrlTree => 
 };
 
 export const routes: Routes = [
-  { path: 'login', component: LoginComponent },
+  {
+    path: 'login',
+    loadComponent: () => import('./auth/login.component').then((m) => m.LoginComponent),
+  },
   // Forced / self-service password change — outside the shell (no app chrome),
   // reachable while the force-change flag is set. Requires an authenticated
   // session; createAuthGuard-style check lives in the component via AuthService.
-  { path: 'change-password', component: ChangePasswordComponent },
-  { path: 'forbidden', component: ForbiddenComponent },
+  {
+    path: 'change-password',
+    loadComponent: () =>
+      import('./auth/change-password.component').then((m) => m.ChangePasswordComponent),
+  },
+  {
+    path: 'forbidden',
+    loadComponent: () => import('./auth/forbidden.component').then((m) => m.ForbiddenComponent),
+  },
   // Public, unauthenticated customer order tracking (ENHANCEMENT 2.2) — opaque
-  // token, outside the admin shell/guards. Lazy so it stays out of the main bundle.
+  // token, outside the admin shell/guards.
   {
     path: 'track/:token',
     loadComponent: () =>
@@ -228,7 +183,7 @@ export const routes: Routes = [
   },
   // Public, unauthenticated self-service tracking by registered mobile number —
   // lists the customer's orders, pick one to see its live tracking. Outside the
-  // admin shell/guards; lazy so it stays out of the main bundle.
+  // admin shell/guards.
   {
     path: 'track-order',
     loadComponent: () =>
@@ -240,10 +195,15 @@ export const routes: Routes = [
     canActivate: [staffGuard, forcePasswordChangeGuard],
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
-      { path: 'dashboard', component: DashboardComponent },
+      {
+        path: 'dashboard',
+        loadComponent: () =>
+          import('./dashboard/dashboard.component').then((m) => m.DashboardComponent),
+      },
       {
         path: 'approval-queue',
-        component: ApprovalQueueComponent,
+        loadComponent: () =>
+          import('./approval/approval-queue.component').then((m) => m.ApprovalQueueComponent),
         canActivate: [adminOnlyGuard],
       },
       {
@@ -251,7 +211,8 @@ export const routes: Routes = [
         // all-orders view; the server enforces the same role restriction.
         path: 'orders/new',
         // orderEntryGuard allows Team Lead in addition to Salesperson/Admin.
-        component: NewOrderComponent,
+        loadComponent: () =>
+          import('./orders/new-order.component').then((m) => m.NewOrderComponent),
         canActivate: [orderEntryGuard],
       },
       {
@@ -261,14 +222,15 @@ export const routes: Routes = [
         // component picks the endpoint by role; the server enforces ownership +
         // editable-status (404 out-of-scope, 400/409 once past the editable window).
         path: 'orders/:id/edit',
-        component: EditOrderComponent,
+        loadComponent: () =>
+          import('./orders/edit-order.component').then((m) => m.EditOrderComponent),
         canActivate: [orderEntryGuard],
       },
       {
         // All-orders view; any staff may reach it (the backend scopes a
         // salesperson to their own orders, Req 5.5, 22.1).
         path: 'orders',
-        component: OrdersComponent,
+        loadComponent: () => import('./orders/orders.component').then((m) => m.OrdersComponent),
         canActivate: [staffGuard],
       },
       {
@@ -276,38 +238,42 @@ export const routes: Routes = [
         // the pipeline list so the more specific path wins. The backend scopes a
         // salesperson to their own leads.
         path: 'leads/follow-ups',
-        component: DueFollowUpsComponent,
+        loadComponent: () =>
+          import('./leads/due-follow-ups.component').then((m) => m.DueFollowUpsComponent),
         canActivate: [salespersonGuard],
       },
       {
         // Leads pipeline / capture (SALESPERSON + ADMIN, Req 8). The backend
         // scopes a salesperson to their own leads; admins see all.
         path: 'leads',
-        component: LeadsComponent,
+        loadComponent: () => import('./leads/leads.component').then((m) => m.LeadsComponent),
         canActivate: [salespersonGuard],
       },
       {
         // CRM tasks (SALESPERSON + TEAM_LEAD + ADMIN, CRM expansion Req 8). The
         // backend scopes own / team / all.
         path: 'tasks',
-        component: TasksComponent,
+        loadComponent: () => import('./tasks/tasks.component').then((m) => m.TasksComponent),
         canActivate: [orderEntryGuard],
       },
       {
         // CRM meetings (SALESPERSON + TEAM_LEAD + ADMIN, CRM expansion Req 9).
         path: 'meetings',
-        component: MeetingsComponent,
+        loadComponent: () =>
+          import('./meetings/meetings.component').then((m) => m.MeetingsComponent),
         canActivate: [orderEntryGuard],
       },
       {
         // Unified CRM cockpit (ADMIN only, CRM expansion Req 14).
         path: 'crm-dashboard',
-        component: CrmDashboardComponent,
+        loadComponent: () =>
+          import('./crm-dashboard/crm-dashboard.component').then((m) => m.CrmDashboardComponent),
         canActivate: [adminOnlyGuard],
       },
       {
         path: 'exceptions',
-        component: ExceptionsComponent,
+        loadComponent: () =>
+          import('./exceptions/exceptions.component').then((m) => m.ExceptionsComponent),
         canActivate: [adminOnlyGuard],
       },
       {
@@ -316,7 +282,8 @@ export const routes: Routes = [
         // recompute/dismiss actions live on this screen, so the route is gated
         // to ADMIN (mirrors the other admin-only management sections).
         path: 'insights',
-        component: InsightsComponent,
+        loadComponent: () =>
+          import('./insights/insights.component').then((m) => m.InsightsComponent),
         canActivate: [adminOnlyGuard],
       },
       {
@@ -324,27 +291,29 @@ export const routes: Routes = [
         // a salesperson to only the customers derived from orders they created
         // (Req 5.4, 5.5); admin/accountant see every customer.
         path: 'customers',
-        component: CustomersComponent,
+        loadComponent: () =>
+          import('./customers/customers.component').then((m) => m.CustomersComponent),
         canActivate: [customersGuard],
       },
       {
         // Returns / Refunds (ADMIN + ACCOUNTANT view; mutations gated in the
         // UI + backend, Set B — Feature 2).
         path: 'returns',
-        component: ReturnsComponent,
+        loadComponent: () => import('./returns/returns.component').then((m) => m.ReturnsComponent),
         canActivate: [accountantGuard],
       },
       {
         // Staff notification center: ADMIN uses the broader admin notification
         // service, while other staff roles use their scoped notification service.
         path: 'notifications',
-        component: NotificationsComponent,
+        loadComponent: () =>
+          import('./notifications/notifications.component').then((m) => m.NotificationsComponent),
         canActivate: [staffGuard],
       },
       {
         // Audit log (ADMIN only, Set B — Feature 4).
         path: 'audit',
-        component: AuditComponent,
+        loadComponent: () => import('./audit/audit.component').then((m) => m.AuditComponent),
         canActivate: [adminOnlyGuard],
       },
       {
@@ -352,156 +321,184 @@ export const routes: Routes = [
         // the list + product detail — with all mutation affordances hidden in the
         // UI and enforced ADMIN-only on the backend.
         path: 'products',
-        component: ProductsComponent,
+        loadComponent: () =>
+          import('./products/products.component').then((m) => m.ProductsComponent),
         canActivate: [salespersonGuard],
       },
       {
         // Inventory / stock management (ADMIN only — the backend inventory
         // endpoints are guarded with hasRole('ADMIN'), Wave 3 Feature 1).
         path: 'inventory',
-        component: InventoryComponent,
+        loadComponent: () =>
+          import('./inventory/inventory.component').then((m) => m.InventoryComponent),
         canActivate: [adminOnlyGuard],
       },
       {
         // Suppliers management (ADMIN only, Phase C2).
         path: 'suppliers',
-        component: SuppliersComponent,
+        loadComponent: () =>
+          import('./suppliers/suppliers.component').then((m) => m.SuppliersComponent),
         canActivate: [adminOnlyGuard],
       },
       {
         // Purchase orders (ADMIN only, Phase C2).
         path: 'purchase-orders',
-        component: PurchaseOrdersComponent,
+        loadComponent: () =>
+          import('./purchase-orders/purchase-orders.component').then(
+            (m) => m.PurchaseOrdersComponent,
+          ),
         canActivate: [adminOnlyGuard],
       },
       {
         // Expenses (ADMIN + ACCOUNTANT, Phase C3).
         path: 'expenses',
-        component: ExpensesComponent,
+        loadComponent: () =>
+          import('./expenses/expenses.component').then((m) => m.ExpensesComponent),
         canActivate: [accountantGuard],
       },
       {
         // Profit & Loss report (ADMIN + ACCOUNTANT, Phase C3).
         path: 'finance/pnl',
-        component: ProfitLossComponent,
+        loadComponent: () =>
+          import('./finance/profit-loss.component').then((m) => m.ProfitLossComponent),
         canActivate: [accountantGuard],
       },
       {
         path: 'packing',
-        component: ScanComponent,
+        loadComponent: () => import('./packing/scan.component').then((m) => m.ScanComponent),
         canActivate: [packingGuard],
       },
       {
         // RTO (returned to origin) scan page (label redesign feature): scan a
         // returned parcel's order barcode, choose a reason, mark it RTO.
         path: 'packing/rto',
-        component: RtoComponent,
+        loadComponent: () => import('./packing/rto.component').then((m) => m.RtoComponent),
         canActivate: [packingGuard],
       },
       {
         // Daily pick-list / packing manifest (enhancement): every product
         // needed across all orders awaiting packing, aggregated onto one sheet.
         path: 'packing/pick-list',
-        component: PickListComponent,
+        loadComponent: () =>
+          import('./packing/pick-list.component').then((m) => m.PickListComponent),
         canActivate: [packingGuard],
       },
       {
         path: 'reconciliation',
-        component: ReconciliationComponent,
+        loadComponent: () =>
+          import('./reconciliation/reconciliation.component').then((m) => m.ReconciliationComponent),
         canActivate: [accountantGuard],
       },
       {
         path: 'settlements',
-        component: SettlementComponent,
+        loadComponent: () =>
+          import('./settlements/settlement.component').then((m) => m.SettlementComponent),
         canActivate: [accountantGuard],
       },
       {
         // Weekly COD settlement report: what the courier remitted + settled,
         // partial payments, shortfalls, and what's still to collect (V99).
         path: 'remittance-report',
-        component: RemittanceReportComponent,
+        loadComponent: () =>
+          import('./remittance-report/remittance-report.component').then(
+            (m) => m.RemittanceReportComponent,
+          ),
         canActivate: [accountantGuard],
       },
       {
         // Reports are guarded for ADMIN + ACCOUNTANT; the backend additionally
         // scopes a salesperson to their own orders if reached directly (Req 20).
         path: 'reports',
-        component: ReportsComponent,
+        loadComponent: () => import('./reports/reports.component').then((m) => m.ReportsComponent),
         canActivate: [reportsGuard],
       },
       {
         // Company + GST configuration (ADMIN only, Req 5.4).
         path: 'settings',
-        component: SettingsComponent,
+        loadComponent: () =>
+          import('./settings/settings.component').then((m) => m.SettingsComponent),
         canActivate: [adminOnlyGuard],
       },
       {
         // CRM configuration: pipelines, stages, tags, sources, defaults,
         // permissions (ADMIN only, crm-expansion Phase 3, Req 16–19).
         path: 'crm-settings',
-        component: CrmSettingsComponent,
+        loadComponent: () =>
+          import('./crm-settings/crm-settings.component').then((m) => m.CrmSettingsComponent),
         canActivate: [adminOnlyGuard],
       },
       {
         // Staff user management (ADMIN only, Req 5.4).
         path: 'users',
-        component: UsersComponent,
+        loadComponent: () => import('./users/users.component').then((m) => m.UsersComponent),
         canActivate: [adminOnlyGuard],
       },
       {
         // Salespeople directory: onboarding profiles + ID verification (ADMIN only).
         path: 'salespeople',
-        component: SalespeopleComponent,
+        loadComponent: () =>
+          import('./salespeople/salespeople.component').then((m) => m.SalespeopleComponent),
         canActivate: [adminOnlyGuard],
       },
       {
         // Self-service "My Profile" — any authenticated staff member. Changes are
         // submitted for admin approval (not applied directly).
         path: 'my-profile',
-        component: MyProfileComponent,
+        loadComponent: () =>
+          import('./my-profile/my-profile.component').then((m) => m.MyProfileComponent),
         canActivate: [staffGuard],
       },
       {
         // Admin approval queue for staff profile change requests (ADMIN only).
         path: 'profile-approvals',
-        component: ProfileApprovalsComponent,
+        loadComponent: () =>
+          import('./profile-approvals/profile-approvals.component').then(
+            (m) => m.ProfileApprovalsComponent,
+          ),
         canActivate: [adminOnlyGuard],
       },
       {
         // Database backups: run on-demand + review history (ADMIN only, Req 24).
         path: 'backups',
-        component: BackupsComponent,
+        loadComponent: () => import('./backups/backups.component').then((m) => m.BackupsComponent),
         canActivate: [adminOnlyGuard],
       },
       {
         // Payment verification dashboard (PAYMENT_VERIFIER + ADMIN, product-audit §4.4).
         path: 'payments',
-        component: PaymentsComponent,
+        loadComponent: () =>
+          import('./payments/payments.component').then((m) => m.PaymentsComponent),
         canActivate: [paymentVerifierGuard],
       },
       {
         // Staff announcement banners (ADMIN only, FEATURE-ROADMAP §8.4).
         path: 'announcements',
-        component: AnnouncementsComponent,
+        loadComponent: () =>
+          import('./announcements/announcements.component').then((m) => m.AnnouncementsComponent),
         canActivate: [adminOnlyGuard],
       },
       {
         // In-house business-question assistant (ADMIN only; answers come from the OMS database).
         path: 'assistant',
-        component: AssistantComponent,
+        loadComponent: () =>
+          import('./assistant/assistant.component').then((m) => m.AssistantComponent),
         canActivate: [adminOnlyGuard],
       },
       {
         // Customizable WhatsApp message templates (ADMIN / ACCOUNTANT / TEAM_LEAD, V44).
         path: 'whatsapp-templates',
-        component: WhatsappTemplatesComponent,
+        loadComponent: () =>
+          import('./whatsapp/whatsapp-templates.component').then(
+            (m) => m.WhatsappTemplatesComponent,
+          ),
         canActivate: [whatsappTemplatesGuard],
       },
       {
         // Analytics suite: targets & incentives, retention, forecasting
         // (ADMIN only, FEATURE-ROADMAP §6).
         path: 'analytics',
-        component: AnalyticsComponent,
+        loadComponent: () =>
+          import('./analytics/analytics.component').then((m) => m.AnalyticsComponent),
         canActivate: [adminOnlyGuard],
       },
       {
@@ -514,122 +511,142 @@ export const routes: Routes = [
       {
         // Shopify sync: list stuck Shopify orders + one-click recover to QuikShipX (ADMIN only).
         path: 'shopify-sync',
-        component: ShopifySyncComponent,
+        loadComponent: () =>
+          import('./shopify-sync/shopify-sync.component').then((m) => m.ShopifySyncComponent),
         canActivate: [adminOnlyGuard],
       },
       {
         // Order cancellation: cancel an order (even after an AWB) with a note,
         // propagating the cancellation to the courier (ADMIN only).
         path: 'order-cancellation',
-        component: OrderCancellationComponent,
+        loadComponent: () =>
+          import('./order-cancellation/order-cancellation.component').then(
+            (m) => m.OrderCancellationComponent,
+          ),
         canActivate: [adminOnlyGuard],
       },
       {
         path: 'deleted-orders',
-        component: DeletedOrdersComponent,
+        loadComponent: () =>
+          import('./deleted-orders/deleted-orders.component').then((m) => m.DeletedOrdersComponent),
         canActivate: [adminOnlyGuard],
       },
       {
         // CA (Chartered Accountant) GST & accounting dashboard (ADMIN + CA).
         path: 'ca/gst',
-        component: CaGstDashboardComponent,
+        loadComponent: () =>
+          import('./ca-gst/ca-gst-dashboard.component').then((m) => m.CaGstDashboardComponent),
         canActivate: [adminOrCaGuard],
       },
       {
         // GST returns filing workspace: calendar, prepare/file/reopen, snapshots,
         // filing-aware export (ADMIN + CA, gst-returns-filing Req 10.1).
         path: 'ca/gst/filing',
-        component: GstFilingComponent,
+        loadComponent: () =>
+          import('./ca-gst/gst-filing.component').then((m) => m.GstFilingComponent),
         canActivate: [adminOrCaGuard],
       },
       {
         // GST ledger reconciliation: five compared figures + drill-down
         // (ADMIN + CA, gst-returns-filing Req 10.1).
         path: 'ca/gst/reconciliation',
-        component: GstReconciliationComponent,
+        loadComponent: () =>
+          import('./ca-gst/gst-reconciliation.component').then((m) => m.GstReconciliationComponent),
         canActivate: [adminOrCaGuard],
       },
       {
         // General Ledger — Chart of Accounts (ADMIN + ACCOUNTANT + CA view; CoA
         // edits ADMIN/ACCOUNTANT-only server-side, CA read-only). Req 16.1–16.3.
         path: 'accounting/chart-of-accounts',
-        component: ChartOfAccountsComponent,
+        loadComponent: () =>
+          import('./ledger/chart-of-accounts.component').then((m) => m.ChartOfAccountsComponent),
         canActivate: [accountingGuard],
       },
       {
         // Manual double-entry voucher entry + reversal (ADMIN/ACCOUNTANT post;
         // CA read-only server-side, entry UI hidden for CA). Req 16.1–16.4.
         path: 'accounting/vouchers/new',
-        component: VoucherEntryComponent,
+        loadComponent: () =>
+          import('./ledger/voucher-entry.component').then((m) => m.VoucherEntryComponent),
         canActivate: [accountingGuard],
       },
       {
         // Day Book — chronological voucher listing (read). Req 13, 16.1–16.3.
         path: 'accounting/day-book',
-        component: DayBookComponent,
+        loadComponent: () => import('./ledger/day-book.component').then((m) => m.DayBookComponent),
         canActivate: [accountingGuard],
       },
       {
         // Trial Balance (read). Req 14, 16.1–16.3, 18.2.
         path: 'accounting/trial-balance',
-        component: TrialBalanceComponent,
+        loadComponent: () =>
+          import('./ledger/trial-balance.component').then((m) => m.TrialBalanceComponent),
         canActivate: [accountingGuard],
       },
       {
         // Ledger statement — per-account statement with running balance (read).
         // The account is chosen in-page, so no route param is needed. Req 12.
         path: 'accounting/ledger-statement',
-        component: LedgerStatementComponent,
+        loadComponent: () =>
+          import('./ledger/ledger-statement.component').then((m) => m.LedgerStatementComponent),
         canActivate: [accountingGuard],
       },
       {
         // Balance Sheet — assets vs liabilities-and-equity as at a date (read).
         // Financial statements Phase 2, Req 10.1, 10.2, 11.3.
         path: 'accounting/balance-sheet',
-        component: BalanceSheetComponent,
+        loadComponent: () =>
+          import('./ledger/balance-sheet.component').then((m) => m.BalanceSheetComponent),
         canActivate: [accountingGuard],
       },
       {
         // Profit & Loss — income vs expenses for a period (read). Req 10.1, 10.2, 11.3.
         path: 'accounting/profit-and-loss',
-        component: ProfitAndLossComponent,
+        loadComponent: () =>
+          import('./ledger/profit-and-loss.component').then((m) => m.ProfitAndLossComponent),
         canActivate: [accountingGuard],
       },
       {
         // Cash Flow — direct-method cash/bank movement for a period (read).
         // Req 10.1, 10.2, 11.3.
         path: 'accounting/cash-flow',
-        component: CashFlowComponent,
+        loadComponent: () => import('./ledger/cash-flow.component').then((m) => m.CashFlowComponent),
         canActivate: [accountingGuard],
       },
       {
         // Team management: assign salespeople to a team lead (ADMIN only).
         path: 'team',
-        component: TeamComponent,
+        loadComponent: () => import('./team/team.component').then((m) => m.TeamComponent),
         canActivate: [adminOnlyGuard],
       },
       {
         // Team-wise sales with status overview (ADMIN only) — linked from the dashboard.
         path: 'teams-overview',
-        component: TeamsOverviewComponent,
+        loadComponent: () =>
+          import('./dashboard/teams-overview.component').then((m) => m.TeamsOverviewComponent),
         canActivate: [adminOnlyGuard],
       },
       {
         // Orders by delivery partner: QuikShipX / In-house (Ishika Enterprise) / POS (ADMIN only).
         path: 'delivery-partners',
-        component: DeliveryPartnersPageComponent,
+        loadComponent: () =>
+          import('./dashboard/delivery-partners-page.component').then(
+            (m) => m.DeliveryPartnersPageComponent,
+          ),
         canActivate: [adminOnlyGuard],
       },
       {
         // Team-lead performance dashboard (TEAM_LEAD + ADMIN).
         path: 'team-performance',
-        component: TeamPerformanceComponent,
+        loadComponent: () =>
+          import('./team/team-performance.component').then((m) => m.TeamPerformanceComponent),
         canActivate: [teamLeadGuard],
       },
       {
         // Sales leaderboard (ADMIN + SALESPERSON) — moved off the dashboard.
         path: 'leaderboard',
-        component: LeaderboardComponent,
+        loadComponent: () =>
+          import('./leaderboard/leaderboard.component').then((m) => m.LeaderboardComponent),
         canActivate: [salespersonGuard],
       },
     ],

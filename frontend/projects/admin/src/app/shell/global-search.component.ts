@@ -16,6 +16,9 @@ import { GlobalSearchService, SearchResults } from './global-search.service';
 
 const EMPTY_RESULTS: SearchResults = { orders: [], products: [], customers: [] };
 
+/** Gives every search box its own listbox/option ids so two instances never clash. */
+let searchInstanceCounter = 0;
+
 /** A flattened result row used for keyboard navigation. */
 interface FlatHit {
   kind: 'action' | 'order' | 'product' | 'customer';
@@ -97,6 +100,9 @@ export class GlobalSearchComponent {
 
   private readonly inputEl = viewChild<ElementRef<HTMLInputElement>>('searchInput');
 
+  /** Id of the results listbox (referenced by the input's {@code aria-controls}). */
+  protected readonly listboxId = `global-search-results-${++searchInstanceCounter}`;
+
   protected readonly query = new FormControl<string>('', { nonNullable: true });
 
   /** Whether the results panel is open. */
@@ -164,6 +170,17 @@ export class GlobalSearchComponent {
       });
     }
     return hits;
+  });
+
+  /** DOM id of the option at a flat-list index (for {@code aria-activedescendant}). */
+  protected optionId(index: number): string {
+    return `${this.listboxId}-opt-${index}`;
+  }
+
+  /** Id of the keyboard-highlighted option, or null when none is highlighted/visible. */
+  protected readonly activeOptionId = computed<string | null>(() => {
+    const i = this.activeIndex();
+    return this.open() && i >= 0 && i < this.flatHits().length ? this.optionId(i) : null;
   });
 
   protected readonly hasResults = computed(() => this.flatHits().length > 0);

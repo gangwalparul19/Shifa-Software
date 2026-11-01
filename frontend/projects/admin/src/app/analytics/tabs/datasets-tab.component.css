@@ -1,0 +1,38 @@
+/* Datasets tab — relies on the shared Tabler card/table/button styles. */
+
+:host {
+  display: block;
+}
+
+.ds-intro {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+/* Keep every button at least 44px tall for touch. */
+.ds-action {
+  min-height: 2.75rem;
+}
+
+.ds-points {
+  padding-left: 1.1rem;
+}
+
+.ds-points li + li {
+  margin-top: 0.25rem;
+}
+
+/* A long column list scrolls inside its own box instead of stretching the page. */
+.ds-columns {
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.ds-columns:focus-visible {
+  outline: 2px solid #1f5d3f;
+  outline-offset: -2px;
+}
+
+.ds-colname {
+  white-space: nowrap;
+}

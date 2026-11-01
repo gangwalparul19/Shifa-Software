@@ -1,0 +1,192 @@
+<p class="text-secondary small mb-3">{{ headerLine() }}.</p>
+
+<!-- ============================ How fast orders move ============================ -->
+<h3 class="h4 mb-1">How fast orders move</h3>
+<p class="text-secondary small mb-2">
+  "Typical" is the middle order: half are quicker and half are slower. The "9 out of 10" figure shows how slow the slower
+  orders get.
+</p>
+<div class="row row-cards mb-3">
+  @for (s of report().speed; track s.key) {
+    <div class="col-12 col-sm-6 col-xl-3">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="subheader">{{ s.label }}</div>
+          @if (hasSamples(s)) {
+            <div class="h1 m-0">{{ hours(s.medianHours) }}</div>
+            <div class="text-secondary small">typical</div>
+            <div class="mt-2">
+              9 out of 10 orders within <strong>{{ hours(s.p90Hours) }}</strong>
+            </div>
+            <div class="text-secondary small">
+              Average {{ hours(s.avgHours) }} · based on {{ num(s.samples) }} orders
+            </div>
+          } @else {
+            <div class="h3 m-0 text-secondary">Not enough data</div>
+            <div class="text-secondary small">No orders have reached this step in the period yet.</div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+</div>
+
+<!-- ============================ Order outcomes ============================ -->
+<div class="card mb-3">
+  <div class="card-header py-2">
+    <h3 class="card-title mb-0">Where orders ended up</h3>
+  </div>
+  @if (report().orders === 0) {
+    <div class="card-body text-secondary text-center py-4">No orders were placed in this period.</div>
+  } @else {
+    <div class="card-body">
+      <div class="ops-stack" role="img" [attr.aria-label]="outcomeSummary()">
+        @for (seg of outcomeSegments(); track seg.key) {
+          <div
+            class="ops-stack__seg"
+            [style.flex-grow]="seg.orders"
+            [style.background-color]="seg.color"
+            [attr.title]="seg.label + ': ' + seg.orders + ' orders'"
+          ></div>
+        }
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table">
+        <caption class="visually-hidden">
+          Number of orders and share of orders at each stage
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Stage</th>
+            <th scope="col" class="text-end">Orders</th>
+            <th scope="col" class="text-end">Share</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (o of report().outcomes; track o.key) {
+            <tr [class.text-secondary]="o.orders === 0">
+              <td>
+                <span class="ops-swatch" [style.background-color]="outcomeColor(o.key)" aria-hidden="true"></span>
+                {{ o.label }}
+              </td>
+              <td class="text-end fw-semibold">{{ num(o.orders) }}</td>
+              <td class="text-end">{{ pct(o.sharePct) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>
+
+<!-- ============================ Delivery success by payment type ============================ -->
+<div class="card mb-3">
+  <div class="card-header py-2">
+    <h3 class="card-title mb-0">Delivery success by payment type</h3>
+  </div>
+  @if (report().paymentRisk.length === 0) {
+    <div class="card-body text-secondary text-center py-4">No delivered or failed orders in this period yet.</div>
+  } @else {
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table">
+        <caption class="visually-hidden">
+          Orders, delivered and failed parcels, and the delivery success rate for each payment type
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Payment type</th>
+            <th scope="col" class="text-end">Orders</th>
+            <th scope="col" class="text-end">Delivered</th>
+            <th scope="col" class="text-end">Failed</th>
+            <th scope="col" class="text-end">Success</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (r of report().paymentRisk; track r.key) {
+            <tr>
+              <td class="fw-medium">{{ r.label }}</td>
+              <td class="text-end">{{ num(r.orders) }}</td>
+              <td class="text-end">{{ num(r.delivered) }}</td>
+              <td class="text-end" [class.text-danger]="r.failed > 0">{{ num(r.failed) }}</td>
+              <td class="text-end">
+                @if (finished(r) > 0) {
+                  <span class="ops-rate fw-semibold text-nowrap {{ rateTone(r.successRatePct) }}">
+                    <i class="ti {{ rateIcon(r.successRatePct) }}" aria-hidden="true"></i>
+                    {{ pct(r.successRatePct) }}
+                  </span>
+                  <span class="d-block small text-secondary">{{ rateWord(r.successRatePct) }}</span>
+                } @else {
+                  <span class="text-secondary">—</span>
+                  <span class="d-block small text-secondary">no result yet</span>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    @if (paymentInsight(); as insight) {
+      <div class="card-body pt-0">
+        <div class="alert {{ insightClass(insight.tone) }} mb-0" role="note">
+          <i class="ti {{ insightIcon(insight.tone) }} me-1" aria-hidden="true"></i>
+          {{ insight.text }}
+        </div>
+      </div>
+    }
+  }
+</div>
+
+<!-- ============================ Reasons ============================ -->
+<div class="row row-cards">
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-header py-2">
+        <h3 class="card-title mb-0">Why orders were rejected</h3>
+        <span class="ms-auto text-secondary small">{{ num(rejectTotal()) }} orders</span>
+      </div>
+      @if (rejectBars().length === 0) {
+        <div class="card-body text-secondary">No orders were rejected in this period.</div>
+      } @else {
+        <ul class="list-unstyled m-0 ops-reasons">
+          @for (r of rejectBars(); track r.key) {
+            <li>
+              <div class="d-flex justify-content-between gap-2">
+                <span>{{ r.label }}</span>
+                <strong>{{ num(r.orders) }}</strong>
+              </div>
+              <div class="ops-mini" aria-hidden="true">
+                <div class="ops-mini__fill" [style.width.%]="r.widthPct"></div>
+              </div>
+            </li>
+          }
+        </ul>
+      }
+    </div>
+  </div>
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-header py-2">
+        <h3 class="card-title mb-0">Why parcels came back</h3>
+        <span class="ms-auto text-secondary small">{{ num(rtoTotal()) }} orders</span>
+      </div>
+      @if (rtoBars().length === 0) {
+        <div class="card-body text-secondary">No parcels came back in this period.</div>
+      } @else {
+        <ul class="list-unstyled m-0 ops-reasons">
+          @for (r of rtoBars(); track r.key) {
+            <li>
+              <div class="d-flex justify-content-between gap-2">
+                <span>{{ r.label }}</span>
+                <strong>{{ num(r.orders) }}</strong>
+              </div>
+              <div class="ops-mini" aria-hidden="true">
+                <div class="ops-mini__fill ops-mini__fill--red" [style.width.%]="r.widthPct"></div>
+              </div>
+            </li>
+          }
+        </ul>
+      }
+    </div>
+  </div>
+</div>

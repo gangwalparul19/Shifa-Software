@@ -157,3 +157,8 @@
 
 /* NOTE: the Account/Profile tab strip (.shifa-formtabs/.shifa-formtab) is
    styled globally in styles.css so it stays a single, non-wrapping row. */
+
+/* The dialog panel itself is only a programmatic focus fallback (see adminDialog): no ring around it. */
+.shifa-modal:focus-visible {
+  outline: none;
+}

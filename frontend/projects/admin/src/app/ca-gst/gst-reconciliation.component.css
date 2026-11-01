@@ -144,3 +144,8 @@
 .gst-due-strip .pill { display: flex; flex-direction: column; }
 .gst-due-strip .pill .lbl { font-size: 0.72rem; color: var(--gst-muted); }
 .gst-due-strip .pill .val { font-weight: 700; color: var(--gst-ink); }
+
+/* The dialog panel itself is only a programmatic focus fallback (see adminDialog): no ring around it. */
+.shifa-drawer:focus-visible {
+  outline: none;
+}

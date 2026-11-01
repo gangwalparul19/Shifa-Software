@@ -9,3 +9,58 @@
 .cohort-grid tbody td {
   border-radius: 4px;
 }
+
+/* Tab strip: a single scrolling row, so ten tabs never stack into a tall block on a phone. */
+.an-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.an-tab {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-height: 2.25rem;
+}
+
+/* Period bar: preset chips on one scrolling row, the range on the right (below on a phone). */
+.an-period {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  justify-content: space-between;
+}
+.an-period__chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  scrollbar-width: thin;
+}
+.an-period__chips .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-height: 2.25rem;
+}
+.an-period__label {
+  white-space: nowrap;
+}
+.an-period__custom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+.an-period__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 9.5rem;
+}

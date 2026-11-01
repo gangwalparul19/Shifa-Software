@@ -3,8 +3,10 @@ import { Router, RouterLink } from '@angular/router';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { PaginationComponent } from '../shared/pagination.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { IstDatePipe } from '../shared/ist-date.pipe';
+import { saveBlob } from '../shared/blob-download.util';
 import { formatInr } from '../shared/inr.pipe';
 import { asOfFilename, reportFilename } from '../shared/report-filename.util';
 import { addIstDays, monthEndIst, monthStartIst, todayIst, weekStartIst } from '../shared/business-date.util';
@@ -34,7 +36,7 @@ type PresetKey = 'this-week' | 'last-week' | 'this-month' | 'last-month' | 'cust
  */
 @Component({
   selector: 'admin-remittance-report',
-  imports: [RouterLink, PageHeaderComponent, StatePanelComponent, PaginationComponent, IstDatePipe],
+  imports: [RouterLink, PageHeaderComponent, StatePanelComponent, PaginationComponent, IstDatePipe, DialogDirective],
   templateUrl: './remittance-report.component.html',
   styleUrl: './remittance-report.component.css',
 })
@@ -219,13 +221,9 @@ export class RemittanceReportComponent implements OnInit {
     ]);
     const csv = [header, ...body].map((r) => r.map((c) => `"${String(c)}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
     // A live "still owed" list, so it is dated by the day it was taken.
-    a.download = asOfFilename('Partial Settlements Follow-up', todayIst(), 'csv');
-    a.click();
-    URL.revokeObjectURL(url);
+    const filename = asOfFilename('Partial Settlements Follow-up', todayIst(), 'csv');
+    saveBlob(blob, filename, 'shifa-partial-settlements-follow-up.csv');
   }
 
   private numStr(value: number | string | null | undefined): string {
@@ -303,14 +301,10 @@ export class RemittanceReportComponent implements OnInit {
       .map((r) => r.map((c) => `"${String(c)}"`).join(','))
       .join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
     // Dated by when the courier remitted (else when it was imported), so batches are told apart.
     const batchDate = batch.remittedDate || batch.importedAt?.slice(0, 10) || todayIst();
-    a.download = reportFilename(`Remittance Batch ${batch.id} Details`, batchDate, batchDate, 'csv');
-    a.click();
-    URL.revokeObjectURL(url);
+    const filename = reportFilename(`Remittance Batch ${batch.id} Details`, batchDate, batchDate, 'csv');
+    saveBlob(blob, filename, `shifa-remittance-batch-${batch.id}-details.csv`);
   }
 
   // --- Display helpers ----------------------------------------------------

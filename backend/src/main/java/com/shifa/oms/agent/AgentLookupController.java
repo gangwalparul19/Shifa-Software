@@ -16,8 +16,8 @@ import org.springframework.web.bind.annotation.RestController;
  * {@code orderCode|mobile|awb}) or one of the discrete {@code orderCode} /
  * {@code mobile} / {@code awb} parameters.
  *
- * <p><strong>Auth.</strong> Per the design, a live agent runs this query via the
- * storefront; it exposes order + payment details, so it is restricted to
+ * <p><strong>Auth.</strong> This is a staff-only lookup used by agents and admins;
+ * it exposes order + payment details, so it is restricted to
  * authenticated staff roles (ADMIN / ACCOUNTANT / SALESPERSON) rather than being
  * public. Salesperson scoping is not applied here because a live agent must be
  * able to answer for any customer's order.

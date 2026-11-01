@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * Enqueues the "order confirmation" WhatsApp notification for a freshly placed
- * storefront order (ROADMAP 1.2). Unlike the courier-driven lifecycle
+ * order (ROADMAP 1.2). Unlike the courier-driven lifecycle
  * notifications, this fires once, right when the customer places the order, to
  * acknowledge it immediately.
  *
@@ -22,7 +22,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class OrderConfirmationNotifier {
 
-    /** Fallback store name when settings carry no legal/brand name (mirrors the storefront config). */
+    /** Fallback store name when settings carry no legal/brand name (the default brand name). */
     static final String DEFAULT_STORE_NAME = "Shifa Herbal Remedies";
 
     private final WhatsAppNotificationPublisher notificationPublisher;

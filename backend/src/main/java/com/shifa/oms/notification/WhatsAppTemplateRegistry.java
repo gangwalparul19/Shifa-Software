@@ -65,7 +65,7 @@ public class WhatsAppTemplateRegistry {
     private static Map<NotificationEvent, WhatsAppTemplate> buildTemplates() {
         Map<NotificationEvent, WhatsAppTemplate> map = new EnumMap<>(NotificationEvent.class);
 
-        // Order confirmation: sent once when a storefront order is placed, greeting
+        // Order confirmation: sent once when a newly placed order is created, greeting
         // the customer by name and acknowledging the order + store (ROADMAP 1.2).
         map.put(NotificationEvent.ORDER_CONFIRMED, new WhatsAppTemplate(
                 NotificationEvent.ORDER_CONFIRMED, "order_confirmed",

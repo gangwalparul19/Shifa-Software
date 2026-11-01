@@ -16,6 +16,7 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
@@ -42,6 +43,7 @@ import { roleLabel } from '../shared/role-label';
     StatePanelComponent,
     DensityToggleComponent,
     RowActionsMenuComponent,
+    DialogDirective,
   ],
   templateUrl: './users.component.html',
   styleUrl: './users.component.css',

@@ -55,6 +55,15 @@
   </div>
 </div>
 
+@if (agingError()) {
+  <div class="alert alert-warning d-flex justify-content-between align-items-center gap-2 mb-3" role="alert">
+    <span><i class="ti ti-alert-triangle me-2"></i>Could not load the collection and COD aging summary.</span>
+    <button type="button" class="btn btn-sm btn-outline-warning flex-shrink-0" (click)="refreshCodAging()">
+      <i class="ti ti-refresh me-1"></i> Retry
+    </button>
+  </div>
+}
+
 <!-- Collectible summary (ENHANCEMENT 1.4): one-tap "what's left to collect" —
      courier-owed COD (with over-SLA chase) vs customer dues + pending claims. -->
 @if (collectible(); as cs) {
@@ -139,7 +148,7 @@
     @for (s of [1, 2, 3]; track s) {
       <div class="col-6 col-lg-4"><div class="card"><div class="card-body"><div class="skeleton skeleton-line w-40 mb-3"></div><div class="skeleton skeleton-card"></div></div></div></div>
     }
-  } @else if (summary().length === 0) {
+  } @else if (summary().length === 0 && !loadError()) {
     <div class="col-12">
       <div class="card"><div class="empty">
         <div class="empty-icon"><i class="ti ti-cash-off"></i></div>
@@ -270,7 +279,11 @@
       }
     </div>
 
-    @if (receivables().length === 0) {
+    @if (receivablesLoading() && receivables().length === 0) {
+      <admin-state-panel variant="loading" loadingLabel="Loading receivables…" />
+    } @else if (receivablesError(); as recvErr) {
+      <admin-state-panel variant="error" [message]="recvErr" (retry)="refreshReceivables()" />
+    } @else if (receivables().length === 0) {
       <div class="empty py-4"><p class="empty-title">No receivables match the current filters.</p></div>
     } @else {
       <!-- Mobile (<768px): receivable cards with a status pill + Settle action. -->
@@ -356,7 +369,11 @@
 
   <!-- Unsettled COD tab -->
   @if (tab() === 'unsettled') {
-    @if (unsettled().length === 0) {
+    @if (unsettledLoading() && unsettled().length === 0) {
+      <admin-state-panel variant="loading" loadingLabel="Loading unsettled COD…" />
+    } @else if (unsettledError(); as unsettledErr) {
+      <admin-state-panel variant="error" [message]="unsettledErr" (retry)="refreshUnsettled()" />
+    } @else if (unsettled().length === 0) {
       <div class="empty py-4"><p class="empty-title">No unsettled COD receivables</p><p class="empty-subtitle text-secondary">All collected COD is settled.</p></div>
     } @else {
       <!-- Mobile (<768px): unsettled-COD cards with a Settle action. -->
@@ -414,7 +431,9 @@
 
   <!-- Segregation tab -->
   @if (tab() === 'segregation') {
-    @if (segregation(); as seg) {
+    @if (segregationError(); as segErr) {
+      <admin-state-panel variant="error" [message]="segErr" (retry)="refreshSegregation()" />
+    } @else if (segregation(); as seg) {
       <div class="card-body">
         <div class="row g-3">
           <div class="col-lg-6">
@@ -474,7 +493,11 @@
 
   <!-- Pending claims tab -->
   @if (tab() === 'claims') {
-    @if (claims().length === 0) {
+    @if (claimsLoading() && claims().length === 0) {
+      <admin-state-panel variant="loading" loadingLabel="Loading pending claims…" />
+    } @else if (claimsError(); as claimsErr) {
+      <admin-state-panel variant="error" [message]="claimsErr" (retry)="refreshClaims()" />
+    } @else if (claims().length === 0) {
       <div class="empty py-4"><p class="empty-title">No claims pending</p><p class="empty-subtitle text-secondary">Loss claims will appear here to be filed.</p></div>
     } @else {
       <!-- Mobile (<768px): pending-claim cards with a Mark settled action. -->
@@ -535,17 +558,17 @@
 <!-- Settle modal -->
 @if (settleTarget(); as target) {
   <div class="shifa-overlay" (click)="cancelSettle()"></div>
-  <div class="shifa-modal" role="dialog" aria-label="Settle receivable">
+  <div class="shifa-modal" adminDialog aria-labelledby="recon-settle-title" (dialogClose)="cancelSettle()">
     <div class="card">
-      <div class="card-header"><h3 class="card-title mb-0">Settle receivable</h3></div>
+      <div class="card-header"><h3 class="card-title mb-0" id="recon-settle-title">Settle receivable</h3></div>
       <div class="card-body">
         <p class="text-secondary">
           Mark the receivable for <strong>{{ target.orderCode ?? 'this order' }}</strong> as settled.
           Choose the settlement date (defaults to today).
         </p>
         <form [formGroup]="settleForm" (ngSubmit)="confirmSettle()" novalidate>
-          <label class="form-label">Settlement date</label>
-          <input type="date" class="form-control" formControlName="date" />
+          <label class="form-label" for="recon-settle-date">Settlement date</label>
+          <input id="recon-settle-date" type="date" class="form-control" formControlName="date" />
           <div class="d-flex justify-content-end gap-2 mt-3">
             <button type="button" class="btn btn-outline-secondary" (click)="cancelSettle()">Cancel</button>
             <button type="submit" class="btn btn-primary" [disabled]="acting()">Confirm settle</button>
@@ -559,10 +582,10 @@
 <!-- ===================== Courier remittance import modal ===================== -->
 @if (remittanceOpen()) {
   <div class="shifa-overlay" (click)="closeRemittanceImport()"></div>
-  <div class="shifa-modal shifa-modal-wide" role="dialog" aria-label="Import courier COD remittance">
+  <div class="shifa-modal shifa-modal-wide" adminDialog aria-labelledby="recon-import-title" (dialogClose)="closeRemittanceImport()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-file-import me-2"></i>Import courier COD remittance (CSV / Excel)</h3>
+        <h3 class="card-title mb-0" id="recon-import-title"><i class="ti ti-file-import me-2"></i>Import courier COD remittance (CSV / Excel)</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeRemittanceImport()" aria-label="Close">
             <i class="ti ti-x"></i>
@@ -629,10 +652,10 @@
           </div>
 
           <div class="d-flex flex-wrap gap-3 mb-3 small">
-            <span>Remitted <strong>₹{{ res.totalRemitted }}</strong></span>
-            <span>Settled <strong class="text-success">₹{{ res.totalSettled }}</strong></span>
+            <span>Remitted <strong>{{ remittanceMoney(res.totalRemitted) }}</strong></span>
+            <span>Settled <strong class="text-success">{{ remittanceMoney(res.totalSettled) }}</strong></span>
             @if ((+res.totalShortfall) > 0) {
-              <span>Shortfall <strong class="text-danger">₹{{ res.totalShortfall }}</strong></span>
+              <span>Shortfall <strong class="text-danger">{{ remittanceMoney(res.totalShortfall) }}</strong></span>
             }
           </div>
 
@@ -678,6 +701,10 @@
                     </td>
                     <td><span class="badge" [attr.data-group]="remittanceRowTone(row.status)">{{ remittanceStatusLabel(row.status) }}</span></td>
                     <td [class.text-danger]="row.status === 'ERROR'">{{ row.message || '—' }}</td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="7" class="text-center text-secondary py-3">No rows were read from this file.</td>
                   </tr>
                 }
               </tbody>

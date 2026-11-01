@@ -3,7 +3,10 @@ import { RouterLink } from '@angular/router';
 import { AuthService, Role } from 'core';
 import { IstDatePipe } from '../shared/ist-date.pipe';
 import { addIstDays, monthStartIst, todayIst } from '../shared/business-date.util';
+import { saveBlob } from '../shared/blob-download.util';
+import { formatInr } from '../shared/inr.pipe';
 import { reportFilename } from '../shared/report-filename.util';
+import { humanizeStatus } from '../shared/status-badge.component';
 import { PageHeaderComponent, } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
@@ -97,12 +100,12 @@ type HealthFilter = 'ALL' | 'INACTIVE' | 'NO_ACTIVITY' | 'FOLLOW_UPS' | 'RTO';
             <div>
               <strong>Monthly pacing:</strong>
               on this run rate (day {{ pace.daysElapsed }} of {{ pace.daysInMonth }}) the team is projected to reach
-              <strong>₹{{ pace.projected.toLocaleString('en-IN') }}</strong>
-              against a <strong>₹{{ pace.target.toLocaleString('en-IN') }}</strong> target —
+              <strong>{{ inr(pace.projected) }}</strong>
+              against a <strong>{{ inr(pace.target) }}</strong> target —
               @if (pace.onPace) {
                 <span class="text-success fw-medium">on pace.</span>
               } @else {
-                <span class="text-danger fw-medium">₹{{ pace.gap.toLocaleString('en-IN') }} behind pace.</span>
+                <span class="text-danger fw-medium">{{ inr(pace.gap) }} behind pace.</span>
               }
             </div>
           </div>
@@ -487,13 +490,13 @@ export class TeamPerformanceComponent implements OnInit {
   }
   protected closeMember(): void { this.selectedMember.set(null); }
   sourceLabel(source: string): string { return SOURCE_LABELS[source] ?? source; }
-  inr(amount: string | number | null | undefined): string { return `₹${Number(amount ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`; }
+  inr(amount: string | number | null | undefined): string { return formatInr(amount, 0); }
   delta(current: string | number | null | undefined, previous: string | number | null | undefined): number {
     const c = Number(current ?? 0); const p = Number(previous ?? 0);
     return p === 0 ? (c === 0 ? 0 : 100) : Math.round(((c - p) / p) * 100);
   }
   statusLabel(value: string | null | undefined): string {
-    return (value || '—').toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+    return value ? humanizeStatus(value) : '—';
   }
   memberHealth(member: TeamMemberPerformance): string {
     if (!member.active) return 'Inactive';
@@ -513,11 +516,9 @@ export class TeamPerformanceComponent implements OnInit {
       ...d.leaderboard.map((m) => [m.fullName, m.username, this.memberHealth(m), String(m.ordersInPeriod), m.revenueInPeriod, m.averageOrderValue, `${m.successRate}%`, String(m.rtoCount), String(m.dueFollowUps), m.codOutstanding]),
     ];
     const csv = rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(',')).join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     // Named after the exact dates the figures cover, e.g. shifa-team-performance_2026-10-01_to_2026-10-31.csv.
     const today = todayIst();
     const filename = reportFilename('Team Performance', d.period?.from ?? today, d.period?.to ?? today, 'csv');
-    const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    saveBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), filename, 'shifa-team-performance.csv');
   }
 }

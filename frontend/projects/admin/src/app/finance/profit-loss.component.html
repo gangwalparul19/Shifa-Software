@@ -30,8 +30,11 @@
 </form>
 
 @if (loadError(); as err) {
-  <div class="alert alert-danger d-flex align-items-center" role="alert">
-    <i class="ti ti-alert-triangle me-2"></i>{{ err }}
+  <div class="alert alert-danger d-flex align-items-center justify-content-between gap-2" role="alert">
+    <span><i class="ti ti-alert-triangle me-2"></i>{{ err }}</span>
+    <button type="button" class="btn btn-sm btn-outline-danger flex-shrink-0" (click)="generate()" [disabled]="loading()">
+      <i class="ti ti-refresh me-1"></i> Retry
+    </button>
   </div>
 }
 

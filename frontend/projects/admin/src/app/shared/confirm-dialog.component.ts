@@ -15,7 +15,7 @@ import { ConfirmService } from './confirm.service';
  * {@code confirm.confirm(...)} for destructive/irreversible actions.
  *
  * <p>Accessibility: the dialog uses {@code role="dialog"} + {@code aria-modal},
- * moves focus to the confirm button on open, traps Tab within the dialog, cancels
+ * moves focus to the confirm button on open (to Cancel for a danger confirmation), traps Tab within the dialog, cancels
  * on Escape and on backdrop click, and returns focus to the triggering element
  * on close. Entry animation is suppressed under {@code prefers-reduced-motion}
  * by the global stylesheet.
@@ -76,6 +76,7 @@ export class ConfirmDialogComponent implements AfterViewChecked {
 
   @ViewChild('dialog') private dialog?: ElementRef<HTMLElement>;
   @ViewChild('confirmBtn') private confirmBtn?: ElementRef<HTMLButtonElement>;
+  @ViewChild('cancelBtn') private cancelBtn?: ElementRef<HTMLButtonElement>;
 
   protected readonly titleId = 'confirm-title';
   protected readonly messageId = 'confirm-message';
@@ -89,7 +90,10 @@ export class ConfirmDialogComponent implements AfterViewChecked {
   ngAfterViewChecked(): void {
     if (this.options() && !this.focused) {
       this.trigger = document.activeElement as HTMLElement | null;
-      this.confirmBtn?.nativeElement.focus();
+      // A destructive confirmation starts on Cancel so a stray Enter/Space cannot
+      // confirm it; every other confirmation starts on the confirm button.
+      const initial = this.options()?.danger ? this.cancelBtn : this.confirmBtn;
+      initial?.nativeElement.focus();
       this.focused = true;
     } else if (!this.options() && this.focused) {
       this.focused = false;

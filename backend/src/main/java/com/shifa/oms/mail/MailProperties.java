@@ -89,8 +89,11 @@ public record MailProperties(String mode, String from, String digestTo, Boolean 
      *
      * @param brandName    the store/brand name shown in the header + copy
      *                     (default {@code "Shifa Herbal Remedies"})
-     * @param siteUrl      the public storefront URL used for every CTA/link
-     *                     (default {@code "http://130.210.52.12"})
+     * @param siteUrl      the public website URL used for links in emails
+     *                     (default {@code "http://130.210.52.12"}; note this
+     *                     fallback differs from the one documented on
+     *                     {@code EmailBrandProperties}, so the real value is set
+     *                     per environment via {@code app.mail.brand.site-url})
      * @param logoUrl      absolute URL of a logo image; blank ⇒ render the styled
      *                     wordmark instead (default blank)
      * @param supportPhone the contact/WhatsApp number shown in the footer

@@ -1,5 +1,6 @@
 package com.shifa.oms.order;
 
+import com.shifa.oms.dashboard.ChannelAggregateRepository;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.order.dto.ChannelSummaryResponse;
 import com.shifa.oms.statemachine.OrderStatus;
@@ -12,18 +13,24 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link ChannelSummaryService}: splitting order metrics by
  * channel (portal vs Shopify vs total), excluding rejected/cancelled from
  * revenue, summing COD outstanding, computing this-month figures against a fixed
  * clock, and grouping the status breakdown.
+ *
+ * <p>The service reads grouped SQL aggregates; {@link InMemoryAggregates} is a
+ * fake of {@link ChannelAggregateRepository} that groups an in-memory order list
+ * by source and status with the same window / month rules as the real queries.
  */
 class ChannelSummaryServiceTest {
 
@@ -32,26 +39,25 @@ class ChannelSummaryServiceTest {
     private static final Clock CLOCK = Clock.fixed(
             LocalDate.of(2026, 6, 15).atStartOfDay(ZONE).toInstant(), ZONE);
 
-    private OrderRepository orderRepository;
+    private InMemoryAggregates aggregates;
     private ChannelSummaryService service;
 
     @BeforeEach
     void setUp() {
-        orderRepository = mock(OrderRepository.class);
-        service = new ChannelSummaryService(orderRepository, CLOCK);
+        aggregates = new InMemoryAggregates();
+        service = new ChannelSummaryService(aggregates, CLOCK);
     }
 
     @Test
     void splitsByChannelExcludesNonRevenueAndSumsCodOutstanding() {
-        List<OrderEntity> orders = List.of(
+        aggregates.orders.addAll(List.of(
                 // Portal orders
                 order(OrderSource.SALESPERSON, OrderStatus.DELIVERED, "1000.00", "0.00", 2026, 6, 10),
                 order(OrderSource.STOREFRONT, OrderStatus.COURIER_ASSIGNED, "500.00", "500.00", 2026, 6, 12),
                 order(OrderSource.SALESPERSON, OrderStatus.REJECTED, "999.00", "0.00", 2026, 6, 5), // excluded from revenue
                 // Shopify orders
                 order(OrderSource.SHOPIFY, OrderStatus.LABEL_GENERATED, "2200.00", "0.00", 2026, 6, 11),
-                order(OrderSource.SHOPIFY, OrderStatus.COURIER_ASSIGNED, "800.00", "300.00", 2026, 5, 20)); // last month
-        when(orderRepository.findByCreatedAtBetween(any(), any())).thenReturn(orders);
+                order(OrderSource.SHOPIFY, OrderStatus.COURIER_ASSIGNED, "800.00", "300.00", 2026, 5, 20))); // last month
 
         ChannelSummaryResponse res = service.summary(LocalDate.of(2026, 5, 1), LocalDate.of(2026, 6, 30));
 
@@ -73,10 +79,9 @@ class ChannelSummaryServiceTest {
 
     @Test
     void thisMonthCountsOnlyCurrentMonthOrders() {
-        List<OrderEntity> orders = List.of(
+        aggregates.orders.addAll(List.of(
                 order(OrderSource.SHOPIFY, OrderStatus.DELIVERED, "2200.00", "0.00", 2026, 6, 11), // this month
-                order(OrderSource.SHOPIFY, OrderStatus.DELIVERED, "800.00", "0.00", 2026, 5, 20));  // last month
-        when(orderRepository.findByCreatedAtBetween(any(), any())).thenReturn(orders);
+                order(OrderSource.SHOPIFY, OrderStatus.DELIVERED, "800.00", "0.00", 2026, 5, 20))); // last month
 
         ChannelSummaryResponse res = service.summary(LocalDate.of(2026, 5, 1), LocalDate.of(2026, 6, 30));
 
@@ -87,12 +92,11 @@ class ChannelSummaryServiceTest {
 
     @Test
     void statusBreakdownFoldsIntoBusinessGroupsInLifecycleOrder() {
-        List<OrderEntity> orders = List.of(
+        aggregates.orders.addAll(List.of(
                 order(OrderSource.SHOPIFY, OrderStatus.PENDING_ADMIN_APPROVAL, "100.00", "0.00", 2026, 6, 1),
                 order(OrderSource.SHOPIFY, OrderStatus.LABEL_GENERATED, "100.00", "0.00", 2026, 6, 2),
                 order(OrderSource.SHOPIFY, OrderStatus.COURIER_ASSIGNED, "100.00", "0.00", 2026, 6, 3),
-                order(OrderSource.SHOPIFY, OrderStatus.DELIVERED, "100.00", "0.00", 2026, 6, 4));
-        when(orderRepository.findByCreatedAtBetween(any(), any())).thenReturn(orders);
+                order(OrderSource.SHOPIFY, OrderStatus.DELIVERED, "100.00", "0.00", 2026, 6, 4)));
 
         ChannelSummaryResponse res = service.summary(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30));
 
@@ -105,11 +109,10 @@ class ChannelSummaryServiceTest {
     }
 
     @Test
-    void allTimeWindowLoadsEveryOrderViaFindAll() {
-        List<OrderEntity> orders = List.of(
+    void allTimeWindowCoversEveryOrder() {
+        aggregates.orders.addAll(List.of(
                 order(OrderSource.SALESPERSON, OrderStatus.DELIVERED, "300.00", "0.00", 2025, 1, 1),
-                order(OrderSource.SHOPIFY, OrderStatus.DELIVERED, "700.00", "0.00", 2026, 6, 1));
-        when(orderRepository.findAll()).thenReturn(orders);
+                order(OrderSource.SHOPIFY, OrderStatus.DELIVERED, "700.00", "0.00", 2026, 6, 1)));
 
         ChannelSummaryResponse res = service.summary(null, null);
 
@@ -133,5 +136,92 @@ class ChannelSummaryServiceTest {
         order.setOrderStatus(status);
         ReflectionTestUtils.setField(order, "createdAt", LocalDateTime.of(year, month, day, 10, 0));
         return order;
+    }
+
+    /**
+     * In-memory stand-in for the grouped SQL queries: filters the orders by the
+     * same created-at window / month rules, then groups by source and status.
+     */
+    private static final class InMemoryAggregates implements ChannelAggregateRepository {
+
+        private final List<OrderEntity> orders = new ArrayList<>();
+
+        @Override
+        public List<SourceStatusRow> windowTotals(LocalDateTime from, LocalDateTime to) {
+            return group(orders.stream().filter(o -> inWindow(o, from, to)));
+        }
+
+        @Override
+        public List<SourceStatusRow> allTotals() {
+            return group(orders.stream());
+        }
+
+        @Override
+        public List<SourceStatusRow> monthTotals(LocalDateTime from, LocalDateTime to,
+                                                 LocalDateTime monthStart, LocalDateTime monthEnd) {
+            return group(orders.stream()
+                    .filter(o -> inWindow(o, from, to))
+                    .filter(o -> !o.getCreatedAt().isBefore(monthStart) && o.getCreatedAt().isBefore(monthEnd)));
+        }
+
+        @Override
+        public List<ReceivableSourceRow> unsettledByTypeAndSource() {
+            return List.of();
+        }
+
+        @Override
+        public List<ReceivableTypeRow> unsettledByType() {
+            return List.of();
+        }
+
+        private static boolean inWindow(OrderEntity o, LocalDateTime from, LocalDateTime to) {
+            return !o.getCreatedAt().isBefore(from) && !o.getCreatedAt().isAfter(to);
+        }
+
+        private static List<SourceStatusRow> group(Stream<OrderEntity> stream) {
+            Map<List<Object>, List<OrderEntity>> groups = stream.collect(Collectors.groupingBy(
+                    o -> List.<Object>of(o.getSource(), o.getOrderStatus()),
+                    LinkedHashMap::new, Collectors.toList()));
+            List<SourceStatusRow> rows = new ArrayList<>();
+            groups.forEach((key, list) -> {
+                BigDecimal total = list.stream().map(OrderEntity::getTotalAmount)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                BigDecimal outstanding = list.stream().map(OrderEntity::getCustomerOutstanding)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                rows.add(new Row((OrderSource) key.get(0), (OrderStatus) key.get(1),
+                        (long) list.size(), total, outstanding));
+            });
+            return rows;
+        }
+    }
+
+    private record Row(OrderSource orderSource, OrderStatus orderStatus, Long orderCount,
+                       BigDecimal totalAmount, BigDecimal outstandingAmount)
+            implements ChannelAggregateRepository.SourceStatusRow {
+
+        @Override
+        public OrderSource getOrderSource() {
+            return orderSource;
+        }
+
+        @Override
+        public OrderStatus getOrderStatus() {
+            return orderStatus;
+        }
+
+        @Override
+        public Long getOrderCount() {
+            return orderCount;
+        }
+
+        @Override
+        public BigDecimal getTotalAmount() {
+            return totalAmount;
+        }
+
+        @Override
+        public BigDecimal getOutstandingAmount() {
+            return outstandingAmount;
+        }
     }
 }

@@ -33,7 +33,7 @@ public record PaymentQueueRow(
         // order's screenshot (by id) and open its details (by code). Empty when
         // the proof is unique — a non-empty list is a fraud/mistake flag.
         java.util.List<DuplicateOrderRef> duplicateOrders,
-        // Where the order originated (SALESPERSON / SHOPIFY / STORE / STOREFRONT),
+        // Where the order originated (SALESPERSON / SHOPIFY / STORE / STOREFRONT [legacy]),
         // so the queue can be filtered Portal (non-Shopify) vs Shopify.
         com.shifa.oms.order.OrderSource source,
         // Payment transaction metadata for reconciliation; account number is masked.

@@ -30,7 +30,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * stream additionally accepts the access token as an {@code ?access_token=}
  * query parameter, which {@link com.shifa.oms.auth.JwtAuthenticationFilter}
  * validates exactly like a bearer token. The stream requires an authenticated
- * staff role via {@code @PreAuthorize} (never a storefront {@code CUSTOMER}).
+ * staff role via {@code @PreAuthorize} (never a legacy {@code CUSTOMER} account).
  */
 @RestController
 @RequestMapping("/api/admin/events")

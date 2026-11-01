@@ -41,7 +41,7 @@ public record ProductResponse(
         LocalDateTime updatedAt,
         /**
          * Average of APPROVED review ratings (Phase C: reviews & ratings), or
-         * {@code null} when the product has no approved reviews so the storefront
+         * {@code null} when the product has no approved reviews so a client
          * can hide the stars. Additive: existing consumers ignore it.
          */
         Double averageRating,

@@ -2,6 +2,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import { ToastService } from '../shared/toast.service';
 import { ConfirmService } from '../shared/confirm.service';
 import { renderTemplate } from '../shared/whatsapp.util';
@@ -21,7 +22,7 @@ import {
  */
 @Component({
   selector: 'admin-whatsapp-templates',
-  imports: [ReactiveFormsModule, PageHeaderComponent, StatePanelComponent],
+  imports: [ReactiveFormsModule, PageHeaderComponent, StatePanelComponent, DialogDirective],
   template: `
     <admin-page-header
       title="WhatsApp templates"
@@ -93,9 +94,9 @@ import {
     <!-- Add / edit drawer -->
     @if (formOpen()) {
       <div class="shifa-backdrop" (click)="closeForm()"></div>
-      <div class="offcanvas offcanvas-end show shifa-drawer" tabindex="-1">
+      <div class="offcanvas offcanvas-end show shifa-drawer" adminDialog aria-labelledby="wa-template-drawer-title" (dialogClose)="closeForm()">
         <div class="offcanvas-header">
-          <h2 class="offcanvas-title">{{ editing() ? 'Edit template' : 'New template' }}</h2>
+          <h2 class="offcanvas-title" id="wa-template-drawer-title">{{ editing() ? 'Edit template' : 'New template' }}</h2>
           <button type="button" class="btn-close" (click)="closeForm()" aria-label="Close"></button>
         </div>
         <div class="offcanvas-body">
@@ -185,6 +186,9 @@ import {
       }
       .shifa-drawer {
         width: min(460px, 100vw);
+      }
+      .shifa-drawer:focus-visible {
+        outline: none;
       }
       .shifa-backdrop {
         position: fixed;

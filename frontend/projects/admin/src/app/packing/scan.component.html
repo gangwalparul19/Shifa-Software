@@ -177,9 +177,9 @@
 
 @if (pendingPreview(); as preview) {
   <div class="pk-modal-backdrop" (click)="cancelPreview()">
-    <div class="card pk-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true" aria-labelledby="scanPreviewTitle">
+    <div class="card pk-modal" (click)="$event.stopPropagation()" adminDialog aria-labelledby="scanPreviewTitle" (dialogClose)="cancelPreview()">
       <div class="card-header py-2">
-        <h3 id="scanPreviewTitle" class="card-title mb-0"><i class="ti ti-scan me-2"></i>Confirm next move</h3>
+        <h3 id="scanPreviewTitle" class="card-title mb-0"><i class="ti ti-scan me-2" aria-hidden="true"></i>Confirm next move</h3>
       </div>
       <div class="card-body">
         <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
@@ -220,7 +220,7 @@
         }
       </div>
       <div class="card-footer d-flex gap-2 justify-content-end py-2">
-        <button type="button" class="btn btn-link" (click)="cancelPreview()">
+        <button type="button" class="btn btn-link" data-autofocus (click)="cancelPreview()">
           {{ preview.nextAction === 'NONE' ? 'Close' : 'Cancel' }}
         </button>
         @if (preview.nextAction !== 'NONE') {
@@ -817,9 +817,9 @@
 <!-- Handover "handed to" popup (product-audit §4.3) -->
 @if (handoverPrompt(); as hp) {
   <div class="pk-modal-backdrop" (click)="cancelHandover()">
-    <div class="card pk-modal" (click)="$event.stopPropagation()" role="dialog" aria-modal="true">
+    <div class="card pk-modal" (click)="$event.stopPropagation()" adminDialog aria-labelledby="handoverPromptTitle" (dialogClose)="cancelHandover()">
       <div class="card-header py-2">
-        <h3 class="card-title mb-0"><i class="ti ti-truck-loading me-2"></i>Handover — {{ hp.orderCode }}</h3>
+        <h3 id="handoverPromptTitle" class="card-title mb-0"><i class="ti ti-truck-loading me-2" aria-hidden="true"></i>Handover — {{ hp.orderCode }}</h3>
       </div>
       <div class="card-body">
         <p class="text-secondary small mb-3">Who are you handing this order to? (courier person or agency)</p>

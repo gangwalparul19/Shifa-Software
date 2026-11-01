@@ -23,7 +23,7 @@ public interface ProductRatingLookup {
 
     /**
      * A product's public rating aggregate. {@code average} is {@code null} when
-     * there are no approved reviews ({@code count == 0}) so the storefront can
+     * there are no approved reviews ({@code count == 0}) so a client can
      * hide the stars; otherwise it is the mean of the approved ratings.
      */
     record ProductRating(Double average, long count) {

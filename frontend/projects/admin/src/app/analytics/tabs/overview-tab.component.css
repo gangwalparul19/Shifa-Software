@@ -1,0 +1,345 @@
+/* Analytics > Overview tab. Relies on the shared Tabler card / table / badge styles. */
+
+:host {
+  display: block;
+}
+
+/* Touch-friendly buttons and links (>= 44px). */
+.ot-btn {
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+/* ------------------------------------------------------------------ severity */
+.ptr--warning {
+  --ptr: #b45309;
+  --ptr-soft: #fdf1de;
+}
+.ptr--opportunity {
+  --ptr: #0369a1;
+  --ptr-soft: #e0f2fe;
+}
+.ptr--positive {
+  --ptr: #1f5d3f;
+  --ptr-soft: #e6f2ec;
+}
+.ptr--info {
+  --ptr: #4b5d54;
+  --ptr-soft: #eef1ef;
+}
+
+.ot-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  font-size: 0.9rem;
+  background: var(--ptr-soft, #eef1ef);
+  color: var(--ptr, #4b5d54);
+}
+.ot-chip--lg {
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: 1.15rem;
+}
+
+.ot-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ot-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: #3d4f46;
+}
+
+.ot-allgood {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 500;
+  color: #1f3d2e;
+}
+
+.ot-ptrs {
+  display: grid;
+  gap: 0.65rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ot-ptr {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #e3e9e5;
+  border-left: 4px solid var(--ptr, #4b5d54);
+  border-radius: 0.6rem;
+  background: #fff;
+}
+.ot-ptr__body {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.ot-ptr__meta {
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.ot-ptr__sev {
+  font-weight: 700;
+  color: var(--ptr, #4b5d54);
+}
+.ot-ptr__title {
+  font-weight: 600;
+  color: #1c2b24;
+  overflow-wrap: anywhere;
+}
+.ot-ptr__side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+.ot-ptr__metric {
+  background: var(--ptr-soft, #eef1ef);
+  color: var(--ptr, #4b5d54);
+  font-weight: 700;
+  font-size: 0.8rem;
+  white-space: normal;
+  text-align: right;
+}
+
+@media (max-width: 575.98px) {
+  .ot-ptr {
+    flex-wrap: wrap;
+  }
+  .ot-ptr__side {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding-left: 3rem;
+  }
+}
+
+/* ------------------------------------------------------------------- KPI tiles */
+.ot-kpi__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: #e6f2ec;
+  color: #1f5d3f;
+  font-size: 1.05rem;
+}
+.ot-kpi__value {
+  margin-top: 0.15rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* -------------------------------------------------------------- charts + notes */
+.ot-details summary {
+  cursor: pointer;
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  color: #1f5d3f;
+  font-weight: 600;
+}
+.ot-details__scroll {
+  max-height: 18rem;
+  overflow: auto;
+}
+
+/* ------------------------------------------------------------------ mix tables */
+.ot-table th,
+.ot-table td {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.ot-table td:first-child {
+  white-space: normal;
+  min-width: 7rem;
+}
+.ot-table__share {
+  min-width: 8.5rem;
+}
+.ot-swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-right: 0.4rem;
+  border-radius: 3px;
+}
+
+.ot-bar {
+  display: block;
+  flex: 1 1 auto;
+  height: 6px;
+  min-width: 3.5rem;
+  background: #e6ece8;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.ot-bar__fill {
+  display: block;
+  height: 100%;
+  background: #1f5d3f;
+  border-radius: 999px;
+}
+.ot-sharecell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.ot-sharecell__text {
+  flex: 0 0 auto;
+  min-width: 2.9rem;
+  text-align: right;
+  font-size: 0.85rem;
+}
+
+/* -------------------------------------------------------------------- heat map */
+.ot-heat-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.25rem;
+}
+.ot-heat-scroll:focus-visible {
+  outline: 2px solid #1f5d3f;
+  outline-offset: 2px;
+}
+.ot-heat {
+  border-collapse: separate;
+  border-spacing: 2px;
+  min-width: 42rem;
+  width: 100%;
+  table-layout: fixed;
+}
+.ot-heat__corner {
+  width: 2.75rem;
+}
+.ot-heat__hour {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: #6b7c74;
+  text-align: center;
+  padding: 0 0 0.2rem;
+}
+.ot-heat__day {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #3d4f46;
+  padding-right: 0.35rem;
+  white-space: nowrap;
+}
+.ot-heat__cell {
+  position: relative;
+  height: 1.9rem;
+  padding: 0;
+  text-align: center;
+  vertical-align: middle;
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  border-radius: 4px;
+}
+.ot-heat-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+}
+.ot-heat-legend__swatch {
+  display: inline-block;
+  width: 1.1rem;
+  height: 0.8rem;
+  border-radius: 3px;
+}
+
+.ot-peak {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+.ot-peak dt {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7c74;
+}
+.ot-peak dd {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #1c2b24;
+  font-variant-numeric: tabular-nums;
+}
+.ot-subhead {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7c74;
+}
+.ot-weekdays {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+.ot-weekday {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.ot-weekday.is-peak .ot-weekday__name {
+  font-weight: 700;
+  color: #1f5d3f;
+}
+.ot-weekday__count {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 4.5rem;
+}
+.ot-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #e6f2ec;
+  color: #1f3d2e;
+  font-size: 0.88rem;
+}
+.ot-tip .ti {
+  margin-top: 0.1rem;
+  color: #1f5d3f;
+}

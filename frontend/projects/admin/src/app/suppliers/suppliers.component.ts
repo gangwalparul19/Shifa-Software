@@ -8,6 +8,7 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
@@ -30,6 +31,7 @@ import { ToastService } from '../shared/toast.service';
     StatePanelComponent,
     DensityToggleComponent,
     RowActionsMenuComponent,
+    DialogDirective,
   ],
   templateUrl: './suppliers.component.html',
   styleUrl: './suppliers.component.css',

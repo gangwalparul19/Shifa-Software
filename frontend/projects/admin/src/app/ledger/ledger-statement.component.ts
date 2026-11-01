@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { formatInr } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
@@ -204,7 +205,7 @@ export class LedgerStatementComponent implements OnInit {
 
   /** Format a value as ₹ with 2 decimals. */
   money(v: number | string | null | undefined): string {
-    return '₹' + this.n(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return formatInr(this.n(v), 2);
   }
 
   private iso(d: Date): string {

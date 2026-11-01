@@ -1,0 +1,439 @@
+<!-- ============================== KEY NUMBERS ============================== -->
+<section aria-label="Key customer numbers">
+  <div class="row row-cards mb-3">
+    @for (t of tiles(); track t.key) {
+      <div class="col-6 col-md-4 col-xl">
+        <div class="card h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div class="subheader">{{ t.label }}</div>
+              <span class="ct-kpi__icon" aria-hidden="true"><i class="ti {{ t.icon }}"></i></span>
+            </div>
+            <div class="h1 m-0 ct-kpi__value">{{ t.value }}</div>
+            <div class="text-secondary small">{{ t.sub }}</div>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+</section>
+
+<!-- ========================== ENGAGEMENT SEGMENTS ========================== -->
+<section class="mb-3" aria-labelledby="ct-seg-title">
+  <div class="d-flex flex-wrap align-items-end gap-2 mb-2">
+    <div>
+      <h3 class="h3 mb-0" id="ct-seg-title"><i class="ti ti-users-group me-1" aria-hidden="true"></i>Engagement segments</h3>
+      <div class="text-secondary small">
+        Customers are grouped by how many orders they have placed and how many days it has been since their last order.
+      </div>
+    </div>
+  </div>
+
+  <details class="ct-how mb-3">
+    <summary>How segments work</summary>
+    <ul class="ct-how__list">
+      @for (s of segmentViews(); track s.key) {
+        <li [style.--seg-color]="s.color" [style.--seg-soft]="s.soft">
+          <span class="ct-how__icon" aria-hidden="true"><i class="ti {{ s.icon }}"></i></span>
+          <span><strong>{{ s.row.label }}:</strong> {{ s.row.description }}</span>
+        </li>
+      }
+    </ul>
+  </details>
+
+  @if (segmentViews().length === 0) {
+    <div class="card">
+      <div class="empty py-3">
+        <div class="empty-icon"><i class="ti ti-users-off" aria-hidden="true"></i></div>
+        <p class="empty-title">No customers yet</p>
+        <p class="empty-subtitle text-secondary">Segments appear once customers have placed orders.</p>
+      </div>
+    </div>
+  } @else {
+    <div class="row row-cards">
+      @for (s of segmentViews(); track s.key) {
+        <div class="col-12" [class.col-md-6]="openKey() !== s.key" [class.col-xl-4]="openKey() !== s.key">
+          <article class="card h-100 ct-seg" [style.--seg-color]="s.color" [style.--seg-soft]="s.soft">
+            <div class="card-body">
+              <header class="ct-seg__head">
+                <span class="ct-seg__icon" aria-hidden="true"><i class="ti {{ s.icon }}"></i></span>
+                <h4 class="ct-seg__label">{{ s.row.label }}</h4>
+              </header>
+              <p class="text-secondary small ct-seg__desc">{{ s.row.description }}</p>
+
+              <dl class="ct-seg__stats">
+                <div>
+                  <dt>Customers</dt>
+                  <dd>{{ s.customersText }} <span class="ct-seg__pct">({{ s.customerShare }})</span></dd>
+                </div>
+                <div>
+                  <dt>Revenue</dt>
+                  <dd>{{ s.revenueText }} <span class="ct-seg__pct">({{ s.revenueShare }})</span></dd>
+                </div>
+                <div>
+                  <dt>Average orders</dt>
+                  <dd>{{ s.avgOrders }}</dd>
+                </div>
+                <div>
+                  <dt>Days since last order</dt>
+                  <dd>{{ s.recency }} <span class="ct-seg__pct">on average</span></dd>
+                </div>
+              </dl>
+
+              <div class="ct-seg__action">
+                <i class="ti ti-target-arrow" aria-hidden="true"></i>
+                <div>
+                  <div class="ct-seg__action-title">What to do</div>
+                  <div>{{ s.row.action }}</div>
+                </div>
+              </div>
+
+              <div class="ct-seg__buttons">
+                <button
+                  type="button"
+                  class="btn btn-outline-secondary ct-btn"
+                  [disabled]="s.people.length === 0"
+                  [attr.aria-expanded]="openKey() === s.key"
+                  [attr.aria-controls]="'ct-seg-list-' + s.key"
+                  (click)="toggle(s.key)"
+                >
+                  @if (s.people.length === 0) {
+                    No customers to show
+                  } @else if (openKey() === s.key) {
+                    <i class="ti ti-chevron-up" aria-hidden="true"></i> Hide customers
+                  } @else {
+                    <i class="ti ti-chevron-down" aria-hidden="true"></i> Show customers
+                  }
+                </button>
+              </div>
+
+              @if (openKey() === s.key) {
+                <div class="ct-seg__list" [id]="'ct-seg-list-' + s.key">
+                  <div class="ct-seg__listhead">
+                    <div class="fw-semibold">Top {{ s.people.length }} customers by value</div>
+                    <div class="d-flex align-items-center flex-wrap gap-2">
+                      <button type="button" class="btn btn-outline-primary ct-btn" (click)="copyMobiles(s.key, s.people)">
+                        <i class="ti ti-copy" aria-hidden="true"></i> Copy mobiles
+                      </button>
+                      <span class="ct-copied" role="status" aria-live="polite">
+                        @if (copyState(); as cs) {
+                          @if (cs.key === s.key) {
+                            @if (cs.ok) {
+                              <i class="ti ti-check" aria-hidden="true"></i> Copied {{ cs.count }}
+                              {{ cs.count === 1 ? 'number' : 'numbers' }}
+                            } @else {
+                              Could not copy. Please copy the numbers by hand.
+                            }
+                          }
+                        }
+                      </span>
+                    </div>
+                  </div>
+
+                  <ul class="ct-people">
+                    @for (p of s.people; track $index) {
+                      <li class="ct-person">
+                        <div class="ct-person__main">
+                          <div class="ct-person__name">{{ p.c.name || 'Unnamed customer' }}</div>
+                          <div class="text-secondary small">
+                            {{ p.c.mobile }} · {{ p.c.orders }} {{ p.c.orders === 1 ? 'order' : 'orders' }} ·
+                            {{ p.revenueText }}
+                          </div>
+                          <div class="text-secondary small">Last order {{ p.lastOrderText }} · {{ p.agoText }}</div>
+                        </div>
+                        <div class="ct-person__actions">
+                          @if (p.tel; as tel) {
+                            <a
+                              class="btn btn-outline-secondary ct-btn"
+                              [href]="tel"
+                              [attr.aria-label]="'Call ' + (p.c.name || p.c.mobile)"
+                            >
+                              <i class="ti ti-phone" aria-hidden="true"></i> Call
+                            </a>
+                          }
+                          @if (p.wa; as wa) {
+                            <a
+                              class="btn btn-outline-success ct-btn"
+                              [href]="wa"
+                              target="_blank"
+                              rel="noopener"
+                              [attr.aria-label]="'WhatsApp ' + (p.c.name || p.c.mobile)"
+                            >
+                              <i class="ti ti-brand-whatsapp" aria-hidden="true"></i> WhatsApp
+                            </a>
+                          }
+                        </div>
+                      </li>
+                    }
+                  </ul>
+
+                  <p class="text-secondary small mb-0 mt-2">
+                    This shows the top customers by value in this segment. The full list is in the
+                    <button type="button" class="btn btn-link ct-link" (click)="openDatasets.emit()">data download</button>.
+                  </p>
+                </div>
+              }
+            </div>
+          </article>
+        </div>
+      }
+    </div>
+  }
+</section>
+
+<!-- ======================== CUSTOMERS AND REVENUE BY SEGMENT ======================== -->
+<section class="card mb-3" aria-labelledby="ct-share-title">
+  <div class="card-header">
+    <div>
+      <h3 class="card-title mb-0" id="ct-share-title"><i class="ti ti-chart-pie me-1" aria-hidden="true"></i>Customers and revenue by segment</h3>
+      <div class="text-secondary small">Each bar adds up to 100%</div>
+    </div>
+  </div>
+  <div class="card-body">
+    @if (shareChart(); as sc) {
+      <div role="img" [attr.aria-label]="shareAria()">
+        <apx-chart
+          [series]="sc.series"
+          [chart]="sc.chart"
+          [colors]="sc.colors"
+          [plotOptions]="sc.plotOptions"
+          [dataLabels]="sc.dataLabels"
+          [stroke]="sc.stroke"
+          [xaxis]="sc.xaxis"
+          [yaxis]="sc.yaxis"
+          [legend]="sc.legend"
+          [tooltip]="sc.tooltip"
+          [grid]="sc.grid"
+        ></apx-chart>
+      </div>
+      <div class="table-responsive mt-3">
+        <table class="table table-sm table-vcenter mb-0">
+          <caption class="visually-hidden">Customers and revenue by engagement segment</caption>
+          <thead>
+            <tr>
+              <th scope="col">Segment</th>
+              <th scope="col" class="text-end">Customers</th>
+              <th scope="col" class="text-end">Share of customers</th>
+              <th scope="col" class="text-end d-none d-md-table-cell">Revenue</th>
+              <th scope="col" class="text-end">Share of revenue</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (s of segmentViews(); track s.key) {
+              <tr>
+                <td class="fw-medium">
+                  <span class="ct-swatch" [style.background-color]="s.color" aria-hidden="true"></span>{{ s.row.label }}
+                </td>
+                <td class="text-end">{{ s.customersText }}</td>
+                <td class="text-end">{{ s.customerShare }}</td>
+                <td class="text-end d-none d-md-table-cell">{{ s.revenueText }}</td>
+                <td class="text-end">{{ s.revenueShare }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <div class="text-secondary text-center py-3">No customers to chart yet.</div>
+    }
+  </div>
+</section>
+
+<!-- ===================== ORDER FREQUENCY + TIME SINCE LAST ORDER ===================== -->
+<div class="row row-cards mb-3">
+  <div class="col-12 col-lg-6">
+    <section class="card h-100" aria-labelledby="ct-freq-title">
+      <div class="card-header">
+        <div>
+          <h3 class="card-title mb-0" id="ct-freq-title"><i class="ti ti-shopping-cart me-1" aria-hidden="true"></i>How often customers order</h3>
+          <div class="text-secondary small">Customers by number of orders placed</div>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (frequencyChart(); as fc) {
+          <div role="img" [attr.aria-label]="frequencyAria()">
+            <apx-chart
+              [series]="fc.series"
+              [chart]="fc.chart"
+              [colors]="fc.colors"
+              [dataLabels]="fc.dataLabels"
+              [plotOptions]="fc.plotOptions"
+              [xaxis]="fc.xaxis"
+              [yaxis]="fc.yaxis"
+              [grid]="fc.grid"
+              [tooltip]="fc.tooltip"
+            ></apx-chart>
+          </div>
+          <div class="table-responsive mt-3">
+            <table class="table table-sm table-vcenter mb-0">
+              <caption class="visually-hidden">Customers by number of orders placed</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Orders placed</th>
+                  <th scope="col" class="text-end">Customers</th>
+                  <th scope="col" class="text-end">Revenue</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of frequencyRows(); track $index) {
+                  <tr>
+                    <td>{{ row.label }}</td>
+                    <td class="text-end">{{ row.customers }}</td>
+                    <td class="text-end">{{ row.revenue }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <div class="text-secondary text-center py-3">No orders to show yet.</div>
+        }
+      </div>
+    </section>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <section class="card h-100" aria-labelledby="ct-recency-title">
+      <div class="card-header">
+        <div>
+          <h3 class="card-title mb-0" id="ct-recency-title"><i class="ti ti-calendar-time me-1" aria-hidden="true"></i>Time since last order</h3>
+          <div class="text-secondary small">Customers by days since they last ordered</div>
+        </div>
+      </div>
+      <div class="card-body">
+        @if (recencyChart(); as rc) {
+          <div role="img" [attr.aria-label]="recencyAria()">
+            <apx-chart
+              [series]="rc.series"
+              [chart]="rc.chart"
+              [colors]="rc.colors"
+              [dataLabels]="rc.dataLabels"
+              [plotOptions]="rc.plotOptions"
+              [xaxis]="rc.xaxis"
+              [yaxis]="rc.yaxis"
+              [grid]="rc.grid"
+              [tooltip]="rc.tooltip"
+            ></apx-chart>
+          </div>
+          <div class="table-responsive mt-3">
+            <table class="table table-sm table-vcenter mb-0">
+              <caption class="visually-hidden">Customers by time since their last order</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Last ordered</th>
+                  <th scope="col" class="text-end">Customers</th>
+                  <th scope="col" class="text-end">Revenue</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of recencyRows(); track $index) {
+                  <tr>
+                    <td>{{ row.label }}</td>
+                    <td class="text-end">{{ row.customers }}</td>
+                    <td class="text-end">{{ row.revenue }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <div class="text-secondary text-center py-3">No orders to show yet.</div>
+        }
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ================================ TOP CUSTOMERS ================================ -->
+<section class="card mb-3" aria-labelledby="ct-top-title">
+  <div class="card-header d-flex flex-wrap align-items-center gap-2">
+    <h3 class="card-title mb-0" id="ct-top-title"><i class="ti ti-crown me-1" aria-hidden="true"></i>Top customers</h3>
+    <div class="text-secondary small ms-md-auto">By total spend so far</div>
+  </div>
+  @if (topTotal() === 0) {
+    <div class="card-body">
+      <div class="text-secondary text-center py-3">No customers yet.</div>
+    </div>
+  } @else {
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table ct-table">
+        <thead>
+          <tr>
+            <th scope="col">Customer</th>
+            <th scope="col" class="d-none d-md-table-cell">Mobile</th>
+            <th scope="col" class="text-end">Orders</th>
+            <th scope="col" class="text-end">Total spend</th>
+            <th scope="col" class="d-none d-md-table-cell">Last order</th>
+            <th scope="col" class="text-end">Contact</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (p of topRows(); track $index) {
+            <tr>
+              <td>
+                <div class="fw-medium">{{ p.c.name || 'Unnamed customer' }}</div>
+                <div class="text-secondary small d-md-none">{{ p.c.mobile }} · last order {{ p.agoText }}</div>
+              </td>
+              <td class="d-none d-md-table-cell">{{ p.c.mobile }}</td>
+              <td class="text-end">{{ p.c.orders }}</td>
+              <td class="text-end fw-semibold">{{ p.revenueText }}</td>
+              <td class="d-none d-md-table-cell">
+                <div>{{ p.lastOrderText }}</div>
+                <div class="text-secondary small">{{ p.agoText }}</div>
+              </td>
+              <td class="text-end">
+                <div class="ct-table__actions">
+                  @if (p.tel; as tel) {
+                    <a
+                      class="btn btn-outline-secondary ct-btn ct-btn--icon"
+                      [href]="tel"
+                      [attr.aria-label]="'Call ' + (p.c.name || p.c.mobile)"
+                      title="Call"
+                    >
+                      <i class="ti ti-phone" aria-hidden="true"></i>
+                    </a>
+                  }
+                  @if (p.wa; as wa) {
+                    <a
+                      class="btn btn-outline-success ct-btn ct-btn--icon"
+                      [href]="wa"
+                      target="_blank"
+                      rel="noopener"
+                      [attr.aria-label]="'WhatsApp ' + (p.c.name || p.c.mobile)"
+                      title="WhatsApp"
+                    >
+                      <i class="ti ti-brand-whatsapp" aria-hidden="true"></i>
+                    </a>
+                  }
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <admin-pagination
+      [page]="topCurrentPage()"
+      [totalPages]="topTotalPages()"
+      [totalElements]="topTotal()"
+      [size]="topSize()"
+      (pageChange)="setTopPage($event)"
+      (sizeChange)="setTopSize($event)"
+    />
+  }
+</section>
+
+<!-- ============================ FULL CUSTOMER LIST ============================ -->
+<section class="card mb-3">
+  <div class="card-body d-flex flex-wrap align-items-center gap-3">
+    <div class="flex-fill">
+      <div class="fw-semibold">Need every customer, not just the top ones?</div>
+      <div class="text-secondary small">
+        The data download has one row per customer with their orders, spend and last order date, ready for a spreadsheet.
+      </div>
+    </div>
+    <button type="button" class="btn btn-primary ct-btn" (click)="openDatasets.emit()">
+      <i class="ti ti-download" aria-hidden="true"></i> Download the full customer list
+    </button>
+  </div>
+</section>

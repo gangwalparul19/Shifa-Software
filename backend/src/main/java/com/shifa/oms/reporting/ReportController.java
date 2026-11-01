@@ -20,13 +20,12 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Reporting and export API (Req 20.1&ndash;20.4, 23.1, 23.2).
+ * Reporting and export API (Req 20.1&ndash;20.4).
  *
  * <p>Report reads are open to {@code ADMIN}, {@code ACCOUNTANT}, and
  * {@code SALESPERSON}; the service scopes a salesperson to their own orders
  * automatically (Req 5.5), so the salesperson-wise report a salesperson sees
- * contains only their sales. The Vyapar billing export is financial and limited
- * to {@code ADMIN}/{@code ACCOUNTANT} (Req 23).
+ * contains only their sales.
  *
  * <ul>
  *   <li>{@code GET /api/reports/&#123;type&#125;?from=&to=} &mdash; a report as JSON
@@ -34,9 +33,6 @@ import java.time.format.DateTimeFormatter;
  *       optional date window (Req 20.1&ndash;20.3).</li>
  *   <li>{@code GET /api/reports/export?type=&format=xlsx|pdf&from=&to=} &mdash; the
  *       same report as an Excel or PDF download (Req 20.4).</li>
- *   <li>{@code GET /api/reports/vyapar?from=&to=&format=csv|xlsx} &mdash; the
- *       Vyapar billing export; an empty window yields a header-only file plus an
- *       {@code X-Report-Message} "no orders" header (Req 23.1, 23.2).</li>
  * </ul>
  */
 @RestController
@@ -45,22 +41,17 @@ public class ReportController {
 
     private static final MediaType XLSX =
             MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    private static final MediaType CSV = MediaType.parseMediaType("text/csv");
-    private static final String VYAPAR_TITLE = "Vyapar Billing";
 
     private final ReportService reportService;
     private final ExcelReportExporter excelExporter;
     private final PdfReportExporter pdfExporter;
-    private final CsvReportExporter csvExporter;
 
     public ReportController(ReportService reportService,
                             ExcelReportExporter excelExporter,
-                            PdfReportExporter pdfExporter,
-                            CsvReportExporter csvExporter) {
+                            PdfReportExporter pdfExporter) {
         this.reportService = reportService;
         this.excelExporter = excelExporter;
         this.pdfExporter = pdfExporter;
-        this.csvExporter = csvExporter;
     }
 
     /** A report as JSON, restricted to the optional date window (Req 20.1&ndash;20.3). */
@@ -91,47 +82,20 @@ public class ReportController {
         return switch (format.trim().toLowerCase()) {
             case "xlsx", "excel" -> fileResponse(
                     excelExporter.export(reportType.name(), table), XLSX,
-                    ReportFilenames.of(label, from, to, "xlsx"), null);
+                    ReportFilenames.of(label, from, to, "xlsx"));
             case "pdf" -> fileResponse(
                     pdfExporter.export(label, subtitle, report.summary(), table),
-                    MediaType.APPLICATION_PDF, ReportFilenames.of(label, from, to, "pdf"), null);
+                    MediaType.APPLICATION_PDF, ReportFilenames.of(label, from, to, "pdf"));
             default -> throw new ApiException(HttpStatus.BAD_REQUEST, "UNSUPPORTED_FORMAT",
                     "Unsupported export format: " + format + " (expected xlsx or pdf).");
         };
     }
 
-    /** The Vyapar billing export for a date range (Req 23.1, 23.2). */
-    @GetMapping("/vyapar")
-    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','CA')")
-    public ResponseEntity<byte[]> vyapar(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(defaultValue = "csv") String format) {
-        TabularData table = reportService.vyaparTable(from, to);
-        // Empty range → header-only file plus a "no orders found" message (Req 23.2).
-        String message = table.rowCount() == 0
-                ? "No orders were found for the selected date range." : null;
-        return switch (format.trim().toLowerCase()) {
-            case "csv" -> fileResponse(
-                    csvExporter.export(table), CSV,
-                    ReportFilenames.of(VYAPAR_TITLE, from, to, "csv"), message);
-            case "xlsx", "excel" -> fileResponse(
-                    excelExporter.export("Vyapar", table), XLSX,
-                    ReportFilenames.of(VYAPAR_TITLE, from, to, "xlsx"), message);
-            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "UNSUPPORTED_FORMAT",
-                    "Unsupported Vyapar format: " + format + " (expected csv or xlsx).");
-        };
-    }
-
-    private ResponseEntity<byte[]> fileResponse(byte[] body, MediaType contentType,
-                                                String filename, String message) {
-        ResponseEntity.BodyBuilder builder = ResponseEntity.ok()
+    private ResponseEntity<byte[]> fileResponse(byte[] body, MediaType contentType, String filename) {
+        return ResponseEntity.ok()
                 .contentType(contentType)
-                .header(HttpHeaders.CONTENT_DISPOSITION, ReportFilenames.contentDisposition(filename));
-        if (message != null) {
-            builder.header("X-Report-Message", message);
-        }
-        return builder.body(body);
+                .header(HttpHeaders.CONTENT_DISPOSITION, ReportFilenames.contentDisposition(filename))
+                .body(body);
     }
 
     private static ReportType parseType(String type) {

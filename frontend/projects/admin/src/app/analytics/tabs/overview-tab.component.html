@@ -1,0 +1,449 @@
+<!-- ============================ KEY POINTERS ============================ -->
+<section class="card mb-3" aria-labelledby="ot-pointers-title">
+  <div class="card-header d-flex flex-wrap align-items-start gap-2">
+    <div>
+      <h3 class="card-title mb-0" id="ot-pointers-title">
+        <i class="ti ti-bulb me-1" aria-hidden="true"></i>Key pointers
+      </h3>
+      @if (pointersPeriod(); as period) {
+        <div class="text-secondary small">{{ period }}</div>
+      }
+    </div>
+    <ul class="ot-legend ms-md-auto" aria-label="What the labels mean">
+      @for (l of legend; track l.severity) {
+        <li class="ot-legend__item {{ l.cls }}" [attr.title]="l.hint">
+          <span class="ot-chip" aria-hidden="true"><i class="ti {{ l.icon }}"></i></span>
+          <span>{{ l.label }}</span>
+        </li>
+      }
+    </ul>
+  </div>
+
+  @if (pointersPending()) {
+    <admin-state-panel variant="loading" loadingLabel="Loading key pointers…" [skeletonRows]="[1, 2, 3]" />
+  } @else if (pointersError(); as pointersMessage) {
+    <admin-state-panel
+      variant="error"
+      title="Could not load the key pointers"
+      [message]="pointersMessage"
+      (retry)="retryPointers.emit()"
+    />
+  } @else if (pointerViews().length === 0) {
+    <div class="card-body">
+      <div class="ot-allgood ptr--positive">
+        <span class="ot-chip ot-chip--lg" aria-hidden="true"><i class="ti ti-circle-check"></i></span>
+        <span>Nothing needs attention right now.</span>
+      </div>
+    </div>
+  } @else {
+    <div class="card-body">
+      <ul class="ot-ptrs">
+        @for (v of pointerViews(); track v.pointer.id) {
+          <li class="ot-ptr {{ v.cls }}">
+            <span class="ot-chip ot-chip--lg" aria-hidden="true"><i class="ti {{ v.icon }}"></i></span>
+            <div class="ot-ptr__body">
+              <div class="ot-ptr__meta">
+                <span class="ot-ptr__sev">{{ v.label }}</span>
+                @if (v.pointer.area) {
+                  <span class="text-secondary">· {{ v.pointer.area }}</span>
+                }
+              </div>
+              <div class="ot-ptr__title">{{ v.pointer.title }}</div>
+              <div class="text-secondary small">{{ v.pointer.detail }}</div>
+            </div>
+            <div class="ot-ptr__side">
+              @if (v.pointer.metric) {
+                <span class="badge ot-ptr__metric">{{ v.pointer.metric }}</span>
+              }
+              @if (v.link; as link) {
+                <a class="btn btn-sm btn-outline-secondary ot-btn" [routerLink]="link.path" [queryParams]="link.query">
+                  {{ v.pointer.actionLabel || 'Open' }}
+                  <i class="ti ti-arrow-right" aria-hidden="true"></i>
+                </a>
+              }
+            </div>
+          </li>
+        }
+      </ul>
+    </div>
+  }
+</section>
+
+<!-- ============================== KEY NUMBERS ============================== -->
+<section aria-label="Key numbers for the period">
+  <div class="row row-cards mb-2">
+    @for (t of tiles(); track t.key) {
+      <div class="col-6 col-lg-3">
+        <div class="card h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div class="subheader">{{ t.label }}</div>
+              <span class="ot-kpi__icon" aria-hidden="true"><i class="ti {{ t.icon }}"></i></span>
+            </div>
+            <div class="h1 m-0 ot-kpi__value">{{ t.value }}</div>
+            @if (t.sub) {
+              <div class="text-secondary small">{{ t.sub }}</div>
+            }
+            <div class="small mt-2 d-flex flex-wrap align-items-center gap-1 {{ t.tone }}">
+              <i class="ti {{ t.arrow }}" aria-hidden="true"></i>
+              <span class="fw-semibold">{{ t.changeText }}</span>
+              <span class="text-secondary">· before: {{ t.previousText }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+  <p class="text-secondary small mb-3">Compared with {{ previousFrom() }} to {{ previousTo() }}.</p>
+</section>
+
+<!-- ============================== SALES TREND ============================== -->
+<section class="card mb-3" aria-labelledby="ot-trend-title">
+  <div class="card-header d-flex flex-wrap align-items-center gap-2">
+    <h3 class="card-title mb-0" id="ot-trend-title">
+      <i class="ti ti-chart-bar me-1" aria-hidden="true"></i>Sales trend
+    </h3>
+    <div class="text-secondary small ms-md-auto">{{ trendCaption() }}</div>
+  </div>
+  <div class="card-body">
+    @if (trendChart(); as tc) {
+      <div role="img" [attr.aria-label]="trendAria()">
+        <apx-chart
+          [series]="tc.series"
+          [chart]="tc.chart"
+          [colors]="tc.colors"
+          [dataLabels]="tc.dataLabels"
+          [stroke]="tc.stroke"
+          [plotOptions]="tc.plotOptions"
+          [markers]="tc.markers"
+          [xaxis]="tc.xaxis"
+          [yaxis]="tc.yaxis"
+          [legend]="tc.legend"
+          [tooltip]="tc.tooltip"
+          [grid]="tc.grid"
+        ></apx-chart>
+      </div>
+
+      @if (trendSummary(); as ts) {
+        <div class="table-responsive mt-3">
+          <table class="table table-sm table-vcenter mb-0">
+            <caption class="visually-hidden">Totals behind the sales trend chart</caption>
+            <thead>
+              <tr>
+                <th scope="col">Total revenue</th>
+                <th scope="col">Total orders</th>
+                <th scope="col">Best {{ trendUnit() }}</th>
+                <th scope="col" class="d-none d-md-table-cell">Average per {{ trendUnit() }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="fw-semibold">{{ ts.totalRevenue }}</td>
+                <td class="fw-semibold">{{ ts.totalOrders }}</td>
+                <td>
+                  <div class="fw-semibold">{{ ts.bestRevenue }}</div>
+                  <div class="text-secondary small">{{ ts.bestLabel }} · {{ ts.bestOrders }}</div>
+                </td>
+                <td class="d-none d-md-table-cell">{{ ts.averageRevenue }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      }
+
+      <details class="ot-details mt-3">
+        <summary>Show the numbers behind the chart</summary>
+        <div class="table-responsive ot-details__scroll">
+          <table class="table table-sm table-vcenter mb-0">
+            <thead>
+              <tr>
+                <th scope="col">{{ trendUnit() === 'week' ? 'Week' : 'Day' }}</th>
+                <th scope="col" class="text-end">Orders</th>
+                <th scope="col" class="text-end">Revenue</th>
+                <th scope="col" class="text-end d-none d-md-table-cell">New customers</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of trendRows(); track $index) {
+                <tr>
+                  <td>{{ row.label }}</td>
+                  <td class="text-end">{{ row.orders }}</td>
+                  <td class="text-end">{{ row.revenue }}</td>
+                  <td class="text-end d-none d-md-table-cell">{{ row.newCustomers }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </details>
+    } @else {
+      <div class="empty py-3">
+        <div class="empty-icon"><i class="ti ti-chart-bar-off" aria-hidden="true"></i></div>
+        <p class="empty-title">No sales in this period</p>
+        <p class="empty-subtitle text-secondary">Pick a longer period to see the trend.</p>
+      </div>
+    }
+  </div>
+</section>
+
+<!-- ======================== CHANNEL / LEAD SOURCE / PAYMENT ======================== -->
+@for (mix of mixCards(); track mix.key) {
+  <section class="card mb-3" [attr.aria-labelledby]="'ot-mix-' + mix.key">
+    <div class="card-header d-flex flex-wrap align-items-center gap-2">
+      <div>
+        <h3 class="card-title mb-0" [id]="'ot-mix-' + mix.key">
+          <i class="ti {{ mix.icon }} me-1" aria-hidden="true"></i>{{ mix.title }}
+        </h3>
+        <div class="text-secondary small">{{ mix.subtitle }}</div>
+      </div>
+      <div class="text-secondary small ms-md-auto">{{ mix.totalOrders }} orders · {{ mix.totalRevenue }}</div>
+    </div>
+
+    @if (mix.rows.length === 0) {
+      <div class="card-body">
+        <div class="text-secondary text-center py-3">No orders in this period.</div>
+      </div>
+    } @else {
+      <div class="card-body p-0">
+        <div class="row g-0 align-items-center">
+          <div [class]="mix.donut ? 'col-12 col-lg-8' : 'col-12'">
+            <div class="table-responsive">
+              <table class="table table-vcenter card-table ot-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{{ mix.firstColumn }}</th>
+                    <th scope="col" class="text-end">Orders</th>
+                    <th scope="col" class="text-end">Revenue</th>
+                    <th scope="col" class="ot-table__share">Share of revenue</th>
+                    <th scope="col" class="text-end d-none d-md-table-cell">Average order</th>
+                    <th
+                      scope="col"
+                      class="text-end"
+                      title="Delivered orders out of the orders that have reached an outcome (delivered or failed)."
+                    >
+                      Delivery success
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of mix.rows; track $index) {
+                    <tr>
+                      <td class="fw-medium">
+                        @if (mix.donut) {
+                          <span class="ot-swatch" [style.background-color]="row.color" aria-hidden="true"></span>
+                        }
+                        {{ row.label }}
+                      </td>
+                      <td class="text-end">{{ row.orders }}</td>
+                      <td class="text-end">{{ row.revenue }}</td>
+                      <td class="ot-table__share">
+                        <div class="ot-sharecell">
+                          <div class="ot-bar" aria-hidden="true">
+                            <div class="ot-bar__fill" [style.width.%]="row.barWidth"></div>
+                          </div>
+                          <span class="ot-sharecell__text">{{ row.share }}</span>
+                        </div>
+                      </td>
+                      <td class="text-end d-none d-md-table-cell">{{ row.aov }}</td>
+                      <td class="text-end fw-semibold {{ row.successTone }}">{{ row.success }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+          @if (mix.donut; as dc) {
+            <div class="col-12 col-lg-4 p-3">
+              <div role="img" [attr.aria-label]="mix.donutAria">
+                <apx-chart
+                  [series]="dc.series"
+                  [labels]="dc.labels"
+                  [colors]="dc.colors"
+                  [chart]="dc.chart"
+                  [legend]="dc.legend"
+                  [dataLabels]="dc.dataLabels"
+                  [plotOptions]="dc.plotOptions"
+                  [stroke]="dc.stroke"
+                  [tooltip]="dc.tooltip"
+                ></apx-chart>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </section>
+}
+
+<!-- =============================== WHERE CUSTOMERS ARE =============================== -->
+<div class="row row-cards mb-3">
+  @for (geo of geoCards(); track geo.key) {
+    <div class="col-12 col-xl-6">
+      <section class="card h-100" [attr.aria-labelledby]="'ot-geo-' + geo.key">
+        <div class="card-header">
+          <div>
+            <h3 class="card-title mb-0" [id]="'ot-geo-' + geo.key">
+              <i class="ti ti-map-pin me-1" aria-hidden="true"></i>{{ geo.title }}
+            </h3>
+            <div class="text-secondary small">{{ geo.subtitle }}</div>
+          </div>
+        </div>
+        @if (geo.rows.length === 0) {
+          <div class="card-body">
+            <div class="text-secondary text-center py-3">No orders in this period.</div>
+          </div>
+        } @else {
+          <div class="table-responsive">
+            <table class="table table-vcenter card-table ot-table">
+              <thead>
+                <tr>
+                  <th scope="col">{{ geo.firstColumn }}</th>
+                  <th scope="col" class="text-end">Orders</th>
+                  <th scope="col" class="text-end">Revenue</th>
+                  <th scope="col" class="ot-table__share">Share</th>
+                  <th scope="col" class="text-end d-none d-md-table-cell">Customers</th>
+                  <th scope="col" class="text-end d-none d-md-table-cell">Average order</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of geo.rows; track $index) {
+                  <tr>
+                    <td class="fw-medium">{{ row.name }}</td>
+                    <td class="text-end">{{ row.orders }}</td>
+                    <td class="text-end">{{ row.revenue }}</td>
+                    <td class="ot-table__share">
+                      <div class="ot-sharecell">
+                        <div class="ot-bar" aria-hidden="true">
+                          <div class="ot-bar__fill" [style.width.%]="row.barWidth"></div>
+                        </div>
+                        <span class="ot-sharecell__text">{{ row.share }}</span>
+                      </div>
+                    </td>
+                    <td class="text-end d-none d-md-table-cell">{{ row.customers }}</td>
+                    <td class="text-end d-none d-md-table-cell">{{ row.aov }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </section>
+    </div>
+  }
+</div>
+
+<!-- ================================ ORDER TIMING ================================ -->
+<section class="card mb-3" aria-labelledby="ot-heat-title">
+  <div class="card-header">
+    <div>
+      <h3 class="card-title mb-0" id="ot-heat-title">
+        <i class="ti ti-clock-hour-4 me-1" aria-hidden="true"></i>When customers order
+      </h3>
+      <div class="text-secondary small">Orders by weekday and hour of day (India time)</div>
+    </div>
+  </div>
+  <div class="card-body">
+    @if (heat(); as hm) {
+      @if (hm.hasData) {
+        <div class="row g-3">
+          <div class="col-12 col-xl-8">
+            <div
+              class="ot-heat-scroll"
+              tabindex="0"
+              role="region"
+              aria-label="Orders by weekday and hour. Scroll sideways on small screens."
+            >
+              <table class="ot-heat">
+                <caption class="visually-hidden">Number of orders for each weekday and hour of the day</caption>
+                <thead>
+                  <tr>
+                    <th scope="col" class="ot-heat__corner"><span class="visually-hidden">Weekday</span></th>
+                    @for (hh of hourHeaders; track hh.hour) {
+                      <th scope="col" class="ot-heat__hour" [attr.title]="hh.label">
+                        <span aria-hidden="true">{{ hh.hour }}</span>
+                        <span class="visually-hidden">{{ hh.label }}</span>
+                      </th>
+                    }
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of hm.rows; track row.shortDay) {
+                    <tr>
+                      <th scope="row" class="ot-heat__day">
+                        <span aria-hidden="true">{{ row.shortDay }}</span>
+                        <span class="visually-hidden">{{ row.longDay }}</span>
+                      </th>
+                      @for (cell of row.cells; track $index) {
+                        <td
+                          class="ot-heat__cell"
+                          [style.background-color]="cell.bg"
+                          [style.color]="cell.fg"
+                          [attr.title]="cell.label"
+                        >
+                          <span aria-hidden="true">{{ cell.count > 0 ? cell.count : '' }}</span>
+                          <span class="visually-hidden">{{ cell.label }}</span>
+                        </td>
+                      }
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <div class="ot-heat-legend text-secondary small" aria-hidden="true">
+              <span>Fewer orders</span>
+              @for (swatch of heatScale; track $index) {
+                <span class="ot-heat-legend__swatch" [style.background-color]="swatch"></span>
+              }
+              <span>More orders</span>
+            </div>
+          </div>
+
+          <div class="col-12 col-xl-4">
+            <dl class="ot-peak">
+              @if (hm.peakDay) {
+                <div>
+                  <dt>Busiest day</dt>
+                  <dd>{{ hm.peakDay }}</dd>
+                </div>
+              }
+              @if (hm.peakHour) {
+                <div>
+                  <dt>Busiest hour</dt>
+                  <dd>{{ hm.peakHour }}</dd>
+                </div>
+              }
+              <div>
+                <dt>Orders counted</dt>
+                <dd>{{ hm.totalOrders }}</dd>
+              </div>
+            </dl>
+
+            <h4 class="ot-subhead">Orders per weekday</h4>
+            <ul class="ot-weekdays">
+              @for (bar of hm.bars; track bar.day) {
+                <li class="ot-weekday" [class.is-peak]="bar.isPeak">
+                  <span class="ot-weekday__name">{{ bar.day }}</span>
+                  <span class="ot-bar" aria-hidden="true">
+                    <span class="ot-bar__fill" [style.width.%]="bar.width"></span>
+                  </span>
+                  <span class="ot-weekday__count">{{ bar.count }} <span class="text-secondary">({{ bar.sharePct }})</span></span>
+                </li>
+              }
+            </ul>
+
+            <p class="ot-tip">
+              <i class="ti ti-bulb" aria-hidden="true"></i>
+              Send offers and follow-ups an hour before the busy window.
+            </p>
+          </div>
+        </div>
+      } @else {
+        <div class="empty py-3">
+          <div class="empty-icon"><i class="ti ti-clock-off" aria-hidden="true"></i></div>
+          <p class="empty-title">No order timing to show yet</p>
+          <p class="empty-subtitle text-secondary">There are no orders in this period, so there is no busy window to point out.</p>
+        </div>
+      }
+    }
+  </div>
+</section>

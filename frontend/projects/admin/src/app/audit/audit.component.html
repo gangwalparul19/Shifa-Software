@@ -26,9 +26,9 @@
             aria-label="Search audit log"
           />
           @if (search.value) {
-            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
-              <i class="ti ti-x"></i>
-            </span>
+            <button type="button" class="input-icon-addon end shifa-clear" (click)="clearSearch()" aria-label="Clear search" title="Clear">
+              <i class="ti ti-x" aria-hidden="true"></i>
+            </button>
           }
         </div>
       </div>

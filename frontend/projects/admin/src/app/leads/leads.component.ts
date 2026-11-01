@@ -15,6 +15,7 @@ import { PaginationComponent } from '../shared/pagination.component';
 import { PincodeService } from '../shared/pincode.service';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { LEAD_SOURCE_OPTIONS, LeadSource } from '../orders/orders.model';
@@ -64,6 +65,7 @@ type StatusLens = LeadStatus | 'ALL';
     PageHeaderComponent,
     PaginationComponent,
     StatePanelComponent,
+    DialogDirective,
   ],
   templateUrl: './leads.component.html',
   styleUrl: './leads.component.css',
@@ -232,6 +234,8 @@ export class LeadsComponent implements OnInit, OnDestroy {
   protected readonly selectedDetail = signal<LeadDetail | null>(null);
   protected readonly detailLoading = signal(false);
   protected readonly detailError = signal<string | null>(null);
+  /** The lead id the drawer last tried to open (lets the error state retry). */
+  private readonly lastDetailId = signal<number | null>(null);
 
   /** The open lead's activity timeline (CRM expansion Req 11.2). */
   protected readonly activity = signal<ActivityEntry[]>([]);
@@ -736,6 +740,7 @@ export class LeadsComponent implements OnInit, OnDestroy {
 
   /** Opens the detail drawer for a lead id (used by the list + the `?leadId=` deep link). */
   openDetailById(id: number): void {
+    this.lastDetailId.set(id);
     this.detailLoading.set(true);
     this.detailError.set(null);
     this.selectedDetail.set(null);
@@ -759,11 +764,25 @@ export class LeadsComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Re-attempts loading the lead the drawer failed to open (the error state's Retry). */
+  retryDetail(): void {
+    const id = this.lastDetailId();
+    if (id != null) {
+      this.openDetailById(id);
+    }
+  }
+
   private refreshDetail(id: number): void {
-    this.service.detail(id).subscribe((d) => {
-      this.selectedDetail.set(d);
-      this.followUpControl.setValue(d.followUpDate ?? '');
-      this.followUpTimeControl.setValue((d.followUpTime ?? '').slice(0, 5));
+    this.service.detail(id).subscribe({
+      next: (d) => {
+        this.selectedDetail.set(d);
+        this.followUpControl.setValue(d.followUpDate ?? '');
+        this.followUpTimeControl.setValue((d.followUpTime ?? '').slice(0, 5));
+      },
+      error: (err: HttpErrorResponse) => {
+        this.detailBusy.set(false);
+        this.toasts.error(this.messageOf(err) ?? 'Could not refresh the lead.');
+      },
     });
   }
 

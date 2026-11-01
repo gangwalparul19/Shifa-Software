@@ -6,7 +6,7 @@ import java.util.List;
 /**
  * The ADMIN-only channel dashboard payload ({@code GET /api/admin/orders/channel-summary}):
  * order metrics split by origin channel so an admin can track and compare the
- * business's own portal orders (punched by salespeople / storefront) against the
+ * business's own portal orders (punched by salespeople, plus legacy storefront rows) against the
  * auto-imported Shopify orders, plus the combined total, all within a chosen
  * date window.
  *
@@ -14,7 +14,7 @@ import java.util.List;
  * @param to         the window end (yyyy-MM-dd) applied, or null for all-time
  * @param total      metrics across every order in the window
  * @param portal     metrics for orders punched online by our team (SALESPERSON /
- *                   STOREFRONT) — i.e. neither Shopify nor an in-shop store sale
+ *                   STOREFRONT [legacy]) — i.e. neither Shopify nor an in-shop store sale
  * @param shopify    metrics for orders auto-imported from Shopify
  * @param store      metrics for in-shop (POS / counter) store sales
  */

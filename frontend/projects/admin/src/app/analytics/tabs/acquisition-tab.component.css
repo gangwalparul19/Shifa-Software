@@ -1,0 +1,83 @@
+/* Acquisition tab — relies on the shared Tabler card/table/button styles. */
+
+:host {
+  display: block;
+}
+
+/* Keep the touch target at least 44px tall. */
+.acq-action {
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+}
+
+.acq-name {
+  min-width: 7rem;
+  overflow-wrap: anywhere;
+}
+
+/* Share bar next to a percentage. */
+.acq-bar {
+  flex: none;
+  width: 4.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: rgba(15, 51, 36, 0.08);
+  overflow: hidden;
+}
+
+.acq-bar--wide {
+  width: 100%;
+  margin-top: 0.4rem;
+  height: 0.4rem;
+}
+
+.acq-bar__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #1f5d3f;
+}
+
+.acq-bar__fill--red {
+  background: #dc2626;
+}
+
+/* Delivery success: green from 80, amber from 50, red below. The number is always shown. */
+.acq-rate--good {
+  color: #1a7f37;
+}
+
+.acq-rate--fair {
+  color: #b45309;
+}
+
+.acq-rate--low {
+  color: #b42318;
+}
+
+/* Lost-lead list. */
+.acq-list li {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--tblr-border-color, #e6e7e9);
+}
+
+.acq-list li:first-child {
+  border-top: 0;
+}
+
+/* Pipeline stage chips. */
+.acq-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  padding: 0.25rem 0.85rem;
+  border: 1px solid var(--tblr-border-color, #e6e7e9);
+  border-radius: 999px;
+  background: var(--tblr-bg-surface, #fff);
+}
+
+.acq-chip strong {
+  color: #1f5d3f;
+  font-variant-numeric: tabular-nums;
+}

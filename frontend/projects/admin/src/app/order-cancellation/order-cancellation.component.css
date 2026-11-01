@@ -29,3 +29,8 @@
   display: grid;
   gap: 0.2rem;
 }
+
+/* The dialog panel itself is only a programmatic focus fallback (see adminDialog): no ring around it. */
+.shifa-modal:focus-visible {
+  outline: none;
+}

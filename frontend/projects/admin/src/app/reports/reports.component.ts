@@ -20,13 +20,14 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { addIstDays, monthStartIst, todayIst } from '../shared/business-date.util';
+import { saveBlob } from '../shared/blob-download.util';
+import { formatInr } from '../shared/inr.pipe';
 import {
   DatePreset,
   ExportFormat,
   ReportResponse,
   ReportType,
   ReportTypeOption,
-  VyaparFormat,
 } from './reports.model';
 
 interface Toast {
@@ -69,7 +70,7 @@ interface SparkOptions {
  * Total Revenue card with a sparkline, a row of KPI tiles, and a revenue-trend
  * bar chart &mdash; all driven by the existing {@code GET /api/reports/&#123;type&#125;}
  * endpoint and its summary + table payload (no new backend calls). The report
- * type &lt;select&gt;, custom range, and Excel/PDF/Vyapar exports are retained so
+ * type &lt;select&gt;, custom range, and Excel/PDF exports are retained so
  * every prior capability (including state- and salesperson-wise reports) stays
  * reachable. The route is guarded for ADMIN + ACCOUNTANT; the backend also
  * scopes a salesperson to their own orders if reached directly.
@@ -88,8 +89,8 @@ export class ReportsComponent implements OnInit {
 
   /**
    * A salesperson sees only their OWN sales/product/customer reports: the
-   * Money &amp; Receivables and Operations report groups, the Finance tab, and
-   * the Vyapar (billing) export are hidden and blocked server-side.
+   * Money &amp; Receivables and Operations report groups and the Finance tab are
+   * hidden and blocked server-side.
    */
   protected readonly isSalesperson = computed(() => this.auth.session()?.role === Role.SALESPERSON);
 
@@ -587,36 +588,9 @@ export class ReportsComponent implements OnInit {
     });
   }
 
-  exportVyapar(format: VyaparFormat): void {
-    const { from, to } = this.currentRange();
-    this.exporting.set(true);
-    this.service.vyapar(format, from, to).subscribe({
-      next: (result) => {
-        this.exporting.set(false);
-        this.saveFile(result);
-        if (result.message) {
-          this.showToast('error', result.message);
-        } else {
-          this.showToast('ok', `Exported Vyapar ${format.toUpperCase()} file.`);
-        }
-      },
-      error: () => {
-        this.exporting.set(false);
-        this.showToast('error', 'Vyapar export failed. Please try again.');
-      },
-    });
-  }
-
-  /** Triggers a browser download of the exported file blob. */
+  /** Triggers a browser download of the exported file blob (keeps the server/service-chosen name). */
   private saveFile(result: DownloadResult): void {
-    const url = URL.createObjectURL(result.blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = result.filename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(url);
+    saveBlob(result.blob, result.filename, 'shifa-report');
   }
 
   private showToast(kind: Toast['kind'], text: string): void {
@@ -641,8 +615,7 @@ export class ReportsComponent implements OnInit {
 
   /** Formats a number as Indian Rupees with two decimals. */
   inr(value: number | null | undefined): string {
-    const n = typeof value === 'number' ? value : 0;
-    return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return formatInr(value, 2);
   }
 
   /** Formats an integer count with grouping. */

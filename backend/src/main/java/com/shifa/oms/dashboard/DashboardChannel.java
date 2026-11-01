@@ -6,8 +6,9 @@ import java.util.Locale;
 
 /**
  * The order channel the admin dashboard is scoped to. {@link #PORTAL} is every
- * order our own team punched online (salesperson / legacy storefront — i.e.
- * neither Shopify nor an in-shop store sale), {@link #SHOPIFY} is the
+ * order our own team punched online (salesperson orders, plus any legacy
+ * {@code STOREFRONT} rows — i.e. neither Shopify nor an in-shop store sale),
+ * {@link #SHOPIFY} is the
  * auto-imported Shopify orders, {@link #STORE} is in-shop (POS / counter) sales,
  * and {@link #ALL} is everything combined. Mirrors the partition used by
  * {@code ChannelSummaryService} so the numbers agree across the app.

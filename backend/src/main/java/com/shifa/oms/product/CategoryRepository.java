@@ -13,13 +13,13 @@ import java.util.Optional;
  */
 public interface CategoryRepository extends JpaRepository<Category, Long> {
 
-    /** Active categories for the public storefront, ordered for display. */
+    /** Active categories, ordered for display. */
     List<Category> findByActiveTrueOrderBySortOrderAscNameAsc();
 
     /** All categories for the admin management grid, ordered for display. */
     List<Category> findAllByOrderBySortOrderAscNameAsc();
 
-    /** Resolves a category by its URL slug (storefront category landing). */
+    /** Resolves a category by its URL slug. */
     Optional<Category> findBySlug(String slug);
 
     boolean existsByName(String name);

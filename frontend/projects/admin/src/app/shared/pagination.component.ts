@@ -118,6 +118,25 @@ import { Component, EventEmitter, Input, Output } from '@angular/core';
           justify-content: center;
         }
       }
+      /* Touch screens: give every control a >= 44x44 CSS px hit area (WCAG 2.5.5 /
+         2.5.8). Prev/Next collapse to icon-only below the sm breakpoint, so they
+         also need a minimum width. Mouse/trackpad layouts keep the compact look. */
+      @media (pointer: coarse) {
+        .shifa-pager .btn,
+        .shifa-pager .form-select {
+          min-height: 2.75rem;
+        }
+        .shifa-pager .btn:not(.shifa-pager__page) {
+          min-width: 2.75rem;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .shifa-pager .form-select {
+          padding-top: 0.5rem;
+          padding-bottom: 0.5rem;
+        }
+      }
     `,
   ],
 })

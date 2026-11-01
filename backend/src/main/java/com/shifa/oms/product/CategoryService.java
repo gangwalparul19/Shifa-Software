@@ -31,7 +31,7 @@ public class CategoryService {
         this.categoryRepository = categoryRepository;
     }
 
-    /** Active categories for the public storefront, ordered for display. */
+    /** Active categories, ordered for display. */
     @Transactional(readOnly = true)
     public List<CategoryResponse> publicList() {
         return categoryRepository.findByActiveTrueOrderBySortOrderAscNameAsc().stream()

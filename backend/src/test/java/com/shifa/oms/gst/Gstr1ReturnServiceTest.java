@@ -89,7 +89,7 @@ class Gstr1ReturnServiceTest {
         settingsService = new SettingsService(appSettingsRepository);
 
         // Sensible empty defaults; individual tests override as needed.
-        when(orderRepository.findByCreatedAtBetween(any(), any())).thenReturn(List.of());
+        when(orderRepository.findByCreatedAtBetweenWithLineItems(any(), any())).thenReturn(List.of());
         when(orderReturnRepository.findAll()).thenReturn(List.of());
         when(orderReturnRepository.findByStatusAndCreatedAtBetween(any(), any(), any()))
                 .thenReturn(List.of());
@@ -112,7 +112,7 @@ class Gstr1ReturnServiceTest {
 
         // The service loads orders once for revenue and once (unfiltered) for docs — same window.
         Mockito.verify(orderRepository, Mockito.atLeastOnce())
-                .findByCreatedAtBetween(from.capture(), to.capture());
+                .findByCreatedAtBetweenWithLineItems(from.capture(), to.capture());
         assertThat(from.getAllValues()).allSatisfy(f ->
                 assertThat(f).isEqualTo(LocalDate.of(2026, 1, 5).atStartOfDay()));
         assertThat(to.getAllValues()).allSatisfy(t ->
@@ -139,7 +139,7 @@ class Gstr1ReturnServiceTest {
                 line("30049011", "5", 1, "105"));
         OrderEntity rejected = order("SHR-3", SELLER_STATE, OrderStatus.REJECTED, null, "SHR/3",
                 line("30049011", "5", 1, "105"));
-        when(orderRepository.findByCreatedAtBetween(any(), any()))
+        when(orderRepository.findByCreatedAtBetweenWithLineItems(any(), any()))
                 .thenReturn(List.of(delivered, cancelled, rejected));
 
         Gstr1Return ret = service.build(periodStart(), periodEnd());
@@ -164,7 +164,7 @@ class Gstr1ReturnServiceTest {
         // Excluded — must not affect the reconciliation.
         OrderEntity cancelled = order("SHR-3", SELLER_STATE, OrderStatus.CANCELLED, null, "SHR/3",
                 line("30049011", "5", 5, "525"));
-        when(orderRepository.findByCreatedAtBetween(any(), any()))
+        when(orderRepository.findByCreatedAtBetweenWithLineItems(any(), any()))
                 .thenReturn(List.of(intra, inter, cancelled));
 
         Gstr1Return ret = service.build(periodStart(), periodEnd());
@@ -196,9 +196,12 @@ class Gstr1ReturnServiceTest {
         OrderEntity cancelledOriginal = order("SHR-CAN", SELLER_STATE, OrderStatus.CANCELLED, null,
                 "SHR/3", line("30049011", "5", 1, "105"));
 
-        when(orderRepository.findById(101L)).thenReturn(Optional.of(b2bOriginal));
-        when(orderRepository.findById(102L)).thenReturn(Optional.of(b2csOriginal));
-        when(orderRepository.findById(103L)).thenReturn(Optional.of(cancelledOriginal));
+        // The service loads all returned orders (with lines) in ONE batch call keyed by id.
+        ReflectionTestUtils.setField(b2bOriginal, "id", 101L);
+        ReflectionTestUtils.setField(b2csOriginal, "id", 102L);
+        ReflectionTestUtils.setField(cancelledOriginal, "id", 103L);
+        when(orderRepository.findByIdInWithLineItems(any()))
+                .thenReturn(List.of(b2bOriginal, b2csOriginal, cancelledOriginal));
 
         // R1 refunded in-period against B2B → CDNR; R2 refunded in-period against B2C → CDNUR;
         // R3 refunded against a cancelled original → dropped; R4 not refunded → dropped;
@@ -237,7 +240,7 @@ class Gstr1ReturnServiceTest {
         // No invoice number → not counted in the docs series.
         OrderEntity noInvoice = order("SHR-4", SELLER_STATE, OrderStatus.DELIVERED, null, null,
                 line("30049011", "5", 1, "105"));
-        when(orderRepository.findByCreatedAtBetween(any(), any()))
+        when(orderRepository.findByCreatedAtBetweenWithLineItems(any(), any()))
                 .thenReturn(List.of(o1, o2, o3, noInvoice));
 
         Gstr1Return ret = service.build(periodStart(), periodEnd());
@@ -258,7 +261,7 @@ class Gstr1ReturnServiceTest {
                 line("30049011", "5", 1, "105"));
         OrderEntity blankUqc = order("SHR-2", SELLER_STATE, OrderStatus.DELIVERED, null, "SHR/2",
                 line("33051010", "18", 1, "118"));
-        when(orderRepository.findByCreatedAtBetween(any(), any()))
+        when(orderRepository.findByCreatedAtBetweenWithLineItems(any(), any()))
                 .thenReturn(List.of(withUqc, blankUqc));
         ProductRepository.HsnUqcRow catalogWithUqc = Mockito.mock(ProductRepository.HsnUqcRow.class);
         when(catalogWithUqc.getHsnCode()).thenReturn("30049011");

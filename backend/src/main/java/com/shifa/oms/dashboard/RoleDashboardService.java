@@ -308,18 +308,7 @@ public class RoleDashboardService {
      * dashboard.
      */
     private static Map<OrderStatus, Long> toStatusMap(List<OrderRepository.StatusCountRow> rows) {
-        Map<OrderStatus, Long> counts = new java.util.EnumMap<>(OrderStatus.class);
-        for (OrderRepository.StatusCountRow row : rows) {
-            if (row.getStatus() == null) {
-                continue;
-            }
-            try {
-                counts.merge(OrderStatus.valueOf(row.getStatus()), row.getCount(), Long::sum);
-            } catch (IllegalArgumentException ignored) {
-                // Unknown status name — skip (never happens for a valid enum column).
-            }
-        }
-        return counts;
+        return OrderStatusCounts.fold(rows);
     }
 
     /**

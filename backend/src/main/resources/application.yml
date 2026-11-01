@@ -35,6 +35,11 @@ spring:
     properties:
       hibernate:
         format_sql: false
+        # Lazy collections (an order's line items / payments / status history) load for up to
+        # 100 owners in ONE `IN (...)` query instead of one query per owner. Any code that walks
+        # a list of orders and touches a lazy collection (pick-lists, payment queue rows,
+        # Customer 360, ...) previously ran N+1 queries; this caps that globally.
+        default_batch_fetch_size: 100
   flyway:
     enabled: true
     baseline-on-migrate: true
@@ -306,6 +311,12 @@ app:
       missed:
         # Missed-follow-up evaluation schedule (default daily 09:30, after the 09:00 reminder).
         cron: ${CRM_FOLLOWUP_MISSED_CRON:0 30 9 * * *}
+  analytics:
+    # Growth analytics data downloads (Analytics > Data). The order, item and daily-sales files carry
+    # a one-way customer_key instead of the mobile number: the first 8 bytes of SHA-256(salt:mobile).
+    # The same salt gives the same key in every file, so a data engineer can join them. Change the
+    # salt in production and keep it stable; changing it later changes every key.
+    customer-key-salt: ${ANALYTICS_CUSTOMER_KEY_SALT:shifa-analytics}
   insights:
     # Statistical insights engine (statistical-insights-engine, design §Config).
     # Nightly computation schedule (default daily 02:00) + the tunable thresholds

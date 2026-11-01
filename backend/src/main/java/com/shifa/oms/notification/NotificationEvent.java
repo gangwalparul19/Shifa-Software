@@ -21,7 +21,7 @@ import java.util.Optional;
  * notify the customer, so callers can enqueue a message only when relevant.
  *
  * <p>{@link #ORDER_CONFIRMED} is not courier-driven: it fires once, right when a
- * storefront order is placed, to acknowledge the order to the customer (ROADMAP
+ * newly placed order is created, to acknowledge the order to the customer (ROADMAP
  * 1.2). It is therefore never returned by {@link #fromOrderStatus(OrderStatus)}.
  *
  * <p>The role-based-order-workflow feature adds two earlier customer-facing

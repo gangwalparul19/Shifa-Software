@@ -6,8 +6,9 @@ import { ApiError } from 'core';
 import { PackingService } from './packing.service';
 import { RtoReason, RtoScanPreviewResponse, ScannedOrderSummary } from './packing.model';
 import { PageHeaderComponent } from '../shared/page-header.component';
-import { StatusBadgeComponent } from '../shared/status-badge.component';
+import { StatusBadgeComponent, humanizeStatus } from '../shared/status-badge.component';
 import { ToastService } from '../shared/toast.service';
+import { DialogDirective } from '../shared/dialog.directive';
 import { CameraScannerComponent } from './camera-scanner.component';
 import { openWhatsApp } from '../shared/whatsapp.util';
 
@@ -38,6 +39,7 @@ interface RtoLogEntry {
     PageHeaderComponent,
     StatusBadgeComponent,
     CameraScannerComponent,
+    DialogDirective,
   ],
   templateUrl: './rto.component.html',
   styleUrl: './rto.component.css',
@@ -174,7 +176,7 @@ export class RtoComponent implements OnInit {
   }
 
   formatStatus(status: string | undefined | null): string {
-    return status ? status.replaceAll('_', ' ') : '';
+    return status ? humanizeStatus(status) : '';
   }
 
   // --- Camera scan ----------------------------------------------------------

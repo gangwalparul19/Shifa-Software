@@ -8,6 +8,7 @@ import {
   SimpleChanges,
   inject,
 } from '@angular/core';
+import { formatInr } from './inr.pipe';
 
 /** Output formats for the animated value. */
 export type CountFormat = 'inr' | 'int' | 'percent';
@@ -89,7 +90,7 @@ export class CountUpDirective implements OnChanges, OnDestroy {
   private format(v: number): string {
     switch (this.countFormat) {
       case 'inr':
-        return `\u20B9${Math.round(v).toLocaleString('en-IN')}`;
+        return formatInr(v, 0);
       case 'percent':
         return `${v.toFixed(2)}%`;
       default:

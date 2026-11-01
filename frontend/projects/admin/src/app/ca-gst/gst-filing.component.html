@@ -128,10 +128,10 @@
 <!-- ================= Snapshot history drawer (Req 5.7) ================= -->
 @if (historyOpen()) {
   <div class="shifa-drawer-backdrop" (click)="closeHistory()"></div>
-  <aside class="shifa-drawer" role="dialog" aria-modal="true">
+  <aside class="shifa-drawer" adminDialog aria-labelledby="gst-filing-history-title" (dialogClose)="closeHistory()">
     <div class="shifa-drawer__head d-flex align-items-center justify-content-between">
       <div>
-        <h2 class="m-0 h4">Filing history</h2>
+        <h2 class="m-0 h4" id="gst-filing-history-title">Filing history</h2>
         <div class="text-secondary small">{{ historyTitle() }}</div>
       </div>
       <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeHistory()" aria-label="Close"><i class="ti ti-x"></i></button>

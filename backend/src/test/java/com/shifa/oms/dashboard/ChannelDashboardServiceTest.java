@@ -10,7 +10,6 @@ import com.shifa.oms.order.OrderSource;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.quikshipx.OrderShipment;
 import com.shifa.oms.quikshipx.OrderShipmentRepository;
-import com.shifa.oms.reconciliation.ReceivableRepository;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,7 +53,7 @@ class ChannelDashboardServiceTest {
     void setUp() {
         orderRepository = mock(OrderRepository.class);
         shipmentRepository = mock(OrderShipmentRepository.class);
-        service = new ChannelDashboardService(orderRepository, mock(ReceivableRepository.class),
+        service = new ChannelDashboardService(orderRepository, mock(ChannelAggregateRepository.class),
                 mock(UserRepository.class), shipmentRepository, CLOCK);
         when(orderRepository.findByCreatedAtBetweenWithLineItems(any(), any())).thenReturn(orders);
         when(orderRepository.findByCreatedAtBetween(any(), any())).thenReturn(orders);

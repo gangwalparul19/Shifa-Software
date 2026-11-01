@@ -7,6 +7,7 @@ import {
   ProfileChangeRequest,
   SalespeopleService,
 } from '../salespeople/salespeople.service';
+import { formatDateLabel } from '../shared/date-label.util';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
@@ -126,19 +127,7 @@ export class ProfileApprovalsComponent implements OnInit {
   }
 
   dateLabel(iso: string | null): string {
-    if (!iso) {
-      return '—';
-    }
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) {
-      return iso;
-    }
-    return d.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      timeZone: 'Asia/Kolkata',
-    });
+    return formatDateLabel(iso);
   }
 
   /** Fields that differ between current and proposed. */

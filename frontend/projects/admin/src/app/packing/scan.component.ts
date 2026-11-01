@@ -19,10 +19,13 @@ import {
   writeSourceFilter,
 } from '../shared/source-filter.util';
 import { InrPipe } from '../shared/inr.pipe';
-import { StatusBadgeComponent } from '../shared/status-badge.component';
+import { StatusBadgeComponent, humanizeStatus } from '../shared/status-badge.component';
+import { openBlob } from '../shared/blob-download.util';
+import { delhiveryTrackUrl } from '../shared/tracking-url.util';
 import { ChannelLogoComponent } from '../shared/channel-logo.component';
 import { ToastService } from '../shared/toast.service';
 import { NoteCellComponent } from '../shared/note-cell.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import { CameraScannerComponent } from './camera-scanner.component';
 
 /** The current banner shown above the input after a scan. */
@@ -85,6 +88,7 @@ interface PackWorkItem {
     InrPipe,
     ChannelLogoComponent,
     NoteCellComponent,
+    DialogDirective,
   ],
   templateUrl: './scan.component.html',
   styleUrl: './scan.component.css',
@@ -416,8 +420,7 @@ export class ScanComponent implements OnInit, AfterViewInit {
 
   /** Builds the Delhivery public tracking URL for an AWB (QuikShipX ships via Delhivery). */
   trackUrl(awb: string | null | undefined): string | null {
-    const trimmed = (awb ?? '').trim();
-    return trimmed ? `https://www.delhivery.com/track-v2/package/${encodeURIComponent(trimmed)}` : null;
+    return delhiveryTrackUrl(awb);
   }
 
   /** Opens the courier tracking/history page for an AWB in a new tab (stops the row click). */
@@ -486,15 +489,8 @@ export class ScanComponent implements OnInit, AfterViewInit {
     this.labelBusyId.set(order.id);
     this.service.label(order.id).subscribe({
       next: (blob) => {
-        const url = URL.createObjectURL(blob);
-        const opened = window.open(url, '_blank');
-        if (!opened) {
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `label-${order.orderCode}.pdf`;
-          a.click();
-        }
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        const filename = `label-${order.orderCode}.pdf`;
+        openBlob(blob, filename, filename);
         this.labelBusyId.set(null);
       },
       error: () => {
@@ -576,15 +572,8 @@ export class ScanComponent implements OnInit, AfterViewInit {
     this.bulkLabelBusy.set(true);
     this.service.bulkLabels(ids).subscribe({
       next: (blob) => {
-        const url = URL.createObjectURL(blob);
-        const opened = window.open(url, '_blank');
-        if (!opened) {
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `labels-${ids.length}-orders.pdf`;
-          a.click();
-        }
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        const filename = `labels-${ids.length}-orders.pdf`;
+        openBlob(blob, filename, filename);
         this.bulkLabelBusy.set(false);
         this.selectedForLabel.set(new Set<number>());
       },
@@ -1202,7 +1191,7 @@ export class ScanComponent implements OnInit, AfterViewInit {
   }
 
   formatStatus(status: string | undefined | null): string {
-    return status ? status.replaceAll('_', ' ') : '';
+    return status ? humanizeStatus(status) : '';
   }
 
   // --- Outcome handling ---------------------------------------------------

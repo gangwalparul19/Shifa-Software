@@ -6,6 +6,7 @@ import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { nowIstLocalMinute } from '../shared/business-date.util';
 import { IstDatePipe } from '../shared/ist-date.pipe';
+import { DialogDirective } from '../shared/dialog.directive';
 import { ToastService } from '../shared/toast.service';
 import { TasksService } from './tasks.service';
 import {
@@ -30,6 +31,7 @@ import {
     PaginationComponent,
     StatePanelComponent,
     IstDatePipe,
+    DialogDirective,
   ],
   templateUrl: './tasks.component.html',
   styleUrl: './tasks.component.css',

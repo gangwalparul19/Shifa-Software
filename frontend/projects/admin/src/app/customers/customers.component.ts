@@ -16,6 +16,8 @@ import { SortableHeaderComponent } from '../shared/sortable-header.component';
 import { StatusBadgeComponent } from '../shared/status-badge.component';
 import { toggleSort, sortParam } from '../shared/sort.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
+import { formatInr } from '../shared/inr.pipe';
+import { DialogDirective } from '../shared/dialog.directive';
 import { WHATSAPP_TEMPLATES, openWhatsApp, renderTemplate, whatsAppMessage } from '../shared/whatsapp.util';
 import { WhatsappTemplate, WhatsappTemplatesService } from '../whatsapp/whatsapp-templates.service';
 
@@ -43,6 +45,7 @@ const TABLE_KEY = 'customers';
     PaginationComponent,
     SortableHeaderComponent,
     StatusBadgeComponent,
+    DialogDirective,
   ],
   templateUrl: './customers.component.html',
   styleUrl: './customers.component.css',
@@ -101,6 +104,19 @@ export class CustomersComponent implements OnInit, OnDestroy {
   /** Prevents a row action from opening the full drawer as well. */
   stopRowClick(event: Event): void {
     event.stopPropagation();
+  }
+
+  /**
+   * Keyboard activation (Enter / Space) for a clickable customer row. Only acts when the row
+   * itself has focus, so a key press on an inner call / WhatsApp control does not also open
+   * the drawer.
+   */
+  openDetailFromKey(event: Event, customer: CustomerSummary): void {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    event.preventDefault();
+    this.openDetail(customer);
   }
 
   /** Opens the caller's phone app directly from a customer list row. */
@@ -234,10 +250,7 @@ export class CustomersComponent implements OnInit, OnDestroy {
   }
 
   money(value: Money | undefined | null): string {
-    if (value === undefined || value === null) {
-      return '₹0.00';
-    }
-    return `₹${value}`;
+    return formatInr(value, 2);
   }
 
   /**
@@ -257,7 +270,23 @@ export class CustomersComponent implements OnInit, OnDestroy {
 
   // --- Detail drawer ------------------------------------------------------
 
+  /** The list row last opened in the drawer, kept so a failed load can be retried. */
+  private lastDetailRequest: CustomerSummary | null = null;
+
+  /** Re-requests the customer the drawer failed to load (Retry button in the drawer error state). */
+  retryDetail(event?: Event): void {
+    // The Retry button is replaced by the loading skeleton, so hand focus to the dialog panel
+    // to keep Escape and Tab working while the customer reloads.
+    (event?.currentTarget as HTMLElement | null)
+      ?.closest<HTMLElement>('[role="dialog"]')
+      ?.focus({ preventScroll: true });
+    if (this.lastDetailRequest) {
+      this.openDetail(this.lastDetailRequest);
+    }
+  }
+
   openDetail(customer: CustomerSummary): void {
+    this.lastDetailRequest = customer;
     this.detailLoading.set(true);
     this.detailError.set(null);
     this.custTab.set('overview');

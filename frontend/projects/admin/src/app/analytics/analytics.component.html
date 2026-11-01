@@ -1,23 +1,151 @@
 <admin-page-header
   title="Analytics"
-  subtitle="Targets & incentives, customer retention, and demand/cash forecasting."
+  subtitle="Sales, customers, products, acquisition and operations, with ranked pointers on what to act on and downloadable data."
   [breadcrumbs]="[{ label: 'Analytics' }]"
 />
 
-<!-- Tabs -->
-<div class="btn-list mb-3">
+<!-- Tabs: one scrolling row on a phone, so no tab wraps onto a second line. -->
+<div class="an-tabs mb-3" role="tablist" aria-label="Analytics sections">
   @for (t of tabs; track t.key) {
     <button
       type="button"
-      class="btn btn-sm"
+      role="tab"
+      class="btn btn-sm an-tab"
       [class.btn-primary]="activeTab() === t.key"
       [class.btn-outline-secondary]="activeTab() !== t.key"
+      [attr.aria-selected]="activeTab() === t.key"
       (click)="selectTab(t.key)"
     >
-      <i class="ti {{ t.icon }} me-1"></i>{{ t.label }}
+      <i class="ti {{ t.icon }} me-1" aria-hidden="true"></i>{{ t.label }}
     </button>
   }
 </div>
+
+<!-- Period: used by Overview, Products, Acquisition, Operations and Data. -->
+@if (usesPeriod()) {
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <div class="an-period">
+        <div class="an-period__chips" role="group" aria-label="Period">
+          @for (p of periodPresets; track p.key) {
+            <button
+              type="button"
+              class="btn btn-sm"
+              [class.btn-primary]="periodKey() === p.key"
+              [class.btn-outline-secondary]="periodKey() !== p.key"
+              [attr.aria-pressed]="periodKey() === p.key"
+              (click)="choosePeriod(p.key)"
+            >
+              {{ p.label }}
+            </button>
+          }
+        </div>
+        <div class="an-period__label text-secondary small">
+          <i class="ti ti-calendar" aria-hidden="true"></i>
+          {{ periodLabel() }} · {{ periodDays() }} days
+        </div>
+      </div>
+
+      @if (periodKey() === 'custom') {
+        <div class="an-period__custom">
+          <label class="an-period__field">
+            <span class="form-label mb-0">From</span>
+            <input
+              type="date"
+              class="form-control form-control-sm"
+              [value]="customFrom()"
+              (change)="customFrom.set($any($event.target).value)"
+            />
+          </label>
+          <label class="an-period__field">
+            <span class="form-label mb-0">To</span>
+            <input
+              type="date"
+              class="form-control form-control-sm"
+              [value]="customTo()"
+              (change)="customTo.set($any($event.target).value)"
+            />
+          </label>
+          <button type="button" class="btn btn-sm btn-primary" (click)="applyCustomPeriod()">Apply</button>
+        </div>
+      }
+      @if (periodError()) {
+        <div class="text-danger small mt-2" role="alert">{{ periodError() }}</div>
+      }
+      @if (datasetPeriodTooLong()) {
+        <div class="text-warning small mt-2" role="alert">
+          Data downloads cover at most {{ maxDatasetDays }} days. Choose a shorter period before downloading.
+        </div>
+      }
+    </div>
+  </div>
+}
+
+<!-- ============================== OVERVIEW =============================== -->
+@if (activeTab() === 'overview') {
+  @if (overviewLoading() && !overview()) {
+    <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading the overview…" />
+  } @else if (overviewError()) {
+    <admin-state-panel variant="error" [card]="true" [message]="overviewError()!" (retry)="loadOverview()" />
+  } @else if (overview(); as r) {
+    <admin-analytics-overview
+      [report]="r"
+      [pointers]="pointers()"
+      [pointersLoading]="pointersLoading()"
+      [pointersError]="pointersError()"
+      (retryPointers)="loadPointers()"
+    />
+  }
+}
+
+<!-- ============================== CUSTOMERS ============================== -->
+@if (activeTab() === 'customers') {
+  @if (customersLoading() && !customers()) {
+    <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading customer segments…" />
+  } @else if (customersError()) {
+    <admin-state-panel variant="error" [card]="true" [message]="customersError()!" (retry)="loadCustomers()" />
+  } @else if (customers(); as r) {
+    <admin-analytics-customers [report]="r" (openDatasets)="selectTab('data')" />
+  }
+}
+
+<!-- =============================== PRODUCTS ============================== -->
+@if (activeTab() === 'products') {
+  @if (productsLoading() && !products()) {
+    <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading product performance…" />
+  } @else if (productsError()) {
+    <admin-state-panel variant="error" [card]="true" [message]="productsError()!" (retry)="loadProducts()" />
+  } @else if (products(); as r) {
+    <admin-analytics-products [report]="r" />
+  }
+}
+
+<!-- ============================== ACQUISITION ============================= -->
+@if (activeTab() === 'acquisition') {
+  <admin-analytics-acquisition
+    [overview]="overview()"
+    [funnel]="funnel()"
+    [loading]="acquisitionLoading()"
+    [error]="acquisitionError()"
+    (retry)="loadAcquisition()"
+  />
+}
+
+<!-- =============================== OPERATIONS ============================= -->
+@if (activeTab() === 'operations') {
+  @if (operationsLoading() && !operations()) {
+    <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading operations analytics…" />
+  } @else if (operationsError()) {
+    <admin-state-panel variant="error" [card]="true" [message]="operationsError()!" (retry)="loadOperations()" />
+  } @else if (operations(); as r) {
+    <admin-analytics-operations [report]="r" />
+  }
+}
+
+<!-- ================================= DATA ================================= -->
+@if (activeTab() === 'data') {
+  <admin-analytics-datasets [from]="from()" [to]="to()" />
+}
 
 <!-- ============================ TARGETS (§6.1) ============================ -->
 @if (activeTab() === 'targets') {

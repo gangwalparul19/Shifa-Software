@@ -25,9 +25,9 @@
             aria-label="Search customers"
           />
           @if (search.value) {
-            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
-              <i class="ti ti-x"></i>
-            </span>
+            <button type="button" class="input-icon-addon end shifa-clear" (click)="clearSearch()" aria-label="Clear search" title="Clear">
+              <i class="ti ti-x" aria-hidden="true"></i>
+            </button>
           }
         </div>
       </div>
@@ -51,7 +51,15 @@
   <!-- Mobile: avatar rows with a kebab that opens the existing detail (Req 11.1) -->
   <div class="shifa-cust-list d-md-none">
     @for (c of customers(); track c.mobile) {
-      <div class="shifa-cust" (click)="openDetail(c)">
+      <div
+        class="shifa-cust"
+        role="button"
+        tabindex="0"
+        [attr.aria-label]="'Open customer ' + (c.name || c.mobile)"
+        (click)="openDetail(c)"
+        (keydown.enter)="openDetailFromKey($event, c)"
+        (keydown.space)="openDetailFromKey($event, c)"
+      >
         <div class="shifa-cust__avatar" aria-hidden="true">{{ customerInitials(c.name) }}</div>
         <div class="shifa-cust__main">
           <div class="shifa-cust__name">
@@ -104,7 +112,13 @@
         </thead>
         <tbody>
           @for (c of customers(); track c.mobile) {
-            <tr class="clickable" (click)="openDetail(c)">
+            <tr
+              class="clickable"
+              tabindex="0"
+              (click)="openDetail(c)"
+              (keydown.enter)="openDetailFromKey($event, c)"
+              (keydown.space)="openDetailFromKey($event, c)"
+            >
               <td class="fw-medium">{{ c.name || '—' }}</td>
               <td class="text-secondary">{{ c.mobile }}</td>
               <td class="text-end">{{ c.orderCount }}</td>
@@ -151,26 +165,16 @@
 <!-- Detail drawer (Customer 360) -->
 @if (detailLoading() || selectedProfile() || detailError()) {
   <div class="shifa-overlay" (click)="closeDetail()"></div>
-  <aside class="shifa-drawer cust-dr" role="dialog" aria-label="Customer detail">
-    @if (detailLoading()) {
-      <header class="cust-dr__head">
+  <aside class="shifa-drawer cust-dr" adminDialog aria-label="Customer detail" (dialogClose)="closeDetail()">
+    <!-- Themed green header: avatar + name + mobile + risk pill. One header for every state, so the
+         Close button (which takes focus when the drawer opens) survives loading → loaded. -->
+    <header class="cust-dr__head">
+      @if (detailLoading()) {
         <span class="cust-dr__avatar">…</span>
         <div class="cust-dr__headmain"><div class="cust-dr__name">Loading…</div></div>
-        <button type="button" class="cust-dr__close" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
-      </header>
-      <div class="shifa-drawer__body cust-dr__body">
-        <div class="skeleton skeleton-line w-60 mb-3"></div>
-        <div class="skeleton skeleton-card"></div>
-      </div>
-    } @else if (detailError()) {
-      <header class="cust-dr__head">
+      } @else if (detailError()) {
         <div class="cust-dr__headmain"><div class="cust-dr__name">Customer</div></div>
-        <button type="button" class="cust-dr__close" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
-      </header>
-      <div class="shifa-drawer__body cust-dr__body"><div class="alert alert-danger">{{ detailError() }}</div></div>
-    } @else if (selectedProfile(); as profile) {
-      <!-- Themed green header: avatar + name + mobile + risk pill -->
-      <header class="cust-dr__head">
+      } @else if (selectedProfile(); as profile) {
         <span class="cust-dr__avatar">{{ customerInitials(profile.summary.name) }}</span>
         <div class="cust-dr__headmain">
           <div class="cust-dr__name">{{ profile.summary.name || 'Customer' }}</div>
@@ -181,9 +185,23 @@
         <span class="cust-dr__tag">
           @if (profile.summary.repeatBuyer) { <i class="ti ti-repeat me-1"></i>Repeat } @else { New }
         </span>
-        <button type="button" class="cust-dr__close" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x"></i></button>
-      </header>
+      }
+      <button type="button" class="cust-dr__close" (click)="closeDetail()" aria-label="Close"><i class="ti ti-x" aria-hidden="true"></i></button>
+    </header>
 
+    @if (detailLoading()) {
+      <div class="shifa-drawer__body cust-dr__body">
+        <div class="skeleton skeleton-line w-60 mb-3"></div>
+        <div class="skeleton skeleton-card"></div>
+      </div>
+    } @else if (detailError()) {
+      <div class="shifa-drawer__body cust-dr__body">
+        <div class="alert alert-danger" role="alert">{{ detailError() }}</div>
+        <button type="button" class="btn btn-primary" (click)="retryDetail($event)">
+          <i class="ti ti-refresh me-1" aria-hidden="true"></i> Retry
+        </button>
+      </div>
+    } @else if (selectedProfile(); as profile) {
       <div class="shifa-drawer__body cust-dr__body">
         <!-- Tabbed navigation so the drawer doesn't require a long scroll -->
         <div class="shifa-formtabs mb-3" role="tablist">

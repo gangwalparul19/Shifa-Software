@@ -28,7 +28,7 @@ import java.time.LocalDateTime;
  * @param deliveryMethod  QUIKSHIPX (courier partner) or IN_HOUSE — drives which
  *                        label buttons + downstream section apply
  * @param source          where the order originated (SALESPERSON / SHOPIFY / STORE /
- *                        STOREFRONT) — drives the Portal-vs-Shopify queue filter
+ *                        STOREFRONT [legacy]) — drives the Portal-vs-Shopify queue filter
  * @param notes           the order/packaging note (nullable)
  * @param awb             QuikShipX tracking id / AWB (null for in-house or not yet allotted)
  * @param quikShipXLabelUrl the QuikShipX-hosted shipping-label PDF URL (null when none)

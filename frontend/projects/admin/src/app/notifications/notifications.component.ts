@@ -8,6 +8,7 @@ import { StatePanelComponent } from '../shared/state-panel.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ToastService } from '../shared/toast.service';
+import { titleCaseCode } from '../shared/enum-label.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { NotificationsService } from './notifications.service';
 import { StaffNotificationsService } from './staff-notifications.service';
@@ -199,9 +200,6 @@ export class NotificationsComponent implements OnInit, OnDestroy {
   }
 
   humanizeType(type: string): string {
-    return type
-      .replaceAll('_', ' ')
-      .toLowerCase()
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+    return titleCaseCode(type);
   }
 }

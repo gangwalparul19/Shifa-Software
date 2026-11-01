@@ -23,8 +23,6 @@ import com.shifa.oms.order.OrderStatusGroup;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.quikshipx.OrderShipment;
 import com.shifa.oms.quikshipx.OrderShipmentRepository;
-import com.shifa.oms.reconciliation.ReceivableEntity;
-import com.shifa.oms.reconciliation.ReceivableRepository;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
 import com.shifa.oms.reporting.domain.DateRange;
 import com.shifa.oms.statemachine.OrderStatus;
@@ -100,28 +98,28 @@ public class ChannelDashboardService {
     }
 
     private final OrderRepository orderRepository;
-    private final ReceivableRepository receivableRepository;
+    private final ChannelAggregateRepository channelAggregates;
     private final UserRepository userRepository;
     private final OrderShipmentRepository shipmentRepository;
     private final Clock clock;
 
     @Autowired
     public ChannelDashboardService(OrderRepository orderRepository,
-                                   ReceivableRepository receivableRepository,
+                                   ChannelAggregateRepository channelAggregates,
                                    UserRepository userRepository,
                                    OrderShipmentRepository shipmentRepository) {
-        this(orderRepository, receivableRepository, userRepository, shipmentRepository,
+        this(orderRepository, channelAggregates, userRepository, shipmentRepository,
                 Clock.system(BUSINESS_ZONE));
     }
 
     /** Test constructor with a fixed clock. */
     ChannelDashboardService(OrderRepository orderRepository,
-                            ReceivableRepository receivableRepository,
+                            ChannelAggregateRepository channelAggregates,
                             UserRepository userRepository,
                             OrderShipmentRepository shipmentRepository,
                             Clock clock) {
         this.orderRepository = orderRepository;
-        this.receivableRepository = receivableRepository;
+        this.channelAggregates = channelAggregates;
         this.userRepository = userRepository;
         this.shipmentRepository = shipmentRepository;
         this.clock = clock;
@@ -417,19 +415,10 @@ public class ChannelDashboardService {
         mix.add(mixRow(PaymentStatus.COD, "Pay on delivery", counts, amounts));
 
         // Courier-side money: unsettled receivables, attributed to the order's channel.
-        Map<Long, OrderSource> sourceById = new HashMap<>();
-        for (OrderRepository.OrderSourceRow row : orderRepository.findAllOrderSources()) {
-            if (row.getOrderId() == null || row.getSource() == null) {
-                continue;
-            }
-            try {
-                sourceById.put(row.getOrderId(), OrderSource.valueOf(row.getSource()));
-            } catch (IllegalArgumentException ignored) {
-                // Unknown historical source names are not attributable to a channel.
-            }
-        }
-        BigDecimal codCourier = unsettled(ReceivableType.COD_RECEIVABLE, channel, sourceById);
-        BigDecimal claims = unsettled(ReceivableType.CLAIM_RECEIVABLE, channel, sourceById);
+        // One grouped SQL aggregate instead of walking every order and receivable.
+        Map<ReceivableType, BigDecimal> unsettled = unsettledByType(channel);
+        BigDecimal codCourier = scale(unsettled.get(ReceivableType.COD_RECEIVABLE));
+        BigDecimal claims = scale(unsettled.get(ReceivableType.CLAIM_RECEIVABLE));
 
         long todayOrders = 0;
         BigDecimal todayTeam = BigDecimal.ZERO;
@@ -458,15 +447,34 @@ public class ChannelDashboardService {
         return new PaymentMix(status.name(), label, c == null ? 0 : c[0], scale(amounts.get(status)));
     }
 
-    private BigDecimal unsettled(ReceivableType type, DashboardChannel channel, Map<Long, OrderSource> sourceById) {
-        BigDecimal total = BigDecimal.ZERO;
-        for (ReceivableEntity e : receivableRepository.findByTypeAndSettledFalseOrderByCreatedAtDescIdDesc(type)) {
-            OrderSource source = sourceById.get(e.getOrderId());
-            if (channel == DashboardChannel.ALL || (source != null && channel.matches(source))) {
-                total = total.add(nz(e.getAmount()));
+    /**
+     * Unsettled receivable amount per type for the channel. {@code ALL} counts every
+     * unsettled receivable (even one whose order is missing); a single channel
+     * counts only receivables whose (live) order belongs to that channel.
+     */
+    private Map<ReceivableType, BigDecimal> unsettledByType(DashboardChannel channel) {
+        Map<ReceivableType, BigDecimal> totals = new EnumMap<>(ReceivableType.class);
+        if (channel == DashboardChannel.ALL) {
+            List<ChannelAggregateRepository.ReceivableTypeRow> rows = channelAggregates.unsettledByType();
+            if (rows != null) {
+                for (ChannelAggregateRepository.ReceivableTypeRow row : rows) {
+                    if (row.getReceivableType() != null) {
+                        totals.merge(row.getReceivableType(), nz(row.getAmount()), BigDecimal::add);
+                    }
+                }
+            }
+            return totals;
+        }
+        List<ChannelAggregateRepository.ReceivableSourceRow> rows = channelAggregates.unsettledByTypeAndSource();
+        if (rows != null) {
+            for (ChannelAggregateRepository.ReceivableSourceRow row : rows) {
+                if (row.getReceivableType() != null && row.getOrderSource() != null
+                        && channel.matches(row.getOrderSource())) {
+                    totals.merge(row.getReceivableType(), nz(row.getAmount()), BigDecimal::add);
+                }
             }
         }
-        return scale(total);
+        return totals;
     }
 
     // --- Performance --------------------------------------------------------

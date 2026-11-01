@@ -52,19 +52,6 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     /** Lookup by the opaque customer tracking token (ENHANCEMENT 2.2, V77). */
     Optional<OrderEntity> findByTrackingToken(String trackingToken);
 
-    /** Compact order id/source projection for channel-scoped receivable totals. */
-    @Query(value = """
-            SELECT o.id AS orderId, o.source AS source
-            FROM orders o
-            WHERE o.active = 1
-            """, nativeQuery = true)
-    List<OrderSourceRow> findAllOrderSources();
-
-    interface OrderSourceRow {
-        Long getOrderId();
-        String getSource();
-    }
-
     /**
      * All orders in a given lifecycle status, most recent first. Used to build
      * the admin approval queue of {@code Pending_Admin_Approval} orders (Req 9.1).
@@ -447,6 +434,40 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             """, nativeQuery = true)
     List<OrderEntity> searchIn(@Param("term") String term,
                                @Param("createdByIds") java.util.Collection<Long> createdByIds);
+
+    /**
+     * The newest {@code limit} orders matching an optional search term, within an optional
+     * creator scope. One query for every scope shape (everyone / one salesperson / a team), with
+     * the same matching and ordering as {@link #search} and {@link #searchIn} but a hard
+     * {@code LIMIT}, so the order-search endpoint can never load the whole table.
+     *
+     * <p>{@code hasTerm = false} ignores {@code term} (pass an empty string); {@code anyCreator =
+     * true} ignores {@code createdByIds} (pass a non-empty placeholder such as {@code [-1]}, since
+     * an empty {@code IN ()} list is invalid SQL). Callers must short-circuit a scope that is
+     * present but empty ("scoped to nothing") rather than call this.
+     */
+    @Query(value = """
+            SELECT DISTINCT o.* FROM orders o
+            LEFT JOIN courier_records cr ON cr.order_id = o.id
+            LEFT JOIN order_shipments os ON os.order_id = o.id
+            WHERE o.active = 1
+              AND (:anyCreator = TRUE OR o.created_by IN (:createdByIds))
+              AND (:hasTerm = FALSE OR (
+                    LOWER(o.customer_name)  LIKE CONCAT('%', LOWER(:term), '%')
+                 OR o.customer_mobile       LIKE CONCAT('%', :term, '%')
+                 OR LOWER(o.order_code)     LIKE CONCAT('%', LOWER(:term), '%')
+                 OR CAST(o.id AS CHAR)      LIKE CONCAT('%', :term, '%')
+                 OR LOWER(cr.awb)           LIKE CONCAT('%', LOWER(:term), '%')
+                 OR LOWER(os.awb)           LIKE CONCAT('%', LOWER(:term), '%')
+                 OR LOWER(os.shipper_order_id) LIKE CONCAT('%', LOWER(:term), '%') ))
+            ORDER BY o.created_at DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<OrderEntity> searchRecent(@Param("term") String term,
+                                   @Param("hasTerm") boolean hasTerm,
+                                   @Param("anyCreator") boolean anyCreator,
+                                   @Param("createdByIds") java.util.Collection<Long> createdByIds,
+                                   @Param("limit") int limit);
 
     /**
      * A logged-in customer's order history (Phase B): orders linked to their

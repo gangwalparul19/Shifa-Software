@@ -48,3 +48,6 @@
 .badge.tone-red   { background: #fdecea; color: #c0392b; }
 .badge.tone-blue  { background: #e8f1fb; color: #2b6cb0; }
 .badge.tone-grey  { background: #eef1f0; color: #566; }
+
+/* The dialog panel itself is only a programmatic focus fallback (see adminDialog): no ring around it. */
+.rr-drawer__panel:focus-visible { outline: none; }

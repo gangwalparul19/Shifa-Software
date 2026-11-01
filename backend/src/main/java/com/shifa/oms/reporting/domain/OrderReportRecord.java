@@ -64,7 +64,7 @@ public record OrderReportRecord(
     /**
      * A single product line on an order: product name, quantity, the applied
      * unit rate, and the line total ({@code rate × quantity}). Rate and line
-     * total back the Vyapar billing export and exact product-wise sales; the
+     * total back exact product-wise sales; the
      * salesperson report only surfaces name + quantity (Req 20.3).
      */
     public record ProductLine(String productName, int quantity, BigDecimal rate, BigDecimal lineTotal,

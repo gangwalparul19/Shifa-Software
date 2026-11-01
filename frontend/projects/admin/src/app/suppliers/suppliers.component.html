@@ -29,9 +29,9 @@
             aria-label="Search suppliers"
           />
           @if (search()) {
-            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
-              <i class="ti ti-x"></i>
-            </span>
+            <button type="button" class="input-icon-addon end shifa-clear" (click)="clearSearch()" aria-label="Clear search" title="Clear">
+              <i class="ti ti-x" aria-hidden="true"></i>
+            </button>
           }
         </div>
       </div>
@@ -168,10 +168,10 @@
 <!-- Add / edit modal -->
 @if (formOpen()) {
   <div class="shifa-overlay" (click)="closeForm()"></div>
-  <div class="shifa-modal" role="dialog" aria-label="Supplier form">
+  <div class="shifa-modal" adminDialog aria-labelledby="supplier-form-title" (dialogClose)="closeForm()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0">{{ editing() ? 'Edit supplier' : 'New supplier' }}</h3>
+        <h3 class="card-title mb-0" id="supplier-form-title">{{ editing() ? 'Edit supplier' : 'New supplier' }}</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeForm()" aria-label="Close"><i class="ti ti-x"></i></button>
         </div>

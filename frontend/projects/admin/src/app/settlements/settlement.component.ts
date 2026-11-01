@@ -8,6 +8,7 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import { SettingsService, PaymentAccountOption } from '../settings/settings.service';
 import { SettlementService } from './settlement.service';
 import {
@@ -31,7 +32,7 @@ const SOURCES: { value: SettlementSource; label: string; hint: string }[] = [
 
 @Component({
   selector: 'admin-settlement-center',
-  imports: [PageHeaderComponent, PaginationComponent, StatePanelComponent, InrPipe, IstDatePipe],
+  imports: [PageHeaderComponent, PaginationComponent, StatePanelComponent, InrPipe, IstDatePipe, DialogDirective],
   templateUrl: './settlement.component.html',
   styleUrl: './settlement.component.css',
 })
@@ -46,7 +47,13 @@ export class SettlementComponent implements OnInit {
   protected readonly lines = signal<SettlementLine[]>([]);
   protected readonly selectedBatch = signal<SettlementBatch | null>(null);
   protected readonly loading = signal(true);
+  /** Import (preview / post) errors, shown inside the import card. */
   protected readonly error = signal<string | null>(null);
+  /** Failure to load or refresh the batch list; shown with a Retry whether or not batches are loaded. */
+  protected readonly loadError = signal<string | null>(null);
+  /** State of the open batch's line list (the drawer). */
+  protected readonly linesLoading = signal(false);
+  protected readonly linesError = signal<string | null>(null);
   protected readonly kpi = signal<SettlementKpi | null>(null);
   protected readonly kpiLoading = signal(true);
   protected readonly kpiError = signal<string | null>(null);
@@ -118,9 +125,10 @@ export class SettlementComponent implements OnInit {
   protected load(): void {
     this.loading.set(true);
     this.error.set(null);
+    this.loadError.set(null);
     this.service.batches().subscribe({
       next: (rows) => { this.batches.set(rows); this.page.set(0); this.loading.set(false); },
-      error: () => { this.error.set('Could not load settlement batches.'); this.loading.set(false); },
+      error: () => { this.loadError.set('Could not load settlement batches.'); this.loading.set(false); },
     });
   }
 
@@ -165,11 +173,8 @@ export class SettlementComponent implements OnInit {
   protected kpiMoney(value: unknown): string { return this.money(value); }
 
   private todayIst(): string {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).formatToParts(new Date());
-    const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
-    return `${get('year')}-${get('month')}-${get('day')}`;
+    // Delegates to the shared IST calendar-date helper (same yyyy-MM-dd result as before).
+    return todayIst();
   }
 
   private addDays(iso: string, days: number): string {
@@ -220,12 +225,29 @@ export class SettlementComponent implements OnInit {
     // operator has moved on to another batch (or closed the drawer): otherwise batch A's lines
     // could be shown, and resolved against, under batch B's header.
     this.lines.set([]);
-    this.service.lines(batch.id).subscribe({
+    this.loadLines(batch.id);
+  }
+
+  /** Retry for the batch drawer's line list. */
+  protected reloadLines(): void {
+    const batch = this.selectedBatch();
+    if (batch) this.loadLines(batch.id);
+  }
+
+  private loadLines(batchId: number): void {
+    this.linesLoading.set(true);
+    this.linesError.set(null);
+    this.service.lines(batchId).subscribe({
       next: (rows) => {
-        if (this.selectedBatch()?.id === batch.id) this.lines.set(rows);
+        if (this.selectedBatch()?.id !== batchId) return;
+        this.lines.set(rows);
+        this.linesLoading.set(false);
       },
       error: () => {
-        if (this.selectedBatch()?.id === batch.id) this.lines.set([]);
+        if (this.selectedBatch()?.id !== batchId) return;
+        this.lines.set([]);
+        this.linesLoading.set(false);
+        this.linesError.set('Could not load the lines for this batch.');
       },
     });
   }
@@ -233,6 +255,8 @@ export class SettlementComponent implements OnInit {
     this.closeResolution();
     this.selectedBatch.set(null);
     this.lines.set([]);
+    this.linesLoading.set(false);
+    this.linesError.set(null);
   }
 
   protected openResolution(line: SettlementLine): void {
@@ -325,6 +349,7 @@ export class SettlementComponent implements OnInit {
     this.loadKpis();
     this.service.batches().subscribe({
       next: (rows) => {
+        this.loadError.set(null);
         this.batches.set(rows);
         this.page.set(Math.min(this.page(), Math.max(0, Math.ceil(rows.length / PAGE_SIZE) - 1)));
         if (openBatch) {
@@ -332,7 +357,9 @@ export class SettlementComponent implements OnInit {
           if (refreshed) this.selectedBatch.set(refreshed);
         }
       },
-      error: () => { /* The line reload below still gives the operator current detail. */ },
+      // The line reload below still gives the operator current detail; the banner tells them
+      // the batch list itself is stale.
+      error: () => { this.loadError.set('Could not refresh settlement batches.'); },
     });
     if (openBatch) {
       this.service.lines(openBatch.id).subscribe({
@@ -340,6 +367,7 @@ export class SettlementComponent implements OnInit {
           // Same guard as openBatch(): a late reply for a batch that is no longer open is dropped.
           if (this.selectedBatch()?.id !== openBatch.id) return;
           this.lines.set(rows);
+          this.linesError.set(null);
           const resolvingId = this.resolveLine()?.id;
           if (resolvingId != null) {
             const refreshedLine = rows.find((line) => line.id === resolvingId);
@@ -347,7 +375,10 @@ export class SettlementComponent implements OnInit {
           }
         },
         error: () => {
-          if (this.selectedBatch()?.id === openBatch.id) this.lines.set([]);
+          if (this.selectedBatch()?.id === openBatch.id) {
+            this.lines.set([]);
+            this.linesError.set('Could not refresh the lines for this batch.');
+          }
         },
       });
     }

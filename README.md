@@ -9,7 +9,7 @@ packing → courier → delivery → settlement) is tracked end to end.
 > and the important gotchas. Read it before scanning the codebase. A condensed "memory" for fast
 > context lives in `.kiro/steering/project-memory.md` and is kept in sync with this file.
 
-> **Current baseline (2026-10-30):** Source migrations are at **V105**; production was last documented at V73 and the A1–B6 plus selected C6/E/F work remains local and is **not deployed**. The supported production target is AWS EC2 (`15.252.230.73` SSH) with the canonical HTTPS URL `https://shifa.weblithic.online/` and Amazon S3 storage (`application-prod.yml` defaults to `STORAGE_PROVIDER=S3`). The unused OCI stub/SDK are removed. Current local validation is **1042 backend tests, 0 failures**, admin production build successful with the existing shell CSS budget warning, and frontend property tests **6 suites / 21 tests**. Dated deployment/build notes below are historical records; use the current baseline and `DEPLOYMENT.md` for operations.
+> **Current baseline (2026-11-01):** Source migrations are at **V106**; production was last documented at V73 and the A1–B6 plus selected C6/E/F work remains local and is **not deployed**. The supported production target is AWS EC2 (`15.252.230.73` SSH) with the canonical HTTPS URL `https://shifa.weblithic.online/` and Amazon S3 storage (`application-prod.yml` defaults to `STORAGE_PROVIDER=S3`). The unused OCI stub/SDK are removed. Current local validation is **1075 backend tests, 0 failures**, admin production build successful with the existing shell CSS budget warning, and frontend property tests **7 suites / 36 tests**. Dated deployment/build notes below are historical records; use the current baseline and `DEPLOYMENT.md` for operations.
 
 
 | Layer      | Technology                                                                 |
@@ -115,13 +115,13 @@ Modular monolith — one package per bounded context. Kept modules after the das
 | `label`           | Internal label PDFs. `/api/admin/labels/internal` |
 | `invoice`         | Per-order invoice PDF (plain + GST tax invoice) + invoice numbering |
 | `reconciliation`  | COD/settlement, receivables. `/api/recon` |
-| `reporting`       | 17 report views — Sales, Orders, **Money & Receivables** (PAYMENTS, OUTSTANDING dues, COD_REMITTANCE) and **Operations** (EXPENSES, PURCHASE_ORDERS, RETURNS, STOCK; ADMIN/ACCOUNTANT only) — with Excel / PDF / Vyapar exports. `/api/reports/{type}` |
+| `reporting`       | 17 report views — Sales, Orders, **Money & Receivables** (PAYMENTS, OUTSTANDING dues, COD_REMITTANCE) and **Operations** (EXPENSES, PURCHASE_ORDERS, RETURNS, STOCK; ADMIN/ACCOUNTANT only) — with Excel / PDF exports. `/api/reports/{type}` |
 | `finance`         | Expenses + Profit & Loss. `/api/admin/expenses`, `/api/admin/finance` |
 | `procurement`     | Suppliers + purchase orders. `/api/admin/suppliers`, `/api/admin/purchase-orders` |
 | `returns`         | Order returns/refunds. `/api/admin/returns` |
 | `crm`             | Customer records derived from orders + **Customer 360**: list/detail (`/api/admin/customers`), profile/risk/tags/notes (`/{mobile}/profile`, `/{mobile}/risk`, `/{mobile}/notes`, `/{mobile}/tags`) |
 | `performance`     | **Salesperson 360 / performance owners**: leaderboard + per-owner performance detail + monthly sales targets. The owner directory includes ADMIN (shown as **Admin**), TEAM_LEAD, and SALESPERSON rows; admins stay outside team assignment. Complete XLSX/PDF exports support (`TODAY`, `YESTERDAY`, `WEEK`, `MONTH`, `OVERALL`) with selected-period orders/leads and owner-role labels. `/api/admin/salespeople/performance`, `/api/admin/salespeople/{id}/performance`, `/api/admin/salespeople/performance/export`, `/api/admin/salespeople/{id}/performance/export`, `/api/admin/salespeople/targets`. **Team-lead performance** (team KPIs + leaderboard + lead-source conversion): `GET /api/team/performance` (TEAM_LEAD+ADMIN) |
-| `analytics`       | Customer **retention** cohorts + revenue/demand **forecast** for admin dashboards. `/api/admin/analytics/retention`, `/api/admin/analytics/forecast` |
+| `analytics`       | Customer **retention** cohorts, revenue/demand **forecast** and delivery performance, plus **growth analytics** (overview, customer segments, product performance, operations, ranked key pointers) and CSV **data downloads**. ADMIN only. `/api/admin/analytics/{retention,forecast,delivery-performance,overview,customers,products,operations,pointers,datasets}` and `/api/admin/analytics/datasets/{key}/export` |
 | `announcement`    | Staff announcement banners. `GET /api/announcements` (staff), admin CRUD `/api/admin/announcements` |
 | `push`            | Browser Web Push (VAPID, config-gated). `/api/notifications/push/{public-key,subscribe,unsubscribe}` |
 | `dashboard`       | Metrics + SSE event stream. `/api/admin/metrics`, `/api/admin/events` |
@@ -197,7 +197,7 @@ Routing in `app.routes.ts`, shell/nav in `shell/admin-shell.component.ts`. Guard
 | `/team-performance` | Team performance rollup — clickable Salespeople KPI, team-scoped salesperson list, and profile/performance drill-down (lifetime, today, last week/month, delivery/COD/leads, daily activity, recent orders). The orders list, salespeople table and coaching list are all paginated | TEAM_LEAD+ADMIN |
 | `/reconciliation` | COD settlement | ADMIN+ACCOUNTANT |
 | `/reports` | Grouped report catalogue (Sales / Orders / Money & Receivables / **Operations**: expenses, purchase orders, returns, stock) — incl. a **Finance** tab: outstanding dues chase list, COD pending from courier, daily payments; Excel/PDF export | ADMIN+ACCOUNTANT |
-| `/analytics` | Sales targets, retention cohorts, revenue/demand forecast | ADMIN |
+| `/analytics` | Ten tabs: Overview (with ranked key pointers), Customers, Retention, Products, Acquisition, Operations, Delivery, Forecast, Targets & Incentives, Data (CSV downloads). `?tab=` selects a tab | ADMIN |
 | `/settings`, `/users` | Config + staff users | ADMIN |
 | `/salespeople` | Salesperson 360 performance-owner directory: onboarding/ID verification plus Admin, Team Lead, and Salesperson KPIs, sorting, per-owner performance drawers, and monthly targets. Admin owners stay outside team assignment. Team and individual XLSX/PDF exports support Overall, Today, Yesterday, This Week, and This Month; XLSX contains full selected-period details and PDF contains KPI cards, graphs/charts, and detail tables | ADMIN |
 
@@ -262,7 +262,7 @@ name + order date (`PackingQueueRow`), rows are **DESC by order date**, and focu
 page no longer jumps to the bottom.
 
 ### Analytics, insights & reporting (FEATURE-ROADMAP §6)
-`/analytics` (ADMIN) has three tabs backed by the `performance` + `analytics` modules:
+`/analytics` (ADMIN) is backed by the `performance` + `analytics` modules. The original tabs are below; the growth tabs added on 2026-11-01 are described in the last section of this file:
 - **Sales targets (6.1)** — per-salesperson monthly targets (`sales_targets`, `V38`) with achieved vs
   target progress, set/edit from the tab and surfaced on Salesperson 360.
 - **Retention (6.3)** — repeat-customer cohorts (new vs returning, repeat rate) from order history.
@@ -381,7 +381,8 @@ Migration history:
   **V102__authenticated_sessions.sql** — server-authoritative sliding idle sessions: hashed per-login session ids, activity timestamps, revocation binding, and indexes.
   **V103__settlement_integrity.sql** — Settlement Center allocation target keys/reasons/date-default metadata plus allocation indexes/uniqueness.
   **V104__payment_utr_normalization_and_preflight.sql** — canonical payment UTR values, historical duplicate preflight evidence, and a conditional receiving-account/UTR uniqueness boundary.
-  **V105__outbox_claim_leases.sql** — fenced pending-row leases, expiry recovery, and the composite due-claim index for multi-instance integration drainers. **V105 is the current highest migration.**
+  **V105__outbox_claim_leases.sql** — fenced pending-row leases, expiry recovery, and the composite due-claim index for multi-instance integration drainers.
+  **V106__query_performance_indexes.sql** — five composite indexes for the hottest order, payment and status-history filters. **V106 is the current highest migration.**
 
 > Fresh DB required: because V22 seeds with explicit IDs, start against an **empty**
 > `shifa_dashboard`. If a half-migrated DB exists, drop & recreate it before starting.
@@ -606,7 +607,7 @@ Definitions worth knowing:
 - Validation: new `ExecutiveProductReportsTest` (16 cases) plus the existing `ReportExportFidelityPropertyTest`, `ApplicationContextLoadsTest` and `EndpointRoleGuardIntegrationTest` pass (90 tests in the focused run); admin build is clean. Not deployed.
 
 ### Reports page performance fix (N+1 in the report loader) — implemented locally, not deployed
-A month-long report (about 2,300 orders) took over 20 seconds because the report loader ran four queries per order (line items, courier record, COD receivable, claim receivable). `ReportService` now loads all of that in batches of at most 1,000 order ids, so a report costs a handful of statements regardless of order count. This loader backs every report type, the Excel/PDF/CSV exports and the Vyapar export. Report output is unchanged. `ReportQueryCountTest` guards the statement count and checks that each order still gets its own AWB, COD status and claim status; the full backend suite passes (1065 tests). Restart the backend to pick it up; no migration.
+A month-long report (about 2,300 orders) took over 20 seconds because the report loader ran four queries per order (line items, courier record, COD receivable, claim receivable). `ReportService` now loads all of that in batches of at most 1,000 order ids, so a report costs a handful of statements regardless of order count. This loader backs every report type and the Excel/PDF exports (it also backed the Vyapar export, since removed). Report output is unchanged. `ReportQueryCountTest` guards the statement count and checks that each order still gets its own AWB, COD status and claim status; the full backend suite passes (1065 tests). Restart the backend to pick it up; no migration.
 
 ### Descriptive report download filenames — implemented locally, not deployed
 Downloaded reports no longer arrive as a generic `report.pdf`. Every report file is named `shifa-<report-name>_<date range>.<ext>`, so admins do not have to rename anything and files sort by date:
@@ -615,7 +616,6 @@ Downloaded reports no longer arrive as a generic `report.pdf`. Every report file
 |---|---|
 | Any Reports-page report (Excel / PDF) | `shifa-daily-sales-report_2026-10-02_to_2026-10-31.pdf` |
 | Report with no date filter | `shifa-customer-wise-report_all-time.xlsx` |
-| Vyapar billing export | `shifa-vyapar-billing_2026-10-02_to_2026-10-31.csv` |
 | Orders list export | `shifa-orders_2026-10-02_to_2026-10-31.xlsx` |
 | Salespeople performance (team / one person) | `shifa-salespeople-performance_2026-10-01_to_2026-10-31.xlsx`, `shifa-salesperson-performance-asha-kumari_2026-10-01_to_2026-10-31.pdf` |
 | Team performance CSV | `shifa-team-performance_2026-10-01_to_2026-10-31.csv` |
@@ -700,8 +700,102 @@ A review of the whole codebase turned up the issues below. Each was checked agai
 **Open items found but deliberately not changed**
 - **Packers and the Orders page.** The packer's menu, bottom tab, packing-queue rows and RTO scan all link to `/orders`, but the backend has never let `PACKING_USER` list or open orders, so those links end in a "forbidden" error. Fixing it either way is a product decision: grant packers read access to orders (this exposes all customer details to warehouse staff) or remove the links.
 - `GET /api/track/{orderCode}` (status, tracking number, courier link) is still public by guessable order code and is not rate-limited; `/api/track/t/{token}` is the unguessable replacement and is what the Angular tracking pages use.
-- Migration `V103` backfills `settlement_allocations.target_key` with `COALESCE(payment_id, order_id, receivable_id)`, which can differ from the application's `canonicalKey` for COD receivable rows. It only matters for a database that already holds V98 allocations; the production path (V98 to V105 applied together onto empty tables) is unaffected. Do not edit V103 if it has been applied anywhere; add a corrective V106 instead.
+- Migration `V103` backfills `settlement_allocations.target_key` with `COALESCE(payment_id, order_id, receivable_id)`, which can differ from the application's `canonicalKey` for COD receivable rows. It only matters for a database that already holds V98 allocations; the production path (V98 to V105 applied together onto empty tables) is unaffected. Do not edit V103 if it has been applied anywhere; add a corrective migration (V107 or later, since V106 is the query-index migration) instead.
 - V104's unique index on `(bank_account_id, utr_normalized)` is wider than the application's duplicate check, which excludes the same order. If an order could hold two payment rows with the same account and UTR, the insert would fail instead of passing the check; not confirmed to occur.
 - The live SSE feed passes the access token in the URL query (browsers cannot set headers on `EventSource`), so it can appear in Nginx access logs. Exclude the query string for `/api/admin/events` from the log format, or move to a short-lived stream ticket.
 - Several date builders in `expenses`, `profit-loss`, `analytics`, the CA GST pages and the Orders quick-select use the device's local time zone rather than IST. They are correct on an IST device; use `todayIst()` / `monthStartIst()` from `shared/business-date.util.ts` if staff ever work from another time zone.
 - Offline order creation is disabled, but an older queued order left in a browser can block the queue because there is no discard button.
+
+### Backlog pass: performance, accessibility, shared helpers, lazy loading (implemented locally, not deployed, 2026-11-01)
+
+Follow-up to the health pass above: the refactor, UX and enhancement review was worked through. Behaviour is unchanged unless stated. **Highest migration is now V106.**
+
+**Backend performance**
+- **Order search is capped.** `GET /api/orders` (`OrderService.search`) used to load every order for an unscoped caller and filter in memory. It now runs one native query, `OrderRepository.searchRecent`, with a hard limit of 200 newest matches (`SEARCH_RESULT_LIMIT`) for every scope shape (everyone, one salesperson, a team). A scope that is present but empty still returns nothing.
+- **My Day, win-back, reorder-due and leaderboard are database aggregates** (`salesperson/MyDayQueryRepository`, JPQL). They no longer load a salesperson's, or the whole business's, full order history on every dashboard open. Win-back groups by the raw mobile column, so a number stored with stray spaces would count as a different customer (mobiles are validated to 10 digits at entry).
+- **Admin team overview and channel dashboards are aggregates too** (`dashboard/TeamsOverviewQueryRepository`, `dashboard/ChannelAggregateRepository`; `TeamsOverviewService`, `ChannelDashboardService` and `order/ChannelSummaryService` take them in their constructors). The team overview still calls `SalespersonPerformanceService.leaderboard()` once, which aggregates the whole orders table; moving that to SQL is a follow-up.
+- **GSTR-1 no longer runs one query per order.** `Gstr1ReturnService` loads orders with their line items in one fetch join and loads credit-note originals with `findByIdInWithLineItems`. `spring.jpa.properties.hibernate.default_batch_fetch_size` is 100, which batches the remaining lazy collections (pick-list, payment queue) everywhere.
+- **V106 adds five indexes:** `orders(created_by, created_at)`, `orders(customer_mobile, created_at)`, `orders(payment_verification_status, created_at)`, `payments(captured_at, bank_account_id)`, `status_history(to_status, changed_at)`. Do not edit V106 after it has been applied anywhere.
+- `ReturnService` now logs (at error level) when the refund ledger post cannot be queued; the refund itself still succeeds.
+
+**Backend structure**
+- `AdminOrderController`: the duplicated creator-scope and `source` parsing in `list` and `export` is one helper each. **The export is now strict:** an unknown `source` value returns 400 instead of silently exporting every source. The list stays lenient for stale clients.
+- `OrderService`: the audit diff moved to `OrderEditDiff` and the payment-proof key and hash helpers to `OrderPaymentProofs` (both package-private, pure). Fully qualified class names were replaced with imports (also in `TrackingService`). All five constructors are kept: four test classes subclass the service.
+- `dashboard/OrderStatusCounts` is the single `GROUP BY order_status` fold used by `RoleDashboardService`, `DashboardMetricsService` and `OwnerSnapshotService`. The unused `OrderRepository.findAllOrderSources` was removed.
+- About 45 files had storefront-era comments and Javadoc corrected (comments only). `OrderSource.STOREFRONT` is marked legacy. `MailProperties` and `EmailBrandProperties` keep their different default site URLs; both are documented, neither changed.
+
+**Admin app: bundle and structure**
+- **Every page is a lazy route** (`app.routes.ts` uses `loadComponent`; only `AdminShellComponent` and the guards are eager). The initial bundle fell from 3.41 MB to 1.29 MB raw (about 219 kB transferred). The service worker still pre-caches all chunks (`/*.js` in `ngsw-config.json`, deliberately unchanged), so pages keep working offline. The `qrcode` library loads only when a user enrols in MFA. The `angular.json` initial budget is now 1.75 MB warning / 2.5 MB error (was 3.5 / 4).
+- The shell is split: `shell/tour-steps.ts`, `shell/nav.model.ts`, `shell/nav.config.ts` (`ALL_NAV`, `BOTTOM_TABS_BY_ROLE`). `admin-shell.component.ts` went from about 1,090 to about 625 lines.
+- Orders: pure rules moved to `orders/order-permissions.ts`, `orders/order-presentation.ts` and `orders/order-totals.ts`; the components keep thin methods with the same names for their templates. `new-order` and `edit-order` now share one copy of the money maths.
+- Shared helpers: `shared/tracking-url.util.ts`, `shared/date-label.util.ts`, `shared/enum-label.util.ts`; `formatInr` is sign-first (`-₹1,234.00`, never `-₹0`) and has `formatInrOrDash` / `formatInrSigned`. About 25 local rupee formatters now delegate to it; hand-rolled blob downloads use `saveBlob` / `openBlob`; `expenses` uses IST for "today"; order-status labels come from `humanizeStatus`.
+
+**Admin app: accessibility and states**
+- **`shared/dialog.directive.ts` (`adminDialog`)** gives every drawer and modal `role="dialog"`, `aria-modal`, focus on open and restore on close, a Tab trap, body scroll lock and Escape via `(dialogClose)`. It is applied to all dialogs in orders, customers, approval, leads, shell, settlements, reconciliation, products, inventory, expenses, users, returns, purchase orders, suppliers, meetings, tasks, payments, packing, salespeople, CA GST, teams overview, remittance report and WhatsApp templates. Use it for any new dialog, rendered inside an `@if`. `ConfirmDialog` focuses Cancel for destructive confirmations.
+- Clickable rows are keyboard operable (Tab, Enter, Space); the "clear search" controls are real buttons; the lead form labels are linked to their inputs; the global search and the product and state typeaheads expose combobox/listbox semantics; the account menu uses the disclosure pattern; pagination and toast buttons reach 44 px on touch screens.
+- Error states now have a Retry: Profit & Loss, Reports, Settlement Center (also when batches are already loaded), the Reconciliation lists and widgets, and the order, customer and lead drawers. Approval Queue uses the shared toast service. Two subscribes that had no error handler now show a toast.
+
+**Behaviour you may notice**
+- On the Packing scan screen the "confirm next move" dialog opens with Cancel focused, so a scanner's trailing Enter can no longer confirm a move; scanning another parcel while the dialog is open closes it.
+- Pressing Escape inside a dialog that has a row-action menu open closes the dialog (the menu listens on the document, after the dialog).
+- The Team Member drawer and the profile pages (My Profile, Profile approvals, Salespeople) format their dates in IST on every device, through the shared `formatDateLabel`.
+
+**Validation:** see the matching section of `.kiro/steering/project-memory.md` for the final test counts. Temporary H2 checks of `searchRecent`, My Day, win-back, reorder-due, the leaderboard, the team overview and the channel summary and dashboard passed with hand-computed figures and were then deleted. Not exercised in a browser.
+
+**Deferred on purpose:** the order-detail drawer and items-editor component splits; moving about 34 hand-rolled pagers onto one helper (no end-to-end runner to catch regressions); `ngsw-config.json` changes; the packer access decision to Orders; SQL rewrites for `SalespersonPerformanceService.leaderboard`, `RetentionService`, `ProfitLossService` and `ReconciliationService`; the shell component CSS budget warning (13.1 kB against a 12 kB limit).
+
+### Vyapar export removed from Reports (implemented locally, not deployed, 2026-11-01)
+
+The Reports page no longer offers **Vyapar CSV** or **Vyapar Excel**, and the backend that served them is gone. No migration.
+- **Backend:** `GET /api/reports/vyapar`, `ReportService.vyaparTable`, `VyaparTableBuilder` and `TabularData.headerOnly` are deleted. `ReportController` no longer takes a `CsvReportExporter` (the Orders list export still uses it), and the `X-Report-Message` response header and its CORS exposure were only for the Vyapar "no orders found" notice, so they are removed too. `VyaparEmptyRangeExportTest` is deleted; `ReportExportFidelityPropertyTest` keeps the Excel, PDF and CSV round-trip checks and drops the Vyapar property, and `ReportDownloadNamingTest` drops the Vyapar naming case.
+- **Admin app:** the two buttons, `exportVyapar`, `ReportsService.vyapar`, the `VyaparFormat` type and the `message` field of `DownloadResult` are removed. The export card now shows Excel and PDF side by side.
+- Client-facing material under `docs/` (pricing and presentation pages, the features guide) still mentions Vyapar exports; update it before it is sent to the client again.
+
+### GST pages moved under Finance in the menu (implemented locally, not deployed, 2026-11-01)
+
+**GST & Accounting**, **GST Filing** and **GST Reconciliation** now sit in the **Finance** menu group (after Settlement Center) instead of **Analytics & Reports**. Only the menu changed: the routes (`/ca/gst`, `/ca/gst/filing`, `/ca/gst/reconciliation`), the ADMIN + CA access rules and the CA bottom tabs are as before. The page eyebrow above the title and the desktop sidebar's auto-expanded group follow the new location. The change is in `frontend/.../shell/nav.config.ts` (`ALL_NAV`). Frontend only, no migration.
+
+### Growth analytics on the Analytics page (implemented locally, not deployed, 2026-11-01)
+
+The `/analytics` page was four tabs (Targets, Retention, Forecast, Delivery). It now has ten, and the four original tabs are unchanged. Everything is ADMIN only, read-only, and needs **no migration** (V106 is still the highest).
+
+**Tabs (in order):** Overview, Customers, Retention, Products, Acquisition, Operations, Delivery, Forecast, Targets & Incentives, Data. The open tab is kept in the address as `?tab=<key>`, so a link such as `/analytics?tab=customers` opens that tab, and no parameter opens the Overview. The tab row scrolls sideways on a phone.
+
+**Period.** Overview, Products, Acquisition, Operations and Data share one period bar: last 7, 30 or 90 days, this month, last month, this financial year (from 1 April), last 12 months, or custom dates. The default is the last 30 days. Dates are IST calendar days. The longest period is 731 days (366 for data downloads); the page warns instead of letting a download fail. Customers, Retention, Delivery, Forecast and Targets do not use the period (Customers and Retention are all time).
+
+| Tab | What it shows |
+| --- | --- |
+| Overview | Orders, sales, average order value, customers, new vs returning, discount, lost orders, each against the previous period of the same length. Sales trend (daily, or weekly above 92 days), channel, lead-source and payment mix, top states and cities, and an orders-by-weekday-and-hour heat map. Above these, up to 12 **key pointers** ranked warning, opportunity, positive, info. Each says what happened, what to do, and links to the tab that explains it. |
+| Customers | Every customer is in exactly one segment, each with a suggested action and a ready call list (tap to call, send a WhatsApp follow-up, or copy the listed mobile numbers). Value concentration (top 10% / top 20% of customers by revenue), order-frequency and recency bands, top customers, and a link to the full customer file under Data. |
+| Products | Units, revenue, buyers and repeat-buyer share per product, change against the previous period, ABC class (Pareto chart), and the products bought together most often (with lift). |
+| Acquisition | Revenue, orders, average order value and delivery success by lead source, plus the lead funnel (conversion, lost reasons, pipeline) from the existing `/api/leads/reports/*` endpoints. |
+| Operations | Median, 90th percentile and average hours for order placed to approved, approved to handed over, handed over to delivered, and order placed to delivered (from the order status history); orders by stage; delivery success by payment type; rejection and RTO reasons. |
+| Data | Four CSV downloads with their columns documented on screen. See below. |
+
+**Definitions (same as the rest of the app).**
+- Revenue and order counts exclude REJECTED, PAYMENT_REJECTED and CANCELLED. Those are counted separately as lost orders.
+- Delivered is DELIVERED, COD_COLLECTED or CLOSED. Failed is CUSTOMER_REJECTED, DELIVERY_FAILED, RTO or REDISPATCH.
+- Customers are keyed by 10-digit mobile number. The Shopify placeholder `0000000000` is left out of customer analytics.
+- **Segments.** One order: New (last order within 30 days), Needs attention (31 to 90 days), One-time lapsed (over 90 days). Two or more orders: Champion (4 or more orders and ordered within 60 days), Loyal (within 60 days), At risk (61 to 180 days), Hibernating (over 180 days). The "at risk" figures on the Overview and in the pointers count At risk plus Hibernating.
+- **ABC class.** A while the products before it make up less than 80% of revenue, B up to 95%, C after that.
+- Product pairs: the 10 most common pairs that appear together in at least 2 orders. Orders with more than 12 different products are skipped when pairing. Lift above 1 means the pair is bought together more often than chance.
+
+**Data downloads (for data engineers).** `GET /api/admin/analytics/datasets` lists the datasets and columns; `GET /api/admin/analytics/datasets/{key}/export?from=&to=` returns the CSV (named like `shifa-data-orders_2026-10-03_to_2026-11-01.csv`).
+- `orders` (one row per order, 27 columns), `order_items` (one row per line, 11), `daily_sales` (one row per day, 6), and `customers` (one row per customer, 10, all time).
+- Orders, items and daily sales carry a one-way **`customer_key`** instead of the mobile number: the first 8 bytes of SHA-256 of `salt:mobile`, as hex. The same key appears in every file, so the files join. Only the `customers` file has name and mobile, because it is the call list. Treat it as personal data.
+- Limits: 100,000 rows per file and 366 days (default 90). Larger requests get a plain-language error. Every download is audited as `ANALYTICS_EXPORTED`.
+- Excel is not offered on purpose: the shared Excel exporter writes every cell as text, which is the wrong format for numbers that will be loaded into other tools.
+- **Set `ANALYTICS_CUSTOMER_KEY_SALT`** in `/etc/shifa/shifa.env` for production (property `app.analytics.customer-key-salt`; example in `deploy/shifa.env.example`) and keep it fixed. If it is left at the default, the keys can be reproduced by anyone who knows the default and has a mobile number. Changing it later changes every key.
+
+**Backend.** `analytics/domain` holds pure engines over narrow fact rows: `OverviewEngine`, `CustomerSegmenter`, `ProductEngine`, `FulfilmentEngine`, `PointerEngine` (about 15 rules), `AnalyticsMath`, `Facts`. `AnalyticsQueryRepository` (JPQL on `OrderEntity`, so deleted orders stay hidden) loads the orders, lines, customers and status stamps; `GrowthAnalyticsService` assembles the reports; `AnalyticsDatasetService` builds the CSV files; `AnalyticsController` serves them. The loader methods of `GrowthAnalyticsService` are `public` on purpose (the bean is proxied for transactions). Audit constants `ANALYTICS_EXPORTED` and `ENTITY_ANALYTICS` were added.
+
+**Frontend.** `analytics/analytics.component.*` (tabs, period bar, `?tab=` handling, per-tab loading and error states with retry; a late reply for an old period is dropped), `analytics-period.util.ts` (IST presets and validation), `analytics-format.util.ts`, six components under `analytics/tabs/`, and the new models and service calls in `analytics.model.ts` / `analytics.service.ts`.
+
+**Checked.** All reports and all four dataset files ran against the real local MySQL (2,231 orders in the last 30 days, 2,013 customers), including the 731-day maximum span. Every field the backend sends exists in the TypeScript models. These checks used temporary tests and scripts that were deleted afterwards. Hand-computed figures (KPIs, segments, ABC classes, pairs, speed statistics, dataset row and column counts) were checked on H2 the same way. See `.kiro/steering/project-memory.md` for the final test counts and bundle hash.
+
+**Not done / notes.**
+- No permanent tests were added for the new engines (none were requested).
+- The screens were not opened in a browser. Check the charts (trend with two axes, Pareto, stacked bar) and the phone layout of the tab row and period bar after a hard refresh.
+- The local data only spans about three months, so At risk and Hibernating are empty here; they will fill as the data ages.
+- "Calls made" from the sales Excel is not included (no call data in the OMS).
+- Nothing is deployed. Production needs the salt set before the first restart that includes this change.

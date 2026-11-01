@@ -12,7 +12,7 @@ import java.util.List;
 
 /**
  * Seeds a curated catalog of realistic herbal/ayurvedic products on startup so
- * the storefront has attractive, client-ready content out of the box. Runs only
+ * the app has attractive, client-ready content out of the box. Runs only
  * under the {@code local} profile and is idempotent in two ways:
  *
  * <ul>
@@ -23,8 +23,8 @@ import java.util.List;
  * </ul>
  *
  * <p>Every product gets one {@link ProductImage} whose {@code object_key} is the
- * storefront-relative web path of a bundled photo (e.g. {@code products/shifa-01.jpg}).
- * The storefront resolves that key to {@code /products/shifa-01.jpg} from its own
+ * frontend-relative web path of a bundled photo (e.g. {@code products/shifa-01.jpg}).
+ * The admin app resolves that key to {@code /products/shifa-01.jpg} from its own
  * {@code public/} folder. Prices use realistic INR values with {@code mrp > salePrice}
  * so a discount badge is shown.
  */
@@ -130,7 +130,7 @@ public class CatalogSeeder implements CommandLineRunner {
     /**
      * Curated herbal/ayurvedic catalog with realistic INR pricing. Each entry
      * also carries a category slug (matching the V3-seeded categories), a stock
-     * quantity + inventory-tracking flag, and a featured marker so the storefront
+     * quantity + inventory-tracking flag, and a featured marker so the app
      * showcases stock badges, filters and a featured collection out of the box.
      * The mix intentionally includes low-stock, out-of-stock and untracked
      * (always in-stock) examples.

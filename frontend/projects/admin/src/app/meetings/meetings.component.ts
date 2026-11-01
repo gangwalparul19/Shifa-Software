@@ -5,6 +5,7 @@ import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { IstDatePipe } from '../shared/ist-date.pipe';
+import { DialogDirective } from '../shared/dialog.directive';
 import { ToastService } from '../shared/toast.service';
 import { MeetingsService } from './meetings.service';
 import {
@@ -30,6 +31,7 @@ import {
     PaginationComponent,
     StatePanelComponent,
     IstDatePipe,
+    DialogDirective,
   ],
   templateUrl: './meetings.component.html',
   styleUrl: './meetings.component.css',

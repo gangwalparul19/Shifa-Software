@@ -166,7 +166,7 @@
 <!-- ===================== Team detail panel (drill-down 1) ===================== -->
 @if (selectedTeam(); as team) {
   <div class="teams-ov__backdrop" (click)="closeTeam()">
-    <aside class="teams-ov__panel" role="dialog" aria-modal="true" [attr.aria-label]="teamHeading(team) + ' details'" (click)="$event.stopPropagation()">
+    <aside class="teams-ov__panel" adminDialog [attr.aria-label]="teamHeading(team) + ' details'" (dialogClose)="closeTeam()" (click)="$event.stopPropagation()">
       <header class="teams-ov__panel-head">
         <div>
           <div class="subheader">Team details</div>

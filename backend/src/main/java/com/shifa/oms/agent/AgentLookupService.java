@@ -18,8 +18,8 @@ import java.util.Optional;
  *
  * <p>Returns the matched order's current status plus tracking details (AWB,
  * courier, tracking link, ETA) and its COD/payment info, or a structured
- * no-match result when nothing matches (Req 15.2). This is the query a live agent
- * runs (via the storefront) to answer a customer's "where is my order?"; it never
+ * no-match result when nothing matches (Req 15.2). This is the staff-only query a
+ * live agent or admin runs to answer a customer's "where is my order?"; it never
  * mutates state.
  */
 @Service

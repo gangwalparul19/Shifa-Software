@@ -2,7 +2,8 @@ package com.shifa.oms.auth;
 
 /**
  * The platform user roles (Requirement 5.1): ADMIN, ACCOUNTANT, CA, SALESPERSON,
- * TEAM_LEAD, PACKING_USER, PAYMENT_VERIFIER, and CUSTOMER (storefront only).
+ * TEAM_LEAD, PACKING_USER, PAYMENT_VERIFIER, and the legacy CUSTOMER role (no new
+ * accounts are created; self-registration was removed, so only old rows can carry it).
  *
  * <p>Each role maps to a Spring Security authority of the form
  * {@code ROLE_<name>} (see {@link #authority()}), so method-level checks such as
@@ -46,7 +47,10 @@ public enum Role {
      */
     PAYMENT_VERIFIER,
 
-    /** Storefront customer. */
+    /**
+     * Legacy customer role. No new accounts are created with it (customer
+     * self-registration was removed); only old rows can still carry it.
+     */
     CUSTOMER;
 
     /** The Spring Security authority string for this role ({@code ROLE_<name>}). */

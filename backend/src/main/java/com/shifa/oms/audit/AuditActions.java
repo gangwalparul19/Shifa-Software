@@ -31,6 +31,8 @@ public final class AuditActions {
     public static final String ORDER_MARKED_RTO = "ORDER_MARKED_RTO";
     /** A user exported the (filtered, scoped) orders list to CSV/Excel (list-export enhancement). */
     public static final String ORDERS_EXPORTED = "ORDERS_EXPORTED";
+    /** An admin downloaded an analytics dataset (orders, items, customers or daily sales) as CSV. */
+    public static final String ANALYTICS_EXPORTED = "ANALYTICS_EXPORTED";
     /** Payment authenticity verification decisions (product-audit §4.4). */
     public static final String PAYMENT_VERIFIED = "PAYMENT_VERIFIED";
     public static final String PAYMENT_REJECTED = "PAYMENT_REJECTED";
@@ -69,6 +71,8 @@ public final class AuditActions {
     public static final String STOCK_RESTOCKED = "STOCK_RESTOCKED";
     public static final String STOCK_ADJUSTED = "STOCK_ADJUSTED";
 
+    // LEGACY coupon actions: the coupon module was removed; these codes are kept
+    // only so historical audit rows still resolve. Do not use for new events.
     public static final String COUPON_CREATED = "COUPON_CREATED";
     public static final String COUPON_UPDATED = "COUPON_UPDATED";
     public static final String COUPON_DEACTIVATED = "COUPON_DEACTIVATED";
@@ -170,10 +174,12 @@ public final class AuditActions {
     // --- Entity types -------------------------------------------------------
 
     public static final String ENTITY_ORDER = "ORDER";
+    public static final String ENTITY_ANALYTICS = "ANALYTICS";
     public static final String ENTITY_RECEIVABLE = "RECEIVABLE";
     public static final String ENTITY_USER = "USER";
     public static final String ENTITY_SETTINGS = "SETTINGS";
     public static final String ENTITY_PRODUCT = "PRODUCT";
+    // LEGACY: coupon module removed; kept for historical audit rows.
     public static final String ENTITY_COUPON = "COUPON";
     public static final String ENTITY_RETURN = "RETURN";
     public static final String ENTITY_SUPPLIER = "SUPPLIER";

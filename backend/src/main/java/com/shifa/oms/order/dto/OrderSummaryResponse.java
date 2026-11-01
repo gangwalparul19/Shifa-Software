@@ -38,7 +38,7 @@ public record OrderSummaryResponse(
         // table can show who triggered each order. Batch-loaded by the admin list
         // read path; null on the lightweight search results.
         String salespersonName,
-        // The order's provenance (SALESPERSON / STOREFRONT / SHOPIFY), so the Orders
+        // The order's provenance (SALESPERSON / STOREFRONT [legacy] / SHOPIFY), so the Orders
         // list can tag a Shopify-imported order with a badge. Always populated from
         // the entity (unlike the batch-loaded enrichment fields above).
         OrderSource source,

@@ -1,0 +1,250 @@
+/* Analytics > Customers tab. Relies on the shared Tabler card / table / badge styles. */
+
+:host {
+  display: block;
+}
+
+/* Touch-friendly buttons and links (>= 44px). */
+.ct-btn {
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+.ct-btn--icon {
+  min-width: 2.75rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  font-size: 1.1rem;
+}
+.ct-link {
+  padding: 0;
+  border: 0;
+  vertical-align: baseline;
+  font-size: inherit;
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------- KPI tiles */
+.ct-kpi__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: #e6f2ec;
+  color: #1f5d3f;
+  font-size: 1.05rem;
+}
+.ct-kpi__value {
+  margin-top: 0.15rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------- how segments work */
+.ct-how {
+  border: 1px solid #e3e9e5;
+  border-radius: 0.6rem;
+  background: #fff;
+  padding: 0 0.9rem;
+}
+.ct-how summary {
+  cursor: pointer;
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  color: #1f5d3f;
+}
+.ct-how__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0.75rem;
+  display: grid;
+  gap: 0.6rem;
+}
+.ct-how__list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+}
+.ct-how__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: var(--seg-soft, #eef1ef);
+  color: var(--seg-color, #4b5d54);
+}
+
+/* ------------------------------------------------------------- segment cards */
+.ct-seg {
+  border-top: 4px solid var(--seg-color, #4b5d54);
+}
+.ct-seg__head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+}
+.ct-seg__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: var(--seg-soft, #eef1ef);
+  color: var(--seg-color, #4b5d54);
+  font-size: 1.15rem;
+}
+.ct-seg__label {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--seg-color, #1c2b24);
+}
+.ct-seg__desc {
+  margin-bottom: 0.75rem;
+}
+.ct-seg__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem 0.9rem;
+  margin: 0 0 0.85rem;
+}
+.ct-seg__stats dt {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7c74;
+}
+.ct-seg__stats dd {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: #1c2b24;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.ct-seg__pct {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #6b7c74;
+}
+.ct-seg__action {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.85rem;
+  border-left: 3px solid var(--seg-color, #4b5d54);
+  border-radius: 0.5rem;
+  background: var(--seg-soft, #eef1ef);
+  font-size: 0.9rem;
+  color: #1c2b24;
+}
+.ct-seg__action .ti {
+  margin-top: 0.1rem;
+  color: var(--seg-color, #4b5d54);
+}
+.ct-seg__action-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--seg-color, #4b5d54);
+}
+.ct-seg__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ct-seg__list {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e3e9e5;
+}
+.ct-seg__listhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.25rem;
+}
+.ct-copied {
+  min-height: 1.25rem;
+  font-size: 0.85rem;
+  color: #1f5d3f;
+  font-weight: 600;
+}
+
+.ct-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ct-person {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.9rem;
+  padding: 0.65rem 0;
+  border-top: 1px solid #edf1ee;
+}
+.ct-person:first-child {
+  border-top: 0;
+}
+.ct-person__main {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.ct-person__name {
+  font-weight: 600;
+  color: #1c2b24;
+  overflow-wrap: anywhere;
+}
+.ct-person__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@media (max-width: 575.98px) {
+  .ct-person__actions {
+    width: 100%;
+  }
+  .ct-person__actions .ct-btn {
+    flex: 1 1 8rem;
+  }
+}
+
+/* --------------------------------------------------------------------- tables */
+.ct-swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-right: 0.45rem;
+  border-radius: 3px;
+}
+.ct-table th,
+.ct-table td {
+  font-variant-numeric: tabular-nums;
+}
+.ct-table__actions {
+  display: inline-flex;
+  gap: 0.4rem;
+}

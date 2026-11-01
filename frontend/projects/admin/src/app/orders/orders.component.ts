@@ -18,18 +18,13 @@ import {
   CourierCompanyOption,
   DELIVERY_METHOD_OPTIONS,
   DeliveryMethod,
-  FAILED_DELIVERY_STATUSES,
-  LEAD_SOURCE_OPTIONS,
   MANUAL_DELIVERY_STAGE_OPTIONS,
-  MANUAL_NEXT_STAGES,
-  MANUAL_PACKING_STAGES,
   ManualStage,
   OrderDetail,
   OrderDetailLine,
   OrderPayment,
   OrderSummary,
   QuikShipTracking,
-  RTO_REASON_LABELS,
   RtoReasonValue,
 } from './orders.model';
 import { ReturnsService } from '../returns/returns.service';
@@ -57,6 +52,8 @@ import { IstDatePipe } from '../shared/ist-date.pipe';
 import { AuthenticatedBlobService } from '../shared/authenticated-blob.service';
 import { reportFilename } from '../shared/report-filename.util';
 import { formatInr } from '../shared/inr.pipe';
+import { delhiveryTrackUrl } from '../shared/tracking-url.util';
+import { DialogDirective } from '../shared/dialog.directive';
 import { ChannelLogoComponent } from '../shared/channel-logo.component';
 import { WhatsappTemplate, WhatsappTemplatesService } from '../whatsapp/whatsapp-templates.service';
 import {
@@ -72,75 +69,57 @@ import {
   normalizeGroupKey,
   stageLabelForStatus,
 } from './order-status-groups';
-
-/**
- * The pre-delivery statuses an order can be cancelled from (order-cancellation
- * feature; mirrors the backend state machine's CANCELLED edges). A delivered /
- * closed / returned / already-rejected order is deliberately excluded.
- */
-const CANCELLABLE_STATUSES = new Set<string>([
-  OrderStatus.PENDING_ADMIN_APPROVAL,
-  OrderStatus.APPROVED,
-  OrderStatus.LABEL_GENERATED,
-  OrderStatus.PACKED,
-  OrderStatus.HANDED_TO_DELIVERY,
-  OrderStatus.COURIER_ASSIGNED,
-  OrderStatus.DISPATCHED,
-  OrderStatus.IN_TRANSIT,
-  OrderStatus.OUT_FOR_DELIVERY,
-]);
-
-/**
- * The statuses an order can be permanently DELETED from (delete-order feature):
- * only orders that never entered the accounts ledger — awaiting approval,
- * rejected, payment-rejected, or cancelled. An approved/fulfilled order has a
- * posted Sales voucher, so it must be cancelled (not deleted) to keep the GL
- * intact; the backend also refuses such a delete with a 409.
- */
-const DELETABLE_STATUSES = new Set<string>([
-  OrderStatus.PENDING_ADMIN_APPROVAL,
-  OrderStatus.REJECTED,
-  OrderStatus.PAYMENT_REJECTED,
-  OrderStatus.CANCELLED,
-]);
-
-/** One rendered step in the order-detail visual status timeline. */
-interface OrderTimelineStep {
-  status: OrderStatusGroupKey;
-  label: string;
-  icon: string;
-  /** Timestamp of the matching status-history row, if one exists yet. */
-  at: string | null;
-  /** This stage has been reached (a history row exists, or it's an earlier stage than current). */
-  done: boolean;
-  /** This is the order's present stage. */
-  current: boolean;
-}
-
-/** Icon per timeline stage, matching the group's business meaning. */
-const TIMELINE_ICONS: Record<OrderStatusGroupKey, string> = {
-  PENDING_APPROVAL: 'ti-hourglass',
-  PROCESSING: 'ti-box',
-  SHIPPED: 'ti-truck-delivery',
-  DELIVERED: 'ti-circle-check',
-  FAILED_RETURNED: 'ti-rotate-2',
-  CANCELLED: 'ti-x',
-  REJECTED: 'ti-ban',
-};
-
-/** Friendly label per stage for the timeline (slightly warmer than the filter-tab labels). */
-const TIMELINE_LABELS: Record<OrderStatusGroupKey, string> = {
-  PENDING_APPROVAL: 'Placed',
-  PROCESSING: 'Packed',
-  SHIPPED: 'Shipped',
-  DELIVERED: 'Delivered',
-  FAILED_RETURNED: 'Returned / Failed',
-  CANCELLED: 'Cancelled',
-  REJECTED: 'Rejected',
-};
-
-/** The happy-path stage order (excludes the two terminal-exception groups). */
-const HAPPY_PATH: OrderStatusGroupKey[] = ['PENDING_APPROVAL', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
+import {
+  ORDER_ENTRY_ROLES,
+  ORDER_EXPORT_ROLES,
+  allowedManualStagesFor,
+  canApproveOrder,
+  canAssignCourierToOrder,
+  canCancelOrder,
+  canChangeDeliveryMethod,
+  canDeleteOrder,
+  canEditOrder,
+  canResubmitOrder,
+  isCollectedOnDelivery,
+  isDeliveryMethodChanged,
+  isOrderInHouse,
+  isOrderRetryEligible,
+  isOrderReturnEligible,
+  isOrderStorePickup,
+  isRejectedStatus,
+  orderHasFailedDelivery,
+  orderHasQuikShipLabel,
+  orderNeedsTrackingId,
+} from './order-permissions';
+import {
+  OrderTimelineStep,
+  courierDisplayName,
+  courierPartner,
+  courierPartnerLabel,
+  customerInitials,
+  isOrderTrackable,
+  isQuikShipFailed,
+  leadSourceLabel,
+  matchesDateBucket,
+  orderDiscountLabel,
+  orderHasDiscount,
+  orderMapsUrl,
+  orderSubtotalLabel,
+  orderTimelineSteps,
+  orderTrackUrl,
+  paymentVerificationClass,
+  paymentVerificationLabel,
+  quikShipBadgeClass,
+  quikShipTitle,
+  rejectReasonLabel,
+  rtoReasonLabel,
+  salespersonCell,
+  settlementIcon,
+  sourceIcon,
+  sourceLabel,
+  stageBadgeClass,
+  statusPillClass,
+} from './order-presentation';
 
 /** Sort fields the backend accepts for the admin orders listing. */
 const SORT_FIELDS = new Set([
@@ -162,25 +141,6 @@ const TABLE_KEY = 'orders';
  * and the advanced-filter dropdown.
  */
 export type OrderStatusFilter = OrderStatusGroupKey | 'ALL';
-
-/**
- * Colour buckets for the status pill in the detail/mobile views (green =
- * successful terminal, red = cancelled/failed/returned, amber = everything
- * still in flight). Distinct from the filter groups — this is display only.
- */
-const PILL_COMPLETED: OrderStatus[] = [
-  OrderStatus.DELIVERED,
-  OrderStatus.COD_COLLECTED,
-  OrderStatus.CLOSED,
-];
-const PILL_BAD: OrderStatus[] = [
-  OrderStatus.REJECTED,
-  OrderStatus.CANCELLED,
-  OrderStatus.CUSTOMER_REJECTED,
-  OrderStatus.DELIVERY_FAILED,
-  OrderStatus.RTO,
-  OrderStatus.REDISPATCH,
-];
 
 /**
  * The quick status tabs shown above the list, in lifecycle order: "All" plus
@@ -218,6 +178,7 @@ export const ORDER_STATUS_TABS: { key: OrderStatusFilter; label: string }[] = [
     PaginationComponent,
     SortableHeaderComponent,
     ChannelLogoComponent,
+    DialogDirective,
   ],
   templateUrl: './orders.component.html',
   styleUrl: './orders.component.css',
@@ -239,33 +200,20 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * {@code GET /api/admin/orders/export} role list: a payment verifier can open this page
    * (view-only) but the export endpoint rejects them, so the button would only ever fail.
    */
-  protected readonly canExport = computed(() =>
-    this.auth.hasAnyRole(Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON, Role.TEAM_LEAD, Role.CA),
-  );
+  protected readonly canExport = computed(() => this.auth.hasAnyRole(...ORDER_EXPORT_ROLES));
 
   /** Whether the current user may punch a new order (SALESPERSON + ADMIN + TEAM_LEAD, Req 7). */
-  protected readonly canCreateOrder = computed(() =>
-    this.auth.hasAnyRole(Role.SALESPERSON, Role.ADMIN, Role.TEAM_LEAD),
-  );
+  protected readonly canCreateOrder = computed(() => this.auth.hasAnyRole(...ORDER_ENTRY_ROLES));
 
   /**
    * Whether the "Fix & resubmit" action is offered for the given order
    * (rejection-status rework feature): only for a REJECTED / PAYMENT_REJECTED
    * order and an order-entry role. The backend enforces own-order ownership
    * (a salesperson can only resubmit an order they created), so this is just the
-   * affordance gate.
+   * affordance gate. A Shopify order is never editable/resubmittable here.
    */
   canResubmit(order: OrderDetail | null | undefined): boolean {
-    // A Shopify order is managed automatically from the store — never editable/resubmittable here.
-    if (order?.source === 'SHOPIFY') {
-      return false;
-    }
-    return (
-      !!order &&
-      (order.orderStatus === OrderStatus.REJECTED ||
-        order.orderStatus === OrderStatus.PAYMENT_REJECTED) &&
-      this.auth.hasAnyRole(Role.SALESPERSON, Role.ADMIN, Role.TEAM_LEAD)
-    );
+    return canResubmitOrder(order, this.auth.hasAnyRole(...ORDER_ENTRY_ROLES));
   }
 
   /**
@@ -276,17 +224,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * QuikShipX stale-data fix — the backend enforces the same PENDING-only window).
    */
   canEdit(order: OrderDetail | null | undefined): boolean {
-    if (!order) {
-      return false;
-    }
-    // A Shopify order is managed automatically from the store — never editable here.
-    if (order.source === 'SHOPIFY') {
-      return false;
-    }
-    return (
-      order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL &&
-      this.auth.hasAnyRole(Role.ADMIN, Role.SALESPERSON, Role.TEAM_LEAD)
-    );
+    return canEditOrder(order, this.auth.hasAnyRole(...ORDER_ENTRY_ROLES));
   }
 
   /**
@@ -296,10 +234,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * (a delivered order is a Return). Mirrors the backend's cancellable states.
    */
   canCancel(order: OrderDetail | null | undefined): boolean {
-    if (!order || !this.auth.hasAnyRole(Role.ADMIN)) {
-      return false;
-    }
-    return CANCELLABLE_STATUSES.has(order.orderStatus);
+    return canCancelOrder(order, this.auth.hasAnyRole(Role.ADMIN));
   }
 
   /**
@@ -321,10 +256,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * a ledger voucher); the backend also refuses such a delete with a clear 409.
    */
   canDelete(order: OrderDetail | null | undefined): boolean {
-    if (!order || !this.auth.hasAnyRole(Role.ADMIN)) {
-      return false;
-    }
-    return DELETABLE_STATUSES.has(order.orderStatus);
+    return canDeleteOrder(order, this.auth.hasAnyRole(Role.ADMIN));
   }
 
   /**
@@ -371,7 +303,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   /** Placing an in-shop (POS / counter) store order (store-order feature): any order-entry role. */
   protected readonly canCreateStoreOrder = computed(() =>
-    this.auth.hasAnyRole(Role.SALESPERSON, Role.ADMIN, Role.TEAM_LEAD),
+    this.auth.hasAnyRole(...ORDER_ENTRY_ROLES),
   );
 
   /**
@@ -380,28 +312,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * have a real courier, or never will).
    */
   canAssignCourier(order: OrderDetail | null): boolean {
-    if (!order || !this.auth.hasAnyRole(Role.ADMIN)) {
-      return false;
-    }
-    const late: (OrderStatus | string)[] = [
-      OrderStatus.DISPATCHED,
-      OrderStatus.IN_TRANSIT,
-      OrderStatus.OUT_FOR_DELIVERY,
-      OrderStatus.DELIVERED,
-      OrderStatus.COD_COLLECTED,
-      OrderStatus.CLOSED,
-      OrderStatus.REJECTED,
-      OrderStatus.CANCELLED,
-    ];
-    return !late.includes(order.orderStatus);
+    return canAssignCourierToOrder(order, this.auth.hasAnyRole(Role.ADMIN));
   }
 
   /** A return may be raised only for a delivered or RTO'd order. */
   isReturnEligible(order: OrderDetail | null): boolean {
-    return (
-      !!order &&
-      (order.orderStatus === OrderStatus.DELIVERED || order.orderStatus === OrderStatus.RTO)
-    );
+    return isOrderReturnEligible(order);
   }
 
   /**
@@ -413,10 +329,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * Reorder flow (`reorderFrom`), not reopening this one.
    */
   isRetryEligible(order: OrderDetail | null): boolean {
-    return (
-      !!order &&
-      (order.orderStatus === OrderStatus.RTO || order.orderStatus === OrderStatus.REDISPATCH)
-    );
+    return isOrderRetryEligible(order);
   }
 
   protected readonly OrderStatus = OrderStatus;
@@ -545,18 +458,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * per the client's request).
    */
   courierDisplayName(order: OrderDetail): string {
-    if (this.isStorePickup(order)) {
-      return 'Store pickup (POS)';
-    }
-    if (order.courierName) {
-      return order.courierName;
-    }
-    return this.isInHouse(order) ? 'Ishika Enterprise' : 'QuikShipX';
+    return courierDisplayName(order);
   }
 
   /** Whether this order is fulfilled by Shifa's own team (no courier partner, no AWB). */
   isInHouse(order: OrderDetail | null): boolean {
-    return !!order && order.deliveryMethod === 'IN_HOUSE';
+    return isOrderInHouse(order);
   }
 
   /**
@@ -565,15 +472,14 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * closed and must show no courier / in-house fulfilment card.
    */
   isStorePickup(order: OrderDetail | null): boolean {
-    return !!order && order.deliveryMethod === 'STORE_PICKUP';
+    return isOrderStorePickup(order);
   }
 
   // --- Source / courier-partner / tracking (Orders list columns) -----------
 
   /** Builds the Delhivery public tracking URL for an AWB (QuikShipX ships via Delhivery). */
   trackUrl(awb: string | null | undefined): string | null {
-    const trimmed = (awb ?? '').trim();
-    return trimmed ? `https://www.delhivery.com/track-v2/package/${encodeURIComponent(trimmed)}` : null;
+    return delhiveryTrackUrl(awb);
   }
 
   /** Opens the courier tracking page for an AWB in a new tab (stops the row click). */
@@ -593,19 +499,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * ships via Delhivery). Null when there is nothing to track.
    */
   orderTrackUrl(order: OrderDetail | null | undefined): string | null {
-    if (!order) {
-      return null;
-    }
-    const direct = (order.trackingUrl ?? '').trim();
-    if (direct) {
-      return direct;
-    }
-    return this.trackUrl(order.awb);
+    return orderTrackUrl(order);
   }
 
   /** True when an order can be tracked (has a vendor link or an AWB). */
   canTrackOrder(order: OrderDetail | null | undefined): boolean {
-    return !!this.orderTrackUrl(order);
+    return isOrderTrackable(order);
   }
 
   /**
@@ -648,40 +547,17 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   /** Business label for the order source column: Sales / Store / Shopify. */
   sourceLabel(source: string | null | undefined): string {
-    switch (source) {
-      case 'SHOPIFY':
-        return 'Shopify';
-      case 'STORE':
-        return 'Store';
-      case 'STOREFRONT':
-        return 'Storefront';
-      case 'SALESPERSON':
-        return 'Sales';
-      default:
-        return source ? humanizeStatus(source) : '—';
-    }
+    return sourceLabel(source);
   }
 
   /** Tabler icon for the order source (non-Shopify sources, which use a logo). */
   sourceIcon(source: string | null | undefined): string {
-    switch (source) {
-      case 'STORE':
-        return 'ti-building-store';
-      case 'STOREFRONT':
-        return 'ti-building-store';
-      case 'SALESPERSON':
-        return 'ti-user';
-      default:
-        return 'ti-circle';
-    }
+    return sourceIcon(source);
   }
 
   /** Human label for the lead-source channel (e.g. "Shopify Abandonment Sale"). */
   leadSourceLabel(leadSource: string | null | undefined): string {
-    if (!leadSource) {
-      return '—';
-    }
-    return LEAD_SOURCE_OPTIONS.find((o) => o.value === leadSource)?.label ?? leadSource;
+    return leadSourceLabel(leadSource);
   }
 
   /**
@@ -691,22 +567,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * here once the backend models it.
    */
   courierPartner(order: OrderSummary): 'IN_HOUSE' | 'QUIKSHIPX' | 'STORE_PICKUP' {
-    if (order.deliveryMethod === 'STORE_PICKUP') {
-      return 'STORE_PICKUP';
-    }
-    return order.deliveryMethod === 'IN_HOUSE' ? 'IN_HOUSE' : 'QUIKSHIPX';
+    return courierPartner(order);
   }
 
   /** Human label for the courier partner column. */
   courierPartnerLabel(order: OrderSummary): string {
-    switch (this.courierPartner(order)) {
-      case 'STORE_PICKUP':
-        return 'Store pickup';
-      case 'IN_HOUSE':
-        return 'In-House';
-      default:
-        return 'QuikShip';
-    }
+    return courierPartnerLabel(order);
   }
 
   /**
@@ -715,10 +581,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * salesperson order, the salesperson's name; else a dash.
    */
   salespersonCell(order: OrderSummary): string {
-    if (order.source === 'SHOPIFY') {
-      return order.shopifyOrderId ? `#${order.shopifyOrderId}` : 'Shopify';
-    }
-    return order.salespersonName || '—';
+    return salespersonCell(order);
   }
 
   // --- In-house manual delivery status (in-house-delivery feature) ----------
@@ -753,22 +616,11 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * Empty when the order has no manual next step (terminal, or awaiting approval).
    */
   allowedManualStages(order: OrderDetail | null): typeof MANUAL_DELIVERY_STAGE_OPTIONS {
-    if (!order) {
-      return [];
-    }
-    const next = MANUAL_NEXT_STAGES[String(order.orderStatus)] ?? [];
-    const isWarehouseStaff = this.auth.hasAnyRole(Role.ADMIN, Role.PACKING_USER);
-    const isSalesperson = this.auth.hasAnyRole(Role.SALESPERSON);
-    return MANUAL_DELIVERY_STAGE_OPTIONS.filter((opt) => {
-      if (!next.includes(opt.value)) {
-        return false;
-      }
-      if (MANUAL_PACKING_STAGES.includes(opt.value)) {
-        return isWarehouseStaff;
-      }
-      // Post-handover stages: in-house orders only.
-      return this.isInHouse(order) && (isWarehouseStaff || isSalesperson);
-    });
+    return allowedManualStagesFor(
+      order,
+      this.auth.hasAnyRole(Role.ADMIN, Role.PACKING_USER),
+      this.auth.hasAnyRole(Role.SALESPERSON),
+    );
   }
 
   /** Whether the manual status control should be offered at all. */
@@ -787,7 +639,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * is still in hand, so it can be retried, or closed out by marking it RTO.
    */
   hasFailedDelivery(order: OrderDetail | null): boolean {
-    return !!order && FAILED_DELIVERY_STATUSES.includes(String(order.orderStatus));
+    return orderHasFailedDelivery(order);
   }
 
   /** Applies the picked stage (and, for in-house, the vehicle no.) to the order. */
@@ -839,6 +691,19 @@ export class OrdersComponent implements OnInit, OnDestroy {
   /** Prevents a contact button from opening the order drawer as well. */
   stopRowClick(event: Event): void {
     event.stopPropagation();
+  }
+
+  /**
+   * Keyboard activation (Enter / Space) for a clickable order row or card. Only acts when the
+   * row itself has focus, so a key press on an inner button, link or checkbox does not also
+   * open the drawer.
+   */
+  openDetailFromKey(event: Event, order: OrderSummary): void {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    event.preventDefault();
+    this.openDetail(order);
   }
 
   /** Opens the customer's phone app from an order-list row. */
@@ -1315,37 +1180,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   /** Whether an ISO timestamp falls within the named date bucket (local time). */
   private matchesDateBucket(iso: string | undefined, bucket: string): boolean {
-    if (!iso) {
-      return false;
-    }
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) {
-      return false;
-    }
-    const now = new Date();
-    const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate());
-    const today = startOfDay(now);
-    const dDay = startOfDay(d);
-    switch (bucket) {
-      case 'today':
-        return dDay.getTime() === today.getTime();
-      case 'yesterday': {
-        const y = new Date(today);
-        y.setDate(y.getDate() - 1);
-        return dDay.getTime() === y.getTime();
-      }
-      case 'week': {
-        // Current calendar week starting Monday.
-        const dayFromMon = (today.getDay() + 6) % 7;
-        const monday = new Date(today);
-        monday.setDate(today.getDate() - dayFromMon);
-        return d.getTime() >= monday.getTime();
-      }
-      case 'month':
-        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-      default:
-        return true;
-    }
+    return matchesDateBucket(iso, bucket);
   }
 
   clearSelection(): void {
@@ -1595,25 +1430,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * COD orders the courier has already paid out, and which are short.
    */
   settlementIcon(order: OrderSummary): { icon: string; tone: string; tooltip: string } | null {
-    const status = order.codSettlementStatus;
-    if (status !== 'SETTLED' && status !== 'PARTIAL') {
-      return null;
-    }
-    const when = order.codSettledDate ? ` on ${this.istDay(order.codSettledDate)}` : '';
-    const settled = formatInr(order.codSettledAmount, 0);
-    if (status === 'PARTIAL') {
-      const shortfall = formatInr(order.codSettledShortfall, 0);
-      return {
-        icon: 'ti-progress-alert',
-        tone: 'partial',
-        tooltip: `COD partially remitted by the courier${when}: ${settled} received, ${shortfall} shortfall still to collect.`,
-      };
-    }
-    return {
-      icon: 'ti-circle-check-filled',
-      tone: 'settled',
-      tooltip: `COD remitted by the courier${when}: ${settled} settled in full.`,
-    };
+    return settlementIcon(order);
   }
 
   /**
@@ -1625,20 +1442,16 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * paying US out — this is about the customer paying the courier on delivery.
    */
   collectedOnDelivery(order: OrderSummary): boolean {
-    return order.orderStatus === OrderStatus.COD_COLLECTED;
-  }
-
-  /** Formats an ISO date as a short IST day for a tooltip (e.g. "13 Oct 2026"). */
-  private istDay(iso: string): string {
-    const d = new Date(iso);
-    return Number.isNaN(d.getTime())
-      ? iso
-      : d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' });
+    return isCollectedOnDelivery(order);
   }
 
   // --- Detail drawer ------------------------------------------------------
 
+  /** The list row last opened in the drawer, kept so a failed load can be retried. */
+  private lastDetailRequest: OrderSummary | null = null;
+
   openDetail(order: OrderSummary): void {
+    this.lastDetailRequest = order;
     this.detailLoading.set(true);
     this.detailError.set(null);
     this.detailTab.set('details');
@@ -1674,6 +1487,18 @@ export class OrdersComponent implements OnInit, OnDestroy {
         this.detailLoading.set(false);
       },
     });
+  }
+
+  /** Re-requests the order the drawer failed to load (Retry button in the drawer error state). */
+  retryDetail(event?: Event): void {
+    // The Retry button is replaced by the loading skeleton, so hand focus to the dialog panel
+    // to keep Escape and Tab working while the order reloads.
+    (event?.currentTarget as HTMLElement | null)
+      ?.closest<HTMLElement>('[role="dialog"]')
+      ?.focus({ preventScroll: true });
+    if (this.lastDetailRequest) {
+      this.openDetail(this.lastDetailRequest);
+    }
   }
 
   closeDetail(): void {
@@ -1793,14 +1618,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * photos, so the detail view uses an initials chip in Shifa green).
    */
   customerInitials(name: string | null | undefined): string {
-    const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) {
-      return '?';
-    }
-    if (parts.length === 1) {
-      return parts[0].slice(0, 2).toUpperCase();
-    }
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return customerInitials(name);
   }
 
   /**
@@ -1809,67 +1627,32 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * (processing steps + pending approval).
    */
   statusPillClass(status: OrderStatus): string {
-    if (PILL_COMPLETED.includes(status)) {
-      return 'is-green';
-    }
-    if (PILL_BAD.includes(status)) {
-      return 'is-red';
-    }
-    return 'is-amber';
+    return statusPillClass(status);
   }
 
   /** Human label for the payment authenticity-verification pill (product-audit §4.4). */
   paymentVerificationLabel(status: string | null | undefined): string {
-    switch (status) {
-      case 'VERIFIED':
-        return 'Payment verified';
-      case 'REJECTED':
-        return 'Payment rejected';
-      case 'PENDING':
-        return 'Awaiting verification';
-      default:
-        return '';
-    }
+    return paymentVerificationLabel(status);
   }
 
   /** Tabler badge tone for the payment-verification pill. */
   paymentVerificationClass(status: string | null | undefined): string {
-    switch (status) {
-      case 'VERIFIED':
-        return 'bg-green-lt';
-      case 'REJECTED':
-        return 'bg-red-lt';
-      case 'PENDING':
-        return 'bg-yellow-lt';
-      default:
-        return 'bg-secondary-lt';
-    }
+    return paymentVerificationClass(status);
   }
 
   /** Human label for a manually-marked RTO reason (label redesign feature). */
   rtoReasonLabel(reason: RtoReasonValue | null | undefined): string {
-    return reason ? RTO_REASON_LABELS[reason] ?? reason : '';
+    return rtoReasonLabel(reason);
   }
 
   /** Human label for a categorized rejection reason (rejection-status feature). */
   rejectReasonLabel(reason: string | null | undefined): string {
-    switch (reason) {
-      case 'RATE_ISSUE':
-        return 'Rate Issue';
-      case 'ADDRESS_PINCODE_ISSUE':
-        return 'Address / Pincode Issue';
-      case 'PAYMENT_ISSUE':
-        return 'Payment Issue';
-      case 'OTHER':
-        return 'Other';
-      default:
-        return '';
-    }
+    return rejectReasonLabel(reason);
   }
 
   /** Whether this order is in a rejected state (admin or payment-panel). */
   isRejected(status: string | null | undefined): boolean {
-    return status === 'REJECTED' || status === 'PAYMENT_REJECTED';
+    return isRejectedStatus(status);
   }
 
   /** Short relative time (enhancement: relative timestamps) — shown alongside the exact date, not instead of it. */
@@ -1887,64 +1670,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * normal delivery journey.
    */
   orderTimelineSteps(order: OrderDetail): OrderTimelineStep[] {
-    const currentGroup = groupForStatus(order.orderStatus);
-    const history = order.statusHistory ?? [];
-
-    // Earliest changedAt whose toStatus falls in each group (oldest first data,
-    // but be defensive and take the min just in case).
-    const firstAtByGroup = new Map<OrderStatusGroupKey, string>();
-    for (const row of history) {
-      const group = groupForStatus(row.toStatus);
-      if (!group) {
-        continue;
-      }
-      const existing = firstAtByGroup.get(group);
-      if (!existing || new Date(row.changedAt).getTime() < new Date(existing).getTime()) {
-        firstAtByGroup.set(group, row.changedAt);
-      }
-    }
-
-    // Exception path: cancelled or failed/returned — show Placed then the
-    // terminal exception step only (no fabricated "Shipped"/"Delivered" steps
-    // that never happened for a cancelled order).
-    if (currentGroup === 'CANCELLED' || currentGroup === 'FAILED_RETURNED') {
-      const placedAt = firstAtByGroup.get('PENDING_APPROVAL') ?? order.createdAt ?? null;
-      const terminalAt = firstAtByGroup.get(currentGroup) ?? null;
-      return [
-        this.buildStep('PENDING_APPROVAL', placedAt, true, false),
-        this.buildStep(currentGroup, terminalAt, true, true),
-      ];
-    }
-
-    const currentIndex = HAPPY_PATH.indexOf(currentGroup || 'PENDING_APPROVAL');
-    return HAPPY_PATH.map((stage, i) => {
-      const at = stage === 'PENDING_APPROVAL' && !firstAtByGroup.has(stage)
-        ? order.createdAt ?? null
-        : firstAtByGroup.get(stage) ?? null;
-      return this.buildStep(stage, at, i <= currentIndex, i === currentIndex);
-    });
-  }
-
-  private buildStep(
-    status: OrderStatusGroupKey,
-    at: string | null,
-    done: boolean,
-    current: boolean,
-  ): OrderTimelineStep {
-    return {
-      status,
-      label: TIMELINE_LABELS[status],
-      icon: TIMELINE_ICONS[status],
-      at,
-      done,
-      current,
-    };
+    return orderTimelineSteps(order);
   }
 
   /** Subtotal = sum of line totals (Money is a decimal string). */
   subtotal(order: OrderDetail): string {
-    const sum = (order.items ?? []).reduce((acc, li) => acc + Number(li.lineTotal ?? 0), 0);
-    return `₹${sum.toFixed(2)}`;
+    return orderSubtotalLabel(order);
   }
 
   /**
@@ -1960,20 +1691,17 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   /** Whether the order carries a positive discount (drives the discount totals line). */
   hasDiscount(order: OrderDetail): boolean {
-    return Number(order.discountAmount ?? 0) > 0;
+    return orderHasDiscount(order);
   }
 
   /** The discount formatted as a "- ₹X" reduction for the totals breakdown. */
   discountDisplay(order: OrderDetail): string {
-    return `- ₹${Number(order.discountAmount ?? 0).toFixed(2)}`;
+    return orderDiscountLabel(order);
   }
 
   /** Google Maps search deep link for the order's delivery address. */
   mapsUrl(order: OrderDetail): string {
-    const query = [order.addressLine, order.city, order.state, order.postalCode]
-      .filter(Boolean)
-      .join(', ');
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+    return orderMapsUrl(order);
   }
 
   downloadInvoice(order: OrderDetail): void {
@@ -2019,11 +1747,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * bulk-approve wiring for a single id — no new backend endpoint (Req 7.5).
    */
   canApprove(order: OrderDetail | null): boolean {
-    return (
-      !!order &&
-      order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL &&
-      this.auth.hasAnyRole(Role.ADMIN)
-    );
+    return canApproveOrder(order, this.auth.hasAnyRole(Role.ADMIN));
   }
 
   /**
@@ -2066,21 +1790,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * the store, so its delivery method is not changed here.
    */
   canSaveDeliveryMethod(order: OrderDetail | null): boolean {
-    if (!order || order.source === 'SHOPIFY') {
-      return false;
-    }
-    return (
-      this.auth.hasAnyRole(Role.ADMIN) &&
-      (order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL ||
-        order.orderStatus === OrderStatus.APPROVED ||
-        order.orderStatus === OrderStatus.LABEL_GENERATED ||
-        order.orderStatus === OrderStatus.PACKED)
-    );
+    return canChangeDeliveryMethod(order, this.auth.hasAnyRole(Role.ADMIN));
   }
 
   /** Whether the drawer's picked delivery method differs from the saved one. */
   deliveryMethodChanged(order: OrderDetail | null): boolean {
-    return !!order && (order.deliveryMethod ?? 'IN_HOUSE') !== this.deliveryMethod();
+    return isDeliveryMethodChanged(order, this.deliveryMethod());
   }
 
   /**
@@ -2183,14 +1898,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   /** Hover title for the Orders-list QuikShipX chip: status + order id + AWB. */
   quikShipTitle(order: OrderSummary): string {
-    const parts = ['QuikShipX ' + (order.quikShipXStatus ?? '')];
-    if (order.quikShipXOrderId) {
-      parts.push('order #' + order.quikShipXOrderId);
-    }
-    if (order.quikShipXAwb) {
-      parts.push('AWB ' + order.quikShipXAwb);
-    }
-    return parts.join(' · ');
+    return quikShipTitle(order);
   }
 
   /** Copies text (QuikShipX order id / AWB) to the clipboard with a toast. */
@@ -2221,55 +1929,22 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   /** Tabler badge class for the friendly stage label, coloured by lifecycle stage. */
   stageBadgeClass(status: OrderStatus): string {
-    switch (groupForStatus(status)) {
-      case 'DELIVERED':
-        return 'badge bg-green-lt';
-      case 'SHIPPED':
-        return 'badge bg-blue-lt';
-      case 'PROCESSING':
-        return 'badge bg-cyan-lt';
-      case 'FAILED_RETURNED':
-        return 'badge bg-red-lt';
-      case 'CANCELLED':
-        return 'badge bg-secondary-lt';
-      default:
-        return 'badge bg-yellow-lt';
-    }
+    return stageBadgeClass(status);
+  }
+
+  /** Whether a QuikShipX status indicates a permanent shipping failure (needs re-route). */
+  isQuikShipFailed(status: string | null | undefined): boolean {
+    return isQuikShipFailed(status);
   }
 
   /** Tabler badge class for a QuikShipX status label (colour by lifecycle stage). */
-  /** Whether a QuikShipX status indicates a permanent shipping failure (needs re-route). */
-  isQuikShipFailed(status: string | null | undefined): boolean {
-    return (status ?? '').toLowerCase().includes('fail');
-  }
-
   quikShipBadgeClass(status: string | null | undefined): string {
-    const s = (status ?? '').toLowerCase();
-    // A permanent QuikShipX failure ("Shipping Failed") must read as a red alarm
-    // so the admin/packer spots it at a glance and re-routes to in-house.
-    if (s.includes('fail')) {
-      return 'tone-red';
-    }
-    if (s.includes('deliver')) {
-      return 'tone-green';
-    }
-    if (s.includes('return') || s.includes('lost') || s.includes('cancel')) {
-      return 'tone-red';
-    }
-    if (s.includes('transit') || s.includes('out for') || s.includes('pickup')) {
-      return 'tone-blue';
-    }
-    if (s.includes('tracking') || s.includes('label') || s.includes('confirm')) {
-      return 'tone-blue';
-    }
-    return 'tone-amber';
+    return quikShipBadgeClass(status);
   }
-
-
 
   /** Whether the open order has a QuikShip courier label available to print. */
   hasQuikShipLabel(order: OrderDetail | null): boolean {
-    return !!order && !!order.quikShipXLabelUrl;
+    return orderHasQuikShipLabel(order);
   }
 
   /**
@@ -2279,8 +1954,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
    * recover with the retry action. In-house orders never go through QuikShipX.
    */
   needsTrackingId(order: OrderDetail | null): boolean {
-    return !!order && !!order.quikShipXStatus && !order.quikShipXLabelUrl
-      && !this.isInHouse(order) && !this.isStorePickup(order);
+    return orderNeedsTrackingId(order);
   }
 
   /** Opens the QuikShipX-hosted courier label PDF in a new tab (when allotted). */
@@ -2458,7 +2132,13 @@ export class OrdersComponent implements OnInit, OnDestroy {
         this.toasts.success(`Courier assigned for ${order.orderCode}.`);
         // Refresh the open drawer so the shipment card + label barcode reflect
         // the newly-assigned courier/AWB immediately.
-        this.service.detail(order.id).subscribe((updated) => this.selectedDetail.set(updated));
+        this.service.detail(order.id).subscribe({
+          next: (updated) => this.selectedDetail.set(updated),
+          error: () =>
+            this.toasts.error(
+              'Courier assigned, but the order could not be refreshed. Reopen the order to see the latest details.',
+            ),
+        });
       },
       error: () => {
         this.assignCourierBusy.set(false);

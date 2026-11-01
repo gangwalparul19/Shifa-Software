@@ -28,9 +28,9 @@
             aria-label="Search purchase orders"
           />
           @if (search.value) {
-            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
-              <i class="ti ti-x"></i>
-            </span>
+            <button type="button" class="input-icon-addon end shifa-clear" (click)="clearSearch()" aria-label="Clear search" title="Clear">
+              <i class="ti ti-x" aria-hidden="true"></i>
+            </button>
           }
         </div>
       </div>
@@ -198,7 +198,7 @@
 <!-- Detail drawer -->
 @if (detailLoading() || selectedPo() || detailError()) {
   <div class="shifa-overlay" (click)="closeDetail()"></div>
-  <aside class="shifa-drawer" role="dialog" aria-label="Purchase order detail">
+  <aside class="shifa-drawer" adminDialog aria-label="Purchase order detail" (dialogClose)="closeDetail()">
     @if (detailLoading()) {
       <div class="shifa-drawer__body">
         <div class="skeleton skeleton-line w-60 mb-3"></div>
@@ -288,10 +288,10 @@
 <!-- Create modal -->
 @if (creating()) {
   <div class="shifa-overlay" (click)="closeCreate()"></div>
-  <div class="shifa-modal shifa-modal--wide" role="dialog" aria-label="Create purchase order">
+  <div class="shifa-modal shifa-modal--wide" adminDialog aria-labelledby="po-create-title" (dialogClose)="closeCreate()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0">New purchase order</h3>
+        <h3 class="card-title mb-0" id="po-create-title">New purchase order</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeCreate()" aria-label="Close"><i class="ti ti-x"></i></button>
         </div>
@@ -399,10 +399,10 @@
 <!-- Receive modal -->
 @if (receivePo(); as po) {
   <div class="shifa-overlay" (click)="closeReceive()"></div>
-  <div class="shifa-modal shifa-modal--wide" role="dialog" aria-label="Receive purchase order">
+  <div class="shifa-modal shifa-modal--wide" adminDialog aria-labelledby="po-receive-title" (dialogClose)="closeReceive()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0">Receive stock — {{ po.poNumber }}</h3>
+        <h3 class="card-title mb-0" id="po-receive-title">Receive stock — {{ po.poNumber }}</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeReceive()" aria-label="Close"><i class="ti ti-x"></i></button>
         </div>

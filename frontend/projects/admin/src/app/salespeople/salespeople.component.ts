@@ -17,8 +17,12 @@ import {
   UpdateStaffProfileRequest,
   VerificationStatus,
 } from './salespeople.service';
+import { openBlob, saveBlob } from '../shared/blob-download.util';
+import { formatDateLabel } from '../shared/date-label.util';
+import { formatInr } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { ToastService } from '../shared/toast.service';
@@ -58,7 +62,7 @@ export interface PerfPeriodStats {
 @Component({
   selector: 'admin-salespeople',
   standalone: true,
-  imports: [ReactiveFormsModule, IstDatePipe, PageHeaderComponent, PaginationComponent, StatePanelComponent],
+  imports: [ReactiveFormsModule, IstDatePipe, PageHeaderComponent, PaginationComponent, StatePanelComponent, DialogDirective],
   templateUrl: './salespeople.component.html',
   styleUrl: './salespeople.component.css',
 })
@@ -264,8 +268,7 @@ export class SalespeopleComponent implements OnInit {
 
   /** Money display for a decimal string (₹, no decimals for compactness). */
   money(value: string | number | null | undefined): string {
-    const n = Number(value ?? 0);
-    return '₹' + Math.round(n).toLocaleString('en-IN');
+    return formatInr(value, 0);
   }
 
   /** Bootstrap text class reflecting a success/conversion rate. */
@@ -413,14 +416,7 @@ export class SalespeopleComponent implements OnInit {
     this.exporting.set(format);
     this.service.exportPerformance(format, period, salespersonId).subscribe({
       next: (result: PerformanceDownload) => {
-        const url = URL.createObjectURL(result.blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = result.filename;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        saveBlob(result.blob, result.filename, `performance.${format}`);
         this.exporting.set(null);
         this.toasts.success(`Performance ${format.toUpperCase()} downloaded.`);
       },
@@ -594,10 +590,9 @@ export class SalespeopleComponent implements OnInit {
     }
     this.service.idProof(member.id).subscribe({
       next: (blob) => {
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
-        // Give the new tab time to read the blob before revoking.
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        // Opens in a new tab (revoked after a delay so the tab can read the blob);
+        // falls back to a download when the browser blocks the popup.
+        openBlob(blob, null, blob.type === 'application/pdf' ? 'id-proof.pdf' : 'id-proof');
       },
       error: () => this.toasts.error('Could not open the ID proof.'),
     });
@@ -683,19 +678,7 @@ export class SalespeopleComponent implements OnInit {
   }
 
   dateLabel(iso: string | null): string {
-    if (!iso) {
-      return '—';
-    }
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) {
-      return iso;
-    }
-    return d.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      timeZone: 'Asia/Kolkata',
-    });
+    return formatDateLabel(iso);
   }
 
   /** Replaces the selected + list row with the server's updated copy. */

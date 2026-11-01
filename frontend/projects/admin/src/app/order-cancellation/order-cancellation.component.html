@@ -150,10 +150,10 @@
 
 <!-- Cancel modal -->
 @if (target(); as o) {
-  <div class="shifa-modal" role="dialog" aria-modal="true" aria-label="Cancel order">
+  <div class="shifa-modal" adminDialog aria-labelledby="oc-cancel-title" (dialogClose)="closeCancel()">
     <div class="card oc-modal">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-ban text-danger me-1"></i>Cancel {{ o.orderCode }}</h3>
+        <h3 class="card-title mb-0" id="oc-cancel-title"><i class="ti ti-ban text-danger me-1" aria-hidden="true"></i>Cancel {{ o.orderCode }}</h3>
         <button type="button" class="btn-close ms-auto" (click)="closeCancel()" [disabled]="cancelling()" aria-label="Close"></button>
       </div>
       <div class="card-body">
@@ -198,7 +198,7 @@
         <div class="form-hint">Required. Shown on the order + the audit trail.</div>
       </div>
       <div class="card-footer d-flex justify-content-end gap-2">
-        <button type="button" class="btn btn-outline-secondary" (click)="closeCancel()" [disabled]="cancelling()">
+        <button type="button" class="btn btn-outline-secondary" data-autofocus (click)="closeCancel()" [disabled]="cancelling()">
           Keep order
         </button>
         <button type="button" class="btn btn-danger" (click)="confirmCancel()" [disabled]="cancelling() || !cancelNote().trim()">

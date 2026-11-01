@@ -5,6 +5,7 @@ import { RouterLink } from '@angular/router';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import { ToastService } from '../shared/toast.service';
 import { AuthenticatedBlobService } from '../shared/authenticated-blob.service';
 import { formatCompactInr, formatInr } from '../shared/inr.pipe';
@@ -26,7 +27,7 @@ type MainTab = 'dashboard' | 'gstr1';
 @Component({
   selector: 'admin-ca-gst-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, PageHeaderComponent, PaginationComponent, StatePanelComponent],
+  imports: [CommonModule, FormsModule, RouterLink, PageHeaderComponent, PaginationComponent, StatePanelComponent, DialogDirective],
   templateUrl: './ca-gst-dashboard.component.html',
   styleUrl: './ca-gst-dashboard.component.css',
 })

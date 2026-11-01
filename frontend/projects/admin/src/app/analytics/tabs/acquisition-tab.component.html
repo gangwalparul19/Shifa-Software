@@ -1,0 +1,195 @@
+@if (loading()) {
+  <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading sources and leads…" />
+} @else if (error(); as message) {
+  <admin-state-panel variant="error" [card]="true" [message]="message" (retry)="retry.emit()" />
+} @else {
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <p class="text-secondary small mb-0">Where your customers come from, and how well each source turns into sales.</p>
+    <a routerLink="/leads" class="btn btn-outline-primary acq-action">
+      <i class="ti ti-users me-1" aria-hidden="true"></i> Open leads
+    </a>
+  </div>
+
+  <!-- ============================ 1. Revenue by source ============================ -->
+  <div class="card mb-3">
+    <div class="card-header py-2">
+      <h3 class="card-title mb-0">Which sources bring revenue</h3>
+      @if (salesPeriod()) {
+        <span class="ms-auto text-secondary small">{{ salesPeriod() }}</span>
+      }
+    </div>
+    @if (overview() === null) {
+      <div class="card-body text-secondary text-center py-4">Sales by source are not available right now.</div>
+    } @else if (sourceRows().length === 0) {
+      <div class="card-body text-secondary text-center py-4">No sales in this period.</div>
+    } @else {
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+          <caption class="visually-hidden">
+            Orders, revenue, share of revenue, average order value and delivery success for each lead source
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Source</th>
+              <th scope="col" class="text-end">Orders</th>
+              <th scope="col" class="text-end">Revenue</th>
+              <th scope="col">Share of revenue</th>
+              <th scope="col" class="text-end d-none d-md-table-cell">Average order</th>
+              <th scope="col" class="text-end d-none d-md-table-cell">Delivery success</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of sourceRows(); track r.key) {
+              <tr>
+                <td class="fw-medium acq-name">{{ r.label }}</td>
+                <td class="text-end">{{ num(r.orders) }}</td>
+                <td class="text-end fw-semibold">{{ money(r.revenue) }}</td>
+                <td>
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="acq-bar d-none d-sm-block" aria-hidden="true">
+                      <div class="acq-bar__fill" [style.width.%]="barWidth(r.revenueSharePct)"></div>
+                    </div>
+                    <span class="text-nowrap">{{ pct(r.revenueSharePct) }}</span>
+                  </div>
+                </td>
+                <td class="text-end d-none d-md-table-cell">{{ money(r.avgOrderValue) }}</td>
+                <td class="text-end d-none d-md-table-cell">
+                  @if (r.successRatePct !== null) {
+                    <span class="fw-semibold {{ rateTone(r.successRatePct) }}">{{ pct(r.successRatePct) }}</span>
+                  } @else {
+                    <span class="text-secondary" title="No parcel has been delivered or failed yet">—</span>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <div class="card-body py-2 border-top small text-secondary">
+        “Not recorded” means the team did not choose a lead source on the order.
+      </div>
+    }
+  </div>
+
+  <!-- ============================ 2. Lead funnel ============================ -->
+  <div class="card mb-3">
+    <div class="card-header py-2">
+      <h3 class="card-title mb-0">Lead funnel</h3>
+    </div>
+    @if (funnel() !== null) {
+      @if (funnelRows().length === 0) {
+        <div class="card-body text-secondary text-center py-4">No leads were added in this period.</div>
+      } @else {
+        <div class="card-body pb-2">
+          <div class="row row-cards">
+            <div class="col-4">
+              <div class="subheader">Leads</div>
+              <div class="h2 m-0">{{ num(funnelTotals().leads) }}</div>
+            </div>
+            <div class="col-4">
+              <div class="subheader">Won</div>
+              <div class="h2 m-0">{{ num(funnelTotals().won) }}</div>
+            </div>
+            <div class="col-4">
+              <div class="subheader">Share won</div>
+              <div class="h2 m-0">{{ pct(funnelTotals().ratePct) }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-vcenter card-table">
+            <caption class="visually-hidden">
+              Leads, leads won and the share of leads won for each lead source
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Source</th>
+                <th scope="col" class="text-end">Leads</th>
+                <th scope="col" class="text-end">Won</th>
+                <th scope="col">Share won</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of funnelRows(); track r.key) {
+                <tr>
+                  <td class="fw-medium acq-name">{{ humanize(r.key) }}</td>
+                  <td class="text-end">{{ num(r.leads) }}</td>
+                  <td class="text-end">{{ num(r.won) }}</td>
+                  <td>
+                    <div class="d-flex align-items-center gap-2">
+                      <div class="acq-bar d-none d-sm-block" aria-hidden="true">
+                        <div class="acq-bar__fill" [style.width.%]="barWidth(r.conversionRate)"></div>
+                      </div>
+                      <span class="text-nowrap">{{ pct(r.conversionRate) }}</span>
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    } @else {
+      <div class="card-body text-secondary text-center py-4">
+        <i class="ti ti-info-circle d-block fs-1 mb-1" aria-hidden="true"></i>
+        Lead data is not available right now. Sales by source above are not affected.
+      </div>
+    }
+  </div>
+
+  @if (funnel() !== null) {
+    <div class="row row-cards">
+      <!-- ============================ 3. Lost leads ============================ -->
+      <div class="col-12 col-lg-6">
+        <div class="card h-100">
+          <div class="card-header py-2">
+            <h3 class="card-title mb-0">Why leads were lost</h3>
+            <span class="ms-auto text-secondary small">{{ num(lostTotal()) }} lost</span>
+          </div>
+          @if (lostRows().length === 0) {
+            <div class="card-body text-secondary">No leads were marked lost in this period.</div>
+          } @else {
+            <ul class="list-unstyled m-0 acq-list">
+              @for (r of lostRows(); track r.label) {
+                <li>
+                  <div class="d-flex justify-content-between gap-2">
+                    <span>{{ r.label }}</span>
+                    <span class="text-nowrap"><strong>{{ num(r.count) }}</strong> · {{ pct(r.sharePct) }}</span>
+                  </div>
+                  <div class="acq-bar acq-bar--wide" aria-hidden="true">
+                    <div class="acq-bar__fill acq-bar__fill--red" [style.width.%]="barWidth(r.sharePct)"></div>
+                  </div>
+                </li>
+              }
+            </ul>
+          }
+        </div>
+      </div>
+
+      <!-- ============================ 4. Open pipeline ============================ -->
+      <div class="col-12 col-lg-6">
+        <div class="card h-100">
+          <div class="card-header py-2">
+            <h3 class="card-title mb-0">Open pipeline now</h3>
+            <span class="ms-auto text-secondary small">{{ num(pipelineTotal()) }} leads</span>
+          </div>
+          <div class="card-body">
+            @if (pipelineChips().length === 0) {
+              <div class="text-secondary">There are no leads in the pipeline.</div>
+            } @else {
+              <ul class="list-unstyled d-flex flex-wrap gap-2 m-0">
+                @for (c of pipelineChips(); track c.label) {
+                  <li class="acq-chip">
+                    <span>{{ c.label }}</span>
+                    <strong>{{ num(c.count) }}</strong>
+                  </li>
+                }
+              </ul>
+              <p class="text-secondary small mt-3 mb-0">This is the position today, whichever period is selected.</p>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+}

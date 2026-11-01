@@ -30,19 +30,20 @@
       aria-label="Global search"
       aria-autocomplete="list"
       [attr.aria-expanded]="open()"
-      aria-controls="global-search-results"
+      [attr.aria-controls]="listboxId"
+      [attr.aria-activedescendant]="activeOptionId()"
     />
     @if (loading()) {
       <span class="input-icon-addon end"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span></span>
     } @else if (expanded()) {
-      <span class="input-icon-addon end shifa-search__close" role="button" (click)="close()" title="Close search">
-        <i class="ti ti-x"></i>
-      </span>
+      <button type="button" class="input-icon-addon end shifa-search__close" (click)="close()" aria-label="Close search" title="Close search">
+        <i class="ti ti-x" aria-hidden="true"></i>
+      </button>
     }
   </div>
 
   @if (open()) {
-    <div class="card shifa-search__panel anim-pop" id="global-search-results" role="listbox">
+    <div class="card shifa-search__panel anim-pop" [id]="listboxId" role="listbox" aria-label="Search results">
       <div class="card-body p-2">
         @if (showNoResults()) {
           <div class="text-center text-secondary py-3">
@@ -51,15 +52,18 @@
           </div>
         } @else if (hasResults()) {
           @if (quickActions().length) {
-            <div class="shifa-search__group">
-              <div class="shifa-search__grouphead">Actions</div>
+            <div class="shifa-search__group" role="group" aria-label="Actions">
+              <div class="shifa-search__grouphead" aria-hidden="true">Actions</div>
               @for (a of quickActions(); track a.route; let i = $index) {
+                @let idx = flatIndexOf('action', i);
                 <button
                   type="button"
                   class="shifa-search__item"
                   role="option"
-                  [class.is-active]="activeIndex() === flatIndexOf('action', i)"
-                  (click)="selectAt(flatIndexOf('action', i))"
+                  [id]="optionId(idx)"
+                  [attr.aria-selected]="activeIndex() === idx"
+                  [class.is-active]="activeIndex() === idx"
+                  (click)="selectAt(idx)"
                 >
                   <i class="{{ a.icon }} shifa-search__icon"></i>
                   <span class="shifa-search__primary">{{ a.label }}</span>
@@ -69,15 +73,18 @@
             </div>
           }
           @if (orders().length) {
-            <div class="shifa-search__group">
-              <div class="shifa-search__grouphead">Orders</div>
+            <div class="shifa-search__group" role="group" aria-label="Orders">
+              <div class="shifa-search__grouphead" aria-hidden="true">Orders</div>
               @for (o of orders(); track o.id; let i = $index) {
+                @let idx = flatIndexOf('order', i);
                 <button
                   type="button"
                   class="shifa-search__item"
                   role="option"
-                  [class.is-active]="activeIndex() === flatIndexOf('order', i)"
-                  (click)="selectAt(flatIndexOf('order', i))"
+                  [id]="optionId(idx)"
+                  [attr.aria-selected]="activeIndex() === idx"
+                  [class.is-active]="activeIndex() === idx"
+                  (click)="selectAt(idx)"
                 >
                   <i class="ti ti-receipt shifa-search__icon"></i>
                   <span class="shifa-search__primary">{{ o.orderCode }}</span>
@@ -87,15 +94,18 @@
             </div>
           }
           @if (products().length) {
-            <div class="shifa-search__group">
-              <div class="shifa-search__grouphead">Products</div>
+            <div class="shifa-search__group" role="group" aria-label="Products">
+              <div class="shifa-search__grouphead" aria-hidden="true">Products</div>
               @for (p of products(); track p.id; let i = $index) {
+                @let idx = flatIndexOf('product', i);
                 <button
                   type="button"
                   class="shifa-search__item"
                   role="option"
-                  [class.is-active]="activeIndex() === flatIndexOf('product', i)"
-                  (click)="selectAt(flatIndexOf('product', i))"
+                  [id]="optionId(idx)"
+                  [attr.aria-selected]="activeIndex() === idx"
+                  [class.is-active]="activeIndex() === idx"
+                  (click)="selectAt(idx)"
                 >
                   <i class="ti ti-leaf shifa-search__icon"></i>
                   <span class="shifa-search__primary">{{ p.name }}</span>
@@ -105,15 +115,18 @@
             </div>
           }
           @if (customers().length) {
-            <div class="shifa-search__group">
-              <div class="shifa-search__grouphead">Customers</div>
+            <div class="shifa-search__group" role="group" aria-label="Customers">
+              <div class="shifa-search__grouphead" aria-hidden="true">Customers</div>
               @for (c of customers(); track c.id; let i = $index) {
+                @let idx = flatIndexOf('customer', i);
                 <button
                   type="button"
                   class="shifa-search__item"
                   role="option"
-                  [class.is-active]="activeIndex() === flatIndexOf('customer', i)"
-                  (click)="selectAt(flatIndexOf('customer', i))"
+                  [id]="optionId(idx)"
+                  [attr.aria-selected]="activeIndex() === idx"
+                  [class.is-active]="activeIndex() === idx"
+                  (click)="selectAt(idx)"
                 >
                   <i class="ti ti-user shifa-search__icon"></i>
                   <span class="shifa-search__primary">{{ c.name }}</span>

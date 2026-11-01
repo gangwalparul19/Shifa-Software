@@ -1,6 +1,7 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthService, Money, Role } from 'core';
+import { formatInr } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { Leaderboard, LeaderboardRow, MyDayService } from '../dashboard/my-day.service';
@@ -156,7 +157,6 @@ export class LeaderboardComponent implements OnInit {
   }
 
   money(value: Money | number | null | undefined): string {
-    const n = Number(value ?? 0);
-    return '₹' + (Number.isFinite(n) ? Math.round(n).toLocaleString('en-IN') : '0');
+    return formatInr(value, 0);
   }
 }

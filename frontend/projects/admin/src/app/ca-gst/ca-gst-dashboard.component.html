@@ -568,9 +568,9 @@
 <!-- ================= Drill-down drawer ================= -->
 @if (drillOpen()) {
   <div class="shifa-drawer-backdrop" (click)="closeDrill()"></div>
-  <aside class="shifa-drawer shifa-drawer--wide" role="dialog" aria-modal="true">
+  <aside class="shifa-drawer shifa-drawer--wide" adminDialog aria-labelledby="gst-dash-drill-title" (dialogClose)="closeDrill()">
     <div class="shifa-drawer__head d-flex align-items-center justify-content-between">
-      <h2 class="m-0 h4">{{ drillTitle() }}</h2>
+      <h2 class="m-0 h4" id="gst-dash-drill-title">{{ drillTitle() }}</h2>
       <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeDrill()" aria-label="Close"><i class="ti ti-x"></i></button>
     </div>
     <div class="shifa-drawer__body">

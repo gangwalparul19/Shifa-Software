@@ -18,10 +18,14 @@ import {
 import { ImportResult, ProductRequest, ProductSalesStats, ProductsService } from './products.service';
 import { CategoriesService, CategoryRequest } from './categories.service';
 import { SettingsService } from '../settings/settings.service';
+import { saveBlob } from '../shared/blob-download.util';
+import { titleCaseCode } from '../shared/enum-label.util';
+import { formatInr } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { PaginationComponent } from '../shared/pagination.component';
+import { DialogDirective } from '../shared/dialog.directive';
 import { SortableHeaderComponent } from '../shared/sortable-header.component';
 import { RowActionsMenuComponent, RowAction } from '../shared/row-actions-menu.component';
 import { ConfirmService } from '../shared/confirm.service';
@@ -53,6 +57,7 @@ const TABLE_KEY = 'products';
     PaginationComponent,
     SortableHeaderComponent,
     RowActionsMenuComponent,
+    DialogDirective,
   ],
   templateUrl: './products.component.html',
   styleUrl: './products.component.css',
@@ -406,10 +411,7 @@ export class ProductsComponent implements OnInit, OnDestroy {
   }
 
   humanizeStock(status: string): string {
-    return status
-      .replaceAll('_', ' ')
-      .toLowerCase()
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+    return titleCaseCode(status);
   }
 
   loadCategories(): void {
@@ -434,10 +436,7 @@ export class ProductsComponent implements OnInit, OnDestroy {
   }
 
   money(value: Money | undefined): string {
-    if (value === undefined || value === null) {
-      return '₹0.00';
-    }
-    return `₹${value}`;
+    return formatInr(value, 2);
   }
 
   categoryName(product: Product): string {
@@ -868,12 +867,7 @@ export class ProductsComponent implements OnInit, OnDestroy {
       'SHIFA-002,Neem Capsules 60ct,499,449,30049011,12,30,true,Supplements,PUBLISHED,Daily wellness',
     ].join('\n');
     const blob = new Blob([sample], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'product-import-sample.csv';
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    saveBlob(blob, 'product-import-sample.csv', 'product-import-sample.csv');
   }
 
   /** Tabler badge tone for a per-row import action. */

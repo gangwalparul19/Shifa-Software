@@ -4,9 +4,11 @@ import com.shifa.oms.audit.AuditActions;
 import com.shifa.oms.audit.AuditService;
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.CurrentUserService;
+import com.shifa.oms.auth.Role;
 import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.common.PageRequests;
 import com.shifa.oms.common.PageResponse;
+import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.courier.CourierAssignmentService;
 import com.shifa.oms.courier.dto.AssignCourierRequest;
 import com.shifa.oms.label.LabelService;
@@ -42,7 +44,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -183,37 +187,63 @@ public class AdminOrderController {
         // punched by their assigned salespeople; admin/accountant see all. The set
         // is resolved server-side (never from a client filter) so it can't be spoofed.
         AuthPrincipal actor = currentUserService.requireCurrentUser();
-        java.util.Collection<Long> creatorIds = scopeResolver.creatorScope(actor).orElse(null);
-        // Drill-down: an ADMIN may narrow the list to a single salesperson's orders
-        // (e.g. tapping a leaderboard / salespeople row → their orders). Only ADMIN
-        // gets this client-supplied narrowing — every other role stays bound to its
-        // own server-derived scope above, so this can't widen or escape it.
-        if (createdBy != null && actor.role() == com.shifa.oms.auth.Role.ADMIN) {
-            creatorIds = java.util.List.of(createdBy);
-        }
+        Collection<Long> creatorIds = resolveCreatorIds(actor, createdBy);
         Pageable pageable = PageRequests.of(page, size, sort, SORT_WHITELIST, DEFAULT_SORT);
         // Parse leniently so a stale pre-collapse group key (e.g. PACKAGING/COMPLETED)
         // maps to the new group instead of 400ing.
         OrderStatusGroup group = OrderStatusGroup.from(statusGroup);
-        // Source filter: "PORTAL" is a synthetic alias meaning "everything except
-        // Shopify" (used by the default UI view). A real enum value (SHOPIFY,
-        // SALESPERSON, STORE, …) is an exact-match filter.
-        com.shifa.oms.order.OrderSource exactSource = null;
-        com.shifa.oms.order.OrderSource excludeSource = null;
-        if (source != null && !source.isBlank()) {
-            if ("PORTAL".equalsIgnoreCase(source.trim())) {
-                excludeSource = com.shifa.oms.order.OrderSource.SHOPIFY;
-            } else {
-                try {
-                    exactSource = com.shifa.oms.order.OrderSource.valueOf(source.trim().toUpperCase(java.util.Locale.ROOT));
-                } catch (IllegalArgumentException ignored) {
-                    // Unknown source value — ignore so stale clients don't 400.
-                }
-            }
-        }
+        // Lenient: an unknown source from a stale client is ignored rather than 400ing.
+        SourceFilter sourceFilter = SourceFilter.parse(source, false);
         return PageResponse.of(
                 adminOrderService.listOrders(
-                        q, status, group, paymentStatus, from, to, pageable, creatorIds, exactSource, excludeSource));
+                        q, status, group, paymentStatus, from, to, pageable, creatorIds,
+                        sourceFilter.exact(), sourceFilter.exclude()));
+    }
+
+    /**
+     * The creators whose orders the caller may list, resolved server-side so a client can
+     * never widen it: salespeople see their own, a team lead their team's, admin and
+     * accountant everyone ({@code null}). Only an ADMIN may narrow it further to a single
+     * salesperson ({@code createdBy}, e.g. tapping a leaderboard row); every other role
+     * stays bound to its own scope.
+     */
+    private Collection<Long> resolveCreatorIds(AuthPrincipal actor, Long createdBy) {
+        Collection<Long> creatorIds = scopeResolver.creatorScope(actor).orElse(null);
+        if (createdBy != null && actor.role() == Role.ADMIN) {
+            creatorIds = List.of(createdBy);
+        }
+        return creatorIds;
+    }
+
+    /**
+     * The Orders {@code source} query parameter. {@code PORTAL} is a synthetic alias for
+     * "everything except Shopify" (the default UI view); any real {@link OrderSource} name
+     * (SHOPIFY, SALESPERSON, STORE, ...) is an exact match; blank means no filter.
+     */
+    private record SourceFilter(OrderSource exact, OrderSource exclude) {
+
+        /**
+         * @param strict when true an unknown value is a 400 (an export must never silently
+         *               cover every source); when false it is ignored so stale clients of
+         *               the list endpoint keep working.
+         */
+        static SourceFilter parse(String source, boolean strict) {
+            if (source == null || source.isBlank()) {
+                return new SourceFilter(null, null);
+            }
+            String value = source.trim();
+            if ("PORTAL".equalsIgnoreCase(value)) {
+                return new SourceFilter(null, OrderSource.SHOPIFY);
+            }
+            try {
+                return new SourceFilter(OrderSource.valueOf(value.toUpperCase(Locale.ROOT)), null);
+            } catch (IllegalArgumentException unknown) {
+                if (strict) {
+                    throw new ValidationException("Unknown order source: " + value);
+                }
+                return new SourceFilter(null, null);
+            }
+        }
     }
 
     /**
@@ -238,25 +268,14 @@ public class AdminOrderController {
             @RequestParam(required = false) String format,
             @RequestParam(required = false) Long createdBy) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
-        java.util.Collection<Long> creatorIds = scopeResolver.creatorScope(actor).orElse(null);
-        if (createdBy != null && actor.role() == com.shifa.oms.auth.Role.ADMIN) {
-            creatorIds = java.util.List.of(createdBy);
-        }
+        Collection<Long> creatorIds = resolveCreatorIds(actor, createdBy);
         OrderStatusGroup group = OrderStatusGroup.from(statusGroup);
-        // Source filter: "PORTAL" = everything except Shopify (mirrors the list endpoint).
-        com.shifa.oms.order.OrderSource exactSource = null;
-        com.shifa.oms.order.OrderSource excludeSource = null;
-        if (source != null && !source.isBlank()) {
-            if ("PORTAL".equalsIgnoreCase(source.trim())) {
-                excludeSource = com.shifa.oms.order.OrderSource.SHOPIFY;
-            } else {
-                try {
-                    exactSource = com.shifa.oms.order.OrderSource.valueOf(source.trim().toUpperCase(java.util.Locale.ROOT));
-                } catch (IllegalArgumentException ignored) { }
-            }
-        }
+        // Strict: an unknown source is a 400 here. Unlike the on-screen list, a file that
+        // quietly covered every source would be mistaken for the filtered export.
+        SourceFilter sourceFilter = SourceFilter.parse(source, true);
         OrderExportService.ExportResult result = orderExportService.export(
-                q, status, group, paymentStatus, from, to, creatorIds, exactSource, excludeSource, format);
+                q, status, group, paymentStatus, from, to, creatorIds,
+                sourceFilter.exact(), sourceFilter.exclude(), format);
         auditService.record(AuditActions.ORDERS_EXPORTED, AuditActions.ENTITY_ORDER, null,
                 "Exported orders list (" + result.filename() + ")");
         return ResponseEntity.ok()

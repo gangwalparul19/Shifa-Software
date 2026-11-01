@@ -65,7 +65,7 @@ public record ProductRequest(
         @PositiveOrZero(message = "lowStockThreshold must not be negative")
         Integer lowStockThreshold,
 
-        /** When true the product joins the storefront featured collection. */
+        /** When true the product is flagged as featured. */
         Boolean featured,
 
         /**

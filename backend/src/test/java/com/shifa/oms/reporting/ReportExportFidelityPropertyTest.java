@@ -6,7 +6,6 @@ import com.shifa.oms.reporting.domain.OrderReportRecord;
 import com.shifa.oms.reporting.domain.ReportTableBuilder;
 import com.shifa.oms.reporting.domain.ReportType;
 import com.shifa.oms.reporting.domain.TabularData;
-import com.shifa.oms.reporting.domain.VyaparTableBuilder;
 import com.shifa.oms.statemachine.OrderStatus;
 import net.jqwik.api.Arbitraries;
 import net.jqwik.api.Arbitrary;
@@ -35,20 +34,19 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * Feature: shifa-herbal-remedies, Property 24: Report and export content
  * fidelity. For ANY generated report, the salesperson-wise rows contain all
- * required columns, and each exported file (Excel, PDF, Vyapar CSV/Excel)
- * contains the same set of rows/columns as the displayed report. Tested at the
- * row-model level: the export builders produce the same rows/headers as the
- * report model (Excel and Vyapar CSV/Excel are round-tripped; PDF is compared
- * against the cell matrix it renders).
+ * required columns, and each exported file (Excel, CSV, PDF) contains the same
+ * set of rows/columns as the displayed report. Tested at the row-model level:
+ * the export builders produce the same rows/headers as the report model
+ * (Excel and CSV are round-tripped; PDF is compared against the cell matrix it
+ * renders).
  *
- * Validates: Requirements 20.3, 20.4, 23.1
+ * Validates: Requirements 20.3, 20.4
  */
 class ReportExportFidelityPropertyTest {
 
     private static final LocalDate EPOCH = LocalDate.of(2024, 1, 1);
 
     private final ReportTableBuilder tableBuilder = new ReportTableBuilder();
-    private final VyaparTableBuilder vyaparBuilder = new VyaparTableBuilder();
     private final ExcelReportExporter excel = new ExcelReportExporter();
     private final PdfReportExporter pdf = new PdfReportExporter();
     private final CsvReportExporter csv = new CsvReportExporter();
@@ -76,31 +74,16 @@ class ReportExportFidelityPropertyTest {
         assertThat(fromExcel.headers()).isEqualTo(table.headers());
         assertThat(fromExcel.rows()).isEqualTo(table.rows());
 
+        // CSV (used by the Orders list export) round-trips to the same headers + rows.
+        TabularData fromCsv = parseCsv(csv.export(table));
+        assertThat(fromCsv.headers()).isEqualTo(table.headers());
+        assertThat(fromCsv.rows()).isEqualTo(table.rows());
+
         // PDF export renders exactly the header + data rows, same columns (Req 20.4).
         List<List<String>> pdfMatrix = PdfReportExporter.toMatrix(table);
         assertThat(pdf.export("t", table)).isNotEmpty();
         assertThat(pdfMatrix.get(0)).isEqualTo(table.headers());
         assertThat(pdfMatrix.subList(1, pdfMatrix.size())).isEqualTo(table.rows());
-    }
-
-    // Feature: shifa-herbal-remedies, Property 24: Vyapar export fidelity
-    @Property(tries = 150)
-    void vyaparExportsReproduceTheVyaparTable(
-            @ForAll @Size(max = 25) List<@net.jqwik.api.From("orders") OrderReportRecord> orders) throws IOException {
-        DateRange window = DateRange.all();
-        TabularData table = vyaparBuilder.build(orders, window);
-
-        assertThat(table.headers()).isEqualTo(VyaparTableBuilder.HEADERS);
-
-        // Vyapar CSV round-trips to the same headers + rows (Req 23.1).
-        TabularData fromCsv = parseCsv(csv.export(table));
-        assertThat(fromCsv.headers()).isEqualTo(table.headers());
-        assertThat(fromCsv.rows()).isEqualTo(table.rows());
-
-        // Vyapar Excel round-trips to the same headers + rows (Req 23.1).
-        TabularData fromExcel = readXlsx(excel.export("Vyapar", table));
-        assertThat(fromExcel.headers()).isEqualTo(table.headers());
-        assertThat(fromExcel.rows()).isEqualTo(table.rows());
     }
 
     // --- Round-trip helpers -------------------------------------------------

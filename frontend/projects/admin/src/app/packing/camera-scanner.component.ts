@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
 import { BarcodeFormat, DecodeHintType } from '@zxing/library';
+import { DialogDirective } from '../shared/dialog.directive';
 
 /**
  * Phone-camera barcode scanner overlay for packing (FEATURE-ROADMAP §8.2).
@@ -27,9 +28,10 @@ import { BarcodeFormat, DecodeHintType } from '@zxing/library';
 @Component({
   selector: 'admin-camera-scanner',
   standalone: true,
+  imports: [DialogDirective],
   template: `
     <div class="cam-overlay" (click)="close()"></div>
-    <div class="cam-modal" role="dialog" aria-label="Scan barcode with camera">
+    <div class="cam-modal" adminDialog aria-label="Scan barcode with camera" (dialogClose)="close()">
       <header class="cam-head">
         <span><i class="ti ti-camera me-1"></i> Scan barcode</span>
         <button type="button" class="cam-close" (click)="close()" aria-label="Close">
@@ -84,6 +86,9 @@ import { BarcodeFormat, DecodeHintType } from '@zxing/library';
         padding: 0.75rem 1rem;
         font-weight: 700;
         background: linear-gradient(135deg, #1f5d3f, #164632);
+      }
+      .cam-modal:focus-visible {
+        outline: none;
       }
       .cam-close {
         border: none;

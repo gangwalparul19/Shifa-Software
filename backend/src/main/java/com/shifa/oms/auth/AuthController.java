@@ -19,8 +19,6 @@ import org.springframework.web.bind.annotation.RestController;
  * Public authentication endpoints (Req 5.2).
  *
  * <ul>
- *   <li>{@code POST /api/auth/register} — self-register a storefront customer,
- *       returning a token pair for immediate auto-login (201).</li>
  *   <li>{@code POST /api/auth/login} — exchange credentials for a token pair, OR
  *       (when MFA is active for the user) a 200 MFA challenge the client must
  *       complete before tokens are issued.</li>

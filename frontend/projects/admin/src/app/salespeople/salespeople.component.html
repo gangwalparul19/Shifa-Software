@@ -187,11 +187,11 @@
 <!-- Detail / onboarding drawer -->
 @if (selected(); as member) {
   <div class="shifa-overlay" (click)="close()"></div>
-  <aside class="shifa-drawer sp-dr" role="dialog" aria-label="Salesperson profile">
+  <aside class="shifa-drawer sp-dr" adminDialog aria-labelledby="salesperson-drawer-title" (dialogClose)="close()">
     <header class="shifa-drawer__head sp-dr__head">
-      <span class="sp-dr__avatar">{{ initials(member.fullName) }}</span>
+      <span class="sp-dr__avatar" aria-hidden="true">{{ initials(member.fullName) }}</span>
       <div class="sp-dr__headmain">
-        <div class="sp-dr__name">{{ member.fullName }}</div>
+        <div class="sp-dr__name" id="salesperson-drawer-title">{{ member.fullName }}</div>
         <div class="sp-dr__sub">&#64;{{ member.username }} · {{ ownerRoleLabel(member.role) }}</div>
       </div>
       <span class="sp-dr__pill sp-pill--{{ member.verificationStatus.toLowerCase() }}">

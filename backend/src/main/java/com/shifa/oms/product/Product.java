@@ -26,7 +26,7 @@ import java.util.List;
  *
  * <p>Monetary columns ({@link #mrp}, {@link #salePrice}) are {@code DECIMAL(12,2)}
  * and carried as {@link BigDecimal} to avoid floating-point drift. The
- * {@link #visibility} flag controls storefront exposure (Req 6.4, 1.1).
+ * {@link #visibility} flag controls catalog exposure (Req 6.4, 1.1).
  */
 @Entity
 @Table(name = "products")
@@ -126,7 +126,7 @@ public class Product {
     @Column(name = "low_stock_threshold")
     private Integer lowStockThreshold;
 
-    /** Marks the product for the storefront "featured collection". */
+    /** Marks the product as featured (the "featured collection" flag from the retired storefront). */
     @Column(name = "featured", nullable = false)
     private boolean featured = false;
 

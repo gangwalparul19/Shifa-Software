@@ -10,6 +10,7 @@ import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { SortableHeaderComponent } from '../shared/sortable-header.component';
+import { titleCaseCode } from '../shared/enum-label.util';
 import { toggleSort, sortParam } from '../shared/sort.util';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { AuditFieldChange, hasAuditDiff, parseAuditDiff } from './audit-diff.util';
@@ -160,10 +161,7 @@ export class AuditComponent implements OnInit, OnDestroy {
   }
 
   humanize(value: string): string {
-    return value
-      .replaceAll('_', ' ')
-      .toLowerCase()
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+    return titleCaseCode(value);
   }
 
   // --- Before/after diff viewer (audit-diff-viewer enhancement) -----------

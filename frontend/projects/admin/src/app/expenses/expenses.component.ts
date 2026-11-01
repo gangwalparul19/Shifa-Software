@@ -1,4 +1,5 @@
 import { IstDatePipe } from '../shared/ist-date.pipe';
+import { DialogDirective } from '../shared/dialog.directive';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -6,6 +7,8 @@ import { Subject, takeUntil } from 'rxjs';
 import { ApiError, SortState } from 'core';
 import { ExpenseRequest, ExpenseResponse } from './expenses.model';
 import { ExpensesService } from './expenses.service';
+import { todayIst } from '../shared/business-date.util';
+import { formatInr } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DensityToggleComponent } from '../shared/density-toggle.component';
@@ -40,6 +43,7 @@ const TABLE_KEY = 'expenses';
     PaginationComponent,
     SortableHeaderComponent,
     RowActionsMenuComponent,
+    DialogDirective,
   ],
   templateUrl: './expenses.component.html',
   styleUrl: './expenses.component.css',
@@ -188,8 +192,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   }
 
   money(value: number | null | undefined): string {
-    const n = typeof value === 'number' && Number.isFinite(value) ? value : 0;
-    return `₹${n.toFixed(2)}`;
+    return formatInr(value, 2);
   }
 
   // --- Add form -----------------------------------------------------------
@@ -292,10 +295,9 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Today's calendar date in the IST business timezone (yyyy-MM-dd), regardless of the device clock. */
   private today(): string {
-    const d = new Date();
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    return todayIst();
   }
 
   private describeError(err: HttpErrorResponse): string {

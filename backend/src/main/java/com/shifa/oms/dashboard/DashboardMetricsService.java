@@ -324,18 +324,7 @@ public class DashboardMetricsService {
 
     /** The GROUP BY order_status aggregate as an {@code OrderStatus -> count} map (unknown names skipped). */
     private java.util.Map<OrderStatus, Long> statusCountMap() {
-        java.util.Map<OrderStatus, Long> map = new java.util.EnumMap<>(OrderStatus.class);
-        for (OrderRepository.StatusCountRow row : orderRepository.statusCounts()) {
-            if (row.getStatus() == null) {
-                continue;
-            }
-            try {
-                map.merge(OrderStatus.valueOf(row.getStatus()), row.getCount(), Long::sum);
-            } catch (IllegalArgumentException ignored) {
-                // A stored status name with no matching enum constant — skip it.
-            }
-        }
-        return map;
+        return OrderStatusCounts.fold(orderRepository.statusCounts());
     }
 
     /** Sums the counts of the given statuses from a status-count map. */

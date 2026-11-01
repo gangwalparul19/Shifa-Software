@@ -189,3 +189,8 @@
   border-bottom: 1px solid rgba(15, 51, 36, 0.08);
 }
 .tm-detail__tabs .btn { min-height: 40px; }
+
+/* The dialog panel itself is only a programmatic focus fallback (see adminDialog): no ring around it. */
+.tm-detail:focus-visible {
+  outline: none;
+}

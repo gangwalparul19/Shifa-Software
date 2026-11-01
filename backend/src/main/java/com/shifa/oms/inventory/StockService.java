@@ -121,12 +121,12 @@ public class StockService {
      * movement, all within the caller's (order-creation) transaction. Products
      * that do not track inventory are ignored (never decremented). A tracked
      * product with insufficient stock is rejected with a {@link ValidationException}
-     * — the server-side guard that mirrors the storefront's out-of-stock block.
+     * — the server-side guard that mirrors the order-entry out-of-stock block.
      *
      * @param product  the ordered product (managed within the current tx)
      * @param quantity the quantity ordered (positive)
      * @param reason   a human-readable reason (e.g. the order code)
-     * @param userId   the acting user id, or {@code null} for storefront orders
+     * @param userId   the acting user id, or {@code null} for system-driven changes
      */
     @Transactional
     public void recordSale(Product product, int quantity, String reason, Long userId) {

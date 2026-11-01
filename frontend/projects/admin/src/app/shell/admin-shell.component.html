@@ -156,7 +156,7 @@
               class="btn btn-ghost-secondary d-flex align-items-center gap-2 px-2 shifa-usermenu__btn"
               (click)="toggleUserMenu()"
               [attr.aria-expanded]="userMenuOpen()"
-              aria-haspopup="menu"
+              aria-controls="shifa-usermenu-panel"
               aria-label="Account menu"
             >
               <span class="avatar avatar-sm shifa-avatar" aria-hidden="true">
@@ -171,7 +171,7 @@
 
             @if (userMenuOpen()) {
               <div class="shifa-backdrop-transparent" (click)="closeUserMenu()"></div>
-              <div class="card shifa-usermenu__panel anim-pop">
+              <div id="shifa-usermenu-panel" class="card shifa-usermenu__panel anim-pop">
                 <div class="card-body p-2">
                   <a
                     routerLink="/my-profile"
@@ -273,9 +273,9 @@
   <aside
     id="shifa-nav-drawer"
     class="shifa-drawer shifa-navdrawer"
-    role="dialog"
-    aria-modal="true"
+    adminDialog
     aria-label="Navigation menu"
+    (dialogClose)="closeMenu()"
   >
     <div class="shifa-drawer__head">
       <a routerLink="/dashboard" class="shifa-brand" aria-label="Shifa Herbal Remedies" (click)="closeMenu()">
@@ -368,10 +368,10 @@
 <!-- ===================== Install-app instructions (FEATURE-ROADMAP §8.1) ===================== -->
 @if (installHelpOpen()) {
   <div class="shifa-overlay" (click)="closeInstallHelp()"></div>
-  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-modal="true" aria-label="Install Shifa OMS">
+  <div class="shifa-modal shifa-modal--sm" adminDialog aria-labelledby="shifa-install-title" (dialogClose)="closeInstallHelp()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-device-mobile-down me-2"></i>Install Shifa OMS</h3>
+        <h3 class="card-title mb-0" id="shifa-install-title"><i class="ti ti-device-mobile-down me-2"></i>Install Shifa OMS</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeInstallHelp()" aria-label="Close">
             <i class="ti ti-x"></i>

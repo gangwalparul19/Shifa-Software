@@ -30,9 +30,9 @@
             aria-label="Search returns"
           />
           @if (search.value) {
-            <span class="input-icon-addon end shifa-clear" (click)="clearSearch()" role="button" title="Clear">
-              <i class="ti ti-x"></i>
-            </span>
+            <button type="button" class="input-icon-addon end shifa-clear" (click)="clearSearch()" aria-label="Clear search" title="Clear">
+              <i class="ti ti-x" aria-hidden="true"></i>
+            </button>
           }
         </div>
       </div>
@@ -225,10 +225,10 @@
 <!-- ===================== Approve modal ===================== -->
 @if (modal() === 'approve' && activeReturn(); as r) {
   <div class="shifa-overlay" (click)="closeModal()"></div>
-  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Approve return">
+  <div class="shifa-modal shifa-modal--sm" adminDialog aria-labelledby="returns-approve-title" (dialogClose)="closeModal()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-check me-2"></i>Approve return #{{ r.id }}</h3>
+        <h3 class="card-title mb-0" id="returns-approve-title"><i class="ti ti-check me-2" aria-hidden="true"></i>Approve return #{{ r.id }}</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeModal()" aria-label="Close">
             <i class="ti ti-x"></i>
@@ -276,10 +276,10 @@
 <!-- ===================== Reject modal ===================== -->
 @if (modal() === 'reject' && activeReturn(); as r) {
   <div class="shifa-overlay" (click)="closeModal()"></div>
-  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Reject return">
+  <div class="shifa-modal shifa-modal--sm" adminDialog aria-labelledby="returns-reject-title" (dialogClose)="closeModal()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-x me-2"></i>Reject return #{{ r.id }}</h3>
+        <h3 class="card-title mb-0" id="returns-reject-title"><i class="ti ti-x me-2" aria-hidden="true"></i>Reject return #{{ r.id }}</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeModal()" aria-label="Close">
             <i class="ti ti-x"></i>
@@ -315,10 +315,10 @@
 <!-- ===================== Mark refunded modal ===================== -->
 @if (modal() === 'refund' && activeReturn(); as r) {
   <div class="shifa-overlay" (click)="closeModal()"></div>
-  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Mark return refunded">
+  <div class="shifa-modal shifa-modal--sm" adminDialog aria-labelledby="returns-refund-title" (dialogClose)="closeModal()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-cash me-2"></i>Mark refunded #{{ r.id }}</h3>
+        <h3 class="card-title mb-0" id="returns-refund-title"><i class="ti ti-cash me-2" aria-hidden="true"></i>Mark refunded #{{ r.id }}</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeModal()" aria-label="Close">
             <i class="ti ti-x"></i>
@@ -371,10 +371,10 @@
 <!-- ===================== Create return modal ===================== -->
 @if (modal() === 'create') {
   <div class="shifa-overlay" (click)="closeModal()"></div>
-  <div class="shifa-modal shifa-modal--sm" role="dialog" aria-label="Create return">
+  <div class="shifa-modal shifa-modal--sm" adminDialog aria-labelledby="returns-create-title" (dialogClose)="closeModal()">
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0"><i class="ti ti-plus me-2"></i>Create return</h3>
+        <h3 class="card-title mb-0" id="returns-create-title"><i class="ti ti-plus me-2" aria-hidden="true"></i>Create return</h3>
         <div class="card-actions">
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeModal()" aria-label="Close">
             <i class="ti ti-x"></i>
