@@ -11,6 +11,58 @@ export type BankAccountType =
   | 'CASH'
   | 'OTHER';
 
+/** Account purposes with their display labels (shared by the account and payment-method managers). */
+export const BANK_ACCOUNT_TYPE_OPTIONS: { value: BankAccountType; label: string }[] = [
+  { value: 'UPI_QR', label: 'UPI / QR account' },
+  { value: 'BANK_TRANSFER', label: 'Bank transfer account' },
+  { value: 'SHOPIFY_SETTLEMENT', label: 'Shopify settlement' },
+  { value: 'QUICSHIP_REMITTANCE', label: 'QuikShip remittance' },
+  { value: 'CASH', label: 'Cash / counter' },
+  { value: 'OTHER', label: 'Other' },
+];
+
+/** Display label for an account purpose; falls back to the raw code. */
+export function bankAccountTypeLabel(type: BankAccountType): string {
+  return BANK_ACCOUNT_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? type;
+}
+
+/** Payment method as managed by an admin under Settings (ADMIN endpoint). */
+export interface PaymentMethodConfig {
+  id: number;
+  /** Immutable key stored on each payment. */
+  code: string;
+  label: string;
+  /** The salesperson must name the account that received the money. */
+  requiresAccount: boolean;
+  /** When set, the receiving account is auto-selected from accounts of this purpose. */
+  linkedAccountType?: BankAccountType | null;
+  active: boolean;
+  defaultMethod: boolean;
+  sortOrder: number;
+  /** Payments recorded with this method; a used method can be deactivated but not deleted. */
+  usageCount: number;
+}
+
+export interface PaymentMethodRequest {
+  label: string;
+  requiresAccount: boolean;
+  linkedAccountType: BankAccountType | null;
+  active: boolean;
+  defaultMethod: boolean;
+  sortOrder: number;
+}
+
+/** Active payment method as offered at order entry. */
+export interface PaymentMethodOption {
+  code: string;
+  label: string;
+  requiresAccount: boolean;
+  linkedAccountType?: BankAccountType | null;
+  /** Account to pre-select when the method is linked (null when none is set up). */
+  autoAccountId?: number | null;
+  defaultMethod: boolean;
+}
+
 export interface BankAccount {
   id: number;
   displayName: string;
@@ -180,5 +232,32 @@ export class SettingsService {
   /** Safe active accounts for the salesperson payment selector. */
   activePaymentAccounts(): Observable<PaymentAccountOption[]> {
     return this.api.get<PaymentAccountOption[]>('/api/payment-accounts');
+  }
+
+  /** Active payment methods for the order-entry selector (default flagged). */
+  activePaymentMethods(): Observable<PaymentMethodOption[]> {
+    return this.api.get<PaymentMethodOption[]>('/api/payment-methods');
+  }
+
+  /** ADMIN payment-method master list for the Settings page. */
+  paymentMethods(): Observable<PaymentMethodConfig[]> {
+    return this.api.get<PaymentMethodConfig[]>('/api/admin/settings/payment-methods');
+  }
+
+  createPaymentMethod(request: PaymentMethodRequest): Observable<PaymentMethodConfig> {
+    return this.api.post<PaymentMethodConfig>('/api/admin/settings/payment-methods', request);
+  }
+
+  updatePaymentMethod(id: number, request: PaymentMethodRequest): Observable<PaymentMethodConfig> {
+    return this.api.put<PaymentMethodConfig>(`/api/admin/settings/payment-methods/${id}`, request);
+  }
+
+  makeDefaultPaymentMethod(id: number): Observable<PaymentMethodConfig> {
+    return this.api.post<PaymentMethodConfig>(`/api/admin/settings/payment-methods/${id}/default`, {});
+  }
+
+  /** Deletes a never-used method; the server refuses one that already has payments. */
+  deletePaymentMethod(id: number): Observable<void> {
+    return this.api.delete<void>(`/api/admin/settings/payment-methods/${id}`);
   }
 }

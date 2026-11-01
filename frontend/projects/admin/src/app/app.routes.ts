@@ -502,6 +502,14 @@ export const routes: Routes = [
         canActivate: [adminOnlyGuard],
       },
       {
+        // Daily sales per salesperson, daily incentive, month calendar, product-by-day report
+        // (ADMIN only). The slabs themselves are edited under Settings → Incentives.
+        path: 'incentives',
+        loadComponent: () =>
+          import('./incentives/incentives.component').then((m) => m.IncentivesComponent),
+        canActivate: [adminOnlyGuard],
+      },
+      {
         // Retired: the Portal / Shopify / All split now lives on the main
         // dashboard. Old bookmarks land there.
         path: 'channel-dashboard',

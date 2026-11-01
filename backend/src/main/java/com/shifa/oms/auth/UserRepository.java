@@ -40,6 +40,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
      */
     long countByRoleAndActiveTrue(Role role);
 
+    /** Active users holding a role; backs the admin recipient list for report emails. */
+    List<User> findByRoleAndActiveTrue(Role role);
+
     /**
      * The user ids of the salespeople assigned to a given team lead
      * ({@code users.team_lead_id = teamLeadId}). Drives team-scoped visibility

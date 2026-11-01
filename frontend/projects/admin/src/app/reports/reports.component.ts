@@ -184,19 +184,27 @@ export class ReportsComponent implements OnInit {
 
   protected readonly presets: DatePreset[] = [
     { key: 'today', label: 'Today' },
+    { key: 'yesterday', label: 'Yesterday' },
     { key: 'last7', label: 'Last 7 Days' },
     { key: 'last30', label: 'Last 30 Days' },
     { key: 'month', label: 'This Month' },
+    { key: 'lastMonth', label: 'Last Month' },
     { key: 'all', label: 'All Time' },
     { key: 'custom', label: 'Custom' },
   ];
 
+  /** The range a report opens with: the month so far. The user can pick any other option. */
+  private static readonly DEFAULT_PRESET = 'month';
+
   protected readonly form = this.fb.nonNullable.group({
     type: 'daily' as ReportType,
-    preset: 'last30',
+    preset: ReportsComponent.DEFAULT_PRESET,
     from: '',
     to: '',
   });
+
+  /** Numbers the requests so a slow answer for an earlier choice cannot overwrite a newer one. */
+  private requestId = 0;
 
   protected readonly report = signal<ReportResponse | null>(null);
 
@@ -235,7 +243,7 @@ export class ReportsComponent implements OnInit {
   private toastTimer?: ReturnType<typeof setTimeout>;
 
   ngOnInit(): void {
-    this.applyPreset('last30');
+    this.applyPreset(ReportsComponent.DEFAULT_PRESET);
     // Deep link: /reports?type=product (e.g. from a product's "View Sales Report")
     // preselects that report + its matching presentation tab.
     const requested = this.route.snapshot.queryParamMap.get('type');
@@ -287,8 +295,27 @@ export class ReportsComponent implements OnInit {
 
   onPresetChange(key: string): void {
     this.form.controls.preset.setValue(key);
-    if (key !== 'custom') {
-      this.applyPreset(key);
+    if (key === 'custom') {
+      // Start from the month so far when nothing has been typed yet, so the boxes are never blank.
+      const { from, to } = this.form.getRawValue();
+      if (!from && !to) {
+        this.form.controls.from.setValue(monthStartIst());
+        this.form.controls.to.setValue(todayIst());
+      }
+      this.generate();
+      return;
+    }
+    this.applyPreset(key);
+    this.generate();
+  }
+
+  /** A custom start or end date was picked: refresh as soon as the two days make a valid range. */
+  onCustomDateChange(): void {
+    if (!this.isCustom()) {
+      return;
+    }
+    const { from, to } = this.currentRange();
+    if (from && to && from <= to) {
       this.generate();
     }
   }
@@ -354,6 +381,12 @@ export class ReportsComponent implements OnInit {
       case 'today':
         from = to;
         break;
+      case 'yesterday': {
+        const yesterday = addIstDays(to, -1);
+        this.form.controls.from.setValue(yesterday);
+        this.form.controls.to.setValue(yesterday);
+        return;
+      }
       case 'last7':
         from = addIstDays(to, -6);
         break;
@@ -363,6 +396,13 @@ export class ReportsComponent implements OnInit {
       case 'month':
         from = monthStartIst();
         break;
+      case 'lastMonth': {
+        // The whole previous calendar month: day 0 of this month is its last day.
+        const lastDay = addIstDays(monthStartIst(), -1);
+        this.form.controls.from.setValue(`${lastDay.slice(0, 7)}-01`);
+        this.form.controls.to.setValue(lastDay);
+        return;
+      }
       default:
         return;
     }
@@ -382,15 +422,26 @@ export class ReportsComponent implements OnInit {
     }
     const type = this.form.controls.type.value;
     const { from, to } = this.currentRange();
+    if (from && to && from > to) {
+      this.loadError.set('The start date must not be after the end date.');
+      return;
+    }
+    const request = ++this.requestId;
     this.loading.set(true);
     this.loadError.set(null);
     this.service.report(type, from, to).subscribe({
       next: (r) => {
+        if (request !== this.requestId) {
+          return; // a newer choice is already on its way
+        }
         this.report.set(r);
         this.page.set(0);
         this.loading.set(false);
       },
       error: () => {
+        if (request !== this.requestId) {
+          return;
+        }
         this.loading.set(false);
         this.loadError.set('Could not generate the report. Please try again.');
       },

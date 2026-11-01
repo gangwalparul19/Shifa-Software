@@ -29,7 +29,7 @@ export interface PaymentQueueRow {
   duplicateOrders?: DuplicateOrderRef[];
   /** Where the order originated (SALESPERSON / SHOPIFY / STORE). */
   source?: string;
-  paymentMethod?: 'UPI_QR' | 'BANK_TRANSFER' | 'CASH' | 'SHOPIFY' | 'OTHER' | null;
+  paymentMethod?: string | null;
   paymentAccountName?: string | null;
   paymentAccountMasked?: string | null;
   paymentUtr?: string | null;

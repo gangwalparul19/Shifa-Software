@@ -224,6 +224,8 @@ export const ALL_NAV: NavEntry[] = [
         roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON, Role.CA],
       },
       { kind: 'link', label: 'Analytics', path: '/analytics', icon: 'ti-chart-dots', adminOnly: true },
+      // Daily sales per salesperson, the daily bonus they earned, month calendar and product report.
+      { kind: 'link', label: 'Daily Sales & Incentives', path: '/incentives', icon: 'ti-coin', adminOnly: true },
       { kind: 'link', label: 'Delivery Partners', path: '/delivery-partners', icon: 'ti-truck-delivery', adminOnly: true },
       { kind: 'link', label: 'Shopify Sync', path: '/shopify-sync', icon: 'ti-brand-shopify', adminOnly: true },
       { kind: 'link', label: 'Ask Shifa', path: '/assistant', icon: 'ti-robot', adminOnly: true },

@@ -7,6 +7,8 @@ export interface Announcement {
   message: string;
   severity: AnnouncementSeverity | string;
   active: boolean;
+  /** Pinned as a prominent card at the top of the home screen (in addition to the banner). */
+  showOnDashboard: boolean;
   createdByName?: string | null;
   createdAt: string;
 }
@@ -15,6 +17,8 @@ export interface Announcement {
 export interface CreateAnnouncement {
   message: string;
   severity: AnnouncementSeverity;
+  /** Also pin it to the top of everyone's home screen. */
+  showOnDashboard?: boolean;
 }
 
 /** Tabler alert class for an announcement severity. */

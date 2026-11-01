@@ -37,7 +37,7 @@ public record PaymentQueueRow(
         // so the queue can be filtered Portal (non-Shopify) vs Shopify.
         com.shifa.oms.order.OrderSource source,
         // Payment transaction metadata for reconciliation; account number is masked.
-        com.shifa.oms.order.PaymentMethod paymentMethod,
+        String paymentMethod,
         String paymentAccountName,
         String paymentAccountMasked,
         String paymentUtr

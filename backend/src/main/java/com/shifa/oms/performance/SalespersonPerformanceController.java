@@ -49,46 +49,65 @@ public class SalespersonPerformanceController {
         this.salesTargetService = salesTargetService;
     }
 
-    /** Team leaderboard — headline metrics for every salesperson (best month first). */
+    /**
+     * Team leaderboard — headline metrics for every salesperson over a chosen period (this month
+     * when none is given), best revenue first. {@code period} is one of TODAY, YESTERDAY,
+     * LAST_7_DAYS, WEEK, MONTH, LAST_MONTH, OVERALL or CUSTOM; CUSTOM needs {@code from} and
+     * {@code to} (both days included).
+     */
     @GetMapping("/performance")
-    public List<SalespersonPerformanceSummary> leaderboard() {
-        return performanceService.leaderboard();
+    public List<SalespersonPerformanceSummary> leaderboard(
+            @RequestParam(required = false) String period,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return performanceService.leaderboard(window(PerformancePeriod.parse(period), from, to));
     }
 
-    /** One performance owner's full 360: summary + daily trend + recent orders + lead metrics. */
+    /**
+     * One performance owner's full 360: summary + daily trend + recent orders + lead metrics, plus
+     * the figures for the chosen period (this month when none is given).
+     */
     @GetMapping("/{id}/performance")
-    public SalespersonPerformanceDetail detail(@PathVariable Long id,
-                                               @RequestParam(required = false) Integer days) {
-        return performanceService.detail(id, days);
+    public SalespersonPerformanceDetail detail(
+            @PathVariable Long id,
+            @RequestParam(required = false) Integer days,
+            @RequestParam(required = false) String period,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return performanceService.detail(id, days, PerformancePeriod.parse(period), from, to);
     }
 
     @GetMapping("/performance/export")
-    public ResponseEntity<byte[]> exportTeam(@RequestParam(defaultValue = "MONTH") String period,
-                                             @RequestParam(defaultValue = "xlsx") String format) {
-        PerformancePeriod selected = parsePeriod(period);
-        byte[] body = exportService.exportTeam(selected, format);
-        return fileResponse(body, "Salespeople Performance", selected, format);
+    public ResponseEntity<byte[]> exportTeam(
+            @RequestParam(defaultValue = "MONTH") String period,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "xlsx") String format) {
+        PerformancePeriod selected = PerformancePeriod.parse(period);
+        PerformancePeriod.Window window = window(selected, from, to);
+        byte[] body = exportService.exportTeam(selected, window, format);
+        return fileResponse(body, "Salespeople Performance", window, format);
     }
 
     /** Download the complete 360 report for one salesperson and selected period. */
     @GetMapping("/{id}/performance/export")
-    public ResponseEntity<byte[]> exportPerson(@PathVariable Long id,
-                                               @RequestParam(defaultValue = "MONTH") String period,
-                                               @RequestParam(defaultValue = "xlsx") String format) {
-        PerformancePeriod selected = parsePeriod(period);
-        byte[] body = exportService.exportPerson(id, selected, format);
+    public ResponseEntity<byte[]> exportPerson(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "MONTH") String period,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "xlsx") String format) {
+        PerformancePeriod selected = PerformancePeriod.parse(period);
+        PerformancePeriod.Window window = window(selected, from, to);
+        byte[] body = exportService.exportPerson(id, selected, window, format);
         // exportPerson has already rejected an unknown id, so the name lookup cannot fail the request.
         String title = "Salesperson Performance " + exportService.ownerName(id);
-        return fileResponse(body, title, selected, format);
+        return fileResponse(body, title, window, format);
     }
 
-    private static PerformancePeriod parsePeriod(String value) {
-        try {
-            return PerformancePeriod.from(value);
-        } catch (IllegalArgumentException e) {
-            throw new ApiException(org.springframework.http.HttpStatus.BAD_REQUEST,
-                    "UNKNOWN_PERFORMANCE_PERIOD", e.getMessage());
-        }
+    /** The business-zone window for a period (and, for CUSTOM, the two chosen days). */
+    private static PerformancePeriod.Window window(PerformancePeriod period, LocalDate from, LocalDate to) {
+        return period.resolve(LocalDate.now(PerformancePeriod.BUSINESS_ZONE), from, to);
     }
 
     /**
@@ -97,9 +116,8 @@ public class SalespersonPerformanceController {
      * The dates come from the same business-zone window the export itself used.
      */
     private static ResponseEntity<byte[]> fileResponse(byte[] body, String title,
-                                                       PerformancePeriod period, String format) {
+                                                       PerformancePeriod.Window window, String format) {
         String normalized = format == null ? "" : format.trim().toLowerCase();
-        PerformancePeriod.Window window = period.window(LocalDate.now(PerformancePeriod.BUSINESS_ZONE));
         return switch (normalized) {
             case "xlsx", "excel" -> ResponseEntity.ok()
                     .contentType(MediaType.parseMediaType(

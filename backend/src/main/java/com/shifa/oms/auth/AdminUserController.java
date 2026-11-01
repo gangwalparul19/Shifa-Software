@@ -44,10 +44,14 @@ public class AdminUserController {
 
     private final AdminUserService adminUserService;
     private final AuditService auditService;
+    private final PasswordResetNotifier passwordResetNotifier;
 
-    public AdminUserController(AdminUserService adminUserService, AuditService auditService) {
+    public AdminUserController(AdminUserService adminUserService,
+                               AuditService auditService,
+                               PasswordResetNotifier passwordResetNotifier) {
         this.adminUserService = adminUserService;
         this.auditService = auditService;
+        this.passwordResetNotifier = passwordResetNotifier;
     }
 
     /** Lists all users, newest first, for the management grid. */
@@ -78,15 +82,25 @@ public class AdminUserController {
         return response;
     }
 
-    /** Re-encodes and sets a new password for the user. */
+    /**
+     * Replaces the user's password with a temporary credential. The credential is
+     * returned to the calling admin and, when mail is configured and the admin has
+     * an email on file, also emailed to that admin (never to the target user).
+     * The reset is already committed before the email is attempted, and an email
+     * failure never fails the request.
+     */
     @PostMapping("/{id}/reset-password")
     public PasswordResetResponse resetPassword(@PathVariable Long id,
                                                @Valid @RequestBody com.shifa.oms.auth.dto.ResetPasswordRequest request) {
         PasswordResetResponse result = adminUserService.resetPassword(id, request);
         AdminUserResponse response = result.user();
+        String emailedTo = passwordResetNotifier
+                .sendToCurrentAdmin(response, result.temporaryCredential(), result.expiresAt())
+                .orElse(null);
         auditService.record(AuditActions.USER_PASSWORD_RESET, AuditActions.ENTITY_USER,
-                String.valueOf(id), "Reset password for user " + response.username());
-        return result;
+                String.valueOf(id), "Reset password for user " + response.username()
+                        + (emailedTo != null ? " (temporary credential also emailed to the acting admin)" : ""));
+        return result.withEmailedTo(emailedTo);
     }
 
     /** Activates a user so they can authenticate again. */

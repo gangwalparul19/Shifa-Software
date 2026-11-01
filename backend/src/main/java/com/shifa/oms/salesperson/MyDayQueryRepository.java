@@ -128,9 +128,9 @@ public interface MyDayQueryRepository extends Repository<OrderEntity, Long> {
                                    @Param("createdBy") Long createdBy);
 
     /**
-     * Revenue and order count per attributed creator for non-excluded orders
-     * created at or after {@code from}, whole business (not scoped). Most
-     * recently active creator first.
+     * Revenue and order count per attributed creator for non-excluded orders created in
+     * {@code [from, to)}, whole business (not scoped). Most recently active creator first.
+     * An "Overall" caller passes a very early {@code from} and a very late {@code to}.
      */
     @Query("""
             select o.createdBy as creatorId, coalesce(sum(o.totalAmount), 0) as revenue,
@@ -138,12 +138,14 @@ public interface MyDayQueryRepository extends Repository<OrderEntity, Long> {
             from OrderEntity o
             where o.createdBy is not null
               and o.createdAt >= :from
+              and o.createdAt < :to
               and o.orderStatus not in :excluded
             group by o.createdBy
             order by max(o.createdAt) desc
             """)
-    List<CreatorRow> revenueByCreatorSince(@Param("from") LocalDateTime from,
-                                           @Param("excluded") Collection<OrderStatus> excluded);
+    List<CreatorRow> revenueByCreatorBetween(@Param("from") LocalDateTime from,
+                                             @Param("to") LocalDateTime to,
+                                             @Param("excluded") Collection<OrderStatus> excluded);
 
     /**
      * The distinct calendar days on which {@code createdBy} punched an order

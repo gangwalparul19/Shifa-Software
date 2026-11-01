@@ -43,23 +43,13 @@
           (change)="setSort($any($event.target).value)"
           aria-label="Sort salespeople"
         >
-          <option value="revenueThisMonth">Revenue (this month)</option>
-          <option value="ordersThisMonth">Orders (this month)</option>
+          <option value="revenueInPeriod">Revenue (selected period)</option>
+          <option value="ordersInPeriod">Orders (selected period)</option>
           <option value="successRate">Delivery success %</option>
           <option value="name">Name</option>
         </select>
       </div>
       <div class="d-flex align-items-center gap-2 sp-directory-export">
-        <select
-          class="form-select form-select-sm w-auto"
-          [value]="reportPeriod()"
-          (change)="setReportPeriod($any($event.target).value)"
-          aria-label="Performance export period"
-        >
-          @for (p of perfPeriodTabs; track p.key) {
-            <option [value]="p.key">{{ p.label }}</option>
-          }
-        </select>
         <button
           type="button"
           class="btn btn-sm btn-outline-success"
@@ -82,6 +72,26 @@
         </button>
       </div>
     </div>
+  </div>
+
+  <!-- Period: drives every card's orders / revenue, the sort order and the team export -->
+  <div class="sp-period mb-3">
+    <div class="sp-period__head">
+      <span class="text-secondary small fw-semibold"><i class="ti ti-calendar-stats me-1" aria-hidden="true"></i>Period</span>
+      @if (performanceLoading()) {
+        <span class="text-secondary small"><span class="spinner-border spinner-border-sm me-1"></span>Updating…</span>
+      } @else {
+        <span class="text-secondary small">
+          Orders and revenue are for <strong>{{ directoryLabel() }}</strong>.
+          Delivery success covers every order that has concluded.
+        </span>
+      }
+    </div>
+    <admin-period-picker
+      [value]="directoryPeriod()"
+      ariaLabel="Performance period"
+      (changed)="chooseDirectoryPeriod($event)"
+    />
   </div>
 
   @if (filtered().length === 0) {
@@ -137,14 +147,14 @@
               </div>
               <!-- Performance snapshot (Salesperson 360) -->
               @if (perfFor(member.id); as p) {
-                <div class="sp-kpis mt-3">
+                <div class="sp-kpis mt-3" [class.sp-kpis--loading]="performanceLoading()">
                   <div class="sp-kpi">
-                    <span class="sp-kpi__v">{{ p.ordersThisMonth }}</span>
-                    <span class="sp-kpi__k">Orders (mo)</span>
+                    <span class="sp-kpi__v">{{ p.ordersInPeriod }}</span>
+                    <span class="sp-kpi__k">Orders</span>
                   </div>
                   <div class="sp-kpi">
-                    <span class="sp-kpi__v">{{ money(p.revenueThisMonth) }}</span>
-                    <span class="sp-kpi__k">Revenue (mo)</span>
+                    <span class="sp-kpi__v">{{ money(p.revenueInPeriod) }}</span>
+                    <span class="sp-kpi__k">Revenue</span>
                   </div>
                   <div class="sp-kpi">
                     <span class="sp-kpi__v" [class]="successClass(member.id)">{{ p.successRate }}%</span>
@@ -226,20 +236,17 @@
         @if (detailLoading()) {
           <div class="text-secondary small py-2"><span class="spinner-border spinner-border-sm me-1"></span> Loading performance…</div>
         } @else if (detail(); as d) {
-          <!-- Period lens: sales & orders per day -->
-          <div class="shifa-formtabs sp-perf-period" role="tablist">
-            @for (p of perfPeriodTabs; track p.key) {
-              <button type="button" class="shifa-formtab"
-                [class.is-active]="perfPeriod() === p.key"
-                (click)="setPerfPeriod(p.key)" role="tab"
-                [attr.aria-selected]="perfPeriod() === p.key">
-                {{ p.label }}
-              </button>
-            }
+          <!-- Period: re-fetches this person's figures from the server -->
+          <div class="sp-perf-period">
+            <admin-period-picker
+              [value]="perfSelection()"
+              ariaLabel="Performance period for this person"
+              (changed)="choosePerfPeriod($event)"
+            />
           </div>
 
           <div class="sp-exportbar">
-            <span class="text-secondary small">Export {{ periodLabel(perfPeriod()) }} report</span>
+            <span class="text-secondary small">Export {{ periodLabel(perfSelection()) }} report</span>
             <div class="btn-list">
               <button
                 type="button"
@@ -264,23 +271,33 @@
             </div>
           </div>
 
-          @if (periodStats(); as ps) {
-            <div class="sp-period-summary">
+          @if (periodDetail(); as ps) {
+            <div class="sp-period-summary" [class.sp-period-summary--loading]="detailLoading()">
               <div class="sp-period-summary__tile">
                 <span class="sp-period-summary__v">{{ ps.orders }}</span>
-                <span class="sp-period-summary__k">Orders ({{ ps.label }})</span>
+                <span class="sp-period-summary__k">Orders · {{ ps.label }}</span>
               </div>
               <div class="sp-period-summary__tile">
                 <span class="sp-period-summary__v">{{ money(ps.sales) }}</span>
-                <span class="sp-period-summary__k">Sales ({{ ps.label }})</span>
+                <span class="sp-period-summary__k">Sales · {{ ps.label }}</span>
+              </div>
+              <div class="sp-period-summary__tile">
+                <span class="sp-period-summary__v">{{ money(ps.averageOrderValue) }}</span>
+                <span class="sp-period-summary__k">Average order</span>
+              </div>
+              <div class="sp-period-summary__tile">
+                <span class="sp-period-summary__v">{{ ps.delivered }} / {{ ps.failed }}</span>
+                <span class="sp-period-summary__k">Delivered / failed</span>
               </div>
             </div>
             <div class="sp-period-note">
               <i class="ti ti-info-circle me-1"></i>Sales exclude cancelled, rejected &amp; payment-rejected orders. Order count includes every order placed.
+              Delivered / failed counts the orders placed in this period that have concluded so far.
             </div>
           }
 
-          <!-- Headline metric tiles -->
+          <!-- Snapshot: month-to-date and lifetime, whatever period is chosen above -->
+          <div class="sp-section__sub">Snapshot · this month and all time</div>
           <div class="sp-perf-grid">
             <div class="sp-perf">
               <span class="sp-perf__v">{{ d.summary.ordersThisMonth }}</span>
@@ -317,12 +334,13 @@
           </div>
 
           <!-- Sales & orders per day for the selected period -->
-          @if (periodStats(); as ps) {
+          @if (periodDetail(); as ps) {
             <div class="sp-trend">
               <div class="sp-trend__label">Orders / day · {{ ps.label }}</div>
-              @if (ps.days.length > 0) {
+              @if (periodDays().length > 0 && ps.orders > 0) {
                 <div class="sp-trend__bars">
-                  @for (pt of ps.days; track pt.date) {
+                  <!-- Oldest to newest, left to right; a long period shows its latest 60 days -->
+                  @for (pt of ps.daily.slice(-60); track pt.date) {
                     <span
                       class="sp-trend__bar"
                       [style.height.%]="pt.orders ? (pt.orders / trendMax()) * 100 : 4"
@@ -331,11 +349,11 @@
                     ></span>
                   }
                 </div>
-                <!-- Per-day breakdown (date · orders · sales) -->
+                <!-- Per-day breakdown (date · orders · sales), newest first -->
                 <div class="sp-daybreak">
-                  @for (pt of ps.days; track pt.date) {
+                  @for (pt of periodDays(); track pt.date) {
                     <div class="sp-daybreak__row">
-                      <span class="sp-daybreak__date">{{ pt.date | istDate: 'dd MMM' }}</span>
+                      <span class="sp-daybreak__date">{{ pt.date | istDate: 'dd MMM yyyy' }}</span>
                       <span class="sp-daybreak__orders">{{ pt.orders }} order{{ pt.orders === 1 ? '' : 's' }}</span>
                       <span class="sp-daybreak__sales fw-semibold">{{ money(pt.revenue) }}</span>
                     </div>
@@ -347,7 +365,8 @@
             </div>
           }
 
-          <!-- Lead / CRM performance -->
+          <!-- Lead / CRM performance (all leads, whatever period is chosen above) -->
+          <div class="sp-section__sub">Leads · all time</div>
           <div class="sp-lead">
             <div class="sp-lead__row">
               <span><i class="ti ti-user-plus me-1"></i>Leads</span>
@@ -367,17 +386,24 @@
             </div>
           </div>
 
-          <!-- Recent orders -->
-          @if (d.recentOrders.length > 0) {
+          <!-- Latest orders placed in the selected period -->
+          @if (periodDetail(); as ps) {
             <div class="sp-recent">
-              <div class="sp-recent__label">Recent orders</div>
-              @for (o of d.recentOrders; track o.orderCode) {
+              <div class="sp-recent__label">
+                Orders · {{ ps.label }}
+                @if (ps.orders > ps.ordersListed) {
+                  <span class="text-secondary fw-normal">(latest {{ ps.ordersListed }} of {{ ps.orders }}; the export has them all)</span>
+                }
+              </div>
+              @for (o of ps.recentOrders; track o.orderCode) {
                 <div class="sp-recent__row">
                   <span class="shifa-mono fw-semibold">{{ o.orderCode }}</span>
                   <span class="text-truncate flex-fill mx-2">{{ o.customerName }}</span>
                   <span class="text-secondary me-2">{{ o.createdAt | istDate: 'dd MMM' }}</span>
                   <span class="fw-semibold">{{ money(o.totalAmount) }}</span>
                 </div>
+              } @empty {
+                <div class="text-secondary small py-2">No orders placed in this period.</div>
               }
             </div>
           }

@@ -37,6 +37,15 @@ export class AnnouncementsService {
     );
   }
 
+  /** Pins an announcement to the top of every user's home screen, or removes it from there. */
+  setShowOnDashboard(id: number, value: boolean): Observable<Announcement> {
+    return this.api.post<Announcement>(
+      `/api/admin/announcements/${id}/dashboard`,
+      null,
+      { params: { value } },
+    );
+  }
+
   /** Permanently deletes an announcement. */
   remove(id: number): Observable<void> {
     return this.api.delete<void>(`/api/admin/announcements/${id}`);

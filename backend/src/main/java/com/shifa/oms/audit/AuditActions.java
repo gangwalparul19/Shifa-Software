@@ -133,6 +133,12 @@ public final class AuditActions {
     // Sales targets & incentives (FEATURE-ROADMAP §6.1).
     public static final String SALES_TARGET_SET = "SALES_TARGET_SET";
 
+    // Daily sales incentive rules (V108).
+    /** An admin saved a new version of the daily incentive slabs (or switched them off). */
+    public static final String INCENTIVE_RULES_UPDATED = "INCENTIVE_RULES_UPDATED";
+    /** An admin downloaded a daily sales / incentive report. */
+    public static final String INCENTIVE_REPORT_EXPORTED = "INCENTIVE_REPORT_EXPORTED";
+
     // QuikShipX courier integration.
     /** An order was published to QuikShipX (create-order → their Pending section). */
     public static final String QUIKSHIPX_PUBLISHED = "QUIKSHIPX_PUBLISHED";
@@ -178,6 +184,7 @@ public final class AuditActions {
     public static final String ENTITY_RECEIVABLE = "RECEIVABLE";
     public static final String ENTITY_USER = "USER";
     public static final String ENTITY_SETTINGS = "SETTINGS";
+    public static final String ENTITY_INCENTIVE_RULES = "INCENTIVE_RULES";
     public static final String ENTITY_PRODUCT = "PRODUCT";
     // LEGACY: coupon module removed; kept for historical audit rows.
     public static final String ENTITY_COUPON = "COUPON";

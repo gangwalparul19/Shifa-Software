@@ -46,6 +46,9 @@ import com.shifa.oms.reconciliation.ReceivableRepository;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
 import com.shifa.oms.settings.AppSettings;
 import com.shifa.oms.settings.BankAccountRepository;
+import com.shifa.oms.settings.BankAccountType;
+import com.shifa.oms.settings.PaymentMethod;
+import com.shifa.oms.settings.PaymentMethodService;
 import com.shifa.oms.settings.SettingsService;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.slf4j.Logger;
@@ -167,11 +170,21 @@ public class OrderService {
     private BankAccountRepository bankAccountRepository;
     /** Optional payment repository used to flag reused UTRs at capture time. */
     private OrderPaymentRepository orderPaymentRepository;
+    /**
+     * Optional payment-method master (admin-managed under Settings). Null under the legacy unit
+     * constructors, in which case the historical built-in codes are used.
+     */
+    private PaymentMethodService paymentMethodService;
 
     /** Injected separately so historical unit constructors remain source-compatible. */
     @Autowired(required = false)
     void setBankAccountRepository(BankAccountRepository bankAccountRepository) {
         this.bankAccountRepository = bankAccountRepository;
+    }
+
+    @Autowired(required = false)
+    void setPaymentMethodService(PaymentMethodService paymentMethodService) {
+        this.paymentMethodService = paymentMethodService;
     }
 
     @Autowired(required = false)
@@ -1889,7 +1902,14 @@ public class OrderService {
     /** Fills a payment transaction from an order-entry capture. */
     private PaymentCapture resolvePaymentCapture(String methodRaw, Long accountId, String utrRaw,
                                                  BigDecimal amount, Long currentOrderId) {
-        PaymentMethod method = PaymentMethod.from(methodRaw);
+        // The method comes from the admin-managed master: a blank code means the default method,
+        // and an unknown or deactivated one is rejected. Without the master (legacy unit
+        // constructors) the historical built-in codes apply.
+        PaymentMethod configured = paymentMethodService == null ? null : paymentMethodService.requireUsable(methodRaw);
+        String method = configured != null ? configured.getCode() : legacyMethodCode(methodRaw);
+        boolean requiresAccount = configured != null
+                ? configured.isRequiresAccount() : legacyRequiresAccount(method);
+        BankAccountType linkedType = configured == null ? null : configured.getLinkedAccountType();
         String utr = normalizeUtr(utrRaw);
         if (bankAccountRepository == null) {
             return new PaymentCapture(method, accountId, null, null, utr);
@@ -1897,14 +1917,22 @@ public class OrderService {
         if (amount == null || amount.signum() <= 0) {
             return new PaymentCapture(method, null, null, null, null);
         }
-        if (method.requiresReceivingAccount()) {
-            if (accountId == null) {
-                throw new ValidationException("Select the bank/QR account that received the upfront payment.");
+        // A linked method (e.g. Credit Card Link -> the Shopify settlement account) fills the
+        // account in for the salesperson when the client did not send one.
+        Long linkedAccountId = linkedType == null ? null : paymentMethodService.linkedAccountId(configured);
+        if (linkedType != null && accountId == null) {
+            if (linkedAccountId == null) {
+                throw new ValidationException("No active " + describe(linkedType) + " account is set up for \""
+                        + configured.getLabel() + "\". Ask an admin to add one in Settings.");
             }
-            if (utr == null) {
-                throw new ValidationException("UTR/reference is required for UPI or bank-transfer payments.");
-            }
+            accountId = linkedAccountId;
         }
+        if (requiresAccount && accountId == null) {
+            throw new ValidationException("Select the bank/QR account that received the upfront payment.");
+        }
+        // The UTR/reference is OPTIONAL: a salesperson may not have it at punch time. When one is
+        // given it is still checked for reuse on the same account below; when it is blank it is
+        // stored as NULL, which the duplicate check and the unique index both ignore.
         if (accountId == null) {
             return new PaymentCapture(method, null, null, null, utr);
         }
@@ -1912,6 +1940,11 @@ public class OrderService {
                 .orElseThrow(() -> new ValidationException("The selected receiving bank account does not exist."));
         if (!account.isActive()) {
             throw new ValidationException("The selected receiving bank account is inactive.");
+        }
+        if (linkedType != null && account.getAccountType() != linkedType
+                && !account.getId().equals(linkedAccountId)) {
+            throw new ValidationException("\"" + configured.getLabel() + "\" must be received in a "
+                    + describe(linkedType) + " account.");
         }
         if (utr != null && orderPaymentRepository != null
                 && orderPaymentRepository.countDuplicateUtr(account.getId(), utr, currentOrderId) > 0) {
@@ -1921,7 +1954,21 @@ public class OrderService {
                 account.maskedAccountNumber(), utr);
     }
 
-    private record PaymentCapture(PaymentMethod method, Long accountId, String accountName,
+    /** Method code used when no payment-method master is wired (legacy unit constructors). */
+    private static String legacyMethodCode(String raw) {
+        return raw == null || raw.isBlank() ? "UPI_QR" : raw.trim().toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private static boolean legacyRequiresAccount(String code) {
+        return "UPI_QR".equals(code) || "BANK_TRANSFER".equals(code);
+    }
+
+    /** "SHOPIFY_SETTLEMENT" -> "shopify settlement", for error messages. */
+    private static String describe(BankAccountType type) {
+        return type.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+    }
+
+    private record PaymentCapture(String method, Long accountId, String accountName,
                                   String accountMasked, String utr) {
         static PaymentCapture none() { return new PaymentCapture(null, null, null, null, null); }
     }

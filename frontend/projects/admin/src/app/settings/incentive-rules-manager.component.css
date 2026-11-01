@@ -1,0 +1,50 @@
+.shifa-inc-rules__now,
+.shifa-inc-rules__form {
+  border: 1px solid rgba(31, 93, 63, .18);
+  border-radius: 12px;
+  padding: 1rem;
+  background: rgba(31, 93, 63, .035);
+}
+.shifa-inc-rules .form-control,
+.shifa-inc-rules .input-group-text { min-height: 42px; }
+
+.shifa-inc-rules__slabs {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+.shifa-inc-rules__slabs li { margin: .15rem 0; }
+
+.shifa-inc-rules__rows { display: flex; flex-direction: column; gap: .6rem; }
+.shifa-inc-rules__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: .6rem;
+  align-items: end;
+}
+.shifa-inc-rules__remove { min-width: 44px; min-height: 42px; }
+
+.shifa-inc-rules__preview {
+  border-top: 1px dashed rgba(31, 93, 63, .3);
+  padding-top: .75rem;
+}
+
+.shifa-inc-rules__item {
+  border-left: 3px solid rgba(31, 93, 63, .35);
+  padding: .1rem 0 .1rem .75rem;
+  margin-bottom: .9rem;
+}
+.shifa-inc-rules__chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.shifa-inc-rules__chip {
+  background: #eef4f0;
+  border: 1px solid rgba(31, 93, 63, .2);
+  border-radius: 999px;
+  padding: .1rem .6rem;
+  font-size: .8rem;
+  font-variant-numeric: tabular-nums;
+}
+.shifa-inc-rules__chip--off { background: #eceff1; border-color: #d4dadd; color: #62707a; }
+
+@media (max-width: 575.98px) {
+  /* Keep both amounts and the remove button on screen without scrolling sideways. */
+  .shifa-inc-rules__row { grid-template-columns: 1fr 1fr auto; gap: .4rem; }
+}

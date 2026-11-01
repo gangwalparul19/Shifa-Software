@@ -1,0 +1,12 @@
+.shifa-pm-manager__form {
+  border: 1px solid rgba(31, 93, 63, .18);
+  border-radius: 12px;
+  padding: 1rem;
+  background: rgba(31, 93, 63, .035);
+}
+.shifa-pm-manager .form-control,
+.shifa-pm-manager .form-select { min-height: 42px; }
+.shifa-pm-manager table { font-size: .88rem; }
+@media (max-width: 767.98px) {
+  .shifa-pm-manager table { min-width: 560px; }
+}

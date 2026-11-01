@@ -45,18 +45,35 @@ public class AnnouncementService {
                 .map(AnnouncementResponse::from).toList();
     }
 
-    /** Posts a new (active) announcement. */
+    /**
+     * Posts a new (active) announcement, optionally pinned to the top of the home screen.
+     */
     @Transactional
-    public AnnouncementResponse create(String message, String severity) {
+    public AnnouncementResponse create(String message, String severity, boolean showOnDashboard) {
         AuthPrincipal actor = currentUserService.currentUser().orElse(null);
         Long actorId = actor != null ? actor.userId() : null;
         String actorName = actor != null ? actor.username() : null;
         String normalizedSeverity = (severity == null || severity.isBlank())
                 ? Announcement.SEVERITY_INFO : severity;
-        Announcement saved = repository.save(
-                new Announcement(message.trim(), normalizedSeverity, actorId, actorName));
+        Announcement announcement = new Announcement(message.trim(), normalizedSeverity, actorId, actorName);
+        announcement.setShowOnDashboard(showOnDashboard);
+        Announcement saved = repository.save(announcement);
         auditService.record(AuditActions.ANNOUNCEMENT_CREATED, AuditActions.ENTITY_ANNOUNCEMENT,
-                String.valueOf(saved.getId()), "Posted announcement");
+                String.valueOf(saved.getId()),
+                showOnDashboard ? "Posted announcement (pinned to the dashboard)" : "Posted announcement");
+        return AnnouncementResponse.from(saved);
+    }
+
+    /** Pins an announcement to the top of the home screen, or removes it from there. */
+    @Transactional
+    public AnnouncementResponse setShowOnDashboard(Long id, boolean showOnDashboard) {
+        Announcement announcement = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Announcement " + id + " not found."));
+        announcement.setShowOnDashboard(showOnDashboard);
+        Announcement saved = repository.save(announcement);
+        auditService.record(AuditActions.ANNOUNCEMENT_UPDATED, AuditActions.ENTITY_ANNOUNCEMENT,
+                String.valueOf(id),
+                showOnDashboard ? "Pinned announcement to the dashboard" : "Removed announcement from the dashboard");
         return AnnouncementResponse.from(saved);
     }
 

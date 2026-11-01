@@ -13,6 +13,7 @@ import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.performance.dto.SalespersonDailyPoint;
 import com.shifa.oms.performance.dto.SalespersonLeadMetrics;
 import com.shifa.oms.performance.dto.SalespersonOrderRow;
+import com.shifa.oms.performance.dto.SalespersonPeriodDetail;
 import com.shifa.oms.performance.dto.SalespersonPerformanceDetail;
 import com.shifa.oms.performance.dto.SalespersonPerformanceSummary;
 import com.shifa.oms.statemachine.OrderStatus;
@@ -68,6 +69,13 @@ public class SalespersonPerformanceService {
     private static final int DEFAULT_TREND_DAYS = 14;
     private static final int MAX_TREND_DAYS = 60;
     private static final int RECENT_ORDERS_LIMIT = 10;
+    /** Orders listed for the chosen period in the drawer; the exports carry every one. */
+    private static final int PERIOD_ORDERS_LIMIT = 25;
+    /** Periods up to this many days list every day (zeros included); longer ones list only active days. */
+    private static final long FULL_DAILY_SERIES_MAX_DAYS = 92;
+    /** Bounds standing in for "no limit" when a window is Overall. */
+    private static final LocalDateTime OPEN_START = LocalDateTime.of(2000, 1, 1, 0, 0);
+    private static final LocalDateTime OPEN_END = LocalDateTime.of(2100, 1, 1, 0, 0);
 
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
@@ -101,6 +109,16 @@ public class SalespersonPerformanceService {
     }
 
     /**
+     * Headline metrics for every performance owner over a chosen window, best (that window's
+     * revenue) first. The window fills {@code ordersInPeriod} / {@code revenueInPeriod} /
+     * {@code averageOrderValue} / {@code rtoCount}; the month and lifetime figures are unchanged.
+     */
+    @Transactional(readOnly = true)
+    public List<SalespersonPerformanceSummary> leaderboard(PerformancePeriod.Window window) {
+        return leaderboardFor(null, window);
+    }
+
+    /**
      * Headline metrics for a specific set of performance owners (a team lead's
      * team), best (this month's revenue) first. A {@code null} {@code memberIds}
      * means "all performance owners" (the admin-wide leaderboard); an empty set
@@ -108,6 +126,13 @@ public class SalespersonPerformanceService {
      */
     @Transactional(readOnly = true)
     public List<SalespersonPerformanceSummary> leaderboardFor(java.util.Collection<Long> memberIds) {
+        return leaderboardFor(memberIds, PerformancePeriod.MONTH.window(LocalDate.now(clock)));
+    }
+
+    /** As {@link #leaderboardFor(java.util.Collection)}, ranked over the given window. */
+    @Transactional(readOnly = true)
+    public List<SalespersonPerformanceSummary> leaderboardFor(java.util.Collection<Long> memberIds,
+                                                              PerformancePeriod.Window window) {
         if (memberIds != null && memberIds.isEmpty()) {
             return List.of();
         }
@@ -123,6 +148,16 @@ public class SalespersonPerformanceService {
             }
         }
 
+        // An "Overall" window has no bounds, so it is queried with a very early start and late end.
+        Map<Long, OrderRepository.SalespersonPeriodAggregate> inPeriod = new HashMap<>();
+        for (OrderRepository.SalespersonPeriodAggregate agg : orderRepository.salespersonPeriodStats(
+                window.from() != null ? window.from() : OPEN_START,
+                window.to() != null ? window.to() : OPEN_END)) {
+            if (agg.getSalespersonId() != null) {
+                inPeriod.put(agg.getSalespersonId(), agg);
+            }
+        }
+
         Set<Long> filter = memberIds == null ? null : new java.util.HashSet<>(memberIds);
         List<SalespersonPerformanceSummary> rows = new ArrayList<>();
         // Admins are global performance owners; TEAM_LEAD and SALESPERSON users
@@ -131,19 +166,23 @@ public class SalespersonPerformanceService {
             if (filter != null && !filter.contains(u.getId())) {
                 continue;
             }
-            rows.add(summaryOf(u, byId.get(u.getId())));
+            rows.add(summaryOf(u, byId.get(u.getId()), inPeriod.get(u.getId())));
         }
         rows.sort(Comparator
-                .comparing(SalespersonPerformanceSummary::revenueThisMonth,
+                .comparing(SalespersonPerformanceSummary::revenueInPeriod,
                         Comparator.nullsLast(Comparator.reverseOrder()))
-                .thenComparing(Comparator.comparingLong(SalespersonPerformanceSummary::ordersThisMonth).reversed()));
+                .thenComparing(Comparator.comparingLong(SalespersonPerformanceSummary::ordersInPeriod).reversed()));
         return rows;
     }
 
     private static SalespersonPerformanceSummary summaryOf(
-            User u, OrderRepository.SalespersonOrderAggregate agg) {
+            User u, OrderRepository.SalespersonOrderAggregate agg,
+            OrderRepository.SalespersonPeriodAggregate period) {
         long delivered = agg == null ? 0 : agg.getDeliveredCount();
         long failed = agg == null ? 0 : agg.getFailedCount();
+        long periodOrders = period == null ? 0 : period.getOrdersInPeriod();
+        BigDecimal periodRevenue = nz(period == null ? null : period.getRevenueInPeriod());
+        long revenueOrders = period == null ? 0 : period.getRevenueOrders();
         return new SalespersonPerformanceSummary(
                 u.getId(),
                 u.getUsername(),
@@ -158,7 +197,16 @@ public class SalespersonPerformanceService {
                 delivered,
                 failed,
                 successRate(delivered, failed),
-                nz(agg == null ? null : agg.getCodOutstanding()));
+                nz(agg == null ? null : agg.getCodOutstanding()),
+                periodOrders,
+                periodRevenue,
+                average(periodRevenue, revenueOrders),
+                period == null ? 0 : period.getRtoCount(),
+                0);
+    }
+
+    private static BigDecimal average(BigDecimal revenue, long orders) {
+        return orders == 0 ? BigDecimal.ZERO : revenue.divide(BigDecimal.valueOf(orders), 2, RoundingMode.HALF_UP);
     }
 
     // --- Detail (one salesperson) ------------------------------------------
@@ -172,9 +220,24 @@ public class SalespersonPerformanceService {
      */
     @Transactional(readOnly = true)
     public SalespersonPerformanceDetail detail(Long id, Integer days) {
+        return detail(id, days, PerformancePeriod.MONTH, null, null);
+    }
+
+    /**
+     * As {@link #detail(Long, Integer)}, plus the figures for a chosen period: orders, sales, the
+     * per-day breakdown and the latest orders placed in it.
+     *
+     * @param period     the period to analyse (this month when the caller chose none)
+     * @param customFrom first day of a {@link PerformancePeriod#CUSTOM} range (inclusive)
+     * @param customTo   last day of a {@link PerformancePeriod#CUSTOM} range (inclusive)
+     */
+    @Transactional(readOnly = true)
+    public SalespersonPerformanceDetail detail(Long id, Integer days, PerformancePeriod period,
+                                               LocalDate customFrom, LocalDate customTo) {
         User u = requirePerformanceOwner(id);
         int trendDays = clampDays(days);
         LocalDate today = LocalDate.now(clock);
+        PerformancePeriod.Window window = period.resolve(today, customFrom, customTo);
         LocalDateTime monthStart = today.withDayOfMonth(1).atStartOfDay();
         LocalDateTime dayStart = today.atStartOfDay();
 
@@ -228,8 +291,68 @@ public class SalespersonPerformanceService {
                 .map(SalespersonOrderRow::from)
                 .toList();
         SalespersonLeadMetrics leads = leadMetrics(id, today);
+        SalespersonPeriodDetail periodDetail = periodDetail(orders, period, window);
 
-        return new SalespersonPerformanceDetail(summary, trend, recent, leads);
+        return new SalespersonPerformanceDetail(summary, trend, recent, leads, periodDetail);
+    }
+
+    /** Orders, sales, delivery outcome, per-day series and latest orders for one window. */
+    private SalespersonPeriodDetail periodDetail(List<OrderEntity> allOrders, PerformancePeriod period,
+                                                 PerformancePeriod.Window window) {
+        List<OrderEntity> inWindow = allOrders.stream()   // newest first, as loaded
+                .filter(o -> window.contains(o.getCreatedAt()))
+                .toList();
+
+        BigDecimal sales = BigDecimal.ZERO;
+        long revenueOrders = 0;
+        long delivered = 0;
+        long failed = 0;
+        Map<LocalDate, long[]> ordersByDay = new java.util.TreeMap<>();
+        Map<LocalDate, BigDecimal> salesByDay = new HashMap<>();
+        for (OrderEntity o : inWindow) {
+            OrderStatus status = o.getOrderStatus();
+            BigDecimal total = o.getTotalAmount() == null ? BigDecimal.ZERO : o.getTotalAmount();
+            LocalDate day = o.getCreatedAt().toLocalDate();
+            ordersByDay.computeIfAbsent(day, d -> new long[1])[0]++;
+            if (!NON_REVENUE.contains(status)) {
+                sales = sales.add(total);
+                revenueOrders++;
+                salesByDay.merge(day, total, BigDecimal::add);
+            }
+            if (DELIVERED.contains(status)) {
+                delivered++;
+            } else if (FAILED.contains(status)) {
+                failed++;
+            }
+        }
+
+        List<SalespersonDailyPoint> daily = new ArrayList<>();
+        long span = window.days();
+        if (span >= 1 && span <= FULL_DAILY_SERIES_MAX_DAYS) {
+            // A short, bounded period: every day, so quiet days show as zero.
+            for (LocalDate d = window.firstDay(); !d.isAfter(window.lastDay()); d = d.plusDays(1)) {
+                long[] count = ordersByDay.get(d);
+                daily.add(new SalespersonDailyPoint(d, count == null ? 0 : count[0],
+                        salesByDay.getOrDefault(d, BigDecimal.ZERO)));
+            }
+        } else {
+            // Overall or a very long range: only the days that had orders.
+            for (Map.Entry<LocalDate, long[]> e : ordersByDay.entrySet()) {
+                daily.add(new SalespersonDailyPoint(e.getKey(), e.getValue()[0],
+                        salesByDay.getOrDefault(e.getKey(), BigDecimal.ZERO)));
+            }
+        }
+
+        List<SalespersonOrderRow> listed = inWindow.stream()
+                .limit(PERIOD_ORDERS_LIMIT)
+                .map(SalespersonOrderRow::from)
+                .toList();
+        String label = period == PerformancePeriod.CUSTOM ? window.label() : period.label();
+        return new SalespersonPeriodDetail(
+                period.name(), label, window.firstDay(), window.lastDay(),
+                inWindow.size(), sales, average(sales, revenueOrders),
+                delivered, failed, successRate(delivered, failed),
+                daily, listed, listed.size());
     }
 
     private List<SalespersonDailyPoint> trend(List<OrderEntity> orders, LocalDate today, int days) {

@@ -62,7 +62,7 @@
     (ngSubmit)="save()"
     novalidate
     class="shifa-settings"
-    [hidden]="activeTab() === 'states'"
+    [hidden]="activeTab() === 'states' || activeTab() === 'incentives'"
   >
     @if (formError(); as err) {
       <div class="alert alert-danger anim-fade-up" role="alert">
@@ -285,6 +285,8 @@
           </div>
         </div>
 
+        <admin-payment-method-manager />
+
         <admin-bank-account-manager />
       </div>
     </div>
@@ -447,6 +449,16 @@
       </button>
     </div>
   </form>
+
+  <!-- Daily sales incentive rules (independent of the settings form: it saves and keeps its own history) -->
+  <div class="card mb-3" [hidden]="activeTab() !== 'incentives'">
+    <div class="card-header">
+      <h3 class="card-title mb-0"><i class="ti ti-coin me-2"></i>Incentives</h3>
+    </div>
+    <div class="card-body">
+      <admin-incentive-rules-manager />
+    </div>
+  </div>
 
   <!-- Delivery states section (independent of the settings form above) -->
   <div class="card mb-3" [hidden]="activeTab() !== 'states'">

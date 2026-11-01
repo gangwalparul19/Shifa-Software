@@ -65,6 +65,11 @@ spring:
           auth: true
           starttls:
             enable: true
+          # Without these, a stalled Gmail connection holds a scheduler or request
+          # thread indefinitely (JavaMail defaults to no timeout).
+          connectiontimeout: ${MAIL_CONNECT_TIMEOUT_MS:10000}
+          timeout: ${MAIL_READ_TIMEOUT_MS:15000}
+          writetimeout: ${MAIL_WRITE_TIMEOUT_MS:15000}
 
 server:
   port: 8080

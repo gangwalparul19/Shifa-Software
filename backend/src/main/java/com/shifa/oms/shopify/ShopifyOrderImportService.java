@@ -19,6 +19,7 @@ import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.quikshipx.OrderShipment;
 import com.shifa.oms.quikshipx.OrderShipmentRepository;
 import com.shifa.oms.quikshipx.QuikShipXProperties;
+import com.shifa.oms.settings.PaymentMethodService;
 import com.shifa.oms.shopify.dto.ShopifyOrderPayload;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.slf4j.Logger;
@@ -84,6 +85,7 @@ public class ShopifyOrderImportService {
     private final OutboxEventPublisher outboxEventPublisher;
     private final QuikShipXProperties quikShipXProperties;
     private final OrderShipmentRepository orderShipmentRepository;
+    private final ShopifySettlementService settlementService;
 
     public ShopifyOrderImportService(OrderRepository orderRepository,
                                      ProductRepository productRepository,
@@ -92,7 +94,8 @@ public class ShopifyOrderImportService {
                                      LabelService labelService,
                                      OutboxEventPublisher outboxEventPublisher,
                                      @Nullable QuikShipXProperties quikShipXProperties,
-                                     @Nullable OrderShipmentRepository orderShipmentRepository) {
+                                     @Nullable OrderShipmentRepository orderShipmentRepository,
+                                     @Nullable ShopifySettlementService settlementService) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.orderCodeGenerator = orderCodeGenerator;
@@ -101,6 +104,7 @@ public class ShopifyOrderImportService {
         this.outboxEventPublisher = outboxEventPublisher;
         this.quikShipXProperties = quikShipXProperties;
         this.orderShipmentRepository = orderShipmentRepository;
+        this.settlementService = settlementService;
     }
 
     /** The outcome of importing one Shopify order. */
@@ -181,7 +185,9 @@ public class ShopifyOrderImportService {
 
         if (split.received().signum() > 0) {
             // Record the prepaid amount (no screenshot key — payment happened on Shopify).
-            order.addPayment(new OrderPayment(split.received(), null));
+            // Shopify settles it to the business later, so it is booked under the Shopify
+            // settlement account rather than left without a receiving account.
+            order.addPayment(shopifyPayment(split.received(), order.getOrderCode()));
         }
 
         // Creation history row: null from-status -> initial status, actor/source = SHOPIFY.
@@ -202,6 +208,25 @@ public class ShopifyOrderImportService {
     }
 
     private static final String SOURCE_SHOPIFY = "SHOPIFY";
+
+    /**
+     * Builds the payment row for the amount already paid on Shopify, booked under the Shopify
+     * settlement account (and its linked payment method) when one is set up. With no account the
+     * payment is still saved, unassigned: a configuration gap must never stop a real customer
+     * order from being imported, and the Shopify Sync page can assign it once an account exists.
+     */
+    private OrderPayment shopifyPayment(BigDecimal amount, String orderCode) {
+        Optional<PaymentMethodService.LinkedPaymentTarget> target = settlementService == null
+                ? Optional.empty() : settlementService.target();
+        if (target.isEmpty()) {
+            log.warn("No active Shopify settlement account is set up; the Shopify payment on {} was saved "
+                    + "without a receiving account.", orderCode);
+            return new OrderPayment(amount, null);
+        }
+        PaymentMethodService.LinkedPaymentTarget t = target.get();
+        return new OrderPayment(amount, null, t.methodCode(), t.accountId(),
+                t.accountName(), t.accountMasked(), null);
+    }
 
     /**
      * Runs the full approval side-effect chain on a freshly imported Shopify order,

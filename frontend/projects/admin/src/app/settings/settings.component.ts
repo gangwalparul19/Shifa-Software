@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import {
   AbstractControl,
   FormBuilder,
@@ -14,6 +15,11 @@ import { PageHeaderComponent } from '../shared/page-header.component';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { BankAccountManagerComponent } from './bank-account-manager.component';
+import { PaymentMethodManagerComponent } from './payment-method-manager.component';
+import { IncentiveRulesManagerComponent } from './incentive-rules-manager.component';
+
+/** The Settings page categories. */
+type SettingsTab = 'gst' | 'company' | 'bank' | 'automation' | 'incentives' | 'states';
 import { PaymentAccountOption } from './settings.service';
 /** Accepted logo image types and max size (mirrors the backend rule). */
 const LOGO_ACCEPTED_TYPES = ['image/png', 'image/jpeg'];
@@ -62,12 +68,19 @@ function gstSlabsValidator(control: AbstractControl): ValidationErrors | null {
  */
 @Component({
   selector: 'admin-settings',
-  imports: [ReactiveFormsModule, PageHeaderComponent, BankAccountManagerComponent],
+  imports: [
+    ReactiveFormsModule,
+    PageHeaderComponent,
+    BankAccountManagerComponent,
+    PaymentMethodManagerComponent,
+    IncentiveRulesManagerComponent,
+  ],
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.css',
 })
 export class SettingsComponent implements OnInit, OnDestroy {
   private readonly service = inject(SettingsService);
+  private readonly route = inject(ActivatedRoute);
   private readonly statesService = inject(StatesService);
   private readonly fb = inject(FormBuilder);
   private readonly confirmService = inject(ConfirmService);
@@ -85,15 +98,15 @@ export class SettingsComponent implements OnInit, OnDestroy {
     { key: 'company', label: 'Company', icon: 'ti-building-store' },
     { key: 'bank', label: 'Bank', icon: 'ti-building-bank' },
     { key: 'automation', label: 'Automation', icon: 'ti-robot' },
+    { key: 'incentives', label: 'Incentives', icon: 'ti-coin' },
     { key: 'states', label: 'States', icon: 'ti-map-pin' },
   ] as const;
 
   /** Which settings category is currently shown. */
-  protected readonly activeTab =
-    signal<'gst' | 'company' | 'bank' | 'automation' | 'states'>('gst');
+  protected readonly activeTab = signal<SettingsTab>('gst');
 
   /** Switch the visible settings category. */
-  setTab(key: 'gst' | 'company' | 'bank' | 'automation' | 'states'): void {
+  setTab(key: SettingsTab): void {
     this.activeTab.set(key);
   }
 
@@ -156,6 +169,11 @@ export class SettingsComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
+    // A link such as /settings?tab=incentives opens that category straight away.
+    const requested = this.route.snapshot.queryParamMap.get('tab');
+    if (requested && this.settingsTabs.some((tab) => tab.key === requested)) {
+      this.activeTab.set(requested as SettingsTab);
+    }
     // GSTIN is required and exactly 15 characters only when GST is enabled.
     this.form.controls.gstEnabled.valueChanges.subscribe((enabled) => {
       this.applyGstinValidators(enabled);

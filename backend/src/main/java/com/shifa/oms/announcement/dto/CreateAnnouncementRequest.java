@@ -15,6 +15,14 @@ public record CreateAnnouncementRequest(
 
         @Pattern(regexp = "info|success|warning|danger",
                 message = "severity must be one of info, success, warning, danger")
-        String severity
+        String severity,
+
+        /** Pin it to the top of the home screen as well (optional; defaults to false). */
+        Boolean showOnDashboard
 ) {
+
+    /** Whether the announcement should be pinned to the home screen. */
+    public boolean pinned() {
+        return Boolean.TRUE.equals(showOnDashboard);
+    }
 }

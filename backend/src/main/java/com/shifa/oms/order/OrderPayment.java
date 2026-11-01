@@ -2,8 +2,6 @@ package com.shifa.oms.order;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -31,9 +29,13 @@ public class OrderPayment {
     @Column(name = "screenshot_key", length = 512)
     private String screenshotKey;
 
-    @Enumerated(EnumType.STRING)
+    /**
+     * Code of the {@code payment_methods} row the payment was collected with. Plain text on
+     * purpose: methods are admin-managed, and a method that is later renamed or deactivated must
+     * not make historical payments unreadable.
+     */
     @Column(name = "payment_method", length = 30)
-    private PaymentMethod paymentMethod;
+    private String paymentMethod;
 
     @Column(name = "bank_account_id")
     private Long bankAccountId;
@@ -63,7 +65,7 @@ public class OrderPayment {
     }
 
     public OrderPayment(BigDecimal amountReceived, String screenshotKey,
-                        PaymentMethod paymentMethod, Long bankAccountId,
+                        String paymentMethod, Long bankAccountId,
                         String bankAccountNameSnapshot, String bankAccountMaskedSnapshot,
                         String utr) {
         this.amountReceived = amountReceived;
@@ -79,7 +81,7 @@ public class OrderPayment {
     public Long getId() { return id; }
     public BigDecimal getAmountReceived() { return amountReceived; }
     public String getScreenshotKey() { return screenshotKey; }
-    public PaymentMethod getPaymentMethod() { return paymentMethod; }
+    public String getPaymentMethod() { return paymentMethod; }
     public Long getBankAccountId() { return bankAccountId; }
     public String getBankAccountNameSnapshot() { return bankAccountNameSnapshot; }
     public String getBankAccountMaskedSnapshot() { return bankAccountMaskedSnapshot; }

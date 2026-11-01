@@ -5,6 +5,7 @@ import com.shifa.oms.auth.Role;
 import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.auth.User;
 import com.shifa.oms.auth.UserRepository;
+import com.shifa.oms.performance.PerformancePeriod;
 import com.shifa.oms.performance.SalesTarget;
 import com.shifa.oms.performance.SalesTargetRepository;
 import com.shifa.oms.salesperson.dto.LeaderboardResponse;
@@ -64,6 +65,10 @@ public class MyDayService {
 
     /** How many rows the leaderboard returns. */
     private static final int LEADERBOARD_SIZE = 10;
+
+    /** Bounds standing in for "no limit" when the leaderboard period is Overall. */
+    private static final LocalDateTime OPEN_START = LocalDateTime.of(2000, 1, 1, 0, 0);
+    private static final LocalDateTime OPEN_END = LocalDateTime.of(2100, 1, 1, 0, 0);
 
     /** Placeholder creator id passed to the queries when the scope is "everyone". */
     private static final Long NO_CREATOR = -1L;
@@ -228,19 +233,27 @@ public class MyDayService {
     }
 
     /**
-     * This-month sales leaderboard (all salespeople, by revenue) plus the
-     * caller's own rank and consecutive-day order streak — light gamification.
+     * Sales leaderboard for a period (all salespeople, by revenue) plus the caller's own rank and
+     * consecutive-day order streak — light gamification.
+     *
+     * @param period   the period to rank over (the controller defaults it to this month)
+     * @param customFrom first day of a {@link PerformancePeriod#CUSTOM} range (inclusive)
+     * @param customTo   last day of a {@link PerformancePeriod#CUSTOM} range (inclusive)
      */
     @Transactional(readOnly = true)
-    public LeaderboardResponse leaderboard(AuthPrincipal principal) {
+    public LeaderboardResponse leaderboard(AuthPrincipal principal, PerformancePeriod period,
+                                           LocalDate customFrom, LocalDate customTo) {
         Long me = principal.userId();
         LocalDate today = LocalDate.now(clock);
-        LocalDate firstOfMonth = YearMonth.from(today).atDay(1);
+        PerformancePeriod.Window window = period.resolve(today, customFrom, customTo);
 
-        // Whole business, this month, attributed non-excluded orders, grouped by creator.
+        // Whole business, in the period, attributed non-excluded orders, grouped by creator. An
+        // "Overall" window has no bounds, so it is queried with a very early start and late end.
+        LocalDateTime windowFrom = window.from() != null ? window.from() : OPEN_START;
+        LocalDateTime windowTo = window.to() != null ? window.to() : OPEN_END;
         Map<Long, MyDayQueryRepository.CreatorRow> byCreator = new LinkedHashMap<>();
-        for (MyDayQueryRepository.CreatorRow row : queries.revenueByCreatorSince(
-                firstOfMonth.atStartOfDay(), EXCLUDED)) {
+        for (MyDayQueryRepository.CreatorRow row : queries.revenueByCreatorBetween(
+                windowFrom, windowTo, EXCLUDED)) {
             byCreator.putIfAbsent(row.getCreatorId(), row);
         }
 
@@ -290,7 +303,9 @@ public class MyDayService {
                         i + 1, s.id(), s.name(), scale(s.revenue()), s.orders(), isMe));
             }
         }
-        return new LeaderboardResponse(rows, myRank, scale(myRevenue), streakDays(myOrderDates, today));
+        String periodLabel = period == PerformancePeriod.CUSTOM ? window.label() : period.label();
+        return new LeaderboardResponse(rows, myRank, scale(myRevenue), streakDays(myOrderDates, today),
+                period.name(), periodLabel, window.firstDay(), window.lastDay());
     }
 
     /**

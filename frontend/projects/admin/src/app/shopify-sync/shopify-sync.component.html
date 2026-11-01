@@ -50,6 +50,57 @@
   </div>
 </div>
 
+<!-- ================= Settlement account ================= -->
+@if (settlement(); as s) {
+  <div class="card ss-switch mb-3"
+       [class.is-on]="s.configured && s.unassignedPayments === 0"
+       [class.is-off]="!s.configured"
+       [class.is-warn]="s.configured && s.unassignedPayments > 0">
+    <div class="card-body">
+      <div class="ss-switch__row">
+        <div class="ss-switch__text">
+          <div class="ss-switch__title">
+            <i class="ti ti-building-bank me-2" aria-hidden="true"></i>Settlement account
+            @if (s.configured && s.unassignedPayments === 0) {
+              <span class="badge bg-green-lt ms-2">All assigned</span>
+            } @else if (s.configured) {
+              <span class="badge bg-yellow-lt ms-2">{{ s.unassignedPayments }} to assign</span>
+            } @else {
+              <span class="badge bg-red-lt ms-2">Not set up</span>
+            }
+          </div>
+          <div class="ss-switch__desc">
+            @if (!s.configured) {
+              No account with the <strong>Shopify settlement</strong> purpose exists. Add one under
+              <a routerLink="/settings">Settings → Bank</a>. Until then, money paid on Shopify is saved
+              without a receiving account.
+            } @else {
+              Money paid on Shopify is booked under <strong>{{ s.accountName }}</strong>
+              @if (s.accountMasked) { ({{ s.accountMasked }}) }
+              automatically, because Shopify pays it out to you later.
+              @if (s.unassignedPayments > 0) {
+                <strong>{{ s.unassignedPayments }}</strong> earlier Shopify payment(s) worth
+                <strong>{{ s.unassignedAmount | currency: 'INR' : 'symbol' : '1.0-2' }}</strong>
+                were imported before this account was set up and are not assigned yet.
+              }
+            }
+          </div>
+        </div>
+
+        @if (s.configured && s.unassignedPayments > 0) {
+          <button type="button" class="btn btn-primary ss-btn" (click)="assignSettlement()" [disabled]="assigning()">
+            @if (assigning()) {
+              <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Assigning…
+            } @else {
+              <i class="ti ti-link me-1" aria-hidden="true"></i>Assign {{ s.unassignedPayments }} to {{ s.accountName }}
+            }
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+}
+
 <!-- ================= Summary + action ================= -->
 <div class="card ss-hero mb-3">
   <div class="card-body">

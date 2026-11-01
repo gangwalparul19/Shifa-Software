@@ -1,0 +1,456 @@
+<admin-page-header
+  title="Daily Sales & Incentives"
+  subtitle="Each salesperson's sales by day, the daily bonus they earned, a month calendar with the best and weakest days, and what was sold product by product."
+  [breadcrumbs]="[{ label: 'Analytics & Reports' }, { label: 'Daily sales & incentives' }]"
+/>
+
+<!-- Month + downloads -->
+<div class="card mb-3">
+  <div class="card-body py-2 inc-bar">
+    <div class="inc-month" role="group" aria-label="Month">
+      <button type="button" class="btn btn-outline-secondary inc-month__btn" (click)="shiftMonth(-1)" aria-label="Previous month">
+        <i class="ti ti-chevron-left" aria-hidden="true"></i>
+      </button>
+      <strong class="inc-month__title" aria-live="polite">{{ monthTitle() }}</strong>
+      <button type="button" class="btn btn-outline-secondary inc-month__btn" (click)="shiftMonth(1)"
+        [disabled]="!canGoNext()" aria-label="Next month">
+        <i class="ti ti-chevron-right" aria-hidden="true"></i>
+      </button>
+      @if (month() !== thisMonth) {
+        <button type="button" class="btn btn-sm btn-outline-primary" (click)="goThisMonth()">This month</button>
+      }
+    </div>
+    <div class="inc-export" role="group" aria-label="Download this view">
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="exportCurrent('xlsx')"
+        [disabled]="!!exporting() || !canExport()">
+        @if (exporting() === 'xlsx') {<span class="spinner-border spinner-border-sm me-1"></span>} @else {<i class="ti ti-file-spreadsheet me-1" aria-hidden="true"></i>}Excel
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" (click)="exportCurrent('pdf')"
+        [disabled]="!!exporting() || !canExport()">
+        @if (exporting() === 'pdf') {<span class="spinner-border spinner-border-sm me-1"></span>} @else {<i class="ti ti-file-type-pdf me-1" aria-hidden="true"></i>}PDF
+      </button>
+    </div>
+  </div>
+</div>
+
+@if (loading() && !data()) {
+  <admin-state-panel variant="loading" [card]="true" skeleton="rows" loadingLabel="Loading the month…" />
+} @else if (failed() && !data()) {
+  <admin-state-panel variant="error" [card]="true" title="Could not load the month" (retry)="loadTracker()" />
+} @else if (data(); as d) {
+  <div [class.inc-dim]="loading()">
+    <!-- Month at a glance -->
+    <div class="row g-2 mb-3">
+      <div class="col-6 col-lg-3">
+        <div class="inc-tile"><div class="inc-tile__label">Sales this month</div><div class="inc-tile__value">{{ d.totals.sales | inr: 0 }}</div><div class="inc-tile__sub">{{ d.totals.orders }} orders</div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="inc-tile inc-tile--bonus"><div class="inc-tile__label">Bonus earned</div><div class="inc-tile__value">{{ d.totals.bonus | inr: 0 }}</div><div class="inc-tile__sub">{{ d.totals.bonusDays }} bonus day{{ d.totals.bonusDays === 1 ? '' : 's' }}</div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="inc-tile"><div class="inc-tile__label">Salespeople selling</div><div class="inc-tile__value">{{ sellingCount() }}</div><div class="inc-tile__sub">of {{ d.people.length }} listed</div></div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="inc-tile"><div class="inc-tile__label">Through</div><div class="inc-tile__value">{{ shortDate(d.today > d.monthEnd ? d.monthEnd : d.today) }}</div><div class="inc-tile__sub">Figures update as orders change</div></div>
+      </div>
+    </div>
+
+    <!-- Which rules decided the bonus -->
+    @if (!d.rulesDefined) {
+      <div class="alert alert-warning py-2 d-flex flex-wrap align-items-center gap-2" role="status">
+        <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+        <span>No daily bonus rules are in force for this month, so no bonus is shown.</span>
+        <a class="ms-auto fw-semibold" routerLink="/settings" [queryParams]="{ tab: 'incentives' }">Set the rules</a>
+      </div>
+    } @else {
+      <div class="inc-rules small mb-3">
+        <i class="ti ti-coin text-success" aria-hidden="true"></i>
+        <div class="inc-rules__list">
+          @for (rule of d.rules; track rule.id) {
+            <div>
+              <strong>From {{ rule.effectiveFrom | istDate: 'd MMM' }}:</strong>
+              @for (tier of rule.tiers; track tier.minSales; let last = $last) {
+                {{ tier.minSales | inr: 0 }}+ earns {{ tier.bonus | inr: 0 }}@if (!last) {,}
+              } @empty {
+                no daily bonus
+              }
+            </div>
+          }
+        </div>
+        <a class="ms-auto fw-semibold text-nowrap" routerLink="/settings" [queryParams]="{ tab: 'incentives' }">Change rules</a>
+      </div>
+    }
+
+    <!-- View switch -->
+    <div class="inc-tabs mb-3" role="tablist" aria-label="Views">
+      @for (t of tabs; track t.key) {
+        <button type="button" role="tab" class="btn btn-sm inc-tab"
+          [class.btn-primary]="tab() === t.key" [class.btn-outline-secondary]="tab() !== t.key"
+          [attr.aria-selected]="tab() === t.key" (click)="selectTab(t.key)">
+          <i class="ti {{ t.icon }} me-1" aria-hidden="true"></i>{{ t.label }}
+        </button>
+      }
+    </div>
+
+    @if (d.people.length === 0) {
+      <admin-state-panel [card]="true" icon="ti-users-off" title="No salespeople to show"
+        message="Salespeople appear here once they exist and are active, or have sold in the month." />
+    } @else {
+      <!-- ============================ TRACKER ============================ -->
+      @if (tab() === 'tracker') {
+        <!-- Desktop: the month as a grid. Tap a figure to see its products. -->
+        <div class="card d-none d-md-block">
+          <div class="inc-grid-wrap" tabindex="0" role="region" aria-label="Daily sales by salesperson">
+            <table class="inc-grid">
+              <thead>
+                <tr>
+                  <th class="inc-sticky" scope="col">Salesperson</th>
+                  @for (day of d.days; track day.date) {
+                    <th scope="col" class="inc-day" [class.is-sunday]="day.sunday" [class.is-future]="day.future"
+                      [attr.title]="fullDate(day.date)">
+                      <span>{{ dayNumber(day) }}</span><small>{{ initial(day) }}</small>
+                    </th>
+                  }
+                  <th scope="col" class="text-end">Orders</th>
+                  <th scope="col" class="text-end">Sales</th>
+                  <th scope="col" class="text-end">Bonus</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (p of d.people; track p.personId) {
+                  <tr>
+                    <th scope="row" class="inc-sticky">
+                      <button type="button" class="inc-name" (click)="openCalendar(p)" title="Open this month's calendar">{{ p.name }}</button>
+                      @if (!p.active) {<span class="badge tone-grey ms-1">Inactive</span>}
+                    </th>
+                    @for (cell of p.days; track cell.date; let i = $index) {
+                      <td class="inc-cell" [class.is-sunday]="d.days[i].sunday" [class.is-future]="d.days[i].future">
+                        @if (cell.orders > 0) {
+                          <button type="button" class="inc-cellbtn"
+                            [class.has-bonus]="cell.bonus > 0" [class.is-high]="cell.highest" [class.is-low]="cell.lowest"
+                            [attr.title]="cellTitle(d.days[i], cell)" [attr.aria-label]="cellTitle(d.days[i], cell)"
+                            (click)="openDay(p, cell)">
+                            <span class="inc-amt">{{ cell.sales | compactInr }}</span>
+                            @if (cell.bonus > 0) {<span class="inc-bonus">+{{ cell.bonus | inr: 0 }}</span>}
+                          </button>
+                        } @else if (!d.days[i].future) {
+                          <span class="inc-empty" aria-hidden="true">–</span>
+                        }
+                      </td>
+                    }
+                    <td class="text-end">{{ p.orders }}</td>
+                    <td class="text-end fw-semibold">{{ p.sales | inr: 0 }}</td>
+                    <td class="text-end fw-semibold text-success">{{ p.bonus | inr: 0 }}</td>
+                  </tr>
+                }
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th scope="row" class="inc-sticky">Team</th>
+                  @for (total of d.dayTotals; track total.date; let i = $index) {
+                    <td class="inc-cell inc-total" [class.is-sunday]="d.days[i].sunday" [class.is-future]="d.days[i].future"
+                      [attr.title]="fullDate(total.date) + ' - ' + formatInr(total.sales, 0)">
+                      {{ total.sales > 0 ? (total.sales | compactInr) : '' }}
+                    </td>
+                  }
+                  <td class="text-end">{{ d.totals.orders }}</td>
+                  <td class="text-end fw-semibold">{{ d.totals.sales | inr: 0 }}</td>
+                  <td class="text-end fw-semibold text-success">{{ d.totals.bonus | inr: 0 }}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div class="card-footer small text-secondary inc-legend">
+            <span><i class="inc-key inc-key--bonus"></i>Earned a bonus</span>
+            <span><i class="inc-key inc-key--sunday"></i>Sunday (counts for sales and bonus)</span>
+            <span><i class="ti ti-trending-up text-success" aria-hidden="true"></i>Highest day</span>
+            <span><i class="ti ti-trending-down text-danger" aria-hidden="true"></i>Lowest selling day</span>
+          </div>
+        </div>
+
+        <!-- Phone: one card per person -->
+        <div class="d-md-none inc-cards">
+          @for (p of d.people; track p.personId) {
+            <button type="button" class="inc-card" (click)="openCalendar(p)">
+              <div class="inc-card__head">
+                <strong>{{ p.name }}</strong>
+                @if (!p.active) {<span class="badge tone-grey">Inactive</span>}
+                <span class="inc-card__bonus">{{ p.bonus | inr: 0 }} bonus</span>
+              </div>
+              <div class="inc-card__sales">{{ p.sales | inr: 0 }} <span class="text-secondary">· {{ p.orders }} orders · {{ p.bonusDays }} bonus day{{ p.bonusDays === 1 ? '' : 's' }}</span></div>
+              <div class="inc-card__meta"><i class="ti ti-trending-up text-success" aria-hidden="true"></i> {{ refText(p.highest) }}</div>
+              <div class="inc-card__meta"><i class="ti ti-trending-down text-danger" aria-hidden="true"></i> {{ refText(p.lowest) }}</div>
+            </button>
+          }
+        </div>
+      }
+
+      <!-- ============================ CALENDAR =========================== -->
+      @if (tab() === 'calendar') {
+        @if (selectedPerson(); as person) {
+          <div class="card mb-3">
+            <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
+              <label class="form-label mb-0" for="incPerson">Salesperson</label>
+              <select id="incPerson" class="form-select inc-person" [value]="person.personId"
+                (change)="selectPerson($any($event.target).value)">
+                @for (p of d.people; track p.personId) {
+                  <option [value]="p.personId" [selected]="p.personId === person.personId">{{ p.name }}{{ p.active ? '' : ' (inactive)' }}</option>
+                }
+              </select>
+            </div>
+          </div>
+
+          <div class="row g-2 mb-3">
+            <div class="col-6 col-lg-2"><div class="inc-tile"><div class="inc-tile__label">Sales</div><div class="inc-tile__value">{{ person.sales | inr: 0 }}</div><div class="inc-tile__sub">{{ person.orders }} orders</div></div></div>
+            <div class="col-6 col-lg-2"><div class="inc-tile inc-tile--bonus"><div class="inc-tile__label">Bonus</div><div class="inc-tile__value">{{ person.bonus | inr: 0 }}</div><div class="inc-tile__sub">{{ person.bonusDays }} day{{ person.bonusDays === 1 ? '' : 's' }}</div></div></div>
+            <div class="col-6 col-lg-3"><div class="inc-tile inc-tile--high"><div class="inc-tile__label"><i class="ti ti-trending-up" aria-hidden="true"></i> Highest day</div><div class="inc-tile__value inc-tile__value--sm">{{ refText(person.highest) }}</div><div class="inc-tile__sub">Sundays not counted</div></div></div>
+            <div class="col-6 col-lg-3"><div class="inc-tile inc-tile--low"><div class="inc-tile__label"><i class="ti ti-trending-down" aria-hidden="true"></i> Lowest selling day</div><div class="inc-tile__value inc-tile__value--sm">{{ refText(person.lowest) }}</div><div class="inc-tile__sub">Days with sales, Sundays not counted</div></div></div>
+            <div class="col-6 col-lg-2"><div class="inc-tile"><div class="inc-tile__label">No-sale days</div><div class="inc-tile__value">{{ person.noSalesDays }}</div><div class="inc-tile__sub">Mon–Sat so far</div></div></div>
+          </div>
+
+          <div class="card mb-3">
+            <div class="card-body">
+              <div class="inc-cal" role="grid" [attr.aria-label]="person.name + ' sales calendar, ' + monthTitle()">
+                <div class="inc-cal__head" role="row">
+                  @for (name of weekdayHeads; track name) {
+                    <div class="inc-cal__dow" [class.is-sunday]="name === 'Sun'" role="columnheader">{{ name }}</div>
+                  }
+                </div>
+                @for (week of weeks(); track $index) {
+                  <div class="inc-cal__week" role="row">
+                    @for (sq of week; track $index) {
+                      @if (sq.info && sq.cell) {
+                        <button type="button" class="inc-cal__cell" role="gridcell"
+                          [class.is-sunday]="sq.info.sunday" [class.is-future]="sq.info.future"
+                          [class.is-high]="sq.cell.highest" [class.is-low]="sq.cell.lowest"
+                          [class.has-bonus]="sq.cell.bonus > 0" [class.is-today]="sq.info.date === d.today"
+                          [disabled]="sq.cell.orders === 0"
+                          [attr.title]="cellTitle(sq.info, sq.cell)" [attr.aria-label]="cellTitle(sq.info, sq.cell)"
+                          (click)="openDay(person, sq.cell)">
+                          <span class="inc-cal__day">{{ dayNumber(sq.info) }}</span>
+                          @if (sq.cell.highest) {<i class="ti ti-trending-up inc-cal__flag text-success" aria-hidden="true"></i>}
+                          @if (sq.cell.lowest) {<i class="ti ti-trending-down inc-cal__flag text-danger" aria-hidden="true"></i>}
+                          @if (sq.cell.orders > 0) {
+                            <span class="inc-cal__amt">{{ sq.cell.sales | compactInr }}</span>
+                            @if (sq.cell.bonus > 0) {<span class="inc-bonus">+{{ sq.cell.bonus | inr: 0 }}</span>}
+                          } @else if (!sq.info.future && !sq.info.sunday) {
+                            <span class="inc-cal__none">no sales</span>
+                          }
+                        </button>
+                      } @else {
+                        <div class="inc-cal__cell is-blank" role="gridcell" aria-hidden="true"></div>
+                      }
+                    }
+                  </div>
+                }
+              </div>
+              <div class="small text-secondary inc-legend mt-3">
+                <span><i class="inc-key inc-key--bonus"></i>Earned a bonus</span>
+                <span><i class="ti ti-trending-up text-success" aria-hidden="true"></i>Highest day</span>
+                <span><i class="ti ti-trending-down text-danger" aria-hidden="true"></i>Lowest selling day</span>
+                <span><i class="inc-key inc-key--sunday"></i>Sunday: counts for sales and bonus, never highest or lowest</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- The same month as a list, easier to scan on a phone -->
+          <div class="card">
+            <div class="card-header"><h3 class="card-title mb-0">Day by day</h3></div>
+            <div class="table-responsive">
+              <table class="table table-vcenter card-table">
+                <thead><tr><th>Date</th><th class="text-end">Orders</th><th class="text-end">Sales</th><th class="text-end">Bonus</th><th>Note</th></tr></thead>
+                <tbody>
+                  @for (row of personDays(); track row.info.date) {
+                    <tr [class.inc-row-sunday]="row.info.sunday">
+                      <td>{{ fullDate(row.info.date) }}</td>
+                      <td class="text-end">{{ row.cell.orders }}</td>
+                      <td class="text-end">{{ row.cell.sales | inr: 0 }}</td>
+                      <td class="text-end">{{ row.cell.bonus > 0 ? (row.cell.bonus | inr: 0) : '—' }}</td>
+                      <td>
+                        @for (note of remarks(row.info, row.cell); track note) {
+                          <span class="badge me-1"
+                            [class.tone-green]="note === 'Highest day'" [class.tone-red]="note === 'Lowest day'"
+                            [class.tone-blue]="note === 'Sunday'" [class.tone-grey]="note === 'No sales'">{{ note }}</span>
+                        }
+                      </td>
+                      <td class="text-end">
+                        @if (row.cell.orders > 0) {
+                          <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="openDay(person, row.cell)"
+                            [attr.aria-label]="'Products sold on ' + fullDate(row.info.date)">Products</button>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        }
+      }
+
+      <!-- ============================ PRODUCTS =========================== -->
+      @if (tab() === 'products') {
+        <div class="card mb-3">
+          <div class="card-body">
+            <div class="inc-filters">
+              <label class="inc-filters__field">
+                <span class="form-label mb-0">From</span>
+                <input type="date" class="form-control" [value]="pFrom()" [max]="today" (change)="pFrom.set($any($event.target).value)" />
+              </label>
+              <label class="inc-filters__field">
+                <span class="form-label mb-0">To</span>
+                <input type="date" class="form-control" [value]="pTo()" [max]="today" (change)="pTo.set($any($event.target).value)" />
+              </label>
+              <label class="inc-filters__field inc-filters__field--wide">
+                <span class="form-label mb-0">Salesperson</span>
+                <select class="form-select" (change)="setProductPerson($any($event.target).value)">
+                  <option value="" [selected]="pPerson() === null">Everyone</option>
+                  @for (p of d.people; track p.personId) {
+                    <option [value]="p.personId" [selected]="pPerson() === p.personId">{{ p.name }}</option>
+                  }
+                </select>
+              </label>
+              <button type="button" class="btn btn-primary inc-filters__apply" (click)="loadReport()" [disabled]="reportLoading()">Show</button>
+            </div>
+            @if (reportProblem(); as problem) {
+              <div class="text-danger small mt-2" role="alert">{{ problem }}</div>
+            }
+          </div>
+        </div>
+
+        @if (reportLoading() && !report()) {
+          <admin-state-panel variant="loading" [card]="true" skeleton="rows" loadingLabel="Loading products…" />
+        } @else if (reportFailed()) {
+          <admin-state-panel variant="error" [card]="true" title="Could not load the products" (retry)="loadReport()" />
+        } @else if (report(); as r) {
+          <div [class.inc-dim]="reportLoading()">
+            <div class="row g-2 mb-3">
+              <div class="col-6 col-lg-3"><div class="inc-tile"><div class="inc-tile__label">Net sales</div><div class="inc-tile__value">{{ r.totals.dayTotal | inr: 0 }}</div><div class="inc-tile__sub">{{ r.totals.orders }} orders</div></div></div>
+              <div class="col-6 col-lg-3"><div class="inc-tile"><div class="inc-tile__label">Units sold</div><div class="inc-tile__value">{{ r.totals.quantity }}</div><div class="inc-tile__sub">{{ r.products.length }} products</div></div></div>
+              <div class="col-12 col-lg-6"><div class="inc-tile"><div class="inc-tile__label">Product lines</div><div class="inc-tile__value">{{ r.totals.lineTotal | inr: 0 }}</div><div class="inc-tile__sub">Before order-level discounts. Net sales differ by {{ gap(r.totals.dayTotal, r.totals.lineTotal) | inr: 0 }} because of discounts and rupee round-off.</div></div></div>
+            </div>
+
+            @if (r.rows.length === 0) {
+              <admin-state-panel [card]="true" icon="ti-packages" title="No sales in this period"
+                message="Try another date range or salesperson." />
+            } @else {
+              <div class="card mb-3">
+                <div class="card-header"><h3 class="card-title mb-0">Sold, day by day</h3></div>
+                <div class="table-responsive d-none d-md-block">
+                  <table class="table table-vcenter card-table">
+                    <thead><tr><th>Date</th><th>Salesperson</th><th>Product</th><th class="text-end">Qty</th><th class="text-end">Sales</th><th class="text-end">Orders</th></tr></thead>
+                    <tbody>
+                      @for (row of rowItems(); track $index) {
+                        <tr>
+                          <td class="text-nowrap">{{ fullDate(row.date) }}</td>
+                          <td>{{ row.personName }}</td>
+                          <td>{{ row.productName }}</td>
+                          <td class="text-end">{{ row.quantity }}</td>
+                          <td class="text-end">{{ row.sales | inr: 0 }}</td>
+                          <td class="text-end">{{ row.orders }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+                <div class="d-md-none inc-prodcards">
+                  @for (row of rowItems(); track $index) {
+                    <div class="inc-prodcard">
+                      <div class="d-flex justify-content-between gap-2">
+                        <strong>{{ row.productName }}</strong>
+                        <span class="fw-semibold">{{ row.sales | inr: 0 }}</span>
+                      </div>
+                      <div class="small text-secondary">{{ fullDate(row.date) }} · {{ row.personName }} · {{ row.quantity }} unit{{ row.quantity === 1 ? '' : 's' }} · {{ row.orders }} order{{ row.orders === 1 ? '' : 's' }}</div>
+                    </div>
+                  }
+                </div>
+                <div class="card-footer">
+                  <admin-pagination
+                    [page]="rowPage()" [totalPages]="rowPages()" [totalElements]="rowTotal()" [size]="rowSize()"
+                    [sizeOptions]="[10, 20, 50, 100]" (pageChange)="goToRowPage($event)" (sizeChange)="setRowSize($event)" />
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-header"><h3 class="card-title mb-0">Best-selling products in this period</h3></div>
+                <div class="table-responsive">
+                  <table class="table table-vcenter card-table">
+                    <thead><tr><th>Product</th><th class="text-end">Qty</th><th class="text-end">Sales</th></tr></thead>
+                    <tbody>
+                      @for (p of r.products.slice(0, 10); track p.productName) {
+                        <tr><td>{{ p.productName }}</td><td class="text-end">{{ p.quantity }}</td><td class="text-end">{{ p.sales | inr: 0 }}</td></tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+                @if (r.products.length > 10) {
+                  <div class="card-footer small text-secondary">Top 10 of {{ r.products.length }}. The download lists them all.</div>
+                }
+              </div>
+            }
+          </div>
+        }
+      }
+    }
+  </div>
+}
+
+<!-- A day's products -->
+@if (openDayState(); as day) {
+  <div class="shifa-overlay" (click)="closeDay()"></div>
+  <aside class="shifa-drawer inc-drawer" adminDialog [attr.aria-label]="day.person.name + ' on ' + fullDate(day.cell.date)"
+    (dialogClose)="closeDay()">
+    <div class="shifa-drawer__head">
+      <div>
+        <h3 class="mb-0 fs-4">{{ day.person.name }}</h3>
+        <div class="text-secondary small">{{ fullDate(day.cell.date) }}</div>
+      </div>
+      <button type="button" class="btn-close" aria-label="Close" data-autofocus (click)="closeDay()"></button>
+    </div>
+    <div class="shifa-drawer__body">
+      <div class="inc-drawer__sum">
+        <div><div class="inc-tile__label">Sales</div><div class="fs-3 fw-semibold">{{ day.cell.sales | inr: 0 }}</div></div>
+        <div><div class="inc-tile__label">Orders</div><div class="fs-3 fw-semibold">{{ day.cell.orders }}</div></div>
+        <div><div class="inc-tile__label">Bonus</div><div class="fs-3 fw-semibold" [class.text-success]="day.cell.bonus > 0">{{ day.cell.bonus > 0 ? (day.cell.bonus | inr: 0) : '—' }}</div></div>
+      </div>
+      @if (day.cell.slab !== null) {
+        <div class="small text-secondary mb-2">Reached the {{ day.cell.slab | inr: 0 }} slab.</div>
+      }
+      @if (day.cell.highest) {<span class="badge tone-green me-1">Highest day</span>}
+      @if (day.cell.lowest) {<span class="badge tone-red me-1">Lowest day</span>}
+
+      <h4 class="fs-5 mt-3 mb-2">What was sold</h4>
+      @if (dayLoading()) {
+        <div class="skeleton skeleton-line w-75 mb-2"></div>
+        <div class="skeleton skeleton-line w-50"></div>
+      } @else if (dayFailed()) {
+        <div class="alert alert-danger py-2 d-flex align-items-center justify-content-between">
+          <span>Could not load the products.</span>
+          <button type="button" class="btn btn-sm btn-outline-danger" (click)="openDay(day.person, day.cell)">Retry</button>
+        </div>
+      } @else if (dayReport(); as rep) {
+        <div class="table-responsive">
+          <table class="table table-vcenter table-sm mb-2">
+            <thead><tr><th>Product</th><th class="text-end">Qty</th><th class="text-end">Sales</th></tr></thead>
+            <tbody>
+              @for (row of rep.rows; track $index) {
+                <tr><td>{{ row.productName }}</td><td class="text-end">{{ row.quantity }}</td><td class="text-end">{{ row.sales | inr: 0 }}</td></tr>
+              }
+            </tbody>
+            <tfoot>
+              <tr><th>Product lines</th><th class="text-end">{{ rep.totals.quantity }}</th><th class="text-end">{{ rep.totals.lineTotal | inr: 0 }}</th></tr>
+              @if (gap(rep.totals.dayTotal, rep.totals.lineTotal) !== 0) {
+                <tr class="text-secondary"><td colspan="2">Order discounts and rupee round-off</td><td class="text-end">{{ gap(rep.totals.dayTotal, rep.totals.lineTotal) | inr: 0 }}</td></tr>
+              }
+              <tr><th colspan="2">Day total</th><th class="text-end">{{ rep.totals.dayTotal | inr: 0 }}</th></tr>
+            </tfoot>
+          </table>
+        </div>
+      }
+      <a class="btn btn-outline-primary btn-sm mt-2" routerLink="/orders"
+        [queryParams]="{ createdBy: day.person.personId, name: day.person.name }">
+        <i class="ti ti-list-details me-1" aria-hidden="true"></i>Open {{ day.person.name }}'s orders
+      </a>
+    </div>
+  </aside>
+}

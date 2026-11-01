@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient, Role } from 'core';
 import { filenameFromContentDisposition } from '../shared/blob-download.util';
+import { PeriodChoice, PeriodSelection, THIS_MONTH, periodQuery } from '../shared/period-selection';
 import { labelledFilename } from '../shared/report-filename.util';
 
 /** Accepted government ID document types (mirrors the backend IdProofType enum). */
@@ -92,7 +93,7 @@ export interface UpdateStaffProfileRequest {
 
 // --- Salesperson 360 (performance) ---------------------------------------
 
-export type PerformancePeriod = 'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'OVERALL';
+export type PerformancePeriod = PeriodChoice;
 export type PerformanceExportFormat = 'xlsx' | 'pdf';
 
 /** A performance export returned by the server with its suggested filename. */
@@ -118,6 +119,14 @@ export interface SalespersonPerformanceSummary {
   /** delivered / (delivered + failed) as a percentage (0–100). */
   successRate: number;
   codOutstanding: string;
+  /** Orders placed in the selected period (every status). */
+  ordersInPeriod: number;
+  /** Revenue in the selected period (excludes rejected, payment-rejected and cancelled). */
+  revenueInPeriod: string;
+  /** Revenue divided by the orders that count towards it. */
+  averageOrderValue: string;
+  /** Orders in the period that ended as RTO / redispatch. */
+  rtoCount: number;
 }
 
 /** One day of a salesperson's activity trend. */
@@ -148,12 +157,37 @@ export interface SalespersonLeadMetrics {
   dueFollowUps: number;
 }
 
+/** One person's figures for the period chosen in the drawer. */
+export interface SalespersonPeriodDetail {
+  /** The period applied (a `PeriodChoice` name). */
+  period: string;
+  /** Human label, e.g. "Last 7 Days" or "2026-10-01 to 2026-10-10". */
+  label: string;
+  /** First / last day covered (yyyy-MM-dd); null for "Overall". */
+  from: string | null;
+  to: string | null;
+  orders: number;
+  sales: string;
+  averageOrderValue: string;
+  /** Orders placed in the period that have since been delivered / have failed. */
+  delivered: number;
+  failed: number;
+  successRate: number;
+  /** Oldest first. Quiet days are included for periods up to 92 days. */
+  daily: SalespersonDailyPoint[];
+  /** The latest orders placed in the period, newest first (capped). */
+  recentOrders: SalespersonOrderRow[];
+  ordersListed: number;
+}
+
 /** The full "Salesperson 360" detail. */
 export interface SalespersonPerformanceDetail {
   summary: SalespersonPerformanceSummary;
   trend: SalespersonDailyPoint[];
   recentOrders: SalespersonOrderRow[];
   leads: SalespersonLeadMetrics;
+  /** Figures for the selected period (absent only from very old responses). */
+  period?: SalespersonPeriodDetail | null;
 }
 
 /**
@@ -234,21 +268,30 @@ export class SalespeopleService {
 
   // --- Salesperson 360 (performance) -------------------------------------
 
-  /** Team leaderboard — headline metrics for every performance owner. */
-  performanceLeaderboard(): Observable<SalespersonPerformanceSummary[]> {
-    return this.api.get<SalespersonPerformanceSummary[]>('/api/admin/salespeople/performance');
+  /**
+   * Team leaderboard — headline metrics for every performance owner over the chosen period
+   * (this month by default). The period fills `ordersInPeriod` / `revenueInPeriod`.
+   */
+  performanceLeaderboard(selection: PeriodSelection = THIS_MONTH): Observable<SalespersonPerformanceSummary[]> {
+    return this.api.get<SalespersonPerformanceSummary[]>('/api/admin/salespeople/performance', {
+      params: periodQuery(selection),
+    });
   }
 
   /** Download the complete team or individual performance report for a selected period. */
   exportPerformance(
     format: PerformanceExportFormat,
-    period: PerformancePeriod,
+    selection: PeriodSelection,
     salespersonId?: number,
   ): Observable<PerformanceDownload> {
     const path = salespersonId == null
       ? '/api/admin/salespeople/performance/export'
       : `/api/admin/salespeople/${salespersonId}/performance/export`;
-    const params = new HttpParams().set('period', period).set('format', format);
+    // Only used to name the file if the server's Content-Disposition cannot be read.
+    const periodToken = selection.period === 'CUSTOM'
+      ? `${selection.from}-to-${selection.to}`
+      : selection.period.toLowerCase();
+    const params = new HttpParams({ fromObject: { ...periodQuery(selection), format } });
     return new Observable<PerformanceDownload>((subscriber) => {
       const subscription = this.http
         .get(this.api.url(path), { params, observe: 'response', responseType: 'blob' })
@@ -263,7 +306,7 @@ export class SalespeopleService {
               blob: response.body ?? new Blob(),
               filename:
                 filenameFromContentDisposition(response.headers.get('Content-Disposition')) ??
-                labelledFilename(title, period.toLowerCase(), format),
+                labelledFilename(title, periodToken, format),
             });
             subscriber.complete();
           },
@@ -273,12 +316,22 @@ export class SalespeopleService {
     });
   }
 
-  /** One salesperson's full 360 (summary + daily trend + recent orders + leads). */
-  performance(id: number, days?: number): Observable<SalespersonPerformanceDetail> {
-    const params = days ? { params: { days } } : undefined;
+  /**
+   * One salesperson's full 360 (summary + daily trend + recent orders + leads), with the figures
+   * for the chosen period in `period` (this month by default).
+   */
+  performance(
+    id: number,
+    days?: number,
+    selection: PeriodSelection = THIS_MONTH,
+  ): Observable<SalespersonPerformanceDetail> {
+    const params: Record<string, string | number> = { ...periodQuery(selection) };
+    if (days) {
+      params['days'] = days;
+    }
     return this.api.get<SalespersonPerformanceDetail>(
       `/api/admin/salespeople/${id}/performance`,
-      params,
+      { params },
     );
   }
 }

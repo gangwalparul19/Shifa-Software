@@ -588,6 +588,43 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             @Param("monthStart") java.time.LocalDateTime monthStart,
             @Param("dayStart") java.time.LocalDateTime dayStart);
 
+    /**
+     * Per-salesperson figures for a chosen window {@code [from, to)} (the Salespeople directory's
+     * period selector): orders placed (every status), revenue (excluding rejected, payment-rejected
+     * and cancelled), how many orders count towards revenue (the average-order-value divisor) and
+     * how many ended as RTO / redispatch. An "Overall" caller passes very early / very late bounds.
+     */
+    @Query(value = """
+            SELECT o.created_by AS salespersonId,
+                   COUNT(*) AS ordersInPeriod,
+                   COALESCE(SUM(CASE WHEN o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
+                                     THEN o.total_amount ELSE 0 END), 0) AS revenueInPeriod,
+                   SUM(CASE WHEN o.order_status NOT IN ('REJECTED','PAYMENT_REJECTED','CANCELLED')
+                            THEN 1 ELSE 0 END) AS revenueOrders,
+                   SUM(CASE WHEN o.order_status IN ('RTO','REDISPATCH') THEN 1 ELSE 0 END) AS rtoCount
+            FROM orders o
+            WHERE o.created_by IS NOT NULL
+              AND o.active = 1
+              AND o.created_at >= :from AND o.created_at < :to
+            GROUP BY o.created_by
+            """, nativeQuery = true)
+    List<SalespersonPeriodAggregate> salespersonPeriodStats(
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to") java.time.LocalDateTime to);
+
+    /** Projection over {@link #salespersonPeriodStats} (one row per salesperson). */
+    interface SalespersonPeriodAggregate {
+        Long getSalespersonId();
+
+        long getOrdersInPeriod();
+
+        java.math.BigDecimal getRevenueInPeriod();
+
+        long getRevenueOrders();
+
+        long getRtoCount();
+    }
+
     /** Projection over {@link #salespersonOrderStats} (one row per salesperson). */
     interface SalespersonOrderAggregate {
         Long getSalespersonId();

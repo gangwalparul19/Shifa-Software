@@ -140,14 +140,14 @@ public record CreateOrderRequest(
         @Size(max = 60, message = "country must be at most 60 characters")
         String country,
 
-        /** Payment method for the upfront collection (UPI_QR/BANK_TRANSFER/CASH). */
+        /** Code of an active payment method ({@code GET /api/payment-methods}); blank = the default method. */
         @Size(max = 30, message = "paymentMethod must be at most 30 characters")
         String paymentMethod,
 
         /** Active receiving-account master id for UPI/bank payments. */
         Long paymentAccountId,
 
-        /** Provider UTR/reference for the upfront payment. */
+        /** Provider UTR/reference for the upfront payment. Optional; may be added later. */
         @Size(max = 80, message = "paymentUtr must be at most 80 characters")
         String paymentUtr
 ) {

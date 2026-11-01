@@ -63,7 +63,7 @@ public record ApprovalQueueItemResponse(
         // special instructions or context the salesperson attached to the order.
         String notes,
         // Payment transaction metadata for reconciliation; account number is masked.
-        com.shifa.oms.order.PaymentMethod paymentMethod,
+        String paymentMethod,
         String paymentAccountName,
         String paymentAccountMasked,
         String paymentUtr

@@ -119,7 +119,7 @@ class ShopifyOrderImportServiceTest {
         // as having no AWB yet (so these status-based tests keep their old meaning).
         service = new ShopifyOrderImportService(
                 orderRepository, productRepository, new OrderCodeGenerator(),
-                workflow, labels, outbox, null, null);
+                workflow, labels, outbox, null, null, null);
 
         when(orderRepository.existsByOrderCode(any())).thenReturn(false);
         when(orderRepository.findByShopifyOrderId(any())).thenReturn(Optional.empty());

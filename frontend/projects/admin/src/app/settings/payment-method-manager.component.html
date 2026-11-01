@@ -1,0 +1,107 @@
+<div class="shifa-pm-manager mb-4">
+  <div class="d-flex align-items-start justify-content-between gap-2 mb-3">
+    <div>
+      <h4 class="mb-1"><i class="ti ti-credit-card me-1"></i>Payment methods</h4>
+      <p class="text-secondary small mb-0">
+        These appear in the <strong>Payment method</strong> list when an order is placed. The default is pre-selected.
+        A method linked to an account purpose picks that account automatically.
+      </p>
+    </div>
+    @if (!formOpen()) {
+      <button type="button" class="btn btn-primary btn-sm" (click)="openCreate()"><i class="ti ti-plus me-1"></i>Add method</button>
+    }
+  </div>
+
+  @if (formOpen()) {
+    <div class="shifa-pm-manager__form mb-3">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <strong>{{ creating() ? 'Add payment method' : 'Edit payment method' }}</strong>
+        <button type="button" class="btn btn-sm btn-ghost-secondary" (click)="cancel()">Cancel</button>
+      </div>
+      <div class="row g-2">
+        <div class="col-12 col-md-6">
+          <label class="form-label required" for="pmLabel">Name</label>
+          <input id="pmLabel" class="form-control" [formControl]="form.controls.label" maxlength="60" placeholder="Credit Card Link"
+            [class.is-invalid]="form.controls.label.invalid && form.controls.label.touched" />
+          <div class="invalid-feedback">Enter a name (up to 60 characters).</div>
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label" for="pmAccountMode">Receiving account</label>
+          <select id="pmAccountMode" class="form-select" [formControl]="form.controls.accountMode">
+            <option [value]="MODE_CHOOSE">Salesperson chooses the account</option>
+            <option [value]="MODE_NONE">No account needed (e.g. cash)</option>
+            @for (type of accountTypes; track type.value) {
+              <option [value]="MODE_AUTO_PREFIX + type.value">Auto-select the {{ type.label }} account</option>
+            }
+          </select>
+          <div class="form-hint">Auto-select fills “Amount received in” for the salesperson; it still needs a matching account under Bank accounts.</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label" for="pmSort">Sort order</label>
+          <input id="pmSort" type="number" min="0" class="form-control" [formControl]="form.controls.sortOrder" />
+        </div>
+        <div class="col-6 col-md-9 d-flex align-items-end gap-3 pb-2 flex-wrap">
+          <label class="form-check">
+            <input class="form-check-input" type="checkbox" [formControl]="form.controls.active" />
+            <span class="form-check-label">Active</span>
+          </label>
+          <label class="form-check">
+            <input class="form-check-input" type="checkbox" [formControl]="form.controls.defaultMethod" />
+            <span class="form-check-label">Default method</span>
+          </label>
+          @if (form.controls.defaultMethod.disabled) {
+            <span class="form-hint mb-0">This is the default. To change it, make another method the default.</span>
+          }
+        </div>
+      </div>
+      <div class="text-end mt-3">
+        <button type="button" class="btn btn-primary" (click)="save()" [disabled]="busy()">
+          @if (busy()) {<span class="spinner-border spinner-border-sm me-1"></span>} Save method
+        </button>
+      </div>
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="skeleton skeleton-line w-75"></div>
+  } @else if (methods().length === 0) {
+    <div class="text-secondary py-3">No payment methods yet. Add one so orders can record how they were paid.</div>
+  } @else {
+    <div class="table-responsive">
+      <table class="table table-vcenter table-sm mb-0">
+        <thead>
+          <tr><th>Method</th><th>Receiving account</th><th>Used on</th><th>Status</th><th class="text-end">Actions</th></tr>
+        </thead>
+        <tbody>
+          @for (method of methods(); track method.id) {
+            <tr [class.text-secondary]="!method.active">
+              <td>
+                <strong>{{ method.label }}</strong>
+                @if (method.defaultMethod) {<span class="badge tone-green ms-1">Default</span>}
+                <div class="shifa-mono small text-secondary">{{ method.code }}</div>
+              </td>
+              <td>{{ accountSummary(method) }}</td>
+              <td>{{ method.usageCount }} payment{{ method.usageCount === 1 ? '' : 's' }}</td>
+              <td>
+                <span class="badge" [class.tone-green]="method.active" [class.tone-grey]="!method.active">{{ method.active ? 'Active' : 'Inactive' }}</span>
+              </td>
+              <td class="text-end text-nowrap">
+                <button type="button" class="btn btn-sm btn-ghost-secondary" title="Edit" [attr.aria-label]="'Edit ' + method.label" (click)="openEdit(method)"><i class="ti ti-edit"></i></button>
+                @if (method.active && !method.defaultMethod) {
+                  <button type="button" class="btn btn-sm btn-ghost-secondary" title="Make default" [attr.aria-label]="'Make ' + method.label + ' the default'" (click)="makeDefault(method)"><i class="ti ti-star"></i></button>
+                }
+                @if (!method.defaultMethod) {
+                  @if (method.usageCount === 0) {
+                    <button type="button" class="btn btn-sm btn-ghost-danger" title="Delete" [attr.aria-label]="'Delete ' + method.label" (click)="remove(method)"><i class="ti ti-trash"></i></button>
+                  } @else if (method.active) {
+                    <button type="button" class="btn btn-sm btn-ghost-danger" title="Deactivate (it has payments, so it can't be deleted)" [attr.aria-label]="'Deactivate ' + method.label" (click)="deactivate(method)"><i class="ti ti-ban"></i></button>
+                  }
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>

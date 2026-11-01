@@ -1,7 +1,6 @@
 package com.shifa.oms.order.dto;
 
 import com.shifa.oms.order.OrderPayment;
-import com.shifa.oms.order.PaymentMethod;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -10,7 +9,7 @@ import java.time.LocalDateTime;
 public record OrderPaymentResponse(
         Long id,
         BigDecimal amountReceived,
-        PaymentMethod paymentMethod,
+        String paymentMethod,
         Long bankAccountId,
         String bankAccountName,
         String bankAccountMasked,

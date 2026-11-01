@@ -7,6 +7,9 @@
 .ss-switch.is-off {
   border-left-color: #d63939;
 }
+.ss-switch.is-warn {
+  border-left-color: #d97706;
+}
 .ss-switch__row {
   display: flex;
   flex-wrap: wrap;

@@ -191,6 +191,49 @@ public class EmailRenderer {
         return new RenderedEmail(subject, html, text.toString());
     }
 
+    /**
+     * Temporary-credential email for the administrator who reset a user's
+     * password. The credential is in the body only, never in the subject, and
+     * the user must change it at first sign-in.
+     */
+    public RenderedEmail renderTemporaryCredential(EmailModels.TemporaryCredential m) {
+        String subject = "Temporary password for " + safe(m.targetUsername());
+        String greetName = greeting(m.adminName());
+
+        StringBuilder rows = new StringBuilder();
+        rows.append(detailRow("User", safe(m.targetName()).isBlank()
+                ? safe(m.targetUsername())
+                : safe(m.targetName()) + " (" + safe(m.targetUsername()) + ")"));
+        rows.append(detailRowHtml("Temporary password",
+                "<span style=\"font-family:Consolas,Menlo,monospace;font-size:16px;letter-spacing:0.5px;"
+                        + "color:#1a1a1a;\">" + esc(m.credential()) + "</span>"));
+        rows.append(detailRow("Expires", safe(m.expiresAt())));
+
+        StringBuilder body = new StringBuilder();
+        body.append(p("Hi " + esc(greetName) + ", you reset the password for <strong>"
+                + esc(safe(m.targetUsername())) + "</strong>. Share the temporary password below with them."));
+        body.append(detailTable(rows.toString()));
+        body.append(p("They will be asked to choose a new password the first time they sign in. "
+                + "The old password no longer works. If you did not do this, contact another administrator."));
+
+        String html = layout(
+                "Temporary password for " + safe(m.targetUsername()) + ".",
+                "Temporary password",
+                body.toString(),
+                null,
+                null);
+
+        StringBuilder text = new StringBuilder();
+        text.append("Hi ").append(greetName).append(",\n\n");
+        text.append("You reset the password for ").append(safe(m.targetUsername())).append(".\n");
+        text.append("Temporary password: ").append(safe(m.credential())).append("\n");
+        text.append("Expires: ").append(safe(m.expiresAt())).append("\n\n");
+        text.append("They must choose a new password the first time they sign in. ");
+        text.append("The old password no longer works.\n");
+        text.append(textFooter());
+        return new RenderedEmail(subject, html, text.toString());
+    }
+
     /** Daily digest email (internal): a clean metrics table, no CTA. */
     public RenderedEmail renderDigest(EmailModels.Digest m) {
         String dayLabel = m.day() == null ? "" : m.day().format(DAY_ISO);
@@ -520,6 +563,16 @@ public class EmailRenderer {
                 + "border-bottom:1px solid #eef0ec;width:45%;\">" + esc(label) + "</td>"
                 + "<td style=\"padding:10px 16px;font-size:14px;color:#3a3a3a;font-weight:bold;"
                 + "border-bottom:1px solid #eef0ec;\">" + esc(value) + "</td>"
+                + "</tr>";
+    }
+
+    /** A label/value detail row whose value is already-escaped HTML (caller escapes). */
+    private String detailRowHtml(String label, String valueHtml) {
+        return "<tr>"
+                + "<td style=\"padding:10px 16px;font-size:13px;color:#7a7f76;"
+                + "border-bottom:1px solid #eef0ec;width:45%;\">" + esc(label) + "</td>"
+                + "<td style=\"padding:10px 16px;font-size:14px;color:#3a3a3a;font-weight:bold;"
+                + "border-bottom:1px solid #eef0ec;\">" + valueHtml + "</td>"
                 + "</tr>";
     }
 

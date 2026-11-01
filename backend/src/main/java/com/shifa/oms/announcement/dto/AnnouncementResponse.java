@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
  * @param message       the notice text
  * @param severity      info/success/warning/danger
  * @param active        whether it is currently shown to staff
+ * @param showOnDashboard pinned as a prominent card at the top of the home screen
  * @param createdByName  the admin who posted it (nullable)
  * @param createdAt     when it was posted
  */
@@ -19,13 +20,14 @@ public record AnnouncementResponse(
         String message,
         String severity,
         boolean active,
+        boolean showOnDashboard,
         String createdByName,
         LocalDateTime createdAt
 ) {
 
     public static AnnouncementResponse from(Announcement a) {
         return new AnnouncementResponse(
-                a.getId(), a.getMessage(), a.getSeverity(), a.isActive(),
+                a.getId(), a.getMessage(), a.getSeverity(), a.isActive(), a.isShowOnDashboard(),
                 a.getCreatedByName(), a.getCreatedAt());
     }
 }

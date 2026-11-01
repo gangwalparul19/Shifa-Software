@@ -1,5 +1,6 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CurrencyPipe } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
@@ -9,7 +10,12 @@ import { IstDatePipe } from '../shared/ist-date.pipe';
 import { ChannelLogoComponent } from '../shared/channel-logo.component';
 import { ToastService } from '../shared/toast.service';
 import { OrdersService } from '../orders/orders.service';
-import { RecoverResult, ShopifySyncService, StuckShopifyOrder } from './shopify-sync.service';
+import {
+  RecoverResult,
+  ShopifySettlementStatus,
+  ShopifySyncService,
+  StuckShopifyOrder,
+} from './shopify-sync.service';
 
 /**
  * ADMIN-only Shopify sync page: lists Shopify orders that have not yet reached
@@ -106,9 +112,49 @@ export class ShopifySyncComponent implements OnInit, OnDestroy {
   protected readonly integrationSaving = signal(false);
   protected readonly confirmingOff = signal(false);
 
+  // --- Settlement account -------------------------------------------------
+  /** Where Shopify payments are booked; null until loaded (or if the call failed). */
+  protected readonly settlement = signal<ShopifySettlementStatus | null>(null);
+  protected readonly assigning = signal(false);
+
   ngOnInit(): void {
     this.loadIntegration();
+    this.loadSettlement();
     this.load();
+  }
+
+  private loadSettlement(): void {
+    this.service.settlementAccount().subscribe({
+      next: (s) => this.settlement.set(s),
+      // Non-fatal: the rest of the page works without it.
+      error: () => this.settlement.set(null),
+    });
+  }
+
+  /** Books existing Shopify payments that have no account under the settlement account. */
+  assignSettlement(): void {
+    if (this.assigning()) {
+      return;
+    }
+    this.assigning.set(true);
+    this.service.assignSettlementAccount().subscribe({
+      next: (res) => {
+        this.assigning.set(false);
+        this.toasts.success(
+          res.assigned === 0
+            ? 'Nothing to assign — every Shopify payment already has an account.'
+            : `Booked ${res.assigned} Shopify payment(s) under ${res.accountName}.`,
+        );
+        this.loadSettlement();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.assigning.set(false);
+        this.toasts.error(
+          (err.error as { message?: string } | undefined)?.message
+            ?? 'Could not assign the Shopify payments. Please try again.',
+        );
+      },
+    });
   }
 
   private loadIntegration(): void {

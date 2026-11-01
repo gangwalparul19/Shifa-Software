@@ -5,6 +5,7 @@ import com.shifa.oms.auth.UserRepository;
 import com.shifa.oms.mail.MailException;
 import com.shifa.oms.mail.MailProperties;
 import com.shifa.oms.mail.MailService;
+import com.shifa.oms.mail.ReportRecipients;
 import com.shifa.oms.mail.template.EmailModels;
 import com.shifa.oms.mail.template.EmailRenderer;
 import com.shifa.oms.mail.template.RenderedEmail;
@@ -61,14 +62,20 @@ public class DailyReportService {
      * (tests) — the block is then simply omitted.
      */
     private final com.shifa.oms.dashboard.OwnerSnapshotService ownerSnapshotService;
+    /**
+     * Resolves who gets the email: {@code REPORT_DIGEST_TO} plus active admin
+     * users' emails. Null under the legacy constructor (tests), where only
+     * {@code REPORT_DIGEST_TO} is used.
+     */
+    private final ReportRecipients reportRecipients;
 
-    /** Legacy constructor (tests): no owner snapshot block. */
+    /** Legacy constructor (tests): no owner snapshot block, digest-to recipients only. */
     public DailyReportService(OrderRepository orderRepository,
                               UserRepository userRepository,
                               MailService mailService,
                               MailProperties mailProperties,
                               EmailRenderer emailRenderer) {
-        this(orderRepository, userRepository, mailService, mailProperties, emailRenderer, null);
+        this(orderRepository, userRepository, mailService, mailProperties, emailRenderer, null, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -77,13 +84,15 @@ public class DailyReportService {
                               MailService mailService,
                               MailProperties mailProperties,
                               EmailRenderer emailRenderer,
-                              com.shifa.oms.dashboard.OwnerSnapshotService ownerSnapshotService) {
+                              com.shifa.oms.dashboard.OwnerSnapshotService ownerSnapshotService,
+                              ReportRecipients reportRecipients) {
         this.orderRepository = orderRepository;
         this.userRepository = userRepository;
         this.mailService = mailService;
         this.mailProperties = mailProperties;
         this.emailRenderer = emailRenderer;
         this.ownerSnapshotService = ownerSnapshotService;
+        this.reportRecipients = reportRecipients;
     }
 
     /**
@@ -115,24 +124,30 @@ public class DailyReportService {
 
     /** Shared render+send tail used by both the daily and ranged report paths. */
     private Result sendRendered(DailyReport report, LocalDate label) {
-        String to = mailProperties.digestTo();
-        boolean recipientConfigured = to != null && !to.isBlank();
-        if (!recipientConfigured) {
+        List<String> recipients = reportRecipients != null
+                ? reportRecipients.resolve()
+                : ReportRecipients.parse(mailProperties.digestTo());
+        if (recipients.isEmpty()) {
             log.info("Consolidated report for {} built ({} order(s)) but not sent: "
-                    + "no recipient configured (app.mail.digest-to blank).",
+                    + "no recipient (app.mail.digest-to is blank and no active admin has an email).",
                     label, report.overall().orderCount());
             return Result.from(report, false);
         }
 
         RenderedEmail rendered = emailRenderer.renderConsolidatedReport(
                 new EmailModels.ConsolidatedReport(report, ownerAttention()));
-        try {
-            mailService.send(rendered.toMessage(to));
-            log.info("Sent consolidated report for {} to {} ({} order(s)).",
-                    label, to, report.overall().orderCount());
-        } catch (MailException e) {
-            log.warn("Failed to send consolidated report for {}: {}", label, e.getMessage());
+        // One message per recipient: a rejected address never blocks the others.
+        int sent = 0;
+        for (String to : recipients) {
+            try {
+                mailService.send(rendered.toMessage(to));
+                sent++;
+            } catch (MailException e) {
+                log.warn("Failed to send consolidated report for {} to {}: {}", label, to, e.getMessage());
+            }
         }
+        log.info("Consolidated report for {} ({} order(s)) sent to {} of {} recipient(s).",
+                label, report.overall().orderCount(), sent, recipients.size());
         return Result.from(report, true);
     }
 

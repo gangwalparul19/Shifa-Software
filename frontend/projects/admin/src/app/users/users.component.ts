@@ -7,11 +7,13 @@ import {
   CreateUserRequest,
   ID_PROOF_TYPES,
   IdProofType,
+  PasswordResetResponse,
   STAFF_ROLES,
   StaffRole,
   UpdateUserRequest,
   UsersService,
 } from './users.service';
+import { IstDatePipe } from '../shared/ist-date.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
@@ -44,6 +46,7 @@ import { roleLabel } from '../shared/role-label';
     DensityToggleComponent,
     RowActionsMenuComponent,
     DialogDirective,
+    IstDatePipe,
   ],
   templateUrl: './users.component.html',
   styleUrl: './users.component.css',
@@ -88,6 +91,14 @@ export class UsersComponent implements OnInit {
   protected readonly creating = signal(false);
   protected readonly formOpen = computed(() => this.creating() || this.editing() !== null);
   protected readonly formError = signal<string | null>(null);
+
+  /**
+   * The just-issued temporary credential, kept on screen until the admin closes
+   * the dialog. It is held in memory only and cleared on close; the server never
+   * returns it again.
+   */
+  protected readonly resetResult = signal<PasswordResetResponse | null>(null);
+  protected readonly credentialCopied = signal(false);
 
   /** The signed-in admin's username, used to prevent self-deactivation in the UI. */
   protected readonly currentUsername = computed(() => this.auth.session()?.username ?? null);
@@ -512,7 +523,8 @@ export class UsersComponent implements OnInit {
       title: 'Reset password',
       message:
         `Reset the password for "${user.username}"? Their current password stops working immediately. ` +
-        `A random temporary credential will be shown once and expires automatically; the user must change it on sign-in.`,
+        `A random temporary password will be shown to you once and expires automatically; the user must change it on sign-in. ` +
+        `If your profile has an email address and mail is set up, it is also emailed to you.`,
       confirmLabel: 'Reset password',
       icon: 'ti-key',
     });
@@ -524,15 +536,34 @@ export class UsersComponent implements OnInit {
       next: (result) => {
         this.actioningId.set(null);
         this.users.update((items) => items.map((u) => (u.id === result.user.id ? result.user : u)));
-        this.toasts.success(
-          `Password reset for ${user.username}. Temporary credential (show once): ${result.temporaryCredential}`,
-        );
+        this.credentialCopied.set(false);
+        this.resetResult.set(result);
       },
       error: (err: HttpErrorResponse) => {
         this.actioningId.set(null);
         this.toasts.error(this.describeError(err));
       },
     });
+  }
+
+  /** Closes the credential dialog and drops the credential from memory. */
+  closeResetResult(): void {
+    this.resetResult.set(null);
+    this.credentialCopied.set(false);
+  }
+
+  /** Copies the temporary credential to the clipboard. */
+  async copyCredential(): Promise<void> {
+    const result = this.resetResult();
+    if (!result) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(result.temporaryCredential);
+      this.credentialCopied.set(true);
+    } catch {
+      this.toasts.error('Could not copy automatically. Select the password and copy it manually.');
+    }
   }
 
   // --- Activate / deactivate ---------------------------------------------

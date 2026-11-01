@@ -44,6 +44,27 @@ export interface RecoverResult {
 }
 
 /**
+ * Where prepaid Shopify amounts are booked. Shopify collects the money itself and pays it out
+ * later, so every Shopify payment belongs under the Shopify settlement account.
+ */
+export interface ShopifySettlementStatus {
+  /** False when no active account with the "Shopify settlement" purpose exists. */
+  configured: boolean;
+  accountId: number | null;
+  accountName: string | null;
+  accountMasked: string | null;
+  /** Existing Shopify payments that still have no account (imported before one was set up). */
+  unassignedPayments: number;
+  unassignedAmount: number;
+  assignedPayments: number;
+}
+
+export interface AssignSettlementResult {
+  assigned: number;
+  accountName: string;
+}
+
+/**
  * Data access for the ADMIN-only Shopify sync page
  * ({@code /api/admin/shopify/stuck} + {@code /api/admin/shopify/recover}).
  */
@@ -69,5 +90,15 @@ export class ShopifySyncService {
   /** Pushes every stuck Shopify order forward (idempotent, safe to repeat). */
   recover(): Observable<RecoverResult> {
     return this.api.post<RecoverResult>('/api/admin/shopify/recover', {});
+  }
+
+  /** The account Shopify payments are booked under, plus how many still need assigning. */
+  settlementAccount(): Observable<ShopifySettlementStatus> {
+    return this.api.get<ShopifySettlementStatus>('/api/admin/shopify/settlement-account');
+  }
+
+  /** Books every Shopify payment that has no account under the settlement account (idempotent). */
+  assignSettlementAccount(): Observable<AssignSettlementResult> {
+    return this.api.post<AssignSettlementResult>('/api/admin/shopify/settlement-account/assign', {});
   }
 }

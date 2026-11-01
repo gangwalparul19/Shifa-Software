@@ -29,7 +29,7 @@ const SOURCE_LABELS: Record<string, string> = {
   OTHER: 'Other',
 };
 
-type PeriodKey = 'today' | 'week' | 'month' | 'custom';
+type PeriodKey = 'today' | 'yesterday' | 'week' | 'month' | 'lastMonth' | 'custom';
 type HealthFilter = 'ALL' | 'INACTIVE' | 'NO_ACTIVITY' | 'FOLLOW_UPS' | 'RTO';
 
 @Component({
@@ -298,8 +298,10 @@ export class TeamPerformanceComponent implements OnInit {
   protected readonly coachingSize = signal(readPageSize('teamCoaching', 5));
   protected readonly periodOptions: { key: PeriodKey; label: string }[] = [
     { key: 'today', label: 'Today' },
+    { key: 'yesterday', label: 'Yesterday' },
     { key: 'week', label: 'Last 7 days' },
     { key: 'month', label: 'This month' },
+    { key: 'lastMonth', label: 'Last month' },
     { key: 'custom', label: 'Custom' },
   ];
 
@@ -476,8 +478,17 @@ export class TeamPerformanceComponent implements OnInit {
   private window(): { from?: string; to?: string } {
     const to = todayIst();
     if (this.period() === 'today') return { from: to, to };
+    if (this.period() === 'yesterday') {
+      const yesterday = addIstDays(to, -1);
+      return { from: yesterday, to: yesterday };
+    }
     if (this.period() === 'week') {
       return { from: addIstDays(to, -6), to };
+    }
+    if (this.period() === 'lastMonth') {
+      // The whole previous calendar month: the day before this month starts is its last day.
+      const lastDay = addIstDays(monthStartIst(), -1);
+      return { from: `${lastDay.slice(0, 7)}-01`, to: lastDay };
     }
     if (this.period() === 'custom') return { from: this.customFrom(), to: this.customTo() };
     return { from: monthStartIst(), to };

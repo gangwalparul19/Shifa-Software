@@ -18,7 +18,7 @@ import { InrPipe } from '../shared/inr.pipe';
 import { HelpTipComponent } from '../shared/help-tip.component';
 import { StatesService } from '../shared/states.service';
 import { PincodeService } from '../shared/pincode.service';
-import { SettingsService } from '../settings/settings.service';
+import { PaymentMethodOption, SettingsService, bankAccountTypeLabel } from '../settings/settings.service';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
 import { CatalogService } from './catalog.service';
@@ -195,11 +195,41 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   /** Active receiving accounts for online salesperson payments. */
   protected readonly paymentAccounts = signal<PaymentAccountOption[]>([]);
-  protected readonly orderPaymentAccounts = computed(() =>
-    this.paymentAccounts().filter((account) =>
-      account.accountType === 'UPI_QR' || account.accountType === 'BANK_TRANSFER' || account.accountType === 'OTHER'),
+  /** True once the account lookup has answered (an empty list is then a real "none set up"). */
+  private readonly paymentAccountsLoaded = signal(false);
+
+  /** Active payment methods from Settings (admin-managed); the default is pre-selected. */
+  protected readonly paymentMethods = signal<PaymentMethodOption[]>([]);
+  /** Set when the payment-method lookup failed, so the picker can say why it is empty. */
+  protected readonly paymentMethodsError = signal(false);
+  /** Code of the method currently chosen in the form ('' until the list has loaded). */
+  protected readonly selectedPaymentMethod = signal<PaymentMethod>('');
+  protected readonly selectedMethod = computed<PaymentMethodOption | null>(
+    () => this.paymentMethods().find((method) => method.code === this.selectedPaymentMethod()) ?? null,
   );
-  protected readonly selectedPaymentMethod = signal<PaymentMethod>('UPI_QR');
+
+  /**
+   * Accounts the salesperson may name for the chosen method. A method linked to an account
+   * purpose (Credit Card Link → Shopify settlement) offers only accounts of that purpose, plus the
+   * server-resolved one; every other method keeps the normal UPI / bank / other accounts.
+   */
+  protected readonly orderPaymentAccounts = computed(() => {
+    const accounts = this.paymentAccounts();
+    const method = this.selectedMethod();
+    if (method?.linkedAccountType) {
+      return accounts.filter(
+        (account) => account.accountType === method.linkedAccountType || account.id === method.autoAccountId,
+      );
+    }
+    return accounts.filter((account) =>
+      account.accountType === 'UPI_QR' || account.accountType === 'BANK_TRANSFER' || account.accountType === 'OTHER');
+  });
+
+  /** Purpose label of the linked account ("Shopify settlement"), for hints. */
+  protected readonly linkedAccountLabel = computed(() => {
+    const type = this.selectedMethod()?.linkedAccountType;
+    return type ? bankAccountTypeLabel(type) : '';
+  });
 
   // --- Payment screenshot upload ------------------------------------------
   /**
@@ -312,7 +342,7 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private readonly model = signal<ReturnType<NewOrderComponent['snapshot']>>({
     items: [],
     amountReceived: 0,
-    paymentMethod: 'UPI_QR',
+    paymentMethod: '',
     paymentAccountId: null,
     paymentUtr: '',
     leadSource: '',
@@ -354,7 +384,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     ],
     items: this.fb.array([this.newItem()]),
     amountReceived: [0, [Validators.required, Validators.min(0)]],
-    paymentMethod: ['UPI_QR' as PaymentMethod, [Validators.required]],
+    // Empty until the Settings-managed list loads, then set to the default method.
+    paymentMethod: ['' as PaymentMethod, [Validators.required]],
     paymentAccountId: this.fb.control<number | null>(null),
     paymentUtr: ['', [Validators.maxLength(80)]],
     // Optional order-level discount (product-catalog-pricing-gst Req 6).
@@ -363,15 +394,26 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     notes: ['', [Validators.maxLength(1000)]],
   });
 
-  /** Whether the selected online method needs an account and UTR. */
-  protected readonly paymentNeedsAccount = computed(() => {
-    const method = this.selectedPaymentMethod();
-    return method === 'UPI_QR' || method === 'BANK_TRANSFER';
-  });
+  /** Whether the selected method needs a receiving account (the UTR is optional). */
+  protected readonly paymentNeedsAccount = computed(() => this.selectedMethod()?.requiresAccount ?? false);
 
+  /**
+   * An online (UPI / bank) payment must name the account that received it. The UTR / reference is
+   * deliberately optional: a salesperson often does not have it when punching the order.
+   */
   protected paymentMetadataInvalid(): boolean {
+    return this.paymentMethodMissing() || this.paymentAccountMissing();
+  }
+
+  /** No offered payment method is chosen (the list is still loading, or it failed to load). */
+  protected paymentMethodMissing(): boolean {
+    return !this.posMode() && this.selectedMethod() === null;
+  }
+
+  /** The chosen method needs a receiving account and none is selected. */
+  protected paymentAccountMissing(): boolean {
     return !this.posMode() && this.paymentNeedsAccount() &&
-      (this.form.controls.paymentAccountId.value == null || !this.form.controls.paymentUtr.value.trim());
+      this.form.controls.paymentAccountId.value == null;
   }
 
   /** Whether the form is converting a lead (drives titles, locked fields, submit path). */
@@ -576,8 +618,25 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.loadProducts();
     this.form.controls.paymentMethod.valueChanges.subscribe((method) => this.selectedPaymentMethod.set(method as PaymentMethod));
+    // The method list is admin-managed (Settings → Payment methods). The two lookups answer in
+    // either order, so both re-run the same idempotent sync.
+    this.settings.activePaymentMethods().subscribe({
+      next: (methods) => {
+        this.paymentMethods.set(methods);
+        this.paymentMethodsError.set(false);
+        this.syncPaymentMethod();
+      },
+      error: () => {
+        this.paymentMethods.set([]);
+        this.paymentMethodsError.set(true);
+      },
+    });
     this.settings.activePaymentAccounts().subscribe({
-      next: (accounts) => this.paymentAccounts.set(accounts),
+      next: (accounts) => {
+        this.paymentAccounts.set(accounts);
+        this.paymentAccountsLoaded.set(true);
+        this.syncPaymentAccount();
+      },
       error: () => this.paymentAccounts.set([]),
     });
     this.loadFavorites();
@@ -760,6 +819,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     // Patch the scalar fields (ignore the items key — handled above).
     const { items: _drop, ...scalars } = v as { items?: unknown };
     this.form.patchValue(scalars as Record<string, unknown>);
+    // The draft may carry a method that has since been renamed away or deactivated.
+    this.syncPaymentMethod();
     this.model.set(this.snapshot());
     this.syncExpandersFromForm();
     this.draftAvailable.set(false);
@@ -1211,6 +1272,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private enterPosMode(): void {
     this.destination.set('india');
     this.sameDayDuplicate.set(null);
+    // A counter sale does not send a payment method, so a failed method lookup must not block it.
+    this.form.controls.paymentMethod.clearValidators();
+    this.form.controls.paymentMethod.updateValueAndValidity();
     this.form.controls.addressLine.setValidators([Validators.maxLength(250)]);
     this.form.controls.city.setValidators([Validators.maxLength(100)]);
     this.form.controls.state.setValidators([Validators.maxLength(100)]);
@@ -1498,6 +1562,51 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     if (!this.paymentNeedsAccount()) {
       this.form.controls.paymentAccountId.setValue(null);
       this.form.controls.paymentUtr.setValue('');
+      return;
+    }
+    this.syncPaymentAccount();
+  }
+
+  /**
+   * Makes sure the form holds a method that is currently offered. A blank value (fresh form) or a
+   * code that is no longer offered (stale draft, deactivated method) falls back to the default
+   * chosen in Settings, then to the first method. Safe to call repeatedly.
+   */
+  private syncPaymentMethod(): void {
+    const methods = this.paymentMethods();
+    if (methods.length === 0) {
+      return;
+    }
+    const control = this.form.controls.paymentMethod;
+    if (!methods.some((method) => method.code === control.value)) {
+      const fallback = methods.find((method) => method.defaultMethod) ?? methods[0];
+      control.setValue(fallback.code);
+    }
+    this.selectedPaymentMethod.set(control.value as PaymentMethod);
+    this.syncPaymentAccount();
+  }
+
+  /**
+   * Keeps "Amount received in" consistent with the chosen method. A linked method (Credit Card
+   * Link → Shopify settlement) selects its account automatically; a plain method drops an account
+   * that only belonged to the previous method. A value restored from a draft is left alone until
+   * the account list has loaded, so it is never cleared just because the lookup is still in flight.
+   */
+  private syncPaymentAccount(): void {
+    const method = this.selectedMethod();
+    if (!method || !method.requiresAccount) {
+      return;
+    }
+    const control = this.form.controls.paymentAccountId;
+    const current = control.value;
+    const offered = this.orderPaymentAccounts();
+    const stillValid = current != null && offered.some((account) => account.id === current);
+    if (method.linkedAccountType) {
+      if (!stillValid && (current == null || this.paymentAccountsLoaded())) {
+        control.setValue(method.autoAccountId ?? offered[0]?.id ?? null);
+      }
+    } else if (current != null && !stillValid && this.paymentAccountsLoaded()) {
+      control.setValue(null);
     }
   }
 
@@ -1686,7 +1795,11 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       return;
     }
     if (this.paymentMetadataInvalid()) {
-      this.toasts.error('Select the receiving account and enter the UTR/reference for this payment.');
+      this.toasts.error(
+        this.paymentMethodMissing()
+          ? 'Choose how the payment was received.'
+          : 'Select the account that received this payment.',
+      );
       return;
     }
     if (this.screenshotRequired() && !this.screenshotKey()) {

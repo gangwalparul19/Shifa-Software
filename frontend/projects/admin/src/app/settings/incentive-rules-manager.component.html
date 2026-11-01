@@ -1,0 +1,172 @@
+<div class="shifa-inc-rules">
+  <div class="mb-3">
+    <h4 class="mb-1"><i class="ti ti-coin me-1"></i>Daily sales incentive</h4>
+    <p class="text-secondary small mb-0">
+      A salesperson earns a flat bonus for each day their sales reach a slab. A day earns the
+      <strong>highest slab it reaches</strong> (slabs do not add up), and a day that exactly meets a slab
+      qualifies. Sales are the order totals punched that day, without rejected, payment-rejected or cancelled
+      orders. Every save is added to the history below; earlier rules are never overwritten, and each past day
+      keeps the rules that applied on it.
+    </p>
+  </div>
+
+  @if (loading()) {
+    <div class="skeleton skeleton-line w-75"></div>
+  } @else if (failed()) {
+    <div class="alert alert-danger d-flex align-items-center justify-content-between" role="alert">
+      <span>Could not load the incentive rules.</span>
+      <button type="button" class="btn btn-sm btn-outline-danger" (click)="load()">Retry</button>
+    </div>
+  } @else {
+    <!-- What is in force today -->
+    <div class="shifa-inc-rules__now mb-3">
+      @if (rules()?.inForce; as current) {
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+          <span class="badge tone-green">In force</span>
+          <span class="small text-secondary">since {{ current.effectiveFrom | istDate: 'dd MMM yyyy' }}</span>
+        </div>
+        @if (current.tiers.length === 0) {
+          <div class="fw-semibold">No daily bonus is paid.</div>
+        } @else {
+          <ul class="shifa-inc-rules__slabs mb-0">
+            @for (tier of current.tiers; track tier.minSales) {
+              <li><strong>{{ tier.minSales | inr: 0 }}</strong> and above earns <strong>{{ tier.bonus | inr: 0 }}</strong> a day</li>
+            }
+          </ul>
+        }
+      } @else {
+        <div class="fw-semibold">No incentive rules are in force yet.</div>
+        <div class="small text-secondary">
+          The tracker shows sales but no bonus until rules are saved. The slabs below are a starting point; change them, choose the start
+          day, and save.
+        </div>
+      }
+    </div>
+
+    <!-- Editor -->
+    <div class="shifa-inc-rules__form mb-4">
+      <strong class="d-block mb-2">Set the slabs</strong>
+      <div class="row g-2 mb-2">
+        <div class="col-12 col-md-4">
+          <label class="form-label required" for="incStart">Rules start on</label>
+          <input id="incStart" type="date" class="form-control" [formControl]="form.controls.effectiveFrom" />
+        </div>
+        <div class="col-12 col-md-8">
+          <label class="form-label" for="incNote">Note <span class="text-secondary fw-normal">(optional, kept in the history)</span></label>
+          <input id="incNote" class="form-control" [formControl]="form.controls.note" maxlength="255"
+            placeholder="For example: festive-season rates" />
+        </div>
+      </div>
+
+      @if (startsInPast()) {
+        <div class="alert alert-warning py-2 small mb-2" role="status">
+          <i class="ti ti-alert-triangle me-1" aria-hidden="true"></i>
+          This start day is before today, so bonuses for the days since then will be recalculated with these slabs.
+        </div>
+      }
+
+      <div class="shifa-inc-rules__rows" role="group" aria-label="Daily bonus slabs">
+        @for (tier of tiers.controls; track tier; let i = $index) {
+          <div class="shifa-inc-rules__row" [formGroup]="tier">
+            <div class="shifa-inc-rules__field">
+              <label class="form-label mb-1" [attr.for]="'incMin' + i">Daily sales of at least</label>
+              <div class="input-group">
+                <span class="input-group-text">₹</span>
+                <input [id]="'incMin' + i" type="number" min="1" step="1" inputmode="numeric" class="form-control"
+                  formControlName="minSales" placeholder="25000" />
+              </div>
+            </div>
+            <div class="shifa-inc-rules__field">
+              <label class="form-label mb-1" [attr.for]="'incBonus' + i">Earns a bonus of</label>
+              <div class="input-group">
+                <span class="input-group-text">₹</span>
+                <input [id]="'incBonus' + i" type="number" min="1" step="1" inputmode="numeric" class="form-control"
+                  formControlName="bonus" placeholder="500" />
+              </div>
+            </div>
+            <button type="button" class="btn btn-ghost-danger shifa-inc-rules__remove" (click)="removeTier(i)"
+              [attr.aria-label]="'Remove slab ' + (i + 1)" title="Remove this slab">
+              <i class="ti ti-trash" aria-hidden="true"></i>
+            </button>
+          </div>
+        }
+        @if (tiers.length === 0) {
+          <div class="text-secondary small py-2">
+            No slabs. Saving like this switches the daily bonus off from the start day.
+          </div>
+        }
+      </div>
+
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">
+        <button type="button" class="btn btn-sm btn-outline-primary" (click)="addTier()">
+          <i class="ti ti-plus me-1" aria-hidden="true"></i>Add a slab
+        </button>
+        <span class="small text-secondary">Up to 20 slabs. Each higher slab must pay more than the one below it.</span>
+      </div>
+
+      @if (problem(); as message) {
+        <div class="text-danger small mt-2" role="alert">{{ message }}</div>
+      } @else if (draftTiers().length > 0) {
+        <div class="shifa-inc-rules__preview mt-3">
+          <div class="small text-secondary mb-1">What this pays, from {{ effectiveFromValue() }}</div>
+          <ul class="shifa-inc-rules__slabs mb-0">
+            @for (tier of draftTiers(); track tier.minSales) {
+              <li><strong>{{ tier.minSales | inr: 0 }}</strong> and above earns <strong>{{ tier.bonus | inr: 0 }}</strong> a day</li>
+            }
+          </ul>
+        </div>
+      }
+
+      <div class="text-end mt-3">
+        <button type="button" class="btn btn-primary" (click)="save()" [disabled]="saving() || !!problem()">
+          @if (saving()) {<span class="spinner-border spinner-border-sm me-1"></span>} Save rules
+        </button>
+      </div>
+    </div>
+
+    <!-- History: the audit trail -->
+    <div class="d-flex align-items-center justify-content-between mb-2">
+      <strong><i class="ti ti-history me-1" aria-hidden="true"></i>Change history</strong>
+      <span class="small text-secondary">{{ historyTotal() }} version{{ historyTotal() === 1 ? '' : 's' }}</span>
+    </div>
+    @if (historyTotal() === 0) {
+      <div class="text-secondary py-2">Nothing saved yet. The first save becomes the first entry.</div>
+    } @else {
+      <ol class="shifa-inc-rules__history list-unstyled mb-2">
+        @for (version of historyItems(); track version.id) {
+          <li class="shifa-inc-rules__item">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <strong>From {{ version.effectiveFrom | istDate: 'dd MMM yyyy' }}</strong>
+              <span [class]="'badge ' + statusTone(version)">{{ statusLabel(version) }}</span>
+            </div>
+            <div class="small text-secondary mb-1">
+              Saved {{ version.createdAt | istDate }} by {{ version.createdByName || 'someone' }}
+            </div>
+            @if (version.changeSummary) {
+              <div class="mb-1">{{ version.changeSummary }}</div>
+            }
+            @if (version.note) {
+              <div class="small fst-italic mb-1">“{{ version.note }}”</div>
+            }
+            <div class="shifa-inc-rules__chips">
+              @for (tier of version.tiers; track tier.minSales) {
+                <span class="shifa-inc-rules__chip">{{ tier.minSales | inr: 0 }} → {{ tier.bonus | inr: 0 }}</span>
+              } @empty {
+                <span class="shifa-inc-rules__chip shifa-inc-rules__chip--off">No daily bonus</span>
+              }
+            </div>
+          </li>
+        }
+      </ol>
+      <admin-pagination
+        [page]="historyPage()"
+        [totalPages]="historyPages()"
+        [totalElements]="historyTotal()"
+        [size]="historySize()"
+        [sizeOptions]="[5, 10, 20]"
+        (pageChange)="goToHistoryPage($event)"
+        (sizeChange)="setHistorySize($event)"
+      />
+    }
+  }
+</div>

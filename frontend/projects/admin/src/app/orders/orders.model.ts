@@ -1,6 +1,10 @@
 import { Money, OrderSource, OrderStatus, PaymentStatus, RejectReason } from 'core';
 
-export type PaymentMethod = 'UPI_QR' | 'BANK_TRANSFER' | 'CASH';
+/**
+ * Code of a payment method. Methods are admin-managed (Settings → Payment methods), so the set is
+ * data, not a fixed union; the order-entry list comes from {@code GET /api/payment-methods}.
+ */
+export type PaymentMethod = string;
 
 export interface PaymentAccountOption {
   id: number;
@@ -350,7 +354,7 @@ export interface PaymentScreenshot {
 export interface OrderPayment {
   id: number;
   amountReceived: Money;
-  paymentMethod?: 'UPI_QR' | 'BANK_TRANSFER' | 'CASH' | 'SHOPIFY' | 'OTHER' | null;
+  paymentMethod?: PaymentMethod | null;
   bankAccountId?: number | null;
   bankAccountName?: string | null;
   bankAccountMasked?: string | null;

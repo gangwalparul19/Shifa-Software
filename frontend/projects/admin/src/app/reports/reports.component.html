@@ -76,11 +76,11 @@
 
         <div class="col-6 col-md-2">
           <label class="form-label" for="from">From</label>
-          <input id="from" type="date" class="form-control" formControlName="from" [readonly]="!isCustom()" />
+          <input id="from" type="date" class="form-control" formControlName="from" [readonly]="!isCustom()" (change)="onCustomDateChange()" />
         </div>
         <div class="col-6 col-md-2">
           <label class="form-label" for="to">To</label>
-          <input id="to" type="date" class="form-control" formControlName="to" [readonly]="!isCustom()" />
+          <input id="to" type="date" class="form-control" formControlName="to" [readonly]="!isCustom()" (change)="onCustomDateChange()" />
         </div>
       </div>
     }

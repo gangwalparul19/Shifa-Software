@@ -83,7 +83,7 @@ public record LeadConvertRequest(
         List<@Size(max = 512, message = "a payment screenshot key must be at most 512 characters") String>
                 paymentScreenshotKeys,
 
-        /** Payment method for the upfront collection (UPI_QR/BANK_TRANSFER/CASH). */
+        /** Code of an active payment method ({@code GET /api/payment-methods}); blank = the default method. */
         @Size(max = 30, message = "paymentMethod must be at most 30 characters")
         String paymentMethod,
 

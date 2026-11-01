@@ -1,6 +1,6 @@
 <admin-page-header
   title="Announcements"
-  subtitle="Post a notice every signed-in staff member sees as a banner."
+  subtitle="Post a notice every signed-in staff member sees as a banner. Pin it to put it at the top of their dashboard too."
   [breadcrumbs]="[{ label: 'Announcements' }]"
 />
 
@@ -23,6 +23,15 @@
           <div class="invalid-feedback">A message is required (max 500 characters).</div>
         }
       </div>
+      <label class="form-check mb-3" for="ann-pin">
+        <input id="ann-pin" type="checkbox" class="form-check-input" formControlName="showOnDashboard" />
+        <span class="form-check-label">
+          <i class="ti ti-pin me-1" aria-hidden="true"></i>Show at the top of everyone's dashboard
+          <span class="form-hint d-block">
+            Staff do not need to open this page. It appears as a card above their home screen until you remove it.
+          </span>
+        </span>
+      </label>
       <div class="d-flex flex-wrap gap-2 align-items-end">
         <div>
           <label class="form-label" for="ann-severity">Style</label>
@@ -68,6 +77,11 @@
               <div class="small text-secondary mt-1">
                 {{ a.createdByName || 'Admin' }} · {{ a.createdAt | istDate }}
                 @if (!a.active) { · <span class="fw-semibold">inactive</span> }
+                @if (a.showOnDashboard) {
+                  · <span class="badge bg-green-lt" [title]="a.active ? 'Shown at the top of the dashboard' : 'Pinned, but hidden while inactive'">
+                    <i class="ti ti-pin me-1" aria-hidden="true"></i>Pinned to dashboard
+                  </span>
+                }
               </div>
             </div>
           </div>

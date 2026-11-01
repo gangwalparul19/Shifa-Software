@@ -36,6 +36,13 @@ public class Announcement {
     @Column(name = "active", nullable = false)
     private boolean active = true;
 
+    /**
+     * Pinned to the top of the home screen as a prominent card (V109). Independent of the thin
+     * app-wide banner every active announcement already gets, and only shown while {@link #active}.
+     */
+    @Column(name = "show_on_dashboard", nullable = false)
+    private boolean showOnDashboard = false;
+
     @Column(name = "created_by")
     private Long createdBy;
 
@@ -79,6 +86,15 @@ public class Announcement {
 
     public void setActive(boolean active) {
         this.active = active;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public boolean isShowOnDashboard() {
+        return showOnDashboard;
+    }
+
+    public void setShowOnDashboard(boolean showOnDashboard) {
+        this.showOnDashboard = showOnDashboard;
         this.updatedAt = LocalDateTime.now();
     }
 

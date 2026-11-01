@@ -4,20 +4,10 @@
       <h2 class="dp-title"><i class="ti ti-truck-delivery me-2"></i>Orders by delivery partner</h2>
       <p class="dp-sub text-secondary">Compare QuikShipX, In-house (Ishika Enterprise) and POS · {{ periodLabel() }}</p>
     </div>
-    <div class="dp-presets btn-group btn-group-sm" role="group" aria-label="Period">
-      <button type="button" class="btn"
-        [class.btn-primary]="activePreset() === 'this-month'"
-        [class.btn-outline-secondary]="activePreset() !== 'this-month'"
-        (click)="setPreset('this-month')">This month</button>
-      <button type="button" class="btn"
-        [class.btn-primary]="activePreset() === 'last-30'"
-        [class.btn-outline-secondary]="activePreset() !== 'last-30'"
-        (click)="setPreset('last-30')">Last 30 days</button>
-      <button type="button" class="btn"
-        [class.btn-primary]="activePreset() === 'all'"
-        [class.btn-outline-secondary]="activePreset() !== 'all'"
-        (click)="setPreset('all')">All time</button>
-    </div>
+  </div>
+
+  <div class="dp-period">
+    <admin-period-picker [value]="selection()" ariaLabel="Delivery partner period" (changed)="choose($event)" />
   </div>
 
   @if (loading()) {

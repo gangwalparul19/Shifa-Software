@@ -829,28 +829,43 @@
       <div class="row g-2 mb-3">
         <div class="col-12 col-md-5">
           <label class="form-label required" for="paymentMethod">Payment method</label>
-          <select id="paymentMethod" class="form-select" formControlName="paymentMethod" (change)="paymentMethodChanged()">
-            <option value="UPI_QR">UPI / QR</option>
-            <option value="BANK_TRANSFER">Bank transfer</option>
-            <option value="CASH">Cash</option>
+          <select id="paymentMethod" class="form-select" formControlName="paymentMethod" (change)="paymentMethodChanged()"
+            [class.is-invalid]="submitAttempted() && paymentMethodMissing()">
+            @for (method of paymentMethods(); track method.code) {
+              <option [value]="method.code">{{ method.label }}</option>
+            }
           </select>
+          @if (paymentMethodsError()) {
+            <div class="form-hint text-danger">Payment methods could not be loaded. Refresh the page to try again.</div>
+          }
         </div>
         <div class="col-12 col-md-7">
           <label class="form-label" [class.required]="paymentNeedsAccount()" for="paymentAccountId">Amount received in</label>
           <select id="paymentAccountId" class="form-select" formControlName="paymentAccountId"
-            [class.is-invalid]="submitAttempted() && paymentMetadataInvalid()" [disabled]="!paymentNeedsAccount()">
+            [class.is-invalid]="submitAttempted() && paymentAccountMissing()" [disabled]="!paymentNeedsAccount()">
             <option [ngValue]="null">Select receiving account…</option>
             @for (account of orderPaymentAccounts(); track account.id) {
               <option [ngValue]="account.id">{{ account.displayName }} — {{ account.bankName || account.upiId || 'Account' }} {{ account.maskedAccountNumber || '' }}</option>
             }
           </select>
-          @if (paymentNeedsAccount() && orderPaymentAccounts().length === 0) {<div class="form-hint text-warning">No active receiving account is configured. Ask an admin to add one in Settings.</div>}
+          @if (paymentNeedsAccount() && orderPaymentAccounts().length === 0) {
+            <div class="form-hint text-warning">
+              @if (selectedMethod()?.linkedAccountType) {
+                No {{ linkedAccountLabel() }} account is set up for {{ selectedMethod()?.label }}. Ask an admin to add one in Settings.
+              } @else {
+                No active receiving account is configured. Ask an admin to add one in Settings.
+              }
+            </div>
+          } @else if (selectedMethod()?.linkedAccountType && orderPaymentAccounts().length > 0) {
+            <div class="form-hint">Selected automatically for {{ selectedMethod()?.label }}.</div>
+          }
         </div>
         <div class="col-12">
-          <label class="form-label" [class.required]="paymentNeedsAccount()" for="paymentUtr">UTR / transaction reference</label>
+          <label class="form-label" for="paymentUtr">UTR / transaction reference <span class="text-secondary fw-normal">(optional)</span></label>
           <input id="paymentUtr" type="text" class="form-control shifa-mono text-uppercase" formControlName="paymentUtr"
-            maxlength="80" autocomplete="off" placeholder="Enter the UPI/bank reference" [disabled]="!paymentNeedsAccount()" />
-          @if (submitAttempted() && paymentMetadataInvalid()) {<div class="text-danger small mt-1">Select the account that received the money and enter its UTR/reference.</div>}
+            maxlength="80" autocomplete="off" placeholder="UPI/bank reference, if you have it" [disabled]="!paymentNeedsAccount()" />
+          @if (submitAttempted() && paymentMethodMissing()) {<div class="text-danger small mt-1">Choose how the payment was received.</div>}
+          @else if (submitAttempted() && paymentAccountMissing()) {<div class="text-danger small mt-1">Select the account that received the money.</div>}
         </div>
       </div>
 

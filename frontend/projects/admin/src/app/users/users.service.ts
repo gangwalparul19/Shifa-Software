@@ -112,6 +112,8 @@ export interface UpdateUserRequest {
 export interface PasswordResetResponse {
   user: AdminUser;
   temporaryCredential: string;
+  /** Masked address the credential was also emailed to; null/absent when it was not emailed. */
+  emailedTo?: string | null;
   expiresAt: string;
 }
 

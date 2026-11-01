@@ -1,11 +1,16 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { CompactInrPipe, InrPipe } from '../shared/inr.pipe';
+import { PeriodPickerComponent } from '../shared/period-picker.component';
+import {
+  PeriodSelection,
+  THIS_MONTH,
+  isUsableSelection,
+  periodDates,
+  periodLabel as selectionLabel,
+} from '../shared/period-selection';
 import { DashboardService } from './dashboard.service';
 import { DeliveryPartnerSummary, PartnerStats } from './delivery-partner.model';
-
-/** The quick period presets for the delivery-partner section. */
-type PresetKey = 'this-month' | 'last-30' | 'all';
 
 /** One partner card's display config (key → colour + icon + how to drill into Orders). */
 interface PartnerCardMeta {
@@ -24,7 +29,7 @@ interface PartnerCardMeta {
 @Component({
   selector: 'admin-delivery-partner-overview',
   standalone: true,
-  imports: [InrPipe, CompactInrPipe],
+  imports: [InrPipe, CompactInrPipe, PeriodPickerComponent],
   templateUrl: './delivery-partner-overview.component.html',
   styleUrl: './delivery-partner-overview.component.css',
 })
@@ -35,7 +40,10 @@ export class DeliveryPartnerOverviewComponent implements OnInit {
   protected readonly data = signal<DeliveryPartnerSummary | null>(null);
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
-  protected readonly activePreset = signal<PresetKey>('this-month');
+  /** The period shown: this month until the user picks another. */
+  protected readonly selection = signal<PeriodSelection>(THIS_MONTH);
+  /** Numbers the requests so a slow answer for an earlier choice cannot overwrite a newer one. */
+  private requestId = 0;
 
   /** Per-partner visual style + drill config, in display order. */
   protected readonly cardMeta: PartnerCardMeta[] = [
@@ -53,65 +61,44 @@ export class DeliveryPartnerOverviewComponent implements OnInit {
     return this.cardMeta.map((meta) => ({ meta, stats: d[meta.key] }));
   });
 
-  protected readonly periodLabel = computed(() => {
-    switch (this.activePreset()) {
-      case 'this-month':
-        return 'This month';
-      case 'last-30':
-        return 'Last 30 days';
-      default:
-        return 'All time';
-    }
-  });
+  protected readonly periodLabel = computed(() => selectionLabel(this.selection()));
 
   ngOnInit(): void {
     this.load();
   }
 
-  setPreset(preset: PresetKey): void {
-    if (this.activePreset() === preset) {
-      return;
-    }
-    this.activePreset.set(preset);
+  /** A new period was picked: reload the partner cards for it. */
+  choose(selection: PeriodSelection): void {
+    this.selection.set(selection);
     this.load();
   }
 
   load(): void {
+    const selection = this.selection();
+    if (!isUsableSelection(selection)) {
+      return; // a half-typed custom range: wait for a valid one
+    }
+    const request = ++this.requestId;
     this.loading.set(true);
     this.error.set(null);
-    const { from, to } = this.window();
-    this.service.deliveryPartnerSummary(from, to).subscribe({
+    // India-time days (null/null = all time); the browser's own timezone plays no part.
+    const dates = periodDates(selection);
+    this.service.deliveryPartnerSummary(dates?.from ?? null, dates?.to ?? null).subscribe({
       next: (d) => {
+        if (request !== this.requestId) {
+          return;
+        }
         this.data.set(d);
         this.loading.set(false);
       },
       error: () => {
+        if (request !== this.requestId) {
+          return;
+        }
         this.error.set('Could not load the delivery-partner summary. Please try again.');
         this.loading.set(false);
       },
     });
-  }
-
-  /** The ISO date window for the active preset (null/null = all-time). */
-  private window(): { from: string | null; to: string | null } {
-    const today = new Date();
-    const iso = (d: Date) => {
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${y}-${m}-${day}`;
-    };
-    switch (this.activePreset()) {
-      case 'this-month':
-        return { from: iso(new Date(today.getFullYear(), today.getMonth(), 1)), to: iso(today) };
-      case 'last-30': {
-        const start = new Date(today);
-        start.setDate(start.getDate() - 29);
-        return { from: iso(start), to: iso(today) };
-      }
-      default:
-        return { from: null, to: null };
-    }
   }
 
   /** Delivery-success % for a partner (delivered / (delivered + failed)), or null when none. */

@@ -329,4 +329,67 @@
   </div>
 }
 
+<!-- Temporary password shown after a reset. Stays open until closed: the server never returns it again. -->
+@if (resetResult(); as reset) {
+  <div class="shifa-overlay"></div>
+  <div class="shifa-modal" adminDialog aria-labelledby="reset-result-title" (dialogClose)="closeResetResult()">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0" id="reset-result-title">
+          <i class="ti ti-key me-2"></i>Temporary password
+        </h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeResetResult()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="mb-3">
+          Password reset for <strong>{{ reset.user.fullName }}</strong>
+          (<span class="shifa-mono">{{ reset.user.username }}</span>). Share the temporary password below with them.
+        </p>
+
+        <label class="form-label" for="reset-credential">Temporary password</label>
+        <div class="input-group mb-2">
+          <input
+            id="reset-credential"
+            type="text"
+            class="form-control shifa-mono"
+            [value]="reset.temporaryCredential"
+            readonly
+            autocomplete="off"
+            spellcheck="false"
+            (focus)="$any($event.target).select()"
+          />
+          <button type="button" class="btn btn-outline-primary" (click)="copyCredential()">
+            @if (credentialCopied()) {
+              <i class="ti ti-check me-1"></i> Copied
+            } @else {
+              <i class="ti ti-copy me-1"></i> Copy
+            }
+          </button>
+        </div>
+
+        <div class="alert alert-warning mt-3 mb-3" role="alert">
+          <i class="ti ti-alert-triangle me-2"></i>
+          This is shown only once. It stops working on <strong>{{ reset.expiresAt | istDate }} IST</strong>, and
+          the user must choose a new password when they first sign in.
+        </div>
+
+        @if (reset.emailedTo) {
+          <p class="text-secondary small mb-3">
+            <i class="ti ti-mail me-1"></i> A copy was also emailed to you at
+            <span class="shifa-mono">{{ reset.emailedTo }}</span>.
+          </p>
+        }
+
+        <div class="d-flex justify-content-end">
+          <button type="button" class="btn btn-primary" (click)="closeResetResult()">I've saved it</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
 

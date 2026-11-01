@@ -77,6 +77,49 @@ public interface OrderPaymentRepository extends JpaRepository<OrderPayment, Long
         java.math.BigDecimal getUnreviewedAmount();
     }
 
+    /**
+     * How many payments on Shopify-sourced orders still have no receiving account, how much they
+     * add up to, and how many already have one. Soft-deleted orders are left out, as in the
+     * settlement KPIs.
+     */
+    @Query(value = """
+            SELECT COUNT(CASE WHEN p.bank_account_id IS NULL THEN 1 END) AS unassignedCount,
+                   COALESCE(SUM(CASE WHEN p.bank_account_id IS NULL THEN p.amount_received ELSE 0 END), 0) AS unassignedAmount,
+                   COUNT(CASE WHEN p.bank_account_id IS NOT NULL THEN 1 END) AS assignedCount
+            FROM payments p
+            JOIN orders o ON o.id = p.order_id AND o.active = 1
+            WHERE o.source = 'SHOPIFY'
+            """, nativeQuery = true)
+    ShopifyPaymentTotals shopifyPaymentTotals();
+
+    interface ShopifyPaymentTotals {
+        long getUnassignedCount();
+        java.math.BigDecimal getUnassignedAmount();
+        long getAssignedCount();
+    }
+
+    /**
+     * Books every Shopify-order payment that has no receiving account under the given account.
+     * Only rows with a NULL account are touched, so a payment someone already assigned (or a
+     * second run) is never overwritten. The method code is filled in only when it is missing.
+     *
+     * @return the number of payment rows updated
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query(value = """
+            UPDATE payments
+            SET bank_account_id = :accountId,
+                bank_account_name_snapshot = :accountName,
+                bank_account_masked_snapshot = :accountMasked,
+                payment_method = COALESCE(payment_method, :methodCode)
+            WHERE bank_account_id IS NULL
+              AND order_id IN (SELECT o.id FROM orders o WHERE o.source = 'SHOPIFY')
+            """, nativeQuery = true)
+    int assignShopifyPaymentsToAccount(@Param("accountId") Long accountId,
+                                       @Param("accountName") String accountName,
+                                       @Param("accountMasked") String accountMasked,
+                                       @Param("methodCode") String methodCode);
+
     @Query(value = """
             SELECT COUNT(*) FROM payments
             WHERE bank_account_id = :bankAccountId

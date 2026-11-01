@@ -25,12 +25,36 @@ public class ShopifyAdminController {
     private final ShopifyOrderImportService importService;
     private final AuditService auditService;
     private final SettingsService settingsService;
+    private final ShopifySettlementService settlementService;
 
     public ShopifyAdminController(ShopifyOrderImportService importService, AuditService auditService,
-                                  SettingsService settingsService) {
+                                  SettingsService settingsService, ShopifySettlementService settlementService) {
         this.importService = importService;
         this.auditService = auditService;
         this.settingsService = settingsService;
+        this.settlementService = settlementService;
+    }
+
+    /**
+     * Which account Shopify payments are booked under, and how many payments imported before that
+     * account existed still have no account.
+     */
+    @GetMapping("/settlement-account")
+    public ShopifySettlementService.Status settlementAccount() {
+        return settlementService.status();
+    }
+
+    /**
+     * Books every Shopify payment that has no receiving account under the Shopify settlement
+     * account. Idempotent; payments that already have an account are never changed.
+     */
+    @PostMapping("/settlement-account/assign")
+    public ShopifySettlementService.AssignResult assignSettlementAccount() {
+        ShopifySettlementService.AssignResult result = settlementService.assignExistingPayments();
+        auditService.record(AuditActions.SETTINGS_UPDATED, AuditActions.ENTITY_SETTINGS, null,
+                "Booked " + result.assigned() + " existing Shopify payment(s) under the Shopify settlement account "
+                        + result.accountName() + ".");
+        return result;
     }
 
     /** The Shopify integration switch: whether incoming Shopify orders are imported. */

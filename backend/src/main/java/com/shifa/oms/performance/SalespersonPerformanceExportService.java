@@ -72,11 +72,15 @@ public class SalespersonPerformanceExportService {
         this.pdfExporter = pdfExporter;
     }
 
-    /** Exports the full team comparison shown by the Salespeople directory. */
+    /**
+     * Exports the full team comparison shown by the Salespeople directory.
+     *
+     * @param period the period the caller chose (named in the report header)
+     * @param window the business-zone window that period resolved to, including a custom range
+     */
     @Transactional(readOnly = true)
-    public byte[] exportTeam(PerformancePeriod period, String format) {
+    public byte[] exportTeam(PerformancePeriod period, PerformancePeriod.Window window, String format) {
         LocalDate today = LocalDate.now(clock);
-        PerformancePeriod.Window window = period.window(today);
         List<PersonReport> people = userRepository.findByRoleInOrderByCreatedAtDescIdDesc(PERFORMANCE_ROLES)
                 .stream()
                 .map(user -> buildPerson(user, period, window, today))
@@ -102,7 +106,8 @@ public class SalespersonPerformanceExportService {
 
     /** Exports every selected-period detail for one performance owner. */
     @Transactional(readOnly = true)
-    public byte[] exportPerson(Long id, PerformancePeriod period, String format) {
+    public byte[] exportPerson(Long id, PerformancePeriod period, PerformancePeriod.Window window,
+                               String format) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User " + id + " does not exist."));
         if (!PERFORMANCE_ROLES.contains(user.getRole())) {
@@ -110,7 +115,6 @@ public class SalespersonPerformanceExportService {
                     "This account is not an allowed performance owner.");
         }
         LocalDate today = LocalDate.now(clock);
-        PerformancePeriod.Window window = period.window(today);
         PersonReport report = buildPerson(user, period, window, today);
         return renderPerson(report, format);
     }
@@ -333,7 +337,8 @@ public class SalespersonPerformanceExportService {
     private static List<Daily> completeDaily(Map<LocalDate, DailyAccumulator> byDate,
                                              PerformancePeriod.Window window,
                                              PerformancePeriod period) {
-        if (period == PerformancePeriod.OVERALL) {
+        if (window.from() == null) {
+            // No lower bound (Overall): list just the days that had orders.
             return byDate.entrySet().stream()
                     .sorted(Map.Entry.comparingByKey())
                     .map(entry -> new Daily(entry.getKey(), entry.getValue().orders, entry.getValue().sales))

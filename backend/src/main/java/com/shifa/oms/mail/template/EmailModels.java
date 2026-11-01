@@ -67,6 +67,25 @@ public final class EmailModels {
     }
 
     /**
+     * Temporary-credential email model (internal), sent to the administrator who
+     * reset a user's password. It is never sent to the user whose password was
+     * reset.
+     *
+     * @param adminName      the administrator's name for the greeting (may be blank)
+     * @param targetName     the full name of the user whose password was reset
+     * @param targetUsername the sign-in username of that user
+     * @param credential     the one-time temporary credential
+     * @param expiresAt      when the credential stops working (IST, pre-formatted)
+     */
+    public record TemporaryCredential(
+            String adminName,
+            String targetName,
+            String targetUsername,
+            String credential,
+            String expiresAt) {
+    }
+
+    /**
      * Daily sales digest email model (admin/internal). A pure projection of a
      * day's orders into the metrics the digest reports.
      *

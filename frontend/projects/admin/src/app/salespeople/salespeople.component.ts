@@ -8,11 +8,11 @@ import {
   ID_PROOF_TYPES,
   IdProofType,
   PerformanceExportFormat,
-  PerformancePeriod,
   PerformanceDownload,
   SalespeopleService,
   SalespersonPerformanceDetail,
   SalespersonPerformanceSummary,
+  SalespersonPeriodDetail,
   StaffProfile,
   UpdateStaffProfileRequest,
   VerificationStatus,
@@ -22,6 +22,14 @@ import { formatDateLabel } from '../shared/date-label.util';
 import { formatInr } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PaginationComponent } from '../shared/pagination.component';
+import { PeriodPickerComponent } from '../shared/period-picker.component';
+import {
+  PeriodSelection,
+  THIS_MONTH,
+  isUsableSelection,
+  periodDates,
+  periodLabel,
+} from '../shared/period-selection';
 import { DialogDirective } from '../shared/dialog.directive';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
@@ -31,24 +39,8 @@ import { verificationBadgeClass } from '../shared/status-badge.component';
 /** The verification filter tabs, in display order. */
 type StatusFilter = 'ALL' | VerificationStatus;
 
-/** Period lens for the Performance drawer (sales & orders per day). */
-type PerfPeriod = PerformancePeriod;
-
-/** One day's sales + orders within the selected period. */
-export interface PerfDayRow {
-  date: string;
-  orders: number;
-  revenue: number;
-}
-
-/** Aggregated totals for the selected period. */
-export interface PerfPeriodStats {
-  label: string;
-  orders: number;
-  /** Sales = sum of revenue EXCLUDING cancelled/rejected orders. */
-  sales: number;
-  days: PerfDayRow[];
-}
+/** What the directory cards can be sorted by (the first two follow the selected period). */
+type SortKey = 'revenueInPeriod' | 'ordersInPeriod' | 'successRate' | 'name';
 
 /**
  * Admin-only "All salespeople" directory with onboarding profiles &amp; ID
@@ -62,7 +54,15 @@ export interface PerfPeriodStats {
 @Component({
   selector: 'admin-salespeople',
   standalone: true,
-  imports: [ReactiveFormsModule, IstDatePipe, PageHeaderComponent, PaginationComponent, StatePanelComponent, DialogDirective],
+  imports: [
+    ReactiveFormsModule,
+    IstDatePipe,
+    PageHeaderComponent,
+    PaginationComponent,
+    PeriodPickerComponent,
+    StatePanelComponent,
+    DialogDirective,
+  ],
   templateUrl: './salespeople.component.html',
   styleUrl: './salespeople.component.css',
 })
@@ -86,28 +86,31 @@ export class SalespeopleComponent implements OnInit {
   /** Leaderboard metrics indexed by salesperson id (for list KPIs + sorting). */
   protected readonly perfById = signal<Map<number, SalespersonPerformanceSummary>>(new Map());
   /** How the directory list is sorted. */
-  protected readonly sortKey = signal<'revenueThisMonth' | 'ordersThisMonth' | 'successRate' | 'name'>(
-    'revenueThisMonth',
-  );
+  protected readonly sortKey = signal<SortKey>('revenueInPeriod');
   /** The open salesperson's full 360 detail (loaded when the drawer opens). */
   protected readonly detail = signal<SalespersonPerformanceDetail | null>(null);
   protected readonly detailLoading = signal(false);
 
-  /** Performance period filter for the drawer (sales/orders per day). */
-  protected readonly perfPeriod = signal<PerfPeriod>('MONTH');
-  /** Period tabs rendered in the Performance drawer, in display order. */
-  protected readonly perfPeriodTabs: { key: PerfPeriod; label: string }[] = [
-    { key: 'TODAY', label: 'Today' },
-    { key: 'YESTERDAY', label: 'Yesterday' },
-    { key: 'WEEK', label: 'This Week' },
-    { key: 'MONTH', label: 'This Month' },
-    { key: 'OVERALL', label: 'Overall' },
-  ];
-  /** Trend window (days) fetched for the drawer — wide enough for "This Month". */
-  private readonly PERF_TREND_DAYS = 60;
+  /**
+   * The period the directory shows (this month until the user picks another). It decides the
+   * orders / revenue on every card, the sort order and the team export. The server computes it.
+   */
+  protected readonly directoryPeriod = signal<PeriodSelection>(THIS_MONTH);
+  /** True while the directory figures are being re-fetched after a period change. */
+  protected readonly performanceLoading = signal(false);
+  /** Label of the period the cards currently show (the server's wording once loaded). */
+  protected readonly directoryLabel = signal('This Month');
 
-  /** Period used by the directory-level team export. */
-  protected readonly reportPeriod = signal<PerformancePeriod>('MONTH');
+  /**
+   * The period the open drawer shows. It starts from the directory's choice and can be changed
+   * independently, which re-fetches that person's figures from the server.
+   */
+  protected readonly perfSelection = signal<PeriodSelection>(THIS_MONTH);
+
+  /** Numbers the requests so an answer for an earlier choice cannot overwrite a newer one. */
+  private performanceRequest = 0;
+  private detailRequest = 0;
+
   /** Prevents duplicate downloads from either export toolbar. */
   protected readonly exporting = signal<PerformanceExportFormat | null>(null);
 
@@ -175,17 +178,17 @@ export class SalespeopleComponent implements OnInit {
   private metric(
     perf: Map<number, SalespersonPerformanceSummary>,
     id: number,
-    key: 'revenueThisMonth' | 'ordersThisMonth' | 'successRate',
+    key: 'revenueInPeriod' | 'ordersInPeriod' | 'successRate',
   ): number {
     const p = perf.get(id);
     if (!p) {
       return -1;
     }
-    if (key === 'revenueThisMonth') {
-      return Number(p.revenueThisMonth) || 0;
+    if (key === 'revenueInPeriod') {
+      return Number(p.revenueInPeriod) || 0;
     }
-    if (key === 'ordersThisMonth') {
-      return p.ordersThisMonth;
+    if (key === 'ordersInPeriod') {
+      return p.ordersInPeriod;
     }
     return p.successRate;
   }
@@ -238,17 +241,46 @@ export class SalespeopleComponent implements OnInit {
         this.loading.set(false);
       },
     });
-    // Leaderboard metrics (non-fatal): powers the per-card KPIs + sorting.
-    this.service.performanceLeaderboard().subscribe({
+    this.loadPerformance();
+  }
+
+  /**
+   * Fetches the leaderboard figures for {@link directoryPeriod} (non-fatal: the cards just omit
+   * their KPIs if it fails). Called on load and every time the period changes.
+   */
+  private loadPerformance(): void {
+    const selection = this.directoryPeriod();
+    if (!isUsableSelection(selection)) {
+      return; // a half-typed custom range: wait for a valid one
+    }
+    const request = ++this.performanceRequest;
+    this.performanceLoading.set(true);
+    this.service.performanceLeaderboard(selection).subscribe({
       next: (rows) => {
+        if (request !== this.performanceRequest) {
+          return;
+        }
         const map = new Map<number, SalespersonPerformanceSummary>();
         rows.forEach((r) => map.set(r.id, r));
         this.perfById.set(map);
+        this.directoryLabel.set(periodLabel(selection));
+        this.performanceLoading.set(false);
       },
       error: () => {
-        /* non-fatal — cards just omit the KPIs */
+        if (request !== this.performanceRequest) {
+          return;
+        }
+        this.performanceLoading.set(false);
+        this.toasts.error('Could not load performance for this period. Please try again.');
       },
     });
+  }
+
+  /** The directory period changed: reload every card for it. */
+  chooseDirectoryPeriod(selection: PeriodSelection): void {
+    this.directoryPeriod.set(selection);
+    this.page.set(0);
+    this.loadPerformance();
   }
 
   setFilter(f: StatusFilter): void {
@@ -256,7 +288,7 @@ export class SalespeopleComponent implements OnInit {
     this.page.set(0);
   }
 
-  setSort(key: 'revenueThisMonth' | 'ordersThisMonth' | 'successRate' | 'name'): void {
+  setSort(key: SortKey): void {
     this.sortKey.set(key);
     this.page.set(0);
   }
@@ -308,92 +340,38 @@ export class SalespeopleComponent implements OnInit {
    */
   viewOrders(member: StaffProfile, event: Event): void {
     event.stopPropagation();
+    // Narrow the Orders page to the same days the cards are showing (nothing for "Overall").
+    const dates = periodDates(this.directoryPeriod());
     void this.router.navigate(['/orders'], {
-      queryParams: { createdBy: member.id, name: member.fullName || member.username },
+      queryParams: {
+        createdBy: member.id,
+        name: member.fullName || member.username,
+        ...(dates ? { from: dates.from, to: dates.to } : {}),
+      },
     });
   }
 
-  /** The tallest daily order count in the trend, for bar scaling (min 1). */
+  /** The period figures for the open drawer, as the server computed them for the chosen period. */
+  protected readonly periodDetail = computed<SalespersonPeriodDetail | null>(
+    () => this.detail()?.period ?? null,
+  );
+
+  /** The days to chart and list: newest first, so the latest activity is on top. */
+  protected readonly periodDays = computed(() => [...(this.periodDetail()?.daily ?? [])].reverse());
+
+  /** The tallest daily order count in the period, for bar scaling (min 1). */
   trendMax(): number {
-    const days = this.periodStats()?.days ?? [];
-    return Math.max(1, ...days.map((p) => p.orders));
+    return Math.max(1, ...(this.periodDetail()?.daily ?? []).map((p) => p.orders));
   }
 
-  /**
-   * Orders + sales for the selected {@link perfPeriod}, derived from the daily
-   * trend series (which the backend already returns with per-day revenue that
-   * EXCLUDES cancelled/rejected orders). "Overall" uses the lifetime summary
-   * totals since the trend window is capped at 60 days.
-   */
-  protected readonly periodStats = computed<PerfPeriodStats | null>(() => {
-    const d = this.detail();
-    if (!d) {
-      return null;
-    }
-    const period = this.perfPeriod();
-    const label = this.perfPeriodTabs.find((t) => t.key === period)?.label ?? '';
-
-    if (period === 'OVERALL') {
-      // Lifetime: use the summary totals (trend is only the last 60 days).
-      return {
-        label,
-        orders: d.summary.ordersTotal,
-        sales: Number(d.summary.revenueTotal ?? 0),
-        days: [...d.trend]
-          .map((p) => ({ date: p.date, orders: p.orders, revenue: Number(p.revenue ?? 0) }))
-          .reverse(), // newest first for the breakdown list
-      };
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const inPeriod = (dateStr: string): boolean => {
-      const dt = new Date(dateStr);
-      dt.setHours(0, 0, 0, 0);
-      const diffDays = Math.round((today.getTime() - dt.getTime()) / 86400000);
-      switch (period) {
-        case 'TODAY':
-          return diffDays === 0;
-        case 'YESTERDAY':
-          return diffDays === 1;
-        case 'WEEK': {
-          // Current week, Monday-start.
-          const dow = (today.getDay() + 6) % 7; // 0 = Monday
-          return diffDays >= 0 && diffDays <= dow;
-        }
-        case 'MONTH':
-          return dt.getMonth() === today.getMonth() && dt.getFullYear() === today.getFullYear();
-        default:
-          return false;
-      }
-    };
-
-    const days: PerfDayRow[] = d.trend
-      .filter((p) => inPeriod(p.date))
-      .map((p) => ({ date: p.date, orders: p.orders, revenue: Number(p.revenue ?? 0) }))
-      .reverse(); // newest first
-
-    const orders = days.reduce((sum, p) => sum + p.orders, 0);
-    const sales = days.reduce((sum, p) => sum + p.revenue, 0);
-    return { label, orders, sales, days };
-  });
-
-  /** Switch the Performance period lens (no re-fetch; export uses server semantics). */
-  setPerfPeriod(period: PerfPeriod): void {
-    this.perfPeriod.set(period);
-  }
-
-  periodLabel(period: PerformancePeriod): string {
-    return this.perfPeriodTabs.find((tab) => tab.key === period)?.label ?? period;
-  }
-
-  setReportPeriod(period: PerformancePeriod): void {
-    this.reportPeriod.set(period);
+  /** A short label for a selection ("Last 7 days", "2026-10-01 → 2026-10-10"). */
+  periodLabel(selection: PeriodSelection): string {
+    return periodLabel(selection);
   }
 
   /** Downloads the complete team report for the period selected above the directory. */
   exportDirectory(format: PerformanceExportFormat): void {
-    this.downloadPerformance(format, this.reportPeriod());
+    this.downloadPerformance(format, this.directoryPeriod());
   }
 
   /** Downloads the complete report for the salesperson currently in the drawer. */
@@ -402,19 +380,23 @@ export class SalespeopleComponent implements OnInit {
     if (!member) {
       return;
     }
-    this.downloadPerformance(format, this.perfPeriod(), member.id);
+    this.downloadPerformance(format, this.perfSelection(), member.id);
   }
 
   private downloadPerformance(
     format: PerformanceExportFormat,
-    period: PerformancePeriod,
+    selection: PeriodSelection,
     salespersonId?: number,
   ): void {
     if (this.exporting()) {
       return;
     }
+    if (!isUsableSelection(selection)) {
+      this.toasts.error('Choose a valid start and end date first.');
+      return;
+    }
     this.exporting.set(format);
-    this.service.exportPerformance(format, period, salespersonId).subscribe({
+    this.service.exportPerformance(format, selection, salespersonId).subscribe({
       next: (result: PerformanceDownload) => {
         saveBlob(result.blob, result.filename, `performance.${format}`);
         this.exporting.set(null);
@@ -432,21 +414,13 @@ export class SalespeopleComponent implements OnInit {
   open(member: StaffProfile): void {
     this.formError.set(null);
     this.drawerTab.set('performance');
-    this.perfPeriod.set('MONTH');
+    // The drawer opens on the same period the directory is showing.
+    this.perfSelection.set(this.directoryPeriod());
     this.selected.set(member);
     this.verifyNote.reset('');
     this.clearProfilePreview();
-    // Load the Salesperson 360 detail for the performance section. Request a
-    // wide trend window so the period lens (Today..This Month) has daily data.
     this.detail.set(null);
-    this.detailLoading.set(true);
-    this.service.performance(member.id, this.PERF_TREND_DAYS).subscribe({
-      next: (d) => {
-        this.detail.set(d);
-        this.detailLoading.set(false);
-      },
-      error: () => this.detailLoading.set(false),
-    });
+    this.loadDetail(member.id);
     if (member.hasProfileImage) {
       this.loadProfilePreview(member.id);
     }
@@ -466,7 +440,44 @@ export class SalespeopleComponent implements OnInit {
     this.selected.set(null);
     this.formError.set(null);
     this.detail.set(null);
+    // Any answer still on its way belongs to a drawer that is no longer open.
+    this.detailRequest++;
     this.clearProfilePreview();
+  }
+
+  /** Fetches one person's 360 for the drawer's current period. */
+  private loadDetail(id: number): void {
+    const selection = this.perfSelection();
+    if (!isUsableSelection(selection)) {
+      return; // a half-typed custom range: wait for a valid one
+    }
+    const request = ++this.detailRequest;
+    this.detailLoading.set(true);
+    this.service.performance(id, undefined, selection).subscribe({
+      next: (d) => {
+        if (request !== this.detailRequest) {
+          return;
+        }
+        this.detail.set(d);
+        this.detailLoading.set(false);
+      },
+      error: () => {
+        if (request !== this.detailRequest) {
+          return;
+        }
+        this.detailLoading.set(false);
+        this.toasts.error('Could not load performance for this period. Please try again.');
+      },
+    });
+  }
+
+  /** The drawer period changed: reload this person's figures for it. */
+  choosePerfPeriod(selection: PeriodSelection): void {
+    this.perfSelection.set(selection);
+    const member = this.selected();
+    if (member) {
+      this.loadDetail(member.id);
+    }
   }
 
   /** Fetches the profile photo blob and shows it as an object-URL preview. */

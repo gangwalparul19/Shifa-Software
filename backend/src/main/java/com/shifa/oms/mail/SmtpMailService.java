@@ -45,12 +45,33 @@ public class SmtpMailService implements MailService {
         }
     }
 
+    /**
+     * Splits {@link MailMessage#to()} into individual plain addresses. Spring's
+     * {@code setTo(String)} accepts exactly one address and rejects a
+     * comma-separated list, which {@code MailMessage} documents as allowed.
+     * Plain addresses only (no "Display Name" form), so commas and semicolons
+     * are safe separators.
+     */
+    static String[] recipients(String to) {
+        if (to == null) {
+            throw new MailException("Email has no recipient.");
+        }
+        String[] parts = java.util.Arrays.stream(to.split("[,;]"))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toArray(String[]::new);
+        if (parts.length == 0) {
+            throw new MailException("Email has no recipient.");
+        }
+        return parts;
+    }
+
     private void sendMultipart(MailMessage message) {
         MimeMessage mime = mailSender.createMimeMessage();
         try {
             MimeMessageHelper helper = new MimeMessageHelper(mime, true, "UTF-8");
             helper.setFrom(properties.from());
-            helper.setTo(message.to());
+            helper.setTo(recipients(message.to()));
             helper.setSubject(message.subject());
             // (text, html): sets the plain-text alternative first, then the HTML
             // part, producing a multipart/alternative message.
@@ -66,7 +87,7 @@ public class SmtpMailService implements MailService {
     private void sendPlainText(MailMessage message) {
         SimpleMailMessage mail = new SimpleMailMessage();
         mail.setFrom(properties.from());
-        mail.setTo(message.to());
+        mail.setTo(recipients(message.to()));
         mail.setSubject(message.subject());
         mail.setText(message.body());
         try {

@@ -1,18 +1,16 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { BankAccount, BankAccountRequest, BankAccountType, SettingsService } from './settings.service';
+import {
+  BANK_ACCOUNT_TYPE_OPTIONS,
+  BankAccount,
+  BankAccountRequest,
+  BankAccountType,
+  SettingsService,
+  bankAccountTypeLabel,
+} from './settings.service';
 import { ConfirmService } from '../shared/confirm.service';
 import { ToastService } from '../shared/toast.service';
-
-const ACCOUNT_TYPES: { value: BankAccountType; label: string }[] = [
-  { value: 'UPI_QR', label: 'UPI / QR account' },
-  { value: 'BANK_TRANSFER', label: 'Bank transfer account' },
-  { value: 'SHOPIFY_SETTLEMENT', label: 'Shopify settlement' },
-  { value: 'QUICSHIP_REMITTANCE', label: 'QuikShip remittance' },
-  { value: 'CASH', label: 'Cash / counter' },
-  { value: 'OTHER', label: 'Other' },
-];
 
 @Component({
   selector: 'admin-bank-account-manager',
@@ -27,7 +25,7 @@ export class BankAccountManagerComponent implements OnInit {
   private readonly confirm = inject(ConfirmService);
   private readonly toasts = inject(ToastService);
 
-  protected readonly accountTypes = ACCOUNT_TYPES;
+  protected readonly accountTypes = BANK_ACCOUNT_TYPE_OPTIONS;
   protected readonly accounts = signal<BankAccount[]>([]);
   protected readonly loading = signal(true);
   protected readonly busy = signal(false);
@@ -127,7 +125,7 @@ export class BankAccountManagerComponent implements OnInit {
   }
 
   protected typeLabel(type: BankAccountType): string {
-    return ACCOUNT_TYPES.find((x) => x.value === type)?.label ?? type;
+    return bankAccountTypeLabel(type);
   }
 
   private errorMessage(err: HttpErrorResponse): string {

@@ -40,7 +40,17 @@ public class AdminAnnouncementController {
     /** Posts a new (active) announcement. */
     @PostMapping
     public AnnouncementResponse create(@Valid @RequestBody CreateAnnouncementRequest request) {
-        return service.create(request.message(), request.severity());
+        return service.create(request.message(), request.severity(), request.pinned());
+    }
+
+    /**
+     * Pins an announcement to the top of every user's home screen, or removes it from there
+     * ({@code ?value=true|false}). It is only shown while the announcement is also active.
+     */
+    @PostMapping("/{id}/dashboard")
+    public AnnouncementResponse setShowOnDashboard(@PathVariable Long id,
+                                                   @RequestParam(defaultValue = "true") boolean value) {
+        return service.setShowOnDashboard(id, value);
     }
 
     /** Activates or deactivates an announcement ({@code ?value=true|false}). */

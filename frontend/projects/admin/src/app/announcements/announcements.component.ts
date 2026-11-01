@@ -73,6 +73,8 @@ export class AnnouncementsComponent implements OnInit {
   protected readonly form = this.fb.nonNullable.group({
     message: ['', [Validators.required, Validators.maxLength(500)]],
     severity: ['info' as AnnouncementSeverity, [Validators.required]],
+    // Off by default: pinning puts a prominent card on every user's home screen.
+    showOnDashboard: [false],
   });
 
   ngOnInit(): void {
@@ -100,13 +102,17 @@ export class AnnouncementsComponent implements OnInit {
       return;
     }
     this.saving.set(true);
-    const { message, severity } = this.form.getRawValue();
-    this.service.create({ message: message.trim(), severity }).subscribe({
+    const { message, severity, showOnDashboard } = this.form.getRawValue();
+    this.service.create({ message: message.trim(), severity, showOnDashboard }).subscribe({
       next: (created) => {
         this.items.update((list) => [created, ...list]);
-        this.form.reset({ message: '', severity: 'info' });
+        this.form.reset({ message: '', severity: 'info', showOnDashboard: false });
         this.saving.set(false);
-        this.toasts.success('Announcement posted');
+        this.toasts.success(
+          created.showOnDashboard
+            ? 'Announcement posted and pinned to the top of the dashboard'
+            : 'Announcement posted',
+        );
       },
       error: () => {
         this.saving.set(false);
@@ -123,6 +129,11 @@ export class AnnouncementsComponent implements OnInit {
         label: a.active ? 'Hide' : 'Show',
         icon: a.active ? 'ti-eye-off' : 'ti-eye',
       },
+      {
+        key: 'pin',
+        label: a.showOnDashboard ? 'Remove from dashboard' : 'Pin to dashboard',
+        icon: a.showOnDashboard ? 'ti-pinned-off' : 'ti-pin',
+      },
       { key: 'delete', label: 'Delete', icon: 'ti-trash', variant: 'danger' },
     ];
   }
@@ -131,9 +142,24 @@ export class AnnouncementsComponent implements OnInit {
   onRowAction(key: string, a: Announcement): void {
     if (key === 'toggle') {
       this.toggle(a);
+    } else if (key === 'pin') {
+      this.togglePin(a);
     } else if (key === 'delete') {
       this.remove(a);
     }
+  }
+
+  /** Pins the announcement to the top of everyone's dashboard, or removes it from there. */
+  togglePin(a: Announcement): void {
+    this.service.setShowOnDashboard(a.id, !a.showOnDashboard).subscribe({
+      next: (updated) => {
+        this.items.update((list) => list.map((it) => (it.id === a.id ? updated : it)));
+        this.toasts.success(
+          updated.showOnDashboard ? 'Pinned to the top of the dashboard' : 'Removed from the dashboard',
+        );
+      },
+      error: () => this.toasts.error('Could not update the announcement.'),
+    });
   }
 
   toggle(a: Announcement): void {

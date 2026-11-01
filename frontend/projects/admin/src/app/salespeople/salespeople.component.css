@@ -443,3 +443,33 @@
 .shifa-drawer:focus-visible {
   outline: none;
 }
+
+/* Directory period picker row (above the cards). */
+.sp-period {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.sp-period__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+}
+
+/* Cards dim while a new period is being fetched, so stale figures are not mistaken for current. */
+.sp-kpis--loading,
+.sp-period-summary--loading {
+  opacity: 0.5;
+  transition: opacity 0.12s ease;
+}
+
+/* Small heading that separates the period figures from the fixed snapshot below. */
+.sp-section__sub {
+  margin: 0.9rem 0 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64726b;
+}

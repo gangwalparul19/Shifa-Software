@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient, Money } from 'core';
+import { PeriodSelection, THIS_MONTH, periodQuery } from '../shared/period-selection';
 
 /**
  * A salesperson's "My Day" snapshot (mirrors the backend {@code MyDayResponse}):
@@ -37,12 +38,20 @@ export interface LeaderboardRow {
   isMe: boolean;
 }
 
-/** This-month leaderboard + the caller's standing (mirrors {@code LeaderboardResponse}). */
+/** Leaderboard for a period + the caller's standing (mirrors {@code LeaderboardResponse}). */
 export interface Leaderboard {
   rows: LeaderboardRow[];
   myRank: number | null;
   myRevenue: Money;
+  /** Run of consecutive order days; always the caller's whole history, not the period. */
   myStreakDays: number;
+  /** The period applied (a `PeriodChoice` name). */
+  period: string;
+  /** Human label, e.g. "Last 7 Days" or "2026-10-01 to 2026-10-10". */
+  periodLabel: string;
+  /** First / last day covered (yyyy-MM-dd); null for "Overall". */
+  from: string | null;
+  to: string | null;
 }
 
 /** A customer predicted to be due for a repeat order (mirrors {@code ReorderDueCustomer}). */
@@ -84,8 +93,8 @@ export class MyDayService {
     return this.api.get<ReorderDueCustomer[]>('/api/my-day/reorder-due');
   }
 
-  /** This-month sales leaderboard + the caller's rank and order streak. */
-  leaderboard(): Observable<Leaderboard> {
-    return this.api.get<Leaderboard>('/api/my-day/leaderboard');
+  /** Sales leaderboard for a period (this month by default) + the caller's rank and order streak. */
+  leaderboard(selection: PeriodSelection = THIS_MONTH): Observable<Leaderboard> {
+    return this.api.get<Leaderboard>('/api/my-day/leaderboard', { params: periodQuery(selection) });
   }
 }

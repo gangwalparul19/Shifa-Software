@@ -20,6 +20,7 @@ import {
   announcementAlertClass,
   announcementIcon,
 } from '../announcements/announcements.model';
+import { PinnedAnnouncementsComponent } from '../announcements/pinned-announcements.component';
 import { ToastsComponent } from '../shared/toasts.component';
 import { ToastService } from '../shared/toast.service';
 import { DialogDirective } from '../shared/dialog.directive';
@@ -65,6 +66,7 @@ import { MAIN_TOUR_ID, MAIN_TOUR_STEPS, ROLE_TOUR_STEP } from './tour-steps';
     NotificationBellComponent,
     GuidedTourComponent,
     DialogDirective,
+    PinnedAnnouncementsComponent,
   ],
   templateUrl: './admin-shell.component.html',
   styleUrl: './admin-shell.component.css',
@@ -95,9 +97,38 @@ export class AdminShellComponent {
   private static readonly DISMISSED_KEY = 'shifa.dismissedAnnouncements.v1';
   private readonly announcements = signal<Announcement[]>([]);
   private readonly dismissed = signal<Set<number>>(this.loadDismissed());
-  /** Active announcements the current user has not dismissed. */
+
+  /**
+   * The screen each role lands on after sign-in: the dashboard, except the payment verifier
+   * (payments queue) and the CA (GST dashboard), who the dashboard redirects away.
+   */
+  private readonly homePath = computed(() => {
+    const role = this.auth.session()?.role ?? null;
+    if (role === Role.PAYMENT_VERIFIER) {
+      return '/payments';
+    }
+    return role === Role.CA ? '/ca/gst' : '/dashboard';
+  });
+
+  /** True while the user is on their own home screen. */
+  private readonly onHomePage = computed(() => this.currentUrl().split('?')[0] === this.homePath());
+
+  /**
+   * Announcements an admin pinned to the top of the home screen. Shown as a large card that
+   * cannot be dismissed, so it is seen even by staff who closed the thin banner long ago.
+   */
+  protected readonly pinnedAnnouncements = computed(() =>
+    this.onHomePage() ? this.announcements().filter((a) => a.showOnDashboard) : [],
+  );
+
+  /**
+   * Active announcements the current user has not dismissed, for the thin banner. A pinned one
+   * is left out on the home screen only, where it already appears as the card above.
+   */
   protected readonly visibleAnnouncements = computed(() =>
-    this.announcements().filter((a) => !this.dismissed().has(a.id)),
+    this.announcements().filter(
+      (a) => !this.dismissed().has(a.id) && !(this.onHomePage() && a.showOnDashboard),
+    ),
   );
   protected readonly annAlertClass = announcementAlertClass;
   protected readonly annIcon = announcementIcon;

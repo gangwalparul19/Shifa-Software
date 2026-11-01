@@ -141,7 +141,7 @@ export class AdminChannelOverviewComponent implements OnInit {
   ];
 
   protected readonly channel = signal<DashboardChannel>(this.loadChannel());
-  protected readonly period = signal<MetricsPeriod>('LAST_30_DAYS');
+  protected readonly period = signal<MetricsPeriod>('THIS_MONTH');
   protected readonly bucket = signal<SalesBucket | null>(null);
   protected readonly customFrom = signal('');
   protected readonly customTo = signal('');

@@ -36,7 +36,7 @@ class ShopifyWebhookControllerTest {
         int calls;
 
         RecordingImport() {
-            super(null, null, null, null, null, null, null, null);
+            super(null, null, null, null, null, null, null, null, null);
         }
 
         @Override
