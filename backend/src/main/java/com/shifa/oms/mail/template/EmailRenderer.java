@@ -1,6 +1,7 @@
 package com.shifa.oms.mail.template;
 
 import com.shifa.oms.mail.report.DailyReport;
+import com.shifa.oms.mail.report.MorningBrief;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -414,6 +415,18 @@ public class EmailRenderer {
         return new RenderedEmail(subject, html, text.toString());
     }
 
+    /**
+     * The admin's morning email about yesterday: sales by source, money in each bank, cash on
+     * delivery, the top three salespeople, the daily incentive and a few highlights. Pure function of
+     * the pre-computed {@link MorningBrief}.
+     */
+    public RenderedEmail renderMorningBrief(MorningBrief brief) {
+        MorningBriefRenderer parts = new MorningBriefRenderer(brand);
+        String html = layout(parts.preheader(brief), "Your morning brief", parts.body(brief), null, null,
+                MorningBriefRenderer.CARD_WIDTH);
+        return new RenderedEmail(parts.subject(brief), html, parts.text(brief));
+    }
+
     // ---------------------------------------------------------------------
     // Layout + HTML fragment helpers
     // ---------------------------------------------------------------------
@@ -425,6 +438,15 @@ public class EmailRenderer {
      */
     private String layout(String preheader, String heading, String bodyHtml,
                           String ctaLabel, String ctaUrl) {
+        return layout(preheader, heading, bodyHtml, ctaLabel, ctaUrl, 600);
+    }
+
+    /**
+     * Same layout with a chosen card width. The card is {@code width="N"} for Outlook and
+     * {@code width:100%;max-width:Npx} for everything else, so it shrinks to fit a phone.
+     */
+    private String layout(String preheader, String heading, String bodyHtml,
+                          String ctaLabel, String ctaUrl, int cardWidth) {
         String primary = brand.primaryColor();
         String accent = brand.accentColor();
 
@@ -445,9 +467,11 @@ public class EmailRenderer {
         // Outer full-width table centering the 600px card.
         sb.append("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
                 + "style=\"background-color:#f4f6f4;\"><tr><td align=\"center\" style=\"padding:24px 12px;\">");
-        sb.append("<table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" "
-                + "style=\"width:600px;max-width:600px;background-color:#ffffff;border-radius:10px;"
-                + "overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.06);\">");
+        sb.append("<table role=\"presentation\" width=\"").append(cardWidth)
+                .append("\" cellpadding=\"0\" cellspacing=\"0\" style=\"")
+                .append(cardWidth == 600 ? "width:600px;max-width:600px;" : "width:100%;max-width:" + cardWidth + "px;")
+                .append("background-color:#ffffff;border-radius:10px;"
+                        + "overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.06);\">");
 
         // Brand header bar.
         sb.append("<tr><td style=\"background-color:").append(primary)
@@ -456,7 +480,7 @@ public class EmailRenderer {
         sb.append("</td></tr>");
 
         // Content card body.
-        sb.append("<tr><td style=\"padding:32px;\">");
+        sb.append("<tr><td style=\"padding:").append(cardWidth == 600 ? "32px" : "24px 20px").append(";\">");
         sb.append("<h1 style=\"margin:0 0 16px 0;font-size:22px;line-height:1.3;color:")
                 .append(primary).append(";\">").append(esc(heading)).append("</h1>");
         sb.append(bodyHtml);
@@ -682,7 +706,7 @@ public class EmailRenderer {
     }
 
     /** HTML-escapes text content for {@code & < > "}. */
-    private static String esc(String value) {
+    static String esc(String value) {
         if (value == null) {
             return "";
         }

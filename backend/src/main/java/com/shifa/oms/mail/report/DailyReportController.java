@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 
 /**
  * ADMIN-triggered runner for the consolidated daily report
@@ -46,7 +47,7 @@ public class DailyReportController {
     public DailyReportService.Result run(
             @RequestParam(name = "date", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        LocalDate day = date != null ? date : LocalDate.now().minusDays(1);
+        LocalDate day = date != null ? date : LocalDate.now(ZoneId.of("Asia/Kolkata")).minusDays(1);
         return dailyReportService.sendConsolidatedReportFor(day);
     }
 }

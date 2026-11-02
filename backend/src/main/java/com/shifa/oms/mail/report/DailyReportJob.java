@@ -7,14 +7,14 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 
 /**
- * Scheduled trigger for the consolidated daily report email (Consolidated Daily
- * Report feature).
+ * Scheduled trigger for the admins' morning email (the "morning brief").
  *
- * <p>Once a day at <strong>8 AM</strong> (default cron {@code 0 0 8 * * *},
+ * <p>Once a day at <strong>8 AM India time</strong> (default cron {@code 0 0 8 * * *},
  * overridable via {@code REPORT_DIGEST_CRON}) it asks {@link DailyReportService}
- * to build and send the <em>previous</em> day's consolidated report.
+ * to build and send the <em>previous</em> day's report.
  *
  * <p><strong>Double-send guard.</strong> The internal schedule only fires when
  * {@code app.mail.digest-enabled} / {@code REPORT_DIGEST_ENABLED} is {@code true}
@@ -31,6 +31,9 @@ public class DailyReportJob {
 
     private static final Logger log = LoggerFactory.getLogger(DailyReportJob.class);
 
+    /** "Yesterday" and the 8 AM schedule are India time, whatever the server's clock says. */
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Kolkata");
+
     private final DailyReportService dailyReportService;
     private final MailProperties mailProperties;
 
@@ -43,7 +46,7 @@ public class DailyReportJob {
      * Scheduled entry point: builds and (if enabled + configured) sends
      * yesterday's consolidated report.
      */
-    @Scheduled(cron = "${REPORT_DIGEST_CRON:0 0 8 * * *}")
+    @Scheduled(cron = "${REPORT_DIGEST_CRON:0 0 8 * * *}", zone = "Asia/Kolkata")
     public void sendDailyReport() {
         if (!mailProperties.isDigestEnabled()) {
             log.debug("Consolidated daily report skipped: internal scheduler disabled "
@@ -51,7 +54,7 @@ public class DailyReportJob {
             return;
         }
         try {
-            dailyReportService.sendConsolidatedReportFor(LocalDate.now().minusDays(1));
+            dailyReportService.sendConsolidatedReportFor(LocalDate.now(BUSINESS_ZONE).minusDays(1));
         } catch (RuntimeException e) {
             log.warn("Consolidated daily report cycle failed: {}", e.getMessage());
         }

@@ -68,6 +68,12 @@ public class DailyReportService {
      * {@code REPORT_DIGEST_TO} is used.
      */
     private final ReportRecipients reportRecipients;
+    /**
+     * Builds the figures for the morning email (sales by source, money in each bank, top
+     * salespeople, incentive, ...). Null under the legacy constructors (tests), where the older
+     * consolidated report is sent instead.
+     */
+    private final MorningBriefService morningBriefService;
 
     /** Legacy constructor (tests): no owner snapshot block, digest-to recipients only. */
     public DailyReportService(OrderRepository orderRepository,
@@ -75,7 +81,19 @@ public class DailyReportService {
                               MailService mailService,
                               MailProperties mailProperties,
                               EmailRenderer emailRenderer) {
-        this(orderRepository, userRepository, mailService, mailProperties, emailRenderer, null, null);
+        this(orderRepository, userRepository, mailService, mailProperties, emailRenderer, null, null, null);
+    }
+
+    /** Legacy constructor: the older consolidated report, no morning brief. */
+    public DailyReportService(OrderRepository orderRepository,
+                              UserRepository userRepository,
+                              MailService mailService,
+                              MailProperties mailProperties,
+                              EmailRenderer emailRenderer,
+                              com.shifa.oms.dashboard.OwnerSnapshotService ownerSnapshotService,
+                              ReportRecipients reportRecipients) {
+        this(orderRepository, userRepository, mailService, mailProperties, emailRenderer,
+                ownerSnapshotService, reportRecipients, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -85,7 +103,8 @@ public class DailyReportService {
                               MailProperties mailProperties,
                               EmailRenderer emailRenderer,
                               com.shifa.oms.dashboard.OwnerSnapshotService ownerSnapshotService,
-                              ReportRecipients reportRecipients) {
+                              ReportRecipients reportRecipients,
+                              MorningBriefService morningBriefService) {
         this.orderRepository = orderRepository;
         this.userRepository = userRepository;
         this.mailService = mailService;
@@ -93,20 +112,41 @@ public class DailyReportService {
         this.emailRenderer = emailRenderer;
         this.ownerSnapshotService = ownerSnapshotService;
         this.reportRecipients = reportRecipients;
+        this.morningBriefService = morningBriefService;
     }
 
     /**
-     * Builds the consolidated report for {@code day} and sends it when a
-     * recipient is configured; otherwise it is skipped (logged). Never rethrows a
-     * {@link MailException}.
+     * Builds the morning email for {@code day} and sends it to every admin recipient; when no
+     * recipient is configured it is skipped (logged). Never rethrows a {@link MailException}.
+     *
+     * <p>This is the email the admins get every morning about the previous day: sales by source,
+     * money collected in each bank, cash on delivery, the top three salespeople, the daily incentive
+     * and a few highlights (see {@link MorningBrief}).
      *
      * @param day the day to summarise (typically yesterday)
      * @return a small summary of what was built/sent
      */
     public Result sendConsolidatedReportFor(LocalDate day) {
+        if (morningBriefService != null) {
+            return sendMorningBrief(day);
+        }
         List<ReportOrder> projected = loadOrdersFor(day);
         DailyReport report = DailyReport.build(day, projected);
         return sendRendered(report, day);
+    }
+
+    /** Builds, renders and sends the morning brief for {@code day}. */
+    private Result sendMorningBrief(LocalDate day) {
+        MorningBrief brief = morningBriefService.build(day);
+        long orders = brief.headline().orders();
+        List<String> recipients = resolveRecipients();
+        if (recipients.isEmpty()) {
+            log.info("Morning brief for {} built ({} order(s)) but not sent: "
+                    + "no recipient (app.mail.digest-to is blank and no active admin has an email).", day, orders);
+            return Result.from(brief, false);
+        }
+        deliver(emailRenderer.renderMorningBrief(brief), recipients, day, orders);
+        return Result.from(brief, true);
     }
 
     /**
@@ -124,9 +164,7 @@ public class DailyReportService {
 
     /** Shared render+send tail used by both the daily and ranged report paths. */
     private Result sendRendered(DailyReport report, LocalDate label) {
-        List<String> recipients = reportRecipients != null
-                ? reportRecipients.resolve()
-                : ReportRecipients.parse(mailProperties.digestTo());
+        List<String> recipients = resolveRecipients();
         if (recipients.isEmpty()) {
             log.info("Consolidated report for {} built ({} order(s)) but not sent: "
                     + "no recipient (app.mail.digest-to is blank and no active admin has an email).",
@@ -136,19 +174,30 @@ public class DailyReportService {
 
         RenderedEmail rendered = emailRenderer.renderConsolidatedReport(
                 new EmailModels.ConsolidatedReport(report, ownerAttention()));
-        // One message per recipient: a rejected address never blocks the others.
+        deliver(rendered, recipients, label, report.overall().orderCount());
+        return Result.from(report, true);
+    }
+
+    /** Who gets the report: {@code REPORT_DIGEST_TO} plus active admins (or just the former in tests). */
+    private List<String> resolveRecipients() {
+        return reportRecipients != null
+                ? reportRecipients.resolve()
+                : ReportRecipients.parse(mailProperties.digestTo());
+    }
+
+    /** One message per recipient: a rejected address never blocks the others. */
+    private void deliver(RenderedEmail rendered, List<String> recipients, LocalDate label, long orders) {
         int sent = 0;
         for (String to : recipients) {
             try {
                 mailService.send(rendered.toMessage(to));
                 sent++;
             } catch (MailException e) {
-                log.warn("Failed to send consolidated report for {} to {}: {}", label, to, e.getMessage());
+                log.warn("Failed to send the report for {} to {}: {}", label, to, e.getMessage());
             }
         }
-        log.info("Consolidated report for {} ({} order(s)) sent to {} of {} recipient(s).",
-                label, report.overall().orderCount(), sent, recipients.size());
-        return Result.from(report, true);
+        log.info("Report for {} ({} order(s)) sent to {} of {} recipient(s).",
+                label, orders, sent, recipients.size());
     }
 
     /**
@@ -239,6 +288,11 @@ public class DailyReportService {
         static Result from(DailyReport report, boolean recipientConfigured) {
             return new Result(report.day(), report.overall().orderCount(),
                     report.overall().totalSales(), recipientConfigured);
+        }
+
+        static Result from(MorningBrief brief, boolean recipientConfigured) {
+            return new Result(brief.day(), (int) brief.headline().orders(),
+                    brief.headline().sales(), recipientConfigured);
         }
     }
 }
