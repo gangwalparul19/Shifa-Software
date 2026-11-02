@@ -76,6 +76,13 @@
   outline-offset: 2px;
 }
 
+/* Figures are dimmed (and not clickable) while a new period loads. */
+.teams-ov__dim {
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
 /* The dialog panel itself is only a programmatic focus fallback (see adminDialog): no ring around it. */
 .teams-ov__panel:focus-visible {
   outline: none;

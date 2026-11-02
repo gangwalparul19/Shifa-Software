@@ -1,9 +1,19 @@
 import { Component, EventEmitter, Input, OnInit, Output, inject, signal } from '@angular/core';
+import { AuthService, Role } from 'core';
+import { saveBlob } from '../shared/blob-download.util';
 import { todayIst } from '../shared/business-date.util';
 import { formatDateLabel } from '../shared/date-label.util';
 import { formatInr } from '../shared/inr.pipe';
+import { PeriodPickerComponent } from '../shared/period-picker.component';
+import { PeriodSelection, THIS_MONTH, isUsableSelection } from '../shared/period-selection';
 import { humanizeStatus } from '../shared/status-badge.component';
 import { DialogDirective } from '../shared/dialog.directive';
+import { ToastService } from '../shared/toast.service';
+import {
+  PerformanceExportFormat,
+  SalespeopleService,
+  SalespersonPeriodDetail,
+} from '../salespeople/salespeople.service';
 import {
   DirectReportPerformance,
   TeamMemberPerformance,
@@ -17,7 +27,7 @@ import {
 @Component({
   selector: 'admin-team-member-detail',
   standalone: true,
-  imports: [DialogDirective],
+  imports: [DialogDirective, PeriodPickerComponent],
   styleUrl: './team-member-detail.component.css',
   template: `
     <div class="tm-detail__backdrop" (click)="closed.emit()">
@@ -26,7 +36,9 @@ import {
           <div>
             <div class="subheader">Salesperson performance</div>
             <h2 class="tm-detail__name">{{ member.fullName }}</h2>
-            <div class="text-secondary small">{{ '@' + member.username }}</div>
+            @if (member.username) {
+              <div class="text-secondary small">{{ '@' + member.username }}</div>
+            }
           </div>
           <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closed.emit()" aria-label="Close performance detail">
             <i class="ti ti-x"></i>
@@ -67,6 +79,46 @@ import {
             </div>
 
             @if (detailTab() === 'overview') {
+            @if (isAdmin) {
+              <div class="tm-detail__section-title d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <span>Sales in a period</span>
+                <span class="btn-list">
+                  <button type="button" class="btn btn-sm btn-outline-success" (click)="exportPeriod('xlsx')"
+                    [disabled]="exporting() !== null" title="Download this person's report for the chosen period as Excel">
+                    @if (exporting() === 'xlsx') { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    <i class="ti ti-file-spreadsheet me-1" aria-hidden="true"></i> Excel
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-danger" (click)="exportPeriod('pdf')"
+                    [disabled]="exporting() !== null" title="Download this person's report for the chosen period as PDF">
+                    @if (exporting() === 'pdf') { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    <i class="ti ti-file-type-pdf me-1" aria-hidden="true"></i> PDF
+                  </button>
+                </span>
+              </div>
+              <admin-period-picker
+                [value]="selection()"
+                ariaLabel="Period for this salesperson"
+                (changed)="choosePeriod($event)"
+              />
+              <div class="mt-2">
+                @if (periodLoading()) {
+                  <div class="text-secondary small"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>
+                } @else if (periodError()) {
+                  <div class="text-danger small">
+                    {{ periodError() }}
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-2" (click)="loadPeriod()">Retry</button>
+                  </div>
+                } @else if (periodDetail(); as p) {
+                  <div class="text-secondary small mb-1">{{ p.label }}</div>
+                  <div class="tm-detail__grid">
+                    <div class="tm-detail__metric"><span>Orders</span><strong>{{ p.orders }}</strong><small>placed in this period</small></div>
+                    <div class="tm-detail__metric"><span>Sales</span><strong>{{ money(p.sales) }}</strong><small>average order {{ money(p.averageOrderValue) }}</small></div>
+                    <div class="tm-detail__metric"><span>Delivered</span><strong>{{ p.delivered }}</strong><small>of these orders so far</small></div>
+                    <div class="tm-detail__metric"><span>Failed or returned</span><strong>{{ p.failed }}</strong><small>of these orders so far</small></div>
+                  </div>
+                }
+              </div>
+            }
             <div class="tm-detail__section-title">Orders at a glance</div>
             <div class="tm-detail__grid">
               <div class="tm-detail__metric"><span>Lifetime orders</span><strong>{{ d.performance.summary.ordersTotal }}</strong><small>{{ money(d.performance.summary.revenueTotal) }}</small></div>
@@ -137,14 +189,90 @@ export class TeamMemberDetailComponent implements OnInit {
   @Output() readonly closed = new EventEmitter<void>();
 
   private readonly service = inject(TeamPerformanceService);
+  private readonly salespeople = inject(SalespeopleService);
+  private readonly toasts = inject(ToastService);
   protected readonly detail = signal<DirectReportPerformance | null>(null);
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
   protected readonly activityDays = signal(7);
   protected readonly detailTab = signal<'overview' | 'activity' | 'orders'>('overview');
 
+  /**
+   * Only an admin gets the "Sales in a period" block (any period, plus Excel / PDF): it uses the
+   * admin Salespeople endpoints. A team lead keeps the fixed buckets below.
+   */
+  protected readonly isAdmin = inject(AuthService).hasAnyRole(Role.ADMIN);
+  protected readonly selection = signal<PeriodSelection>(THIS_MONTH);
+  protected readonly periodDetail = signal<SalespersonPeriodDetail | null>(null);
+  protected readonly periodLoading = signal(false);
+  protected readonly periodError = signal<string | null>(null);
+  protected readonly exporting = signal<PerformanceExportFormat | null>(null);
+  /** Numbers each period load so a slow answer for an earlier choice never overwrites a newer one. */
+  private periodRequest = 0;
+
   ngOnInit(): void {
     this.load();
+    if (this.isAdmin) {
+      this.loadPeriod();
+    }
+  }
+
+  /** The admin picked another period. */
+  protected choosePeriod(selection: PeriodSelection): void {
+    this.selection.set(selection);
+    this.loadPeriod();
+  }
+
+  protected loadPeriod(): void {
+    const selection = this.selection();
+    if (!isUsableSelection(selection)) {
+      return;
+    }
+    const id = ++this.periodRequest;
+    this.periodLoading.set(true);
+    this.periodError.set(null);
+    this.salespeople.performance(this.member.id, undefined, selection).subscribe({
+      next: (d) => {
+        if (id !== this.periodRequest) {
+          return;
+        }
+        this.periodDetail.set(d.period ?? null);
+        this.periodLoading.set(false);
+      },
+      error: () => {
+        if (id !== this.periodRequest) {
+          return;
+        }
+        // Never leave the old figures on screen under a new period's label.
+        this.periodDetail.set(null);
+        this.periodError.set('Could not load the figures for this period.');
+        this.periodLoading.set(false);
+      },
+    });
+  }
+
+  /** Downloads this person's full report for the chosen period. */
+  protected exportPeriod(format: PerformanceExportFormat): void {
+    const selection = this.selection();
+    if (this.exporting()) {
+      return;
+    }
+    if (!isUsableSelection(selection)) {
+      this.toasts.error('Choose a valid start and end date first.');
+      return;
+    }
+    this.exporting.set(format);
+    this.salespeople.exportPerformance(format, selection, this.member.id).subscribe({
+      next: (result) => {
+        saveBlob(result.blob, result.filename, `performance.${format}`);
+        this.exporting.set(null);
+        this.toasts.success(`Performance ${format.toUpperCase()} downloaded.`);
+      },
+      error: () => {
+        this.exporting.set(null);
+        this.toasts.error(`Could not download the performance ${format.toUpperCase()}.`);
+      },
+    });
   }
 
   protected load(): void {

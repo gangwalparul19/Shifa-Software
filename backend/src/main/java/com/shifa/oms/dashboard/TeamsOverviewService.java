@@ -11,6 +11,7 @@ import com.shifa.oms.dashboard.dto.TeamsOverviewResponse;
 import com.shifa.oms.dashboard.dto.TeamsOverviewResponse.TeamCallOut;
 import com.shifa.oms.dashboard.dto.TeamsOverviewResponse.TeamOverviewRow;
 import com.shifa.oms.lead.LeadStatus;
+import com.shifa.oms.performance.PerformancePeriod;
 import com.shifa.oms.performance.SalespersonPerformanceService;
 import com.shifa.oms.performance.dto.SalespersonPerformanceSummary;
 import com.shifa.oms.statemachine.OrderStatus;
@@ -23,6 +24,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -58,7 +60,7 @@ import java.util.Set;
  *
  * <p>All order and lead figures come from grouped SQL aggregates
  * ({@link TeamsOverviewQueryRepository}): orders per creator and status
- * (lifetime and this month), leads per owner and status, the number of due
+ * (lifetime and within the chosen period), leads per owner and status, the number of due
  * follow-ups, and only the (capped) due follow-up leads themselves for the
  * call-out list. Nothing loads whole order or lead tables.
  */
@@ -77,6 +79,10 @@ public class TeamsOverviewService {
     private static final int MAX_CALL_OUTS = 25;
 
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Kolkata");
+
+    /** Bounds that hold every order: how "Overall" is queried (never null bounds). */
+    private static final LocalDateTime EARLIEST = LocalDate.of(2000, 1, 1).atStartOfDay();
+    private static final LocalDateTime LATEST = LocalDate.of(2100, 1, 1).atStartOfDay();
 
     private final UserRepository userRepository;
     private final TeamsOverviewQueryRepository queryRepository;
@@ -101,9 +107,24 @@ public class TeamsOverviewService {
         this.clock = clock;
     }
 
+    /** The overview for the current month (what the dashboard widget shows). */
     @Transactional(readOnly = true)
     public TeamsOverviewResponse overview() {
+        return overview(PerformancePeriod.MONTH, null, null);
+    }
+
+    /**
+     * The overview with orders and revenue counted over the chosen period.
+     *
+     * @param period     the period; {@link PerformancePeriod#CUSTOM} needs both days
+     * @param customFrom first day of a custom range (included), ignored for other periods
+     * @param customTo   last day of a custom range (included), ignored for other periods
+     * @throws com.shifa.oms.common.ValidationException for a custom range with a missing or reversed day
+     */
+    @Transactional(readOnly = true)
+    public TeamsOverviewResponse overview(PerformancePeriod period, LocalDate customFrom, LocalDate customTo) {
         LocalDate today = LocalDate.now(clock);
+        PerformancePeriod.Window window = period.resolve(today, customFrom, customTo);
         List<User> leads = userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.TEAM_LEAD);
         List<User> allSalespeople = userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.SALESPERSON);
         Map<Long, String> namesById = new HashMap<>();
@@ -113,9 +134,10 @@ public class TeamsOverviewService {
 
         // Compute the per-salesperson leaderboard ONCE (it aggregates the whole
         // orders table + lists all salespeople) and index it by id, instead of
-        // re-running that full-table aggregate for every team in rowFor().
+        // re-running that full-table aggregate for every team in rowFor(). It is
+        // ranked over the chosen period so the member rows match the team totals.
         Map<Long, SalespersonPerformanceSummary> leaderboardById = new HashMap<>();
-        for (SalespersonPerformanceSummary s : performanceService.leaderboard()) {
+        for (SalespersonPerformanceSummary s : performanceService.leaderboard(window)) {
             leaderboardById.put(s.id(), s);
         }
 
@@ -152,9 +174,8 @@ public class TeamsOverviewService {
         creatorIds.addAll(unassignedIds);
         leadOwnerIds.addAll(unassignedIds);
 
-        LocalDate monthStart = today.withDayOfMonth(1);
         Aggregates aggregates = new Aggregates(
-                orderTotalsByCreator(creatorIds, monthStart),
+                orderTotalsByCreator(creatorIds, window),
                 leadStatusCountsByOwner(leadOwnerIds),
                 dueFollowUpCountsByOwner(leadOwnerIds, today));
 
@@ -178,7 +199,13 @@ public class TeamsOverviewService {
                 : rowFor(null, "Unassigned salespeople", unassignedIds, namesById, today, leaderboardById,
                         aggregates);
 
-        return new TeamsOverviewResponse(today, rows, unassigned);
+        return new TeamsOverviewResponse(today, period.name(), periodLabel(period, window),
+                window.firstDay(), window.lastDay(), rows, unassigned);
+    }
+
+    /** "This Month", or the two days for a custom range. */
+    private static String periodLabel(PerformancePeriod period, PerformancePeriod.Window window) {
+        return period == PerformancePeriod.CUSTOM ? window.label() : period.label();
     }
 
     private TeamOverviewRow rowFor(Long teamLeadId, String teamLeadName, List<Long> memberIds,
@@ -199,11 +226,11 @@ public class TeamsOverviewService {
             }
         }
         long ordersTotal = team.ordersTotal;
-        long ordersThisMonth = team.ordersThisMonth;
+        long ordersInPeriod = team.ordersInPeriod;
         long delivered = team.delivered;
         long failed = team.failed;
         BigDecimal revenueTotal = team.revenueTotal;
-        BigDecimal revenueThisMonth = team.revenueThisMonth;
+        BigDecimal revenueInPeriod = team.revenueInPeriod;
         BigDecimal outstanding = team.outstanding;
         Double successRate = delivered + failed == 0 ? null : pct(delivered, delivered + failed);
 
@@ -258,13 +285,14 @@ public class TeamsOverviewService {
                     own == null ? new OrderTotals() : own));
         }
         members.sort(Comparator
-                .comparing(SalespersonPerformanceSummary::revenueThisMonth,
+                .comparing(SalespersonPerformanceSummary::revenueInPeriod,
                         Comparator.nullsLast(Comparator.reverseOrder()))
-                .thenComparing(Comparator.comparingLong(SalespersonPerformanceSummary::ordersThisMonth).reversed()));
+                .thenComparing(Comparator.comparingLong(SalespersonPerformanceSummary::ordersInPeriod).reversed()));
 
         return new TeamOverviewRow(
-                teamLeadId, teamLeadName, memberIds.size(), ordersTotal, ordersThisMonth,
-                scale(revenueTotal), scale(revenueThisMonth), delivered, failed, successRate,
+                teamLeadId, teamLeadName, memberIds.size(), ordersTotal, ordersInPeriod,
+                scale(revenueTotal), scale(revenueInPeriod), team.averageOrderValue(),
+                delivered, failed, successRate,
                 scale(outstanding), leadsTotal, leadsWon, leadsLost, leadConversionRate,
                 pipelineByName, dueFollowUps, callOuts, members);
     }
@@ -301,17 +329,22 @@ public class TeamsOverviewService {
         double successRate = own.delivered + own.failed == 0 ? 0.0 : pct(own.delivered, own.delivered + own.failed);
         // Suffix the name so the lead is visually distinct from their reports.
         String displayName = (name == null || name.isBlank() ? "Team lead" : name) + " (Team Lead)";
+        // This row only knows the lead's figures for the chosen period, so the "this month" fields
+        // carry the same period figures (nothing on this screen reads them for the lead's own row).
         return new SalespersonPerformanceSummary(
                 teamLeadId, null, displayName, true, null,
-                own.ordersTotal, own.ordersThisMonth, 0L,
-                scale(own.revenueTotal), scale(own.revenueThisMonth),
-                own.delivered, own.failed, successRate, scale(own.outstanding));
+                own.ordersTotal, own.ordersInPeriod, 0L,
+                scale(own.revenueTotal), scale(own.revenueInPeriod),
+                own.delivered, own.failed, successRate, scale(own.outstanding),
+                own.ordersInPeriod, scale(own.revenueInPeriod), own.averageOrderValue(),
+                own.rtoInPeriod, 0L);
     }
 
     // --- Aggregate loading ----------------------------------------------------
 
-    /** Lifetime + this-month order figures per creator id (one grouped query each). */
-    private Map<Long, OrderTotals> orderTotalsByCreator(Collection<Long> creatorIds, LocalDate monthStart) {
+    /** Lifetime + chosen-period order figures per creator id (one grouped query each). */
+    private Map<Long, OrderTotals> orderTotalsByCreator(Collection<Long> creatorIds,
+                                                        PerformancePeriod.Window window) {
         Map<Long, OrderTotals> byPerson = new HashMap<>();
         if (creatorIds.isEmpty()) {
             return byPerson;
@@ -324,12 +357,15 @@ public class TeamsOverviewService {
                 }
             }
         }
-        List<CreatorStatusRow> thisMonth = queryRepository.orderTotalsByCreatorSince(
-                creatorIds, monthStart.atStartOfDay());
-        if (thisMonth != null) {
-            for (CreatorStatusRow row : thisMonth) {
+        // "Overall" has no bounds: use a window wide enough to hold every order rather than nulls.
+        LocalDateTime rangeStart = window.from() == null ? EARLIEST : window.from();
+        LocalDateTime rangeEnd = window.to() == null ? LATEST : window.to();
+        List<CreatorStatusRow> inPeriod = queryRepository.orderTotalsByCreatorBetween(
+                creatorIds, rangeStart, rangeEnd);
+        if (inPeriod != null) {
+            for (CreatorStatusRow row : inPeriod) {
                 if (row.getPersonId() != null) {
-                    byPerson.computeIfAbsent(row.getPersonId(), k -> new OrderTotals()).addThisMonth(row);
+                    byPerson.computeIfAbsent(row.getPersonId(), k -> new OrderTotals()).addInPeriod(row);
                 }
             }
         }
@@ -379,12 +415,22 @@ public class TeamsOverviewService {
     /** Mutable order rollup for one creator, or for a whole team once added up. */
     private static final class OrderTotals {
         private long ordersTotal;
-        private long ordersThisMonth;
+        private long ordersInPeriod;
+        /** Orders in the period that count as sales (not rejected, payment-rejected or cancelled). */
+        private long salesOrdersInPeriod;
+        private long rtoInPeriod;
         private long delivered;
         private long failed;
         private BigDecimal revenueTotal = BigDecimal.ZERO;
-        private BigDecimal revenueThisMonth = BigDecimal.ZERO;
+        private BigDecimal revenueInPeriod = BigDecimal.ZERO;
         private BigDecimal outstanding = BigDecimal.ZERO;
+
+        /** Average value of an order that counts as a sale in the period; zero when there is none. */
+        BigDecimal averageOrderValue() {
+            return salesOrdersInPeriod == 0
+                    ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                    : revenueInPeriod.divide(BigDecimal.valueOf(salesOrdersInPeriod), 2, RoundingMode.HALF_UP);
+        }
 
         void addLifetime(CreatorStatusRow row) {
             OrderStatus status = row.getOrderStatus();
@@ -402,20 +448,27 @@ public class TeamsOverviewService {
             outstanding = outstanding.add(nz(row.getOutstandingAmount()));
         }
 
-        void addThisMonth(CreatorStatusRow row) {
-            ordersThisMonth += nzLong(row.getOrderCount());
+        void addInPeriod(CreatorStatusRow row) {
+            long count = nzLong(row.getOrderCount());
+            ordersInPeriod += count;
             if (!NON_REVENUE.contains(row.getOrderStatus())) {
-                revenueThisMonth = revenueThisMonth.add(nz(row.getTotalAmount()));
+                revenueInPeriod = revenueInPeriod.add(nz(row.getTotalAmount()));
+                salesOrdersInPeriod += count;
+            }
+            if (row.getOrderStatus() == OrderStatus.RTO || row.getOrderStatus() == OrderStatus.REDISPATCH) {
+                rtoInPeriod += count;
             }
         }
 
         void add(OrderTotals other) {
             ordersTotal += other.ordersTotal;
-            ordersThisMonth += other.ordersThisMonth;
+            ordersInPeriod += other.ordersInPeriod;
+            salesOrdersInPeriod += other.salesOrdersInPeriod;
+            rtoInPeriod += other.rtoInPeriod;
             delivered += other.delivered;
             failed += other.failed;
             revenueTotal = revenueTotal.add(other.revenueTotal);
-            revenueThisMonth = revenueThisMonth.add(other.revenueThisMonth);
+            revenueInPeriod = revenueInPeriod.add(other.revenueInPeriod);
             outstanding = outstanding.add(other.outstanding);
         }
     }

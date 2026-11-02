@@ -2,12 +2,21 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { formatInr } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
+import { PeriodPickerComponent } from '../shared/period-picker.component';
+import { PeriodSelection, THIS_MONTH, isUsableSelection } from '../shared/period-selection';
 import { StatePanelComponent } from '../shared/state-panel.component';
 import { DialogDirective } from '../shared/dialog.directive';
+import { ToastService } from '../shared/toast.service';
+import { saveBlob } from '../shared/blob-download.util';
 import { openWhatsApp, whatsAppMessage } from '../shared/whatsapp.util';
 import { TeamMemberPerformance } from '../team/team-performance.service';
 import { TeamMemberDetailComponent } from '../team/team-member-detail.component';
-import { TeamsOverviewService } from './teams-overview.service';
+import {
+  TeamsDownload,
+  TeamsExportFormat,
+  TeamsExportScope,
+  TeamsOverviewService,
+} from './teams-overview.service';
 import { TeamCallOut, TeamOverviewMember, TeamOverviewRow, TeamsOverviewResponse } from './teams-overview.model';
 
 /** Ordered lead pipeline stages (mirrors the leads feature's LEAD_STAGE_ORDER, active stages only). */
@@ -20,25 +29,47 @@ const PIPELINE_STAGES: { key: string; label: string }[] = [
 /**
  * "Team-wise sales with status" — a full admin-only page showing every team
  * lead's team ("Team Sameer", "Team Zeeshan", ...) side by side: combined
- * orders/revenue/delivery KPIs this month, the current lead pipeline, and a
- * ranked call-out list of leads due or overdue for a follow-up, each with a
+ * orders/revenue/delivery KPIs for the chosen period, the current lead pipeline,
+ * and a ranked call-out list of leads due or overdue for a follow-up, each with a
  * one-tap call/WhatsApp action — so an admin can see where each team is
  * heading and act on it without opening each team lead's own dashboard.
+ *
+ * <p>The period (Today, Yesterday, Last 7 days, This month, Last month, Overall or a custom
+ * range) is chosen with the shared picker and drives the orders and revenue; the whole report, or
+ * one team, can be downloaded as Excel or PDF for the same period.
  */
 @Component({
   selector: 'admin-teams-overview',
   standalone: true,
-  imports: [PageHeaderComponent, StatePanelComponent, RouterLink, TeamMemberDetailComponent, DialogDirective],
+  imports: [
+    PageHeaderComponent,
+    StatePanelComponent,
+    RouterLink,
+    TeamMemberDetailComponent,
+    DialogDirective,
+    PeriodPickerComponent,
+  ],
   templateUrl: './teams-overview.component.html',
   styleUrl: './teams-overview.component.css',
 })
 export class TeamsOverviewComponent implements OnInit {
   private readonly service = inject(TeamsOverviewService);
+  private readonly toasts = inject(ToastService);
 
   protected readonly data = signal<TeamsOverviewResponse | null>(null);
+  /** True while the first load is running and there is nothing to show yet. */
   protected readonly loading = signal(true);
+  /** True while a later load (a new period) is running; the previous figures stay visible, dimmed. */
+  protected readonly refreshing = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly pipelineStages = PIPELINE_STAGES;
+
+  /** The chosen period (this month to start with). */
+  protected readonly selection = signal<PeriodSelection>(THIS_MONTH);
+  /** Which download is running ("xlsx" / "pdf"), or null. */
+  protected readonly exporting = signal<TeamsExportFormat | null>(null);
+  /** Numbers each load so a slow answer for an earlier period never overwrites a newer one. */
+  private requestId = 0;
 
   /** The team card currently drilled into (opens a full-team detail panel), or null. */
   protected readonly selectedTeam = signal<TeamOverviewRow | null>(null);
@@ -59,29 +90,97 @@ export class TeamsOverviewComponent implements OnInit {
     const rows = this.rows();
     return rows.reduce(
       (acc, r) => ({
-        orders: acc.orders + r.ordersThisMonth,
-        revenue: acc.revenue + Number(r.revenueThisMonth || 0),
+        orders: acc.orders + r.ordersInPeriod,
+        revenue: acc.revenue + Number(r.revenueInPeriod || 0),
         dueFollowUps: acc.dueFollowUps + r.dueFollowUps,
       }),
       { orders: 0, revenue: 0, dueFollowUps: 0 },
     );
   });
 
+  /** "This Month", "Yesterday", "2026-10-01 to 2026-10-10" ... as the server resolved it. */
+  protected readonly periodText = computed(() => this.data()?.periodLabel ?? '');
+
   ngOnInit(): void {
     this.load();
   }
 
   load(): void {
-    this.loading.set(true);
+    const selection = this.selection();
+    if (!isUsableSelection(selection)) {
+      return;
+    }
+    const id = ++this.requestId;
+    if (this.data() === null) {
+      this.loading.set(true);
+    } else {
+      this.refreshing.set(true);
+    }
     this.error.set(null);
-    this.service.overview().subscribe({
+    this.service.overview(selection).subscribe({
       next: (d) => {
+        if (id !== this.requestId) {
+          return;
+        }
         this.data.set(d);
         this.loading.set(false);
+        this.refreshing.set(false);
+        this.resyncOpenTeam(d);
       },
       error: () => {
+        if (id !== this.requestId) {
+          return;
+        }
+        // Never leave the old figures on screen under a new period's label.
+        this.data.set(null);
+        this.selectedTeam.set(null);
         this.error.set('Could not load the teams overview. Please try again.');
         this.loading.set(false);
+        this.refreshing.set(false);
+      },
+    });
+  }
+
+  /** The admin picked another period: reload everything for it. */
+  choosePeriod(selection: PeriodSelection): void {
+    this.selection.set(selection);
+    this.load();
+  }
+
+  /** Keeps an open team panel pointing at the freshly loaded figures of the same team. */
+  private resyncOpenTeam(d: TeamsOverviewResponse): void {
+    const open = this.selectedTeam();
+    if (!open) {
+      return;
+    }
+    const fresh =
+      open.teamLeadId === null
+        ? d.unassigned
+        : (d.teams.find((t) => t.teamLeadId === open.teamLeadId) ?? null);
+    this.selectedTeam.set(fresh);
+  }
+
+  /** Downloads the report for the chosen period: every team, or just the one passed in. */
+  exportReport(format: TeamsExportFormat, team?: TeamOverviewRow): void {
+    if (this.exporting()) {
+      return;
+    }
+    const selection = this.selection();
+    if (!isUsableSelection(selection)) {
+      this.toasts.error('Choose a valid start and end date first.');
+      return;
+    }
+    const scope: TeamsExportScope = team ? (team.teamLeadId === null ? 'unassigned' : team.teamLeadId) : 'all';
+    this.exporting.set(format);
+    this.service.exportReport(format, selection, scope).subscribe({
+      next: (result: TeamsDownload) => {
+        saveBlob(result.blob, result.filename, `team-wise-sales.${format}`);
+        this.exporting.set(null);
+        this.toasts.success(`Team-wise sales ${format.toUpperCase()} downloaded.`);
+      },
+      error: () => {
+        this.exporting.set(null);
+        this.toasts.error(`Could not download the team-wise sales ${format.toUpperCase()}.`);
       },
     });
   }

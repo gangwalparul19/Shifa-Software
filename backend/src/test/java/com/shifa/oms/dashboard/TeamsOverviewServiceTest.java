@@ -63,6 +63,12 @@ class TeamsOverviewServiceTest {
         public List<SalespersonPerformanceSummary> leaderboardFor(java.util.Collection<Long> memberIds) {
             return List.of();
         }
+
+        @Override
+        public List<SalespersonPerformanceSummary> leaderboard(
+                com.shifa.oms.performance.PerformancePeriod.Window window) {
+            return List.of();
+        }
     };
     private final TeamsOverviewService service =
             new TeamsOverviewService(userRepository, queries, performanceService, CLOCK);
@@ -129,7 +135,7 @@ class TeamsOverviewServiceTest {
         // but the ORDER totals now include the lead's own orders.
         assertThat(sameerRow.memberCount()).isEqualTo(1);
         assertThat(sameerRow.ordersTotal()).isEqualTo(3); // 2 member + 1 lead
-        assertThat(sameerRow.ordersThisMonth()).isEqualTo(2); // member today + lead today
+        assertThat(sameerRow.ordersInPeriod()).isEqualTo(2); // member today + lead today (this month)
         assertThat(sameerRow.revenueTotal()).isEqualByComparingTo("2200.00"); // 1000 + 500 + 700
         assertThat(sameerRow.delivered()).isEqualTo(2); // member + lead delivered
         assertThat(sameerRow.failed()).isEqualTo(1);
@@ -202,10 +208,11 @@ class TeamsOverviewServiceTest {
         }
 
         @Override
-        public List<CreatorStatusRow> orderTotalsByCreatorSince(Collection<Long> creatorIds, LocalDateTime since) {
+        public List<CreatorStatusRow> orderTotalsByCreatorBetween(Collection<Long> creatorIds,
+                                                                  LocalDateTime rangeStart, LocalDateTime rangeEnd) {
             return groupOrders(orders.stream()
                     .filter(o -> creatorIds.contains(o.getCreatedBy()))
-                    .filter(o -> !o.getCreatedAt().isBefore(since)));
+                    .filter(o -> !o.getCreatedAt().isBefore(rangeStart) && o.getCreatedAt().isBefore(rangeEnd)));
         }
 
         @Override

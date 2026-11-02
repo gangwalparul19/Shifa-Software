@@ -239,6 +239,16 @@ export class SettingsService {
     return this.api.get<PaymentMethodOption[]>('/api/payment-methods');
   }
 
+  /** Whether status emails are sent to customers (off by default). */
+  customerEmailsEnabled(): Observable<{ enabled: boolean }> {
+    return this.api.get<{ enabled: boolean }>('/api/admin/settings/customer-emails');
+  }
+
+  /** Turns customer status emails on or off. */
+  setCustomerEmailsEnabled(enabled: boolean): Observable<{ enabled: boolean }> {
+    return this.api.put<{ enabled: boolean }>('/api/admin/settings/customer-emails', { enabled });
+  }
+
   /** ADMIN payment-method master list for the Settings page. */
   paymentMethods(): Observable<PaymentMethodConfig[]> {
     return this.api.get<PaymentMethodConfig[]>('/api/admin/settings/payment-methods');

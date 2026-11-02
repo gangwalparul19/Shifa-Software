@@ -3,8 +3,10 @@ package com.shifa.oms.notification;
 import com.shifa.oms.mail.MailMessage;
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
+import com.shifa.oms.settings.SettingsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -25,6 +27,10 @@ import java.util.Optional;
  * called. When the order has no {@code customer_email} the send is skipped and
  * recorded (returns {@link Optional#empty()}), mirroring the WhatsApp no-mobile
  * skip (Req 7.5).
+ *
+ * <p>An admin switch ({@code app_settings.customer_emails_enabled}, V110, OFF by default)
+ * stops every customer email: while it is off nothing is queued here and the
+ * {@link EmailOutboxDrainer} sends nothing.
  */
 @Service
 public class MailNotificationPublisher {
@@ -32,9 +38,20 @@ public class MailNotificationPublisher {
     private static final Logger log = LoggerFactory.getLogger(MailNotificationPublisher.class);
 
     private final OutboxEventPublisher outboxEventPublisher;
+    /** Source of the admin's "email customers" switch; {@code null} in unit tests (no gate). */
+    private final SettingsService settingsService;
 
-    public MailNotificationPublisher(OutboxEventPublisher outboxEventPublisher) {
+    /** Production constructor: customer emails follow the admin switch (OFF by default, V110). */
+    @Autowired
+    public MailNotificationPublisher(OutboxEventPublisher outboxEventPublisher,
+                                     SettingsService settingsService) {
         this.outboxEventPublisher = outboxEventPublisher;
+        this.settingsService = settingsService;
+    }
+
+    /** Test constructor: no settings, so no gate. */
+    public MailNotificationPublisher(OutboxEventPublisher outboxEventPublisher) {
+        this(outboxEventPublisher, null);
     }
 
     /**
@@ -51,6 +68,13 @@ public class MailNotificationPublisher {
     public Optional<MailMessage> enqueue(Long orderId, String orderCode, NotificationEvent event,
                                          String customerEmail, String customerName,
                                          Long salespersonUserId) {
+        if (settingsService != null && !settingsService.isCustomerEmailsEnabled()) {
+            // The admin has switched customer emails off: nothing is queued, so nothing can be
+            // sent later by accident. Recorded as a skipped channel, like a missing address.
+            log.debug("Skipping milestone email for order {} ({}): customer emails are switched off",
+                    orderCode, event);
+            return Optional.empty();
+        }
         if (customerEmail == null || customerEmail.isBlank()) {
             // Missing contact info: skip only this channel and record the skip (Req 7.5).
             log.debug("Skipping milestone email for order {} ({}): no customer email",

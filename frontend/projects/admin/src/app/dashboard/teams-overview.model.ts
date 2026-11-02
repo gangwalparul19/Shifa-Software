@@ -45,9 +45,12 @@ export interface TeamOverviewRow {
   teamLeadName: string;
   memberCount: number;
   ordersTotal: number;
-  ordersThisMonth: number;
+  /** Orders placed in the selected period. */
+  ordersInPeriod: number;
   revenueTotal: string;
-  revenueThisMonth: string;
+  /** Sales in the selected period (rejected, payment-rejected and cancelled orders left out). */
+  revenueInPeriod: string;
+  averageOrderValue: string;
   delivered: number;
   failed: number;
   deliverySuccessRate: number | null;
@@ -65,6 +68,13 @@ export interface TeamOverviewRow {
 /** The full "Team-wise sales" overview payload. */
 export interface TeamsOverviewResponse {
   asOf: string;
+  /** The period the orders and revenue cover (TODAY, MONTH, CUSTOM, ...). */
+  period: string;
+  /** Human label for it, e.g. "This Month" or "2026-10-01 to 2026-10-10". */
+  periodLabel: string;
+  /** First and last day covered; null for "Overall". */
+  from: string | null;
+  to: string | null;
   teams: TeamOverviewRow[];
   unassigned: TeamOverviewRow | null;
 }

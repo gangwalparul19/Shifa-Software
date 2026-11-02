@@ -7,6 +7,9 @@ import com.shifa.oms.salesperson.dto.MyDayResponse;
 import com.shifa.oms.salesperson.dto.ReorderDueCustomer;
 import com.shifa.oms.salesperson.dto.WinBackCustomer;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,10 +32,14 @@ import java.util.List;
 public class MyDayController {
 
     private final MyDayService myDayService;
+    private final LeaderboardExportService leaderboardExportService;
     private final CurrentUserService currentUserService;
 
-    public MyDayController(MyDayService myDayService, CurrentUserService currentUserService) {
+    public MyDayController(MyDayService myDayService,
+                           LeaderboardExportService leaderboardExportService,
+                           CurrentUserService currentUserService) {
         this.myDayService = myDayService;
+        this.leaderboardExportService = leaderboardExportService;
         this.currentUserService = currentUserService;
     }
 
@@ -68,5 +75,22 @@ public class MyDayController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         return myDayService.leaderboard(
                 currentUserService.requireCurrentUser(), PerformancePeriod.parse(period), from, to);
+    }
+
+    @GetMapping("/leaderboard/export")
+    public ResponseEntity<byte[]> exportLeaderboard(
+            @RequestParam(value = "period", required = false) String period,
+            @RequestParam(value = "from", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(value = "to", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(defaultValue = "xlsx") String format) {
+        LeaderboardExportService.Export export = leaderboardExportService.export(
+                currentUserService.requireCurrentUser(), PerformancePeriod.parse(period), from, to, format);
+        return ResponseEntity.ok()
+                .contentType(export.contentType())
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        com.shifa.oms.reporting.ReportFilenames.contentDisposition(export.filename()))
+                .body(export.body());
     }
 }

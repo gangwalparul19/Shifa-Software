@@ -38,18 +38,21 @@ public interface TeamsOverviewQueryRepository extends Repository<OrderEntity, Lo
     List<CreatorStatusRow> orderTotalsByCreator(@Param("creatorIds") Collection<Long> creatorIds);
 
     /**
-     * As {@link #orderTotalsByCreator} but only orders created at or after
-     * {@code since} (no upper bound, matching the old "this month" rule).
+     * As {@link #orderTotalsByCreator} but only orders created in the half-open window
+     * {@code [rangeStart, rangeEnd)} - the period the admin chose on the page. "Overall" is passed
+     * as a very wide window, never as nulls.
      */
     @Query("""
             select o.createdBy as personId, o.orderStatus as orderStatus, count(o) as orderCount,
                    sum(o.totalAmount) as totalAmount, sum(o.customerOutstanding) as outstandingAmount
             from OrderEntity o
-            where o.createdBy in :creatorIds and o.createdAt >= :since
+            where o.createdBy in :creatorIds
+              and o.createdAt >= :rangeStart and o.createdAt < :rangeEnd
             group by o.createdBy, o.orderStatus
             """)
-    List<CreatorStatusRow> orderTotalsByCreatorSince(@Param("creatorIds") Collection<Long> creatorIds,
-                                                     @Param("since") LocalDateTime since);
+    List<CreatorStatusRow> orderTotalsByCreatorBetween(@Param("creatorIds") Collection<Long> creatorIds,
+                                                       @Param("rangeStart") LocalDateTime rangeStart,
+                                                       @Param("rangeEnd") LocalDateTime rangeEnd);
 
     /** Lead counts per owner and status (every status, WON and LOST included). */
     @Query("""

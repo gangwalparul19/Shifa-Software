@@ -15,8 +15,8 @@
           <div class="flex-fill min-w-0">
             <div class="fw-medium text-truncate">{{ teamHeading(row) }}</div>
             <div class="text-secondary small">
-              {{ row.ordersThisMonth }} order{{ row.ordersThisMonth === 1 ? '' : 's' }} ·
-              {{ money(row.revenueThisMonth) }} this month
+              {{ row.ordersInPeriod }} order{{ row.ordersInPeriod === 1 ? '' : 's' }} ·
+              {{ money(row.revenueInPeriod) }} this month
               @if (row.dueFollowUps > 0) {
                 · <span class="text-danger">{{ row.dueFollowUps }} to call</span>
               }

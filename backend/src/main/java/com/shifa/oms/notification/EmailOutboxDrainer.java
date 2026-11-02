@@ -7,6 +7,7 @@ import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
 import com.shifa.oms.platform.outbox.OutboxClaimService;
+import com.shifa.oms.settings.SettingsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -48,13 +49,24 @@ public class EmailOutboxDrainer {
     private final MailService mailService;
     private final MailProperties properties;
     private final OutboxClaimService claimService;
+    /** Source of the admin's "email customers" switch; {@code null} in unit tests (no gate). */
+    private final SettingsService settingsService;
 
-    /** Legacy test constructor; production uses the fenced-claim constructor. */
+    /** Legacy test constructor: no fenced claims and no customer-email switch. */
     public EmailOutboxDrainer(OutboxEventRepository outboxEventRepository,
                               OutboxEventPublisher outboxEventPublisher,
                               MailService mailService,
                               MailProperties properties) {
-        this(outboxEventRepository, outboxEventPublisher, mailService, properties, null);
+        this(outboxEventRepository, outboxEventPublisher, mailService, properties, null, null);
+    }
+
+    /** Fenced-claim constructor without the customer-email switch. */
+    public EmailOutboxDrainer(OutboxEventRepository outboxEventRepository,
+                              OutboxEventPublisher outboxEventPublisher,
+                              MailService mailService,
+                              MailProperties properties,
+                              OutboxClaimService claimService) {
+        this(outboxEventRepository, outboxEventPublisher, mailService, properties, claimService, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -62,12 +74,14 @@ public class EmailOutboxDrainer {
                               OutboxEventPublisher outboxEventPublisher,
                               MailService mailService,
                               MailProperties properties,
-                              OutboxClaimService claimService) {
+                              OutboxClaimService claimService,
+                              SettingsService settingsService) {
         this.outboxEventRepository = outboxEventRepository;
         this.outboxEventPublisher = outboxEventPublisher;
         this.mailService = mailService;
         this.properties = properties;
         this.claimService = claimService;
+        this.settingsService = settingsService;
     }
 
     /** Scheduled entry point: drains due email-notify events every 15 seconds. */
@@ -87,6 +101,16 @@ public class EmailOutboxDrainer {
      */
     public int drainNotifications() {
         LocalDateTime now = LocalDateTime.now();
+        if (settingsService != null && !settingsService.isCustomerEmailsEnabled()) {
+            // Customer emails are switched off. Anything still queued (for example from before the
+            // switch was turned off) is marked skipped so it can never be sent later.
+            int skipped = outboxEventRepository.skipPending(
+                    OutboxEvent.EVENT_EMAIL_NOTIFY, "Customer emails are switched off", now);
+            if (skipped > 0) {
+                log.info("Customer emails are switched off: {} queued email(s) were skipped, not sent.", skipped);
+            }
+            return 0;
+        }
         List<OutboxEvent> due = claimService == null
                 ? outboxEventRepository.findDue(
                         OutboxEvent.EVENT_EMAIL_NOTIFY, OutboxEvent.STATUS_PENDING, now)

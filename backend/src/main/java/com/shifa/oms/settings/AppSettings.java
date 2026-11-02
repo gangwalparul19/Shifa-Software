@@ -72,6 +72,13 @@ public class AppSettings {
     @Column(name = "shopify_sync_enabled", nullable = false)
     private boolean shopifySyncEnabled = false;
 
+    /**
+     * Whether status emails (approved, dispatched, delivered) are sent to customers (V110; default
+     * OFF). Emails to staff, such as the daily report to admins, ignore this switch.
+     */
+    @Column(name = "customer_emails_enabled", nullable = false)
+    private boolean customerEmailsEnabled = false;
+
     /** Whether Shopify payout settlement tracking is enabled (V97). */
     @Column(name = "shopify_settlement_enabled", nullable = false)
     private boolean shopifySettlementEnabled = false;
@@ -287,6 +294,14 @@ public class AppSettings {
 
     public boolean isShopifySyncEnabled() {
         return shopifySyncEnabled;
+    }
+
+    public boolean isCustomerEmailsEnabled() {
+        return customerEmailsEnabled;
+    }
+
+    public void setCustomerEmailsEnabled(boolean customerEmailsEnabled) {
+        this.customerEmailsEnabled = customerEmailsEnabled;
     }
 
     public void setShopifySyncEnabled(boolean shopifySyncEnabled) {

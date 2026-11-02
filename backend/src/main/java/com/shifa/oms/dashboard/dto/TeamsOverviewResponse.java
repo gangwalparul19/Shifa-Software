@@ -19,9 +19,22 @@ import java.util.Map;
  * no team lead assigned are rolled into {@link #unassigned}, which is
  * {@code null} when every salesperson is on a team. Revenue excludes REJECTED,
  * PAYMENT_REJECTED and CANCELLED orders (the same rule as every other report).
+ *
+ * <p>The orders and revenue figures cover the chosen {@link #period} (this month when none is
+ * chosen). Delivery success, outstanding money, the lead pipeline and the call-out list describe
+ * the situation as it is now and do not change with the period.
+ *
+ * @param period      the period name (TODAY, YESTERDAY, LAST_7_DAYS, MONTH, LAST_MONTH, OVERALL, CUSTOM)
+ * @param periodLabel a human label for it, e.g. "This Month" or "2026-10-01 to 2026-10-10"
+ * @param from        first day covered, or {@code null} for "Overall"
+ * @param to          last day covered (included), or {@code null} for "Overall"
  */
 public record TeamsOverviewResponse(
         LocalDate asOf,
+        String period,
+        String periodLabel,
+        LocalDate from,
+        LocalDate to,
         List<TeamOverviewRow> teams,
         TeamOverviewRow unassigned) {
 
@@ -31,9 +44,10 @@ public record TeamsOverviewResponse(
             String teamLeadName,
             int memberCount,
             long ordersTotal,
-            long ordersThisMonth,
+            long ordersInPeriod,
             BigDecimal revenueTotal,
-            BigDecimal revenueThisMonth,
+            BigDecimal revenueInPeriod,
+            BigDecimal averageOrderValue,
             long delivered,
             long failed,
             Double deliverySuccessRate,

@@ -3,10 +3,59 @@
   subtitle="See where each team is heading — orders, revenue, delivery success, and leads that need a call."
   [breadcrumbs]="[{ label: 'Dashboard', link: '/dashboard' }, { label: 'Team-wise sales' }]"
 >
-  <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" aria-label="Refresh">
+  <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading() || refreshing()" aria-label="Refresh">
     <i class="ti ti-refresh"></i>
   </button>
 </admin-page-header>
+
+<!-- Period + download: always visible, so a choice is never lost while the figures reload -->
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+      <div class="flex-fill min-w-0">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+          <span class="text-secondary small fw-semibold"><i class="ti ti-calendar-stats me-1" aria-hidden="true"></i>Period</span>
+          @if (refreshing()) {
+            <span class="text-secondary small"><span class="spinner-border spinner-border-sm me-1"></span>Updating…</span>
+          } @else if (periodText()) {
+            <span class="text-secondary small">
+              Orders and revenue are for <strong>{{ periodText() }}</strong>. Delivery success, money to collect, leads and
+              leads to call are as they stand now.
+            </span>
+          }
+        </div>
+        <admin-period-picker
+          [value]="selection()"
+          [disabled]="loading()"
+          ariaLabel="Team-wise sales period"
+          (changed)="choosePeriod($event)"
+        />
+      </div>
+      <div class="btn-list flex-shrink-0" role="group" aria-label="Download the report for this period">
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-success"
+          (click)="exportReport('xlsx')"
+          [disabled]="exporting() !== null || loading() || refreshing() || !data()"
+          title="Download every team for this period as Excel"
+        >
+          @if (exporting() === 'xlsx') { <span class="spinner-border spinner-border-sm me-1"></span> }
+          <i class="ti ti-file-spreadsheet me-1" aria-hidden="true"></i> Excel
+        </button>
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-danger"
+          (click)="exportReport('pdf')"
+          [disabled]="exporting() !== null || loading() || refreshing() || !data()"
+          title="Download every team for this period as PDF"
+        >
+          @if (exporting() === 'pdf') { <span class="spinner-border spinner-border-sm me-1"></span> }
+          <i class="ti ti-file-type-pdf me-1" aria-hidden="true"></i> PDF
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 @if (loading()) {
   <admin-state-panel variant="loading" [card]="true" loadingLabel="Loading team-wise sales…" />
@@ -21,12 +70,13 @@
     message="Assign salespeople to a team lead on the Teams page to see team-wise sales here."
   />
 } @else {
+  <div [class.teams-ov__dim]="refreshing()" [attr.aria-busy]="refreshing()">
   <!-- Company-wide strip -->
   <div class="row row-cards mb-3">
     <div class="col-6 col-md-3">
       <div class="card card-sm">
         <div class="card-body">
-          <div class="text-secondary small">Orders this month</div>
+          <div class="text-secondary small">Orders · {{ periodText() }}</div>
           <div class="fs-2 fw-bold">{{ totals().orders }}</div>
         </div>
       </div>
@@ -34,7 +84,7 @@
     <div class="col-6 col-md-3">
       <div class="card card-sm">
         <div class="card-body">
-          <div class="text-secondary small">Revenue this month</div>
+          <div class="text-secondary small">Revenue · {{ periodText() }}</div>
           <div class="fs-2 fw-bold">{{ money(totals().revenue) }}</div>
         </div>
       </div>
@@ -83,12 +133,12 @@
             <!-- KPIs -->
             <div class="row g-2 mb-3">
               <div class="col-4">
-                <div class="text-secondary small">Orders (mo.)</div>
-                <div class="fw-bold fs-3">{{ row.ordersThisMonth }}</div>
+                <div class="text-secondary small">Orders</div>
+                <div class="fw-bold fs-3">{{ row.ordersInPeriod }}</div>
               </div>
               <div class="col-4">
-                <div class="text-secondary small">Revenue (mo.)</div>
-                <div class="fw-bold fs-3">{{ money(row.revenueThisMonth) }}</div>
+                <div class="text-secondary small">Revenue</div>
+                <div class="fw-bold fs-3">{{ money(row.revenueInPeriod) }}</div>
               </div>
               <div class="col-4">
                 <div class="text-secondary small">Delivery success</div>
@@ -161,6 +211,7 @@
       </div>
     }
   </div>
+  </div>
 }
 
 <!-- ===================== Team detail panel (drill-down 1) ===================== -->
@@ -178,12 +229,38 @@
         </button>
       </header>
 
-      <div class="teams-ov__panel-body">
+      <div class="teams-ov__panel-body" [class.teams-ov__dim]="refreshing()">
+        <!-- Period + download for this team -->
+        <div class="mb-3">
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <span class="text-secondary small fw-semibold"><i class="ti ti-calendar-stats me-1" aria-hidden="true"></i>Period: {{ periodText() }}</span>
+            <div class="btn-list">
+              <button type="button" class="btn btn-sm btn-outline-success" (click)="exportReport('xlsx', team)"
+                [disabled]="exporting() !== null || refreshing()" title="Download this team for this period as Excel">
+                @if (exporting() === 'xlsx') { <span class="spinner-border spinner-border-sm me-1"></span> }
+                <i class="ti ti-file-spreadsheet me-1" aria-hidden="true"></i> Excel
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-danger" (click)="exportReport('pdf', team)"
+                [disabled]="exporting() !== null || refreshing()" title="Download this team for this period as PDF">
+                @if (exporting() === 'pdf') { <span class="spinner-border spinner-border-sm me-1"></span> }
+                <i class="ti ti-file-type-pdf me-1" aria-hidden="true"></i> PDF
+              </button>
+            </div>
+          </div>
+          <admin-period-picker
+            [value]="selection()"
+            [disabled]="refreshing()"
+            ariaLabel="Team period"
+            (changed)="choosePeriod($event)"
+          />
+        </div>
+
         <!-- Team KPIs -->
         <div class="row g-2 mb-3">
-          <div class="col-4"><div class="p-2 rounded border"><div class="text-secondary small">Orders (mo.)</div><strong>{{ team.ordersThisMonth }}</strong></div></div>
-          <div class="col-4"><div class="p-2 rounded border"><div class="text-secondary small">Revenue (mo.)</div><strong>{{ money(team.revenueThisMonth) }}</strong></div></div>
-          <div class="col-4"><div class="p-2 rounded border"><div class="text-secondary small">Delivery success</div><strong>{{ team.deliverySuccessRate === null ? '—' : team.deliverySuccessRate + '%' }}</strong></div></div>
+          <div class="col-6 col-md-3"><div class="p-2 rounded border"><div class="text-secondary small">Orders</div><strong>{{ team.ordersInPeriod }}</strong></div></div>
+          <div class="col-6 col-md-3"><div class="p-2 rounded border"><div class="text-secondary small">Revenue</div><strong>{{ money(team.revenueInPeriod) }}</strong></div></div>
+          <div class="col-6 col-md-3"><div class="p-2 rounded border"><div class="text-secondary small">Average order</div><strong>{{ money(team.averageOrderValue) }}</strong></div></div>
+          <div class="col-6 col-md-3"><div class="p-2 rounded border"><div class="text-secondary small">Delivery success</div><strong>{{ team.deliverySuccessRate === null ? '—' : team.deliverySuccessRate + '%' }}</strong></div></div>
         </div>
 
         <!-- Lead pipeline -->
@@ -199,7 +276,7 @@
         </div>
 
         <!-- Salespeople table — click a row to drill into that salesperson -->
-        <div class="text-secondary small mb-1">Salespeople</div>
+        <div class="text-secondary small mb-1">Salespeople · orders and revenue for {{ periodText() }}</div>
         <div class="table-responsive mb-3">
           <table class="table table-sm table-vcenter card-table">
             <thead><tr><th>Salesperson</th><th class="text-end">Orders</th><th class="text-end">Revenue</th><th class="text-end">Delivery</th><th class="text-end">Follow-ups</th></tr></thead>
@@ -214,7 +291,7 @@
                   (keydown.space)="$event.preventDefault(); openMember(m)"
                   title="View {{ m.fullName }} detail"
                 >
-                  <td><div class="fw-medium">{{ m.fullName }}</div><div class="text-secondary small">{{ '@' + m.username }}</div></td>
+                  <td><div class="fw-medium">{{ m.fullName }}</div>@if (m.username) { <div class="text-secondary small">{{ '@' + m.username }}</div> }</td>
                   <td class="text-end">{{ m.ordersInPeriod }}</td>
                   <td class="text-end">{{ money(m.revenueInPeriod) }}</td>
                   <td class="text-end">{{ m.successRate }}%</td>

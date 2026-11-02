@@ -138,6 +138,10 @@ public final class AuditActions {
     public static final String INCENTIVE_RULES_UPDATED = "INCENTIVE_RULES_UPDATED";
     /** An admin downloaded a daily sales / incentive report. */
     public static final String INCENTIVE_REPORT_EXPORTED = "INCENTIVE_REPORT_EXPORTED";
+    /** An admin or salesperson downloaded the complete sales leaderboard. */
+    public static final String LEADERBOARD_EXPORTED = "LEADERBOARD_EXPORTED";
+    /** An admin downloaded the team-wise sales report (Excel or PDF). */
+    public static final String TEAMS_OVERVIEW_EXPORTED = "TEAMS_OVERVIEW_EXPORTED";
 
     // QuikShipX courier integration.
     /** An order was published to QuikShipX (create-order → their Pending section). */

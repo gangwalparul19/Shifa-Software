@@ -17,6 +17,7 @@ import { ToastService } from '../shared/toast.service';
 import { BankAccountManagerComponent } from './bank-account-manager.component';
 import { PaymentMethodManagerComponent } from './payment-method-manager.component';
 import { IncentiveRulesManagerComponent } from './incentive-rules-manager.component';
+import { CustomerEmailSwitchComponent } from './customer-email-switch.component';
 
 /** The Settings page categories. */
 type SettingsTab = 'gst' | 'company' | 'bank' | 'automation' | 'incentives' | 'states';
@@ -74,6 +75,7 @@ function gstSlabsValidator(control: AbstractControl): ValidationErrors | null {
     BankAccountManagerComponent,
     PaymentMethodManagerComponent,
     IncentiveRulesManagerComponent,
+    CustomerEmailSwitchComponent,
   ],
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.css',

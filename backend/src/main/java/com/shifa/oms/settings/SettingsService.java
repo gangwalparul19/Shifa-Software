@@ -195,6 +195,20 @@ public class SettingsService {
         return repository.save(settings);
     }
 
+    /** Whether status emails may be sent to customers (default OFF; see V110). */
+    @Transactional
+    public boolean isCustomerEmailsEnabled() {
+        return getSettings().isCustomerEmailsEnabled();
+    }
+
+    /** Turns customer status emails on or off; returns the persisted settings. */
+    @Transactional
+    public AppSettings setCustomerEmailsEnabled(boolean enabled) {
+        AppSettings settings = getSettings();
+        settings.setCustomerEmailsEnabled(enabled);
+        return repository.save(settings);
+    }
+
     /**
      * Persists the uploaded company-logo storage key on the settings row (used by
      * {@link CompanyLogoService} after storing the image via the storage service).

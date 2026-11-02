@@ -241,6 +241,12 @@ public class OutboxEvent {
     /** Delivery status for an event whose retries were exhausted. */
     public static final String STATUS_FAILED = "FAILED";
 
+    /**
+     * Delivery status for an event that was deliberately never sent (for example a customer email
+     * queued before the admin switched customer emails off). Terminal: it is never retried.
+     */
+    public static final String STATUS_SKIPPED = "SKIPPED";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

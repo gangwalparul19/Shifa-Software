@@ -129,6 +129,30 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> 
                     @Param("nextAttemptAt") LocalDateTime nextAttemptAt,
                     @Param("now") LocalDateTime now);
 
+    /**
+     * Marks every still-pending event of a type as deliberately skipped, so it can never be sent
+     * later (used when customer emails are switched off while some are queued). Rows that a worker
+     * currently holds under a live lease are left alone.
+     *
+     * @return how many rows were skipped
+     */
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
+    @Query("""
+            UPDATE OutboxEvent e
+               SET e.status = 'SKIPPED',
+                   e.lastError = :reason,
+                   e.leaseOwner = NULL,
+                   e.leaseToken = NULL,
+                   e.leaseUntil = NULL
+             WHERE e.eventType = :eventType
+               AND e.status = 'PENDING'
+               AND (e.leaseUntil IS NULL OR e.leaseUntil <= :now)
+            """)
+    int skipPending(@Param("eventType") String eventType,
+                    @Param("reason") String reason,
+                    @Param("now") LocalDateTime now);
+
     /** Requeues a failed integration event exactly once during concurrent redrive. */
     @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
     @Query("""

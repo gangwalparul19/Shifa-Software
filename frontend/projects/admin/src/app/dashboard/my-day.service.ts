@@ -1,7 +1,10 @@
+import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient, Money } from 'core';
+import { filenameFromContentDisposition } from '../shared/blob-download.util';
 import { PeriodSelection, THIS_MONTH, periodQuery } from '../shared/period-selection';
+import { labelledFilename } from '../shared/report-filename.util';
 
 /**
  * A salesperson's "My Day" snapshot (mirrors the backend {@code MyDayResponse}):
@@ -67,6 +70,15 @@ export interface ReorderDueCustomer {
   totalValue: Money;
 }
 
+/** Supported Leaderboard download formats. */
+export type LeaderboardExportFormat = 'xlsx' | 'pdf';
+
+/** Binary report plus the server's descriptive filename. */
+export interface LeaderboardDownload {
+  blob: Blob;
+  filename: string;
+}
+
 /**
  * Salesperson self-service data ({@code /api/my-day}) for the "My Day" home card
  * and the win-back call list. Scoped server-side to the caller's own orders.
@@ -74,6 +86,7 @@ export interface ReorderDueCustomer {
 @Injectable({ providedIn: 'root' })
 export class MyDayService {
   private readonly api = inject(ApiClient);
+  private readonly http = inject(HttpClient);
 
   /** Today + month-to-date figures vs. target, and payments to chase. */
   myDay(): Observable<MyDay> {
@@ -96,5 +109,37 @@ export class MyDayService {
   /** Sales leaderboard for a period (this month by default) + the caller's rank and order streak. */
   leaderboard(selection: PeriodSelection = THIS_MONTH): Observable<Leaderboard> {
     return this.api.get<Leaderboard>('/api/my-day/leaderboard', { params: periodQuery(selection) });
+  }
+
+  /** Complete leaderboard download for the selected period (all rows, not only the visible podium). */
+  exportLeaderboard(
+    format: LeaderboardExportFormat,
+    selection: PeriodSelection = THIS_MONTH,
+  ): Observable<LeaderboardDownload> {
+    const periodToken = selection.period === 'CUSTOM'
+      ? `${selection.from}-to-${selection.to}`
+      : selection.period.toLowerCase();
+    const params = new HttpParams({ fromObject: { ...periodQuery(selection), format } });
+    return new Observable<LeaderboardDownload>((subscriber) => {
+      const subscription = this.http
+        .get(this.api.url('/api/my-day/leaderboard/export'), {
+          params,
+          observe: 'response',
+          responseType: 'blob',
+        })
+        .subscribe({
+          next: (response: HttpResponse<Blob>) => {
+            subscriber.next({
+              blob: response.body ?? new Blob(),
+              filename:
+                filenameFromContentDisposition(response.headers.get('Content-Disposition')) ??
+                labelledFilename('Leaderboard', periodToken, format),
+            });
+            subscriber.complete();
+          },
+          error: (error) => subscriber.error(error),
+        });
+      return () => subscription.unsubscribe();
+    });
   }
 }

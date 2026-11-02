@@ -326,6 +326,11 @@
       </div>
     </div>
 
+    <!-- Automation: emails to customers (V110, default OFF). Saves on its own, outside the form. -->
+    <div [hidden]="activeTab() !== 'automation'">
+      <admin-customer-email-switch />
+    </div>
+
     <!-- Company logo section -->
     <div class="card mb-3" [hidden]="activeTab() !== 'company'">
       <div class="card-header">

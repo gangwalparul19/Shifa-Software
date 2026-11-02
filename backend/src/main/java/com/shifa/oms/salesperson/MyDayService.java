@@ -35,7 +35,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * "My Day" + "Win-back" application service for a salesperson (self-service).
@@ -62,9 +61,6 @@ public class MyDayService {
 
     /** Cap on the win-back list size (highest-value first). */
     private static final int WINBACK_LIMIT = 100;
-
-    /** How many rows the leaderboard returns. */
-    private static final int LEADERBOARD_SIZE = 10;
 
     /** Bounds standing in for "no limit" when the leaderboard period is Overall. */
     private static final LocalDateTime OPEN_START = LocalDateTime.of(2000, 1, 1, 0, 0);
@@ -257,6 +253,11 @@ public class MyDayService {
             byCreator.putIfAbsent(row.getCreatorId(), row);
         }
 
+        // Resolve the complete sales roster. The leaderboard intentionally includes people with
+        // zero qualifying orders in the selected period at the bottom, so the screen and export
+        // never silently omit a salesperson.
+        List<User> salespeople = userRepository.findByRoleOrderByCreatedAtDescIdDesc(Role.SALESPERSON);
+
         // Streak counts any order the caller punched (regardless of status).
         Set<LocalDate> myOrderDates = new HashSet<>();
         if (me != null) {
@@ -268,27 +269,26 @@ public class MyDayService {
             }
         }
 
-        // Resolve creators to users and keep only salespeople (the leaderboard is
-        // for the sales team; admin-punched orders are excluded).
-        Map<Long, User> users = userRepository.findAllById(byCreator.keySet()).stream()
-                .collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
-
         record Scored(long id, String name, BigDecimal revenue, long orders) {}
-        List<Scored> scored = new ArrayList<>();
-        for (Map.Entry<Long, MyDayQueryRepository.CreatorRow> e : byCreator.entrySet()) {
-            User u = users.get(e.getKey());
-            if (u == null || u.getRole() != Role.SALESPERSON) {
-                continue;
-            }
+        List<Scored> scored = new ArrayList<>(salespeople.size());
+        for (User u : salespeople) {
+            MyDayQueryRepository.CreatorRow aggregate = byCreator.get(u.getId());
             String name = (u.getFullName() == null || u.getFullName().isBlank())
                     ? u.getUsername() : u.getFullName();
-            scored.add(new Scored(e.getKey(), name, nz(e.getValue().getRevenue()),
-                    count(e.getValue().getOrderCount())));
+            scored.add(new Scored(
+                    u.getId(),
+                    name,
+                    aggregate == null ? BigDecimal.ZERO : nz(aggregate.getRevenue()),
+                    aggregate == null ? 0L : count(aggregate.getOrderCount())));
         }
         scored.sort(Comparator.comparing(Scored::revenue).reversed()
-                .thenComparing(Comparator.comparingLong(Scored::orders).reversed()));
+                .thenComparing(Comparator.comparingLong(Scored::orders).reversed())
+                .thenComparing(Scored::name, String.CASE_INSENSITIVE_ORDER)
+                .thenComparingLong(Scored::id));
 
-        List<LeaderboardResponse.LeaderboardRow> rows = new ArrayList<>();
+        // Return every salesperson, not only a top-N slice. The UI may highlight the top three,
+        // but the API and exports contain the complete deterministic ranking.
+        List<LeaderboardResponse.LeaderboardRow> rows = new ArrayList<>(scored.size());
         Integer myRank = null;
         BigDecimal myRevenue = BigDecimal.ZERO;
         for (int i = 0; i < scored.size(); i++) {
@@ -298,10 +298,8 @@ public class MyDayService {
                 myRank = i + 1;
                 myRevenue = s.revenue();
             }
-            if (i < LEADERBOARD_SIZE) {
-                rows.add(new LeaderboardResponse.LeaderboardRow(
-                        i + 1, s.id(), s.name(), scale(s.revenue()), s.orders(), isMe));
-            }
+            rows.add(new LeaderboardResponse.LeaderboardRow(
+                    i + 1, s.id(), s.name(), scale(s.revenue()), s.orders(), isMe));
         }
         String periodLabel = period == PerformancePeriod.CUSTOM ? window.label() : period.label();
         return new LeaderboardResponse(rows, myRank, scale(myRevenue), streakDays(myOrderDates, today),
