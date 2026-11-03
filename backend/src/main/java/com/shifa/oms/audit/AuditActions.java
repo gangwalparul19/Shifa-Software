@@ -133,6 +133,16 @@ public final class AuditActions {
     // Sales targets & incentives (FEATURE-ROADMAP §6.1).
     public static final String SALES_TARGET_SET = "SALES_TARGET_SET";
 
+    // Admin report recipients (V111).
+    /** An admin added an extra address that receives the admin report emails. */
+    public static final String REPORT_RECIPIENT_ADDED = "REPORT_RECIPIENT_ADDED";
+    /** An admin paused or resumed an extra report address. */
+    public static final String REPORT_RECIPIENT_UPDATED = "REPORT_RECIPIENT_UPDATED";
+    /** An admin removed an extra report address. */
+    public static final String REPORT_RECIPIENT_REMOVED = "REPORT_RECIPIENT_REMOVED";
+    /** An admin sent the morning report by hand ("Send now") to chosen recipients. */
+    public static final String REPORT_SENT_MANUALLY = "REPORT_SENT_MANUALLY";
+
     // Daily sales incentive rules (V108).
     /** An admin saved a new version of the daily incentive slabs (or switched them off). */
     public static final String INCENTIVE_RULES_UPDATED = "INCENTIVE_RULES_UPDATED";
@@ -189,6 +199,8 @@ public final class AuditActions {
     public static final String ENTITY_USER = "USER";
     public static final String ENTITY_SETTINGS = "SETTINGS";
     public static final String ENTITY_INCENTIVE_RULES = "INCENTIVE_RULES";
+    public static final String ENTITY_REPORT_RECIPIENT = "REPORT_RECIPIENT";
+    public static final String ENTITY_REPORT = "REPORT";
     public static final String ENTITY_PRODUCT = "PRODUCT";
     // LEGACY: coupon module removed; kept for historical audit rows.
     public static final String ENTITY_COUPON = "COUPON";

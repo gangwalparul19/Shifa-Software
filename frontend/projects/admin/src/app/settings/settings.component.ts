@@ -18,9 +18,10 @@ import { BankAccountManagerComponent } from './bank-account-manager.component';
 import { PaymentMethodManagerComponent } from './payment-method-manager.component';
 import { IncentiveRulesManagerComponent } from './incentive-rules-manager.component';
 import { CustomerEmailSwitchComponent } from './customer-email-switch.component';
+import { ReportRecipientsManagerComponent } from './report-recipients-manager.component';
 
 /** The Settings page categories. */
-type SettingsTab = 'gst' | 'company' | 'bank' | 'automation' | 'incentives' | 'states';
+type SettingsTab = 'gst' | 'company' | 'bank' | 'automation' | 'email' | 'incentives' | 'states';
 import { PaymentAccountOption } from './settings.service';
 /** Accepted logo image types and max size (mirrors the backend rule). */
 const LOGO_ACCEPTED_TYPES = ['image/png', 'image/jpeg'];
@@ -76,6 +77,7 @@ function gstSlabsValidator(control: AbstractControl): ValidationErrors | null {
     PaymentMethodManagerComponent,
     IncentiveRulesManagerComponent,
     CustomerEmailSwitchComponent,
+    ReportRecipientsManagerComponent,
   ],
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.css',
@@ -100,6 +102,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
     { key: 'company', label: 'Company', icon: 'ti-building-store' },
     { key: 'bank', label: 'Bank', icon: 'ti-building-bank' },
     { key: 'automation', label: 'Automation', icon: 'ti-robot' },
+    { key: 'email', label: 'Email', icon: 'ti-mail' },
     { key: 'incentives', label: 'Incentives', icon: 'ti-coin' },
     { key: 'states', label: 'States', icon: 'ti-map-pin' },
   ] as const;

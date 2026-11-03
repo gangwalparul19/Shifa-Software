@@ -62,7 +62,7 @@
     (ngSubmit)="save()"
     novalidate
     class="shifa-settings"
-    [hidden]="activeTab() === 'states' || activeTab() === 'incentives'"
+    [hidden]="activeTab() === 'states' || activeTab() === 'incentives' || activeTab() === 'email'"
   >
     @if (formError(); as err) {
       <div class="alert alert-danger anim-fade-up" role="alert">
@@ -326,11 +326,6 @@
       </div>
     </div>
 
-    <!-- Automation: emails to customers (V110, default OFF). Saves on its own, outside the form. -->
-    <div [hidden]="activeTab() !== 'automation'">
-      <admin-customer-email-switch />
-    </div>
-
     <!-- Company logo section -->
     <div class="card mb-3" [hidden]="activeTab() !== 'company'">
       <div class="card-header">
@@ -454,6 +449,14 @@
       </button>
     </div>
   </form>
+
+  <!-- Email: who gets the admin reports + "Send now", and the customer-email switch (V110, default OFF).
+       Both save on their own, outside the form above. Rendered only while this tab is open so the
+       recipient list is fresh each time (admins and their emails can change). -->
+  @if (activeTab() === 'email') {
+    <admin-report-recipients-manager />
+    <admin-customer-email-switch />
+  }
 
   <!-- Daily sales incentive rules (independent of the settings form: it saves and keeps its own history) -->
   <div class="card mb-3" [hidden]="activeTab() !== 'incentives'">

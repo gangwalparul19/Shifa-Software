@@ -2,6 +2,7 @@ package com.shifa.oms.mail.report;
 
 import com.shifa.oms.auth.User;
 import com.shifa.oms.auth.UserRepository;
+import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.mail.MailException;
 import com.shifa.oms.mail.MailProperties;
 import com.shifa.oms.mail.MailService;
@@ -133,6 +134,95 @@ public class DailyReportService {
         List<ReportOrder> projected = loadOrdersFor(day);
         DailyReport report = DailyReport.build(day, projected);
         return sendRendered(report, day);
+    }
+
+    /** Most addresses one "Send now" may target. */
+    static final int MAX_MANUAL_RECIPIENTS = 50;
+
+    private static final java.time.ZoneId BUSINESS_ZONE = java.time.ZoneId.of("Asia/Kolkata");
+
+    /** An address the manual send could not deliver to, with a short reason. */
+    public record Failure(String email, String reason) {
+    }
+
+    /**
+     * What a manual send did.
+     *
+     * @param requested how many addresses were chosen
+     * @param sent      how many the mail server accepted
+     * @param failures  the ones that failed, with a reason
+     */
+    public record SendResult(LocalDate date, int orderCount, java.math.BigDecimal totalSales,
+                             int requested, int sent, List<Failure> failures) {
+    }
+
+    /**
+     * Sends the morning brief for {@code day} (default yesterday) to the chosen addresses only.
+     *
+     * <p>Every chosen address must be on the recipient list (an admin user with an email, an address
+     * added under Settings → Email, or a server address); anything else is refused, so this cannot be
+     * used to mail arbitrary people. One failing address never stops the others, and the result lists
+     * which ones failed.
+     */
+    public SendResult sendMorningBriefTo(LocalDate day, List<String> chosen) {
+        if (morningBriefService == null || reportRecipients == null) {
+            throw new IllegalStateException("The morning report is not available.");
+        }
+        LocalDate today = LocalDate.now(BUSINESS_ZONE);
+        LocalDate reportDay = day == null ? today.minusDays(1) : day;
+        if (reportDay.isAfter(today)) {
+            throw new ValidationException("Choose today or an earlier day.");
+        }
+        if (reportDay.isBefore(LocalDate.of(2020, 1, 1))) {
+            throw new ValidationException("Choose a more recent day.");
+        }
+        if (chosen == null || chosen.isEmpty()) {
+            throw new ValidationException("Choose at least one recipient.");
+        }
+
+        java.util.Map<String, String> allowed = new java.util.LinkedHashMap<>();
+        for (ReportRecipients.Entry entry : reportRecipients.candidates()) {
+            allowed.put(entry.email().toLowerCase(java.util.Locale.ROOT), entry.email());
+        }
+        java.util.Map<String, String> targets = new java.util.LinkedHashMap<>();
+        for (String raw : chosen) {
+            String key = raw == null ? "" : raw.trim().toLowerCase(java.util.Locale.ROOT);
+            String address = allowed.get(key);
+            if (address == null) {
+                throw new ValidationException("'" + (raw == null ? "" : raw.trim())
+                        + "' is not on the recipient list. Add it under Settings → Email first.");
+            }
+            targets.putIfAbsent(key, address);
+        }
+        if (targets.size() > MAX_MANUAL_RECIPIENTS) {
+            throw new ValidationException("Choose at most " + MAX_MANUAL_RECIPIENTS + " recipients at a time.");
+        }
+
+        MorningBrief brief = morningBriefService.build(reportDay);
+        RenderedEmail rendered = emailRenderer.renderMorningBrief(brief);
+        List<Failure> failures = new ArrayList<>();
+        int sent = 0;
+        for (String to : targets.values()) {
+            try {
+                mailService.send(rendered.toMessage(to));
+                sent++;
+            } catch (MailException e) {
+                log.warn("Manual report for {} could not be sent to {}: {}", reportDay, to, e.getMessage());
+                failures.add(new Failure(to, shorten(e.getMessage())));
+            }
+        }
+        log.info("Manual report for {} ({} order(s)) sent to {} of {} chosen recipient(s).",
+                reportDay, brief.headline().orders(), sent, targets.size());
+        return new SendResult(reportDay, (int) brief.headline().orders(), brief.headline().sales(),
+                targets.size(), sent, List.copyOf(failures));
+    }
+
+    private static String shorten(String message) {
+        if (message == null || message.isBlank()) {
+            return "The mail server did not accept the message.";
+        }
+        String oneLine = message.replaceAll("\\s+", " ").trim();
+        return oneLine.length() <= 180 ? oneLine : oneLine.substring(0, 177) + "...";
     }
 
     /** Builds, renders and sends the morning brief for {@code day}. */

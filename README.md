@@ -922,7 +922,7 @@ Deployed on 2026-11-03 at about 00:00 IST with `deploy\deploy-both.ps1 -SkipBuil
 - **After (`prod-check.ps1 -Mode Verify`):** service active, `NRestarts=0`, `/actuator/health` 200, site 200, `/api/states` 401, Flyway validated 110 and applied 1 migration (now V110), "Started Application in 31.2 seconds", no ERROR lines, 0 blockers, 0 warnings. All four invariant lines (orders, line items, payments, users) are identical to the baseline.
 - **Effect for users:** customer emails are now off (Settings, Automation, "Emails to customers" switch); admin reports and the temporary-password email still send because they go to admins. Staff need a hard refresh (Ctrl+Shift+R) to load the new bundle through the service worker.
 
-### Morning brief: the admin's 8 AM email, rebuilt (implemented locally, not deployed — 2026-11-03)
+### Morning brief: the admin's 8 AM email, rebuilt (DEPLOYED to Prod 2026-11-03 ~01:10 IST, no migration)
 
 The email sent to the admins every morning (`DailyReportJob`, 08:00 India time, and `POST /api/admin/reports/daily-digest/run?date=`) was a flat list that also mixed today's figures into a report about yesterday. It is now a "morning brief" about the previous day. Recipients, schedule, the `REPORT_DIGEST_ENABLED` switch and the endpoint are unchanged; the weekly report keeps its older layout. No migration.
 
@@ -939,4 +939,24 @@ How it is built: `MorningBriefService` gathers the figures (`MorningBriefQueryRe
 
 Choices to confirm with the client: "collected in which bank" is the money recorded on orders per account; cash that couriers pay out is not tied to any bank account in the data, so it is shown as one total. Top salespeople and the incentive count the SALESPERSON role only (the same roster as the incentive tracker), and Shopify orders, which have no salesperson, appear in the source split but not in the ranking.
 
-Validation of the morning brief: full backend suite `mvn clean package` = **1071 tests, 0 failures** (2026-11-03, after the change). A design preview of the email is in `docs/Morning-Brief-Email-Preview-2026-11-03.pdf`; it is built from the local copy of the data (not live figures) and uses the example incentive slabs (₹25,000 → ₹500, ₹35,000 → ₹750) because no program is saved yet. Still not deployed.
+Validation of the morning brief: full backend suite `mvn clean package` = **1071 tests, 0 failures** (2026-11-03, after the change). A design preview of the email is in `docs/Morning-Brief-Email-Preview-2026-11-03.pdf`; it is built from the local copy of the data (not live figures) and uses the example incentive slabs (₹25,000 → ₹500, ₹35,000 → ₹750) because no program is saved yet.
+
+**Deployed 2026-11-03 at about 01:10 IST** with `deploy\deploy-both.ps1 -SkipBuild -ProdOnly` (demo untouched). Preflight: 0 blockers, database already at V110, so no migration ran. Pre-deploy dump `~/shifa-backup-2026-11-02-194008.sql` (37 MB, also in `s3://shifa-db-backup/`); previous JAR kept at `~/shifa-oms.prev-2026-11-02-194008.jar`. Verify: service active, `NRestarts=0`, health 200, site 200, `/api/states` 401, "Started Application in 29.32 seconds", no ERROR lines, 0 blockers and 0 warnings; orders (3,035), line items (5,501), payments (3,079) and users (30) identical to the baseline taken minutes before. The frontend bundle is unchanged (`main-RKIHR75Q.js`). The first real brief goes out at 08:00 IST for the previous day; `POST /api/admin/reports/daily-digest/run` (as an admin) sends one on demand. Until slabs are saved under Settings → Incentives the incentive section says no program was active.
+
+### Admin report recipients + "Send now" (V111, implemented locally, not deployed — 2026-11-03)
+
+**Why the 8 AM email missed some admins.** On 3 Nov the job sent to all 3 recipients it had (`sent to 3 of 3`, no errors). Prod has 5 active admin users and 2 of them (`admin` and `8109725353`) have no email on their profile, and the report only goes to admins that have one. So nothing failed; those two were never on the list.
+
+**What was added** (Settings → new **Email** tab):
+- **Admin report emails** list: every active admin user first (with a clear "No email on the profile" and an **Add email** shortcut), then the addresses added here, then any set on the server (`REPORT_DIGEST_TO`, read only). Each line shows whether it gets the report, with the reason when it does not.
+- **Add another address** (name optional + email). It is saved in the new `report_recipients` table (**V111**) and used for **every later report** (the 8 AM brief and the weekly report) until paused or removed. Pause/resume and remove are on each added line. Admin users need no entry: they are read from the user table every time.
+- **Send now** button: opens a dialog with a date (default yesterday), all admin users and added addresses ticked, **Select all / Clear**, individual tick boxes, and an **Add another address** form that saves the address and ticks it. It sends the same morning brief the 8 AM job sends, only to the ticked people, and shows how many were sent and which addresses failed and why.
+- The existing **Emails to customers** switch moved from the Automation tab to this Email tab.
+
+**Rules.** One plain valid address per entry (no `Name <addr>` form, no lists); duplicates are refused case-insensitively, including an address an admin already receives under their profile; "Send now" accepts only addresses that are on the list (it cannot be used to mail strangers), at most 50 at a time, for today or an earlier day. Changes and manual sends are audited (`REPORT_RECIPIENT_ADDED/UPDATED/REMOVED`, `REPORT_SENT_MANUALLY`).
+
+**API (ADMIN only):** `GET /api/admin/report-recipients`, `POST /api/admin/report-recipients` `{email,name}`, `PUT /api/admin/report-recipients/{id}/active` `{active}`, `DELETE /api/admin/report-recipients/{id}`, `POST /api/admin/report-recipients/send` `{date,emails}`. Every change returns the refreshed list. The existing `POST /api/admin/reports/daily-digest/run` is unchanged and now also reaches the added addresses.
+
+**Code:** `mail/ReportRecipient` (+ repository), `ReportRecipients` (now returns entries with their source and has `candidates()` for hand sends), `ReportRecipientService`, `ReportRecipientController`, `DailyReportService.sendMorningBriefTo`; frontend `settings/report-recipients-manager.component.ts` + `report-recipients.service.ts`. `deploy/prod-check.sh` expects V111.
+
+**Validation:** a temporary test against the real local MySQL (V111 applied) covered listing, adding, every rejection rule, pause/resume, sending to chosen addresses, a simulated mail failure, refused strangers/future day/paused addresses, and removal (all passed; the test and its data were removed). Deploying applies migration V111.
