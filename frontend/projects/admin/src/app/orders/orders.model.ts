@@ -363,6 +363,19 @@ export interface OrderPayment {
   hasScreenshot: boolean;
 }
 
+export interface PaymentCorrectionRequest {
+  amountReceived: number;
+  paymentMethod: PaymentMethod;
+  paymentAccountId?: number | null;
+  paymentUtr?: string | null;
+  reason: string;
+}
+
+export interface CorrectCreatedDateRequest {
+  correctedDate: string;
+  reason: string;
+}
+
 export interface ScreenshotUploadResponse {
   key: string;
 }

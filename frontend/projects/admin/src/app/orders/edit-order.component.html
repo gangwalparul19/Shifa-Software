@@ -14,9 +14,15 @@
     [card]="true"
   />
 } @else {
-  <div class="alert alert-info anim-fade-up" role="status">
-    <i class="ti ti-receipt me-2"></i>
-    Editing <strong>{{ orderCode() }}</strong>. Payment details are not editable here.
+  <div class="alert alert-info anim-fade-up d-flex align-items-center justify-content-between gap-2 flex-wrap" role="status">
+    <span><i class="ti ti-receipt me-2"></i>
+      Editing <strong>{{ orderCode() }}</strong>. Payment details are not editable here.
+    </span>
+    @if (canCorrectCreatedDate()) {
+      <button type="button" class="btn btn-sm btn-outline-warning" (click)="openCreatedDateCorrection()">
+        <i class="ti ti-calendar-edit me-1"></i> Correct punched date
+      </button>
+    }
   </div>
 
   @if (notEditable()) {

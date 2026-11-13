@@ -18,11 +18,13 @@ import {
   CourierCompanyOption,
   DELIVERY_METHOD_OPTIONS,
   DeliveryMethod,
+  CorrectCreatedDateRequest,
   MANUAL_DELIVERY_STAGE_OPTIONS,
   ManualStage,
   OrderDetail,
   OrderDetailLine,
   OrderPayment,
+  PaymentCorrectionRequest,
   OrderSummary,
   QuikShipTracking,
   RtoReasonValue,
@@ -54,8 +56,14 @@ import { reportFilename } from '../shared/report-filename.util';
 import { formatInr } from '../shared/inr.pipe';
 import { delhiveryTrackUrl } from '../shared/tracking-url.util';
 import { DialogDirective } from '../shared/dialog.directive';
+import { todayIst } from '../shared/business-date.util';
 import { ChannelLogoComponent } from '../shared/channel-logo.component';
 import { WhatsappTemplate, WhatsappTemplatesService } from '../whatsapp/whatsapp-templates.service';
+import {
+  PaymentAccountOption,
+  PaymentMethodOption,
+  SettingsService,
+} from '../settings/settings.service';
 import {
   SavedView,
   loadSavedViews,
@@ -360,6 +368,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
    */
   protected readonly createdByFilter = signal<number | null>(null);
   protected readonly createdByName = signal<string | null>(null);
+  /** Opens the detail drawer once for an exact `?q=...&open=1` deep link. */
+  private queryOpenOrderCode: string | null = null;
   /**
    * The orders to render. Filtering is now done server-side (grouped
    * {@code statusGroup} query param), so this simply surfaces the loaded page —
@@ -751,7 +761,52 @@ export class OrdersComponent implements OnInit, OnDestroy {
   protected readonly detailLoading = signal(false);
   /** Existing returns for the open order (closes the loop between Returns and Orders). */
   protected readonly orderReturns = signal<ReturnResponse[]>([]);
+  private readonly settings = inject(SettingsService);
   protected readonly paymentTransactions = signal<OrderPayment[]>([]);
+
+  // --- ADMIN payment correction -------------------------------------------
+  protected readonly paymentCorrectionOpen = signal(false);
+  protected readonly paymentCorrectionBusy = signal(false);
+  protected readonly paymentCorrectionError = signal<string | null>(null);
+  protected readonly paymentCorrectionOrder = signal<OrderDetail | null>(null);
+  protected readonly paymentCorrectionMethods = signal<PaymentMethodOption[]>([]);
+  protected readonly paymentCorrectionAccounts = signal<PaymentAccountOption[]>([]);
+  protected readonly paymentCorrectionForm = new FormGroup({
+    amountReceived: new FormControl<number | null>(null, {
+      validators: [Validators.required, Validators.min(0)],
+    }),
+    paymentMethod: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.required],
+    }),
+    paymentAccountId: new FormControl<number | null>(null),
+    paymentUtr: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.maxLength(80)],
+    }),
+    reason: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.maxLength(500)],
+    }),
+  });
+
+  protected readonly todayIst = todayIst;
+
+  // --- ADMIN punched-date correction --------------------------------------
+  protected readonly createdDateCorrectionOpen = signal(false);
+  protected readonly createdDateCorrectionBusy = signal(false);
+  protected readonly createdDateCorrectionError = signal<string | null>(null);
+  protected readonly createdDateCorrectionOrder = signal<OrderDetail | null>(null);
+  protected readonly createdDateCorrectionForm = new FormGroup({
+    correctedDate: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.required],
+    }),
+    reason: new FormControl<string>('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.maxLength(500)],
+    }),
+  });
 
   /**
    * The delivery method picked in the detail drawer for the order awaiting
@@ -877,6 +932,228 @@ export class OrdersComponent implements OnInit, OnDestroy {
     });
   }
 
+  // --- ADMIN punched-date correction --------------------------------------
+  canCorrectCreatedDate(order: OrderDetail | null | undefined): boolean {
+    return !!order
+      && this.auth.hasAnyRole(Role.ADMIN)
+      && order.source !== 'SHOPIFY'
+      && (order.orderStatus === OrderStatus.PENDING_ADMIN_APPROVAL || order.orderStatus === OrderStatus.APPROVED)
+      && !!order.createdAt;
+  }
+
+  openCreatedDateCorrection(order: OrderDetail): void {
+    if (!this.canCorrectCreatedDate(order)) {
+      return;
+    }
+    this.createdDateCorrectionError.set(null);
+    this.createdDateCorrectionBusy.set(false);
+    this.createdDateCorrectionForm.reset({
+      correctedDate: order.createdAt?.slice(0, 10) ?? '',
+      reason: '',
+    }, { emitEvent: false });
+    this.createdDateCorrectionOrder.set(order);
+    this.createdDateCorrectionOpen.set(true);
+  }
+
+  closeCreatedDateCorrection(): void {
+    if (this.createdDateCorrectionBusy()) {
+      return;
+    }
+    this.createdDateCorrectionOpen.set(false);
+    this.createdDateCorrectionOrder.set(null);
+    this.createdDateCorrectionError.set(null);
+  }
+
+  submitCreatedDateCorrection(): void {
+    const order = this.createdDateCorrectionOrder();
+    const form = this.createdDateCorrectionForm;
+    form.markAllAsTouched();
+    const correctedDate = form.controls.correctedDate.value;
+    const reason = form.controls.reason.value.trim();
+    const currentDate = order?.createdAt?.slice(0, 10) ?? '';
+    if (!order || form.invalid || !correctedDate || !reason) {
+      this.createdDateCorrectionError.set('Choose a date and enter the correction reason.');
+      return;
+    }
+    if (correctedDate > todayIst()) {
+      this.createdDateCorrectionError.set('The punched date cannot be in the future.');
+      return;
+    }
+    if (correctedDate === currentDate) {
+      this.createdDateCorrectionError.set('The corrected date is the same as the current punched date.');
+      return;
+    }
+    const payload: CorrectCreatedDateRequest = { correctedDate, reason };
+    this.createdDateCorrectionBusy.set(true);
+    this.createdDateCorrectionError.set(null);
+    this.service.correctCreatedDate(order.id, payload).subscribe({
+      next: (updated) => {
+        this.createdDateCorrectionBusy.set(false);
+        this.createdDateCorrectionOpen.set(false);
+        this.createdDateCorrectionOrder.set(null);
+        this.selectedDetail.set(updated);
+        this.toasts.success(`Punched date corrected for ${updated.orderCode}.`);
+        this.load();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.createdDateCorrectionBusy.set(false);
+        this.createdDateCorrectionError.set(
+          err?.error?.message ?? 'Could not correct the punched date. Refresh and try again.',
+        );
+      },
+    });
+  }
+
+  /** ADMIN-only affordance; the backend repeats the lifecycle and source checks. */
+  canCorrectPayment(order: OrderDetail | null | undefined): boolean {
+    if (!order || !this.auth.hasAnyRole(Role.ADMIN) || order.source === 'SHOPIFY') {
+      return false;
+    }
+    return !new Set([
+      'DELIVERED', 'COD_COLLECTED', 'CLOSED', 'RTO', 'REDISPATCH',
+      'CANCELLED', 'REJECTED', 'PAYMENT_REJECTED',
+    ]).has(order.orderStatus);
+  }
+
+  openPaymentCorrection(order: OrderDetail): void {
+    if (!this.canCorrectPayment(order)) {
+      return;
+    }
+    this.paymentCorrectionError.set(null);
+    this.paymentCorrectionBusy.set(false);
+    forkJoin({
+      methods: this.settings.activePaymentMethods(),
+      accounts: this.settings.activePaymentAccounts(),
+    }).subscribe({
+      next: ({ methods, accounts }) => {
+        this.paymentCorrectionMethods.set(methods);
+        this.paymentCorrectionAccounts.set(accounts);
+        const current = this.paymentTransactions()[0];
+        const method = methods.some((item) => item.code === current?.paymentMethod)
+          ? current?.paymentMethod ?? ''
+          : methods.find((item) => item.defaultMethod)?.code ?? methods[0]?.code ?? '';
+        this.paymentCorrectionForm.reset({
+          amountReceived: Number(order.amountReceived ?? 0),
+          paymentMethod: method,
+          paymentAccountId: current?.bankAccountId ?? null,
+          paymentUtr: current?.utr ?? '',
+          reason: '',
+        }, { emitEvent: false });
+        this.syncPaymentCorrectionAccount();
+        this.paymentCorrectionOrder.set(order);
+        this.paymentCorrectionOpen.set(true);
+      },
+      error: () => {
+        this.toasts.error('Payment methods or receiving accounts could not be loaded. Refresh and try again.');
+      },
+    });
+  }
+
+  closePaymentCorrection(): void {
+    if (this.paymentCorrectionBusy()) {
+      return;
+    }
+    this.paymentCorrectionOpen.set(false);
+    this.paymentCorrectionOrder.set(null);
+    this.paymentCorrectionError.set(null);
+  }
+
+  paymentCorrectionMethodChanged(value: string): void {
+    this.paymentCorrectionForm.controls.paymentMethod.setValue(value);
+    this.syncPaymentCorrectionAccount();
+  }
+
+  paymentCorrectionMethod(): PaymentMethodOption | null {
+    const code = this.paymentCorrectionForm.controls.paymentMethod.value;
+    return this.paymentCorrectionMethods().find((method) => method.code === code) ?? null;
+  }
+
+  paymentCorrectionNeedsAccount(): boolean {
+    return this.paymentCorrectionMethod()?.requiresAccount ?? false;
+  }
+
+  paymentCorrectionAccountsForMethod(): PaymentAccountOption[] {
+    const method = this.paymentCorrectionMethod();
+    if (!method?.requiresAccount) {
+      return [];
+    }
+    if (method.linkedAccountType) {
+      return this.paymentCorrectionAccounts().filter(
+        (account) => account.accountType === method.linkedAccountType,
+      );
+    }
+    return this.paymentCorrectionAccounts();
+  }
+
+  private syncPaymentCorrectionAccount(): void {
+    const method = this.paymentCorrectionMethod();
+    if (!method?.requiresAccount) {
+      this.paymentCorrectionForm.controls.paymentAccountId.setValue(null, { emitEvent: false });
+      return;
+    }
+    const options = this.paymentCorrectionAccountsForMethod();
+    const current = this.paymentCorrectionForm.controls.paymentAccountId.value;
+    if (current && options.some((account) => account.id === current)) {
+      return;
+    }
+    const auto = method.autoAccountId && options.some((account) => account.id === method.autoAccountId)
+      ? method.autoAccountId
+      : null;
+    this.paymentCorrectionForm.controls.paymentAccountId.setValue(auto, { emitEvent: false });
+  }
+
+  submitPaymentCorrection(): void {
+    const order = this.paymentCorrectionOrder();
+    const form = this.paymentCorrectionForm;
+    form.markAllAsTouched();
+    const amount = form.controls.amountReceived.value;
+    const method = this.paymentCorrectionMethod();
+    if (!order || form.invalid || amount === null || !method) {
+      this.paymentCorrectionError.set('Enter a valid amount, payment method, and reason.');
+      return;
+    }
+    if (amount > Number(order.totalAmount)) {
+      this.paymentCorrectionError.set('Amount received cannot be greater than the order total.');
+      return;
+    }
+    const accountId = form.controls.paymentAccountId.value;
+    if (amount > 0 && method.requiresAccount && !accountId) {
+      this.paymentCorrectionError.set('Select the receiving account for this payment method.');
+      return;
+    }
+    const payload: PaymentCorrectionRequest = {
+      amountReceived: amount,
+      paymentMethod: method.code,
+      paymentAccountId: amount > 0 ? accountId : null,
+      paymentUtr: amount > 0 ? form.controls.paymentUtr.value.trim() || null : null,
+      reason: form.controls.reason.value.trim(),
+    };
+    if (!payload.reason) {
+      this.paymentCorrectionError.set('Enter the reason for this correction.');
+      return;
+    }
+    this.paymentCorrectionBusy.set(true);
+    this.paymentCorrectionError.set(null);
+    this.service.correctPayment(order.id, payload).subscribe({
+      next: (updated) => {
+        this.paymentCorrectionBusy.set(false);
+        this.paymentCorrectionOpen.set(false);
+        this.paymentCorrectionOrder.set(null);
+        this.selectedDetail.set(updated);
+        this.loadPaymentTransactions(updated.id);
+        this.loadScreenshot(updated);
+        this.toasts.success(`Payment details corrected for ${updated.orderCode}.`);
+        this.load();
+      },
+      error: (err: HttpErrorResponse) => {
+        this.paymentCorrectionBusy.set(false);
+        this.paymentCorrectionError.set(
+          err?.error?.message ?? 'Could not correct the payment details. Refresh and try again.',
+        );
+      },
+    });
+  }
+
   ngOnInit(): void {
     this.initFiltersFromQueryParams();
     this.savedViews.set(loadSavedViews());
@@ -935,6 +1212,9 @@ export class OrdersComponent implements OnInit, OnDestroy {
     const q = qp.get('q');
     if (q) {
       this.search.setValue(q, { emitEvent: false });
+      if (qp.get('open') === '1') {
+        this.queryOpenOrderCode = q;
+      }
     }
     // Accept either the grouped ?statusGroup= or a legacy raw ?status= (mapped
     // to its group) so dashboard drill-downs and old deep links still land
@@ -994,6 +1274,16 @@ export class OrdersComponent implements OnInit, OnDestroy {
           this.orders.set(res.content);
           this.totalPages.set(res.totalPages);
           this.totalElements.set(res.totalElements);
+          // A date-correction link from the edit page asks the Orders screen to
+          // open the exact matching row in the canonical detail drawer.
+          if (this.queryOpenOrderCode) {
+            const requested = this.queryOpenOrderCode.toLowerCase();
+            const match = res.content.find((row) => row.orderCode.toLowerCase() === requested);
+            if (match) {
+              this.queryOpenOrderCode = null;
+              queueMicrotask(() => this.openDetail(match));
+            }
+          }
           // Drop any selected rows no longer present on the page view.
           this.pruneSelection(res.content);
           this.loading.set(false);

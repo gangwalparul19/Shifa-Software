@@ -17,6 +17,8 @@ package com.shifa.oms.ledger.autopost;
  *   <li>{@link #PAYMENT} — a customer receipt or supplier payment (Receipt/Payment voucher, Req 11).</li>
  *   <li>{@link #ORDER_DELIVERY} — the COD cash collected when an order was delivered (Receipt voucher,
  *       dated the delivery date).</li>
+ *   <li>{@link #PAYMENT_CORRECTION} — an administrator's replacement delta for the upfront payment
+ *       captured on an order (Journal voucher).</li>
  * </ul>
  *
  * <p>Note that {@link #ORDER_DELIVERY} is a SEPARATE source type from {@link #ORDER} even though both
@@ -48,6 +50,9 @@ public enum SourceType {
      * rather than the order-entry date.
      */
     ORDER_DELIVERY,
+
+    /** An administrator's delta correction to the upfront payment captured on an order. */
+    PAYMENT_CORRECTION,
 
     /**
      * The CASH refunded to a customer when a return is marked REFUNDED (ENHANCEMENT 2.3) — a Journal

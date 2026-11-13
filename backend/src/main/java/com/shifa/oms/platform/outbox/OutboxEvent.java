@@ -339,6 +339,16 @@ public class OutboxEvent {
     }
 
     /**
+     * Marks an event deliberately superseded so a consumer never retries it.
+     */
+    public void markSkipped(String reason) {
+        this.status = STATUS_SKIPPED;
+        this.lastError = truncate(reason);
+        this.nextAttemptAt = null;
+        clearLease();
+    }
+
+    /**
      * Re-queues a (typically {@code FAILED}) event for a fresh delivery attempt:
      * status back to {@code PENDING}, attempts reset to 0, error cleared, and due
      * immediately. Used by the self-healing re-drive so a transiently-failed

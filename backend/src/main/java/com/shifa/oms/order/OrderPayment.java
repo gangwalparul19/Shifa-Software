@@ -88,4 +88,22 @@ public class OrderPayment {
     public String getUtr() { return utr; }
     public String getUtrNormalized() { return utrNormalized; }
     public LocalDateTime getCapturedAt() { return capturedAt; }
+
+    /** Replaces the current payment snapshot while preserving its proof and capture timestamp. */
+    public void replaceCapture(BigDecimal amountReceived, String paymentMethod, Long bankAccountId,
+                               String bankAccountNameSnapshot, String bankAccountMaskedSnapshot,
+                               String utr) {
+        this.amountReceived = amountReceived;
+        this.paymentMethod = paymentMethod;
+        this.bankAccountId = bankAccountId;
+        this.bankAccountNameSnapshot = bankAccountNameSnapshot;
+        this.bankAccountMaskedSnapshot = bankAccountMaskedSnapshot;
+        this.utr = UtrNormalizer.normalize(utr);
+        this.utrNormalized = this.utr;
+    }
+
+    /** Clears monetary metadata when an administrator corrects an order to zero upfront payment. */
+    public void clearCapture() {
+        replaceCapture(BigDecimal.ZERO, null, null, null, null, null);
+    }
 }

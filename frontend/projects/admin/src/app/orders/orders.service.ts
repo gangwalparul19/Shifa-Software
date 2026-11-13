@@ -6,12 +6,14 @@ import {
   AssignableCreator,
   CourierCompanyOption,
   CreateOrderRequest,
+  CorrectCreatedDateRequest,
   CustomerPrefillResponse,
   DeliveryMethod,
   DuplicateCheckResponse,
   ManualStage,
   OrderDetail,
   OrderPayment,
+  PaymentCorrectionRequest,
   OrderSummary,
   QuikShipPublishAck,
   PaymentScreenshot,
@@ -313,6 +315,19 @@ export class OrdersService {
   /** Payment transaction metadata, with account numbers already masked server-side. */
   payments(id: number): Observable<OrderPayment[]> {
     return this.api.get<OrderPayment[]>(`/api/orders/${id}/payments`);
+  }
+
+  /**
+   * Correct an order's upfront payment snapshot. ADMIN-only; the server keeps
+   * the current order/payment projections in sync and writes an audit record.
+   */
+  correctPayment(id: number, payload: PaymentCorrectionRequest): Observable<OrderDetail> {
+    return this.api.put<OrderDetail>(`/api/admin/orders/${id}/payment-details`, payload);
+  }
+
+  /** Correct the calendar date on which an order was punched; ADMIN-only. */
+  correctCreatedDate(id: number, payload: CorrectCreatedDateRequest): Observable<OrderDetail> {
+    return this.api.put<OrderDetail>(`/api/admin/orders/${id}/created-date`, payload);
   }
 
   /**

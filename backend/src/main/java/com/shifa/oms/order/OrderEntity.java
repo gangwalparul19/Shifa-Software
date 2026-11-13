@@ -31,9 +31,10 @@ import java.util.List;
  * (Req 7.11, 8.2).
  *
  * <p>Concurrency is guarded by an optimistic-lock {@link #version} ({@code @Version}).
- * {@code created_at}/{@code updated_at} are filled by DB defaults and therefore
- * are not written on insert/update (following the {@code Product} entity's
- * pattern). Monetary fields are {@code DECIMAL(12,2)} carried as
+ * {@code created_at} and {@code updated_at} are filled by DB defaults and are not written by
+ * normal aggregate updates. The dedicated ADMIN punched-date correction service updates
+ * {@code created_at} through a locked repository operation and refreshes the aggregate afterward.
+ * Monetary fields are {@code DECIMAL(12,2)} carried as
  * {@link BigDecimal}; the derived values are computed by the domain
  * {@code PaymentCalculator} before an instance is built.
  */
@@ -922,6 +923,14 @@ public class OrderEntity {
 
     public LocalDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    /** Narrow mutation used only by the ADMIN punched-date correction workflow. */
+    public void correctCreatedAt(LocalDateTime correctedCreatedAt) {
+        if (correctedCreatedAt == null) {
+            throw new IllegalArgumentException("correctedCreatedAt is required");
+        }
+        this.createdAt = correctedCreatedAt;
     }
 
     public LocalDateTime getUpdatedAt() {

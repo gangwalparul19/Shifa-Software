@@ -36,6 +36,10 @@ public final class AuditActions {
     /** Payment authenticity verification decisions (product-audit §4.4). */
     public static final String PAYMENT_VERIFIED = "PAYMENT_VERIFIED";
     public static final String PAYMENT_REJECTED = "PAYMENT_REJECTED";
+    /** An ADMIN corrected an order's upfront payment amount or receiving metadata. */
+    public static final String ORDER_PAYMENT_CORRECTED = "ORDER_PAYMENT_CORRECTED";
+    /** An ADMIN corrected the calendar date on which an order was punched. */
+    public static final String ORDER_CREATED_AT_CORRECTED = "ORDER_CREATED_AT_CORRECTED";
     /** Generic per-transition audit written by the central OrderWorkflowService (Req 15.1, 15.5). */
     public static final String ORDER_STATUS_CHANGED = "ORDER_STATUS_CHANGED";
 

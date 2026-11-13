@@ -74,6 +74,8 @@ export class EditOrderComponent implements OnInit {
   protected readonly orderId = signal<number | null>(null);
   protected readonly orderCode = signal<string>('');
   protected readonly orderStatus = signal<string>('');
+  protected readonly orderSource = signal<string>('');
+  protected readonly orderCreatedAt = signal<string | null>(null);
 
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
@@ -150,6 +152,24 @@ export class EditOrderComponent implements OnInit {
     this.loadOrder(id);
   }
 
+  /** The date correction itself is ADMIN-only and lives in the Orders detail drawer. */
+  canCorrectCreatedDate(): boolean {
+    return this.auth.hasAnyRole(Role.ADMIN)
+      && this.orderSource() !== 'SHOPIFY'
+      && (this.orderStatus() === 'PENDING_ADMIN_APPROVAL' || this.orderStatus() === 'APPROVED')
+      && !!this.orderCreatedAt();
+  }
+
+  /** Opens the canonical Orders detail drawer where the correction dialog lives. */
+  openCreatedDateCorrection(): void {
+    if (!this.canCorrectCreatedDate()) {
+      return;
+    }
+    void this.router.navigate(['/orders'], {
+      queryParams: { q: this.orderCode(), open: '1' },
+    });
+  }
+
   /** Retries loading the order after a failed initial load. */
   retryLoad(): void {
     const id = this.orderId();
@@ -165,6 +185,8 @@ export class EditOrderComponent implements OnInit {
       next: (o) => {
         this.orderCode.set(o.orderCode);
         this.orderStatus.set(o.orderStatus);
+        this.orderSource.set(o.source);
+        this.orderCreatedAt.set(o.createdAt ?? null);
         // Editable only while still awaiting approval: once approved the order
         // has been sent to QuikShipX and can no longer be edited (QuikShipX
         // stale-data fix — the server enforces the same PENDING-only window).

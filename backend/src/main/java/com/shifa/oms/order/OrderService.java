@@ -8,13 +8,19 @@ import com.shifa.oms.auth.SalespersonScopeResolver;
 import com.shifa.oms.auth.UserRepository;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.common.ValidationException;
+import com.shifa.oms.courier.CourierRecordRepository;
 import com.shifa.oms.courier.TrackingService;
 import com.shifa.oms.crm.domain.CustomerRiskCalculator;
 import com.shifa.oms.crm.domain.CustomerRiskLevel;
 import com.shifa.oms.gst.domain.Gstin;
+import com.shifa.oms.gst.filing.ReturnFilingRepository;
+import com.shifa.oms.gst.filing.domain.FilingStatus;
+import com.shifa.oms.gst.filing.domain.ReturnType;
 import com.shifa.oms.inventory.StockMovementType;
 import com.shifa.oms.inventory.StockService;
 import com.shifa.oms.label.LabelService;
+import com.shifa.oms.ledger.VoucherRepository;
+import com.shifa.oms.ledger.autopost.SourcePostingLogRepository;
 import com.shifa.oms.notification.ShipmentMilestoneNotifier;
 import com.shifa.oms.order.domain.DiscountType;
 import com.shifa.oms.order.domain.Money;
@@ -23,6 +29,8 @@ import com.shifa.oms.order.domain.PaymentCalculation;
 import com.shifa.oms.order.domain.PaymentCalculator;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.order.dto.CreateOrderRequest;
+import com.shifa.oms.order.dto.CorrectCreatedDateRequest;
+import com.shifa.oms.order.dto.CorrectPaymentRequest;
 import com.shifa.oms.order.dto.CustomerPrefillResponse;
 import com.shifa.oms.order.dto.DuplicateCheckResponse;
 import com.shifa.oms.order.dto.LineItemRequest;
@@ -33,7 +41,9 @@ import com.shifa.oms.order.dto.PaymentScreenshotResponse;
 import com.shifa.oms.order.dto.StoreLineItemRequest;
 import com.shifa.oms.order.dto.StoreOrderRequest;
 import com.shifa.oms.order.dto.UpdateOrderRequest;
+import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
+import com.shifa.oms.platform.outbox.OutboxEventRepository;
 import com.shifa.oms.platform.storage.StorageService;
 import com.shifa.oms.product.Product;
 import com.shifa.oms.quikshipx.QuikShipXProperties;
@@ -43,6 +53,9 @@ import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.quikshipx.OrderShipmentRepository;
 import com.shifa.oms.reconciliation.ReceivableEntity;
 import com.shifa.oms.reconciliation.ReceivableRepository;
+import com.shifa.oms.reconciliation.SettlementAllocation;
+import com.shifa.oms.reconciliation.SettlementAllocationRepository;
+import com.shifa.oms.reconciliation.SettlementTargetType;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
 import com.shifa.oms.settings.AppSettings;
 import com.shifa.oms.settings.BankAccountRepository;
@@ -51,6 +64,8 @@ import com.shifa.oms.settings.PaymentMethod;
 import com.shifa.oms.settings.PaymentMethodService;
 import com.shifa.oms.settings.SettingsService;
 import com.shifa.oms.statemachine.OrderStatus;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -166,6 +181,10 @@ public class OrderService {
      */
     private final ShipmentMilestoneNotifier milestoneNotifier;
 
+    /** Used to refresh the managed order after the narrow native created_at update. */
+    @PersistenceContext
+    private EntityManager entityManager;
+
     /** Optional bank-account master; setter injection preserves legacy test constructors. */
     private BankAccountRepository bankAccountRepository;
     /** Optional payment repository used to flag reused UTRs at capture time. */
@@ -175,6 +194,21 @@ public class OrderService {
      * constructors, in which case the historical built-in codes are used.
      */
     private PaymentMethodService paymentMethodService;
+    /** Durable correction history and ledger source; setter-injected to preserve test constructors. */
+    private PaymentCorrectionRepository paymentCorrectionRepository;
+    /** Existing settlement evidence; corrections are blocked once a payment is allocated. */
+    private SettlementAllocationRepository settlementAllocationRepository;
+    /** Existing PAYMENT ledger outbox rows, used to avoid double-posting a corrected receipt. */
+    private OutboxEventRepository outboxEventRepository;
+    /** Durable history for ADMIN-created-date corrections. */
+    private OrderCreatedAtCorrectionRepository orderCreatedAtCorrectionRepository;
+    /** Posted-voucher/source guards used to keep accounting periods immutable. */
+    private VoucherRepository voucherRepository;
+    private SourcePostingLogRepository sourcePostingLogRepository;
+    /** GST filing state used to reject corrections touching a filed GSTR-1 month. */
+    private ReturnFilingRepository returnFilingRepository;
+    /** Courier artifacts make the original operational date immutable. */
+    private CourierRecordRepository courierRecordRepository;
 
     /** Injected separately so historical unit constructors remain source-compatible. */
     @Autowired(required = false)
@@ -192,8 +226,50 @@ public class OrderService {
         this.orderPaymentRepository = orderPaymentRepository;
     }
 
+    @Autowired(required = false)
+    void setPaymentCorrectionRepository(PaymentCorrectionRepository paymentCorrectionRepository) {
+        this.paymentCorrectionRepository = paymentCorrectionRepository;
+    }
+
+    @Autowired(required = false)
+    void setSettlementAllocationRepository(SettlementAllocationRepository settlementAllocationRepository) {
+        this.settlementAllocationRepository = settlementAllocationRepository;
+    }
+
+    @Autowired(required = false)
+    void setOutboxEventRepository(OutboxEventRepository outboxEventRepository) {
+        this.outboxEventRepository = outboxEventRepository;
+    }
+
+    @Autowired(required = false)
+    void setOrderCreatedAtCorrectionRepository(OrderCreatedAtCorrectionRepository repository) {
+        this.orderCreatedAtCorrectionRepository = repository;
+    }
+
+    @Autowired(required = false)
+    void setVoucherRepository(VoucherRepository voucherRepository) {
+        this.voucherRepository = voucherRepository;
+    }
+
+    @Autowired(required = false)
+    void setSourcePostingLogRepository(SourcePostingLogRepository sourcePostingLogRepository) {
+        this.sourcePostingLogRepository = sourcePostingLogRepository;
+    }
+
+    @Autowired(required = false)
+    void setReturnFilingRepository(ReturnFilingRepository returnFilingRepository) {
+        this.returnFilingRepository = returnFilingRepository;
+    }
+
+    @Autowired(required = false)
+    void setCourierRecordRepository(CourierRecordRepository courierRecordRepository) {
+        this.courierRecordRepository = courierRecordRepository;
+    }
+
     /** {@code vouchers.source_type} for a finalised sales order (matches AdminOrderService). */
     private static final String LEDGER_SOURCE_ORDER = "ORDER";
+    /** Ledger source key for an administrator's payment delta correction. */
+    private static final String LEDGER_SOURCE_PAYMENT_CORRECTION = "PAYMENT_CORRECTION";
     /**
      * Ledger source key for COD cash collected on delivery (mirrors
      * {@code ManualDeliveryService.LEDGER_SOURCE_ORDER_DELIVERY} /
@@ -916,6 +992,375 @@ public class OrderService {
         OrderEntity saved = orderRepository.save(order);
         auditOrderEdit(saved, diff, admin, "Edited");
         return OrderResponse.from(saved);
+    }
+
+    /**
+     * Statuses in which an upfront-payment correction is no longer safe because
+     * delivery, return, cancellation, or rejection bookkeeping has already
+     * settled or invalidated the original payment state.
+     */
+    private static final Set<OrderStatus> PAYMENT_CORRECTION_BLOCKED_STATUSES = EnumSet.of(
+            OrderStatus.DELIVERED, OrderStatus.COD_COLLECTED, OrderStatus.CLOSED,
+            OrderStatus.RTO, OrderStatus.REDISPATCH, OrderStatus.CANCELLED,
+            OrderStatus.REJECTED, OrderStatus.PAYMENT_REJECTED);
+
+    /**
+     * ADMIN-only correction of an order's upfront payment snapshot. This is
+     * deliberately separate from the general order edit: customer/items edits
+     * must stop before approval, while this narrow correction is needed when an
+     * admin discovers that the payment method, receiving account, or amount was
+     * selected incorrectly after approval.
+     *
+     * <p>The current payment row and order-level derived amounts are replaced,
+     * the verification decision is reset for a positive correction, an immutable
+     * before/after row is stored, and a ledger delta is queued when the amount
+     * changed. Corrections are blocked after delivery/return/cancellation or
+     * once settlement evidence exists, because changing the source would make
+     * those records unreliable.
+     */
+    @Transactional
+    public OrderResponse correctPayment(Long id, CorrectPaymentRequest request, AuthPrincipal admin) {
+        if (request == null) {
+            throw new ValidationException("Payment correction details are required.");
+        }
+        if (paymentCorrectionRepository == null) {
+            throw new IllegalStateException("Payment correction persistence is not available.");
+        }
+
+        OrderEntity order = orderRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Order " + id + " does not exist."));
+        requireNotShopifyManaged(order);
+        if (PAYMENT_CORRECTION_BLOCKED_STATUSES.contains(order.getOrderStatus())) {
+            throw new OrderNotEditableException(order.getOrderCode(),
+                    "Payment details cannot be corrected after the order has been delivered, returned, cancelled, or rejected.");
+        }
+
+        OrderPayment currentPayment = order.getPayments().stream().findFirst().orElse(null);
+        if (currentPayment != null && currentPayment.getId() != null
+                && settlementAllocationRepository != null) {
+            String targetKey = SettlementAllocation.canonicalKey(
+                    SettlementTargetType.ORDER_PAYMENT, null, currentPayment.getId(), null);
+            BigDecimal allocated = settlementAllocationRepository.sumByTargetKey(targetKey);
+            if (allocated != null && allocated.signum() > 0) {
+                throw new ValidationException("Payment details cannot be corrected after this payment has been reconciled in Settlement Center.");
+            }
+        }
+        if (receivableRepository != null && order.getId() != null
+                && !receivableRepository.findByOrderIdAndType(order.getId(), ReceivableType.COD_RECEIVABLE).isEmpty()) {
+            throw new ValidationException("Payment details cannot be corrected after on-delivery collection has been recorded.");
+        }
+
+        BigDecimal oldAmount = order.getAmountReceived() == null ? BigDecimal.ZERO : order.getAmountReceived();
+        String oldMethod = currentPayment == null ? null : currentPayment.getPaymentMethod();
+        Long oldAccountId = currentPayment == null ? null : currentPayment.getBankAccountId();
+        String oldAccountName = currentPayment == null ? null : currentPayment.getBankAccountNameSnapshot();
+        String oldAccountMasked = currentPayment == null ? null : currentPayment.getBankAccountMaskedSnapshot();
+        String oldUtr = currentPayment == null ? null : currentPayment.getUtr();
+
+        PaymentCalculation calc = PaymentCalculator.classify(
+                Money.of(order.getTotalAmount()), Money.of(request.amountReceived()));
+        PaymentCapture capture = calc.amountReceived().isZero()
+                ? PaymentCapture.none()
+                : resolvePaymentCapture(request.paymentMethod(), request.paymentAccountId(), request.paymentUtr(),
+                        calc.amountReceived().toBigDecimal(), order.getId());
+
+        order.applyAmounts(
+                calc.totalAmount().toBigDecimal(),
+                calc.amountReceived().toBigDecimal(),
+                calc.remainingAmount().toBigDecimal(),
+                calc.codAmount().toBigDecimal(),
+                calc.paymentStatus());
+        order.setCustomerOutstanding(calc.codAmount().toBigDecimal());
+
+        if (calc.amountReceived().isZero()) {
+            if (currentPayment != null) {
+                currentPayment.clearCapture();
+            }
+            order.clearPaymentVerification();
+        } else {
+            String screenshotKey = currentPayment != null
+                    ? currentPayment.getScreenshotKey() : order.getPaymentScreenshotKey();
+            if (currentPayment == null) {
+                order.addPayment(new OrderPayment(
+                        calc.amountReceived().toBigDecimal(), screenshotKey,
+                        capture.method(), capture.accountId(), capture.accountName(),
+                        capture.accountMasked(), capture.utr()));
+            } else {
+                currentPayment.replaceCapture(
+                        calc.amountReceived().toBigDecimal(), capture.method(), capture.accountId(),
+                        capture.accountName(), capture.accountMasked(), capture.utr());
+            }
+            // Any amount or destination correction must be reviewed again by the
+            // payment verifier, while the order lifecycle status stays unchanged.
+            order.markPaymentPendingVerification();
+        }
+
+        String correctionReason = trimToNull(request.reason());
+        if (correctionReason == null) {
+            throw new ValidationException("A reason is required for a payment correction.");
+        }
+
+        PaymentCorrection correction = new PaymentCorrection(
+                order.getId(), oldAmount, calc.amountReceived().toBigDecimal(), oldMethod,
+                calc.amountReceived().isZero() ? null : capture.method(), oldAccountId,
+                calc.amountReceived().isZero() ? null : capture.accountId(), oldAccountName,
+                calc.amountReceived().isZero() ? null : capture.accountName(), oldAccountMasked,
+                calc.amountReceived().isZero() ? null : capture.accountMasked(), oldUtr,
+                calc.amountReceived().isZero() ? null : capture.utr(), correctionReason,
+                admin == null ? null : admin.userId(), admin == null ? null : admin.username());
+
+        OrderEntity saved = orderRepository.save(order);
+        PaymentCorrection savedCorrection = paymentCorrectionRepository.save(correction);
+        queueReceiptLedgerAdjustment(saved, savedCorrection);
+
+        String summary = "Corrected payment for order " + saved.getOrderCode()
+                + ": amount received " + oldAmount + " → " + calc.amountReceived().toBigDecimal()
+                + "; method " + valueOrNone(oldMethod) + " → "
+                + valueOrNone(savedCorrection.getCorrectedPaymentMethod())
+                + "; receiving account " + accountSummary(oldAccountName, oldAccountMasked)
+                + " → " + accountSummary(savedCorrection.getCorrectedBankAccountNameSnapshot(),
+                        savedCorrection.getCorrectedBankAccountMaskedSnapshot())
+                + "; reason: " + savedCorrection.getReason();
+        if (auditService != null) {
+            auditService.record(admin == null ? null : admin.userId(), admin == null ? null : admin.username(),
+                    AuditActions.ORDER_PAYMENT_CORRECTED, AuditActions.ENTITY_ORDER,
+                    String.valueOf(saved.getId()), summary);
+        }
+        return OrderResponse.from(saved);
+    }
+
+    /**
+     * Coordinates the original PAYMENT ledger outbox event with the correction:
+     * a not-yet-posted receipt must consume the corrected order amount, while an
+     * already-posted receipt needs only the delta journal. A pending receipt that
+     * is corrected to zero is skipped so it cannot create a zero-value voucher.
+     */
+    private void queueReceiptLedgerAdjustment(OrderEntity order, PaymentCorrection correction) {
+        if (outboxEventRepository == null || outboxEventPublisher == null || order.getId() == null) {
+            return;
+        }
+        boolean receiptEventExists = false;
+        boolean receiptAlreadyPosted = false;
+        List<OutboxEvent> events = outboxEventRepository.findByAggregateTypeAndAggregateIdAndEventType(
+                OutboxEvent.AGGREGATE_LEDGER_SOURCE, order.getId(), OutboxEvent.EVENT_LEDGER_POST);
+        for (OutboxEvent event : events) {
+            Object sourceType = event.getPayload() == null ? null : event.getPayload().get("sourceType");
+            if (!"PAYMENT".equals(String.valueOf(sourceType))) {
+                continue;
+            }
+            receiptEventExists = true;
+            if (OutboxEvent.STATUS_SENT.equals(event.getStatus())) {
+                receiptAlreadyPosted = true;
+            } else if (order.getAmountReceived().signum() == 0) {
+                event.markSkipped("Superseded by an ADMIN payment correction to zero.");
+                outboxEventRepository.save(event);
+            } else if (OutboxEvent.STATUS_FAILED.equals(event.getStatus())) {
+                event.requeue();
+                outboxEventRepository.save(event);
+            }
+        }
+
+        if (receiptAlreadyPosted) {
+            if (correction.getAmountDelta().signum() != 0) {
+                outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_PAYMENT_CORRECTION, correction.getId());
+            }
+            return;
+        }
+        if (!receiptEventExists && order.getAmountReceived().signum() > 0) {
+            // There was no receipt source yet (for example a corrected order whose
+            // first verification event was never enqueued), so post the current
+            // amount as a normal PAYMENT source rather than as a delta.
+            outboxEventPublisher.publishLedgerPost("PAYMENT", order.getId());
+        }
+    }
+
+    private static final Set<OrderStatus> CREATED_DATE_CORRECTABLE_STATUSES =
+            EnumSet.of(OrderStatus.PENDING_ADMIN_APPROVAL, OrderStatus.APPROVED);
+
+    /**
+     * ADMIN-only correction of the calendar date on which an order was punched.
+     * The original time-of-day is preserved in IST. This remains deliberately
+     * narrower than payment correction because createdAt drives GST, reports,
+     * incentives, duplicate-day rules, invoices, and ledger dates.
+     */
+    @Transactional
+    public OrderResponse correctCreatedAt(Long id, CorrectCreatedDateRequest request, AuthPrincipal admin) {
+        if (request == null || request.correctedDate() == null) {
+            throw new ValidationException("A corrected order date is required.");
+        }
+        if (orderCreatedAtCorrectionRepository == null || voucherRepository == null
+                || sourcePostingLogRepository == null || returnFilingRepository == null) {
+            throw new IllegalStateException("Order-date correction safeguards are not available.");
+        }
+
+        OrderEntity order = orderRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Order " + id + " does not exist."));
+        requireNotShopifyManaged(order);
+        if (!CREATED_DATE_CORRECTABLE_STATUSES.contains(order.getOrderStatus())) {
+            throw new OrderNotEditableException(order.getOrderCode(),
+                    "The punched date can only be corrected before fulfilment starts.");
+        }
+        if (order.getCreatedAt() == null) {
+            throw new ValidationException("This order has no punched date to correct.");
+        }
+        String reason = trimToNull(request.reason());
+        if (reason == null) {
+            throw new ValidationException("A reason is required for an order-date correction.");
+        }
+
+        LocalDate oldDate = order.getCreatedAt().toLocalDate();
+        LocalDate correctedDate = request.correctedDate();
+        LocalDate today = LocalDate.now(BUSINESS_ZONE);
+        if (correctedDate.isAfter(today)) {
+            throw new ValidationException("The punched date cannot be in the future.");
+        }
+        if (correctedDate.isBefore(LocalDate.of(2020, 1, 1))) {
+            throw new ValidationException("The punched date must be on or after 01 Jan 2020.");
+        }
+        if (oldDate.equals(correctedDate)) {
+            throw new ValidationException("The corrected date is the same as the current punched date.");
+        }
+
+        requireNoDateCorrectionArtifacts(order);
+        requireOpenReturnPeriods(order.getOrderCode(), oldDate, correctedDate);
+        requireNoSameDayDuplicateAfterDateCorrection(order, correctedDate);
+
+        LocalDateTime previous = order.getCreatedAt();
+        LocalDateTime corrected = LocalDateTime.of(correctedDate, previous.toLocalTime());
+        if (entityManager == null) {
+            // Legacy unit constructors have no persistence context; preserve the
+            // in-memory behavior for those tests while production uses the safe
+            // native update below.
+            order.correctCreatedAt(corrected);
+            orderRepository.save(order);
+        } else {
+            int updated = orderRepository.updateCreatedAt(order.getId(), corrected);
+            if (updated != 1) {
+                throw new ValidationException("The order date could not be corrected because the order changed.");
+            }
+            entityManager.refresh(order);
+        }
+        OrderEntity saved = order;
+        orderCreatedAtCorrectionRepository.save(new OrderCreatedAtCorrection(
+                saved.getId(), previous, corrected, reason,
+                admin == null ? null : admin.userId(), admin == null ? null : admin.username()));
+
+        if (auditService != null) {
+            auditService.record(admin == null ? null : admin.userId(), admin == null ? null : admin.username(),
+                    AuditActions.ORDER_CREATED_AT_CORRECTED, AuditActions.ENTITY_ORDER,
+                    String.valueOf(saved.getId()),
+                    "Corrected punched date for order " + saved.getOrderCode()
+                            + ": " + previous + " → " + corrected + " (IST); reason: " + reason);
+        }
+        return OrderResponse.from(saved);
+    }
+
+    /** Refuses date mutation once any operational, accounting, invoice, or settlement artifact exists. */
+    private void requireNoDateCorrectionArtifacts(OrderEntity order) {
+        if (order.getInvoiceNumber() != null && !order.getInvoiceNumber().isBlank()) {
+            throw new OrderNotEditableException(order.getOrderCode(),
+                    "The punched date cannot be corrected after an invoice has been generated.");
+        }
+        if (orderShipmentRepository != null && orderShipmentRepository.findByOrderId(order.getId()).isPresent()) {
+            throw new OrderNotEditableException(order.getOrderCode(),
+                    "The punched date cannot be corrected after a courier shipment has been created.");
+        }
+        if (courierRecordRepository != null && courierRecordRepository.findByOrderId(order.getId()).isPresent()) {
+            throw new OrderNotEditableException(order.getOrderCode(),
+                    "The punched date cannot be corrected after courier details have been recorded.");
+        }
+        if (receivableRepository != null) {
+            if (!receivableRepository.findByOrderIdAndType(order.getId(), ReceivableType.COD_RECEIVABLE).isEmpty()
+                    || !receivableRepository.findByOrderIdAndType(order.getId(), ReceivableType.CLAIM_RECEIVABLE).isEmpty()) {
+                throw new OrderNotEditableException(order.getOrderCode(),
+                        "The punched date cannot be corrected after delivery or claim receivables exist.");
+            }
+        }
+        OrderPayment payment = order.getPayments().stream().findFirst().orElse(null);
+        if (payment != null && payment.getId() != null && settlementAllocationRepository != null) {
+            String targetKey = SettlementAllocation.canonicalKey(
+                    SettlementTargetType.ORDER_PAYMENT, null, payment.getId(), null);
+            BigDecimal allocated = settlementAllocationRepository.sumByTargetKey(targetKey);
+            if (allocated != null && allocated.signum() > 0) {
+                throw new OrderNotEditableException(order.getOrderCode(),
+                        "The punched date cannot be corrected after the payment has been reconciled.");
+            }
+        }
+
+        for (String source : List.of("ORDER", "PAYMENT", "ORDER_DELIVERY",
+                "PAYMENT_CORRECTION", "RETURN_REFUND")) {
+            if (voucherRepository.findBySourceTypeAndSourceId(source, order.getId()).isPresent()
+                    || sourcePostingLogRepository.existsBySourceTypeAndSourceId(source, order.getId())) {
+                throw new OrderNotEditableException(order.getOrderCode(),
+                        "The punched date cannot be corrected after accounting entries have been posted.");
+            }
+        }
+        if (outboxEventRepository != null) {
+            for (OutboxEvent event : outboxEventRepository.findByAggregateTypeAndAggregateIdAndEventType(
+                    OutboxEvent.AGGREGATE_LEDGER_SOURCE, order.getId(), OutboxEvent.EVENT_LEDGER_POST)) {
+                Object sourceType = event.getPayload() == null ? null : event.getPayload().get("sourceType");
+                if (sourceType != null && !OutboxEvent.STATUS_SKIPPED.equals(event.getStatus())) {
+                    throw new OrderNotEditableException(order.getOrderCode(),
+                            "The punched date cannot be corrected while accounting is queued for this order.");
+                }
+            }
+        }
+    }
+
+    /** Both GSTR-1 and GSTR-3B periods must remain open for a date correction. */
+    private void requireOpenReturnPeriods(String orderCode, LocalDate... dates) {
+        for (LocalDate date : dates) {
+            for (ReturnType type : ReturnType.values()) {
+                boolean filed = returnFilingRepository
+                        .findByPeriodYearAndPeriodMonthAndReturnType(date.getYear(), date.getMonthValue(), type)
+                        .map(filing -> filing.getStatus() == FilingStatus.FILED)
+                        .orElse(false);
+                if (filed) {
+                    throw new OrderNotEditableException(
+                            orderCode, "The punched date cannot be moved into or out of a filed "
+                                    + type.name() + " period (" + date.getYear() + "-"
+                                    + String.format(Locale.ROOT, "%02d", date.getMonthValue()) + ").");
+                }
+            }
+        }
+    }
+
+    /** A date move must not create a same-customer/same-product duplicate on the target day. */
+    private void requireNoSameDayDuplicateAfterDateCorrection(OrderEntity order, LocalDate correctedDate) {
+        if (order.getCustomerMobile() == null || order.getCustomerMobile().isBlank()) {
+            return;
+        }
+        Set<Long> productIds = order.getLineItems().stream()
+                .map(OrderLineItem::getProductId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (productIds.isEmpty()) {
+            return;
+        }
+        LocalDateTime from = correctedDate.atStartOfDay();
+        LocalDateTime to = correctedDate.plusDays(1).atStartOfDay();
+        for (OrderEntity existing : orderRepository.findActiveByCustomerMobileInWindowExcludingId(
+                order.getCustomerMobile(), from, to, order.getId())) {
+            String repeated = firstRepeatedProductName(existing, productIds);
+            if (repeated != null) {
+                throw new ValidationException("The corrected date would create a same-day duplicate for product \""
+                        + repeated + "\" on order " + existing.getOrderCode() + ".");
+            }
+        }
+    }
+
+    private static String valueOrNone(String value) {
+        return value == null || value.isBlank() ? "none" : value;
+    }
+
+    private static String accountSummary(String name, String masked) {
+        if ((name == null || name.isBlank()) && (masked == null || masked.isBlank())) {
+            return "none";
+        }
+        if (masked == null || masked.isBlank()) {
+            return valueOrNone(name);
+        }
+        return valueOrNone(name) + " (" + masked + ")";
     }
 
     /**

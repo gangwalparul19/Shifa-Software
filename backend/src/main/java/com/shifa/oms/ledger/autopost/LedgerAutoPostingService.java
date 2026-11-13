@@ -19,6 +19,8 @@ import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderLineItem;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderStatusHistory;
+import com.shifa.oms.order.PaymentCorrection;
+import com.shifa.oms.order.PaymentCorrectionRepository;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.statemachine.OrderStatus;
 import com.shifa.oms.procurement.PurchaseOrder;
@@ -91,6 +93,7 @@ public class LedgerAutoPostingService {
      * then throws, which no legacy test exercises.
      */
     private final com.shifa.oms.returns.OrderReturnRepository orderReturnRepository;
+    private final PaymentCorrectionRepository paymentCorrectionRepository;
 
     /** Legacy constructor (tests that don't exercise the refund source). */
     public LedgerAutoPostingService(OrderRepository orderRepository,
@@ -100,7 +103,19 @@ public class LedgerAutoPostingService {
                                     AccountGroupRepository accountGroupRepository,
                                     SettingsService settingsService) {
         this(orderRepository, purchaseOrderRepository, expenseRepository, controlAccountResolver,
-                accountGroupRepository, settingsService, null);
+                accountGroupRepository, settingsService, null, null);
+    }
+
+    /** Compatibility constructor for callers that already supplied the return repository. */
+    public LedgerAutoPostingService(OrderRepository orderRepository,
+                                    PurchaseOrderRepository purchaseOrderRepository,
+                                    ExpenseRepository expenseRepository,
+                                    ControlAccountResolver controlAccountResolver,
+                                    AccountGroupRepository accountGroupRepository,
+                                    SettingsService settingsService,
+                                    com.shifa.oms.returns.OrderReturnRepository orderReturnRepository) {
+        this(orderRepository, purchaseOrderRepository, expenseRepository, controlAccountResolver,
+                accountGroupRepository, settingsService, orderReturnRepository, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -110,7 +125,8 @@ public class LedgerAutoPostingService {
                                     ControlAccountResolver controlAccountResolver,
                                     AccountGroupRepository accountGroupRepository,
                                     SettingsService settingsService,
-                                    com.shifa.oms.returns.OrderReturnRepository orderReturnRepository) {
+                                    com.shifa.oms.returns.OrderReturnRepository orderReturnRepository,
+                                    PaymentCorrectionRepository paymentCorrectionRepository) {
         this.orderRepository = orderRepository;
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.expenseRepository = expenseRepository;
@@ -118,6 +134,7 @@ public class LedgerAutoPostingService {
         this.accountGroupRepository = accountGroupRepository;
         this.settingsService = settingsService;
         this.orderReturnRepository = orderReturnRepository;
+        this.paymentCorrectionRepository = paymentCorrectionRepository;
     }
 
     /**
@@ -144,6 +161,7 @@ public class LedgerAutoPostingService {
             case EXPENSE -> buildExpenseDraft(sourceId);
             case PAYMENT -> buildReceiptDraft(sourceId);
             case ORDER_DELIVERY -> buildDeliveryReceiptDraft(sourceId);
+            case PAYMENT_CORRECTION -> buildPaymentCorrectionDraft(sourceId);
             case RETURN_REFUND -> buildRefundDraft(sourceId);
         };
     }
@@ -276,6 +294,40 @@ public class LedgerAutoPostingService {
 
         String narration = "Customer receipt for order " + describe(order.getOrderCode(), paymentId);
         return new DraftVoucher(VoucherType.RECEIPT, dateOf(order.getCreatedAt()), narration, lines);
+    }
+
+    // --- Payment correction -------------------------------------------------
+
+    /**
+     * Posts only the delta between the old and corrected upfront amount. A
+     * positive delta records additional cash received; a negative delta reverses
+     * the excess receipt. The original sales voucher is immutable and is never
+     * rebuilt, so a correction remains visible as its own journal source.
+     */
+    private DraftVoucher buildPaymentCorrectionDraft(Long correctionId) {
+        if (paymentCorrectionRepository == null) {
+            throw new ValidationException("Payment-correction ledger posting is not available.");
+        }
+        PaymentCorrection correction = paymentCorrectionRepository.findById(correctionId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Payment correction " + correctionId + " was not found."));
+        BigDecimal delta = scale(correction.getAmountDelta());
+        if (delta.signum() == 0) {
+            throw new ValidationException("A payment correction with no amount change has no ledger delta.");
+        }
+        BigDecimal amount = delta.abs();
+        List<PostingLine> lines = new ArrayList<>();
+        if (delta.signum() > 0) {
+            lines.add(debit(ControlAccount.CASH, amount));
+            lines.add(credit(ControlAccount.SUNDRY_DEBTORS, amount));
+        } else {
+            lines.add(debit(ControlAccount.SUNDRY_DEBTORS, amount));
+            lines.add(credit(ControlAccount.CASH, amount));
+        }
+        String orderRef = describe(null, correction.getOrderId());
+        String narration = "Payment correction for order " + orderRef
+                + " (" + delta.toPlainString() + ")";
+        return new DraftVoucher(VoucherType.JOURNAL, dateOf(correction.getChangedAt()), narration, lines);
     }
 
     // --- Delivery receipt (COD collected on delivery) ------------------------

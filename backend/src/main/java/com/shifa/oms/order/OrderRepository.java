@@ -5,6 +5,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import jakarta.persistence.LockModeType;
@@ -41,6 +42,11 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select o from OrderEntity o where o.id = :id")
     Optional<OrderEntity> findByIdForUpdate(@Param("id") Long id);
+
+    /** Updates only the ADMIN-correctable punched date; normal entity updates never write created_at. */
+    @Modifying
+    @Query(value = "UPDATE orders SET created_at = :createdAt WHERE id = :id", nativeQuery = true)
+    int updateCreatedAt(@Param("id") Long id, @Param("createdAt") java.time.LocalDateTime createdAt);
 
     /**
      * The order whose {@code order_code} equals this value (the value encoded in
@@ -316,6 +322,23 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             @Param("mobile") String mobile,
             @Param("from") java.time.LocalDateTime from,
             @Param("to") java.time.LocalDateTime to);
+
+    /** Same-day duplicate lookup excluding the order currently being date-corrected. */
+    @Query("""
+            select o from OrderEntity o
+            where o.customerMobile = :mobile
+              and o.id <> :orderId
+              and o.createdAt >= :from and o.createdAt < :to
+              and o.orderStatus not in (
+                  com.shifa.oms.statemachine.OrderStatus.REJECTED,
+                  com.shifa.oms.statemachine.OrderStatus.CANCELLED)
+            order by o.createdAt desc, o.id desc
+            """)
+    List<OrderEntity> findActiveByCustomerMobileInWindowExcludingId(
+            @Param("mobile") String mobile,
+            @Param("from") java.time.LocalDateTime from,
+            @Param("to") java.time.LocalDateTime to,
+            @Param("orderId") Long orderId);
 
     /** An order visible to a salesperson only when they created it (Req 5.5). */
     Optional<OrderEntity> findByIdAndCreatedBy(Long id, Long createdBy);

@@ -19,6 +19,8 @@ import com.shifa.oms.order.dto.BulkActionResult;
 import com.shifa.oms.order.dto.BulkOrderIdsRequest;
 import com.shifa.oms.order.dto.BulkPreviewResponse;
 import com.shifa.oms.order.dto.CancelOrderRequest;
+import com.shifa.oms.order.dto.CorrectCreatedDateRequest;
+import com.shifa.oms.order.dto.CorrectPaymentRequest;
 import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.order.dto.RejectOrderRequest;
@@ -399,6 +401,31 @@ public class AdminOrderController {
         // OrderService.updateOrder (co-located with the actual field mutation, so
         // it captures the real old→new diff). No duplicate bare audit here.
         return orderService.updateOrder(id, request, admin);
+    }
+
+    /**
+     * Corrects the upfront payment amount, payment method, or receiving account
+     * after order entry. This is intentionally separate from the general order
+     * edit and is ADMIN-only. The service records the before/after correction,
+     * resets payment verification, and queues any ledger delta.
+     */
+    @PutMapping("/{id}/payment-details")
+    public OrderResponse correctPayment(@PathVariable Long id,
+                                        @Valid @RequestBody CorrectPaymentRequest request) {
+        AuthPrincipal admin = currentUserService.requireCurrentUser();
+        return orderService.correctPayment(id, request, admin);
+    }
+
+    /**
+     * Corrects the calendar date on which the order was punched. The service
+     * preserves the original IST time-of-day, blocks downstream accounting/
+     * fulfilment artifacts, and records a dedicated audit event.
+     */
+    @PutMapping("/{id}/created-date")
+    public OrderResponse correctCreatedDate(@PathVariable Long id,
+                                             @Valid @RequestBody CorrectCreatedDateRequest request) {
+        AuthPrincipal admin = currentUserService.requireCurrentUser();
+        return orderService.correctCreatedAt(id, request, admin);
     }
 
     /**

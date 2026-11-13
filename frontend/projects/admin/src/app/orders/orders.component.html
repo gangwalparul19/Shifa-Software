@@ -733,6 +733,16 @@
               <span class="text-secondary small ms-1">({{ relativeTime(order.createdAt) }})</span>
             }
           </div>
+          @if (canCorrectCreatedDate(order)) {
+            <button
+              type="button"
+              class="btn btn-outline-warning btn-sm mt-2"
+              (click)="openCreatedDateCorrection(order)"
+              title="Correct the calendar date on which this order was punched"
+            >
+              <i class="ti ti-calendar-edit me-1"></i> Correct punched date
+            </button>
+          }
         </div>
 
         <!-- (4) Customer -->
@@ -999,6 +1009,16 @@
             <div class="shifa-od__totline"><span>Amount received</span><span>{{ money(order.amountReceived) }}</span></div>
             <div class="shifa-od__totline"><span>Remaining</span><span>{{ money(order.remainingAmount) }}</span></div>
             <div class="shifa-od__totline"><span>To collect on delivery</span><span>{{ money(order.codAmount) }}</span></div>
+            @if (canCorrectPayment(order)) {
+              <button
+                type="button"
+                class="btn btn-outline-warning btn-sm w-100 mt-3"
+                (click)="openPaymentCorrection(order)"
+                title="Correct the payment method, receiving account, or amount received"
+              >
+                <i class="ti ti-edit-circle me-1"></i> Correct payment details
+              </button>
+            }
           </div>
           @if (paymentTransactions().length > 0) {
             <div class="shifa-od__card mt-2">
@@ -1611,6 +1631,178 @@
       </div>
     }
   </aside>
+}
+
+<!-- ===================== Correct payment modal (ADMIN-only) ===================== -->
+@if (paymentCorrectionOpen() && paymentCorrectionOrder(); as order) {
+  <div class="shifa-overlay" (click)="closePaymentCorrection()"></div>
+  <div class="shifa-modal shifa-modal--sm" adminDialog aria-labelledby="orders-payment-correction-title" (dialogClose)="closePaymentCorrection()">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0" id="orders-payment-correction-title">
+          <i class="ti ti-edit-circle me-2" aria-hidden="true"></i>Correct payment details
+        </h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closePaymentCorrection()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">
+          Order <span class="shifa-mono">{{ order.orderCode }}</span>. This correction is ADMIN-only and is recorded in the audit trail.
+        </p>
+        @if (paymentCorrectionError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert"><i class="ti ti-alert-triangle me-2"></i>{{ err }}</div>
+        }
+        <div class="alert alert-warning py-2 small" role="note">
+          Saving resets payment verification so the corrected amount and receiving details can be reviewed again.
+          The order status itself will not change.
+        </div>
+        <form (ngSubmit)="submitPaymentCorrection()" novalidate [formGroup]="paymentCorrectionForm">
+          <div class="mb-3">
+            <label class="form-label required" for="paymentCorrectionAmount">Amount received</label>
+            <div class="input-group">
+              <span class="input-group-text">₹</span>
+              <input
+                id="paymentCorrectionAmount"
+                type="number"
+                min="0"
+                step="0.01"
+                class="form-control"
+                formControlName="amountReceived"
+                data-autofocus
+                [class.is-invalid]="paymentCorrectionForm.controls.amountReceived.touched && paymentCorrectionForm.controls.amountReceived.invalid"
+              />
+            </div>
+            <div class="form-hint">Order total: {{ money(order.totalAmount) }}</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label required" for="paymentCorrectionMethod">Payment method</label>
+            <select
+              id="paymentCorrectionMethod"
+              class="form-select"
+              formControlName="paymentMethod"
+              (change)="paymentCorrectionMethodChanged($any($event.target).value)"
+              [class.is-invalid]="paymentCorrectionForm.controls.paymentMethod.touched && paymentCorrectionForm.controls.paymentMethod.invalid"
+            >
+              <option value="">Choose a payment method…</option>
+              @for (method of paymentCorrectionMethods(); track method.code) {
+                <option [value]="method.code">{{ method.label }}</option>
+              }
+            </select>
+          </div>
+          @if (paymentCorrectionNeedsAccount()) {
+            <div class="mb-3">
+              <label class="form-label required" for="paymentCorrectionAccount">Amount received in</label>
+              <select
+                id="paymentCorrectionAccount"
+                class="form-select"
+                formControlName="paymentAccountId"
+              >
+                <option [ngValue]="null">Choose receiving account…</option>
+                @for (account of paymentCorrectionAccountsForMethod(); track account.id) {
+                  <option [ngValue]="account.id">
+                    {{ account.displayName }}@if (account.maskedAccountNumber) { · {{ account.maskedAccountNumber }} }@if (account.upiId) { · {{ account.upiId }} }
+                  </option>
+                }
+              </select>
+            </div>
+          }
+          <div class="mb-3">
+            <label class="form-label" for="paymentCorrectionUtr">UTR / transaction reference <span class="text-secondary">(optional)</span></label>
+            <input id="paymentCorrectionUtr" type="text" class="form-control shifa-mono" maxlength="80" formControlName="paymentUtr" autocomplete="off" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label required" for="paymentCorrectionReason">Reason for correction</label>
+            <textarea
+              id="paymentCorrectionReason"
+              class="form-control"
+              rows="3"
+              maxlength="500"
+              formControlName="reason"
+              placeholder="e.g. Wrong QR account selected during order entry"
+              [class.is-invalid]="paymentCorrectionForm.controls.reason.touched && paymentCorrectionForm.controls.reason.invalid"
+            ></textarea>
+          </div>
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-link text-secondary" (click)="closePaymentCorrection()" [disabled]="paymentCorrectionBusy()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="paymentCorrectionBusy()">
+              @if (paymentCorrectionBusy()) {
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Saving…
+              } @else {
+                <i class="ti ti-device-floppy me-1"></i> Save correction
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ===================== Correct punched-date modal (ADMIN-only) ===================== -->
+@if (createdDateCorrectionOpen() && createdDateCorrectionOrder(); as order) {
+  <div class="shifa-overlay" (click)="closeCreatedDateCorrection()"></div>
+  <div class="shifa-modal shifa-modal--sm" adminDialog aria-labelledby="orders-created-date-title" (dialogClose)="closeCreatedDateCorrection()">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title mb-0" id="orders-created-date-title">
+          <i class="ti ti-calendar-edit me-2" aria-hidden="true"></i>Correct punched date
+        </h3>
+        <div class="card-actions">
+          <button type="button" class="btn btn-icon btn-ghost-secondary" (click)="closeCreatedDateCorrection()" aria-label="Close">
+            <i class="ti ti-x"></i>
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-secondary small mb-3">
+          Order <span class="shifa-mono">{{ order.orderCode }}</span> — the time-of-day stays unchanged and the date is interpreted in IST.
+        </p>
+        <div class="alert alert-warning py-2 small" role="note">
+          This changes date-based reports and open GST-period totals. It is only available before fulfilment and accounting artifacts are created.
+        </div>
+        @if (createdDateCorrectionError(); as err) {
+          <div class="alert alert-danger anim-fade-up" role="alert"><i class="ti ti-alert-triangle me-2"></i>{{ err }}</div>
+        }
+        <form (ngSubmit)="submitCreatedDateCorrection()" novalidate [formGroup]="createdDateCorrectionForm">
+          <div class="mb-3">
+            <label class="form-label required" for="createdDateCorrectionDate">Punched date</label>
+            <input
+              id="createdDateCorrectionDate"
+              type="date"
+              class="form-control"
+              formControlName="correctedDate"
+              [max]="todayIst()"
+              data-autofocus
+            />
+          </div>
+          <div class="mb-3">
+            <label class="form-label required" for="createdDateCorrectionReason">Reason for correction</label>
+            <textarea
+              id="createdDateCorrectionReason"
+              class="form-control"
+              rows="3"
+              maxlength="500"
+              formControlName="reason"
+              placeholder="e.g. Order was punched on 02 Nov but entered into OMS on 03 Nov"
+            ></textarea>
+          </div>
+          <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-link text-secondary" (click)="closeCreatedDateCorrection()" [disabled]="createdDateCorrectionBusy()">Cancel</button>
+            <button type="submit" class="btn btn-primary" [disabled]="createdDateCorrectionBusy()">
+              @if (createdDateCorrectionBusy()) {
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Saving…
+              } @else {
+                <i class="ti ti-device-floppy me-1"></i> Save date correction
+              }
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
 }
 
 <!-- ===================== Create return modal ===================== -->
