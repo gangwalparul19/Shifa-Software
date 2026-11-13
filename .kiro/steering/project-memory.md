@@ -9,7 +9,7 @@ inclusion: always
 > AND the matching section of `README.md` in the same change.** Prefer editing this over rediscovering.
 
 ## Current operational baseline (2026-10-30)
-- Source tree highest Flyway migration: **V113** (`V113__order_created_at_corrections.sql`). **Production is at V113** (deployed and verified on the server 2026-11-03 around 12:41 IST; see "DEPLOYED to PROD (2026-11-03, V113)" at the end of this file). The older "production last documented at V73" wording elsewhere in this file is historical. Never infer production schema from source alone; verify Flyway from the server journal after deployment.
+- Source tree highest Flyway migration: **V114** (`V114__whatsapp_confirm_tracking_link.sql`) is local and not deployed. **Production is at V113** (deployed and verified on the server 2026-11-03 around 12:41 IST; see "DEPLOYED to PROD (2026-11-03, V113)" at the end of this file). V114 updates the confirmation WhatsApp template with the public `/track-order` link; do not deploy it until the user reviews it. The older "production last documented at V73" wording elsewhere in this file is historical. Never infer production schema from source alone; verify Flyway from the server journal after deployment.
 - Supported production target: **AWS EC2** at the current SSH address `15.252.230.73`, public URL `https://shifa.weblithic.online/`, Nginx/systemd, MySQL on-instance, and Amazon S3 object storage. `application-prod.yml` defaults to `STORAGE_PROVIDER=S3`; the deploy entrypoint is `deploy/push-to-aws.ps1`. OCI is not a supported provider.
 - Storage providers in source are `LOCAL` (development), `DB` (isolated demo), and `S3` (production). The unused OCI stub and SDK are removed; do not add OCI references to operational documentation.
 - Current backend validation on branch `develop` (2026-10-31 health pass): **1075 tests, 0 failures**; frontend property tests **7 suites / 36 tests**; admin production build successful with the existing shell CSS budget warning. (The older remediation worktree recorded 1042 tests / 6 suites / 21 tests.) Canonical commands are `mvn -f "backend/pom.xml" clean test`, `mvn -f "backend/pom.xml" -DskipTests spring-boot:run`, `npm --prefix frontend run start:admin`, `npm --prefix frontend run build:admin`, and `npm --prefix frontend run test:pbt`. The frontend has no registered Playwright/Cypress e2e script; `npm --prefix frontend run test` invokes Angular CLI tests.
@@ -1019,9 +1019,11 @@ Previously the 4 quick-message templates were HARD-CODED in `shared/whatsapp.uti
   (route `/whatsapp-templates`, new `whatsappTemplatesGuard` = ADMIN/ACCOUNTANT/TEAM_LEAD; nav link "WhatsApp
   templates" under Account & Settings with matching `roles`). Management page = cards + add/edit drawer (title, icon,
   body textarea with insertable placeholder chips, active toggle, sort order, LIVE preview via `renderTemplate`).
-  Orders drawer + Customer 360 drawer now LOAD active templates from the API into a signal (`whatsappTemplates()`,
-  fallback to defaults) and render via `renderTemplate(t.body, ctx)`; `t.label`→`t.title` in both HTMLs; their
-  `sendWhatsApp(x, key)` looks the template up by key (falls back to `whatsAppMessage`).
+  Orders list rows, the order-detail drawer, and Customer 360 drawer LOAD active templates from the API into a signal
+  (`whatsappTemplates()`), fall back to defaults while loading/on API failure, and render via `renderTemplate(t.body,
+  ctx)`; the Orders mobile/desktop WhatsApp icons use the active `confirm` template instead of bypassing it;
+  `t.label`→`t.title` in both HTMLs; `sendWhatsApp(x, key)` looks the template up by key (falls back to
+  `whatsAppMessage`).
 - NOTE: interface `WhatsAppTemplate` renamed field `label`→`title` and added `body` (aligns with API DTO).
 
 ### 2) Orders: bulk "Quick select by date" (Today / Yesterday / This week / This month / All on page)
@@ -1041,7 +1043,7 @@ longer, multi-line, emoji-rich copy (🌿🙏📦🚚💚📍🏙️📮🕒💰
 - **Migration V45** (`V45__whatsapp_templates_richer_copy.sql`): UPDATEs the 4 built-in templates by `template_key`
   (did NOT edit the already-applied V44 seed — Flyway rule). Bodies use literal newlines inside the quoted strings for
   multi-line messages; placeholders unchanged.
-- **Frontend fallback** (`shared/whatsapp.util.ts` `WHATSAPP_TEMPLATES`) updated to the SAME richer emoji bodies (used
+- **Frontend fallback** (`shared/whatsapp.util.ts` `WHATSAPP_TEMPLATES`) updated to the same current copy, including the public `/track-order` call-to-action (used
   until the API list loads + by the dashboard win-back/reorder nudges). `renderTemplate` only collapses runs of
   spaces/tabs, so the intentional `\n\n` line breaks are preserved.
 - Verified: EndpointRoleGuard 15/15 (V45 applied), admin `build:admin` complete. Not yet deployed (bundle with the

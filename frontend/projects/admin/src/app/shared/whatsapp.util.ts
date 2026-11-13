@@ -95,7 +95,7 @@ function money(v: string | number | null | undefined): string {
 // NOTE: decorate with BASIC-PLANE (3-byte) symbols only (☘ ✅ ✨ ❤ ☺ •). WhatsApp
 // Desktop (Windows) click-to-chat mangles 4-byte "astral" emoji (🌿📦🚚 …) into "�"
 // in the SENT message — 3-byte symbols survive the handoff (like ₹ does). Keep this
-// in sync with migration V46. Managers can add any emoji via the templates editor.
+// in sync with the seeded template copy; the confirm body is updated by V114. Managers can add any emoji via the templates editor.
 export const WHATSAPP_TEMPLATES: WhatsAppTemplate[] = [
   {
     key: 'confirm',
@@ -105,7 +105,10 @@ export const WHATSAPP_TEMPLATES: WhatsAppTemplate[] = [
       'Hi {name}! ☘ Thank you for your order {orderCode} with {brand}. ✅\n\n' +
       '{orderSummary}\n\n' +
       'We are packing it with care and will keep you posted at every step — from packing to dispatch. ✨\n\n' +
-      'Have a question? Just reply here, we are happy to help! ❤',
+      'Have a question? Just reply here, we are happy to help! ❤\n\n' +
+      '✨ Track your order anytime:\n' +
+      'https://shifa.weblithic.online/track-order\n' +
+      'Just enter your mobile number to view all your order history and live delivery updates. ✅',
   },
   {
     key: 'address',

@@ -685,14 +685,20 @@ export class OrdersComponent implements OnInit, OnDestroy {
       });
   }
 
-  /** Direct follow-up action from an orders-list row (without opening the drawer). */
+  /**
+   * Direct WhatsApp action from an orders-list row (without opening the drawer).
+   * Use the active server-managed confirmation template when it has loaded; the
+   * built-in body remains the fallback during startup or when the API is unavailable.
+   */
   sendWhatsAppSummary(order: OrderSummary, event?: Event): void {
     event?.stopPropagation();
-    const message = whatsAppMessage('confirm', {
+    const context = {
       customerName: order.customerName,
       orderCode: order.orderCode,
       total: order.totalAmount,
-    });
+    };
+    const template = this.whatsappTemplates().find((item) => item.key === 'confirm');
+    const message = template ? renderTemplate(template.body, context) : whatsAppMessage('confirm', context);
     if (!openWhatsApp(order.customerMobile, message)) {
       this.toasts.error('No valid mobile number to message on WhatsApp.');
     }

@@ -9,7 +9,7 @@ packing → courier → delivery → settlement) is tracked end to end.
 > and the important gotchas. Read it before scanning the codebase. A condensed "memory" for fast
 > context lives in `.kiro/steering/project-memory.md` and is kept in sync with this file.
 
-> **Current baseline (2026-11-03):** **Production is at V113** (deployed and verified on the server 2026-11-03 around 12:41 IST). It includes the customer-email switch, report recipients and Send-now email controls, ADMIN payment correction with audit/ledger handling, ADMIN punched-date correction with audit and V113 safeguards, the edit-page date shortcut, Team-wise sales periods/export, the complete Leaderboard export, announcement pinning and period selectors. See "Deployed to Prod (2026-11-03, V113)" at the end of this file. Older sections that say "production last documented at V73" or "not deployed" are historical. The supported production target is AWS EC2 (`15.252.230.73` SSH) with the canonical HTTPS URL `https://shifa.weblithic.online/` and Amazon S3 storage (`application-prod.yml` defaults to `STORAGE_PROVIDER=S3`). The unused OCI stub/SDK are removed. Current validation is **1071 backend tests, 0 failures** (full `clean package`, excluding `WhatsappTemplateEncodingIT` which needs a live MySQL), admin production build successful with the existing shell CSS budget warning, and frontend property tests **7 suites / 36 tests**. Dated deployment/build notes below are historical records; use the current baseline and `DEPLOYMENT.md` for operations.
+> **Current baseline (2026-11-03):** **Production is at V113** (deployed and verified on the server 2026-11-03 around 12:41 IST). Source now contains a pending **V114** migration that adds a public order-tracking call-to-action to the confirmation WhatsApp template; V114 is local only until the user reviews and approves deployment. It includes the customer-email switch, report recipients and Send-now email controls, ADMIN payment correction with audit/ledger handling, ADMIN punched-date correction with audit and V113 safeguards, the edit-page date shortcut, Team-wise sales periods/export, the complete Leaderboard export, announcement pinning and period selectors. See "Deployed to Prod (2026-11-03, V113)" at the end of this file. Older sections that say "production last documented at V73" or "not deployed" are historical. The supported production target is AWS EC2 (`15.252.230.73` SSH) with the canonical HTTPS URL `https://shifa.weblithic.online/` and Amazon S3 storage (`application-prod.yml` defaults to `STORAGE_PROVIDER=S3`). The unused OCI stub/SDK are removed. Current validation is **1071 backend tests, 0 failures** (full `clean package`, excluding `WhatsappTemplateEncodingIT` which needs a live MySQL), admin production build successful with the existing shell CSS budget warning, and frontend property tests **7 suites / 36 tests**. Dated deployment/build notes below are historical records; use the current baseline and `DEPLOYMENT.md` for operations.
 
 
 | Layer      | Technology                                                                 |
@@ -281,7 +281,7 @@ only to that selected owner.
 
 ### Salesperson/admin productivity and safety wave (no migration)
 The current wave reduces taps for salespeople and gives admins a single, safer work queue:
-- **Direct customer actions:** Orders and Customers list rows provide one-tap Call and WhatsApp actions on mobile and desktop; due follow-up cards provide Call, WhatsApp, and Work lead actions. Existing server-managed WhatsApp templates remain the message source.
+- **Direct customer actions:** Orders and Customers list rows provide one-tap Call and WhatsApp actions on mobile and desktop; due follow-up cards provide Call, WhatsApp, and Work lead actions. The Orders-list WhatsApp icons and order-detail Quick WhatsApp actions use the active server-managed templates, with the built-in text only as a fallback while templates load or when the API is unavailable.
 - **Task-oriented follow-ups:** the existing My Day, due-follow-up, win-back, and reorder-due data is presented as actionable work without inventing a persisted task-completion model. Persisted assignment/snooze/completion remains deferred until a task schema is approved.
 - **Admin Exception Center:** `GET /api/admin/exceptions` and `/exceptions` combine pending approvals, payment verification, failed/refused deliveries, recorded QuikShip failures across portal and Shopify orders, unsettled courier claims, and non-dismissed WARNING/DANGER insights. The admin dashboard's **Stuck shipments** KPI opens the filtered **QuikShip failures** view with the exact same all-source failure population, while Shopify Sync remains dedicated to Shopify recovery. The center now has category/source filter chips, visible matching counts, responsive exception rows, and persistent client-side pagination. It is ADMIN-only and read-only; actions open the owning page so existing authorization, confirmation, workflow, and GST safeguards still apply.
 - **Safe bulk actions:** `POST /api/admin/orders/bulk-preview?action=APPROVE|MARK_PACKED|LABELS` returns eligible/ineligible rows before confirmation. Final bulk operations still re-read each order, enforce the state machine, and return partial success/skip reasons; previews never reserve orders.
@@ -364,7 +364,9 @@ Migration history:
   templates). **ADMIN / ACCOUNTANT / TEAM_LEAD** manage templates at `/whatsapp-templates`; staff use active
   templates from order/customer screens. `V45` enriches initial copy, `V46` replaces unreliable 4-byte emoji with
   WhatsApp-Desktop-safe basic-plane symbols, and `V47__whatsapp_confirm_order_summary.sql` adds `{orderSummary}` to
-  the confirmation template — itemized lines, order total, amount paid, and any COD balance.
+  the confirmation template — itemized lines, order total, amount paid, and any COD balance. The pending local
+  `V114__whatsapp_confirm_tracking_link.sql` adds the public `/track-order` URL and mobile-number/live-tracking
+  instructions to the confirmation template; production remains at V113 until review and deployment.
 - `V48__rename_courier_lost_to_redispatch.sql` — terminology/status migration: converts historic order and status-
   history values to `REDISPATCH`, updates known user-facing admin-notification text and JSON outbox status/template
   payloads, and ensures immutable V22/V27 seed values also finish as `REDISPATCH`. The existing
@@ -382,7 +384,11 @@ Migration history:
   **V103__settlement_integrity.sql** — Settlement Center allocation target keys/reasons/date-default metadata plus allocation indexes/uniqueness.
   **V104__payment_utr_normalization_and_preflight.sql** — canonical payment UTR values, historical duplicate preflight evidence, and a conditional receiving-account/UTR uniqueness boundary.
   **V105__outbox_claim_leases.sql** — fenced pending-row leases, expiry recovery, and the composite due-claim index for multi-instance integration drainers.
-  **V106__query_performance_indexes.sql** — five composite indexes for the hottest order, payment and status-history filters. **V106 is the current highest migration.**
+  **V106__query_performance_indexes.sql** — five composite indexes for the hottest order, payment and status-history filters.
+  **V107`..`V113** — database-managed payment methods, daily incentives, announcement pinning, customer-email controls,
+  report recipients, ADMIN payment corrections, and ADMIN punched-date corrections. Production is currently at V113.
+  **V114__whatsapp_confirm_tracking_link.sql** — pending local migration that adds the public `/track-order` link and
+  mobile-number/live-tracking instructions to the confirmation WhatsApp template. It is not deployed yet.
 
 > Fresh DB required: because V22 seeds with explicit IDs, start against an **empty**
 > `shifa_dashboard`. If a half-migrated DB exists, drop & recreate it before starting.
