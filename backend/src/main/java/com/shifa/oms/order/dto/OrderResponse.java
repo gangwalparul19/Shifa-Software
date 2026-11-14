@@ -133,7 +133,11 @@ public record OrderResponse(
         // Opaque per-order tracking token (ENHANCEMENT 2.2, V77) so the admin /
         // salesperson can copy a customer-shareable /track/{token} link from the
         // order drawer without exposing the enumerable order code.
-        String trackingToken
+        String trackingToken,
+        // True when an ADMIN corrected the calendar date on which this order was punched.
+        // The marker lets staff reconcile the order against a bank receipt without
+        // changing the immutable audit/correction history.
+        boolean createdAtCorrected
 ) {
 
     /**
@@ -296,7 +300,8 @@ public record OrderResponse(
                 order.getPaymentVerificationNote(),
                 order.getCountry(),
                 order.getQuikShipXFailureReason(),
-                order.getTrackingToken());
+                order.getTrackingToken(),
+                false);
     }
 
     /**
@@ -313,7 +318,7 @@ public record OrderResponse(
                 subtotalAmount, gstAmount, discountType, discountValue, buyerGstin,
                 quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest, rejectionReason,
                 rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory, salespersonName,
-                rejectReason, paymentVerificationNote, country, quikShipXFailureReason, trackingToken);
+                rejectReason, paymentVerificationNote, country, quikShipXFailureReason, trackingToken, createdAtCorrected);
     }
 
     /**
@@ -331,7 +336,7 @@ public record OrderResponse(
                 subtotalAmount, gstAmount, discountType, discountValue, buyerGstin,
                 quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest, rejectionReason,
                 rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory, salespersonName,
-                rejectReason, paymentVerificationNote, country, quikShipXFailureReason, trackingToken);
+                rejectReason, paymentVerificationNote, country, quikShipXFailureReason, trackingToken, createdAtCorrected);
     }
 
     /**
@@ -395,7 +400,7 @@ public record OrderResponse(
                 paymentVerificationNote,
                 country,
                 quikShipXFailureReason,
-                trackingToken);
+                trackingToken, createdAtCorrected);
     }
 
     /**
@@ -416,6 +421,21 @@ public record OrderResponse(
                 buyerGstin, quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest,
                 rejectionReason, rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory,
                 salespersonName, rejectReason, paymentVerificationNote, country, quikShipXFailureReason,
-                trackingToken);
+                trackingToken, createdAtCorrected);
+    }
+
+    /** Returns a copy carrying the persistent punched-date correction marker. */
+    public OrderResponse withCreatedAtCorrected(boolean corrected) {
+        return new OrderResponse(
+                id, orderCode, source, deliveryMethod, leadSource, leadSourceNote, customerEmail, notes,
+                orderStatus, paymentStatus, customerName, customerMobile, alternateMobile, addressLine,
+                city, state, postalCode, totalAmount, amountReceived, remainingAmount, codAmount,
+                customerOutstanding, couponCode, discountAmount, paymentScreenshotAvailable, items,
+                createdAt, awb, courierName, trackingUrl, estimatedDelivery, handoverName, packageCount,
+                paymentVerificationStatus, subtotalAmount, gstAmount, discountType, discountValue,
+                buyerGstin, quikShipXStatus, quikShipXLabelUrl, quikShipXOrderId, quikShipXTest,
+                rejectionReason, rtoReason, rtoReasonNote, vehicleNumber, handoverPhone, statusHistory,
+                salespersonName, rejectReason, paymentVerificationNote, country, quikShipXFailureReason,
+                trackingToken, corrected);
     }
 }

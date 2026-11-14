@@ -106,12 +106,18 @@ public class AdminOrderService {
      */
     private final ReceivableRepository receivableRepository;
 
+    /**
+     * Immutable punched-date correction history (nullable): marks corrected orders
+     * on the Orders list so admins can reconcile them against bank receipts.
+     */
+    private final OrderCreatedAtCorrectionRepository createdAtCorrectionRepository;
+
     /** Legacy constructor (unit tests): no QuikShipX hooks / list enrichment / audit. */
     public AdminOrderService(OrderRepository orderRepository, LabelService labelService,
                              OrderWorkflowService orderWorkflowService,
                              OutboxEventPublisher outboxEventPublisher) {
         this(orderRepository, labelService, orderWorkflowService, outboxEventPublisher,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -124,7 +130,8 @@ public class AdminOrderService {
                              QuikShipXService quikShipXService,
                              AuditService auditService,
                              OrderPaymentScreenshotRepository screenshotRepository,
-                             ReceivableRepository receivableRepository) {
+                             ReceivableRepository receivableRepository,
+                             OrderCreatedAtCorrectionRepository createdAtCorrectionRepository) {
         this.orderRepository = orderRepository;
         this.labelService = labelService;
         this.orderWorkflowService = orderWorkflowService;
@@ -136,6 +143,7 @@ public class AdminOrderService {
         this.auditService = auditService;
         this.screenshotRepository = screenshotRepository;
         this.receivableRepository = receivableRepository;
+        this.createdAtCorrectionRepository = createdAtCorrectionRepository;
     }
 
     /**
@@ -246,7 +254,7 @@ public class AdminOrderService {
         Map<Long, String> names = resolveSalespersonNames(entities.getContent());
         Page<OrderSummaryResponse> page = entities.map(order -> OrderSummaryResponse.from(order)
                 .withSalesperson(order.getCreatedBy() == null ? null : names.get(order.getCreatedBy())));
-        return enrichWithSettlement(enrichWithQuikShipStatus(page));
+        return enrichWithCreatedAtCorrection(enrichWithSettlement(enrichWithQuikShipStatus(page)));
     }
 
     /**
@@ -276,6 +284,28 @@ public class AdminOrderService {
             names.put(u.getId(), name);
         }
         return names;
+    }
+
+    /**
+     * Marks corrected punched dates in one batch, avoiding a correction-history
+     * query per Orders-list row.
+     */
+    private Page<OrderSummaryResponse> enrichWithCreatedAtCorrection(Page<OrderSummaryResponse> page) {
+        if (createdAtCorrectionRepository == null || page.isEmpty()) {
+            return page;
+        }
+        java.util.Set<Long> ids = page.getContent().stream()
+                .map(OrderSummaryResponse::id)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        if (ids.isEmpty()) {
+            return page;
+        }
+        java.util.Set<Long> correctedIds = createdAtCorrectionRepository.findByOrderIdIn(ids).stream()
+                .map(OrderCreatedAtCorrection::getOrderId)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        return page.map(row -> row.withCreatedAtCorrected(correctedIds.contains(row.id())));
     }
 
     /**

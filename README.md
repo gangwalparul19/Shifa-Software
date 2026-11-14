@@ -9,7 +9,7 @@ packing → courier → delivery → settlement) is tracked end to end.
 > and the important gotchas. Read it before scanning the codebase. A condensed "memory" for fast
 > context lives in `.kiro/steering/project-memory.md` and is kept in sync with this file.
 
-> **Current baseline (2026-11-03):** **Production is at V113** (deployed and verified on the server 2026-11-03 around 12:41 IST). Source now contains a pending **V114** migration that adds a public order-tracking call-to-action to the confirmation WhatsApp template; V114 is local only until the user reviews and approves deployment. It includes the customer-email switch, report recipients and Send-now email controls, ADMIN payment correction with audit/ledger handling, ADMIN punched-date correction with audit and V113 safeguards, the edit-page date shortcut, Team-wise sales periods/export, the complete Leaderboard export, announcement pinning and period selectors. See "Deployed to Prod (2026-11-03, V113)" at the end of this file. Older sections that say "production last documented at V73" or "not deployed" are historical. The supported production target is AWS EC2 (`15.252.230.73` SSH) with the canonical HTTPS URL `https://shifa.weblithic.online/` and Amazon S3 storage (`application-prod.yml` defaults to `STORAGE_PROVIDER=S3`). The unused OCI stub/SDK are removed. Current validation is **1071 backend tests, 0 failures** (full `clean package`, excluding `WhatsappTemplateEncodingIT` which needs a live MySQL), admin production build successful with the existing shell CSS budget warning, and frontend property tests **7 suites / 36 tests**. Dated deployment/build notes below are historical records; use the current baseline and `DEPLOYMENT.md` for operations.
+> **Current baseline (2026-11-14):** **Production is at V114** (deployed and verified on the AWS server on 2026-11-13 around 17:22 IST, then redeployed on 2026-11-14 with the corrected punched-date marker). It includes the customer-email switch, report recipients and Send-now email controls, ADMIN payment correction with audit/ledger handling, ADMIN punched-date correction with audit and V113 safeguards, the edit-page date shortcut, the visible corrected-date marker for bank matching, Team-wise sales periods/export, the complete Leaderboard export, announcement pinning and period selectors, and the confirmation WhatsApp message's public `/track-order` call-to-action. See the deployment notes at the end of this file. Older sections that say "production last documented at V73" or "not deployed" are historical. The supported production target is AWS EC2 (`15.252.230.73` SSH) with the canonical HTTPS URL `https://shifa.weblithic.online/` and Amazon S3 storage (`application-prod.yml` defaults to `STORAGE_PROVIDER=S3`). The unused OCI stub/SDK are removed. Current validation is **1071 backend tests, 0 failures** (full `clean package`, excluding `WhatsappTemplateEncodingIT` which needs a live MySQL), admin production build successful with the existing shell CSS budget warning, and frontend property tests **7 suites / 36 tests**. Dated deployment/build notes below are historical records; use the current baseline and `DEPLOYMENT.md` for operations.
 
 
 | Layer      | Technology                                                                 |
@@ -364,9 +364,9 @@ Migration history:
   templates). **ADMIN / ACCOUNTANT / TEAM_LEAD** manage templates at `/whatsapp-templates`; staff use active
   templates from order/customer screens. `V45` enriches initial copy, `V46` replaces unreliable 4-byte emoji with
   WhatsApp-Desktop-safe basic-plane symbols, and `V47__whatsapp_confirm_order_summary.sql` adds `{orderSummary}` to
-  the confirmation template — itemized lines, order total, amount paid, and any COD balance. The pending local
-  `V114__whatsapp_confirm_tracking_link.sql` adds the public `/track-order` URL and mobile-number/live-tracking
-  instructions to the confirmation template; production remains at V113 until review and deployment.
+  the confirmation template — itemized lines, order total, amount paid, and any COD balance. `V114__whatsapp_confirm_tracking_link.sql`
+  adds the public `/track-order` URL and mobile-number/live-tracking instructions to the confirmation template and is now deployed
+  to production at V114.
 - `V48__rename_courier_lost_to_redispatch.sql` — terminology/status migration: converts historic order and status-
   history values to `REDISPATCH`, updates known user-facing admin-notification text and JSON outbox status/template
   payloads, and ensures immutable V22/V27 seed values also finish as `REDISPATCH`. The existing
@@ -386,9 +386,9 @@ Migration history:
   **V105__outbox_claim_leases.sql** — fenced pending-row leases, expiry recovery, and the composite due-claim index for multi-instance integration drainers.
   **V106__query_performance_indexes.sql** — five composite indexes for the hottest order, payment and status-history filters.
   **V107`..`V113** — database-managed payment methods, daily incentives, announcement pinning, customer-email controls,
-  report recipients, ADMIN payment corrections, and ADMIN punched-date corrections. Production is currently at V113.
-  **V114__whatsapp_confirm_tracking_link.sql** — pending local migration that adds the public `/track-order` link and
-  mobile-number/live-tracking instructions to the confirmation WhatsApp template. It is not deployed yet.
+  report recipients, ADMIN payment corrections, and ADMIN punched-date corrections. Production is currently at V114.
+  **V114__whatsapp_confirm_tracking_link.sql** — adds the public `/track-order` link and mobile-number/live-tracking instructions
+  to the confirmation WhatsApp template. **V114 is deployed and production is at V114.**
 
 > Fresh DB required: because V22 seeds with explicit IDs, start against an **empty**
 > `shifa_dashboard`. If a half-migrated DB exists, drop & recreate it before starting.
@@ -987,7 +987,8 @@ Admins can correct the calendar date on which a portal order was punched when, f
 - It is intentionally allowed only for `PENDING_ADMIN_APPROVAL` or `APPROVED` orders and rejects Shopify orders, future dates, no-op dates, dates before 01 Jan 2020, same-day customer/product duplicate collisions, generated invoices, shipments/courier records, receivables, settlement allocations, posted or queued ledger entries, and periods whose GSTR-1/GSTR-3B filing is already `FILED`. The backend lock is authoritative; the UI gate is only a convenience.
 - This is a high-impact correction because `created_at` drives Orders sorting, duplicate-day checks, GST/report periods, dashboard and incentive dates, invoice display, and ledger voucher dates. Once downstream artifacts exist, the admin must use an accounting-aware correction process rather than moving `created_at` silently.
 - Orders → detail → Details tab now has an ADMIN-only **Correct punched date** dialog. It uses an IST date input, requires a reason, explains the reporting/GST impact, and refreshes the drawer/list after success.
-- V113 is local only. Production remains at V110 until the V111–V113 changes are reviewed and deployed. Backend clean compile and real local MySQL boot/`ddl-auto: validate` passed; the admin build is being rerun after the date dialog change.
+- Follow-up local enhancement: corrected orders now carry `createdAtCorrected` on detail/list responses. The Orders list shows a calendar-edit icon and the detail drawer shows a **Date corrected** badge with an Audit-log hint, so staff can match the order to the bank receipt and `ORDER_CREATED_AT_CORRECTED` audit entry. This UI/API marker is now deployed in production.
+- V113 date correction and the visible marker are deployed in production; the current production baseline is V114. The marker deployment used the normal backup/health-gated production flow and did not apply a migration.
 
 **Edit-page shortcut:** the ADMIN edit page at `/orders/:id/edit` now shows **Correct punched date** when the order is eligible. It routes to `/orders?q=<orderCode>&open=1`, and the Orders page opens the canonical detail drawer automatically so the same audited correction dialog is used instead of duplicating the form.
 
@@ -1002,10 +1003,29 @@ The approved current worktree was deployed to production with `deploy\deploy-bot
 - The pre-deploy and post-deploy invariant fingerprint matched exactly: 3,057 orders, total amount ₹79,55,664.60, amount received ₹47,99,237.32, 5,542 line items, and 3,101 payments. Normal courier/settlement movement figures were also recorded separately.
 - Users should hard-refresh or clear the Angular service-worker cache before testing the new payment/date correction screens.
 
-### POS-order created_at hotfix (deployed 2026-11-03 ~15:31 IST)
+### Deployed to Prod (2026-11-14) — corrected punched-date bank-matching marker
+
+The corrected-date response marker and Orders UI indicator were deployed to AWS EC2 with `deploy\deploy-both.ps1 -SkipBuild -ProdOnly` after the read-only preflight and baseline checks. Production remained on schema V114; no migration was applied.
+
+- Fresh fat JAR: **108,498,971 bytes**; admin bundle: `main-7M4WEMHR.js`.
+- Backup: `/home/ubuntu/shifa-backup-2026-11-14-075019.sql`, uploaded to `s3://shifa-db-backup/shifa-backup-2026-11-14-075019.sql`.
+- Live verification: service active, `NRestarts=0`, health 200, public site 200, unauthenticated `/api/states` 401, Flyway V114, and application startup completed in 31.405 seconds with no startup failure markers or ERROR lines.
+- The served bundle is `main-7M4WEMHR.js`. Before/after invariants matched: 3,940 orders, total amount ₹1,03,50,012.06, amount received ₹63,08,421.54, 7,179 line items, 4,032 payments, and 30 active users.
+- Demo was not touched. Users should hard-refresh or clear the Angular service-worker cache before testing the icon and **Date corrected** badge.
+
 
 The first V113 deployment exposed a persistence regression: making `orders.created_at` JPA-updatable caused normal POS/store-order updates to write the not-yet-populated entity field as `NULL` during the same transaction, producing `Column 'created_at' cannot be null`. Fixed by restoring `created_at` to `insertable=false, updatable=false` for normal entity updates. The ADMIN punched-date correction now uses a locked native repository update followed by an entity refresh, so POS creation and ordinary order updates retain the database default while the correction path still works.
 
 - Rebuilt the fat JAR (**108,529,310 bytes**) and redeployed with `deploy\deploy-both.ps1 -SkipBuild -ProdOnly`.
 - No new migration was applied; production remains V113. Backup: `~/shifa-backup-2026-11-03-100006.sql`, uploaded to S3.
 - Verified: service active, `NRestarts=0`, health 200, site 200, API 401, V113 unchanged, served bundle `main-6RXGKBNN.js`, and invariant counts/amounts unchanged (3,057 orders, ₹79,55,664.60 total, ₹47,99,237.32 received, 5,542 line items, 3,101 payments). Courier/settlement movement changed normally during the verification window.
+
+### Deployed to Prod (2026-11-13, V114)
+
+The confirmation WhatsApp template tracking-link update was deployed to AWS EC2 with `deploy\\deploy-both.ps1 -SkipBuild -ProdOnly` after SSH access was restored.
+
+- Preflight passed with 0 blockers. The two non-blocking warnings were the stale V82-era live-JAR check and the existing live Nginx webhook body-cap difference.
+- The deployment backup was `/home/ubuntu/shifa-backup-2026-11-13-115028.sql` and was uploaded to `s3://shifa-db-backup/shifa-backup-2026-11-13-115028.sql`.
+- Flyway applied V114 successfully. The service started cleanly in 32.157 seconds, remains active with `NRestarts=0`, and `/actuator/health` returns 200.
+- The public site returns 200, unauthenticated `/api/states` returns 401, and the served admin bundle is `main-UJ7ONS4P.js`.
+- Post-deploy verification reported 0 blockers and 0 warnings. The invariant fingerprint was unchanged: 3,859 orders, total amount ₹1,00,50,204.86, amount received ₹61,39,651.08, 7,053 line items, 3,950 payments.

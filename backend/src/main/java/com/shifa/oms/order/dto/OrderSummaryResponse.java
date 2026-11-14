@@ -57,7 +57,10 @@ public record OrderSummaryResponse(
         CodSettlementStatus codSettlementStatus,
         BigDecimal codSettledAmount,
         BigDecimal codSettledShortfall,
-        java.time.LocalDate codSettledDate
+        java.time.LocalDate codSettledDate,
+        // Whether an ADMIN corrected the calendar date on which the order was punched.
+        // Batch-loaded by the admin Orders list so bank matching remains visible.
+        boolean createdAtCorrected
 ) {
 
     /** The courier-remittance settlement state of an order's COD, for the Orders-list icon. */
@@ -86,7 +89,8 @@ public record OrderSummaryResponse(
                 CodSettlementStatus.NONE,
                 null,
                 null,
-                null);
+                null,
+                false);
     }
 
     /** Returns a copy carrying the QuikShipX mirror fields (Orders-list enrichment). */
@@ -96,7 +100,7 @@ public record OrderSummaryResponse(
                 paymentStatus, totalAmount, codAmount, createdAt,
                 quikShipXStatus, quikShipXOrderId, quikShipXAwb, salespersonName, source,
                 deliveryMethod, shopifyOrderId,
-                codSettlementStatus, codSettledAmount, codSettledShortfall, codSettledDate);
+                codSettlementStatus, codSettledAmount, codSettledShortfall, codSettledDate, createdAtCorrected);
     }
 
     /** Returns a copy carrying the resolved salesperson name (Orders-list enrichment). */
@@ -105,7 +109,17 @@ public record OrderSummaryResponse(
                 paymentStatus, totalAmount, codAmount, createdAt,
                 quikShipXStatus, quikShipXOrderId, quikShipXAwb, salespersonName, source,
                 deliveryMethod, shopifyOrderId,
-                codSettlementStatus, codSettledAmount, codSettledShortfall, codSettledDate);
+                codSettlementStatus, codSettledAmount, codSettledShortfall, codSettledDate, createdAtCorrected);
+    }
+
+    /** Returns a copy carrying the persistent punched-date correction marker. */
+    public OrderSummaryResponse withCreatedAtCorrected(boolean corrected) {
+        return new OrderSummaryResponse(id, orderCode, customerName, customerMobile, orderStatus,
+                paymentStatus, totalAmount, codAmount, createdAt,
+                quikShipXStatus, quikShipXOrderId, quikShipXAwb, salespersonName, source,
+                deliveryMethod, shopifyOrderId,
+                codSettlementStatus, codSettledAmount, codSettledShortfall, codSettledDate,
+                corrected);
     }
 
     /**
@@ -119,6 +133,6 @@ public record OrderSummaryResponse(
                 paymentStatus, totalAmount, codAmount, createdAt,
                 quikShipXStatus, quikShipXOrderId, quikShipXAwb, salespersonName, source,
                 deliveryMethod, shopifyOrderId,
-                status, settledAmount, shortfall, settledDate);
+                status, settledAmount, shortfall, settledDate, createdAtCorrected);
     }
 }

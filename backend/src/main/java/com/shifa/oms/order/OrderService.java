@@ -1252,7 +1252,7 @@ public class OrderService {
                     "Corrected punched date for order " + saved.getOrderCode()
                             + ": " + previous + " → " + corrected + " (IST); reason: " + reason);
         }
-        return OrderResponse.from(saved);
+        return OrderResponse.from(saved).withCreatedAtCorrected(true);
     }
 
     /** Refuses date mutation once any operational, accounting, invoice, or settlement artifact exists. */
@@ -1888,6 +1888,10 @@ public class OrderService {
         String salespersonName = resolveSalespersonName(order.getCreatedBy());
         if (salespersonName != null) {
             response = response.withSalesperson(salespersonName);
+        }
+        if (orderCreatedAtCorrectionRepository != null) {
+            response = response.withCreatedAtCorrected(
+                    orderCreatedAtCorrectionRepository.existsByOrderId(order.getId()));
         }
         return response;
     }

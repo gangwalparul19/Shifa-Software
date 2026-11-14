@@ -439,6 +439,8 @@ export interface OrderSummary {
   totalAmount: Money;
   codAmount: Money;
   createdAt?: string;
+  /** True when an ADMIN changed the calendar date on which this order was punched. */
+  createdAtCorrected?: boolean;
   /**
    * Mirrored QuikShipX status (Pending / Confirmed / Tracking ID Assigned / In
    * Transit / …), shown as a chip on the Orders list. Null when the order was
@@ -586,6 +588,8 @@ export interface OrderDetail {
   paymentVerificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | null;
   items: OrderDetailLine[];
   createdAt?: string;
+  /** True when an ADMIN changed the calendar date on which this order was punched. */
+  createdAtCorrected?: boolean;
   /** Air Waybill number, when a courier has been assigned. */
   awb?: string;
   /** Courier company name, when available. */

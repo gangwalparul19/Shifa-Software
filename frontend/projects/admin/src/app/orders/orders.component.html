@@ -359,6 +359,9 @@
             @if (order.source === 'SHOPIFY') {
               <admin-channel-logo class="ms-1" [source]="order.source" />
             }
+            @if (order.createdAtCorrected) {
+              <i class="ti ti-calendar-edit ms-1 text-warning" title="Punched date corrected by Admin — see Audit log" aria-label="Punched date corrected by Admin"></i>
+            }
             @if (settlementIcon(order); as si) {
               <i class="ti {{ si.icon }} ms-1 shifa-settle-ico shifa-settle-ico--{{ si.tone }}"
                  [title]="si.tooltip"></i>
@@ -479,6 +482,9 @@
                 <button type="button" class="btn btn-link p-0 fw-medium" (click)="$event.stopPropagation(); openDetail(order)">
                   {{ order.orderCode }}
                 </button>
+                @if (order.createdAtCorrected) {
+                  <i class="ti ti-calendar-edit ms-1 text-warning" title="Punched date corrected by Admin — see Audit log" aria-label="Punched date corrected by Admin"></i>
+                }
                 @if (settlementIcon(order); as si) {
                   <i class="ti {{ si.icon }} ms-1 shifa-settle-ico shifa-settle-ico--{{ si.tone }}"
                      [title]="si.tooltip"></i>
@@ -546,6 +552,9 @@
               </td>
               <td class="text-secondary d-none d-xl-table-cell" [title]="order.createdAt ? (order.createdAt | istDate) : ''">
                 {{ order.createdAt ? relativeTime(order.createdAt) : '—' }}
+                @if (order.createdAtCorrected) {
+                  <i class="ti ti-calendar-edit ms-1 text-warning" title="Punched date corrected by Admin — see Audit log" aria-label="Punched date corrected by Admin"></i>
+                }
               </td>
               <td class="text-end d-none d-xl-table-cell" (click)="stopRowClick($event)">
                 <div class="btn-list justify-content-end flex-nowrap">
@@ -731,6 +740,11 @@
             {{ order.createdAt ? (order.createdAt | istDate: 'dd MMM yyyy · HH:mm') : '—' }}
             @if (order.createdAt) {
               <span class="text-secondary small ms-1">({{ relativeTime(order.createdAt) }})</span>
+            }
+            @if (order.createdAtCorrected) {
+              <span class="badge tone-amber ms-2" title="An Admin corrected this order's punched date. See Audit log for the reason.">
+                <i class="ti ti-calendar-edit me-1" aria-hidden="true"></i>Date corrected
+              </span>
             }
           </div>
           @if (canCorrectCreatedDate(order)) {
