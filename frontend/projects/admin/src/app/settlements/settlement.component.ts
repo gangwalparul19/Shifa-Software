@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { ApiError, AuthService, Role } from 'core';
 import { addIstDays, todayIst } from '../shared/business-date.util';
 import { IstDatePipe } from '../shared/ist-date.pipe';
@@ -13,6 +14,7 @@ import { SettingsService, PaymentAccountOption } from '../settings/settings.serv
 import { SettlementService } from './settlement.service';
 import {
   SettlementBatch,
+  AccountSettlementKpi,
   SettlementImportResponse,
   SettlementLine,
   SettlementKpi,
@@ -40,6 +42,7 @@ export class SettlementComponent implements OnInit {
   private readonly service = inject(SettlementService);
   private readonly settings = inject(SettingsService);
   private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
   protected readonly canMutate = computed(() => this.auth.hasAnyRole(Role.ADMIN, Role.ACCOUNTANT));
   protected readonly sources = SOURCES;
   protected readonly accounts = signal<PaymentAccountOption[]>([]);
@@ -401,6 +404,25 @@ export class SettlementComponent implements OnInit {
   }
   protected money(value: unknown): string { return formatInr(value == null ? 0 : Number(value)); }
   protected positive(value: unknown): boolean { return Number(value ?? 0) > 0; }
+  protected isCashAccount(account: AccountSettlementKpi): boolean { return account.accountName === 'Cash amount received'; }
+  protected paymentCategoryLabel(category: AccountSettlementKpi['category']): string {
+    return category === 'CASH' ? 'Cash amount received'
+      : category === 'NO_RECEIVING_ACCOUNT' ? 'No receiving account recorded'
+        : 'Named receiving account';
+  }
+  protected openOrders(account: AccountSettlementKpi): void {
+    if (account.orderCount <= 0) return;
+    const queryParams: Record<string, string | number> = {
+      paymentCategory: account.category,
+    };
+    if (account.category === 'NAMED_ACCOUNT' && account.accountId != null) {
+      queryParams['paymentAccountId'] = account.accountId;
+    }
+    if (this.kpiFrom()) queryParams['paymentFrom'] = this.kpiFrom();
+    if (this.kpiTo()) queryParams['paymentTo'] = this.kpiTo();
+    void this.router.navigate(['/orders'], { queryParams });
+  }
+  protected isNoReceivingAccount(account: AccountSettlementKpi): boolean { return account.accountId == null; }
   protected count(response: SettlementImportResponse | null, status: SettlementMatchStatus): number { return response?.counts?.[status] ?? 0; }
   private errorMessage(err: HttpErrorResponse): string { return (err.error as ApiError | undefined)?.message ?? 'Could not complete the settlement operation.'; }
 }

@@ -81,6 +81,11 @@ public class AdminSseBroker {
         return connections.size();
     }
 
+    /** Whether at least one connection has the requested role. */
+    public boolean hasActiveRole(Role role) {
+        return role != null && connections.stream().anyMatch(c -> c.role() == role);
+    }
+
     /**
      * Broadcasts a typed event to every connected ADMIN only (live stats, activity,
      * admin operational notifications). Non-admin connections never receive these.

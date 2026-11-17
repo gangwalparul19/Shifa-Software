@@ -11,6 +11,7 @@ import com.shifa.oms.order.dto.OrderResponse;
 import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.reconciliation.ReceivableEntity;
 import com.shifa.oms.reconciliation.ReceivableRepository;
+import com.shifa.oms.reconciliation.SettlementPaymentCategory;
 import com.shifa.oms.reconciliation.domain.ReceivableType;
 import com.shifa.oms.audit.AuditActions;
 import com.shifa.oms.audit.AuditService;
@@ -245,9 +246,14 @@ public class AdminOrderService {
                                                  LocalDate from, LocalDate to,
                                                  Pageable pageable, java.util.Collection<Long> creatorIds,
                                                  com.shifa.oms.order.OrderSource source,
-                                                 com.shifa.oms.order.OrderSource excludeSource) {
+                                                 com.shifa.oms.order.OrderSource excludeSource,
+                                                 SettlementPaymentCategory paymentCategory,
+                                                 Long paymentAccountId,
+                                                 LocalDate paymentFrom,
+                                                 LocalDate paymentTo) {
         Specification<OrderEntity> spec =
-                OrderListSpecifications.build(q, status, statusGroup, paymentStatus, from, to, creatorIds, source, excludeSource);
+                OrderListSpecifications.build(q, status, statusGroup, paymentStatus, from, to, creatorIds, source,
+                        excludeSource, paymentCategory, paymentAccountId, paymentFrom, paymentTo);
         Page<OrderEntity> entities = orderRepository.findAll(spec, pageable);
         // Resolve each row's salesperson (created_by) name once for the whole page,
         // so the Orders table shows who punched each order without an N+1.
@@ -255,6 +261,19 @@ public class AdminOrderService {
         Page<OrderSummaryResponse> page = entities.map(order -> OrderSummaryResponse.from(order)
                 .withSalesperson(order.getCreatedBy() == null ? null : names.get(order.getCreatedBy())));
         return enrichWithCreatedAtCorrection(enrichWithSettlement(enrichWithQuikShipStatus(page)));
+    }
+
+    /** Backward-compatible listing overload without payment drill-down filters. */
+    @Transactional(readOnly = true)
+    public Page<OrderSummaryResponse> listOrders(String q, OrderStatus status,
+                                                 OrderStatusGroup statusGroup,
+                                                 PaymentStatus paymentStatus,
+                                                 LocalDate from, LocalDate to,
+                                                 Pageable pageable, java.util.Collection<Long> creatorIds,
+                                                 com.shifa.oms.order.OrderSource source,
+                                                 com.shifa.oms.order.OrderSource excludeSource) {
+        return listOrders(q, status, statusGroup, paymentStatus, from, to, pageable, creatorIds,
+                source, excludeSource, null, null, null, null);
     }
 
     /**
@@ -386,7 +405,12 @@ public class AdminOrderService {
     @Transactional(readOnly = true)
     public List<ApprovalQueueItemResponse> approvalQueue() {
         List<OrderEntity> pending = orderRepository
-                .findByOrderStatusOrderByCreatedAtDesc(OrderStatus.PENDING_ADMIN_APPROVAL);
+                .findByOrderStatusOrderByCreatedAtDesc(OrderStatus.PENDING_ADMIN_APPROVAL)
+                .stream()
+                // POS orders are held exclusively for payment verification and
+                // are released by PaymentVerificationService, not admin approval.
+                .filter(o -> o.getSource() != OrderSource.STORE)
+                .toList();
         Map<Long, String> names = resolveSalespersonNames(pending);
         return pending.stream()
                 .map(o -> ApprovalQueueItemResponse.from(
@@ -469,12 +493,29 @@ public class AdminOrderService {
     @Transactional
     public OrderResponse approve(Long id, AuthPrincipal admin, String deliveryMethod) {
         OrderEntity order = requireOrder(id);
+        if (order.getSource() == OrderSource.STORE) {
+            throw new ValidationException(
+                    "POS orders are released by Payment Verification and cannot be approved manually.");
+        }
         // Payment-verification gate: an order with an unverified / rejected
         // payment cannot be approved — the payment must be verified first.
         requirePaymentVerified(order);
+        // A local/demo process must never leave a courier order on the QuikShipX
+        // path. Normalize stale/default courier orders to the existing in-house
+        // workflow when no explicit override was requested.
+        if (quikShipXProperties != null && !quikShipXProperties.isEnabled()
+                && (deliveryMethod == null || deliveryMethod.isBlank())
+                && order.usesCourier()) {
+            order.setDeliveryMethod(DeliveryMethod.IN_HOUSE);
+        }
         if (deliveryMethod != null && !deliveryMethod.isBlank()) {
             DeliveryMethod requested =
                     DeliveryMethod.valueOf(deliveryMethod.trim().toUpperCase(java.util.Locale.ROOT));
+            if (requested == DeliveryMethod.QUIKSHIPX
+                    && quikShipXProperties != null && !quikShipXProperties.isEnabled()) {
+                throw new ValidationException(
+                        "QuikShipX is disabled in this environment. Select in-house delivery.");
+            }
             // Store (POS) orders are handed over at the counter — they have no
             // delivery partner and are already closed. Never let an admin assign
             // one a delivery partner at approval (defensive; a POS order never
@@ -557,6 +598,11 @@ public class AdminOrderService {
         }
         DeliveryMethod requested =
                 DeliveryMethod.valueOf(deliveryMethod.trim().toUpperCase(java.util.Locale.ROOT));
+        if (requested == DeliveryMethod.QUIKSHIPX
+                && quikShipXProperties != null && !quikShipXProperties.isEnabled()) {
+            throw new ValidationException(
+                    "QuikShipX is disabled in this environment. Select in-house delivery.");
+        }
         // Counter Sale (walk-in shop order) never goes through a delivery partner.
         if (order.getLeadSource() == LeadSource.COUNTER_SALE && requested != DeliveryMethod.IN_HOUSE) {
             throw new ValidationException(

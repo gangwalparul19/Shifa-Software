@@ -1,5 +1,7 @@
 package com.shifa.oms.reconciliation.dto;
 
+import com.shifa.oms.reconciliation.SettlementPaymentCategory;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -34,7 +36,9 @@ public record SettlementKpiResponse(
             BigDecimal difference,
             long statementRows,
             long matchedRows,
-            long unmatchedRows
+            long unmatchedRows,
+            SettlementPaymentCategory category,
+            long orderCount
     ) {
     }
 }

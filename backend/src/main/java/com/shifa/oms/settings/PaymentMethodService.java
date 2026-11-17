@@ -24,7 +24,8 @@ import java.util.Optional;
  * <ul>
  *   <li>at most one method is the default, and the default is always active;</li>
  *   <li>a method that has payments recorded against it is deactivated, never deleted;</li>
- *   <li>a method that auto-selects an account always requires an account.</li>
+ *   <li>the stable {@code CASH} method is the only no-account method; linked methods always require
+ *       their purpose-specific account.</li>
  * </ul>
  */
 @Service
@@ -247,9 +248,13 @@ public class PaymentMethodService {
     }
 
     private static void apply(PaymentMethod method, PaymentMethodRequest request) {
-        method.setLinkedAccountType(request.linkedAccountType());
-        // An auto-selected account is meaningless unless an account is required.
-        method.setRequiresAccount(request.requiresAccount() || request.linkedAccountType() != null);
+        boolean cash = "CASH".equalsIgnoreCase(method.getCode());
+        // Cash is the only no-account payment method. Its stable code remains
+        // exempt even if an admin renames the label; every other portal method
+        // must identify a receiving account, with linked methods auto-selecting
+        // their configured-purpose account.
+        method.setLinkedAccountType(cash ? null : request.linkedAccountType());
+        method.setRequiresAccount(!cash);
         method.setActive(request.active());
         method.setDefaultMethod(request.defaultMethod());
         method.setSortOrder(Math.max(0, request.sortOrder()));

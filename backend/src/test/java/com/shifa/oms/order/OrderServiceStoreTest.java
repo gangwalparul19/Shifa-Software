@@ -129,15 +129,38 @@ class OrderServiceStoreTest {
                 screenshotKey, null);
     }
 
+    /**
+     * Simulates the Payment Verifier clearing the held POS order: marks the saved
+     * order VERIFIED and runs the POS finalizer, exactly as
+     * {@code PaymentVerificationService.verify} does in the same transaction.
+     */
+    private OrderResponse verifyAndRelease() {
+        org.mockito.ArgumentCaptor<OrderEntity> captor = org.mockito.ArgumentCaptor.forClass(OrderEntity.class);
+        org.mockito.Mockito.verify(orderRepository, org.mockito.Mockito.atLeastOnce()).save(captor.capture());
+        OrderEntity order = captor.getValue();
+        ReflectionTestUtils.setField(order, "id", 900L);
+        order.recordPaymentVerification(PaymentVerificationStatus.VERIFIED, 7L, null, null);
+        when(orderRepository.findById(900L)).thenReturn(Optional.of(order));
+        return service.finalizeStoreOrderAfterPaymentVerification(900L);
+    }
+
+    /** A POS order is held for payment verification, never released at creation. */
+    private void assertHeldForVerification(OrderResponse created) {
+        assertThat(created.orderStatus()).isEqualTo(OrderStatus.PENDING_ADMIN_APPROVAL);
+        assertThat(created.paymentVerificationStatus()).isEqualTo(PaymentVerificationStatus.PENDING);
+    }
+
     @Test
-    void fullyPaidStoreOrderIsAutoApprovedAndClosedWithScreenshot() {
+    void fullyPaidStoreOrderIsHeldForVerificationThenClosedOnRelease() {
         when(productRepository.findById(1L)).thenReturn(Optional.of(product(1L, "500.00")));
         // One product × 1 @ 500 = 500; paid in full at the counter WITH a screenshot.
         StoreOrderRequest request = storeRequest(
                 List.of(new StoreLineItemRequest(1L, null, 1, null, null, null)),
                 new BigDecimal("500.00"));
 
-        OrderResponse res = service.createStoreOrder(request, admin);
+        OrderResponse created = service.createStoreOrder(request, admin);
+        assertHeldForVerification(created);
+        OrderResponse res = verifyAndRelease();
 
         assertThat(res.source()).isEqualTo(OrderSource.STORE);
         // A counter sale is a store pickup — no delivery partner (not in-house, not courier).
@@ -171,7 +194,9 @@ class OrderServiceStoreTest {
                 List.of(new StoreLineItemRequest(1L, null, 1, null, null, null)),
                 new BigDecimal("400.00"));
 
-        OrderResponse res = service.createStoreOrder(request, admin);
+        OrderResponse created = service.createStoreOrder(request, admin);
+        assertHeldForVerification(created);
+        OrderResponse res = verifyAndRelease();
 
         assertThat(res.source()).isEqualTo(OrderSource.STORE);
         assertThat(res.deliveryMethod()).isEqualTo(DeliveryMethod.STORE_PICKUP);
@@ -198,7 +223,9 @@ class OrderServiceStoreTest {
                         null, "Consultation fee", 1, new BigDecimal("300.00"), BigDecimal.ZERO, null)),
                 new BigDecimal("300.00"));
 
-        OrderResponse res = service.createStoreOrder(request, admin);
+        OrderResponse created = service.createStoreOrder(request, admin);
+        assertHeldForVerification(created);
+        OrderResponse res = verifyAndRelease();
 
         assertThat(res.totalAmount()).isEqualByComparingTo("300.00");
         assertThat(res.orderStatus()).isEqualTo(OrderStatus.CLOSED);
@@ -217,7 +244,9 @@ class OrderServiceStoreTest {
                                 new BigDecimal("150.00"), BigDecimal.ZERO, null)),       // 150
                 new BigDecimal("550.00"));
 
-        OrderResponse res = service.createStoreOrder(request, admin);
+        OrderResponse created = service.createStoreOrder(request, admin);
+        assertHeldForVerification(created);
+        OrderResponse res = verifyAndRelease();
 
         assertThat(res.totalAmount()).isEqualByComparingTo("550.00");
         assertThat(res.items()).hasSize(2);
@@ -233,7 +262,9 @@ class OrderServiceStoreTest {
                 List.of(new StoreLineItemRequest(1L, null, 1, null, null, null)),
                 new BigDecimal("500.00"));
 
-        OrderResponse res = service.createStoreOrder(request, admin);
+        OrderResponse created = service.createStoreOrder(request, admin);
+        assertHeldForVerification(created);
+        OrderResponse res = verifyAndRelease();
 
         assertThat(res.orderStatus()).isEqualTo(OrderStatus.CLOSED);
     }

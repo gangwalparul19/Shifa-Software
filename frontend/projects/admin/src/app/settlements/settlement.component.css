@@ -37,3 +37,6 @@
   .settlement-lines-table { min-width: 760px; }
   .settlement-drawer__summary { gap: .4rem .85rem; }
 }
+.settlement-account-card--actionable { cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.settlement-account-card--actionable:hover, .settlement-account-card--actionable:focus-visible { border-color: #1f5d3f; box-shadow: 0 .25rem .8rem rgba(31,93,63,.14); transform: translateY(-1px); outline: none; }
+.settlement-account-card--actionable .settlement-account-row button { font-weight: 700; text-decoration: underline; }

@@ -99,6 +99,12 @@ public class OutboxEvent {
     public static final String EVENT_ORDER_STATUS_CHANGED = "ORDER_STATUS_CHANGED";
 
     /**
+     * Event type emitted when payment verification changes, so payment and
+     * approval queues can refresh without waiting for a manual reload.
+     */
+    public static final String EVENT_PAYMENT_VERIFICATION_CHANGED = "PAYMENT_VERIFICATION_CHANGED";
+
+    /**
      * Event type emitted when an order reaches a customer-facing lifecycle state
      * (Dispatched / Out_For_Delivery / Delivered / RTO / Redispatch) so the
      * WhatsApp drainer can send the pre-approved template message out-of-band

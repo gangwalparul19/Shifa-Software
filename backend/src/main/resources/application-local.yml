@@ -29,6 +29,12 @@ app:
   backup:
     # Full path to the locally installed MySQL 8.0 mysqldump binary (not on PATH).
     mysqldump-path: "C:/Program Files/MySQL/MySQL Server 8.0/bin/mysqldump.exe"
+  quikshipx:
+    # LOCAL ONLY: never create a QuikShipX shipment or request an AWB while running
+    # the local profile. MOCK is not used as the safety switch because MOCK still
+    # generates deterministic fake AWBs.
+    enabled: false
+    mode: MOCK
   courier:
     # LOCAL ONLY: disable the 5-min CourierTrackingPoller so it doesn't keep
     # polling QuikShip/courier status while testing other functionality.

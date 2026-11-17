@@ -21,6 +21,7 @@ import com.shifa.oms.packing.dto.RtoScanPreviewResponse;
 import com.shifa.oms.product.Product;
 import com.shifa.oms.product.ProductRepository;
 import com.shifa.oms.platform.outbox.OutboxEventPublisher;
+import com.shifa.oms.quikshipx.QuikShipXProperties;
 import com.shifa.oms.statemachine.OrderStatus;
 
 import java.net.URI;
@@ -128,6 +129,13 @@ public class PackingService {
      * creating a return (behaviour-preserving for existing callers/tests).
      */
     private final com.shifa.oms.returns.ReturnService returnService;
+    /** QuikShipX master switch; nullable in legacy unit constructors. */
+    private QuikShipXProperties quikShipXProperties;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setQuikShipXProperties(QuikShipXProperties properties) {
+        this.quikShipXProperties = properties;
+    }
 
     /** Test-friendly constructor without the QuikShipX shipment lookup (order-code scan only). */
     public PackingService(OrderRepository orderRepository, OutboxEventPublisher outboxEventPublisher,
@@ -686,6 +694,10 @@ public class PackingService {
         return OrderResponse.from(saved);
     }
 
+    private boolean quikShipEnabledForCourierAssignment() {
+        return quikShipXProperties == null || quikShipXProperties.isEnabled();
+    }
+
     /**
      * Hands a packed order over to the delivery courier: transitions
      * {@code PACKED → HANDED_TO_DELIVERY} through the shared
@@ -735,10 +747,13 @@ public class PackingService {
         // shows up in the auto "QuickShip Status" section. An IN-HOUSE order has no
         // courier partner, so it stays HANDED_TO_DELIVERY and the team advances it
         // manually from the "In-House Deliveries" section.
-        if (saved.usesCourier()) {
+        if (saved.usesCourier() && quikShipEnabledForCourierAssignment()) {
             outboxEventPublisher.publishCourierAssign(saved.getId(), saved.getOrderCode());
             log.debug("Order {} handed over + courier assignment enqueued by {}",
                     saved.getOrderCode(), actor.username());
+        } else if (saved.usesCourier()) {
+            log.debug("Order {} handed over while QuikShipX is disabled; no courier assignment enqueued",
+                    saved.getOrderCode());
         } else {
             log.debug("Order {} handed to in-house/store delivery by {}", saved.getOrderCode(), actor.username());
         }
@@ -770,9 +785,15 @@ public class PackingService {
             throw new OrderNotDispatchableException(order.getOrderCode(), order.getOrderStatus());
         }
 
-        // Enqueue courier AWB assignment out-of-band (Req 10.1): the drainer picks
-        // this PENDING event up and calls the Courier API in its own transaction.
-        outboxEventPublisher.publishCourierAssign(order.getId(), order.getOrderCode());
+        // Enqueue courier AWB assignment out-of-band only when the QuikShipX
+        // integration is enabled. The local profile otherwise must not call even
+        // the deterministic mock courier because it generates fake AWBs.
+        if (quikShipEnabledForCourierAssignment()) {
+            outboxEventPublisher.publishCourierAssign(order.getId(), order.getOrderCode());
+        } else {
+            log.debug("Order {} dispatch skipped courier assignment because QuikShipX is disabled",
+                    order.getOrderCode());
+        }
 
         log.debug("Order {} dispatched (courier assignment enqueued) by {}",
                 order.getOrderCode(), actor.username());

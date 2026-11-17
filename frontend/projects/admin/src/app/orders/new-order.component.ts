@@ -200,18 +200,30 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   /** Active payment methods from Settings (admin-managed); the default is pre-selected. */
   protected readonly paymentMethods = signal<PaymentMethodOption[]>([]);
+  /** Active payment methods offered for this order mode and role. */
+  protected readonly visiblePaymentMethods = computed(() => {
+    const methods = this.paymentMethods();
+    if (this.posMode()) {
+      return methods.filter((method) => method.code === 'CASH');
+    }
+    if (this.isAdmin()) {
+      return methods;
+    }
+    return methods.filter((method) => method.code !== 'CASH');
+  });
+
   /** Set when the payment-method lookup failed, so the picker can say why it is empty. */
   protected readonly paymentMethodsError = signal(false);
   /** Code of the method currently chosen in the form ('' until the list has loaded). */
   protected readonly selectedPaymentMethod = signal<PaymentMethod>('');
   protected readonly selectedMethod = computed<PaymentMethodOption | null>(
-    () => this.paymentMethods().find((method) => method.code === this.selectedPaymentMethod()) ?? null,
+    () => this.visiblePaymentMethods().find((method) => method.code === this.selectedPaymentMethod()) ?? null,
   );
 
   /**
    * Accounts the salesperson may name for the chosen method. A method linked to an account
    * purpose (Credit Card Link → Shopify settlement) offers only accounts of that purpose, plus the
-   * server-resolved one; every other method keeps the normal UPI / bank / other accounts.
+   * server-resolved one; every other method keeps the normal receiving accounts.
    */
   protected readonly orderPaymentAccounts = computed(() => {
     const accounts = this.paymentAccounts();
@@ -222,7 +234,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
       );
     }
     return accounts.filter((account) =>
-      account.accountType === 'UPI_QR' || account.accountType === 'BANK_TRANSFER' || account.accountType === 'OTHER');
+      account.accountType === 'UPI_QR' || account.accountType === 'BANK_TRANSFER'
+        || account.accountType === 'CASH' || account.accountType === 'OTHER');
   });
 
   /** Purpose label of the linked account ("Shopify settlement"), for hints. */
@@ -394,26 +407,25 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     notes: ['', [Validators.maxLength(1000)]],
   });
 
-  /** Whether the selected method needs a receiving account (the UTR is optional). */
-  protected readonly paymentNeedsAccount = computed(() => this.selectedMethod()?.requiresAccount ?? false);
+  /** Cash needs no receiving-account selection; every other active method does. */
+  protected readonly paymentNeedsAccount = computed(() =>
+    this.selectedMethod() !== null && this.selectedMethod()?.requiresAccount === true
+      && this.selectedMethod()?.code !== 'CASH',
+  );
 
-  /**
-   * An online (UPI / bank) payment must name the account that received it. The UTR / reference is
-   * deliberately optional: a salesperson often does not have it when punching the order.
-   */
+  /** The receiving account is mandatory for every portal/salesperson payment. */
   protected paymentMetadataInvalid(): boolean {
     return this.paymentMethodMissing() || this.paymentAccountMissing();
   }
 
   /** No offered payment method is chosen (the list is still loading, or it failed to load). */
   protected paymentMethodMissing(): boolean {
-    return !this.posMode() && this.selectedMethod() === null;
+    return this.selectedMethod() === null;
   }
 
-  /** The chosen method needs a receiving account and none is selected. */
+  /** A non-cash payment has no selected receiving account. */
   protected paymentAccountMissing(): boolean {
-    return !this.posMode() && this.paymentNeedsAccount() &&
-      this.form.controls.paymentAccountId.value == null;
+    return this.paymentNeedsAccount() && this.form.controls.paymentAccountId.value == null;
   }
 
   /** Whether the form is converting a lead (drives titles, locked fields, submit path). */
@@ -1272,7 +1284,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private enterPosMode(): void {
     this.destination.set('india');
     this.sameDayDuplicate.set(null);
-    // A counter sale does not send a payment method, so a failed method lookup must not block it.
+    // A POS sale defaults to the Cash method. Its payment method is sent so the
+    // payment row records CASH; Cash itself does not require a receiving account.
     this.form.controls.paymentMethod.clearValidators();
     this.form.controls.paymentMethod.updateValueAndValidity();
     this.form.controls.addressLine.setValidators([Validators.maxLength(250)]);
@@ -1283,6 +1296,14 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     this.form.controls.city.updateValueAndValidity();
     this.form.controls.state.updateValueAndValidity();
     this.form.controls.postalCode.updateValueAndValidity();
+    // POS defaults to the Cash method when the Settings-managed list is already loaded.
+    // syncPaymentMethod() applies the same fallback when the list arrives later.
+    const cash = this.paymentMethods().find((method) => method.code === 'CASH');
+    if (cash) {
+      this.form.controls.paymentMethod.setValue(cash.code);
+      this.selectedPaymentMethod.set(cash.code);
+      this.syncPaymentAccount();
+    }
   }
 
   // --- Favorites (quick-add) + frequently-bought-together (Tranche 3) ------
@@ -1573,13 +1594,18 @@ export class NewOrderComponent implements OnInit, OnDestroy {
    * chosen in Settings, then to the first method. Safe to call repeatedly.
    */
   private syncPaymentMethod(): void {
-    const methods = this.paymentMethods();
+    const methods = this.visiblePaymentMethods();
     if (methods.length === 0) {
       return;
     }
     const control = this.form.controls.paymentMethod;
-    if (!methods.some((method) => method.code === control.value)) {
-      const fallback = methods.find((method) => method.defaultMethod) ?? methods[0];
+    const fallback = this.posMode()
+      ? methods.find((method) => method.code === 'CASH')
+        ?? methods.find((method) => method.defaultMethod)
+        ?? methods[0]
+      : methods.find((method) => method.defaultMethod) ?? methods[0];
+    if (!methods.some((method) => method.code === control.value)
+        || (this.posMode() && control.value !== 'CASH' && control.pristine)) {
       control.setValue(fallback.code);
     }
     this.selectedPaymentMethod.set(control.value as PaymentMethod);
@@ -1594,10 +1620,15 @@ export class NewOrderComponent implements OnInit, OnDestroy {
    */
   private syncPaymentAccount(): void {
     const method = this.selectedMethod();
-    if (!method || !method.requiresAccount) {
+    if (!method) {
       return;
     }
     const control = this.form.controls.paymentAccountId;
+    if (!this.paymentNeedsAccount()) {
+      control.setValue(null, { emitEvent: false });
+      this.form.controls.paymentUtr.setValue('', { emitEvent: false });
+      return;
+    }
     const current = control.value;
     const offered = this.orderPaymentAccounts();
     const stillValid = current != null && offered.some((account) => account.id === current);
@@ -2144,6 +2175,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
             },
       ),
       amountReceived: raw.amountReceived,
+      paymentMethod: raw.paymentMethod as PaymentMethod,
+      ...(raw.paymentAccountId != null ? { paymentAccountId: raw.paymentAccountId } : {}),
+      ...(raw.paymentUtr.trim() ? { paymentUtr: raw.paymentUtr.trim().toUpperCase() } : {}),
       ...(orderNotes ? { notes: orderNotes } : {}),
       ...(buyerGstin ? { buyerGstin } : {}),
       ...(raw.discountType
@@ -2161,7 +2195,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     this.orders.createStoreOrder(payload).subscribe({
       next: (order) => {
         this.submitting.set(false);
-        this.toasts.success(`Store order ${order.orderCode} created`);
+        this.toasts.success(
+          `Store order ${order.orderCode} created. It is released once the payment is verified.`,
+        );
         void this.router.navigate(['/orders'], { queryParams: { q: order.orderCode } });
       },
       error: (err: HttpErrorResponse) => {

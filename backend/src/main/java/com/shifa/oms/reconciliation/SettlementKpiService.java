@@ -73,33 +73,41 @@ public class SettlementKpiService {
 
         LocalDateTime fromDateTime = from == null ? null : from.atStartOfDay();
         LocalDateTime toDateTime = to == null ? null : to.plusDays(1).atStartOfDay();
-        Map<Long, AccountTotals> totals = new LinkedHashMap<>();
+        Map<String, AccountTotals> totals = new LinkedHashMap<>();
 
         for (BankAccount account : bankAccountRepository.findAllByOrderBySortOrderAscIdAsc()) {
-            totals.put(account.getId(), new AccountTotals(account.getId(), account.getDisplayName()));
+            totals.put(accountKey(account.getId(), account.getDisplayName()),
+                    new AccountTotals(account.getId(), account.getDisplayName(),
+                            SettlementPaymentCategory.NAMED_ACCOUNT));
         }
         if (fromDateTime == null) {
             for (OrderPaymentRepository.UpfrontPaymentKpiRow row : paymentRepository.upfrontPaymentKpisAll()) {
-                totals.computeIfAbsent(row.getAccountId(), id -> new AccountTotals(id, row.getAccountName()))
+                totals.computeIfAbsent(accountKey(row.getAccountId(), row.getAccountName()),
+                                key -> new AccountTotals(row.getAccountId(), row.getAccountName(), categoryOf(row)))
                         .addPayment(row);
             }
         } else {
             for (OrderPaymentRepository.UpfrontPaymentKpiRow row :
                     paymentRepository.upfrontPaymentKpisBetween(fromDateTime, toDateTime)) {
-                totals.computeIfAbsent(row.getAccountId(), id -> new AccountTotals(id, row.getAccountName()))
+                totals.computeIfAbsent(accountKey(row.getAccountId(), row.getAccountName()),
+                                key -> new AccountTotals(row.getAccountId(), row.getAccountName(), categoryOf(row)))
                         .addPayment(row);
             }
         }
 
         if (from == null) {
             for (SettlementLineRepository.BankReceiptKpiRow row : lineRepository.bankReceiptKpisAll()) {
-                totals.computeIfAbsent(row.getAccountId(), id -> new AccountTotals(id, row.getAccountName()))
+                totals.computeIfAbsent(accountKey(row.getAccountId(), row.getAccountName()),
+                                key -> new AccountTotals(row.getAccountId(), row.getAccountName(),
+                                        SettlementPaymentCategory.NAMED_ACCOUNT))
                         .addStatement(row);
             }
         } else {
             for (SettlementLineRepository.BankReceiptKpiRow row :
                     lineRepository.bankReceiptKpisBetween(from, to.plusDays(1))) {
-                totals.computeIfAbsent(row.getAccountId(), id -> new AccountTotals(id, row.getAccountName()))
+                totals.computeIfAbsent(accountKey(row.getAccountId(), row.getAccountName()),
+                                key -> new AccountTotals(row.getAccountId(), row.getAccountName(),
+                                        SettlementPaymentCategory.NAMED_ACCOUNT))
                         .addStatement(row);
             }
         }
@@ -109,7 +117,7 @@ public class SettlementKpiService {
                         Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
                 .map(AccountTotals::toResponse)
                 .toList();
-        AccountTotals grand = new AccountTotals(null, "Total");
+        AccountTotals grand = new AccountTotals(null, "Total", null);
         totals.values().forEach(grand::add);
         SettlementKpiResponse.AccountSettlementKpi ignored = grand.toResponse();
         return new SettlementKpiResponse(
@@ -127,9 +135,25 @@ public class SettlementKpiService {
                 accounts);
     }
 
+    private static SettlementPaymentCategory categoryOf(OrderPaymentRepository.UpfrontPaymentKpiRow row) {
+        if (row.getCategory() == null || row.getCategory().isBlank()) {
+            return row.getAccountId() == null
+                    ? SettlementPaymentCategory.NO_RECEIVING_ACCOUNT
+                    : SettlementPaymentCategory.NAMED_ACCOUNT;
+        }
+        return SettlementPaymentCategory.valueOf(row.getCategory());
+    }
+
+    private static String accountKey(Long accountId, String accountName) {
+        return accountId == null ? "NULL:" + (accountName == null ? "" : accountName)
+                : "ID:" + accountId;
+    }
+
     private static final class AccountTotals {
         private final Long accountId;
         private final String accountName;
+        private final SettlementPaymentCategory category;
+        private long orderCount;
         private BigDecimal omsBooked = BigDecimal.ZERO;
         private BigDecimal verified = BigDecimal.ZERO;
         private BigDecimal pending = BigDecimal.ZERO;
@@ -142,12 +166,14 @@ public class SettlementKpiService {
         private long matchedRows;
         private long unmatchedRows;
 
-        private AccountTotals(Long accountId, String accountName) {
+        private AccountTotals(Long accountId, String accountName, SettlementPaymentCategory category) {
             this.accountId = accountId;
             this.accountName = accountName;
+            this.category = category;
         }
 
         private void addPayment(OrderPaymentRepository.UpfrontPaymentKpiRow row) {
+            orderCount += row.getOrderCount();
             omsBooked = add(omsBooked, row.getOmsBookedAmount());
             verified = add(verified, row.getVerifiedAmount());
             pending = add(pending, row.getPendingAmount());
@@ -165,6 +191,7 @@ public class SettlementKpiService {
         }
 
         private void add(AccountTotals other) {
+            orderCount += other.orderCount;
             omsBooked = add(omsBooked, other.omsBooked);
             verified = add(verified, other.verified);
             pending = add(pending, other.pending);
@@ -183,7 +210,7 @@ public class SettlementKpiService {
                     accountId, accountName, scale(omsBooked), scale(verified), scale(pending),
                     scale(rejected), scale(unreviewed), scale(statement), scale(matched),
                     scale(unmatched), scale(statement.subtract(omsBooked)), statementRows,
-                    matchedRows, unmatchedRows);
+                    matchedRows, unmatchedRows, category, orderCount);
         }
 
         private static BigDecimal add(BigDecimal left, BigDecimal right) {

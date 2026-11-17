@@ -35,7 +35,16 @@ public interface OrderPaymentRepository extends JpaRepository<OrderPayment, Long
 
     @Query(value = """
             SELECT p.bank_account_id AS accountId,
-                   COALESCE(ba.display_name, 'Unassigned / legacy') AS accountName,
+                   CASE WHEN p.bank_account_id IS NULL AND UPPER(COALESCE(p.payment_method, '')) = 'CASH'
+                        THEN 'Cash amount received'
+                        ELSE COALESCE(ba.display_name, 'No receiving account recorded')
+                   END AS accountName,
+                   CASE WHEN p.bank_account_id IS NULL AND UPPER(COALESCE(p.payment_method, '')) = 'CASH'
+                        THEN 'CASH'
+                        WHEN p.bank_account_id IS NULL THEN 'NO_RECEIVING_ACCOUNT'
+                        ELSE 'NAMED_ACCOUNT'
+                   END AS category,
+                   COUNT(DISTINCT CASE WHEN p.amount_received > 0 THEN p.order_id END) AS orderCount,
                    COALESCE(SUM(p.amount_received), 0) AS omsBookedAmount,
                    COALESCE(SUM(CASE WHEN o.payment_verification_status = 'VERIFIED' THEN p.amount_received ELSE 0 END), 0) AS verifiedAmount,
                    COALESCE(SUM(CASE WHEN o.payment_verification_status = 'PENDING' THEN p.amount_received ELSE 0 END), 0) AS pendingAmount,
@@ -46,7 +55,7 @@ public interface OrderPaymentRepository extends JpaRepository<OrderPayment, Long
             LEFT JOIN bank_accounts ba ON ba.id = p.bank_account_id
             WHERE p.captured_at >= :fromDate
               AND p.captured_at < :toDate
-            GROUP BY p.bank_account_id, ba.display_name
+            GROUP BY p.bank_account_id, ba.display_name, p.payment_method
             """, nativeQuery = true)
     java.util.List<UpfrontPaymentKpiRow> upfrontPaymentKpisBetween(
             @Param("fromDate") java.time.LocalDateTime fromDate,
@@ -54,7 +63,16 @@ public interface OrderPaymentRepository extends JpaRepository<OrderPayment, Long
 
     @Query(value = """
             SELECT p.bank_account_id AS accountId,
-                   COALESCE(ba.display_name, 'Unassigned / legacy') AS accountName,
+                   CASE WHEN p.bank_account_id IS NULL AND UPPER(COALESCE(p.payment_method, '')) = 'CASH'
+                        THEN 'Cash amount received'
+                        ELSE COALESCE(ba.display_name, 'No receiving account recorded')
+                   END AS accountName,
+                   CASE WHEN p.bank_account_id IS NULL AND UPPER(COALESCE(p.payment_method, '')) = 'CASH'
+                        THEN 'CASH'
+                        WHEN p.bank_account_id IS NULL THEN 'NO_RECEIVING_ACCOUNT'
+                        ELSE 'NAMED_ACCOUNT'
+                   END AS category,
+                   COUNT(DISTINCT CASE WHEN p.amount_received > 0 THEN p.order_id END) AS orderCount,
                    COALESCE(SUM(p.amount_received), 0) AS omsBookedAmount,
                    COALESCE(SUM(CASE WHEN o.payment_verification_status = 'VERIFIED' THEN p.amount_received ELSE 0 END), 0) AS verifiedAmount,
                    COALESCE(SUM(CASE WHEN o.payment_verification_status = 'PENDING' THEN p.amount_received ELSE 0 END), 0) AS pendingAmount,
@@ -63,13 +81,15 @@ public interface OrderPaymentRepository extends JpaRepository<OrderPayment, Long
             FROM payments p
             JOIN orders o ON o.id = p.order_id AND o.active = 1
             LEFT JOIN bank_accounts ba ON ba.id = p.bank_account_id
-            GROUP BY p.bank_account_id, ba.display_name
+            GROUP BY p.bank_account_id, ba.display_name, p.payment_method
             """, nativeQuery = true)
     java.util.List<UpfrontPaymentKpiRow> upfrontPaymentKpisAll();
 
     interface UpfrontPaymentKpiRow {
         Long getAccountId();
         String getAccountName();
+        String getCategory();
+        long getOrderCount();
         java.math.BigDecimal getOmsBookedAmount();
         java.math.BigDecimal getVerifiedAmount();
         java.math.BigDecimal getPendingAmount();

@@ -97,7 +97,8 @@ class OrderResponseWitherRoundTripTest {
                 "base payment verification note",     // paymentVerificationNote
                 "Nepal",                              // country
                 "base qsx failure reason",            // quikShipXFailureReason
-                "BASE-TRACK-TOKEN");                  // trackingToken
+                "BASE-TRACK-TOKEN",                  // trackingToken
+                false);                               // createdAtCorrected
     }
 
     @Test

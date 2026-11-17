@@ -28,6 +28,7 @@ import {
   OrderSummary,
   QuikShipTracking,
   RtoReasonValue,
+  SettlementPaymentCategory,
 } from './orders.model';
 import { ReturnsService } from '../returns/returns.service';
 import { ReturnResponse } from '../returns/returns.model';
@@ -368,6 +369,11 @@ export class OrdersComponent implements OnInit, OnDestroy {
    */
   protected readonly createdByFilter = signal<number | null>(null);
   protected readonly createdByName = signal<string | null>(null);
+  /** Settlement Center payment-category drill-down (capture-date based). */
+  protected readonly paymentCategoryFilter = signal<SettlementPaymentCategory | null>(null);
+  protected readonly paymentAccountFilter = signal<number | null>(null);
+  protected readonly paymentFromFilter = signal<string | null>(null);
+  protected readonly paymentToFilter = signal<string | null>(null);
   /** Opens the detail drawer once for an exact `?q=...&open=1` deep link. */
   private queryOpenOrderCode: string | null = null;
   /**
@@ -1249,6 +1255,15 @@ export class OrdersComponent implements OnInit, OnDestroy {
         this.createdByName.set(qp.get('name'));
       }
     }
+    const paymentCategory = qp.get('paymentCategory') as SettlementPaymentCategory | null;
+    if (paymentCategory === 'CASH' || paymentCategory === 'NO_RECEIVING_ACCOUNT' || paymentCategory === 'NAMED_ACCOUNT') {
+      this.paymentCategoryFilter.set(paymentCategory);
+      const accountRaw = qp.get('paymentAccountId');
+      const account = accountRaw == null ? null : Number(accountRaw);
+      this.paymentAccountFilter.set(Number.isFinite(account) ? account : null);
+      this.paymentFromFilter.set(qp.get('paymentFrom'));
+      this.paymentToFilter.set(qp.get('paymentTo'));
+    }
   }
 
   ngOnDestroy(): void {
@@ -1274,6 +1289,10 @@ export class OrdersComponent implements OnInit, OnDestroy {
         size: this.size(),
         sort: sortParam(this.sort()),
         createdBy: this.createdByFilter(),
+        paymentCategory: this.paymentCategoryFilter(),
+        paymentAccountId: this.paymentAccountFilter(),
+        paymentFrom: this.paymentFromFilter(),
+        paymentTo: this.paymentToFilter(),
       })
       .subscribe({
         next: (res) => {
@@ -1388,6 +1407,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.filters.reset({ statusGroup: '', paymentStatus: '', source: '', from: '', to: '' });
     this.search.setValue('');
     this.clearCreatedBy();
+    this.clearPaymentDrillDown();
   }
 
   hasFilters(): boolean {
@@ -1399,7 +1419,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
       f.source ||
       f.from ||
       f.to ||
-      this.createdByFilter() != null
+      this.createdByFilter() != null ||
+      this.paymentCategoryFilter() != null
     );
   }
 
@@ -1416,6 +1437,31 @@ export class OrdersComponent implements OnInit, OnDestroy {
     void this.router.navigate([], {
       relativeTo: this.route,
       queryParams: { createdBy: null, name: null },
+      queryParamsHandling: 'merge',
+    });
+    if (wasActive) {
+      this.resetAndLoad();
+    }
+  }
+
+  protected paymentCategoryLabel(): string {
+    switch (this.paymentCategoryFilter()) {
+      case 'CASH': return 'Cash amount received';
+      case 'NO_RECEIVING_ACCOUNT': return 'No receiving account recorded';
+      case 'NAMED_ACCOUNT': return 'Named receiving account';
+      default: return '';
+    }
+  }
+
+  clearPaymentDrillDown(): void {
+    const wasActive = this.paymentCategoryFilter() != null;
+    this.paymentCategoryFilter.set(null);
+    this.paymentAccountFilter.set(null);
+    this.paymentFromFilter.set(null);
+    this.paymentToFilter.set(null);
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { paymentCategory: null, paymentAccountId: null, paymentFrom: null, paymentTo: null },
       queryParamsHandling: 'merge',
     });
     if (wasActive) {

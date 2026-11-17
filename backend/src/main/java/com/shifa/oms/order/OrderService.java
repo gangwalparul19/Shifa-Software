@@ -21,6 +21,7 @@ import com.shifa.oms.inventory.StockService;
 import com.shifa.oms.label.LabelService;
 import com.shifa.oms.ledger.VoucherRepository;
 import com.shifa.oms.ledger.autopost.SourcePostingLogRepository;
+import com.shifa.oms.ledger.autopost.OrderDateLedgerCorrectionService;
 import com.shifa.oms.notification.ShipmentMilestoneNotifier;
 import com.shifa.oms.order.domain.DiscountType;
 import com.shifa.oms.order.domain.Money;
@@ -65,7 +66,6 @@ import com.shifa.oms.settings.PaymentMethodService;
 import com.shifa.oms.settings.SettingsService;
 import com.shifa.oms.statemachine.OrderStatus;
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -182,8 +182,13 @@ public class OrderService {
     private final ShipmentMilestoneNotifier milestoneNotifier;
 
     /** Used to refresh the managed order after the narrow native created_at update. */
-    @PersistenceContext
     private EntityManager entityManager;
+
+    /** Optional in MVC slice tests; present in the full JPA application context. */
+    @Autowired(required = false)
+    void setEntityManager(EntityManager entityManager) {
+        this.entityManager = entityManager;
+    }
 
     /** Optional bank-account master; setter injection preserves legacy test constructors. */
     private BankAccountRepository bankAccountRepository;
@@ -207,6 +212,8 @@ public class OrderService {
     private SourcePostingLogRepository sourcePostingLogRepository;
     /** GST filing state used to reject corrections touching a filed GSTR-1 month. */
     private ReturnFilingRepository returnFilingRepository;
+    /** Coordinates reversal/repost of ORDER/PAYMENT vouchers for punched-date corrections. */
+    private OrderDateLedgerCorrectionService orderDateLedgerCorrectionService;
     /** Courier artifacts make the original operational date immutable. */
     private CourierRecordRepository courierRecordRepository;
 
@@ -259,6 +266,11 @@ public class OrderService {
     @Autowired(required = false)
     void setReturnFilingRepository(ReturnFilingRepository returnFilingRepository) {
         this.returnFilingRepository = returnFilingRepository;
+    }
+
+    @Autowired(required = false)
+    void setOrderDateLedgerCorrectionService(OrderDateLedgerCorrectionService service) {
+        this.orderDateLedgerCorrectionService = service;
     }
 
     @Autowired(required = false)
@@ -487,6 +499,11 @@ public class OrderService {
         PaymentCapture paymentCapture = resolvePaymentCapture(
                 request.paymentMethod(), request.paymentAccountId(), request.paymentUtr(),
                 calc.amountReceived().toBigDecimal(), null);
+        // Salesperson/portal orders require a receiving account for every non-Cash
+        // method. Cash is explicitly stored as CASH without account metadata; V116
+        // restores that stable payment-method exception after V115's normalization.
+        requireSalespersonReceivingAccount(paymentCapture, calc.amountReceived());
+        requirePortalPaymentMethodAllowed(paymentCapture.method(), actor);
 
         // "Place on behalf of" (admin only): when an ADMIN punches the order for a
         // salesperson/team lead, attribute the order to that user (created_by +
@@ -538,13 +555,13 @@ public class OrderService {
         // lead source (walk-in shop sale) always forces IN_HOUSE — no delivery
         // partner is ever involved, so neither QuikShipX nor courier assignment
         // is triggered for it (reuses every existing isInHouseDelivery() gate).
-        order.setDeliveryMethod(request.leadSource() == LeadSource.COUNTER_SALE
+        order.setDeliveryMethod(effectiveDeliveryMethod(request.leadSource() == LeadSource.COUNTER_SALE
                 ? DeliveryMethod.IN_HOUSE
-                : parseDeliveryMethod(request.deliveryMethod()));
+                : parseDeliveryMethod(request.deliveryMethod())));
 
-        // Prepaid / partially-paid orders carry a payment to verify for authenticity
-        // (product-audit §4.4). Pure COD orders have nothing to verify.
-        if (calc.paymentStatus() != PaymentStatus.COD) {
+        // Every non-Shopify order must pass payment verification. Shopify imports
+        // are the sole bypass because checkout and settlement happen externally.
+        if (order.getSource() != OrderSource.SHOPIFY) {
             order.markPaymentPendingVerification();
         }
 
@@ -564,25 +581,20 @@ public class OrderService {
         reserveStock(priced, creator.userId(), order.getOrderCode());
 
         OrderEntity saved = orderRepository.save(order);
-        // Config-driven auto-approval (V73, DEFAULT OFF): when the admin has
-        // enabled it, a low-value, fully-prepaid order from a low-risk customer is
-        // approved immediately via the same central workflow the admin approve uses
-        // (authority + single history row + audit + notification fan-out + label +
-        // ledger post). Anything with a COD balance, above the threshold, or from a
-        // medium/high-risk customer is left PENDING for manual approval. No-op in
-        // unit tests (settingsService/labelService null) so existing behaviour holds.
+        // Manual approval is mandatory for every salesperson/portal order. The
+        // retained V73 helper is intentionally a no-op for this source; it exists
+        // only to keep old constructor compatibility while the setting is retired.
         maybeAutoApprove(saved, calc);
         // Real-time admin nudge: a freshly punched order lands in the approval
         // queue, so enqueue an ORDER_AWAITING_APPROVAL event in this same
         // transaction. The SSE relay surfaces it to connected admins; the row is
         // persisted regardless, so nothing is lost when no admin is online.
-        // (No-op once the order was auto-approved — it guards on PENDING status.)
+        // (It remains pending until the separate approval action.)
         publishAwaitingApproval(saved);
-        // QuikShipX (publish-on-approval, NOT on punch): a plain salesperson punch
-        // leaves the order PENDING_ADMIN_APPROVAL, so this is a no-op — the order is
-        // sent to QuikShipX only when it is approved (so the courier always receives
-        // the final, edited details). The only case this fires at punch time is an
-        // auto-approved order (maybeAutoApprove already moved it to APPROVED above).
+        publishPaymentAwaitingVerification(saved);
+        // QuikShipX (publish-on-approval, NOT on punch): a salesperson punch
+        // always leaves the order PENDING_ADMIN_APPROVAL, so this is a no-op —
+        // the order is sent to QuikShipX only after manual approval.
         publishToQuikShipX(saved);
         // Acknowledge a COD order to the customer over WhatsApp the moment it is
         // punched (customer shipment notifications) — de-duped, and a no-op for
@@ -646,6 +658,17 @@ public class OrderService {
         List<String> screenshotKeys = storeScreenshotKeys(request);
         PaymentCalculator.requireScreenshotWhenPaid(received, OrderPaymentProofs.primary(screenshotKeys));
         PaymentCalculation calc = PaymentCalculator.classify(total, received);
+        String storeMethod = request.paymentMethod() == null || request.paymentMethod().isBlank()
+                ? "CASH" : request.paymentMethod();
+        PaymentCapture paymentCapture = resolvePaymentCapture(
+                storeMethod, request.paymentAccountId(), request.paymentUtr(),
+                calc.amountReceived().toBigDecimal(), null);
+        if (!isCashMethod(paymentCapture.method())) {
+            throw new ValidationException("POS orders support Cash only.");
+        }
+
+        // Cash is a valid counter payment with no receiving-account selection; the
+        // resolved method code is persisted on the payment row.
 
         // Address is optional for a counter sale (no delivery) — store whatever was
         // given, defaulting blanks so the NOT-NULL columns are satisfied.
@@ -678,11 +701,14 @@ public class OrderService {
         }
         order.setBuyerGstin(buyerGstin);
 
-        // A counter sale has no payment to verify online (the money is in hand), so
-        // it never enters the payment-verification queue — do NOT mark it pending.
-        // The screenshot is attached as proof-of-record only.
+        // Every POS order waits for the Payment Verifier before the counter-sale
+        // finalizer can mark it delivered/closed. Shopify is the only order source
+        // that bypasses verification; STORE orders always carry PENDING here,
+        // including a zero-received counter order.
+        order.markPaymentPendingVerification();
 
-        populateAggregate(order, priced, calc, screenshotKeys, admin.username(), SOURCE_STORE);
+        populateAggregate(order, priced, calc, screenshotKeys, paymentCapture,
+                admin.username(), SOURCE_STORE);
 
         DiscountType discountType = discountSpec.type();
         order.applyOrderDiscount(
@@ -693,11 +719,11 @@ public class OrderService {
         reserveStock(priced, admin.userId(), order.getOrderCode());
 
         OrderEntity saved = orderRepository.save(order);
-        // Fast-forward past the approval queue: a counter sale is already decided and
-        // handed over. Fully paid → CLOSED; partial → COD_COLLECTED (balance tracked
-        // as a COD receivable). Always terminal. Best-effort; never fails the sale.
-        fastForwardStoreOrder(saved, calc);
-        return OrderResponse.from(orderRepository.save(saved));
+        // STORE orders remain held at PENDING_ADMIN_APPROVAL until the Payment
+        // Verifier confirms them. The verifier then calls the POS-only finalizer;
+        // Shopify is the only source that bypasses this gate.
+        publishPaymentAwaitingVerification(saved);
+        return OrderResponse.from(saved);
     }
 
     /**
@@ -721,7 +747,31 @@ public class OrderService {
      * hiccup leaves the order at the furthest legal state reached and never fails
      * the counter sale.
      */
-    private void fastForwardStoreOrder(OrderEntity order, PaymentCalculation calc) {
+    /**
+     * Releases a POS order after its payment has been verified. This runs in the
+     * same transaction as the verification decision, so a failed finalization
+     * rolls the decision back instead of leaving a falsely verified held order.
+     */
+    @Transactional
+    public OrderResponse finalizeStoreOrderAfterPaymentVerification(Long orderId) {
+        OrderEntity order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order " + orderId + " does not exist."));
+        if (order.getSource() != OrderSource.STORE) {
+            return OrderResponse.from(order);
+        }
+        if (order.getPaymentVerificationStatus() != PaymentVerificationStatus.VERIFIED) {
+            throw new ValidationException("The POS payment must be verified before the sale is released.");
+        }
+        if (order.getOrderStatus() != OrderStatus.PENDING_ADMIN_APPROVAL) {
+            return OrderResponse.from(order);
+        }
+        PaymentCalculation calc = PaymentCalculator.classify(
+                Money.of(order.getTotalAmount()), Money.of(order.getAmountReceived()));
+        fastForwardStoreOrder(order, calc, true);
+        return OrderResponse.from(orderRepository.save(order));
+    }
+
+    private void fastForwardStoreOrder(OrderEntity order, PaymentCalculation calc, boolean failFast) {
         if (orderWorkflowService == null) {
             return; // not wired (unit tests) → leave pending
         }
@@ -764,6 +814,9 @@ public class OrderService {
                 }
             }
         } catch (RuntimeException e) {
+            if (failFast) {
+                throw e;
+            }
             // A counter sale must never fail because a fast-forward hop was blocked;
             // the order simply stays at the furthest legal state reached.
             log.warn("Store-order fast-forward stopped early for {}: {}",
@@ -807,6 +860,19 @@ public class OrderService {
         return trimmed.isEmpty() ? "-" : trimmed;
     }
 
+    /**
+     * Tells connected Payment Verifier/admin sessions that a new payment is waiting,
+     * so the Payment Queue refreshes by itself. This matters most for POS orders,
+     * where the customer is waiting at the counter for the release.
+     */
+    private void publishPaymentAwaitingVerification(OrderEntity order) {
+        if (outboxEventPublisher != null
+                && order.getPaymentVerificationStatus() == PaymentVerificationStatus.PENDING) {
+            outboxEventPublisher.publishPaymentVerificationChanged(
+                    order.getId(), order.getOrderCode(), PaymentVerificationStatus.PENDING.name());
+        }
+    }
+
     /** Enqueues the admin "order needs approval" nudge for a newly punched pending order. */
     private void publishAwaitingApproval(OrderEntity order) {
         if (outboxEventPublisher != null
@@ -818,23 +884,20 @@ public class OrderService {
     }
 
     /**
-     * Config-driven auto-approval (V73). Approves the just-saved order in-place
-     * (same transaction) when ALL of the following hold:
-     * <ul>
-     *   <li>the feature is enabled in Settings and a positive max-amount is set;</li>
-     *   <li>the order is still {@code PENDING_ADMIN_APPROVAL} (defensive);</li>
-     *   <li>it is fully prepaid — no COD balance to collect on delivery;</li>
-     *   <li>the order total is at or below the configured threshold;</li>
-     *   <li>the customer's delivery-risk is {@link CustomerRiskLevel#LOW}.</li>
-     * </ul>
-     * Any other case leaves the order pending for manual approval. The required
-     * collaborators ({@code settingsService}, {@code labelService},
-     * {@code orderWorkflowService}, {@code outboxEventPublisher}) must all be
-     * present — under the legacy test constructors they are null and this is a
-     * no-op, preserving the unchanged manual-approval behaviour. Best-effort:
-     * never throws out (a config/label hiccup must not fail the order punch).
+     * Retained compatibility guard for the former V73 auto-approval setting.
+     * Salesperson/portal orders now always require payment verification followed
+     * by a separate manual ADMIN or ACCOUNTANT approval, so this method returns
+     * before any automatic transition. Shopify imports use their own explicit
+     * import-time approval flow and do not call this method.
      */
     private void maybeAutoApprove(OrderEntity order, PaymentCalculation calc) {
+        // Manual ADMIN approval is mandatory for every salesperson/portal order,
+        // even after Payment Verification marks the upfront payment genuine.
+        // Shopify imports have their own explicit import-time approval flow and do
+        // not call this method.
+        if (order.getSource() == OrderSource.SALESPERSON) {
+            return;
+        }
         if (settingsService == null || labelService == null
                 || orderWorkflowService == null || outboxEventPublisher == null) {
             return; // auto-approval not wired (unit tests) → leave pending
@@ -937,6 +1000,16 @@ public class OrderService {
             outboxEventPublisher.publishQuikShipXCreate(order.getId(), order.getOrderCode());
             outboxEventPublisher.publishQuikShipXConfirm(order.getId(), order.getOrderCode());
         }
+    }
+
+    /** Local/demo QuikShipX is fail-closed: courier orders become in-house instead. */
+    private DeliveryMethod effectiveDeliveryMethod(DeliveryMethod requested) {
+        if (requested == DeliveryMethod.QUIKSHIPX
+                && quikShipXProperties != null
+                && !quikShipXProperties.isEnabled()) {
+            return DeliveryMethod.IN_HOUSE;
+        }
+        return requested;
     }
 
     /** Parses the optional delivery-method request field; blank/null defaults to QUIKSHIPX. */
@@ -1179,9 +1252,9 @@ public class OrderService {
 
     /**
      * ADMIN-only correction of the calendar date on which an order was punched.
-     * The original time-of-day is preserved in IST. This remains deliberately
-     * narrower than payment correction because createdAt drives GST, reports,
-     * incentives, duplicate-day rules, invoices, and ledger dates.
+     * The original time-of-day is preserved in IST. Posted ORDER/PAYMENT vouchers
+     * are corrected through reversal plus exact-line reposting; independent delivery,
+     * refund, settlement, invoice, and filed-period artifacts remain blocked.
      */
     @Transactional
     public OrderResponse correctCreatedAt(Long id, CorrectCreatedDateRequest request, AuthPrincipal admin) {
@@ -1227,6 +1300,13 @@ public class OrderService {
 
         LocalDateTime previous = order.getCreatedAt();
         LocalDateTime corrected = LocalDateTime.of(correctedDate, previous.toLocalTime());
+        if (orderDateLedgerCorrectionService == null) {
+            throw new IllegalStateException("Order-date accounting correction is not available.");
+        }
+        OrderCreatedAtCorrection correction = orderCreatedAtCorrectionRepository.saveAndFlush(
+                new OrderCreatedAtCorrection(order.getId(), previous, corrected, reason,
+                        admin == null ? null : admin.userId(), admin == null ? null : admin.username()));
+        orderDateLedgerCorrectionService.correct(correction, oldDate, correctedDate);
         if (entityManager == null) {
             // Legacy unit constructors have no persistence context; preserve the
             // in-memory behavior for those tests while production uses the safe
@@ -1241,10 +1321,6 @@ public class OrderService {
             entityManager.refresh(order);
         }
         OrderEntity saved = order;
-        orderCreatedAtCorrectionRepository.save(new OrderCreatedAtCorrection(
-                saved.getId(), previous, corrected, reason,
-                admin == null ? null : admin.userId(), admin == null ? null : admin.username()));
-
         if (auditService != null) {
             auditService.record(admin == null ? null : admin.userId(), admin == null ? null : admin.username(),
                     AuditActions.ORDER_CREATED_AT_CORRECTED, AuditActions.ENTITY_ORDER,
@@ -1255,7 +1331,7 @@ public class OrderService {
         return OrderResponse.from(saved).withCreatedAtCorrected(true);
     }
 
-    /** Refuses date mutation once any operational, accounting, invoice, or settlement artifact exists. */
+    /** Refuses mutation after independent operational/accounting artifacts; ORDER/PAYMENT are re-dated by the ledger coordinator. */
     private void requireNoDateCorrectionArtifacts(OrderEntity order) {
         if (order.getInvoiceNumber() != null && !order.getInvoiceNumber().isBlank()) {
             throw new OrderNotEditableException(order.getOrderCode(),
@@ -1287,8 +1363,10 @@ public class OrderService {
             }
         }
 
-        for (String source : List.of("ORDER", "PAYMENT", "ORDER_DELIVERY",
-                "PAYMENT_CORRECTION", "RETURN_REFUND")) {
+        // ORDER and PAYMENT vouchers are handled by OrderDateLedgerCorrectionService
+        // through reversal + exact-line reposting. Independent business-date sources
+        // remain blockers because their dates come from delivery/refund/correction events.
+        for (String source : List.of("ORDER_DELIVERY", "PAYMENT_CORRECTION", "RETURN_REFUND")) {
             if (voucherRepository.findBySourceTypeAndSourceId(source, order.getId()).isPresent()
                     || sourcePostingLogRepository.existsBySourceTypeAndSourceId(source, order.getId())) {
                 throw new OrderNotEditableException(order.getOrderCode(),
@@ -1299,10 +1377,17 @@ public class OrderService {
             for (OutboxEvent event : outboxEventRepository.findByAggregateTypeAndAggregateIdAndEventType(
                     OutboxEvent.AGGREGATE_LEDGER_SOURCE, order.getId(), OutboxEvent.EVENT_LEDGER_POST)) {
                 Object sourceType = event.getPayload() == null ? null : event.getPayload().get("sourceType");
-                if (sourceType != null && !OutboxEvent.STATUS_SKIPPED.equals(event.getStatus())) {
-                    throw new OrderNotEditableException(order.getOrderCode(),
-                            "The punched date cannot be corrected while accounting is queued for this order.");
+                if (sourceType == null || OutboxEvent.STATUS_SKIPPED.equals(event.getStatus())) {
+                    continue;
                 }
+                if (("ORDER".equals(String.valueOf(sourceType))
+                        || "PAYMENT".equals(String.valueOf(sourceType)))
+                        && OutboxEvent.STATUS_SENT.equals(event.getStatus())) {
+                    // A posted ORDER/PAYMENT source is handled by reversal/repost.
+                    continue;
+                }
+                throw new OrderNotEditableException(order.getOrderCode(),
+                        "The punched date cannot be corrected while accounting is queued for this order.");
             }
         }
     }
@@ -1412,6 +1497,7 @@ public class OrderService {
                     + " Ask an admin to make changes.");
         }
 
+        requirePortalPaymentMethodAllowed(request.paymentMethod(), actor);
         String diff = applyEditedFields(order, request, actor.userId());
 
         OrderEntity saved = orderRepository.save(order);
@@ -1460,6 +1546,7 @@ public class OrderService {
         }
 
         // Re-apply the corrected details (same re-price + stock reconcile as an edit).
+        requirePortalPaymentMethodAllowed(request.paymentMethod(), actor);
         String diff = applyEditedFields(order, request, actor.userId());
 
         // Clear the rejection so the reworked order carries no stale reason.
@@ -2349,6 +2436,31 @@ public class OrderService {
     }
 
     /** Fills a payment transaction from an order-entry capture. */
+    /** Cash is available to ADMIN portal punches and POS, but never to salesperson/team-lead portal punches. */
+    private static void requirePortalPaymentMethodAllowed(String method, AuthPrincipal actor) {
+        if (isCashMethod(method) && actor != null && actor.role() != Role.ADMIN) {
+            throw new ValidationException(
+                    "Cash payments are available only for POS orders or admin order entry. Select a bank or QR method.");
+        }
+    }
+
+    /**
+     * Enforces the V115 salesperson-order rule that every upfront payment names
+     * the receiving account. The nullable repository guard preserves the legacy
+     * unit-test constructors; Spring production wiring always supplies it.
+     */
+    private void requireSalespersonReceivingAccount(PaymentCapture capture, Money amountReceived) {
+        if (bankAccountRepository != null
+                && amountReceived != null
+                && amountReceived.compareTo(Money.ZERO) > 0
+                && capture != null
+                && capture.requiresAccount()
+                && capture.accountId() == null) {
+            throw new ValidationException(
+                    "Select the receiving bank or QR account before punching this order.");
+        }
+    }
+
     private PaymentCapture resolvePaymentCapture(String methodRaw, Long accountId, String utrRaw,
                                                  BigDecimal amount, Long currentOrderId) {
         // The method comes from the admin-managed master: a blank code means the default method,
@@ -2356,15 +2468,20 @@ public class OrderService {
         // constructors) the historical built-in codes apply.
         PaymentMethod configured = paymentMethodService == null ? null : paymentMethodService.requireUsable(methodRaw);
         String method = configured != null ? configured.getCode() : legacyMethodCode(methodRaw);
-        boolean requiresAccount = configured != null
-                ? configured.isRequiresAccount() : legacyRequiresAccount(method);
+        boolean requiresAccount = !isCashMethod(method) && (configured != null
+                ? configured.isRequiresAccount() : legacyRequiresAccount(method));
         BankAccountType linkedType = configured == null ? null : configured.getLinkedAccountType();
         String utr = normalizeUtr(utrRaw);
         if (bankAccountRepository == null) {
-            return new PaymentCapture(method, accountId, null, null, utr);
+            return new PaymentCapture(method, requiresAccount, accountId, null, null, utr);
         }
         if (amount == null || amount.signum() <= 0) {
-            return new PaymentCapture(method, null, null, null, null);
+            return new PaymentCapture(method, requiresAccount, null, null, null, null);
+        }
+        // Cash is recorded as CASH but never carries a bank/QR account or UTR.
+        // This is the deliberate exception to the portal receiving-account rule.
+        if (!requiresAccount && linkedType == null) {
+            return new PaymentCapture(method, false, null, null, null, null);
         }
         // A linked method (e.g. Credit Card Link -> the Shopify settlement account) fills the
         // account in for the salesperson when the client did not send one.
@@ -2383,7 +2500,7 @@ public class OrderService {
         // given it is still checked for reuse on the same account below; when it is blank it is
         // stored as NULL, which the duplicate check and the unique index both ignore.
         if (accountId == null) {
-            return new PaymentCapture(method, null, null, null, utr);
+            return new PaymentCapture(method, requiresAccount, null, null, null, utr);
         }
         com.shifa.oms.settings.BankAccount account = bankAccountRepository.findById(accountId)
                 .orElseThrow(() -> new ValidationException("The selected receiving bank account does not exist."));
@@ -2399,13 +2516,17 @@ public class OrderService {
                 && orderPaymentRepository.countDuplicateUtr(account.getId(), utr, currentOrderId) > 0) {
             throw new ValidationException("This UTR/reference is already recorded for the selected receiving account.");
         }
-        return new PaymentCapture(method, account.getId(), account.getDisplayName(),
+        return new PaymentCapture(method, requiresAccount, account.getId(), account.getDisplayName(),
                 account.maskedAccountNumber(), utr);
     }
 
     /** Method code used when no payment-method master is wired (legacy unit constructors). */
     private static String legacyMethodCode(String raw) {
         return raw == null || raw.isBlank() ? "UPI_QR" : raw.trim().toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private static boolean isCashMethod(String code) {
+        return code != null && "CASH".equalsIgnoreCase(code.trim());
     }
 
     private static boolean legacyRequiresAccount(String code) {
@@ -2417,9 +2538,9 @@ public class OrderService {
         return type.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
     }
 
-    private record PaymentCapture(String method, Long accountId, String accountName,
+    private record PaymentCapture(String method, boolean requiresAccount, Long accountId, String accountName,
                                   String accountMasked, String utr) {
-        static PaymentCapture none() { return new PaymentCapture(null, null, null, null, null); }
+        static PaymentCapture none() { return new PaymentCapture(null, false, null, null, null, null); }
     }
 
     /**

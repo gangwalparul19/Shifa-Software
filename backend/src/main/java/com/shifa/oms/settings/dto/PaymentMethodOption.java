@@ -4,7 +4,8 @@ import com.shifa.oms.settings.BankAccountType;
 import com.shifa.oms.settings.PaymentMethod;
 
 /**
- * Active payment method as offered to order-entry roles.
+ * Active payment method as offered to salesperson/portal order entry. Cash is the only method that
+ * does not require a receiving account; other methods require one or auto-select a linked account.
  *
  * @param autoAccountId the receiving account to pre-select when {@code linkedAccountType} is set
  *                      (null when there is no link, or no active account of that purpose exists)

@@ -9,7 +9,7 @@ packing → courier → delivery → settlement) is tracked end to end.
 > and the important gotchas. Read it before scanning the codebase. A condensed "memory" for fast
 > context lives in `.kiro/steering/project-memory.md` and is kept in sync with this file.
 
-> **Current baseline (2026-11-14):** **Production is at V114** (deployed and verified on the AWS server on 2026-11-13 around 17:22 IST, then redeployed on 2026-11-14 with the corrected punched-date marker). It includes the customer-email switch, report recipients and Send-now email controls, ADMIN payment correction with audit/ledger handling, ADMIN punched-date correction with audit and V113 safeguards, the edit-page date shortcut, the visible corrected-date marker for bank matching, Team-wise sales periods/export, the complete Leaderboard export, announcement pinning and period selectors, and the confirmation WhatsApp message's public `/track-order` call-to-action. See the deployment notes at the end of this file. Older sections that say "production last documented at V73" or "not deployed" are historical. The supported production target is AWS EC2 (`15.252.230.73` SSH) with the canonical HTTPS URL `https://shifa.weblithic.online/` and Amazon S3 storage (`application-prod.yml` defaults to `STORAGE_PROVIDER=S3`). The unused OCI stub/SDK are removed. Current validation is **1071 backend tests, 0 failures** (full `clean package`, excluding `WhatsappTemplateEncodingIT` which needs a live MySQL), admin production build successful with the existing shell CSS budget warning, and frontend property tests **7 suites / 36 tests**. Dated deployment/build notes below are historical records; use the current baseline and `DEPLOYMENT.md` for operations.
+> **Current baseline (2026-11-17):** **Production is at V117** (`V117__order_created_at_ledger_corrections.sql`), deployed and verified on the AWS server on 2026-11-17. This release includes the V115 salesperson payment-account/manual-approval policy, V116 Cash method rules, Settlement Center category counts and Orders drill-down, accounting-aware punched-date correction, and the local-only QuikShipX fail-closed profile behavior. Production still runs normal QuikShipX fulfilment through `QUIKSHIPX_ENABLED=true`, `QUIKSHIPX_MODE=HTTP`, and `QUIKSHIPX_SECRET_MODE=LIVE`; only the local profile disables external QuikShipX placement and AWB generation. See the deployment notes at the end of this file. Older sections that say "production last documented at V73" or "not deployed" are historical. The supported production target is AWS EC2 (`15.252.230.73` SSH) with the canonical HTTPS URL `https://shifa.weblithic.online/` and Amazon S3 storage (`application-prod.yml` defaults to `STORAGE_PROVIDER=S3`). The unused OCI stub/SDK are removed. Current validation is **1071 backend tests, 0 failures** (full `clean package`, excluding `WhatsappTemplateEncodingIT` which needs a live MySQL), admin production build successful with the existing shell CSS budget warning, and frontend property tests **7 suites / 36 tests**. Dated deployment/build notes below are historical records; use the current baseline and `DEPLOYMENT.md` for operations.
 
 
 | Layer      | Technology                                                                 |
@@ -36,7 +36,7 @@ Shifa-Software/
 │  │  ├─ application.yml              # base config
 │  │  ├─ application-local.yml        # local profile (MySQL localhost, shifa_dashboard)
 │  │  ├─ application-prod.yml         # prod profile (env-driven)
-│  │  └─ db/migration/                # Flyway V1..V105 (see §6)
+│  │  └─ db/migration/                # Flyway V1..V117 (see §6)
 │  └─ pom.xml
 ├─ frontend/                    # Angular 21 workspace
 │  ├─ angular.json                    # projects: admin, core, ui
@@ -386,9 +386,15 @@ Migration history:
   **V105__outbox_claim_leases.sql** — fenced pending-row leases, expiry recovery, and the composite due-claim index for multi-instance integration drainers.
   **V106__query_performance_indexes.sql** — five composite indexes for the hottest order, payment and status-history filters.
   **V107`..`V113** — database-managed payment methods, daily incentives, announcement pinning, customer-email controls,
-  report recipients, ADMIN payment corrections, and ADMIN punched-date corrections. Production is currently at V114.
+  report recipients, ADMIN payment corrections, and ADMIN punched-date corrections. Production is now at V117.
   **V114__whatsapp_confirm_tracking_link.sql** — adds the public `/track-order` link and mobile-number/live-tracking instructions
-  to the confirmation WhatsApp template. **V114 is deployed and production is at V114.**
+  to the confirmation WhatsApp template.
+  **V115__salesperson_payment_account_and_manual_approval.sql** — requires receiving-account metadata for salesperson/team-lead
+  portal payments and keeps payment verification separate from lifecycle approval.
+  **V116__cash_payment_method_without_receiving_account.sql** — keeps Cash as a POS/admin-only no-account exception while
+  rejecting Cash for salesperson/team-lead portal entry.
+  **V117__order_created_at_ledger_corrections.sql** — records accounting-aware punched-date corrections by reversing and
+  reposting eligible ORDER/PAYMENT vouchers without mutating posted vouchers. **V117 is deployed and production is at V117.**
 
 > Fresh DB required: because V22 seeds with explicit IDs, start against an **empty**
 > `shifa_dashboard`. If a half-migrated DB exists, drop & recreate it before starting.
@@ -596,7 +602,7 @@ Orders in `HANDED_TO_DELIVERY` are now eligible for the same RTO scan path as `C
 The RTO mobile scan field now uses a full-width 4rem input and 3.5rem camera button. The camera overlay's barcode reticle is taller, giving Code 128/AWB labels a larger target. Focused backend tests passed **24/24**; the admin build completed with the existing shell CSS budget warning. No migration; not deployed.
 
 ### Settlement Center upfront-payment account KPIs — implemented locally, not deployed
-Clarified settlement scope: UTRs reconcile the partial/full upfront payment captured when an order is placed, not QuikShip COD remittances. Added read-only `GET /api/recon/settlements/kpis` with IST date-window support and an ADMIN/ACCOUNTANT/CA Settlement Center KPI panel. The UI defaults to **Today** and supports Yesterday, This week, This month, All time, and custom From/To dates. It shows one card per bank/UPI account with OMS booked, verified, pending, bank-statement total, UTR-matched, unmatched, and statement-minus-OMS difference. Legacy payments without an account appear under `Unassigned / legacy`. Bank receipt Excel imports now require a destination account, require UTR matching, prevent order-code/AWB fallback for bank statements, and use the statement date as the line date when a row date is absent. The KPI totals combine V97 `payments` metadata with V98 bank-receipt evidence; QuikShip COD and Shopify payouts remain separate. No migration was added; V97/V98 already provide the required data. Backend compile and admin bundle validation passed; not deployed.
+Clarified settlement scope: UTRs reconcile the partial/full upfront payment captured when an order is placed, not QuikShip COD remittances. Added read-only `GET /api/recon/settlements/kpis` with IST date-window support and an ADMIN/ACCOUNTANT/CA Settlement Center KPI panel. The UI defaults to **Today** and supports Yesterday, This week, This month, All time, and custom From/To dates. It shows one card per bank/UPI account with OMS booked, verified, pending, bank-statement total, UTR-matched, unmatched, and statement-minus-OMS difference. Legacy payments without an account appear under `No receiving account recorded`. Bank receipt Excel imports now require a destination account, require UTR matching, prevent order-code/AWB fallback for bank statements, and use the statement date as the line date when a row date is absent. The KPI totals combine V97 `payments` metadata with V98 bank-receipt evidence; QuikShip COD and Shopify payouts remain separate. No migration was added; V97/V98 already provide the required data. Backend compile and admin bundle validation passed; not deployed.
 
 ### Current audit-remediation continuation (local, not deployed)
 - Source is now at Flyway **V105**. V105 adds fenced outbox leases and the indexed due-claim path; integration drainers use bounded claims with lease-token completion fencing.
@@ -665,7 +671,7 @@ Admins can now ask plain-language questions about orders, sales and product quan
 The in-house assistant (see the section above; still rule-based, no AI model, nothing leaves the OMS, ADMIN only, no migration) now also answers:
 
 - **Status of an order.** "What is the status of order SHR-20260925-WJS7?" shows the stage, last update, customer, items, amounts, payment check, courier/tracking number and the last few status changes. It also accepts a courier tracking number, a QuikShip order id, or just the last characters of an order number. A customer's latest orders come from their mobile number.
-- **Money received per bank / QR account.** "Received in Bank 1 today, Bank 2 or Bank 3" matches the accounts set up under Settings. A number in the question ("Bank 2", "QR 2") matches the account with that number in its name; a name ("HDFC") matches by its distinctive word. A reference that matches no account is reported, with the real account names, and never replaced by "all accounts". Figures use the Settlement Center's "OMS booked" basis (payments by capture time and receiving account) and are split into verified, awaiting verification, rejected and not reviewed. Payments with no account (older orders, cash, Shopify) appear as "Unassigned / legacy".
+- **Money received per bank / QR account.** "Received in Bank 1 today, Bank 2 or Bank 3" matches the accounts set up under Settings. A number in the question ("Bank 2", "QR 2") matches the account with that number in its name; a name ("HDFC") matches by its distinctive word. A reference that matches no account is reported, with the real account names, and never replaced by "all accounts". Figures use the Settlement Center's "OMS booked" basis (payments by capture time and receiving account) and are split into verified, awaiting verification, rejected and not reviewed. Payments with no account (older orders, cash, Shopify) appear as "No receiving account recorded".
 - **COD to collect.** "Amount to collect on delivery for today, yesterday, this week, this month" uses the dashboard's "COD due" basis: cash on delivery on orders **placed** in the period, cancelled and rejected orders left out. Several periods in one question give one row per period, and received-in-bank and COD can be asked together.
 - **Money still to collect** (customers owe, courier owes, loss claims; the Reconciliation page's collectible summary) and **what needs attention** (the owner snapshot: approvals, payment verification, failed deliveries, RTO, COD past the courier SLA, claims, stuck shipments).
 - **Orders by stage.** "How many orders are pending approval" counts current state. "Orders delivered today" counts orders whose status **changed to** that stage today (from the order history, each order once). "Orders by status" shows where the orders placed in a period are now. Stage questions cannot yet be combined with a product.
@@ -835,14 +841,14 @@ Preparing the V82 → V106 production release added read-only checks and hardene
 
 ### UTR / transaction reference is optional at order entry (2026-11-01)
 
-Salespeople were blocked from punching UPI or bank-transfer orders without a UTR. The UTR is now **optional**; the **receiving account is still required** for UPI/QR and bank transfer (Cash needs neither). Changed `OrderService.resolvePaymentCapture` (server rule removed) and the New Order form (`paymentMetadataInvalid()` now checks only the account; the field is labelled optional). A blank UTR is stored as `NULL`, so the same-account duplicate check and the V104 unique index (both ignore NULL) cannot reject it; a UTR that *is* entered is still checked for reuse. Side effects to expect: orders without a UTR cannot be auto-matched by UTR in the Settlement Center (they fall to manual or amount matching), and the payment-verification screens show no UTR for them. No migration. `OrderServiceTest` (46), `ApplicationContextLoadsTest` and `EndpointRoleGuardIntegrationTest` pass. Not deployed.
+Salespeople were blocked from punching UPI or bank-transfer orders without a UTR. The UTR remains **optional**; a receiving account is now **mandatory for every salesperson/portal payment method**, including Cash. Changed `OrderService.resolvePaymentCapture` plus the New Order form so no portal order can be punched without a selected receiving bank, QR, cash, or other configured account. A blank UTR is stored as `NULL`, so the same-account duplicate check and the V104 unique index (both ignore NULL) cannot reject it; a UTR that *is* entered is still checked for reuse. Side effects to expect: orders without a UTR cannot be auto-matched by UTR in the Settlement Center (they fall to manual or amount matching), and the payment-verification screens show no UTR for them. V115 normalises existing payment methods and removes the Settings "no account needed" option. Shopify imports and POS/store orders remain separate flows.
 
 ### Payment methods are now managed in Settings (V107, implemented locally, not deployed)
 
 The **Payment method** list on New Order (previously a fixed UPI / QR, Bank transfer, Cash) now comes from the database, so an admin can add, rename, reorder, deactivate or delete methods and pick the default without a release.
 
 - **Where to manage it:** Settings → Bank tab → **Payment methods** (above Receiving accounts). Admin only. Each method has a name, a receiving-account rule, a sort order, Active, and Default. The default is pre-selected on New Order; there is always exactly one active default, so it cannot be unset, deactivated or deleted until another method is made the default.
-- **Receiving-account rule** (one dropdown): *Salesperson chooses the account*, *No account needed* (cash), or *Auto-select the \<purpose\> account* (for example Shopify settlement).
+- **Receiving-account rule:** every salesperson/portal payment must have a receiving account except the stable **CASH** method. A salesperson can choose the account, or a linked method can auto-select the matching-purpose account (for example Shopify settlement). Cash stores `payment_method=CASH` with no bank/QR account. The Settings editor keeps the no-account option only for Cash.
 - **Credit Card Link** is seeded by V107 and is set to *auto-select the Shopify settlement account*. When a salesperson picks it, **Amount received in** is filled with the Shopify account and lists only accounts of that purpose. The account used is the *Default Shopify settlement account* from Settings if one is set and active, otherwise the default-flagged, then first, active account of type Shopify settlement. **An admin must add an account with purpose "Shopify settlement" (Settings → Receiving accounts) before this method can be used;** until then New Order shows a "no account is set up" warning and the server rejects the order with a matching message.
 - **Delete vs deactivate:** a method keeps its code as plain text on each payment (`payments.payment_method`, no foreign key), so one that already has payments cannot be deleted and shows a *Deactivate* button instead; an unused one can be deleted. The table shows how many payments each method has.
 - **Data model:** `payment_methods` (`code` immutable and generated from the first name, `label`, `requires_account`, `linked_account_type`, `active`, `default_method`, `sort_order`). The hard-coded `order.PaymentMethod` enum is removed; `OrderPayment`, the order-payment, approval-queue and payment-queue DTOs now carry the code as a string. Existing payments (`UPI_QR`, `BANK_TRANSFER`, `CASH`) keep working because V107 seeds those same codes.
@@ -866,7 +872,7 @@ The client pays a flat daily bonus when a salesperson's sales for the day reach 
 
 ### Shopify payments are booked under the Shopify settlement account automatically (no migration, deployed to production 2026-11-01)
 
-Shopify collects the money a customer pays on its checkout and pays it out to the business later, so that money belongs under the **Shopify settlement** account, not "unassigned". Until now an imported Shopify payment was saved with no payment method and no receiving account, so the Settlement Center counted it under *Unassigned / legacy*.
+Shopify collects the money a customer pays on its checkout and pays it out to the business later, so that money belongs under the **Shopify settlement** account, not "unassigned". Until now an imported Shopify payment was saved with no payment method and no receiving account, so the Settlement Center counted it under *No receiving account recorded*.
 
 - **New Shopify orders.** When the `orders/create` webhook imports an order, the amount already paid on Shopify (the full total for a paid order, or the paid part of a part-paid one) is saved as a payment with the Shopify settlement account (id plus name and masked-number snapshots) and the payment method linked to that purpose (**Credit Card Link** by default). A pure pay-on-delivery Shopify order has no payment row, so nothing is booked; the balance is collected by the courier, not by Shopify. No UTR or screenshot is set.
 - **Which account.** The same rule as Credit Card Link at order entry (`PaymentMethodService.linkedTarget`): the *Default Shopify settlement account* chosen in Settings if it is active, otherwise the default-flagged active account with purpose "Shopify settlement", otherwise the first active one. Deactivated accounts are ignored. If the Credit Card Link method was deleted, the account is still stamped and the method code is left empty.
@@ -1029,3 +1035,83 @@ The confirmation WhatsApp template tracking-link update was deployed to AWS EC2 
 - Flyway applied V114 successfully. The service started cleanly in 32.157 seconds, remains active with `NRestarts=0`, and `/actuator/health` returns 200.
 - The public site returns 200, unauthenticated `/api/states` returns 401, and the served admin bundle is `main-UJ7ONS4P.js`.
 - Post-deploy verification reported 0 blockers and 0 warnings. The invariant fingerprint was unchanged: 3,859 orders, total amount ₹1,00,50,204.86, amount received ₹61,39,651.08, 7,053 line items, 3,950 payments.
+
+### Initial salesperson payment-account policy draft (V115, historical local draft — 2026-11-03)
+
+### Salesperson payment-account and manual-approval policy (V115/V116, deployed 2026-11-17)
+
+Salesperson/portal orders now have two mandatory controls before fulfilment:
+
+- **Bank/QR account before punch:** SALESPERSON and TEAM_LEAD portal orders cannot use Cash. The Cash option is hidden and every available method requires an active receiving account, including ADMIN orders placed on behalf of a salesperson. Lead conversion uses the same restriction. UTR remains optional.
+- **POS payment recording:** POS shows Cash only, defaults to Cash, sends the selected method, and persists `payment_method=CASH` with no bank-account metadata. POS is the only non-admin order-entry flow where Cash is available.
+- **ADMIN portal entry:** ADMIN can see and use Cash in a normal non-POS order. This is intentionally allowed because the admin can record an exceptional cash sale while salesperson order entry remains bank/QR controlled.
+- **Payment verification does not approve the order:** a prepaid or partially-paid portal order starts with payment verification `PENDING`. After the Payment Verifier marks it `VERIFIED`, the order remains `PENDING_ADMIN_APPROVAL`; ADMIN/ACCOUNTANT must perform the separate approval action. The former V73 portal auto-approval setting is disabled and its Settings card now explains the mandatory manual-approval policy.
+
+V115 normalized legacy payment methods to require accounts. V116 restores Cash as the POS/admin-only no-account exception without editing V115 and clears any linked account type from Cash. Shopify webhook imports remain separate because Shopify owns checkout payment. These changes were deployed with V117 on 2026-11-17; production remains configured for normal QuikShipX fulfilment.
+
+### Settlement Center “No receiving account recorded” bucket (deployed 2026-11-17)
+
+The Settlement Center card formerly labelled **Unassigned / legacy** is now labelled **No receiving account recorded**. It is not a bank account and it is not limited to old orders. The backend groups active-order payment rows where `payments.bank_account_id IS NULL`, using the selected `payments.captured_at` period.
+
+The bucket can include:
+
+- intentional Cash payments, including the new `CASH` method;
+- older payment rows created before receiving-account metadata existed;
+- Shopify prepaid payments imported before a Shopify settlement account was configured or assigned; and
+- any exceptional imported/manual payment row whose account metadata is missing.
+
+Pure pay-on-delivery orders normally do not appear because they have no upfront `payments` row. The card’s verification totals use the current order payment-verification status, while bank-statement totals remain separate and require a destination account. The Settlement Center card now explains this meaning below the account name. The screenshot amount must therefore be read as a combined “no receiving account recorded” total, not as one bank balance. This clarification shipped with the V115–V117 release.
+
+### Settlement Center order counts and drill-down (deployed 2026-11-17)
+
+Each Settlement Center payment category now returns a distinct category and the number of unique orders represented by positive upfront payments. Cards show an **Orders** count; clicking the count opens `/orders` with a server-side payment-capture filter for the same category and selected date window. Categories are `CASH`, `NO_RECEIVING_ACCOUNT`, and `NAMED_ACCOUNT`; named-account drill-downs also carry the account id. The Orders query uses `payments.captured_at`, `payment_method`, `bank_account_id`, and the existing server-side role scope, so it does not incorrectly reuse the ordinary order-created date filter or accept a client-supplied order-id list. This drill-down shipped with the V115–V117 release.
+
+### QuikShipX disabled for local development (implemented and deployed 2026-11-17; local profile only)
+
+The local profile now explicitly sets `QUIKSHIPX_ENABLED=false` / `app.quikshipx.enabled=false` and `QUIKSHIPX_MODE=MOCK`. Local portal orders with a default/requested `QUIKSHIPX` delivery method are resolved to the existing `IN_HOUSE` path. Shopify imports do the same when QuikShipX is disabled. Admin approval rejects an explicit local QuikShipX override instead of placing it.
+
+The generic courier assignment path also checks the QuikShipX master switch before calling the client, so stale local courier-assignment events cannot generate deterministic mock AWBs. Packing handover/dispatch do not enqueue courier assignment while disabled, and live tracking returns a disabled message without making a network call. This code is deployed, but the disablement applies only when the local profile is active; production remains enabled by its server environment.
+
+### Accounting-aware punched-date correction (V117, deployed 2026-11-17)
+
+ADMIN punched-date correction now coordinates existing posted `ORDER` and `PAYMENT` vouchers instead of rejecting every accounting entry. Posted vouchers remain immutable: the workflow reverses the original voucher using its original date, reposts the exact persisted voucher lines on the corrected date, stores the original/reversal/replacement voucher ids in `order_created_at_ledger_corrections`, and then updates the order date and audit record atomically. `ORDER_DELIVERY`, `PAYMENT_CORRECTION`, `RETURN_REFUND`, invoices, shipments, receivables, settlement allocations, and filed GST periods remain blockers because they have independent business dates or cannot be safely moved automatically. Both old and corrected financial years must remain open through normal voucher posting checks. V117 adds the durable correction-link table and is deployed in production.
+
+### Deployed to Prod (2026-11-17, V115–V117) — payment policy, Settlement Center drill-down, local QuikShipX safety, and accounting-aware date correction
+
+The complete pending release was deployed to AWS EC2 `ubuntu@15.252.230.73` with `deploy\deploy-both.ps1 -SkipBuild -ProdOnly`; demo was not touched.
+
+- Preflight passed with **0 blockers** and the two known non-blocking warnings: the stale V82-era live-JAR check and the live Nginx webhook body-cap difference. Production secrets were present, and the server environment retained `QUIKSHIPX_ENABLED=true`, `QUIKSHIPX_MODE=HTTP`, and `QUIKSHIPX_SECRET_MODE=LIVE`.
+- The fat JAR was **108,514,295 bytes** with migrations through V117. The admin bundle is `main-CHPEKFUL.js`. The backend suite passed **1071 tests, 0 failures**; local QuikShipX safety tests passed **80/80**, accounting/date-correction tests **90/90**, and Settlement/order drill-down tests **47/47**. The frontend build completed with only the existing shell CSS budget warning.
+- The guarded deploy wrote `/home/ubuntu/shifa-backup-2026-11-17-082526.sql` (54 MB) and uploaded it to `s3://shifa-db-backup/shifa-backup-2026-11-17-082526.sql`. The previous JAR was retained at `/home/ubuntu/shifa-oms.prev-2026-11-17-082526.jar`.
+- Flyway applied **V115, V116, and V117**. The service is active with `NRestarts=0`, `/actuator/health` returns 200, the public site returns 200, unauthenticated `/api/states` returns 401, and the application started in **32.528 seconds** with no startup failure markers or post-boot ERROR lines.
+- Post-deploy verification reported **0 blockers and 0 warnings**. The served bundle is `main-CHPEKFUL.js`. The invariant fingerprint matched the baseline exactly: **4,249 orders**, total amount **₹1,11,30,790.41**, amount received **₹68,28,808.00**, **7,729 line items** (quantity 10,206; line total **₹1,12,99,204.80**), **4,344 payments** (amount received **₹69,92,070.00**), and **30 active users**. Delivery and settlement movement counters changed only in the expected operational window.
+- Production continues to use the normal QuikShipX approval/fulfilment path. The QuikShipX disablement is limited to `application-local.yml`, so local development does not place external orders or generate AWBs while production remains live.
+- Users should hard-refresh or clear the Angular service-worker cache before testing the new payment policy, Settlement Center drill-down, and punched-date correction behavior.
+
+### Payment-verification queue auto-refresh (implemented locally, not deployed — 2026-11-17)
+
+Payment verification now emits a transactional `PAYMENT_VERIFICATION_CHANGED` SSE event after the decision commits. The Approval Queue refreshes automatically when the payment gate changes, unless an admin is actively reviewing a drawer; in that case it keeps the manual refresh nudge so the review is not interrupted. The Payment Queue reloads automatically when verification happens from the Approval Queue, another tab, or another user session. Verification still changes only `payment_verification_status`; it does not approve the order or remove it from the Approval Queue. Backend compile and the focused `OutboxSseRelayTest` + `PaymentVerificationServiceTest` run passed (9 tests); the admin build completed with the existing shell CSS budget warning and emitted `main-HEGEUBZQ.js`. This fix is local only until separately reviewed and deployed.
+
+### Every order except Shopify now goes through payment verification — including POS (implemented locally, not deployed — 2026-11-17)
+
+**Problem.** POS (counter) orders never entered payment verification. `createStoreOrder` deliberately did not mark the payment `PENDING` and then fast-forwarded the order straight to delivered and closed, so a cash payment could be recorded and settled with nobody checking it.
+
+**Rule now.** Shopify is the **only** source that skips verification. Salesperson/portal and POS (`STORE`) orders always start with `payment_verification_status = PENDING`.
+
+**POS flow (hold, verify, release).**
+1. `POST /api/orders/store` creates the order, marks the payment `PENDING` and **stops**. The order stays `PENDING_ADMIN_APPROVAL`; it is not approved, packed, delivered or posted to the ledger yet. Creation also emits a `PAYMENT_VERIFICATION_CHANGED` event so the verifier's queue updates by itself.
+2. The Payment Verifier verifies it in the normal Payment Queue (screenshot is already required whenever money is received).
+3. `PaymentVerificationService.verify` then calls the new `OrderService.finalizeStoreOrderAfterPaymentVerification` **in the same transaction**. That runs the existing counter-sale lifecycle (approve, label, pack, hand over, deliver) and settles it: fully paid goes to `CLOSED`, partially paid goes to `COD_COLLECTED` with the balance tracked as a COD receivable. Release is fail-fast: if any step fails, the verification rolls back too, so an order can never be marked verified yet stay stuck.
+4. Rejecting the payment moves the held POS order to `PAYMENT_REJECTED` like any other order (the salesperson can fix and resubmit).
+
+**Approval Queue vs POS.** Held POS orders are *not* admin-approval items. They are excluded from the Approval Queue list and from every approval count (owner snapshot, admin role dashboard, Exception Center, channel dashboard), so the badges equal the list. `AdminOrderService.approve` and bulk approve/preview refuse a POS order with "POS orders are released by Payment Verification".
+
+**Ledger.** A fully paid POS sale posts only the sales voucher (it already debits Cash), so verification does **not** add a second receipt that would double-count the cash. A partially paid POS sale also posts the receipt for the upfront amount, which was previously never posted (the debtor balance for the upfront part was left open).
+
+**Defensive.** The Payment Queue and verify/reject refuse `SHOPIFY` orders even if a stale `PENDING` ever appears on one.
+
+**Files.** `OrderService` (create/finalize, new `publishPaymentAwaitingVerification`), `PaymentVerificationService` (new `OrderService` dependency, source guards, source-aware ledger post), `AdminOrderService`, `BulkOrderService`, `OwnerSnapshotService`, `RoleDashboardService`, `AdminExceptionService`, `ChannelDashboardService`, `OrderRepository.countByOrderStatusAndSource`; POS toast wording in `new-order.component.ts`. No migration (V117 stays highest). Existing `OrderServiceStoreTest` cases were updated to hold, verify and release. This is local only; not deployed.
+
+**Validation (POS payment-verification gate, local).** Full backend `clean test` = **1071 tests, 0 failures** (excluding `WhatsappTemplateEncodingIT`, which needs a live MySQL), including the full-context load test and the endpoint role guard tests. A temporary end-to-end check (deleted afterwards, since permanent tests were not requested) confirmed: a fully paid and a partially paid POS order are held at `PENDING_ADMIN_APPROVAL` with verification `PENDING` and nothing posted to the ledger; verifying releases them to `CLOSED` / `COD_COLLECTED`; ledger events are exactly ORDER for a fully paid sale (no second cash receipt) and ORDER + PAYMENT + ORDER_DELIVERY for a partial one; held POS orders are absent from the Approval Queue and `approve` refuses them; Shopify orders are filtered from the Payment Queue and refused by verify/reject. Admin build completed with only the existing shell CSS budget warning (main bundle `main-ZLUYRXAN.js`). Not run against a real MySQL database or in a browser.
+
+**Before deploying this.** Orders already created as POS before this change are unaffected (they are already `CLOSED`/`COD_COLLECTED` with no verification state). Deploying changes counter behaviour: from then on a POS sale is not completed until a Payment Verifier acts on it, so a verifier must be available while the shop is open. Hard-refresh the browser after deploying so the Angular service worker serves the new bundle.

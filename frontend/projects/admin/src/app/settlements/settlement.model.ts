@@ -81,6 +81,8 @@ export interface SettlementImportResponse {
   lines: SettlementLine[];
 }
 
+export type SettlementPaymentCategory = 'CASH' | 'NO_RECEIVING_ACCOUNT' | 'NAMED_ACCOUNT';
+
 export interface AccountSettlementKpi {
   accountId: number | null;
   accountName: string;
@@ -96,6 +98,8 @@ export interface AccountSettlementKpi {
   statementRows: number;
   matchedRows: number;
   unmatchedRows: number;
+  category: SettlementPaymentCategory;
+  orderCount: number;
 }
 
 export interface SettlementKpi {

@@ -106,6 +106,9 @@ public class QuikShipXDrainer {
      * tests and the admin recover action.
      */
     public int redriveFailedTransient() {
+        if (!properties.isEnabled()) {
+            return 0;
+        }
         int requeued = 0;
         for (OutboxEvent event : outboxEventRepository.findByStatusAndEventTypePrefix(
                 OutboxEvent.STATUS_FAILED, "QUIKSHIPX")) {
@@ -147,6 +150,9 @@ public class QuikShipXDrainer {
      * events processed. Exposed for direct invocation from tests.
      */
     public int drainOnce() {
+        if (!properties.isEnabled()) {
+            return 0;
+        }
         int processed = 0;
         processed += drain(OutboxEvent.EVENT_QUIKSHIPX_CREATE, quikShipXService::createForOrder);
         processed += drain(OutboxEvent.EVENT_QUIKSHIPX_CONFIRM, quikShipXService::confirmForOrder);

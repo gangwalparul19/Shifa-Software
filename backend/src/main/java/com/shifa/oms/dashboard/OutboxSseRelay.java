@@ -1,5 +1,6 @@
 package com.shifa.oms.dashboard;
 
+import com.shifa.oms.auth.Role;
 import com.shifa.oms.platform.outbox.OutboxEvent;
 import com.shifa.oms.platform.outbox.OutboxEventRepository;
 import org.slf4j.Logger;
@@ -15,8 +16,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Relays persisted admin-notification outbox rows to connected admins over SSE,
- * and periodically pushes live stats + activity counts (Req 11.2, 13.3, 17.4,
+ * Relays persisted operational outbox rows to connected staff over SSE, and
+ * periodically pushes live stats + activity counts (Req 11.2, 13.3, 17.4,
  * 19.5, 19.6).
  *
  * <p><strong>Post-commit delivery.</strong> Notifications are written to the
@@ -26,11 +27,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <em>committed</em> {@code PENDING} rows, so it is inherently post-commit &mdash;
  * the dashboard never shows a change that was later rolled back.
  *
- * <p><strong>Nothing lost when no admin is connected (Req 11.2).</strong> The
+ * <p><strong>Nothing lost when no eligible queue user is connected.</strong> The
  * relay only marks a row {@code SENT} after it has actually been broadcast, and
- * it only broadcasts while {@link AdminSseBroker#hasActiveEmitters()} is true.
- * If no admin is connected, the rows stay {@code PENDING} and are relayed as
- * soon as an admin connects.
+ * it only broadcasts while an ADMIN or PAYMENT_VERIFIER is connected. If no
+ * eligible queue user is connected, the rows stay {@code PENDING} and are relayed
+ * as soon as one connects.
  *
  * <p>The relay handles exactly the admin-notification event types (packed,
  * status-changed, claim-required, courier-assign-failed, whatsapp-failed, and
@@ -43,13 +44,14 @@ public class OutboxSseRelay {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxSseRelay.class);
 
-    /** The outbox event types surfaced to admins over SSE (mapped 1:1 to SSE event names). */
+    /** The operational event types surfaced over SSE (mapped 1:1 to event names). */
     static final Set<String> ADMIN_NOTIFICATION_TYPES = Set.of(
             OutboxEvent.EVENT_ORDER_AWAITING_APPROVAL,
             OutboxEvent.EVENT_ORDER_PACKED,
             OutboxEvent.EVENT_ORDER_STATUS_CHANGED,
             OutboxEvent.EVENT_CLAIM_FILED_REQUIRED,
             OutboxEvent.EVENT_COURIER_ASSIGN_FAILED,
+            OutboxEvent.EVENT_PAYMENT_VERIFICATION_CHANGED,
             OutboxEvent.EVENT_WHATSAPP_FAILED,
             OutboxEvent.EVENT_BACKUP_FAILED,
             OutboxEvent.EVENT_LOW_STOCK);
@@ -85,7 +87,8 @@ public class OutboxSseRelay {
             return 0;
         }
         try {
-            if (!broker.hasActiveAdmins()) {
+            if (!broker.hasActiveAdmins()
+                    && !broker.hasActiveRole(Role.PAYMENT_VERIFIER)) {
                 return 0;
             }
             int relayed = 0;
@@ -102,7 +105,14 @@ public class OutboxSseRelay {
                 if (!ADMIN_NOTIFICATION_TYPES.contains(event.getEventType())) {
                     continue;
                 }
-                broker.broadcastToAdmins(event.getEventType(), toSseData(event));
+                Map<String, Object> data = toSseData(event);
+                if (OutboxEvent.EVENT_PAYMENT_VERIFICATION_CHANGED.equals(event.getEventType())) {
+                    // Payment verifiers need the same refresh signal as admins,
+                    // but unrelated staff must not receive this queue event.
+                    broker.sendToRecipients(event.getEventType(), data, Role.PAYMENT_VERIFIER, null);
+                } else {
+                    broker.broadcastToAdmins(event.getEventType(), data);
+                }
                 event.markSent();
                 outboxEventRepository.save(event);
                 relayed++;

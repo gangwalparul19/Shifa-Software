@@ -132,6 +132,7 @@ export class AdminEventsService {
     this.listenNotification(es, 'ORDER_AWAITING_APPROVAL');
     this.listenNotification(es, 'ORDER_PACKED');
     this.listenNotification(es, 'ORDER_STATUS_CHANGED');
+    this.listenNotification(es, 'PAYMENT_VERIFICATION_CHANGED');
     this.listenNotification(es, 'CLAIM_FILED_REQUIRED');
     this.listenNotification(es, 'COURIER_ASSIGN_FAILED');
     this.listenNotification(es, 'WHATSAPP_FAILED');
@@ -228,6 +229,15 @@ export class AdminEventsService {
           `${codeText} is now ${this.pretty(payload['newStatus'])}.`,
           'info',
           orderCode,
+        );
+      case 'PAYMENT_VERIFICATION_CHANGED':
+        return this.build(
+          type,
+          'Payment verification updated',
+          `${codeText} payment is now ${this.pretty(payload['verificationStatus'])}.`,
+          'info',
+          orderCode,
+          orderId,
         );
       case 'CLAIM_FILED_REQUIRED':
         return this.build(

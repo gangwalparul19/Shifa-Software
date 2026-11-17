@@ -229,6 +229,62 @@ public class VoucherService {
     }
 
     /**
+     * Reverses an auto-posted voucher on a chosen date for an ADMIN punched-date
+     * correction. This is deliberately separate from the generic manual reversal:
+     * the correction source key makes the operation durable and retry-safe.
+     */
+    @Transactional
+    public Voucher reverseForOrderDateCorrection(Long voucherId, LocalDate reversalDate,
+                                                 String sourceType, Long sourceId, String reason) {
+        if (voucherId == null || reversalDate == null || sourceType == null || sourceId == null) {
+            throw new ValidationException("Order-date accounting correction details are incomplete.");
+        }
+        Voucher original = voucherRepository.findById(voucherId)
+                .orElseThrow(() -> new ResourceNotFoundException("Voucher " + voucherId + " was not found."));
+        if (original.getReversedByVoucherId() != null) {
+            throw new ValidationException("Voucher " + original.getVoucherReference()
+                    + " has already been reversed.");
+        }
+        DraftVoucher negated = Reversal.negate(toDraft(original));
+        DraftVoucher dated = new DraftVoucher(
+                negated.type(), reversalDate,
+                "Order-date correction reversal of " + original.getVoucherReference()
+                        + (reason == null || reason.isBlank() ? "" : ": " + reason),
+                negated.lines());
+        Voucher reversal = postValidatedDraft(dated, original.getId(), sourceType, sourceId);
+        original.markReversedBy(reversal.getId());
+        voucherRepository.save(original);
+        auditService.record(AuditActions.VOUCHER_REVERSED, AuditActions.ENTITY_VOUCHER,
+                String.valueOf(reversal.getId()),
+                "Order-date correction reversed voucher " + original.getVoucherReference()
+                        + " with " + reversal.getVoucherReference());
+        return reversal;
+    }
+
+    /** Reposts the exact persisted lines of an original voucher on a corrected date. */
+    @Transactional
+    public Voucher repostForOrderDateCorrection(Long voucherId, LocalDate correctedDate,
+                                                String sourceType, Long sourceId, String reason) {
+        if (voucherId == null || correctedDate == null || sourceType == null || sourceId == null) {
+            throw new ValidationException("Order-date replacement accounting details are incomplete.");
+        }
+        Voucher original = voucherRepository.findById(voucherId)
+                .orElseThrow(() -> new ResourceNotFoundException("Voucher " + voucherId + " was not found."));
+        DraftVoucher originalDraft = toDraft(original);
+        DraftVoucher replacement = new DraftVoucher(
+                originalDraft.type(), correctedDate,
+                "Order-date correction replacement of " + original.getVoucherReference()
+                        + (reason == null || reason.isBlank() ? "" : ": " + reason),
+                originalDraft.lines());
+        Voucher posted = postValidatedDraft(replacement, null, sourceType, sourceId);
+        auditService.record(AuditActions.VOUCHER_POSTED, AuditActions.ENTITY_VOUCHER,
+                String.valueOf(posted.getId()),
+                "Order-date correction reposted voucher " + posted.getVoucherReference()
+                        + " for corrected date " + correctedDate);
+        return posted;
+    }
+
+    /**
      * Validate a draft against the double-entry rules and persist it as a posted, immutable voucher.
      * Shared by {@link #post(PostVoucherCommand)} and {@link #reverse(Long)}: runs
      * {@link DoubleEntry#validate(DraftVoucher)} (Reqs 5.1–5.7, imbalance totals per Req 5.3), resolves

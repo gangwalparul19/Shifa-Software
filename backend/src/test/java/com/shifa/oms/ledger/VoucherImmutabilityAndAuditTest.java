@@ -146,7 +146,7 @@ class VoucherImmutabilityAndAuditTest {
     }
 
     @Test
-    @DisplayName("6.2: VoucherService declares only post/postForSource/reverse — no update or delete operation")
+    @DisplayName("6.2: VoucherService declares additive posting, reversal, and date-correction operations — no update or delete operation")
     void voucherServiceHasNoUpdateOrDeleteOperation() {
         List<String> publicApi = new ArrayList<>();
         for (Method method : VoucherService.class.getDeclaredMethods()) {
@@ -156,10 +156,10 @@ class VoucherImmutabilityAndAuditTest {
         }
 
         assertThat(publicApi)
-                .as("VoucherService's only mutating operations are post, postForSource and reverse — "
-                        + "all additive posting paths that create/post or reverse a voucher; none updates "
-                        + "or deletes a posted voucher (Req 6.2)")
-                .containsExactlyInAnyOrder("post", "reverse", "postForSource");
+                .as("VoucherService's mutating operations are additive posting/reversal/date-correction paths; "
+                        + "none updates or deletes a posted voucher (Req 6.2)")
+                .containsExactlyInAnyOrder("post", "reverse", "postForSource",
+                        "reverseForOrderDateCorrection", "repostForOrderDateCorrection");
 
         // Defensive: no correction verb that would edit or remove a posted voucher exists.
         assertThat(publicApi).noneMatch(name -> {

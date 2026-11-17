@@ -831,7 +831,7 @@
           <label class="form-label required" for="paymentMethod">Payment method</label>
           <select id="paymentMethod" class="form-select" formControlName="paymentMethod" (change)="paymentMethodChanged()"
             [class.is-invalid]="submitAttempted() && paymentMethodMissing()">
-            @for (method of paymentMethods(); track method.code) {
+            @for (method of visiblePaymentMethods(); track method.code) {
               <option [value]="method.code">{{ method.label }}</option>
             }
           </select>
@@ -840,24 +840,31 @@
           }
         </div>
         <div class="col-12 col-md-7">
-          <label class="form-label" [class.required]="paymentNeedsAccount()" for="paymentAccountId">Amount received in</label>
-          <select id="paymentAccountId" class="form-select" formControlName="paymentAccountId"
-            [class.is-invalid]="submitAttempted() && paymentAccountMissing()" [disabled]="!paymentNeedsAccount()">
-            <option [ngValue]="null">Select receiving account…</option>
-            @for (account of orderPaymentAccounts(); track account.id) {
-              <option [ngValue]="account.id">{{ account.displayName }} — {{ account.bankName || account.upiId || 'Account' }} {{ account.maskedAccountNumber || '' }}</option>
-            }
-          </select>
-          @if (paymentNeedsAccount() && orderPaymentAccounts().length === 0) {
-            <div class="form-hint text-warning">
-              @if (selectedMethod()?.linkedAccountType) {
-                No {{ linkedAccountLabel() }} account is set up for {{ selectedMethod()?.label }}. Ask an admin to add one in Settings.
-              } @else {
-                No active receiving account is configured. Ask an admin to add one in Settings.
+          @if (paymentNeedsAccount()) {
+            <label class="form-label required" for="paymentAccountId">Amount received in</label>
+            <select id="paymentAccountId" class="form-select" formControlName="paymentAccountId"
+              [class.is-invalid]="submitAttempted() && paymentAccountMissing()">
+              <option [ngValue]="null">Select receiving account…</option>
+              @for (account of orderPaymentAccounts(); track account.id) {
+                <option [ngValue]="account.id">{{ account.displayName }} — {{ account.bankName || account.upiId || 'Account' }} {{ account.maskedAccountNumber || '' }}</option>
               }
+            </select>
+            @if (orderPaymentAccounts().length === 0) {
+              <div class="form-hint text-warning">
+                @if (selectedMethod()?.linkedAccountType) {
+                  No {{ linkedAccountLabel() }} account is set up for {{ selectedMethod()?.label }}. Ask an admin to add one in Settings.
+                } @else {
+                  No active receiving account is configured. Ask an admin to add one in Settings.
+                }
+              </div>
+            } @else if (selectedMethod()?.linkedAccountType) {
+              <div class="form-hint">Selected automatically for {{ selectedMethod()?.label }}.</div>
+            }
+          } @else if (selectedMethod()?.code === 'CASH') {
+            <label class="form-label">Amount received in</label>
+            <div class="form-control-plaintext text-success">
+              <i class="ti ti-cash me-1"></i>Cash — no bank/account selection required
             </div>
-          } @else if (selectedMethod()?.linkedAccountType && orderPaymentAccounts().length > 0) {
-            <div class="form-hint">Selected automatically for {{ selectedMethod()?.label }}.</div>
           }
         </div>
         <div class="col-12">

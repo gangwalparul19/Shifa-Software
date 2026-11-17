@@ -68,8 +68,13 @@ public class AdminExceptionService {
     public AdminExceptionResponse list() {
         List<AdminExceptionResponse.AdminExceptionItem> items = new ArrayList<>();
 
+        // POS orders are held for payment verification (listed under PAYMENT below),
+        // so they are not an admin-approval exception.
         List<OrderEntity> pendingApproval =
-                orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.PENDING_ADMIN_APPROVAL);
+                orderRepository.findByOrderStatusOrderByCreatedAtDesc(OrderStatus.PENDING_ADMIN_APPROVAL)
+                        .stream()
+                        .filter(order -> order.getSource() != com.shifa.oms.order.OrderSource.STORE)
+                        .toList();
         List<OrderEntity> pendingPayment =
                 orderRepository.findByPaymentVerificationStatusOrderByCreatedAtDesc(PaymentVerificationStatus.PENDING)
                         .stream()

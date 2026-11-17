@@ -15,8 +15,8 @@ import java.util.Map;
 record ChatbotDirectory(List<PersonRef> people, List<ProductRef> catalogue, List<AccountRef> accounts,
                         Map<Long, String> staffNames, Map<Long, String> accountNames) {
 
-    /** "Unassigned / legacy" is what the Settlement Center calls payments with no recorded account. */
-    static final String UNASSIGNED_ACCOUNT = "Unassigned / legacy";
+    /** "No receiving account recorded" is the Settlement Center label for NULL bank_account_id payment rows. */
+    static final String UNASSIGNED_ACCOUNT = "No receiving account recorded";
 
     String accountName(Long accountId) {
         if (accountId == null) {

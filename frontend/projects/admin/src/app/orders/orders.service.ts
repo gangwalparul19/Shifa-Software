@@ -37,6 +37,13 @@ export interface OrderPageQuery {
   from?: string | null;
   /** Inclusive upper bound, yyyy-MM-dd. */
   to?: string | null;
+  /** ADMIN-only drill-down payment category from Settlement Center. */
+  paymentCategory?: string | null;
+  /** Required when paymentCategory is NAMED_ACCOUNT. */
+  paymentAccountId?: number | null;
+  /** Payment-capture date window for Settlement Center drill-downs. */
+  paymentFrom?: string | null;
+  paymentTo?: string | null;
   page?: number;
   size?: number;
   /** `field,dir` sort expression (e.g. "createdAt,desc"). */
@@ -214,6 +221,18 @@ export class OrdersService {
     }
     if (query.createdBy != null) {
       params['createdBy'] = query.createdBy;
+    }
+    if (query.paymentCategory) {
+      params['paymentCategory'] = query.paymentCategory;
+    }
+    if (query.paymentAccountId != null) {
+      params['paymentAccountId'] = query.paymentAccountId;
+    }
+    if (query.paymentFrom) {
+      params['paymentFrom'] = query.paymentFrom;
+    }
+    if (query.paymentTo) {
+      params['paymentTo'] = query.paymentTo;
     }
     return this.api.get<PageResponse<OrderSummary>>('/api/admin/orders', { params });
   }

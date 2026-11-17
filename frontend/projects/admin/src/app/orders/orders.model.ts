@@ -19,6 +19,8 @@ export interface PaymentAccountOption {
  * {@code LineItemRequest}). {@code rate} is optional: when omitted the backend
  * uses the product's default sale price; when supplied it overrides that line.
  */
+export type SettlementPaymentCategory = 'CASH' | 'NO_RECEIVING_ACCOUNT' | 'NAMED_ACCOUNT';
+
 export interface CreateOrderLineItem {
   productId: number;
   quantity: number;
@@ -169,6 +171,10 @@ export interface StoreOrderRequest {
   postalCode?: string;
   items: StoreOrderLineItem[];
   amountReceived: number;
+  /** Payment method code; Cash is stored as CASH without a receiving account. */
+  paymentMethod?: PaymentMethod;
+  paymentAccountId?: number | null;
+  paymentUtr?: string | null;
   notes?: string;
   buyerGstin?: string;
   discountType?: OrderDiscountType;

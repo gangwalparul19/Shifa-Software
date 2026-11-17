@@ -6,6 +6,7 @@ import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
 import com.shifa.oms.order.OrderWorkflowService;
 import com.shifa.oms.platform.storage.StorageService;
+import com.shifa.oms.quikshipx.QuikShipXProperties;
 import com.shifa.oms.statemachine.OrderStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +45,13 @@ public class CourierAssignmentService {
     private final StorageService storageService;
     private final CourierProperties properties;
     private final OrderWorkflowService orderWorkflowService;
+    /** QuikShipX master switch; nullable in legacy unit constructors. */
+    private QuikShipXProperties quikShipXProperties;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setQuikShipXProperties(QuikShipXProperties properties) {
+        this.quikShipXProperties = properties;
+    }
 
     public CourierAssignmentService(OrderRepository orderRepository,
                                     CourierRecordRepository courierRecordRepository,
@@ -92,6 +100,14 @@ public class CourierAssignmentService {
             // surface on the order/label as if a courier had one
             // (in-house-delivery feature).
             log.debug("Skipping courier assignment for non-courier order {}", order.getOrderCode());
+            return;
+        }
+        if (quikShipXProperties != null && !quikShipXProperties.isEnabled()) {
+            // Local/demo QuikShipX is fail-closed. Do not call the MOCK courier
+            // either: it generates deterministic fake AWBs, which look real in
+            // the UI and can be mistaken for a placed shipment.
+            log.debug("Skipping courier assignment while QuikShipX is disabled for {}",
+                    order.getOrderCode());
             return;
         }
 

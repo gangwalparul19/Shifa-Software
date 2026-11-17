@@ -332,7 +332,12 @@ public class ChannelDashboardService {
                     continue;
                 }
                 switch (o.getOrderStatus()) {
-                    case PENDING_ADMIN_APPROVAL -> pending++;
+                    case PENDING_ADMIN_APPROVAL -> {
+                        // POS orders wait for payment verification, not approval.
+                        if (o.getSource() != OrderSource.STORE) {
+                            pending++;
+                        }
+                    }
                     case APPROVED, LABEL_GENERATED -> toPack++;
                     case PACKED -> handover++;
                     case HANDED_TO_DELIVERY -> dispatch++;

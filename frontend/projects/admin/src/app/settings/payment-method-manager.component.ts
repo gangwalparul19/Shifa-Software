@@ -14,7 +14,7 @@ import { ToastService } from '../shared/toast.service';
 
 /** Form value of the "Receiving account" select when the salesperson picks the account. */
 const MODE_CHOOSE = 'CHOOSE';
-/** Form value when no account is involved (cash). */
+/** Form value for the Cash method, which needs no receiving-account selection. */
 const MODE_NONE = 'NONE';
 /** Prefix of the form values that auto-select an account of a given purpose. */
 const MODE_AUTO_PREFIX = 'AUTO:';
@@ -208,17 +208,23 @@ export class PaymentMethodManagerComponent implements OnInit {
 
   /** Short description of how the receiving account is handled, for the table. */
   protected accountSummary(method: PaymentMethodConfig): string {
+    if (method.code === 'CASH' || !method.requiresAccount) {
+      return 'Not needed for Cash';
+    }
     if (method.linkedAccountType) {
       return `Auto: ${bankAccountTypeLabel(method.linkedAccountType)}`;
     }
-    return method.requiresAccount ? 'Salesperson chooses' : 'Not needed';
+    return 'Salesperson chooses';
   }
 
   private modeOf(method: PaymentMethodConfig): string {
+    if (method.code === 'CASH' || !method.requiresAccount) {
+      return MODE_NONE;
+    }
     if (method.linkedAccountType) {
       return MODE_AUTO_PREFIX + method.linkedAccountType;
     }
-    return method.requiresAccount ? MODE_CHOOSE : MODE_NONE;
+    return MODE_CHOOSE;
   }
 
   private fieldsOf(mode: string): { requiresAccount: boolean; linkedAccountType: BankAccountType | null } {

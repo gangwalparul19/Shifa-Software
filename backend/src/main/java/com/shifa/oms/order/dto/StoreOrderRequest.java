@@ -96,6 +96,28 @@ public record StoreOrderRequest(
         // screenshots); each attached alongside the primary. Appended last to keep
         // the record constructor backward-compatible.
         @Size(max = 10, message = "at most 10 payment screenshots are allowed")
-        List<@Size(max = 512) String> paymentScreenshotKeys
+        List<@Size(max = 512) String> paymentScreenshotKeys,
+
+        // Payment method/account metadata is appended for backward compatibility.
+        // Cash does not require a receiving account; non-cash POS payments do.
+        @Size(max = 30, message = "paymentMethod must be at most 30 characters")
+        String paymentMethod,
+
+        Long paymentAccountId,
+
+        @Size(max = 80, message = "paymentUtr must be at most 80 characters")
+        String paymentUtr
 ) {
+    /** Backward-compatible constructor for POS callers created before payment metadata. */
+    public StoreOrderRequest(String customerName, String customerMobile, String addressLine,
+                             String city, String state, String postalCode,
+                             List<StoreLineItemRequest> items, BigDecimal amountReceived,
+                             String customerEmail, String notes, String alternateMobile,
+                             String discountType, BigDecimal discountValue, String buyerGstin,
+                             String paymentScreenshotKey, List<String> paymentScreenshotKeys) {
+        this(customerName, customerMobile, addressLine, city, state, postalCode, items,
+                amountReceived, customerEmail, notes, alternateMobile, discountType,
+                discountValue, buyerGstin, paymentScreenshotKey, paymentScreenshotKeys,
+                null, null, null);
+    }
 }

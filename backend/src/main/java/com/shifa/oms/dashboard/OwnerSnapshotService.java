@@ -84,7 +84,11 @@ public class OwnerSnapshotService {
 
         // Status-based backlog (one GROUP BY).
         Map<OrderStatus, Long> status = statusCounts();
-        long approvals = status.getOrDefault(OrderStatus.PENDING_ADMIN_APPROVAL, 0L);
+        // POS orders wait for payment verification, not admin approval, so they are
+        // not part of the Approval Queue this tile links to.
+        long approvals = Math.max(0L, status.getOrDefault(OrderStatus.PENDING_ADMIN_APPROVAL, 0L)
+                - orderRepository.countByOrderStatusAndSource(
+                        OrderStatus.PENDING_ADMIN_APPROVAL, com.shifa.oms.order.OrderSource.STORE));
         long failed = status.getOrDefault(OrderStatus.CUSTOMER_REJECTED, 0L)
                 + status.getOrDefault(OrderStatus.DELIVERY_FAILED, 0L);
         long rto = status.getOrDefault(OrderStatus.RTO, 0L);

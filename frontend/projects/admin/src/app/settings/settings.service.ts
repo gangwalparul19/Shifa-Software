@@ -32,7 +32,7 @@ export interface PaymentMethodConfig {
   /** Immutable key stored on each payment. */
   code: string;
   label: string;
-  /** The salesperson must name the account that received the money. */
+  /** Cash is the only no-account portal method; other methods require the receiving account. */
   requiresAccount: boolean;
   /** When set, the receiving account is auto-selected from accounts of this purpose. */
   linkedAccountType?: BankAccountType | null;
@@ -52,10 +52,11 @@ export interface PaymentMethodRequest {
   sortOrder: number;
 }
 
-/** Active payment method as offered at order entry. */
+/** Active payment method as offered at salesperson/portal order entry. */
 export interface PaymentMethodOption {
   code: string;
   label: string;
+  /** Receiving account is mandatory for every salesperson/portal payment. */
   requiresAccount: boolean;
   linkedAccountType?: BankAccountType | null;
   /** Account to pre-select when the method is linked (null when none is set up). */

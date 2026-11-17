@@ -227,6 +227,19 @@
   </div>
 }
 
+@if (paymentCategoryFilter(); as category) {
+  <div class="mb-3">
+    <span class="badge bg-blue-lt d-inline-flex align-items-center gap-1 p-2">
+      <i class="ti ti-cash"></i>
+      Showing {{ paymentCategoryLabel() }} orders
+      @if (paymentFromFilter() || paymentToFilter()) {
+        <span class="fw-normal">({{ paymentFromFilter() || 'all time' }} to {{ paymentToFilter() || 'today' }})</span>
+      }
+      <button type="button" class="btn-close btn-close-sm ms-1" aria-label="Clear payment category filter" (click)="clearPaymentDrillDown()"></button>
+    </span>
+  </div>
+}
+
 <!-- Status filter tabs (Req 6.3): quick lifecycle-group lens -->
 <div class="shifa-status-tabs mb-3" role="tablist" aria-label="Filter orders by status group">
   @for (tab of statusTabs; track tab.key) {

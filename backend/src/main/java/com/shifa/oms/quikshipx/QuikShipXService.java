@@ -198,6 +198,10 @@ public class QuikShipXService {
         String awb = shipment.getAwb();
         String shipperOrderId = shipment.getShipperOrderId();
         boolean haveAwb = awb != null && !awb.isBlank();
+        if (!properties.isEnabled()) {
+            return new TrackView(shipment.getQuikShipXStatus(), shipment.getAwb(), shipment.getLastSyncedAt(),
+                    java.util.List.of(), "QuikShipX integration is disabled in this environment.");
+        }
         if (!haveAwb && (shipperOrderId == null || shipperOrderId.isBlank())) {
             return new TrackView(shipment.getQuikShipXStatus(), shipment.getAwb(), shipment.getLastSyncedAt(),
                     java.util.List.of(), "Not published to QuikShipX yet.");

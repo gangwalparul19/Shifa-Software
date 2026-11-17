@@ -11,6 +11,8 @@ import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.order.Actor;
 import com.shifa.oms.order.OrderEntity;
 import com.shifa.oms.order.OrderRepository;
+import com.shifa.oms.order.OrderService;
+import com.shifa.oms.order.OrderSource;
 import com.shifa.oms.order.OrderWorkflowService;
 import com.shifa.oms.order.PaymentVerificationStatus;
 import com.shifa.oms.order.RejectReason;
@@ -35,12 +37,14 @@ import java.util.Set;
 /**
  * Payment authenticity verification (product-audit §4.4).
  *
- * <p>An <em>additive</em> workflow that runs alongside the order lifecycle: a
- * Payment Verifier reviews prepaid / partially-paid orders (which start
- * {@code PENDING}), inspects the payment screenshot vs. the amount, and marks
- * each {@code VERIFIED} or {@code REJECTED} with an optional note. It never
- * changes the order status, so the core state machine and its guarantees are
- * untouched; the decision is recorded on the order and audited.
+ * <p>A Payment Verifier reviews every non-Shopify order's payment (which starts
+ * {@code PENDING}), inspects the screenshot vs. the amount, and marks it
+ * {@code VERIFIED} or {@code REJECTED} with an optional note. For portal orders
+ * this is an additive layer: verifying does not approve the order, and a separate
+ * ADMIN/ACCOUNTANT approval follows. POS ({@code STORE}) orders are the exception:
+ * they are held until verified, and a successful verification releases them
+ * (counter-sale lifecycle) in the same transaction. Shopify imports are the only
+ * orders that bypass this service. Decisions are recorded on the order and audited.
  */
 @Service
 public class PaymentVerificationService {
@@ -70,6 +74,8 @@ public class PaymentVerificationService {
      * constructor — the payment decision is then recorded without a status change.
      */
     private final OrderWorkflowService orderWorkflowService;
+    /** POS finalizer, nullable under legacy unit-test constructors. */
+    private final OrderService orderService;
     /**
      * Payment-proof hashes (nullable): used to flag the SAME screenshot reused on
      * another order in the queue (duplicate-screenshot detection, V72). Null under
@@ -87,7 +93,7 @@ public class PaymentVerificationService {
                                       CurrentUserService currentUserService,
                                       OutboxEventPublisher outboxEventPublisher) {
         this(orderRepository, auditService, currentUserService, outboxEventPublisher,
-                null, null, null, Clock.systemDefaultZone());
+                null, null, null, null, Clock.systemDefaultZone());
     }
 
     @Autowired
@@ -96,9 +102,23 @@ public class PaymentVerificationService {
                                       OutboxEventPublisher outboxEventPublisher,
                                       UserRepository userRepository,
                                       OrderWorkflowService orderWorkflowService,
+                                      OrderService orderService,
                                       com.shifa.oms.order.OrderPaymentScreenshotRepository screenshotRepository) {
         this(orderRepository, auditService, currentUserService, outboxEventPublisher,
-                userRepository, orderWorkflowService, screenshotRepository, Clock.systemDefaultZone());
+                userRepository, orderWorkflowService, orderService, screenshotRepository,
+                Clock.systemDefaultZone());
+    }
+
+    /** Backward-compatible constructor used by legacy/unit-test callers. */
+    public PaymentVerificationService(OrderRepository orderRepository, AuditService auditService,
+                                      CurrentUserService currentUserService,
+                                      OutboxEventPublisher outboxEventPublisher,
+                                      UserRepository userRepository,
+                                      OrderWorkflowService orderWorkflowService,
+                                      com.shifa.oms.order.OrderPaymentScreenshotRepository screenshotRepository) {
+        this(orderRepository, auditService, currentUserService, outboxEventPublisher,
+                userRepository, orderWorkflowService, null, screenshotRepository,
+                Clock.systemDefaultZone());
     }
 
     PaymentVerificationService(OrderRepository orderRepository, AuditService auditService,
@@ -106,6 +126,7 @@ public class PaymentVerificationService {
                                OutboxEventPublisher outboxEventPublisher,
                                UserRepository userRepository,
                                OrderWorkflowService orderWorkflowService,
+                               OrderService orderService,
                                com.shifa.oms.order.OrderPaymentScreenshotRepository screenshotRepository,
                                Clock clock) {
         this.orderRepository = orderRepository;
@@ -114,6 +135,7 @@ public class PaymentVerificationService {
         this.outboxEventPublisher = outboxEventPublisher;
         this.userRepository = userRepository;
         this.orderWorkflowService = orderWorkflowService;
+        this.orderService = orderService;
         this.screenshotRepository = screenshotRepository;
         this.clock = clock;
     }
@@ -134,6 +156,9 @@ public class PaymentVerificationService {
         List<OrderEntity> pending = orderRepository
                 .findByPaymentVerificationStatusOrderByCreatedAtDesc(PaymentVerificationStatus.PENDING)
                 .stream()
+                // Shopify checkout is the only payment-verification bypass. The
+                // source guard keeps stale/future PENDING values out defensively.
+                .filter(o -> o.getSource() != OrderSource.SHOPIFY)
                 .filter(o -> !CLOSED_FOR_VERIFICATION.contains(o.getOrderStatus()))
                 .toList();
         // Resolve each row's salesperson (created_by) name once for the whole
@@ -208,12 +233,25 @@ public class PaymentVerificationService {
     public OrderResponse verify(Long orderId, String note) {
         OrderResponse response = decide(orderId, PaymentVerificationStatus.VERIFIED, note,
                 AuditActions.PAYMENT_VERIFIED, "Verified payment for order ");
-        // Auto-posting (Reqs 11.1, 11.3, 17.3, 17.4): a verified customer payment is the recorded
-        // receipt, so enqueue a ledger-post event in this same transaction. The source id is the
-        // ORDER id (LedgerAutoPostingService.buildReceiptDraft loads the order by this id and posts
-        // the amount received). The event row commits atomically with the verification; a downstream
-        // posting failure can never roll back or alter this order (additive — behaviour unchanged).
-        outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_PAYMENT, orderId);
+        if (response.source() == OrderSource.STORE) {
+            if (orderService == null) {
+                throw new IllegalStateException("POS finalizer is required for payment verification.");
+            }
+            OrderResponse finalized = orderService.finalizeStoreOrderAfterPaymentVerification(orderId);
+            // A partially paid POS sale needs a receipt for the upfront amount;
+            // a fully-paid POS sale already debits Cash in its sales voucher.
+            if (response.amountReceived() != null && response.amountReceived().signum() > 0
+                    && response.remainingAmount() != null && response.remainingAmount().signum() > 0) {
+                outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_PAYMENT, orderId);
+            }
+            return finalized;
+        }
+        // Shopify is intentionally never queued, but keep the source rule
+        // defensive if a legacy row is ever presented directly to this endpoint.
+        if (response.source() != OrderSource.SHOPIFY && response.amountReceived() != null
+                && response.amountReceived().signum() > 0) {
+            outboxEventPublisher.publishLedgerPost(LEDGER_SOURCE_PAYMENT, orderId);
+        }
         return response;
     }
 
@@ -234,6 +272,9 @@ public class PaymentVerificationService {
             throw new ValidationException("Order " + order.getOrderCode()
                     + " has no payment to verify.");
         }
+        if (order.getSource() == OrderSource.SHOPIFY) {
+            throw new ValidationException("Shopify orders do not require OMS payment verification.");
+        }
         AuthPrincipal verifier = currentUserService.requireCurrentUser();
         String trimmedNote = trimToNull(note);
         order.recordPaymentVerification(
@@ -248,6 +289,8 @@ public class PaymentVerificationService {
             order.setRejectReason(RejectReason.PAYMENT_ISSUE, trimmedNote);
         }
         OrderEntity saved = orderRepository.save(order);
+        outboxEventPublisher.publishPaymentVerificationChanged(
+                saved.getId(), saved.getOrderCode(), PaymentVerificationStatus.REJECTED.name());
         auditService.record(AuditActions.PAYMENT_REJECTED, AuditActions.ENTITY_ORDER,
                 String.valueOf(saved.getId()), "Rejected payment for order " + saved.getOrderCode());
         log.debug("Payment for order {} REJECTED by user {}", saved.getOrderCode(), verifier.userId());
@@ -263,14 +306,20 @@ public class PaymentVerificationService {
         OrderEntity order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order " + orderId + " does not exist."));
         if (order.getPaymentVerificationStatus() == null) {
-            // A pure COD order has no payment to verify.
+            // A pure Shopify/imported order is intentionally outside this queue;
+            // other orders must have an explicit verification state.
             throw new ValidationException("Order " + order.getOrderCode()
                     + " has no payment to verify.");
+        }
+        if (order.getSource() == OrderSource.SHOPIFY) {
+            throw new ValidationException("Shopify orders do not require OMS payment verification.");
         }
         Long verifierId = currentUserService.requireCurrentUser().userId();
         order.recordPaymentVerification(
                 decision, verifierId, LocalDateTime.now(clock), trimToNull(note));
         OrderEntity saved = orderRepository.save(order);
+        outboxEventPublisher.publishPaymentVerificationChanged(
+                saved.getId(), saved.getOrderCode(), decision.name());
         auditService.record(auditAction, AuditActions.ENTITY_ORDER,
                 String.valueOf(saved.getId()), auditPrefix + saved.getOrderCode());
         log.debug("Payment for order {} marked {} by user {}",

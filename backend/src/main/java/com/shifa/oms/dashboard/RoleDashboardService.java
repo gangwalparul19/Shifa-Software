@@ -156,7 +156,11 @@ public class RoleDashboardService {
         // and tallying in Java — same figures, a single aggregate query.
         Map<OrderStatus, Long> counts = toStatusMap(orderRepository.statusCounts());
 
-        long pendingApproval = DashboardQueue.APPROVAL.countFrom(counts);
+        // POS orders are held for payment verification and never appear in the
+        // Approval Queue, so they must not inflate the admin approval count.
+        long pendingApproval = Math.max(0L, DashboardQueue.APPROVAL.countFrom(counts)
+                - orderRepository.countByOrderStatusAndSource(
+                        OrderStatus.PENDING_ADMIN_APPROVAL, com.shifa.oms.order.OrderSource.STORE));
         Map<String, Long> perActiveStage = new LinkedHashMap<>();
         for (OrderStatus s : ACTIVE_STAGES) {
             perActiveStage.put(s.name(), counts.getOrDefault(s, 0L));

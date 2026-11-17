@@ -493,7 +493,10 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
     effect(() => {
       const notes = this.events.notifications();
       const relevant = notes.filter(
-        (n) => n.type === 'ORDER_STATUS_CHANGED' || n.type === 'ORDER_AWAITING_APPROVAL',
+        (n) =>
+          n.type === 'ORDER_STATUS_CHANGED' ||
+          n.type === 'ORDER_AWAITING_APPROVAL' ||
+          n.type === 'PAYMENT_VERIFICATION_CHANGED',
       );
       const newestTs = relevant.length ? relevant[0].receivedAt.getTime() : 0;
       if (!this.activityInitialised) {
@@ -503,7 +506,14 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
       }
       if (newestTs > this.lastSeenActivityTs) {
         this.lastSeenActivityTs = newestTs;
-        this.newActivity.set(true);
+        // Payment verification changes the approval gate but deliberately does
+        // not approve the order. Refresh automatically when the drawer is not
+        // being reviewed; preserve the manual nudge during an active review.
+        if (this.selected() === null && !this.acting()) {
+          this.load();
+        } else {
+          this.newActivity.set(true);
+        }
       }
     });
   }
@@ -535,7 +545,12 @@ export class ApprovalQueueComponent implements OnInit, OnDestroy {
         // Now in sync with the live feed: hide the activity pill.
         const relevant = this.events
           .notifications()
-          .filter((n) => n.type === 'ORDER_STATUS_CHANGED' || n.type === 'ORDER_AWAITING_APPROVAL');
+          .filter(
+            (n) =>
+              n.type === 'ORDER_STATUS_CHANGED' ||
+              n.type === 'ORDER_AWAITING_APPROVAL' ||
+              n.type === 'PAYMENT_VERIFICATION_CHANGED',
+          );
         this.lastSeenActivityTs = relevant.length ? relevant[0].receivedAt.getTime() : 0;
         this.newActivity.set(false);
       },

@@ -26,6 +26,7 @@ import com.shifa.oms.order.dto.OrderSummaryResponse;
 import com.shifa.oms.order.dto.RejectOrderRequest;
 import com.shifa.oms.order.dto.UpdateDeliveryMethodRequest;
 import com.shifa.oms.order.dto.UpdateOrderRequest;
+import com.shifa.oms.reconciliation.SettlementPaymentCategory;
 import com.shifa.oms.statemachine.OrderStatus;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Pageable;
@@ -184,7 +185,11 @@ public class AdminOrderController {
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) Long createdBy) {
+            @RequestParam(required = false) Long createdBy,
+            @RequestParam(required = false) String paymentCategory,
+            @RequestParam(required = false) Long paymentAccountId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate paymentFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate paymentTo) {
         // Salespeople see only the orders they punched; a team lead sees the orders
         // punched by their assigned salespeople; admin/accountant see all. The set
         // is resolved server-side (never from a client filter) so it can't be spoofed.
@@ -196,10 +201,40 @@ public class AdminOrderController {
         OrderStatusGroup group = OrderStatusGroup.from(statusGroup);
         // Lenient: an unknown source from a stale client is ignored rather than 400ing.
         SourceFilter sourceFilter = SourceFilter.parse(source, false);
+        SettlementPaymentCategory category = SettlementPaymentCategory.from(paymentCategory);
+        validatePaymentDrillDown(category, paymentAccountId, paymentFrom, paymentTo);
+        if (category == null) {
+            return PageResponse.of(
+                    adminOrderService.listOrders(
+                            q, status, group, paymentStatus, from, to, pageable, creatorIds,
+                            sourceFilter.exact(), sourceFilter.exclude()));
+        }
         return PageResponse.of(
                 adminOrderService.listOrders(
                         q, status, group, paymentStatus, from, to, pageable, creatorIds,
-                        sourceFilter.exact(), sourceFilter.exclude()));
+                        sourceFilter.exact(), sourceFilter.exclude(), category, paymentAccountId,
+                        paymentFrom, paymentTo));
+    }
+
+    private static void validatePaymentDrillDown(SettlementPaymentCategory category,
+                                                 Long accountId,
+                                                 LocalDate from,
+                                                 LocalDate to) {
+        if (category == null) {
+            if (accountId != null || from != null || to != null) {
+                throw new ValidationException("A payment category is required for payment filters.");
+            }
+            return;
+        }
+        if (category == SettlementPaymentCategory.NAMED_ACCOUNT && accountId == null) {
+            throw new ValidationException("A receiving account is required for named-account orders.");
+        }
+        if (category != SettlementPaymentCategory.NAMED_ACCOUNT && accountId != null) {
+            throw new ValidationException("A receiving account can only be used with NAMED_ACCOUNT.");
+        }
+        if (from != null && to != null && to.isBefore(from)) {
+            throw new ValidationException("Payment end date cannot be before the start date.");
+        }
     }
 
     /**

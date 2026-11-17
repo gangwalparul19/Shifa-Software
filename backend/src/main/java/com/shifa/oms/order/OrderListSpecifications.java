@@ -3,12 +3,16 @@ package com.shifa.oms.order;
 import com.shifa.oms.courier.CourierRecord;
 import com.shifa.oms.order.domain.PaymentStatus;
 import com.shifa.oms.quikshipx.OrderShipment;
+import com.shifa.oms.reconciliation.SettlementPaymentCategory;
 import com.shifa.oms.statemachine.OrderStatus;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.jpa.domain.Specification;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -119,6 +123,22 @@ public final class OrderListSpecifications {
                                                    Collection<Long> creatorIds,
                                                    OrderSource source,
                                                    OrderSource excludeSource) {
+        return build(q, status, statusGroup, paymentStatus, from, to, creatorIds, source, excludeSource,
+                null, null, null, null);
+    }
+
+    /** Adds the payment-capture category/account/date predicates used by Settlement Center drill-downs. */
+    public static Specification<OrderEntity> build(String q, OrderStatus status,
+                                                   OrderStatusGroup statusGroup,
+                                                   PaymentStatus paymentStatus,
+                                                   LocalDate from, LocalDate to,
+                                                   Collection<Long> creatorIds,
+                                                   OrderSource source,
+                                                   OrderSource excludeSource,
+                                                   SettlementPaymentCategory paymentCategory,
+                                                   Long paymentAccountId,
+                                                   LocalDate paymentFrom,
+                                                   LocalDate paymentTo) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
@@ -170,6 +190,36 @@ public final class OrderListSpecifications {
                 // Inclusive of the whole 'to' day.
                 LocalDateTime endOfDay = LocalDateTime.of(to, LocalTime.MAX);
                 predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), endOfDay));
+            }
+            if (paymentCategory != null) {
+                Join<OrderEntity, OrderPayment> payment = root.join("payments", JoinType.INNER);
+                query.distinct(true);
+                predicates.add(cb.greaterThan(payment.<BigDecimal>get("amountReceived"), BigDecimal.ZERO));
+                jakarta.persistence.criteria.Expression<String> method = cb.upper(payment.get("paymentMethod"));
+                jakarta.persistence.criteria.Expression<Long> account = payment.get("bankAccountId");
+                switch (paymentCategory) {
+                    case CASH -> predicates.add(cb.and(
+                            cb.isNull(account), cb.equal(method, "CASH")));
+                    case NO_RECEIVING_ACCOUNT -> predicates.add(cb.and(
+                            cb.isNull(account), cb.or(cb.isNull(payment.get("paymentMethod")),
+                                    cb.notEqual(method, "CASH"))));
+                    case NAMED_ACCOUNT -> {
+                        predicates.add(cb.isNotNull(account));
+                        if (paymentAccountId == null) {
+                            predicates.add(cb.disjunction());
+                        } else {
+                            predicates.add(cb.equal(account, paymentAccountId));
+                        }
+                    }
+                }
+                if (paymentFrom != null) {
+                    predicates.add(cb.greaterThanOrEqualTo(
+                            payment.<LocalDateTime>get("capturedAt"), paymentFrom.atStartOfDay()));
+                }
+                if (paymentTo != null) {
+                    predicates.add(cb.lessThan(
+                            payment.<LocalDateTime>get("capturedAt"), paymentTo.plusDays(1).atStartOfDay()));
+                }
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };

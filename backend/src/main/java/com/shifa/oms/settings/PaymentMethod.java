@@ -32,7 +32,7 @@ public class PaymentMethod {
     @Column(name = "label", nullable = false, unique = true, length = 60)
     private String label;
 
-    /** The salesperson must name the account that received the money. */
+    /** The salesperson must name the account except for the stable CASH method. */
     @Column(name = "requires_account", nullable = false)
     private boolean requiresAccount = true;
 

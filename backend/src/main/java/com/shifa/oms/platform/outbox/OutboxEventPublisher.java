@@ -249,6 +249,21 @@ public class OutboxEventPublisher {
     }
 
     /**
+     * Enqueues a post-commit queue-refresh event when payment verification
+     * changes. The event is deliberately separate from lifecycle status changes:
+     * verifying a payment does not approve the order.
+     */
+    public OutboxEvent publishPaymentVerificationChanged(Long orderId, String orderCode,
+                                                          String verificationStatus) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("orderId", orderId);
+        payload.put("orderCode", orderCode);
+        payload.put("verificationStatus", verificationStatus);
+        return publish(OutboxEvent.AGGREGATE_ORDER, orderId,
+                OutboxEvent.EVENT_PAYMENT_VERIFICATION_CHANGED, payload);
+    }
+
+    /**
      * Enqueues a {@code WHATSAPP_NOTIFY} event carrying a fully-resolved,
      * pre-approved WhatsApp template message (Req 14.1, 14.2, 14.3). The WhatsApp
      * drainer (task 15) consumes {@code PENDING} rows of this type and sends the

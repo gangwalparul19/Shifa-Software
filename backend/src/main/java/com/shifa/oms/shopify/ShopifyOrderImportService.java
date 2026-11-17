@@ -154,6 +154,11 @@ public class ShopifyOrderImportService {
         order.setLeadSource(LeadSource.SHOPIFY);
         order.setCustomerEmail(trimToNull(resolveEmail(payload)));
         order.setNotes(buildNote(payload));
+        // Local/demo runs are fail-closed: imported orders follow the in-house
+        // path instead of entering the QuikShipX/AWB workflow.
+        order.setDeliveryMethod(quikShipXProperties != null && quikShipXProperties.isEnabled()
+                ? com.shifa.oms.order.DeliveryMethod.QUIKSHIPX
+                : com.shifa.oms.order.DeliveryMethod.IN_HOUSE);
 
         // Line items: match by SKU to our catalogue when possible (snapshotting the
         // product's HSN/GST rate for correct invoicing), else keep a name-only line

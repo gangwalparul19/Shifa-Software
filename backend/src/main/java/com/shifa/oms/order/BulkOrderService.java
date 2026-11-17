@@ -89,6 +89,10 @@ public class BulkOrderService {
                         + order.getOrderStatus() + ").");
                 continue;
             }
+            if (order.getSource() == OrderSource.STORE) {
+                result.skipped(id, "POS orders are released by Payment Verification.");
+                continue;
+            }
             // Payment-verification gate (payment-verification-gated approval): an
             // order with an unverified / rejected payment is skipped with a clear
             // reason so the UI can list it as "verify payment first".
@@ -202,7 +206,9 @@ public class BulkOrderService {
             String reason = switch (normalized) {
                 case "APPROVE" -> order.getOrderStatus() != OrderStatus.PENDING_ADMIN_APPROVAL
                         ? "Order is not awaiting approval."
-                        : (needsPaymentVerification(order) ? "Payment not verified." : null);
+                        : (order.getSource() == OrderSource.STORE
+                                ? "POS orders are released by Payment Verification."
+                                : (needsPaymentVerification(order) ? "Payment not verified." : null));
                 case "MARK_PACKED" -> order.getOrderStatus() == OrderStatus.LABEL_GENERATED
                         ? null : "Order is not ready to pack.";
                 case "LABELS" -> null;

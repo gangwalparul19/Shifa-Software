@@ -29,7 +29,7 @@
           <label class="form-label" for="pmAccountMode">Receiving account</label>
           <select id="pmAccountMode" class="form-select" [formControl]="form.controls.accountMode">
             <option [value]="MODE_CHOOSE">Salesperson chooses the account</option>
-            <option [value]="MODE_NONE">No account needed (e.g. cash)</option>
+            <option [value]="MODE_NONE">No account needed (Cash only)</option>
             @for (type of accountTypes; track type.value) {
               <option [value]="MODE_AUTO_PREFIX + type.value">Auto-select the {{ type.label }} account</option>
             }

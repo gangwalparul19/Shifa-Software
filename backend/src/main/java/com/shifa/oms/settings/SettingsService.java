@@ -138,12 +138,11 @@ public class SettingsService {
         settings.setAggregateTurnover(request.aggregateTurnover());
         settings.setGstReminderWindowDays(request.gstReminderWindowDays());
         settings.setGstReconciliationTolerance(request.gstReconciliationTolerance());
-        // Config-driven auto-approval (V73): switch defaults to OFF when the field
-        // is absent; the threshold is stored as-is (service treats null/non-positive
-        // as "nothing qualifies"). Negative values are already rejected by bean
-        // validation on the request.
-        settings.setAutoApproveEnabled(Boolean.TRUE.equals(request.autoApproveEnabled()));
-        settings.setAutoApproveMaxAmount(request.autoApproveMaxAmount());
+        // Manual approval is mandatory for every salesperson/portal order. Keep the
+        // legacy columns for schema/API compatibility, but do not allow settings to
+        // re-enable the retired auto-approval path.
+        settings.setAutoApproveEnabled(false);
+        settings.setAutoApproveMaxAmount(null);
         settings.setShopifySettlementEnabled(shopifySettlementEnabled);
         settings.setShopifySettlementAccountId(shopifySettlementAccountId);
         return repository.save(settings);

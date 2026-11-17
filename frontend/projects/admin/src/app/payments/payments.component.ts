@@ -1,5 +1,5 @@
 import { IstDatePipe } from '../shared/ist-date.pipe';
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { catchError, forkJoin, of } from 'rxjs';
 import { PageHeaderComponent } from '../shared/page-header.component';
@@ -17,6 +17,7 @@ import {
 } from '../shared/source-filter.util';
 import { PaymentsService } from './payments.service';
 import { PaymentQueueRow } from './payments.model';
+import { AdminEventsService } from '../dashboard/admin-events.service';
 
 /**
  * Payment Verifier dashboard (PAYMENT_VERIFIER + ADMIN, product-audit §4.4).
@@ -44,6 +45,10 @@ import { PaymentQueueRow } from './payments.model';
 export class PaymentsComponent implements OnInit, OnDestroy {
   private readonly service = inject(PaymentsService);
   private readonly toasts = inject(ToastService);
+  private readonly events = inject(AdminEventsService);
+
+  private paymentEventInitialised = false;
+  private lastPaymentEventTs = 0;
 
   protected readonly rowsRaw = signal<PaymentQueueRow[]>([]);
 
@@ -99,8 +104,31 @@ export class PaymentsComponent implements OnInit, OnDestroy {
   /** The row whose Verify/Reject decision modal is open, plus the decision kind. */
   protected readonly decision = signal<{ row: PaymentQueueRow; kind: 'verify' | 'reject' } | null>(null);
 
+  constructor() {
+    // Payment verification can happen from the Approval Queue or another tab.
+    // Reload this queue when the committed decision reaches the shared SSE feed.
+    effect(() => {
+      const relevant = this.events
+        .notifications()
+        .filter((n) => n.type === 'PAYMENT_VERIFICATION_CHANGED');
+      const newestTs = relevant.length ? relevant[0].receivedAt.getTime() : 0;
+      if (!this.paymentEventInitialised) {
+        this.paymentEventInitialised = true;
+        this.lastPaymentEventTs = newestTs;
+        return;
+      }
+      if (newestTs > this.lastPaymentEventTs) {
+        this.lastPaymentEventTs = newestTs;
+        this.load();
+      }
+    });
+  }
+
   ngOnInit(): void {
     this.load();
+    // The shell normally owns this singleton connection; connect() is idempotent
+    // and also covers direct use of the payment route in a staff session.
+    this.events.connect();
   }
 
   ngOnDestroy(): void {

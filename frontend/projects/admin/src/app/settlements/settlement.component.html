@@ -28,10 +28,14 @@
         <div class="settlement-total"><span>Difference</span><strong [class.text-danger]="positive(data.difference)">{{ money(data.difference) }}</strong></div>
       </div>
       <div class="settlement-account-grid">
-        @for (account of data.accounts; track account.accountId) {
-          <article class="settlement-account-card">
-            <div class="d-flex align-items-center gap-2 mb-3"><span class="settlement-account-icon"><i class="ti ti-building-bank"></i></span><div><strong>{{ account.accountName }}</strong><div class="text-secondary small">{{ account.statementRows }} bank rows · {{ account.matchedRows }} UTR matched</div></div></div>
+        @for (account of data.accounts; track account.category + ':' + (account.accountId ?? account.accountName)) {
+          <article class="settlement-account-card" [class.settlement-account-card--actionable]="account.orderCount > 0"
+            [attr.role]="account.orderCount > 0 ? 'button' : null"
+            [attr.tabindex]="account.orderCount > 0 ? 0 : null"
+            (click)="openOrders(account)" (keydown.enter)="openOrders(account)">
+            <div class="d-flex align-items-center gap-2 mb-3"><span class="settlement-account-icon"><i class="ti ti-building-bank"></i></span><div><strong>{{ account.accountName }}</strong><div class="text-secondary small">{{ isCashAccount(account) ? 'Cash payments; no bank/QR account expected' : isNoReceivingAccount(account) ? 'Older or imported payments without a bank/QR account' : (account.statementRows + ' bank rows · ' + account.matchedRows + ' UTR matched') }}</div></div></div>
             <div class="settlement-account-main"><span>Received in OMS</span><strong>{{ money(account.omsBookedAmount) }}</strong></div>
+            <div class="settlement-account-row"><span>Orders</span><button type="button" class="btn btn-link btn-sm p-0" [disabled]="account.orderCount <= 0" (click)="$event.stopPropagation(); openOrders(account)">{{ account.orderCount }}</button></div>
             <div class="settlement-account-row"><span>Verified</span><strong>{{ money(account.verifiedAmount) }}</strong></div>
             <div class="settlement-account-row"><span>Pending verification</span><strong>{{ money(account.pendingAmount) }}</strong></div>
             <div class="settlement-account-row"><span>Bank statement</span><strong>{{ money(account.bankStatementAmount) }}</strong></div>

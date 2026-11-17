@@ -1013,6 +1013,13 @@ public interface OrderRepository extends JpaRepository<OrderEntity, Long>,
             com.shifa.oms.order.PaymentVerificationStatus paymentVerificationStatus,
             java.util.Collection<OrderStatus> statuses);
 
+    /**
+     * Count of orders in a lifecycle status for one source. Used to take POS
+     * orders (held for payment verification, never admin-approved) out of the
+     * approval-queue counts so every badge matches the Approval Queue list.
+     */
+    long countByOrderStatusAndSource(OrderStatus orderStatus, OrderSource source);
+
     /** Current QuikShip failure backlog, explicitly limited to courier orders. */
     long countByQuikShipXFailureReasonIsNotNullAndDeliveryMethod(
             com.shifa.oms.order.DeliveryMethod deliveryMethod);
