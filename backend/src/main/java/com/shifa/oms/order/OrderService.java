@@ -660,15 +660,14 @@ public class OrderService {
         PaymentCalculation calc = PaymentCalculator.classify(total, received);
         String storeMethod = request.paymentMethod() == null || request.paymentMethod().isBlank()
                 ? "CASH" : request.paymentMethod();
+        // POS accepts every active payment method, exactly like a salesperson order:
+        // Cash needs no receiving account, while every other method must name the
+        // receiving bank/QR account (enforced inside resolvePaymentCapture). The
+        // Cash-for-salesperson restriction (requirePortalPaymentMethodAllowed) is NOT
+        // applied here — POS is precisely where Cash is allowed for every role.
         PaymentCapture paymentCapture = resolvePaymentCapture(
                 storeMethod, request.paymentAccountId(), request.paymentUtr(),
                 calc.amountReceived().toBigDecimal(), null);
-        if (!isCashMethod(paymentCapture.method())) {
-            throw new ValidationException("POS orders support Cash only.");
-        }
-
-        // Cash is a valid counter payment with no receiving-account selection; the
-        // resolved method code is persisted on the payment row.
 
         // Address is optional for a counter sale (no delivery) — store whatever was
         // given, defaulting blanks so the NOT-NULL columns are satisfied.

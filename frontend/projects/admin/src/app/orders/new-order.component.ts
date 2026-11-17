@@ -200,13 +200,15 @@ export class NewOrderComponent implements OnInit, OnDestroy {
 
   /** Active payment methods from Settings (admin-managed); the default is pre-selected. */
   protected readonly paymentMethods = signal<PaymentMethodOption[]>([]);
-  /** Active payment methods offered for this order mode and role. */
+  /**
+   * Active payment methods offered for this order mode and role. A POS (counter) sale and an
+   * ADMIN order see every active method; a salesperson/team-lead portal order sees every method
+   * except Cash, which is only available through POS or admin entry. The server enforces the same
+   * rule, so this only decides what is shown.
+   */
   protected readonly visiblePaymentMethods = computed(() => {
     const methods = this.paymentMethods();
-    if (this.posMode()) {
-      return methods.filter((method) => method.code === 'CASH');
-    }
-    if (this.isAdmin()) {
+    if (this.posMode() || this.isAdmin()) {
       return methods;
     }
     return methods.filter((method) => method.code !== 'CASH');
@@ -1284,8 +1286,9 @@ export class NewOrderComponent implements OnInit, OnDestroy {
   private enterPosMode(): void {
     this.destination.set('india');
     this.sameDayDuplicate.set(null);
-    // A POS sale defaults to the Cash method. Its payment method is sent so the
-    // payment row records CASH; Cash itself does not require a receiving account.
+    // A POS sale offers every active payment method but starts on Cash, the usual counter
+    // method. The chosen method is sent so the payment row records it; Cash needs no receiving
+    // account, any other method must name one (same rule as a salesperson order).
     this.form.controls.paymentMethod.clearValidators();
     this.form.controls.paymentMethod.updateValueAndValidity();
     this.form.controls.addressLine.setValidators([Validators.maxLength(250)]);
@@ -1296,8 +1299,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
     this.form.controls.city.updateValueAndValidity();
     this.form.controls.state.updateValueAndValidity();
     this.form.controls.postalCode.updateValueAndValidity();
-    // POS defaults to the Cash method when the Settings-managed list is already loaded.
-    // syncPaymentMethod() applies the same fallback when the list arrives later.
+    // POS starts on Cash (still changeable) when the Settings-managed list is already loaded.
+    // syncPaymentMethod() applies the same starting choice when the list arrives later.
     const cash = this.paymentMethods().find((method) => method.code === 'CASH');
     if (cash) {
       this.form.controls.paymentMethod.setValue(cash.code);
@@ -1604,6 +1607,8 @@ export class NewOrderComponent implements OnInit, OnDestroy {
         ?? methods.find((method) => method.defaultMethod)
         ?? methods[0]
       : methods.find((method) => method.defaultMethod) ?? methods[0];
+    // POS starts on Cash, but only while the field is untouched: once the cashier picks another
+    // method the control is dirty, so a later list/account refresh never overrides their choice.
     if (!methods.some((method) => method.code === control.value)
         || (this.posMode() && control.value !== 'CASH' && control.pristine)) {
       control.setValue(fallback.code);
