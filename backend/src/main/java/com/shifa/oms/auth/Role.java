@@ -2,8 +2,8 @@ package com.shifa.oms.auth;
 
 /**
  * The platform user roles (Requirement 5.1): ADMIN, ACCOUNTANT, CA, SALESPERSON,
- * TEAM_LEAD, PACKING_USER, PAYMENT_VERIFIER, and the legacy CUSTOMER role (no new
- * accounts are created; self-registration was removed, so only old rows can carry it).
+ * TEAM_LEAD, CRM_LEAD, PACKING_USER, PAYMENT_VERIFIER, and the legacy CUSTOMER role (no
+ * new accounts are created; self-registration was removed, so only old rows can carry it).
  *
  * <p>Each role maps to a Spring Security authority of the form
  * {@code ROLE_<name>} (see {@link #authority()}), so method-level checks such as
@@ -36,6 +36,20 @@ public enum Role {
      * approve/dispatch/mutate orders or configure the system.
      */
     TEAM_LEAD,
+
+    /**
+     * CRM Lead — a strictly READ-ONLY view of the whole CRM: every lead and its
+     * history, follow-ups, tasks, meetings, customers (Customer 360), team and
+     * leaderboard performance, and orders. Sees the whole business (unscoped, like
+     * ADMIN) but can add, edit, assign, approve or delete nothing.
+     *
+     * <p>Read-only is enforced twice: (1) it appears only on explicit GET
+     * {@code @PreAuthorize} lists, never on a write endpoint; and (2)
+     * {@link ReadOnlyRoleFilter} rejects every non-GET request from this role except
+     * sign-in/refresh, changing its own password and reading its own notifications.
+     * It is stored in {@code users.role VARCHAR(20)}, so it needs no migration.
+     */
+    CRM_LEAD,
 
     /** Packing / barcode-scan functions. */
     PACKING_USER,

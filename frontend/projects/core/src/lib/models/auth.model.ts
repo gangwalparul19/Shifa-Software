@@ -7,6 +7,11 @@ export enum Role {
   ACCOUNTANT = 'ACCOUNTANT',
   SALESPERSON = 'SALESPERSON',
   TEAM_LEAD = 'TEAM_LEAD',
+  /**
+   * CRM Lead — a strictly view-only look at the whole CRM (leads, follow-ups, tasks,
+   * meetings, customers, team performance, orders). Cannot add or change anything.
+   */
+  CRM_LEAD = 'CRM_LEAD',
   PACKING_USER = 'PACKING_USER',
   PAYMENT_VERIFIER = 'PAYMENT_VERIFIER',
   /** Chartered Accountant — accounting, taxation, GST dashboard/report (read-only finance). */

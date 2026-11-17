@@ -4,7 +4,7 @@ import { FormControl } from '@angular/forms';
 import { ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
-import { Money, SortState } from 'core';
+import { AuthService, Money, Role, SortState } from 'core';
 import { CustomersService } from './customers.service';
 import { CustomerProfile, CustomerSummary, riskLabel, riskPillClass } from './customers.model';
 import { ToastService } from '../shared/toast.service';
@@ -54,6 +54,13 @@ export class CustomersComponent implements OnInit, OnDestroy {
   private readonly service = inject(CustomersService);
   private readonly toasts = inject(ToastService);
   private readonly waTemplates = inject(WhatsappTemplatesService);
+  private readonly auth = inject(AuthService);
+
+  /**
+   * A view-only account (the CRM Lead) reads the whole Customer 360 but cannot add tags or
+   * notes or start a reorder, so those controls are hidden (the server refuses them too).
+   */
+  protected readonly viewOnly = computed(() => this.auth.hasAnyRole(Role.CRM_LEAD));
 
   // Expose risk badge helpers to the template.
   protected readonly riskPillClass = riskPillClass;

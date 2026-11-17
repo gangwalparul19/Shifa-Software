@@ -45,8 +45,19 @@ public record LeadResponse(
         List<LeadTagResponse> tags,
         List<StatusHistoryEntry> statusHistory,
         Long pipelineId,
-        Long stageId
+        Long stageId,
+        /** The owner's display name, filled by the service for the detail view; null when unknown. */
+        String ownerName
 ) {
+
+    /** Copy with the owner's display name set. */
+    public LeadResponse withOwnerName(String name) {
+        return new LeadResponse(id, customerName, customerMobile, customerEmail, leadSource,
+                leadSourceNote, status, lostReason, lostReasonNote, note, followUpDate,
+                followUpTime, ownerUserId, createdByUserId, createdByAdmin, assignedAt,
+                addressLine, city, state, postalCode, convertedOrderId, createdAt, updatedAt,
+                tags, statusHistory, pipelineId, stageId, name);
+    }
 
     /** One status-history row (from/to/actor/changed-at) for the detail trail. */
     public record StatusHistoryEntry(
@@ -98,6 +109,7 @@ public record LeadResponse(
                 tags == null ? List.of() : tags,
                 history,
                 lead.getPipelineId(),
-                lead.getStageId());
+                lead.getStageId(),
+                null);
     }
 }

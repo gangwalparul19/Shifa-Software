@@ -42,7 +42,7 @@ public class LeadConfigController {
 
     /** The active managed lead sources for the capture picker. */
     @GetMapping("/api/lead-sources")
-    @PreAuthorize("hasAnyRole('SALESPERSON','TEAM_LEAD','ADMIN')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','TEAM_LEAD','ADMIN','CRM_LEAD')")
     public List<LeadSourceResponse> activeSources() {
         return leadConfigService.listActiveSources();
     }

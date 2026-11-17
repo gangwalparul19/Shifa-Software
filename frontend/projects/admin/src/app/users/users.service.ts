@@ -12,6 +12,7 @@ export type StaffRole =
   | Role.ACCOUNTANT
   | Role.SALESPERSON
   | Role.TEAM_LEAD
+  | Role.CRM_LEAD
   | Role.PACKING_USER
   | Role.PAYMENT_VERIFIER
   | Role.CA;
@@ -22,6 +23,7 @@ export const STAFF_ROLES: readonly StaffRole[] = [
   Role.ACCOUNTANT,
   Role.SALESPERSON,
   Role.TEAM_LEAD,
+  Role.CRM_LEAD,
   Role.PACKING_USER,
   Role.PAYMENT_VERIFIER,
   Role.CA,

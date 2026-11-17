@@ -21,13 +21,22 @@ public record TaskResponse(
         String completionNote,
         String cancelReason,
         LocalDateTime cancelledAt,
-        LocalDateTime createdAt) {
+        LocalDateTime createdAt,
+        /** The owner's display name, filled in for list views; null when unknown. */
+        String ownerName) {
 
     public static TaskResponse from(TaskEntity t) {
         return new TaskResponse(
                 t.getId(), t.getOwnerUserId(), t.getTitle(), t.getDescription(),
                 t.getLeadId(), t.getCustomerMobile(), t.getDueAt(), t.getPriority(),
                 t.getStatus(), t.getCompletedAt(), t.getCompletionNote(),
-                t.getCancelReason(), t.getCancelledAt(), t.getCreatedAt());
+                t.getCancelReason(), t.getCancelledAt(), t.getCreatedAt(), null);
+    }
+
+    /** Copy with the owner's display name set. */
+    public TaskResponse withOwnerName(String name) {
+        return new TaskResponse(id, ownerUserId, title, description, leadId, customerMobile,
+                dueAt, priority, status, completedAt, completionNote, cancelReason,
+                cancelledAt, createdAt, name);
     }
 }

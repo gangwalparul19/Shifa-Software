@@ -1,14 +1,16 @@
 <admin-page-header
-  title="My tasks"
-  subtitle="Your CRM to-dos — open, due, and overdue."
+  [title]="canWrite() ? 'My tasks' : 'Tasks'"
+  [subtitle]="canWrite() ? 'Your CRM to-dos — open, due, and overdue.' : 'Every CRM to-do across the team — open, due, and overdue (view only).'"
   [breadcrumbs]="[{ label: 'Tasks' }]"
 >
   <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
     <i class="ti ti-refresh"></i>
   </button>
-  <button type="button" class="btn btn-primary" (click)="openCreate()">
-    <i class="ti ti-plus me-1"></i> New task
-  </button>
+  @if (canWrite()) {
+    <button type="button" class="btn btn-primary" (click)="openCreate()">
+      <i class="ti ti-plus me-1"></i> New task
+    </button>
+  }
 </admin-page-header>
 
 <div class="shifa-formtabs mb-3">
@@ -35,8 +37,8 @@
     [card]="true"
     icon="ti-checkbox"
     title="No tasks here"
-    message="Create a task to track a follow-up call, a quote to send, or any to-do."
-    ctaLabel="New task"
+    [message]="canWrite() ? 'Create a task to track a follow-up call, a quote to send, or any to-do.' : 'There are no tasks in this view.'"
+    [ctaLabel]="canWrite() ? 'New task' : undefined"
     ctaIcon="ti-plus"
     (cta)="openCreate()"
   />
@@ -53,6 +55,9 @@
         }
         <div class="shifa-task__r2">
           <span [class]="statusClass(task.status)">{{ task.status }}</span>
+          @if (showOwner() && task.ownerName) {
+            <span class="shifa-task__due"><i class="ti ti-user me-1"></i>{{ task.ownerName }}</span>
+          }
           @if (task.dueAt) {
             <span class="shifa-task__due" [class.is-overdue]="isOverdue(task)">
               <i class="ti ti-clock me-1"></i>{{ task.dueAt | istDate: 'dd MMM, HH:mm' }}
@@ -66,7 +71,7 @@
         @if (task.status === 'CANCELLED' && task.cancelReason) {
           <div class="shifa-task__desc"><strong>Cancel reason:</strong> {{ task.cancelReason }}</div>
         }
-        @if (task.status === 'OPEN') {
+        @if (canWrite() && task.status === 'OPEN') {
           <div class="shifa-task__actions">
             <button type="button" class="btn btn-sm btn-outline-success" (click)="startComplete(task, $event)">
               <i class="ti ti-circle-check me-1"></i>Complete

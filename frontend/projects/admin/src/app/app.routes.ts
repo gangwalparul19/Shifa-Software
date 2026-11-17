@@ -23,6 +23,7 @@ export const staffGuard = createRoleGuard(
   Role.ACCOUNTANT,
   Role.SALESPERSON,
   Role.TEAM_LEAD,
+  Role.CRM_LEAD,
   Role.PACKING_USER,
   Role.PAYMENT_VERIFIER,
   Role.CA,
@@ -40,6 +41,40 @@ export const salespersonGuard = createRoleGuard(
   FORBIDDEN_PATH,
   Role.ADMIN,
   Role.SALESPERSON,
+);
+
+/**
+ * Leads, due follow-ups and the leaderboard — Salesperson and Admin, plus the view-only
+ * CRM Lead. Every create/edit control on those pages is hidden for the CRM Lead and the
+ * backend refuses the writes, so the extra role can only look.
+ */
+export const crmViewGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.SALESPERSON,
+  Role.CRM_LEAD,
+);
+
+/**
+ * CRM tasks and meetings — Salesperson, Team Lead and Admin act on them; the CRM Lead
+ * may only view them. Kept apart from {@link orderEntryGuard}, which opens New Order.
+ */
+export const crmTasksGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.SALESPERSON,
+  Role.TEAM_LEAD,
+  Role.CRM_LEAD,
+);
+
+/** The CRM cockpit and team-wise sales overview — Admin and the view-only CRM Lead. */
+export const crmOverviewGuard = createRoleGuard(
+  LOGIN_PATH,
+  FORBIDDEN_PATH,
+  Role.ADMIN,
+  Role.CRM_LEAD,
 );
 
 /**
@@ -116,6 +151,7 @@ export const customersGuard = createRoleGuard(
   Role.ADMIN,
   Role.ACCOUNTANT,
   Role.SALESPERSON,
+  Role.CRM_LEAD,
 );
 
 /** Packing (barcode scan) is limited to Packing_User and Admin (Req 11). */
@@ -134,12 +170,13 @@ export const paymentVerifierGuard = createRoleGuard(
   Role.PAYMENT_VERIFIER,
 );
 
-/** Team-lead performance dashboard is limited to Team_Lead and Admin. */
+/** Team performance is open to Team_Lead and Admin, and viewable by the CRM Lead. */
 export const teamLeadGuard = createRoleGuard(
   LOGIN_PATH,
   FORBIDDEN_PATH,
   Role.ADMIN,
   Role.TEAM_LEAD,
+  Role.CRM_LEAD,
 );
 
 /**
@@ -234,41 +271,42 @@ export const routes: Routes = [
         canActivate: [staffGuard],
       },
       {
-        // Due follow-ups view (SALESPERSON + ADMIN, Req 5.2). Registered before
-        // the pipeline list so the more specific path wins. The backend scopes a
-        // salesperson to their own leads.
+        // Due follow-ups view (SALESPERSON + ADMIN, Req 5.2; view-only for the CRM Lead).
+        // Registered before the pipeline list so the more specific path wins. The backend
+        // scopes a salesperson to their own leads; admin and CRM Lead see all.
         path: 'leads/follow-ups',
         loadComponent: () =>
           import('./leads/due-follow-ups.component').then((m) => m.DueFollowUpsComponent),
-        canActivate: [salespersonGuard],
+        canActivate: [crmViewGuard],
       },
       {
-        // Leads pipeline / capture (SALESPERSON + ADMIN, Req 8). The backend
-        // scopes a salesperson to their own leads; admins see all.
+        // Leads pipeline / capture (SALESPERSON + ADMIN, Req 8; view-only for the CRM Lead).
+        // The backend scopes a salesperson to their own leads; admin and CRM Lead see all.
         path: 'leads',
         loadComponent: () => import('./leads/leads.component').then((m) => m.LeadsComponent),
-        canActivate: [salespersonGuard],
+        canActivate: [crmViewGuard],
       },
       {
-        // CRM tasks (SALESPERSON + TEAM_LEAD + ADMIN, CRM expansion Req 8). The
-        // backend scopes own / team / all.
+        // CRM tasks (SALESPERSON + TEAM_LEAD + ADMIN, CRM expansion Req 8; view-only for the
+        // CRM Lead). The backend scopes own / team / all.
         path: 'tasks',
         loadComponent: () => import('./tasks/tasks.component').then((m) => m.TasksComponent),
-        canActivate: [orderEntryGuard],
+        canActivate: [crmTasksGuard],
       },
       {
-        // CRM meetings (SALESPERSON + TEAM_LEAD + ADMIN, CRM expansion Req 9).
+        // CRM meetings (SALESPERSON + TEAM_LEAD + ADMIN, CRM expansion Req 9; view-only for
+        // the CRM Lead).
         path: 'meetings',
         loadComponent: () =>
           import('./meetings/meetings.component').then((m) => m.MeetingsComponent),
-        canActivate: [orderEntryGuard],
+        canActivate: [crmTasksGuard],
       },
       {
-        // Unified CRM cockpit (ADMIN only, CRM expansion Req 14).
+        // Unified CRM cockpit (ADMIN, CRM expansion Req 14) — also the view-only CRM Lead's home.
         path: 'crm-dashboard',
         loadComponent: () =>
           import('./crm-dashboard/crm-dashboard.component').then((m) => m.CrmDashboardComponent),
-        canActivate: [adminOnlyGuard],
+        canActivate: [crmOverviewGuard],
       },
       {
         path: 'exceptions',
@@ -628,11 +666,12 @@ export const routes: Routes = [
         canActivate: [adminOnlyGuard],
       },
       {
-        // Team-wise sales with status overview (ADMIN only) — linked from the dashboard.
+        // Team-wise sales with status overview (ADMIN + the view-only CRM Lead) — linked from
+        // the dashboard.
         path: 'teams-overview',
         loadComponent: () =>
           import('./dashboard/teams-overview.component').then((m) => m.TeamsOverviewComponent),
-        canActivate: [adminOnlyGuard],
+        canActivate: [crmOverviewGuard],
       },
       {
         // Orders by delivery partner: QuikShipX / In-house (Ishika Enterprise) / POS (ADMIN only).
@@ -644,18 +683,19 @@ export const routes: Routes = [
         canActivate: [adminOnlyGuard],
       },
       {
-        // Team-lead performance dashboard (TEAM_LEAD + ADMIN).
+        // Team performance dashboard (TEAM_LEAD + ADMIN; view-only for the CRM Lead).
         path: 'team-performance',
         loadComponent: () =>
           import('./team/team-performance.component').then((m) => m.TeamPerformanceComponent),
         canActivate: [teamLeadGuard],
       },
       {
-        // Sales leaderboard (ADMIN + SALESPERSON) — moved off the dashboard.
+        // Sales leaderboard (ADMIN + SALESPERSON; view-only for the CRM Lead) — moved off
+        // the dashboard.
         path: 'leaderboard',
         loadComponent: () =>
           import('./leaderboard/leaderboard.component').then((m) => m.LeaderboardComponent),
-        canActivate: [salespersonGuard],
+        canActivate: [crmViewGuard],
       },
     ],
   },

@@ -316,6 +316,11 @@ export class DashboardComponent implements OnInit {
       void this.router.navigate(['/packing']);
       return;
     }
+    // The view-only CRM Lead works from the CRM cockpit, which is their dashboard.
+    if (this.role() === Role.CRM_LEAD) {
+      void this.router.navigate(['/crm-dashboard']);
+      return;
+    }
     // The role-shaped summary is available to every operational role (Req 3.1);
     // for an admin it also supplies the insights counts.
     this.loadSummary();

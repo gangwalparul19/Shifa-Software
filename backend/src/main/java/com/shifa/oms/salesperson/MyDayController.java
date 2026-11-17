@@ -67,6 +67,7 @@ public class MyDayController {
      * CUSTOM; CUSTOM needs {@code from} and {@code to} (both days included).
      */
     @GetMapping("/leaderboard")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN','CRM_LEAD')")
     public LeaderboardResponse leaderboard(
             @RequestParam(value = "period", required = false) String period,
             @RequestParam(value = "from", required = false)
@@ -78,6 +79,7 @@ public class MyDayController {
     }
 
     @GetMapping("/leaderboard/export")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN','CRM_LEAD')")
     public ResponseEntity<byte[]> exportLeaderboard(
             @RequestParam(value = "period", required = false) String period,
             @RequestParam(value = "from", required = false)

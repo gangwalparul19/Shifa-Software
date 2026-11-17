@@ -63,6 +63,14 @@ import java.util.Map;
 @PreAuthorize("hasAnyRole('SALESPERSON','ADMIN')")
 public class LeadController {
 
+    /**
+     * Read access: the class roles plus the view-only CRM Lead. Put ONLY on GET handlers. A
+     * method-level {@code @PreAuthorize} replaces the class-level one, so the class roles
+     * are restated here. Never add the CRM Lead to the class annotation: every write below
+     * would then open to them.
+     */
+    private static final String READ_ACCESS = "hasAnyRole('SALESPERSON','ADMIN','CRM_LEAD')";
+
     private final LeadService leadService;
     private final CurrentUserService currentUserService;
 
@@ -84,6 +92,7 @@ public class LeadController {
      * (Req 3.4), and an admin-created filter (CRM expansion Req 3.3).
      */
     @GetMapping
+    @PreAuthorize(READ_ACCESS)
     public List<LeadSummaryResponse> list(
             @RequestParam(name = "q", required = false) String q,
             @RequestParam(name = "status", required = false) LeadStatus status,
@@ -95,6 +104,7 @@ public class LeadController {
 
     /** Active-lead pipeline counts per {@link LeadStatus} (Req 3.3), scoped. */
     @GetMapping("/pipeline")
+    @PreAuthorize(READ_ACCESS)
     public Map<LeadStatus, Long> pipeline() {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return leadService.pipelineCounts(actor);
@@ -102,6 +112,7 @@ public class LeadController {
 
     /** The acting user's due follow-ups: non-terminal leads due on/before today (Req 5.2). */
     @GetMapping("/follow-ups/due")
+    @PreAuthorize(READ_ACCESS)
     public List<LeadSummaryResponse> dueFollowUps() {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return leadService.dueFollowUps(actor);
@@ -109,6 +120,7 @@ public class LeadController {
 
     /** The acting user's missed follow-ups (CRM expansion Req 10.3), scoped. */
     @GetMapping("/follow-ups/missed")
+    @PreAuthorize(READ_ACCESS)
     public List<LeadSummaryResponse> missedFollowUps() {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return leadService.missedFollowUps(actor);
@@ -116,6 +128,7 @@ public class LeadController {
 
     /** Scoped lead detail incl. status history (Req 3.5); 404 when out of scope. */
     @GetMapping("/{id}")
+    @PreAuthorize(READ_ACCESS)
     public LeadResponse detail(@PathVariable Long id) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return leadService.detail(id, actor);
@@ -123,6 +136,7 @@ public class LeadController {
 
     /** A lead's unified activity timeline, newest first (CRM expansion Req 11.2). */
     @GetMapping("/{id}/activity")
+    @PreAuthorize(READ_ACCESS)
     public List<com.shifa.oms.activity.dto.ActivityResponse> activity(@PathVariable Long id) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return leadService.leadActivity(id, actor);
@@ -182,6 +196,7 @@ public class LeadController {
 
     /** The active managed tag vocabulary (Req 4). Any lead role. */
     @GetMapping("/tags")
+    @PreAuthorize(READ_ACCESS)
     public List<LeadTagResponse> tags() {
         return leadService.listTags();
     }
@@ -221,6 +236,7 @@ public class LeadController {
 
     /** Leads-by-source report over an optional {@code from}/{@code to} window (Req 6.1). */
     @GetMapping("/reports/by-source")
+    @PreAuthorize(READ_ACCESS)
     public BySourceReport reportBySource(
             @RequestParam(name = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -232,6 +248,7 @@ public class LeadController {
 
     /** Conversion report (per source and per owner) over an optional window (Req 6.2). */
     @GetMapping("/reports/conversion")
+    @PreAuthorize(READ_ACCESS)
     public ConversionReport reportConversion(
             @RequestParam(name = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -243,6 +260,7 @@ public class LeadController {
 
     /** Pipeline snapshot: current active-lead counts per stage (Req 6.3). */
     @GetMapping("/reports/pipeline")
+    @PreAuthorize(READ_ACCESS)
     public PipelineReport reportPipeline() {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return leadService.reportPipeline(actor);
@@ -250,6 +268,7 @@ public class LeadController {
 
     /** Lost-reasons report over an optional window (Req 6.4). */
     @GetMapping("/reports/lost-reasons")
+    @PreAuthorize(READ_ACCESS)
     public LostReasonReport reportLostReasons(
             @RequestParam(name = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -261,6 +280,7 @@ public class LeadController {
 
     /** Leads-by-stage report over an optional window (CRM expansion Req 13.1). */
     @GetMapping("/reports/by-stage")
+    @PreAuthorize(READ_ACCESS)
     public com.shifa.oms.lead.dto.LeadReports.ByStageReport reportByStage(
             @RequestParam(name = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -272,6 +292,7 @@ public class LeadController {
 
     /** Leads-by-user (assignee) performance report over an optional window (Req 13.2). */
     @GetMapping("/reports/by-user")
+    @PreAuthorize(READ_ACCESS)
     public com.shifa.oms.lead.dto.LeadReports.GroupPerformanceReport reportByUser(
             @RequestParam(name = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -283,6 +304,7 @@ public class LeadController {
 
     /** Leads-by-team performance report over an optional window (Req 13.2). */
     @GetMapping("/reports/by-team")
+    @PreAuthorize(READ_ACCESS)
     public com.shifa.oms.lead.dto.LeadReports.GroupPerformanceReport reportByTeam(
             @RequestParam(name = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,

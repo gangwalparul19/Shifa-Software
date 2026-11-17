@@ -7,6 +7,7 @@ import { StatePanelComponent } from '../shared/state-panel.component';
 import { IstDatePipe } from '../shared/ist-date.pipe';
 import { DialogDirective } from '../shared/dialog.directive';
 import { ToastService } from '../shared/toast.service';
+import { AuthService, Role } from 'core';
 import { MeetingsService } from './meetings.service';
 import {
   Meeting,
@@ -40,6 +41,20 @@ export class MeetingsComponent implements OnInit {
   private readonly service = inject(MeetingsService);
   private readonly toasts = inject(ToastService);
   private readonly fb = inject(FormBuilder);
+  private readonly auth = inject(AuthService);
+
+  /**
+   * Whether the user may schedule, edit or close meetings. The view-only CRM Lead sees
+   * everyone's meetings but changes none (the server refuses it as well).
+   */
+  protected readonly canWrite = computed(
+    () => !this.auth.hasAnyRole(Role.CRM_LEAD),
+  );
+
+  /** Whether the list can hold other people's meetings, so each card should name its owner. */
+  protected readonly showOwner = computed(() =>
+    this.auth.hasAnyRole(Role.ADMIN, Role.TEAM_LEAD, Role.CRM_LEAD),
+  );
 
   protected readonly modes = MEETING_MODES;
   protected readonly modeLabel = meetingModeLabel;
@@ -124,6 +139,9 @@ export class MeetingsComponent implements OnInit {
   }
 
   openEdit(meeting: Meeting): void {
+    if (!this.canWrite()) {
+      return;
+    }
     this.editingId.set(meeting.id);
     this.form.reset({
       title: meeting.title,

@@ -29,8 +29,17 @@ public record LeadSummaryResponse(
         LocalDateTime assignedAt,
         Long convertedOrderId,
         LocalDateTime createdAt,
-        List<String> tags
+        List<String> tags,
+        /** The owner's display name, filled by the service for list views; null when unknown. */
+        String ownerName
 ) {
+
+    /** Copy with the owner's display name set. */
+    public LeadSummaryResponse withOwnerName(String name) {
+        return new LeadSummaryResponse(id, customerName, customerMobile, leadSource, status,
+                followUpDate, followUpTime, ownerUserId, createdByAdmin, assignedAt,
+                convertedOrderId, createdAt, tags, name);
+    }
 
     /** Compact projection with no tags (back-compat for callers without a tag view). */
     public static LeadSummaryResponse from(LeadEntity lead) {
@@ -52,6 +61,7 @@ public record LeadSummaryResponse(
                 lead.getAssignedAt(),
                 lead.getConvertedOrderId(),
                 lead.getCreatedAt(),
-                tagNames == null ? List.of() : tagNames);
+                tagNames == null ? List.of() : tagNames,
+                null);
     }
 }

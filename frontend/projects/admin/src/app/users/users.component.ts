@@ -164,6 +164,8 @@ export class UsersComponent implements OnInit {
         return 'bg-purple-lt';
       case Role.TEAM_LEAD:
         return 'bg-lime-lt';
+      case Role.CRM_LEAD:
+        return 'bg-indigo-lt';
       case Role.PACKING_USER:
         return 'bg-orange-lt';
       case Role.PAYMENT_VERIFIER:

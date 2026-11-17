@@ -33,6 +33,13 @@ import java.util.List;
 @PreAuthorize("hasAnyRole('ADMIN', 'ACCOUNTANT', 'SALESPERSON')")
 public class CustomerCrmController {
 
+    /**
+     * Read access: the class roles plus the view-only CRM Lead. Used on the GET handlers
+     * only (profile, risk); the note and tag writes below keep the class roles, so the CRM
+     * Lead cannot reach them.
+     */
+    private static final String READ_ACCESS = "hasAnyRole('ADMIN', 'ACCOUNTANT', 'SALESPERSON', 'CRM_LEAD')";
+
     private final CustomerInsightService insightService;
 
     public CustomerCrmController(CustomerInsightService insightService) {
@@ -41,6 +48,7 @@ public class CustomerCrmController {
 
     /** The full Customer 360 profile (summary + metrics + risk + products + tags + notes + history). */
     @GetMapping("/{mobile}/profile")
+    @PreAuthorize(READ_ACCESS)
     public CustomerProfileResponse profile(@PathVariable String mobile) {
         return insightService.profile(mobile);
     }
@@ -50,6 +58,7 @@ public class CustomerCrmController {
      * toward prepaid. Never 404s: an unknown mobile is treated as a new customer.
      */
     @GetMapping("/{mobile}/risk")
+    @PreAuthorize(READ_ACCESS)
     public CustomerRiskResponse risk(@PathVariable String mobile) {
         return insightService.risk(mobile);
     }

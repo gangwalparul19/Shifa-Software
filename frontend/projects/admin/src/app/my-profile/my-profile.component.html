@@ -115,6 +115,16 @@
         </div>
       }
 
+      @if (viewOnly()) {
+        <div class="card">
+          <div class="card-body">
+            <div class="mp-hint">
+              <i class="ti ti-eye me-2"></i>
+              Your account is view only. To change any of these details, please ask an administrator.
+            </div>
+          </div>
+        </div>
+      } @else {
       <div class="card">
         <div class="card-header">
           <h3 class="card-title">
@@ -193,6 +203,7 @@
           </form>
         </div>
       </div>
+      }
     </div>
   </div>
 }

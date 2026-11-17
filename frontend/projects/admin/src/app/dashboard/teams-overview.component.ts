@@ -1,5 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { AuthService, Role } from 'core';
 import { formatInr } from '../shared/inr.pipe';
 import { PageHeaderComponent } from '../shared/page-header.component';
 import { PeriodPickerComponent } from '../shared/period-picker.component';
@@ -55,6 +56,10 @@ const PIPELINE_STAGES: { key: string; label: string }[] = [
 export class TeamsOverviewComponent implements OnInit {
   private readonly service = inject(TeamsOverviewService);
   private readonly toasts = inject(ToastService);
+  private readonly auth = inject(AuthService);
+
+  /** A view-only account (the CRM Lead) gets no Call or WhatsApp buttons on the call-out lists. */
+  protected readonly viewOnly = computed(() => this.auth.hasAnyRole(Role.CRM_LEAD));
 
   protected readonly data = signal<TeamsOverviewResponse | null>(null);
   /** True while the first load is running and there is nothing to show yet. */

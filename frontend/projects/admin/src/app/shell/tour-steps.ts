@@ -67,4 +67,10 @@ export const ROLE_TOUR_STEP: Partial<Record<Role, TourStep>> = {
     body: "Your dashboard and Orders show your whole team's orders; Performance ranks your salespeople and shows which lead sources convert best.",
     placement: 'top',
   },
+  [Role.CRM_LEAD]: {
+    selector: '[data-tour="bottom-tabs"]',
+    title: 'Watching the CRM',
+    body: 'Your CRM home shows follow-up health, the lead pipeline and who is converting. Open Leads, Follow-ups and Customers to see every record in detail. Your account is view only, so you can look at everything but nothing can be changed.',
+    placement: 'top',
+  },
 };

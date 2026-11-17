@@ -272,9 +272,13 @@ public class OrderController {
         return orderService.lastCustomerByMobile(mobile);
     }
 
-    /** Order detail with payment tracking fields, role-scoped (Req 21.1, 5.5). */
+    /**
+     * Order detail with payment tracking fields, role-scoped (Req 21.1, 5.5). The view-only
+     * CRM Lead may read it (to follow what became of a lead); the invoice and the payment
+     * transactions below stay closed to them.
+     */
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('SALESPERSON','ACCOUNTANT','ADMIN','TEAM_LEAD','CA','PAYMENT_VERIFIER')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','ACCOUNTANT','ADMIN','TEAM_LEAD','CA','PAYMENT_VERIFIER','CRM_LEAD')")
     public OrderResponse detail(@PathVariable Long id) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return orderService.getOrder(id, actor);

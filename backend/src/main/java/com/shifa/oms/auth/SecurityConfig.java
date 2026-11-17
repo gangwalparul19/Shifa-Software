@@ -1,5 +1,6 @@
 package com.shifa.oms.auth;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -93,7 +94,8 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    JwtAuthenticationFilter jwtAuthenticationFilter,
                                                    RestAuthenticationEntryPoint authenticationEntryPoint,
-                                                   RestAccessDeniedHandler accessDeniedHandler) throws Exception {
+                                                   RestAccessDeniedHandler accessDeniedHandler,
+                                                   ObjectMapper objectMapper) throws Exception {
         http
                 // Allow the Angular admin dev server to call the API cross-origin.
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
@@ -137,7 +139,11 @@ public class SecurityConfig {
                 // No HTTP Basic / form login: authentication is bearer-token only.
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                // View-only roles (CRM_LEAD) may only read; this refuses anything else before a
+                // controller is reached. Built here, not as a bean, so Boot does not also
+                // register it as a plain servlet filter.
+                .addFilterAfter(new ReadOnlyRoleFilter(objectMapper), JwtAuthenticationFilter.class);
 
         return http.build();
     }

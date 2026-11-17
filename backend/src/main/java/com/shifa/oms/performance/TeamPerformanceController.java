@@ -33,6 +33,9 @@ import java.util.Map;
 @PreAuthorize("hasAnyRole('TEAM_LEAD','ADMIN')")
 public class TeamPerformanceController {
 
+    /** The class roles plus the view-only CRM Lead; every handler here is a GET. */
+    private static final String READ_ACCESS = "hasAnyRole('TEAM_LEAD','ADMIN','CRM_LEAD')";
+
     private final TeamPerformanceService teamPerformanceService;
     private final CurrentUserService currentUserService;
 
@@ -42,8 +45,14 @@ public class TeamPerformanceController {
         this.currentUserService = currentUserService;
     }
 
-    /** The selected reporting window; omitted values default to the current month. */
+    /**
+     * The selected reporting window; omitted values default to the current month. The
+     * view-only CRM Lead also reads these (every salesperson's figures, like an admin).
+     * The three GET handlers restate the class roles because a method-level guard replaces
+     * the class one.
+     */
     @GetMapping("/performance")
+    @PreAuthorize(READ_ACCESS)
     public TeamPerformanceResponse performance(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
@@ -57,6 +66,7 @@ public class TeamPerformanceController {
      * Who is included is decided from the signed-in user, never from the request.
      */
     @GetMapping("/performance/orders")
+    @PreAuthorize(READ_ACCESS)
     public PageResponse<TeamOrderRow> orders(
             @RequestParam(defaultValue = "team") String scope,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -79,6 +89,7 @@ public class TeamPerformanceController {
 
     /** An authorised drill-down into one direct report's performance. */
     @GetMapping("/performance/{salespersonId}")
+    @PreAuthorize(READ_ACCESS)
     public DirectReportPerformanceResponse detail(@PathVariable Long salespersonId,
                                                   @RequestParam(required = false) Integer days) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();

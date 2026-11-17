@@ -96,6 +96,8 @@ export interface LeadDetail {
   /** Optional follow-up time-of-day (CRM expansion, Req 6), {@code HH:mm[:ss]}. */
   followUpTime?: string | null;
   ownerUserId: number;
+  /** The owner's display name (set by the server for the detail view). */
+  ownerName?: string | null;
   /** The original creator (preserved across reassignment, Req 1.1). */
   createdByUserId?: number | null;
   /** Whether an admin created/uploaded the lead — "Lead by Admin" (Req 3). */
@@ -140,6 +142,8 @@ export interface LeadSummary {
   /** Optional follow-up time-of-day (CRM expansion, Req 6). */
   followUpTime?: string | null;
   ownerUserId: number;
+  /** The owner's display name (set by the server for list views). */
+  ownerName?: string | null;
   /** Whether an admin created/uploaded the lead — "Lead by Admin" (Req 3). */
   createdByAdmin: boolean;
   /** When the current assignee was set (Req 1.2). */

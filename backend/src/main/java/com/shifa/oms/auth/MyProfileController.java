@@ -47,8 +47,13 @@ public class MyProfileController {
         this.auditService = auditService;
     }
 
-    /** The signed-in staff member's current profile + any pending change request. */
+    /**
+     * The signed-in staff member's current profile + any pending change request. Also open
+     * to the view-only CRM Lead, who may look at their own profile but not request changes
+     * (the {@code POST /change-request} below keeps the class roles).
+     */
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','PACKING_USER','TEAM_LEAD','PAYMENT_VERIFIER','CA','CRM_LEAD')")
     public MyProfileResponse myProfile() {
         return changeRequestService.getMyProfile();
     }
@@ -64,6 +69,7 @@ public class MyProfileController {
 
     /** Views the signed-in staff member's own profile photo inline. */
     @GetMapping("/photo")
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','PACKING_USER','TEAM_LEAD','PAYMENT_VERIFIER','CA','CRM_LEAD')")
     public ResponseEntity<Resource> myPhoto() {
         Long myId = currentUserService.requireCurrentUser().userId();
         StorageService.StoredObject object = staffProfileService.loadProfileImage(myId);

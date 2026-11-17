@@ -27,7 +27,7 @@
     variant="empty"
     [card]="true"
     icon="ti-calendar-check"
-    title="You're all caught up"
+    title="Nothing due"
     message="No leads are due for a follow-up right now."
   />
 } @else {
@@ -42,6 +42,7 @@
           <span class="shifa-due__meta">
             <i class="ti {{ sourceIcon(lead.leadSource) }} me-1"></i>{{ sourceLabel(lead.leadSource) }}
             @if (lead.customerMobile) { · {{ lead.customerMobile }} }
+            @if (lead.ownerName) { · <i class="ti ti-user me-1"></i>{{ lead.ownerName }} }
           </span>
           <span class="shifa-due__date" [class.is-overdue]="isOverdue(lead)">
             <i class="ti ti-calendar-event me-1"></i>
@@ -50,7 +51,7 @@
           </span>
         </div>
         <div class="shifa-due__actions">
-          @if (lead.customerMobile) {
+          @if (lead.customerMobile && !viewOnly()) {
             <a class="btn btn-sm btn-outline-secondary" [href]="'tel:' + lead.customerMobile" (click)="callLead(lead, $event)" aria-label="Call lead">
               <i class="ti ti-phone me-1"></i>Call
             </a>

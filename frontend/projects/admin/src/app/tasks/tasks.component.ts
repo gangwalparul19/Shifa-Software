@@ -8,6 +8,7 @@ import { nowIstLocalMinute } from '../shared/business-date.util';
 import { IstDatePipe } from '../shared/ist-date.pipe';
 import { DialogDirective } from '../shared/dialog.directive';
 import { ToastService } from '../shared/toast.service';
+import { AuthService, Role } from 'core';
 import { TasksService } from './tasks.service';
 import {
   Task,
@@ -40,10 +41,24 @@ export class TasksComponent implements OnInit {
   private readonly service = inject(TasksService);
   private readonly toasts = inject(ToastService);
   private readonly fb = inject(FormBuilder);
+  private readonly auth = inject(AuthService);
 
   protected readonly priorities = TASK_PRIORITIES;
   protected readonly priorityClass = taskPriorityClass;
   protected readonly statusClass = taskStatusClass;
+
+  /**
+   * Whether the user may create, edit, complete or cancel tasks. The view-only CRM Lead
+   * sees everyone's tasks but changes none (the server refuses it as well).
+   */
+  protected readonly canWrite = computed(
+    () => !this.auth.hasAnyRole(Role.CRM_LEAD),
+  );
+
+  /** Whether the list can hold other people's tasks, so each card should name its owner. */
+  protected readonly showOwner = computed(() =>
+    this.auth.hasAnyRole(Role.ADMIN, Role.TEAM_LEAD, Role.CRM_LEAD),
+  );
 
   protected readonly tasks = signal<Task[]>([]);
   protected readonly loading = signal(true);
@@ -136,6 +151,9 @@ export class TasksComponent implements OnInit {
   }
 
   openEdit(task: Task): void {
+    if (!this.canWrite()) {
+      return;
+    }
     this.editingId.set(task.id);
     this.form.reset({
       title: task.title,

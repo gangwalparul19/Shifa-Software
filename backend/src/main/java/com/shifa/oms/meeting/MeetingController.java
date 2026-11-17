@@ -40,8 +40,13 @@ public class MeetingController {
         this.currentUserService = currentUserService;
     }
 
-    /** The caller's (scoped) meetings, optional status filter (Req 9.4). */
+    /**
+     * The caller's (scoped) meetings, optional status filter (Req 9.4). Also open to the
+     * view-only CRM Lead, who sees every owner's meetings; the class-level roles are
+     * restated because a method-level guard replaces the class one.
+     */
     @GetMapping
+    @PreAuthorize("hasAnyRole('SALESPERSON','TEAM_LEAD','ADMIN','CRM_LEAD')")
     public List<MeetingResponse> list(
             @RequestParam(name = "status", required = false) MeetingStatus status) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();

@@ -20,12 +20,20 @@ public record MeetingResponse(
         MeetingStatus status,
         String outcome,
         LocalDateTime closedAt,
-        LocalDateTime createdAt) {
+        LocalDateTime createdAt,
+        /** The owner's display name, filled in for list views; null when unknown. */
+        String ownerName) {
 
     public static MeetingResponse from(MeetingEntity m) {
         return new MeetingResponse(
                 m.getId(), m.getOwnerUserId(), m.getTitle(), m.getLeadId(), m.getCustomerMobile(),
                 m.getStartAt(), m.getMode(), m.getLocation(), m.getNotes(), m.getStatus(),
-                m.getOutcome(), m.getClosedAt(), m.getCreatedAt());
+                m.getOutcome(), m.getClosedAt(), m.getCreatedAt(), null);
+    }
+
+    /** Copy with the owner's display name set. */
+    public MeetingResponse withOwnerName(String name) {
+        return new MeetingResponse(id, ownerUserId, title, leadId, customerMobile, startAt,
+                mode, location, notes, status, outcome, closedAt, createdAt, name);
     }
 }

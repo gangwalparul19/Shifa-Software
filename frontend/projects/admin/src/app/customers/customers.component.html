@@ -75,14 +75,16 @@
             <span class="shifa-cust__spent">{{ money(c.totalSpent) }}</span>
           </div>
         </div>
-        <div class="shifa-cust__actions" (click)="stopRowClick($event)">
-          <a class="shifa-cust__act" [href]="'tel:' + c.mobile" aria-label="Call customer" title="Call">
-            <i class="ti ti-phone"></i>
-          </a>
-          <button type="button" class="shifa-cust__act shifa-cust__act--wa" (click)="sendWhatsAppSummary(c, $event)" aria-label="WhatsApp customer" title="WhatsApp">
-            <i class="ti ti-brand-whatsapp"></i>
-          </button>
-        </div>
+        @if (!viewOnly()) {
+          <div class="shifa-cust__actions" (click)="stopRowClick($event)">
+            <a class="shifa-cust__act" [href]="'tel:' + c.mobile" aria-label="Call customer" title="Call">
+              <i class="ti ti-phone"></i>
+            </a>
+            <button type="button" class="shifa-cust__act shifa-cust__act--wa" (click)="sendWhatsAppSummary(c, $event)" aria-label="WhatsApp customer" title="WhatsApp">
+              <i class="ti ti-brand-whatsapp"></i>
+            </button>
+          </div>
+        }
       </div>
     }
     <admin-pagination
@@ -107,7 +109,9 @@
             <th class="text-end" adminSortHeader field="totalSpent" [sort]="sort()" (sortChange)="onSort($event)">Total spent</th>
             <th adminSortHeader field="lastOrderAt" [sort]="sort()" (sortChange)="onSort($event)">Last order</th>
             <th>Tags</th>
-            <th class="text-end">Actions</th>
+            @if (!viewOnly()) {
+              <th class="text-end">Actions</th>
+            }
           </tr>
         </thead>
         <tbody>
@@ -136,16 +140,18 @@
                   }
                 </div>
               </td>
-              <td class="text-end" (click)="stopRowClick($event)">
-                <div class="btn-list justify-content-end flex-nowrap">
-                  <a class="btn btn-sm btn-outline-secondary" [href]="'tel:' + c.mobile" title="Call customer" aria-label="Call customer">
-                    <i class="ti ti-phone"></i>
-                  </a>
-                  <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsAppSummary(c, $event)" title="WhatsApp customer" aria-label="WhatsApp customer">
-                    <i class="ti ti-brand-whatsapp"></i>
-                  </button>
-                </div>
-              </td>
+              @if (!viewOnly()) {
+                <td class="text-end" (click)="stopRowClick($event)">
+                  <div class="btn-list justify-content-end flex-nowrap">
+                    <a class="btn btn-sm btn-outline-secondary" [href]="'tel:' + c.mobile" title="Call customer" aria-label="Call customer">
+                      <i class="ti ti-phone"></i>
+                    </a>
+                    <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsAppSummary(c, $event)" title="WhatsApp customer" aria-label="WhatsApp customer">
+                      <i class="ti ti-brand-whatsapp"></i>
+                    </button>
+                  </div>
+                </td>
+              }
             </tr>
           }
         </tbody>
@@ -178,9 +184,13 @@
         <span class="cust-dr__avatar">{{ customerInitials(profile.summary.name) }}</span>
         <div class="cust-dr__headmain">
           <div class="cust-dr__name">{{ profile.summary.name || 'Customer' }}</div>
-          <a class="cust-dr__mobile" href="tel:{{ profile.summary.mobile }}">
-            <i class="ti ti-phone me-1"></i>{{ profile.summary.mobile }}
-          </a>
+          @if (viewOnly()) {
+            <span class="cust-dr__mobile">{{ profile.summary.mobile }}</span>
+          } @else {
+            <a class="cust-dr__mobile" href="tel:{{ profile.summary.mobile }}">
+              <i class="ti ti-phone me-1"></i>{{ profile.summary.mobile }}
+            </a>
+          }
         </div>
         <span class="cust-dr__tag">
           @if (profile.summary.repeatBuyer) { <i class="ti ti-repeat me-1"></i>Repeat } @else { New }
@@ -220,8 +230,8 @@
         </div>
 
         @if (custTab() === 'overview') {
-        <!-- One-tap WhatsApp (click-to-chat, message pre-filled) -->
-        @if (profile.summary.mobile) {
+        <!-- One-tap WhatsApp (click-to-chat, message pre-filled); not offered to a view-only account -->
+        @if (profile.summary.mobile && !viewOnly()) {
           <div class="cust-dr__wa mb-3">
             @for (t of whatsappTemplates(); track t.key) {
               <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsApp(profile, t.key)">
@@ -283,27 +293,31 @@
           @for (t of profile.tags; track t) {
             <span class="cust-tag">
               {{ t }}
-              <button type="button" class="cust-tag__x" (click)="removeTag(t)" [attr.aria-label]="'Remove tag ' + t">
-                <i class="ti ti-x"></i>
-              </button>
+              @if (!viewOnly()) {
+                <button type="button" class="cust-tag__x" (click)="removeTag(t)" [attr.aria-label]="'Remove tag ' + t">
+                  <i class="ti ti-x"></i>
+                </button>
+              }
             </span>
           } @empty {
             <span class="cust-dr__muted">No tags yet.</span>
           }
         </div>
-        <form class="cust-dr__inline" (ngSubmit)="addTag()">
-          <input
-            type="text"
-            class="form-control form-control-sm"
-            [formControl]="newTag"
-            placeholder="Add a tag (e.g. VIP, wholesale)…"
-            maxlength="40"
-            aria-label="Add a tag"
-          />
-          <button type="submit" class="btn btn-sm btn-outline-primary" [disabled]="!newTag.value.trim() || savingTag()">
-            <i class="ti ti-plus"></i>
-          </button>
-        </form>
+        @if (!viewOnly()) {
+          <form class="cust-dr__inline" (ngSubmit)="addTag()">
+            <input
+              type="text"
+              class="form-control form-control-sm"
+              [formControl]="newTag"
+              placeholder="Add a tag (e.g. VIP, wholesale)…"
+              maxlength="40"
+              aria-label="Add a tag"
+            />
+            <button type="submit" class="btn btn-sm btn-outline-primary" [disabled]="!newTag.value.trim() || savingTag()">
+              <i class="ti ti-plus"></i>
+            </button>
+          </form>
+        }
         }
 
         @if (custTab() === 'orders') {
@@ -345,19 +359,21 @@
           <i class="ti ti-notes me-1"></i>Notes
           <span class="cust-dr__count">{{ profile.notes.length }}</span>
         </div>
-        <form class="cust-dr__note-add" (ngSubmit)="addNote()">
-          <textarea
-            class="form-control form-control-sm"
-            [formControl]="newNote"
-            rows="2"
-            maxlength="1000"
-            placeholder="Add a note about this customer…"
-            aria-label="Add a note"
-          ></textarea>
-          <button type="submit" class="btn btn-sm btn-primary mt-1" [disabled]="!newNote.value.trim() || savingNote()">
-            <i class="ti ti-plus me-1"></i>Add note
-          </button>
-        </form>
+        @if (!viewOnly()) {
+          <form class="cust-dr__note-add" (ngSubmit)="addNote()">
+            <textarea
+              class="form-control form-control-sm"
+              [formControl]="newNote"
+              rows="2"
+              maxlength="1000"
+              placeholder="Add a note about this customer…"
+              aria-label="Add a note"
+            ></textarea>
+            <button type="submit" class="btn btn-sm btn-primary mt-1" [disabled]="!newNote.value.trim() || savingNote()">
+              <i class="ti ti-plus me-1"></i>Add note
+            </button>
+          </form>
+        }
         @if (profile.notes.length > 0) {
           <div class="cust-notes">
             @for (n of profile.notes; track n.id) {
@@ -376,15 +392,17 @@
 
         @if (custTab() === 'orders') {
         <!-- One-tap reorder of the customer's most recent order -->
-        @if (lastReorderableId(profile); as oid) {
-          <a
-            class="btn btn-primary btn-sm mb-3"
-            [routerLink]="['/orders/new']"
-            [queryParams]="{ reorderFrom: oid }"
-            (click)="closeDetail()"
-          >
-            <i class="ti ti-repeat me-1"></i> Reorder last order
-          </a>
+        @if (!viewOnly()) {
+          @if (lastReorderableId(profile); as oid) {
+            <a
+              class="btn btn-primary btn-sm mb-3"
+              [routerLink]="['/orders/new']"
+              [queryParams]="{ reorderFrom: oid }"
+              (click)="closeDetail()"
+            >
+              <i class="ti ti-repeat me-1"></i> Reorder last order
+            </a>
+          }
         }
         <!-- Order history (paginated — the list can grow) -->
         <div class="cust-dr__label">

@@ -5,6 +5,8 @@ import com.shifa.oms.activity.ActivityTypes;
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.Role;
 import com.shifa.oms.auth.SalespersonScopeResolver;
+import com.shifa.oms.auth.User;
+import com.shifa.oms.auth.UserRepository;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.task.dto.CreateTaskRequest;
@@ -16,7 +18,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -35,6 +40,18 @@ public class TaskService {
     private final SalespersonScopeResolver scopeResolver;
     private final ActivityService activityService;
     private final Clock clock;
+
+    /**
+     * Resolves owner ids to display names for list views. Optional, and injected by
+     * setter rather than the constructors, so the existing constructors (and the tests
+     * that call them) are unchanged; without it the list simply carries no names.
+     */
+    private UserRepository userRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setUserRepository(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     public TaskService(TaskRepository taskRepository,
@@ -63,9 +80,24 @@ public class TaskService {
     public List<TaskResponse> list(TaskStatus status, AuthPrincipal actor) {
         Objects.requireNonNull(actor, "actor");
         List<Long> ownerIds = scopeResolver.creatorScope(actor).orElse(null);
-        return taskRepository.findScoped(ownerIds, status).stream()
-                .map(TaskResponse::from)
+        List<TaskEntity> rows = taskRepository.findScoped(ownerIds, status);
+        Map<Long, String> owners = ownerNames(rows.stream().map(TaskEntity::getOwnerUserId).toList());
+        return rows.stream()
+                .map(t -> TaskResponse.from(t).withOwnerName(owners.get(t.getOwnerUserId())))
                 .toList();
+    }
+
+    /** Display names for the given owner ids, in one query; empty when unavailable. */
+    private Map<Long, String> ownerNames(List<Long> ownerIds) {
+        if (userRepository == null || ownerIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, String> names = new HashMap<>();
+        for (User user : userRepository.findAllById(new LinkedHashSet<>(ownerIds))) {
+            String full = user.getFullName();
+            names.put(user.getId(), full == null || full.isBlank() ? user.getUsername() : full);
+        }
+        return names;
     }
 
     /**

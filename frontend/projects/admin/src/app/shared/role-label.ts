@@ -14,6 +14,8 @@ export function roleLabel(role: string | null | undefined): string {
       return 'Salesperson';
     case 'TEAM_LEAD':
       return 'Team Lead';
+    case 'CRM_LEAD':
+      return 'CRM Lead (view only)';
     case 'PACKING_USER':
       return 'Packing';
     case 'PAYMENT_VERIFIER':

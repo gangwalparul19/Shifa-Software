@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ApiError } from 'core';
+import { ApiError, AuthService, Role } from 'core';
 import {
   ID_PROOF_TYPES,
   IdProofType,
@@ -37,6 +37,10 @@ export class MyProfileComponent implements OnInit, OnDestroy {
   private readonly service = inject(MyProfileService);
   private readonly fb = inject(FormBuilder);
   private readonly toasts = inject(ToastService);
+  private readonly auth = inject(AuthService);
+
+  /** A view-only account (the CRM Lead) may look at its profile but not request changes. */
+  protected readonly viewOnly = computed(() => this.auth.hasAnyRole(Role.CRM_LEAD));
 
   protected readonly idProofTypes = ID_PROOF_TYPES;
 

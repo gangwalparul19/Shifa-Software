@@ -173,7 +173,7 @@ public class AdminOrderController {
      * @param sort          {@code field,dir} — one of createdAt/orderCode/customerName/totalAmount/orderStatus/paymentStatus
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','TEAM_LEAD','CA','PAYMENT_VERIFIER')")
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','TEAM_LEAD','CA','PAYMENT_VERIFIER','CRM_LEAD')")
     public PageResponse<OrderSummaryResponse> list(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) OrderStatus status,
@@ -240,13 +240,14 @@ public class AdminOrderController {
     /**
      * The creators whose orders the caller may list, resolved server-side so a client can
      * never widen it: salespeople see their own, a team lead their team's, admin and
-     * accountant everyone ({@code null}). Only an ADMIN may narrow it further to a single
-     * salesperson ({@code createdBy}, e.g. tapping a leaderboard row); every other role
-     * stays bound to its own scope.
+     * accountant everyone ({@code null}). Only an ADMIN, or the view-only CRM Lead (who
+     * already sees everything), may narrow it further to a single salesperson
+     * ({@code createdBy}, e.g. tapping a leaderboard row); every other role stays bound to
+     * its own scope.
      */
     private Collection<Long> resolveCreatorIds(AuthPrincipal actor, Long createdBy) {
         Collection<Long> creatorIds = scopeResolver.creatorScope(actor).orElse(null);
-        if (createdBy != null && actor.role() == Role.ADMIN) {
+        if (createdBy != null && (actor.role() == Role.ADMIN || actor.role() == Role.CRM_LEAD)) {
             creatorIds = List.of(createdBy);
         }
         return creatorIds;

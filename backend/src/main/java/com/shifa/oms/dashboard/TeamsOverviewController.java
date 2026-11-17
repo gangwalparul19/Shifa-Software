@@ -42,6 +42,7 @@ public class TeamsOverviewController {
      * OVERALL or CUSTOM; CUSTOM needs {@code from} and {@code to} (both days included).
      */
     @GetMapping("/teams")
+    @PreAuthorize("hasAnyRole('ADMIN','CRM_LEAD')")
     public TeamsOverviewResponse teams(
             @RequestParam(required = false) String period,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -55,6 +56,7 @@ public class TeamsOverviewController {
      * {@code pdf}.
      */
     @GetMapping("/teams/export")
+    @PreAuthorize("hasAnyRole('ADMIN','CRM_LEAD')")
     public ResponseEntity<byte[]> export(
             @RequestParam(required = false) String period,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,

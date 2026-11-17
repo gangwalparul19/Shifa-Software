@@ -46,12 +46,16 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -734,9 +738,11 @@ public class LeadService {
         List<LeadEntity> leads =
                 leadRepository.search(ownerUserId, term, statusName, sourceName, createdByAdmin);
         Map<Long, List<String>> tagNames = tagNamesForLeads(leads);
+        Map<Long, String> owners = ownerNamesFor(leads);
         return leads.stream()
                 .map(lead -> LeadSummaryResponse.from(
-                        lead, tagNames.getOrDefault(lead.getId(), List.of())))
+                        lead, tagNames.getOrDefault(lead.getId(), List.of()))
+                        .withOwnerName(owners.get(lead.getOwnerUserId())))
                 .toList();
     }
 
@@ -744,7 +750,42 @@ public class LeadService {
     @Transactional(readOnly = true)
     public LeadResponse detail(Long id, AuthPrincipal actor) {
         LeadEntity lead = loadScoped(id, actor);
-        return LeadResponse.from(lead, tagsOf(lead.getId()));
+        return LeadResponse.from(lead, tagsOf(lead.getId()))
+                .withOwnerName(ownerNamesFor(List.of(lead)).get(lead.getOwnerUserId()));
+    }
+
+    /**
+     * Display names for the owners of the given leads, in one query. Empty when the staff
+     * directory is unavailable. A staff member without a full name falls back to their
+     * username, so a row never shows a bare id.
+     */
+    private Map<Long, String> ownerNamesFor(Collection<LeadEntity> leads) {
+        if (userRepository == null || leads == null || leads.isEmpty()) {
+            return Map.of();
+        }
+        Set<Long> ids = new LinkedHashSet<>();
+        for (LeadEntity lead : leads) {
+            if (lead.getOwnerUserId() != null) {
+                ids.add(lead.getOwnerUserId());
+            }
+        }
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, String> names = new HashMap<>();
+        for (User user : userRepository.findAllById(ids)) {
+            String full = user.getFullName();
+            names.put(user.getId(), full == null || full.isBlank() ? user.getUsername() : full);
+        }
+        return names;
+    }
+
+    /** A summary projection of each lead with its owner's display name. */
+    private List<LeadSummaryResponse> summariesWithOwners(Collection<LeadEntity> leads) {
+        Map<Long, String> owners = ownerNamesFor(leads);
+        return leads.stream()
+                .map(lead -> LeadSummaryResponse.from(lead).withOwnerName(owners.get(lead.getOwnerUserId())))
+                .toList();
     }
 
     /**
@@ -785,9 +826,7 @@ public class LeadService {
     public List<LeadSummaryResponse> dueFollowUps(AuthPrincipal actor) {
         Long ownerUserId = scopeResolver.creatorConstraint(actor).orElse(null);
         LocalDate today = LocalDate.now(clock);
-        return leadRepository.findDueFollowUps(ownerUserId, today).stream()
-                .map(LeadSummaryResponse::from)
-                .toList();
+        return summariesWithOwners(leadRepository.findDueFollowUps(ownerUserId, today));
     }
 
     /**
@@ -798,9 +837,7 @@ public class LeadService {
     @Transactional(readOnly = true)
     public List<LeadSummaryResponse> missedFollowUps(AuthPrincipal actor) {
         Long ownerUserId = scopeResolver.creatorConstraint(actor).orElse(null);
-        return leadRepository.findMissedFollowUps(ownerUserId).stream()
-                .map(LeadSummaryResponse::from)
-                .toList();
+        return summariesWithOwners(leadRepository.findMissedFollowUps(ownerUserId));
     }
 
     /**
@@ -821,8 +858,8 @@ public class LeadService {
                 .toList();
         return new com.shifa.oms.lead.dto.FollowUpHealthResponse(
                 upcoming.size(), due.size(), missed.size(),
-                due.stream().map(LeadSummaryResponse::from).toList(),
-                missed.stream().map(LeadSummaryResponse::from).toList());
+                summariesWithOwners(due),
+                summariesWithOwners(missed));
     }
 
     // --- Reports (Req 6) ----------------------------------------------------

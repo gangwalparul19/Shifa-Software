@@ -34,7 +34,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  */
 @RestController
 @RequestMapping("/api/admin/events")
-@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','CA','SALESPERSON','TEAM_LEAD','PACKING_USER','PAYMENT_VERIFIER')")
+@PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','CA','SALESPERSON','TEAM_LEAD','CRM_LEAD','PACKING_USER','PAYMENT_VERIFIER')")
 public class AdminEventController {
 
     private final AdminSseBroker broker;

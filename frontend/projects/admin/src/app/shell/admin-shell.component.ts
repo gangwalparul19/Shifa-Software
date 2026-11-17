@@ -100,15 +100,25 @@ export class AdminShellComponent {
 
   /**
    * The screen each role lands on after sign-in: the dashboard, except the payment verifier
-   * (payments queue) and the CA (GST dashboard), who the dashboard redirects away.
+   * (payments queue), the CA (GST dashboard) and the CRM Lead (CRM cockpit), who the
+   * dashboard redirects away.
    */
   private readonly homePath = computed(() => {
     const role = this.auth.session()?.role ?? null;
     if (role === Role.PAYMENT_VERIFIER) {
       return '/payments';
     }
+    if (role === Role.CRM_LEAD) {
+      return '/crm-dashboard';
+    }
     return role === Role.CA ? '/ca/gst' : '/dashboard';
   });
+
+  /**
+   * True for a view-only account (the CRM Lead). The shell shows a small "View only" chip
+   * so the person knows the missing Add / Edit buttons are by design, not a fault.
+   */
+  protected readonly isViewOnly = computed(() => this.auth.session()?.role === Role.CRM_LEAD);
 
   /** True while the user is on their own home screen. */
   private readonly onHomePage = computed(() => this.currentUrl().split('?')[0] === this.homePath());

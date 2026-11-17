@@ -43,7 +43,7 @@ public class PipelineController {
 
     /** The active pipelines + their active stages, for the board / capture pickers. */
     @GetMapping("/api/pipelines")
-    @PreAuthorize("hasAnyRole('SALESPERSON','TEAM_LEAD','ADMIN')")
+    @PreAuthorize("hasAnyRole('SALESPERSON','TEAM_LEAD','ADMIN','CRM_LEAD')")
     public List<PipelineResponse> listActive() {
         return pipelineService.listActive();
     }

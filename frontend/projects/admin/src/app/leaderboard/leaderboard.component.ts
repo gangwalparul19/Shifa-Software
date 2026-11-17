@@ -377,9 +377,12 @@ export class LeaderboardComponent implements OnInit {
     this.load();
   }
 
-  /** Whether leaderboard rows drill into a salesperson's orders — ADMIN only. */
+  /**
+   * Whether leaderboard rows drill into a salesperson's orders — ADMIN, and the view-only
+   * CRM Lead (both see every order; a salesperson sees only their own, so no drill-down).
+   */
   canDrill(): boolean {
-    return this.auth.hasAnyRole(Role.ADMIN);
+    return this.auth.hasAnyRole(Role.ADMIN, Role.CRM_LEAD);
   }
 
   /** Names a salesperson from their display name for the avatar. */

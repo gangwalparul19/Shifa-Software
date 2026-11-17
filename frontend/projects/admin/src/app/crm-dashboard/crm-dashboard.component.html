@@ -1,6 +1,6 @@
 <admin-page-header
   title="CRM cockpit"
-  subtitle="Leads, follow-ups, targets, and team performance — at a glance."
+  [subtitle]="viewOnly() ? 'Leads, follow-ups, tasks and team performance across the whole business (view only).' : 'Leads, follow-ups, targets, and team performance — at a glance.'"
   [breadcrumbs]="[{ label: 'CRM cockpit' }]"
 >
   <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
@@ -32,7 +32,7 @@
       </a>
     </div>
     <div class="col-6 col-md-3">
-      <a class="card card-link" routerLink="/leads">
+      <a class="card card-link" routerLink="/leads/follow-ups">
         <div class="card-body">
           <div class="shifa-kpi__label">Missed</div>
           <div class="shifa-kpi__value text-danger">{{ data.followUpHealth.missedCount }}</div>
@@ -48,6 +48,40 @@
       </a>
     </div>
   </div>
+
+  <!-- Tasks and meetings right now (each tile appears only once its count has loaded) -->
+  @if (openTasks() !== null || scheduledMeetings() !== null) {
+    <div class="row row-cards mb-3">
+      @if (openTasks() !== null) {
+        <div class="col-6 col-md-3">
+          <a class="card card-link" routerLink="/tasks">
+            <div class="card-body">
+              <div class="shifa-kpi__label">Open tasks</div>
+              <div class="shifa-kpi__value">{{ openTasks() }}</div>
+            </div>
+          </a>
+        </div>
+        <div class="col-6 col-md-3">
+          <a class="card card-link" routerLink="/tasks">
+            <div class="card-body">
+              <div class="shifa-kpi__label">Overdue tasks</div>
+              <div class="shifa-kpi__value" [class.text-danger]="(overdueTasks() ?? 0) > 0">{{ overdueTasks() ?? 0 }}</div>
+            </div>
+          </a>
+        </div>
+      }
+      @if (scheduledMeetings() !== null) {
+        <div class="col-6 col-md-3">
+          <a class="card card-link" routerLink="/meetings">
+            <div class="card-body">
+              <div class="shifa-kpi__label">Meetings scheduled</div>
+              <div class="shifa-kpi__value">{{ scheduledMeetings() }}</div>
+            </div>
+          </a>
+        </div>
+      }
+    </div>
+  }
 
   <!-- Pipeline by stage -->
   <div class="card mb-3">
@@ -69,13 +103,149 @@
     </div>
   </div>
 
+  <!-- Follow-ups that need attention: missed first, then due -->
+  <div class="card mb-3">
+    <div class="card-header">
+      <h3 class="card-title">Needs attention</h3>
+      <div class="card-actions"><a class="btn btn-sm btn-outline-primary" routerLink="/leads/follow-ups">All follow-ups</a></div>
+    </div>
+    @if (attention().length === 0) {
+      <div class="card-body text-secondary text-center py-3">
+        <i class="ti ti-circle-check me-1"></i>No missed or due follow-ups right now.
+      </div>
+    } @else {
+      <div class="list-group list-group-flush">
+        @for (row of attention(); track row.lead.id) {
+          <a class="list-group-item list-group-item-action cd-attn" routerLink="/leads" [queryParams]="{ leadId: row.lead.id }">
+            <div class="cd-attn__main">
+              <span class="cd-attn__name">{{ row.lead.customerName }}</span>
+              <span class="cd-attn__meta">
+                <i class="ti ti-user me-1"></i>{{ row.lead.ownerName || 'Unassigned' }}
+                @if (row.lead.followUpDate) {
+                  · <i class="ti ti-calendar-event me-1"></i>{{ row.lead.followUpDate | istDate: 'dd MMM' }}
+                }
+              </span>
+            </div>
+            <div class="cd-attn__tags">
+              <span class="badge" [class.tone-red]="row.kind === 'MISSED'" [class.tone-amber]="row.kind === 'DUE'">
+                {{ row.kind === 'MISSED' ? 'Missed' : 'Due' }}
+              </span>
+              <span class="badge" [class]="statusTone(row.lead.status)">{{ stageLabels[row.lead.status] }}</span>
+            </div>
+          </a>
+        }
+      </div>
+    }
+  </div>
+
+  <!-- Lead performance for a chosen period -->
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+    <h3 class="mb-0 cd-section">Lead performance</h3>
+    <admin-period-picker [value]="period()" [disabled]="periodLoading()" ariaLabel="Lead performance period" (changed)="onPeriodChanged($event)" />
+  </div>
+
+  @if (periodError(); as perr) {
+    <div class="alert alert-warning d-flex justify-content-between align-items-center" role="alert">
+      <span><i class="ti ti-alert-triangle me-2"></i>{{ perr }}</span>
+      <button type="button" class="btn btn-sm btn-outline-warning" (click)="onPeriodChanged(period())">Retry</button>
+    </div>
+  }
+
+  <div class="row row-cards mb-3" [class.cd-dim]="periodLoading()">
+    <div class="col-12 col-lg-4">
+      <div class="card h-100">
+        <div class="card-header"><h3 class="card-title">Win rate · {{ periodText() }}</h3></div>
+        <div class="card-body">
+          @if (conversion()) {
+            <div class="shifa-kpi__value">
+              @if (periodTotals().rate !== null) { {{ periodTotals().rate }}% } @else { — }
+            </div>
+            <div class="text-secondary small mt-1">{{ periodTotals().won }} won of {{ periodTotals().leads }} lead{{ periodTotals().leads === 1 ? '' : 's' }} captured</div>
+          } @else {
+            <div class="text-secondary">{{ periodLoading() ? 'Loading…' : 'No figures yet.' }}</div>
+          }
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-8">
+      <div class="card h-100">
+        <div class="card-header"><h3 class="card-title">Conversion by source</h3></div>
+        <div class="table-responsive">
+          <table class="table card-table">
+            <thead>
+              <tr><th>Source</th><th class="text-end">Leads</th><th class="text-end">Won</th><th class="text-end">Rate</th></tr>
+            </thead>
+            <tbody>
+              @for (r of conversion()?.bySource ?? []; track r.key) {
+                <tr>
+                  <td>{{ sourceLabel(r.key) }}</td>
+                  <td class="text-end">{{ r.leads }}</td>
+                  <td class="text-end">{{ r.won }}</td>
+                  <td class="text-end">{{ r.conversionRate }}%</td>
+                </tr>
+              } @empty {
+                <tr><td colspan="4" class="text-secondary text-center">{{ periodLoading() ? 'Loading…' : 'No leads in this period.' }}</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-8">
+      <div class="card h-100">
+        <div class="card-header"><h3 class="card-title">Leads by salesperson</h3></div>
+        <div class="table-responsive">
+          <table class="table card-table">
+            <thead>
+              <tr><th>Salesperson</th><th class="text-end">Leads</th><th class="text-end">Won</th><th class="text-end">Rate</th><th class="text-end">Won value</th></tr>
+            </thead>
+            <tbody>
+              @for (r of byUser()?.rows ?? []; track r.key) {
+                <tr>
+                  <td>{{ r.label }}</td>
+                  <td class="text-end">{{ r.leads }}</td>
+                  <td class="text-end">{{ r.won }}</td>
+                  <td class="text-end">{{ r.conversionRate }}%</td>
+                  <td class="text-end">{{ r.convertedRevenue | currency: 'INR' }}</td>
+                </tr>
+              } @empty {
+                <tr><td colspan="5" class="text-secondary text-center">{{ periodLoading() ? 'Loading…' : 'No leads in this period.' }}</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+      <div class="card h-100">
+        <div class="card-header"><h3 class="card-title">Why leads were lost</h3></div>
+        <div class="card-body">
+          @for (r of lostReasons()?.rows ?? []; track r.reason) {
+            <div class="cd-lost">
+              <div class="cd-lost__row">
+                <span>{{ lostReasonLabel(r.reason) }}</span>
+                <span class="text-secondary">{{ r.count }}</span>
+              </div>
+              <div class="cd-lost__bar"><span [style.width.%]="lostShare(r.count)"></span></div>
+            </div>
+          } @empty {
+            <div class="text-secondary text-center">{{ periodLoading() ? 'Loading…' : 'No lost leads in this period.' }}</div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="row row-cards">
     <!-- Targets -->
     <div class="col-12 col-lg-6">
       <div class="card mb-3">
         <div class="card-header">
           <h3 class="card-title">Monthly targets</h3>
-          <div class="card-actions"><a class="btn btn-sm btn-outline-primary" routerLink="/analytics">View all</a></div>
+          <div class="card-actions"><a class="btn btn-sm btn-outline-primary" [routerLink]="targetsLink()">View all</a></div>
         </div>
         <div class="table-responsive">
           <table class="table card-table">

@@ -18,6 +18,8 @@ export interface Task {
   cancelReason?: string | null;
   cancelledAt?: string | null;
   createdAt: string;
+  /** The owner's display name (set by the server for list views). */
+  ownerName?: string | null;
 }
 
 export interface CreateTaskRequest {

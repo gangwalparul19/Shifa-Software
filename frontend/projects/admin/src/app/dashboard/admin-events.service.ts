@@ -87,6 +87,7 @@ export class AdminEventsService {
         Role.CA,
         Role.SALESPERSON,
         Role.TEAM_LEAD,
+        Role.CRM_LEAD,
         Role.PACKING_USER,
         Role.PAYMENT_VERIFIER,
       )

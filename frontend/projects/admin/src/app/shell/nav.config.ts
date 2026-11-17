@@ -60,6 +60,7 @@ export const ALL_NAV: NavEntry[] = [
           Role.ACCOUNTANT,
           Role.SALESPERSON,
           Role.TEAM_LEAD,
+          Role.CRM_LEAD,
           Role.PACKING_USER,
           Role.PAYMENT_VERIFIER,
         ],
@@ -109,38 +110,39 @@ export const ALL_NAV: NavEntry[] = [
         label: 'Leads',
         path: '/leads',
         icon: 'ti-user-plus',
-        roles: [Role.SALESPERSON, Role.ADMIN],
+        // The CRM Lead sees every lead, view only.
+        roles: [Role.SALESPERSON, Role.ADMIN, Role.CRM_LEAD],
       },
       {
         kind: 'link',
         label: 'Due follow-ups',
         path: '/leads/follow-ups',
         icon: 'ti-calendar-event',
-        roles: [Role.SALESPERSON, Role.ADMIN],
+        roles: [Role.SALESPERSON, Role.ADMIN, Role.CRM_LEAD],
       },
       {
-        // CRM tasks (CRM expansion Req 8) — SALESPERSON / TEAM_LEAD / ADMIN.
+        // CRM tasks (CRM expansion Req 8) — SALESPERSON / TEAM_LEAD / ADMIN; view only for CRM_LEAD.
         kind: 'link',
         label: 'Tasks',
         path: '/tasks',
         icon: 'ti-checkbox',
-        roles: [Role.SALESPERSON, Role.TEAM_LEAD, Role.ADMIN],
+        roles: [Role.SALESPERSON, Role.TEAM_LEAD, Role.ADMIN, Role.CRM_LEAD],
       },
       {
-        // CRM meetings (CRM expansion Req 9) — SALESPERSON / TEAM_LEAD / ADMIN.
+        // CRM meetings (CRM expansion Req 9) — SALESPERSON / TEAM_LEAD / ADMIN; view only for CRM_LEAD.
         kind: 'link',
         label: 'Meetings',
         path: '/meetings',
         icon: 'ti-calendar-event',
-        roles: [Role.SALESPERSON, Role.TEAM_LEAD, Role.ADMIN],
+        roles: [Role.SALESPERSON, Role.TEAM_LEAD, Role.ADMIN, Role.CRM_LEAD],
       },
       {
-        // Unified CRM cockpit (CRM expansion Req 14) — ADMIN only.
+        // Unified CRM cockpit (CRM expansion Req 14) — ADMIN, and the view-only CRM Lead's home.
         kind: 'link',
         label: 'CRM cockpit',
         path: '/crm-dashboard',
         icon: 'ti-layout-dashboard',
-        adminOnly: true,
+        roles: [Role.ADMIN, Role.CRM_LEAD],
       },
       {
         kind: 'link',
@@ -148,16 +150,16 @@ export const ALL_NAV: NavEntry[] = [
         path: '/customers',
         icon: 'ti-users',
         // Salesperson sees Customers too, scoped by the backend to their own
-        // orders' customers (Req 5.4, 5.5); admin/accountant see everyone.
-        roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON],
+        // orders' customers (Req 5.4, 5.5); admin/accountant/CRM lead see everyone.
+        roles: [Role.ADMIN, Role.ACCOUNTANT, Role.SALESPERSON, Role.CRM_LEAD],
       },
       {
-        // Sales leaderboard + streak (light gamification), salesperson-facing.
+        // Sales leaderboard + streak (light gamification); the CRM Lead sees it view only.
         kind: 'link',
         label: 'Leaderboard',
         path: '/leaderboard',
         icon: 'ti-trophy',
-        roles: [Role.ADMIN, Role.SALESPERSON],
+        roles: [Role.ADMIN, Role.SALESPERSON, Role.CRM_LEAD],
       },
       {
         // Salesperson 360 — directory + performance leaderboard (ADMIN only).
@@ -172,7 +174,7 @@ export const ALL_NAV: NavEntry[] = [
         label: 'Team-wise Sales',
         path: '/teams-overview',
         icon: 'ti-chart-bar',
-        adminOnly: true,
+        roles: [Role.ADMIN, Role.CRM_LEAD],
       },
       {
         kind: 'link',
@@ -235,7 +237,7 @@ export const ALL_NAV: NavEntry[] = [
         label: 'Team Performance',
         path: '/team-performance',
         icon: 'ti-chart-arrows',
-        roles: [Role.ADMIN, Role.TEAM_LEAD],
+        roles: [Role.ADMIN, Role.TEAM_LEAD, Role.CRM_LEAD],
       },
     ],
   },
@@ -444,6 +446,14 @@ export const BOTTOM_TABS_BY_ROLE: Record<Role, BottomTab[]> = {
     { label: 'Orders', path: '/orders', icon: 'ti-receipt' },
     { label: 'Performance', path: '/team-performance', icon: 'ti-chart-arrows' },
     { label: 'My Profile', path: '/my-profile', icon: 'ti-user-circle' },
+  ],
+  // CRM Lead (view only): the CRM cockpit is home, then the three places they check most.
+  // Everything else (tasks, meetings, orders, teams, leaderboard) is in the menu.
+  [Role.CRM_LEAD]: [
+    { label: 'CRM', path: '/crm-dashboard', icon: 'ti-layout-dashboard' },
+    { label: 'Leads', path: '/leads', icon: 'ti-user-plus' },
+    { label: 'Follow-ups', path: '/leads/follow-ups', icon: 'ti-calendar-event' },
+    { label: 'Customers', path: '/customers', icon: 'ti-users' },
   ],
   // Customers never reach the staff shell; no bottom bar.
   [Role.CUSTOMER]: [],

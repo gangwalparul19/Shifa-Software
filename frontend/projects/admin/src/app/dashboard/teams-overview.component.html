@@ -187,7 +187,7 @@
                           }
                         </div>
                       </div>
-                      @if (c.customerMobile) {
+                      @if (c.customerMobile && !viewOnly()) {
                         <a class="btn btn-icon btn-sm btn-outline-secondary" [href]="callHref(c.customerMobile)" title="Call" aria-label="Call" (click)="$event.stopPropagation()">
                           <i class="ti ti-phone"></i>
                         </a>
@@ -323,7 +323,7 @@
                     }
                   </div>
                 </div>
-                @if (c.customerMobile) {
+                @if (c.customerMobile && !viewOnly()) {
                   <a class="btn btn-icon btn-sm btn-outline-secondary" [href]="callHref(c.customerMobile)" title="Call" aria-label="Call">
                     <i class="ti ti-phone"></i>
                   </a>

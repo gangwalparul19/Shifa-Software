@@ -111,6 +111,14 @@
           </div>
         }
 
+        <!-- View-only account (CRM Lead): explains why Add / Edit buttons are absent -->
+        @if (isViewOnly()) {
+          <span class="shifa-viewonly-chip" title="This account can view everything in the CRM but cannot add or change anything">
+            <i class="ti ti-eye" aria-hidden="true"></i>
+            <span class="d-none d-sm-inline">View only</span>
+          </span>
+        }
+
         <!-- Offline indicator (FEATURE-ROADMAP §8.1) -->
         @if (!pwa.online()) {
           <span class="shifa-offline-chip" title="You are offline — changes are saved and sync when you reconnect">

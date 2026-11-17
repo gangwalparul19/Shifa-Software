@@ -27,8 +27,9 @@ public class CrmOverviewController {
         this.currentUserService = currentUserService;
     }
 
-    /** The CRM cockpit overview (Req 14.1, 14.2). */
+    /** The CRM cockpit overview (Req 14.1, 14.2). Also the read-only CRM Lead's home. */
     @GetMapping("/overview")
+    @PreAuthorize("hasAnyRole('ADMIN','CRM_LEAD')")
     public CrmOverviewResponse overview() {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return overviewService.overview(actor);

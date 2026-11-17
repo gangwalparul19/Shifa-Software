@@ -31,6 +31,12 @@ import java.util.Map;
 @PreAuthorize("hasAnyRole('ADMIN', 'ACCOUNTANT', 'SALESPERSON')")
 public class CustomerController {
 
+    /**
+     * Read access: the class roles plus the view-only CRM Lead. Used on the GET handlers
+     * only; a method-level guard replaces the class one, so the class roles are restated.
+     */
+    private static final String READ_ACCESS = "hasAnyRole('ADMIN', 'ACCOUNTANT', 'SALESPERSON', 'CRM_LEAD')";
+
     /** Whitelist of API sort fields → native SELECT aliases for the customers table. */
     private static final Map<String, String> SORT_WHITELIST = Map.of(
             "totalSpent", "totalSpent",
@@ -57,6 +63,7 @@ public class CustomerController {
      *             (default {@code lastOrderAt,desc})
      */
     @GetMapping
+    @PreAuthorize(READ_ACCESS)
     public PageResponse<CustomerSummaryResponse> list(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) Integer page,
@@ -71,6 +78,7 @@ public class CustomerController {
      * (newest first). 404 when no order exists for the mobile.
      */
     @GetMapping("/{mobile}")
+    @PreAuthorize(READ_ACCESS)
     public CustomerDetailResponse get(@PathVariable String mobile) {
         return customerService.get(mobile);
     }

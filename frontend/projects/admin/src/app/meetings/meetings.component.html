@@ -1,14 +1,16 @@
 <admin-page-header
   title="Meetings"
-  subtitle="Scheduled customer meetings — reschedule, cancel, or record an outcome."
+  [subtitle]="canWrite() ? 'Scheduled customer meetings — reschedule, cancel, or record an outcome.' : 'Every scheduled customer meeting across the team (view only).'"
   [breadcrumbs]="[{ label: 'Meetings' }]"
 >
   <button type="button" class="btn btn-icon btn-outline-secondary" (click)="load()" [disabled]="loading()" title="Refresh" aria-label="Refresh">
     <i class="ti ti-refresh"></i>
   </button>
-  <button type="button" class="btn btn-primary" (click)="openCreate()">
-    <i class="ti ti-calendar-plus me-1"></i> Schedule meeting
-  </button>
+  @if (canWrite()) {
+    <button type="button" class="btn btn-primary" (click)="openCreate()">
+      <i class="ti ti-calendar-plus me-1"></i> Schedule meeting
+    </button>
+  }
 </admin-page-header>
 
 <div class="shifa-formtabs mb-3">
@@ -29,8 +31,8 @@
     [card]="true"
     icon="ti-calendar"
     title="No meetings here"
-    message="Schedule a meeting to plan a customer call, demo, or visit."
-    ctaLabel="Schedule meeting"
+    [message]="canWrite() ? 'Schedule a meeting to plan a customer call, demo, or visit.' : 'There are no meetings in this view.'"
+    [ctaLabel]="canWrite() ? 'Schedule meeting' : undefined"
     ctaIcon="ti-calendar-plus"
     (cta)="openCreate()"
   />
@@ -46,6 +48,7 @@
           <span class="shifa-task__due"><i class="ti ti-clock me-1"></i>{{ m.startAt | istDate: 'dd MMM, HH:mm' }}</span>
           <span class="shifa-task__due"><i class="ti ti-device-desktop me-1"></i>{{ modeLabel(m.mode) }}</span>
           @if (m.location) { <span class="shifa-task__due"><i class="ti ti-map-pin me-1"></i>{{ m.location }}</span> }
+          @if (showOwner() && m.ownerName) { <span class="shifa-task__due"><i class="ti ti-user me-1"></i>{{ m.ownerName }}</span> }
         </div>
         @if (m.outcome) {
           <div class="shifa-task__desc">
@@ -59,7 +62,7 @@
             {{ m.outcome }}
           </div>
         }
-        @if (m.status === 'SCHEDULED') {
+        @if (canWrite() && m.status === 'SCHEDULED') {
           <div class="shifa-task__actions">
             <button type="button" class="btn btn-sm btn-outline-success" (click)="startOutcome(m, $event)">
               <i class="ti ti-calendar-check me-1"></i>Record outcome

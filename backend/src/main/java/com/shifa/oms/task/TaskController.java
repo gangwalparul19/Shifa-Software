@@ -41,8 +41,13 @@ public class TaskController {
         this.currentUserService = currentUserService;
     }
 
-    /** The caller's (scoped) tasks, optional status filter (Req 8.3, 8.5). */
+    /**
+     * The caller's (scoped) tasks, optional status filter (Req 8.3, 8.5). Also open to the
+     * view-only CRM Lead, who sees every owner's tasks; the class-level roles are restated
+     * because a method-level guard replaces the class one.
+     */
     @GetMapping
+    @PreAuthorize("hasAnyRole('SALESPERSON','TEAM_LEAD','ADMIN','CRM_LEAD')")
     public List<TaskResponse> list(@RequestParam(name = "status", required = false) TaskStatus status) {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return taskService.list(status, actor);

@@ -28,6 +28,7 @@ public class AdminLeadController {
 
     /** Cross-user follow-up health: upcoming / due / missed counts + lists (Req 10.3). */
     @GetMapping("/follow-up-health")
+    @PreAuthorize("hasAnyRole('ADMIN','CRM_LEAD')")
     public FollowUpHealthResponse followUpHealth() {
         AuthPrincipal actor = currentUserService.requireCurrentUser();
         return leadService.followUpHealth(actor);

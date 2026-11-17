@@ -1350,3 +1350,18 @@ table.dataTable td {
 .gst-table td {
   font-variant-numeric: tabular-nums;
 }
+
+/* "View only" chip in the app bar for a read-only account (CRM Lead). */
+.shifa-viewonly-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  background: #eef2ff;
+  color: #3b4cb8;
+  border: 1px solid #c7d0f5;
+}

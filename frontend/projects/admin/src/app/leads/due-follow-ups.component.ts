@@ -6,6 +6,7 @@ import { PaginationComponent } from '../shared/pagination.component';
 import { readPageSize, writePageSize } from '../shared/page-size.util';
 import { addIstDays, todayIst } from '../shared/business-date.util';
 import { StatePanelComponent } from '../shared/state-panel.component';
+import { AuthService, Role } from 'core';
 import { LeadsService } from './leads.service';
 import {
   LEAD_STATUS_LABELS,
@@ -33,6 +34,10 @@ import { openWhatsApp, whatsAppMessage } from '../shared/whatsapp.util';
 export class DueFollowUpsComponent implements OnInit {
   private readonly service = inject(LeadsService);
   private readonly toasts = inject(ToastService);
+  private readonly auth = inject(AuthService);
+
+  /** A view-only account (the CRM Lead) gets no Call or WhatsApp buttons. */
+  protected readonly viewOnly = computed(() => this.auth.hasAnyRole(Role.CRM_LEAD));
 
   protected readonly statusLabels = LEAD_STATUS_LABELS;
   protected readonly pillClass = leadPillClass;

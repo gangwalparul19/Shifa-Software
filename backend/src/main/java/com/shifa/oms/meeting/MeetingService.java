@@ -5,6 +5,8 @@ import com.shifa.oms.activity.ActivityTypes;
 import com.shifa.oms.auth.AuthPrincipal;
 import com.shifa.oms.auth.Role;
 import com.shifa.oms.auth.SalespersonScopeResolver;
+import com.shifa.oms.auth.User;
+import com.shifa.oms.auth.UserRepository;
 import com.shifa.oms.common.ResourceNotFoundException;
 import com.shifa.oms.common.ValidationException;
 import com.shifa.oms.meeting.dto.MeetingOutcomeRequest;
@@ -15,7 +17,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -33,6 +38,18 @@ public class MeetingService {
     private final SalespersonScopeResolver scopeResolver;
     private final ActivityService activityService;
 
+    /**
+     * Resolves owner ids to display names for list views. Optional, and injected by
+     * setter rather than the constructor, so the constructor (and the tests that call it)
+     * is unchanged; without it the list simply carries no names.
+     */
+    private UserRepository userRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setUserRepository(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
     public MeetingService(MeetingRepository meetingRepository,
                           SalespersonScopeResolver scopeResolver,
                           ActivityService activityService) {
@@ -46,9 +63,24 @@ public class MeetingService {
     public List<MeetingResponse> list(MeetingStatus status, AuthPrincipal actor) {
         Objects.requireNonNull(actor, "actor");
         List<Long> ownerIds = scopeResolver.creatorScope(actor).orElse(null);
-        return meetingRepository.findScoped(ownerIds, status).stream()
-                .map(MeetingResponse::from)
+        List<MeetingEntity> rows = meetingRepository.findScoped(ownerIds, status);
+        Map<Long, String> owners = ownerNames(rows.stream().map(MeetingEntity::getOwnerUserId).toList());
+        return rows.stream()
+                .map(m -> MeetingResponse.from(m).withOwnerName(owners.get(m.getOwnerUserId())))
                 .toList();
+    }
+
+    /** Display names for the given owner ids, in one query; empty when unavailable. */
+    private Map<Long, String> ownerNames(List<Long> ownerIds) {
+        if (userRepository == null || ownerIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, String> names = new HashMap<>();
+        for (User user : userRepository.findAllById(new LinkedHashSet<>(ownerIds))) {
+            String full = user.getFullName();
+            names.put(user.getId(), full == null || full.isBlank() ? user.getUsername() : full);
+        }
+        return names;
     }
 
     /** Schedules a meeting (Req 9.1). */

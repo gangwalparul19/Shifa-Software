@@ -225,6 +225,9 @@
               @if (lead.customerMobile) {
                 · {{ lead.customerMobile }}
               }
+              @if (showOwner() && lead.ownerName) {
+                · <i class="ti ti-user me-1"></i>{{ lead.ownerName }}
+              }
             </span>
             @if (lead.followUpDate) {
               <span class="shifa-lc__followup">
@@ -475,7 +478,7 @@
               <div class="shifa-ld__muted">{{ lead.customerEmail }}</div>
             }
           </div>
-          @if (lead.customerMobile) {
+          @if (lead.customerMobile && !viewOnly()) {
             <a class="shifa-ld__round" [href]="'tel:' + lead.customerMobile" [attr.aria-label]="'Call ' + lead.customerName" title="Call">
               <i class="ti ti-phone"></i>
             </a>
@@ -506,7 +509,7 @@
           <div class="shifa-ld__label mb-1">Assigned to</div>
           <div class="shifa-ld__card d-flex align-items-center justify-content-between gap-2">
             <div class="shifa-ld__value">
-              {{ ownerName(lead.ownerUserId) }}
+              {{ lead.ownerName || ownerName(lead.ownerUserId) }}
               @if (lead.assignedAt) {
                 <span class="shifa-ld__muted d-block">since {{ lead.assignedAt | istDate: 'dd MMM yyyy · HH:mm' }}</span>
               }
@@ -527,15 +530,17 @@
               @for (t of lead.tags; track t.id) {
                 <span class="shifa-ld__tag">
                   {{ t.name }}
-                  <button type="button" class="shifa-ld__tagx" (click)="removeTagFromLead(t.id)"
-                    [disabled]="detailBusy()" aria-label="Remove tag"><i class="ti ti-x"></i></button>
+                  @if (canManage()) {
+                    <button type="button" class="shifa-ld__tagx" (click)="removeTagFromLead(t.id)"
+                      [disabled]="detailBusy()" aria-label="Remove tag"><i class="ti ti-x"></i></button>
+                  }
                 </span>
               }
               @if (!lead.tags.length) {
                 <span class="shifa-ld__muted">No tags.</span>
               }
             </div>
-            @if (availableTagsFor(lead).length) {
+            @if (canManage() && availableTagsFor(lead).length) {
               <div class="d-flex gap-2">
                 <select class="form-select form-select-sm" [formControl]="tagToAdd" aria-label="Add tag">
                   <option value="">Add a tag…</option>

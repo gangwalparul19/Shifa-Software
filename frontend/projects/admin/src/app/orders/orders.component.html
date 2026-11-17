@@ -256,8 +256,9 @@
   }
 </div>
 
-<!-- Bulk actions bar (quick-select is always available when there are orders) -->
-@if (orders().length > 0) {
+<!-- Bulk actions bar (quick-select is always available when there are orders). Hidden for a
+     view-only account: every action on it changes orders. -->
+@if (orders().length > 0 && !isViewOnly()) {
   <div class="card mb-3 shifa-bulkbar anim-fade-up">
     <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
       <!-- Quick select by date -->
@@ -423,14 +424,16 @@
             </button>
           }
         </div>
-        <div class="shifa-list-actions mt-2" (click)="stopRowClick($event)">
-          <a class="btn btn-sm btn-outline-secondary" [href]="'tel:' + order.customerMobile" (click)="callCustomer(order.customerMobile, $event)" aria-label="Call customer">
-            <i class="ti ti-phone me-1"></i>Call
-          </a>
-          <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsAppSummary(order, $event)">
-            <i class="ti ti-brand-whatsapp me-1"></i>WhatsApp
-          </button>
-        </div>
+        @if (!isViewOnly()) {
+          <div class="shifa-list-actions mt-2" (click)="stopRowClick($event)">
+            <a class="btn btn-sm btn-outline-secondary" [href]="'tel:' + order.customerMobile" (click)="callCustomer(order.customerMobile, $event)" aria-label="Call customer">
+              <i class="ti ti-phone me-1"></i>Call
+            </a>
+            <button type="button" class="btn btn-sm btn-outline-success" (click)="sendWhatsAppSummary(order, $event)">
+              <i class="ti ti-brand-whatsapp me-1"></i>WhatsApp
+            </button>
+          </div>
+        }
       </article>
     }
     <admin-pagination
@@ -449,15 +452,17 @@
       <table class="table table-vcenter card-table table-hover stagger-rows">
         <thead>
           <tr>
-            <th class="w-1 d-none d-md-table-cell">
-              <input
-                type="checkbox"
-                class="form-check-input m-0"
-                [checked]="allOnPageSelected()"
-                (change)="toggleAllOnPage()"
-                aria-label="Select all orders on this page"
-              />
-            </th>
+            @if (!isViewOnly()) {
+              <th class="w-1 d-none d-md-table-cell">
+                <input
+                  type="checkbox"
+                  class="form-check-input m-0"
+                  [checked]="allOnPageSelected()"
+                  (change)="toggleAllOnPage()"
+                  aria-label="Select all orders on this page"
+                />
+              </th>
+            }
             <th adminSortHeader field="orderCode" [sort]="sort()" (sortChange)="onSort($event)">Order</th>
             <th class="d-none d-md-table-cell">Source</th>
             <th adminSortHeader field="customerName" [sort]="sort()" (sortChange)="onSort($event)">Customer</th>
@@ -482,15 +487,17 @@
               (keydown.enter)="openDetailFromKey($event, order)"
               (keydown.space)="openDetailFromKey($event, order)"
             >
-              <td class="d-none d-md-table-cell" (click)="$event.stopPropagation()">
-                <input
-                  type="checkbox"
-                  class="form-check-input m-0"
-                  [checked]="isSelected(order.id)"
-                  (change)="toggleRow(order.id)"
-                  [attr.aria-label]="'Select order ' + order.orderCode"
-                />
-              </td>
+              @if (!isViewOnly()) {
+                <td class="d-none d-md-table-cell" (click)="$event.stopPropagation()">
+                  <input
+                    type="checkbox"
+                    class="form-check-input m-0"
+                    [checked]="isSelected(order.id)"
+                    (change)="toggleRow(order.id)"
+                    [attr.aria-label]="'Select order ' + order.orderCode"
+                  />
+                </td>
+              }
               <td data-label="Order">
                 <button type="button" class="btn btn-link p-0 fw-medium" (click)="$event.stopPropagation(); openDetail(order)">
                   {{ order.orderCode }}
@@ -571,7 +578,7 @@
               </td>
               <td class="text-end d-none d-xl-table-cell" (click)="stopRowClick($event)">
                 <div class="btn-list justify-content-end flex-nowrap">
-                  @if (order.customerMobile) {
+                  @if (order.customerMobile && !isViewOnly()) {
                     <a class="btn btn-sm btn-outline-secondary" [href]="'tel:' + order.customerMobile" (click)="callCustomer(order.customerMobile, $event)" title="Call customer" aria-label="Call customer">
                       <i class="ti ti-phone"></i>
                     </a>
@@ -786,7 +793,7 @@
               </div>
             }
           </div>
-          @if (order.customerMobile) {
+          @if (order.customerMobile && !isViewOnly()) {
             <a
               class="shifa-od__round"
               [href]="'tel:' + order.customerMobile"
@@ -807,8 +814,8 @@
           }
         </div>
 
-        <!-- One-tap WhatsApp templates (click-to-chat, message pre-filled) -->
-        @if (order.customerMobile) {
+        <!-- One-tap WhatsApp templates (click-to-chat, message pre-filled); not offered to a view-only account -->
+        @if (order.customerMobile && !isViewOnly()) {
           <div class="shifa-od__wa">
             <span class="shifa-od__label mb-1"><i class="ti ti-brand-whatsapp me-1"></i>Quick WhatsApp</span>
             <div class="shifa-od__wa-actions">
@@ -1142,7 +1149,11 @@
                   <span>
                     {{ order.handoverName }}
                     @if (order.handoverPhone) {
-                      <a class="ms-1" [href]="'tel:' + order.handoverPhone">{{ order.handoverPhone }}</a>
+                      @if (isViewOnly()) {
+                        <span class="ms-1">{{ order.handoverPhone }}</span>
+                      } @else {
+                        <a class="ms-1" [href]="'tel:' + order.handoverPhone">{{ order.handoverPhone }}</a>
+                      }
                     }
                   </span>
                 </div>
@@ -1178,10 +1189,12 @@
                       (click)="copyTrackingLink(order)" title="Copy tracking link">
                       <i class="ti ti-copy me-1"></i>Copy
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-success"
-                      (click)="shareTrackingLinkOnWhatsApp(order)" title="Send the tracking link on WhatsApp">
-                      <i class="ti ti-brand-whatsapp me-1"></i>WhatsApp
-                    </button>
+                    @if (!isViewOnly()) {
+                      <button type="button" class="btn btn-sm btn-outline-success"
+                        (click)="shareTrackingLinkOnWhatsApp(order)" title="Send the tracking link on WhatsApp">
+                        <i class="ti ti-brand-whatsapp me-1"></i>WhatsApp
+                      </button>
+                    }
                   </div>
                 </div>
               }

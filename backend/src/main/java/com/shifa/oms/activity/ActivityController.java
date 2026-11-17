@@ -65,7 +65,7 @@ public class ActivityController {
      * other {@code /api/admin/customers} CRM endpoints.
      */
     @GetMapping("/api/admin/customers/{mobile}/activity")
-    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON')")
+    @PreAuthorize("hasAnyRole('ADMIN','ACCOUNTANT','SALESPERSON','CRM_LEAD')")
     public List<TimelineItem> customerTimeline(@PathVariable String mobile) {
         // Authorise + scope: profile() 404s when the mobile has no orders in scope.
         List<CustomerOrderRow> orders = customerInsightService.profile(mobile).orders();

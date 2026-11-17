@@ -273,6 +273,15 @@ export class LeadsComponent implements OnInit, OnDestroy {
   /** Whether the current user may bulk-import leads (ADMIN only; Req 2.5). */
   protected readonly isAdmin = computed(() => this.auth.hasAnyRole(Role.ADMIN));
 
+  /**
+   * Whether each lead card names its owner. A salesperson sees only their own leads, so
+   * the name would repeat on every card; the other roles see several people's leads.
+   */
+  protected readonly showOwner = computed(() => !this.auth.hasAnyRole(Role.SALESPERSON));
+
+  /** A view-only account (the CRM Lead) gets no Call button on a lead. */
+  protected readonly viewOnly = computed(() => this.auth.hasAnyRole(Role.CRM_LEAD));
+
   // --- Tags (CRM expansion Req 4) ----------------------------------------
   protected readonly allTags = signal<LeadTag[]>([]);
 

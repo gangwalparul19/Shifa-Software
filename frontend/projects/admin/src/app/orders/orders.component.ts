@@ -211,6 +211,13 @@ export class OrdersComponent implements OnInit, OnDestroy {
    */
   protected readonly canExport = computed(() => this.auth.hasAnyRole(...ORDER_EXPORT_ROLES));
 
+  /**
+   * A view-only account (the CRM Lead). It may open the list and an order's details but
+   * does nothing to an order, so the bulk-action bar and row checkboxes are hidden, and
+   * the drawer skips the payment-transaction and live-tracking calls it cannot make.
+   */
+  protected readonly isViewOnly = computed(() => this.auth.hasAnyRole(Role.CRM_LEAD));
+
   /** Whether the current user may punch a new order (SALESPERSON + ADMIN + TEAM_LEAD, Req 7). */
   protected readonly canCreateOrder = computed(() => this.auth.hasAnyRole(...ORDER_ENTRY_ROLES));
 
@@ -1819,9 +1826,11 @@ export class OrdersComponent implements OnInit, OnDestroy {
         // Pre-fill the in-house vehicle field with whatever is already recorded.
         this.manualVehicle.set(detail.vehicleNumber ?? '');
         this.loadScreenshot(detail);
-        this.loadPaymentTransactions(detail.id);
-        // Pull live courier tracking (status + timeline) when published to QuikShipX.
-        this.loadTracking(detail, { silent: true });
+        if (!this.isViewOnly()) {
+          this.loadPaymentTransactions(detail.id);
+          // Pull live courier tracking (status + timeline) when published to QuikShipX.
+          this.loadTracking(detail, { silent: true });
+        }
         this.loadOrderReturns(detail.id);
       },
       error: () => {
